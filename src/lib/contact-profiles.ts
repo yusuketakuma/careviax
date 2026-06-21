@@ -134,6 +134,14 @@ type ContactProfileRow = {
   pending_response_count: number;
 };
 
+export type ContactProfileSearchSummary = {
+  id: string;
+  kind: ContactProfileKind;
+  name: string;
+  subtitle: string | null;
+  last_contacted_at: Date | null;
+};
+
 type ContactProfileReliability = {
   ready: boolean;
   warnings: string[];
@@ -151,6 +159,16 @@ const CHANNEL_PRIORITY: CommunicationChannel[] = [
 
 function hasText(value: string | null | undefined) {
   return Boolean(value?.trim());
+}
+
+function normalizeSearchQuery(value: string | null | undefined) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return null;
+  return trimmed.slice(0, 100);
+}
+
+function containsQuery(query: string) {
+  return { contains: query, mode: 'insensitive' as const };
 }
 
 type ChannelStats = Record<
@@ -839,6 +857,143 @@ export async function listContactProfiles(
       if (kindDelta !== 0) return kindDelta;
       return left.name.localeCompare(right.name, 'ja');
     });
+}
+
+export async function listContactProfileSearchSummaries(
+  db: DbClient,
+  orgId: string,
+  input: {
+    kind?: ContactProfileRow['kind'] | 'all' | null;
+    query?: string | null;
+    limit: number;
+  },
+): Promise<{ data: ContactProfileSearchSummary[]; hasMore: boolean }> {
+  const query = normalizeSearchQuery(input.query);
+  const limit = Math.max(1, Math.trunc(input.limit));
+  const take = limit + 1;
+  const rows: ContactProfileSearchSummary[] = [];
+
+  if (!input.kind || input.kind === 'all' || input.kind === 'facility_contact') {
+    const facilityContacts = await db.facilityContact.findMany({
+      where: {
+        org_id: orgId,
+        ...(query
+          ? {
+              OR: [
+                { name: containsQuery(query) },
+                { role: containsQuery(query) },
+                { facility: { name: containsQuery(query) } },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        role: true,
+        last_contacted_at: true,
+        facility: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      take,
+      orderBy: [{ name: 'asc' }],
+    });
+    rows.push(
+      ...facilityContacts.map((item) => ({
+        id: item.id,
+        kind: 'facility_contact' as const,
+        name: item.name,
+        subtitle: item.role ? `${item.facility.name} / ${item.role}` : item.facility.name,
+        last_contacted_at: item.last_contacted_at,
+      })),
+    );
+    if (input.kind === 'all' && facilityContacts.length > limit) {
+      return {
+        data: rows.slice(0, limit),
+        hasMore: true,
+      };
+    }
+  }
+
+  if (!input.kind || input.kind === 'all' || input.kind === 'external_professional') {
+    const externalProfessionals = await db.externalProfessional.findMany({
+      where: {
+        org_id: orgId,
+        ...(query
+          ? {
+              OR: [
+                { name: containsQuery(query) },
+                { organization_name: containsQuery(query) },
+                { department: containsQuery(query) },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        profession_type: true,
+        organization_name: true,
+        department: true,
+        last_contacted_at: true,
+      },
+      take: Math.max(1, limit + 1 - rows.length),
+      orderBy: [{ name: 'asc' }],
+    });
+    rows.push(
+      ...externalProfessionals.map((item) => ({
+        id: item.id,
+        kind: 'external_professional' as const,
+        name: item.name,
+        subtitle: item.organization_name ?? item.department ?? item.profession_type,
+        last_contacted_at: item.last_contacted_at,
+      })),
+    );
+    if (input.kind === 'all' && rows.length > limit) {
+      return {
+        data: rows.slice(0, limit),
+        hasMore: true,
+      };
+    }
+  }
+
+  if (!input.kind || input.kind === 'all' || input.kind === 'prescriber_institution') {
+    const prescriberInstitutions = await db.prescriberInstitution.findMany({
+      where: {
+        org_id: orgId,
+        ...(query
+          ? {
+              OR: [{ name: containsQuery(query) }, { institution_code: containsQuery(query) }],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        institution_code: true,
+        last_contacted_at: true,
+      },
+      take: Math.max(1, limit + 1 - rows.length),
+      orderBy: [{ name: 'asc' }],
+    });
+    rows.push(
+      ...prescriberInstitutions.map((item) => ({
+        id: item.id,
+        kind: 'prescriber_institution' as const,
+        name: item.name,
+        subtitle: item.institution_code ?? '処方元医療機関',
+        last_contacted_at: item.last_contacted_at,
+      })),
+    );
+  }
+
+  return {
+    data: rows.slice(0, limit),
+    hasMore: rows.length > limit,
+  };
 }
 
 export type ContactProfileUpdateInput = {

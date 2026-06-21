@@ -92,13 +92,13 @@ export function PatientCareTeamSourcePanel({
                     {contact.phone}
                   </a>
                 ) : (
-                  <p className="mt-1 text-xs text-amber-700">電話番号未登録</p>
+                  <p className="mt-1 text-xs text-state-confirm">電話番号未登録</p>
                 )}
               </div>
             ))}
           </div>
         ) : (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p className="rounded-xl border border-state-confirm/40 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
             患者情報にクリニック・訪問看護・ケアマネジャーが登録されていません。報告書送付前に連携先を登録してください。
           </p>
         )}
@@ -109,7 +109,7 @@ export function PatientCareTeamSourcePanel({
               <Badge
                 key={role}
                 variant="outline"
-                className="border-amber-200 bg-amber-50 text-amber-800"
+                className="border-transparent bg-state-confirm/10 text-state-confirm"
               >
                 未登録: {ROLE_LABELS[role]}
               </Badge>

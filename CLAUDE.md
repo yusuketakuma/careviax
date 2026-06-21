@@ -208,3 +208,38 @@ pnpm db:generate      # Prisma client generation
 pnpm lint             # ESLint flat config
 pnpm deploy           # AWS Amplify deploy (or CDK deploy)
 ```
+
+## Autonomous Refinement Loop (Claude × Codex × agmsg × gbrain)
+
+Claude を主実装、Codex を agmsg 経由の peer reviewer/auditor とする継続改善ループの運用基盤は `.agent-loop/` にある。**ループを回す前に `.agent-loop/README.md` を読むこと**（運用の SSOT）。
+
+- **maker/checker 分離**: 実装した側は自己完了判定しない（Claude 実装→Codex review、逆も同様）。最終判定は objective gate（`pnpm lint` / `typecheck` / `typecheck:no-unused` / `format:check` / `test` / `build` / 必要時 `test:e2e`）に寄せる。`.agent-loop/GATE_CONFIG.md` 参照。
+- **編集規律**: 編集前に agmsg で対象 path を LOCK、commit 前に inbox drain、自ファイルのみ stage。`.agent-loop/LOCKS.md` / `MESSAGE_PROTOCOL.md`（AGLOOP v5）。
+- **gbrain**: 長期記憶だが現在の repo 状態・テスト・型・lint・build より**優先しない**。※ 2026-06-20 接続済み（ローカル postgres、`mcp__gbrain__*` は次回 Claude Code 起動後に有効）。詳細は下記 GBrain Configuration。
+
+## GBrain Configuration (configured by /setup-gbrain, 2026-06-20)
+
+- Mode: local-stdio / Engine: postgres (localhost、cloud 同期オフ — コードは Mac 外に出ない)
+- careviax 取込済み: `gbrain import` 131 pages / 1408 chunks、repo policy = **read-write**
+- **埋め込み生成済み（semantic 検索可）**: 2026-06-20 に**ローカル埋め込みプロバイダ `ollama:mxbai-embed-large`（1024次元、`http://localhost:11434`）へ切替**。`embed_disabled: false`、default ソース（careviax docs を内包）は **embed 100%**。`gbrain query` / `search` がコサイン類似度ベースで動作する（キーワード検索のみの制約は解消）。
+  - ✅ **データ持ち出しなし**: 埋め込みは ollama ローカル完結で外部 API（OpenAI/Voyage）へ送信されない。医療コンプライアンス上の egress 懸念は解消済み（旧 `.agent-loop/BLOCKED.md` gbrain-embeddings は RESOLVED）。
+- MCP 登録済み（user scope）。`mcp__gbrain__*` ツールは**セッション開始時ロード** → 既存セッションは要 restart
+- 既存 federated sources: default(/Users/yusuke/brain ~1307p, embed 100%) / hermes-knowledge / hermes-knowledge-stack ほか
+- **記憶スキーマ SSOT**: 何を・どう gbrain に保存するかは `.agent-loop/GBRAIN_SCHEMA.md` が正本（26 memory types / 共通メタ / slug=`projects/careviax/<category>/<id>` / graph edge / redaction / quality score / Claude×Codex 分担 / MVP phasing）。write-through 先は `/Users/yusuke/brain/projects/careviax/...`（ローカル、Mac 外に出ない）。
+
+### GBrain Search Guidance
+
+- 意味検索・「どこで X を扱う?」→ `gbrain search "<terms>"` / `gbrain query "<question>"`（Grep より先に）
+- シンボル定義/参照 → `gbrain code-def <symbol>` / `code-refs` / `code-callers`
+- 既知の正確な文字列・regex・glob は Grep のまま。ループの Memory Bootstrap はこの gbrain を一次ソースにする（ただし live repo 状態が優先）。
+- **新機能**: どちらに投げても `.agent-loop/FEATURE_QUEUE.md` 経由でループに載せる（`prompts/feature-intake.md`）。
+- **hard stop / security**: auth/billing/payments/security/破壊的 migration/本番 deploy は承認なしに触らない（`.agent-loop/BLOCKED.md` へ退避）。
+
+### GBrain Memory Writeback
+
+gbrain は「過去ログ」ではなく**次サイクルの判断精度を上げる再利用可能知識**を保存する長期記憶層。保存対象・粒度・メタデータ・graph edge・redaction は **`.agent-loop/GBRAIN_SCHEMA.md`** が SSOT。
+
+- **保存する**（§4）: LoopRun / ImplementationDecision / FailurePattern / FixPattern / ReviewFinding / GateResult / DuplicateMap / RejectedApproach / BlockedContext / CandidateLesson / StaleMemory ほか。**保存しない**: 会話全文・raw log 全文・secret/token/.env・PHI・未検証推測・一回限りの偶然。
+- **書く前に**（§15）: redact（secret/PHI）→ evidence 添付 → confidence/evidence_level/validity_scope 設定 → tag → link（`gbrain link --link-type`）→ dedupe。書いた後に `memory_id`(slug) を `.agent-loop/STATE.md` に追記。テンプレートは `.agent-loop/templates/gbrain/`。
+- **昇格**: CandidateLesson → VerifiedLesson(2+独立run) → StableRuleCandidate → AGENTS.md/CLAUDE.md は `.agent-loop/PROMOTION_QUEUE.md` の §13 gate（両 supervisor 合意＋objective gate＋人間承認）を通す。**自動昇格しない**。
+- **優先順位**: gbrain 記憶 < 現在の repo / テスト / 型 / lint / build。矛盾時は repo を正とし旧記憶を `StaleMemory` 化。**埋め込みは生成済み**（ローカル `ollama:mxbai-embed-large` 1024d、外部送信なし）→ semantic `gbrain query` / `search` が利用可能。

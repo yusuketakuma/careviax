@@ -60,6 +60,9 @@ tools/tests/.artifacts/
 .omc/
 artifacts/
 audits/
+agmsg/
+.harness-worktrees/
+/*.bak.*
 # ルートの成果物のみ。src/**/reports(アプリ実装)に誤爆させない
 /reports/
 tmp/
@@ -70,6 +73,9 @@ tmp/
 .codex/tmux-e2e-local.log
 .codex/dev-e2e-local.*
 .codex/start-e2e-local.*
+
+# Rotated ralph-state archives (local only; keep repo + gbrain sync lean)
+.codex/archive/
 
 # Accidental local worktree state directory
 {"decision":"approve","reason":"WorktreeCreate: initialized worktree state"}/
@@ -85,3 +91,4 @@ ds-bundle/
 .design-sync/.cache/
 .design-sync/learnings/
 .design-sync/node_modules
+.gbrain-source

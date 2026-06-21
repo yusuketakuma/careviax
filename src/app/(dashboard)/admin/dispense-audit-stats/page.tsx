@@ -7,6 +7,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loading } from '@/components/ui/loading';
+import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
@@ -29,20 +30,21 @@ const PERIOD_OPTIONS = [
   { label: '90日', days: 90 },
 ];
 
+// 差戻し理由コード別内訳の系列色。状態色ではなくデータ可視化なので --chart-* トークンを使う。
 const CODE_COLORS: Record<string, string> = {
-  drug_name_mismatch: 'bg-red-500',
-  quantity_error: 'bg-orange-500',
-  packaging_error: 'bg-amber-500',
-  carry_type_error: 'bg-yellow-500',
-  labeling_error: 'bg-blue-500',
-  other: 'bg-gray-400',
+  drug_name_mismatch: 'bg-chart-4',
+  quantity_error: 'bg-chart-3',
+  packaging_error: 'bg-chart-3',
+  carry_type_error: 'bg-chart-3',
+  labeling_error: 'bg-chart-1',
+  other: 'bg-chart-5',
 };
 
 export default function DispenseAuditStatsPage() {
   const orgId = useOrgId();
   const [days, setDays] = useState(30);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['reject-reason-stats', orgId, days],
     queryFn: async () => {
       const res = await fetch(`/api/admin/reject-reason-stats?days=${days}`, {
@@ -58,10 +60,7 @@ export default function DispenseAuditStatsPage() {
 
   return (
     <PageScaffold>
-      <AdminPageHeader
-        title="調剤鑑査差戻し分析"
-        description="差戻し理由コード別の集計と傾向"
-      />
+      <AdminPageHeader title="調剤鑑査差戻し分析" description="差戻し理由コード別の集計と傾向" />
 
       <div className="flex items-center gap-2 mb-4">
         {PERIOD_OPTIONS.map((opt) => (
@@ -79,6 +78,13 @@ export default function DispenseAuditStatsPage() {
 
       {isLoading ? (
         <Loading />
+      ) : isError ? (
+        // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+        <ErrorState
+          variant="server"
+          size="inline"
+          action={{ label: '再読み込み', onClick: () => void refetch() }}
+        />
       ) : !stats ? (
         <p className="text-sm text-muted-foreground">データがありません</p>
       ) : (

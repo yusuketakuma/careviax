@@ -56,9 +56,9 @@ export function ScheduleDayRescheduleApprovalDialog({
 
         {target ? (
           <div className="space-y-4">
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <div className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
               <p className="font-medium">{target.patientName}さんの確定済み訪問を変更します</p>
-              <p className="mt-1 text-xs leading-5 text-amber-800">
+              <p className="mt-1 text-xs leading-5 text-state-confirm/90">
                 承認すると、この予定の変更依頼を確定し、関連する候補・タスクが更新されます。
               </p>
             </div>

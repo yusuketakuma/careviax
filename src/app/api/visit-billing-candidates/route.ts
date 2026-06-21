@@ -6,6 +6,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   evaluateVisitBillingCandidate,
@@ -330,22 +331,53 @@ export const POST = withAuthContext(
           },
         });
 
-        const candidate = existingCandidate
-          ? canUpdateExistingCandidate(existingCandidate)
+        let candidate;
+        if (existingCandidate) {
+          const canUpdate = canUpdateExistingCandidate(existingCandidate);
+          candidate = canUpdate
             ? await tx.visitBillingCandidate.update({
                 where: { id_org_id: { id: existingCandidate.id, org_id: ctx.orgId } },
                 data: candidateData,
               })
-            : existingCandidate
-          : await tx.visitBillingCandidate.create({
+            : existingCandidate;
+          if (!canUpdate) skippedLockedCount += 1;
+        } else {
+          try {
+            candidate = await tx.visitBillingCandidate.create({
               data: {
                 org_id: ctx.orgId,
                 partner_visit_record_id: record.id,
                 ...candidateData,
               },
             });
-        if (existingCandidate && !canUpdateExistingCandidate(existingCandidate)) {
-          skippedLockedCount += 1;
+          } catch (error) {
+            if (!isPrismaUniqueConstraintError(error)) throw error;
+            const concurrentCandidate = await tx.visitBillingCandidate.findUnique({
+              where: {
+                org_id_partner_visit_record_id: {
+                  org_id: candidateKey.org_id,
+                  partner_visit_record_id: candidateKey.partner_visit_record_id,
+                },
+              },
+              select: {
+                id: true,
+                billing_status: true,
+                invoice_items: {
+                  select: { id: true },
+                  take: 1,
+                },
+              },
+            });
+            if (!concurrentCandidate) throw error;
+            const canUpdate = canUpdateExistingCandidate(concurrentCandidate);
+            candidate = canUpdate
+              ? await tx.visitBillingCandidate.update({
+                  where: { id_org_id: { id: concurrentCandidate.id, org_id: ctx.orgId } },
+                  data: candidateData,
+                })
+              : concurrentCandidate;
+            if (!canUpdate) skippedLockedCount += 1;
+          }
         }
         candidates.push(candidate);
         const claimCheckedTransition = resolvePharmacyVisitRequestTransition({

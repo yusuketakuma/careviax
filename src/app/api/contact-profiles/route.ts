@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -7,9 +8,16 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import {
   CONTACT_METHOD_OPTIONS,
+  listContactProfileSearchSummaries,
   listContactProfiles,
   updateContactProfile,
 } from '@/lib/contact-profiles';
+
+function normalizeSearchQuery(value: string | null) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return null;
+  return trimmed.slice(0, 100);
+}
 
 export const GET = withAuthContext(
   async (req, ctx) => {
@@ -20,7 +28,28 @@ export const GET = withAuthContext(
         | 'external_professional'
         | 'prescriber_institution'
         | null) ?? 'all';
-    const query = req.nextUrl.searchParams.get('q')?.trim() || null;
+    const query = normalizeSearchQuery(req.nextUrl.searchParams.get('q'));
+    const limitParam = req.nextUrl.searchParams.get('limit');
+
+    if (limitParam !== null) {
+      const limit = parseBoundedInteger(limitParam, 8, 1, 50);
+      const result = await listContactProfileSearchSummaries(prisma, ctx.orgId, {
+        kind,
+        query,
+        limit,
+      });
+
+      return success({
+        data: result.data.map((item) => ({
+          id: item.id,
+          kind: item.kind,
+          name: item.name,
+          subtitle: item.subtitle,
+          last_contacted_at: item.last_contacted_at?.toISOString() ?? null,
+        })),
+        hasMore: result.hasMore,
+      });
+    }
 
     const data = await listContactProfiles(prisma, ctx.orgId, {
       kind,
@@ -50,7 +79,12 @@ const nullableTrimmed = z
 const updateContactProfileSchema = z.object({
   kind: z.enum(['facility_contact', 'external_professional', 'prescriber_institution']),
   id: z.string().min(1, '連携先IDは必須です'),
-  name: z.string().trim().min(1, '宛先は必須です').max(255, '255文字以内で入力してください').optional(),
+  name: z
+    .string()
+    .trim()
+    .min(1, '宛先は必須です')
+    .max(255, '255文字以内で入力してください')
+    .optional(),
   role: nullableTrimmed,
   department: nullableTrimmed,
   phone: nullableTrimmed,

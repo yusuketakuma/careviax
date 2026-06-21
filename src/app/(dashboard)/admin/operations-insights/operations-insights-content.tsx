@@ -22,14 +22,9 @@ type OperationsInsights = {
   hints: string[];
 };
 
-const BAR_COLORS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-500', 'bg-sky-500'];
-const PROCESS_COLORS = [
-  'bg-red-400',
-  'bg-amber-500',
-  'bg-blue-500',
-  'bg-emerald-500',
-  'bg-violet-500',
-];
+// グラフ系列色は状態色ではない → --chart-* トークンを循環使用
+const BAR_COLORS = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-5', 'bg-chart-1'];
+const PROCESS_COLORS = ['bg-chart-4', 'bg-chart-3', 'bg-chart-1', 'bg-chart-2', 'bg-chart-5'];
 
 function BarChart({
   items,

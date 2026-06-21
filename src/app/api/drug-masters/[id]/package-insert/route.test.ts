@@ -10,7 +10,7 @@ const {
   drugAlertRuleFindManyMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
-  withRoutePerformanceMock: vi.fn((req, fn) => fn()),
+  withRoutePerformanceMock: vi.fn((_req, fn) => fn()),
   drugMasterFindUniqueMock: vi.fn(),
   drugPackageInsertFindManyMock: vi.fn(),
   drugInteractionFindManyMock: vi.fn(),

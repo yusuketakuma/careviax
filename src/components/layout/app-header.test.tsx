@@ -8,6 +8,7 @@ import { AppHeader, formatSyncTime } from './app-header';
 setupDomTestEnv();
 
 const mockRouterPush = vi.fn();
+const mockOpenPalette = vi.fn();
 const mockSetSidebarOpen = vi.fn();
 const mockSetWorkspaceRailOpen = vi.fn();
 const toastErrorMock = vi.hoisted(() => vi.fn());
@@ -51,6 +52,11 @@ vi.mock('@/lib/stores/auth-store', () => ({
 vi.mock('@/lib/stores/offline-store', () => ({
   useOfflineStore: (selector: (state: { lastSyncedAt: string | null }) => unknown) =>
     selector({ lastSyncedAt: mockLastSyncedAt }),
+}));
+
+vi.mock('@/lib/stores/command-palette-store', () => ({
+  useCommandPaletteStore: (selector: (state: { openPalette: () => void }) => unknown) =>
+    selector({ openPalette: mockOpenPalette }),
 }));
 
 vi.mock('@/lib/hooks/use-network-online', () => ({
@@ -108,6 +114,7 @@ describe('AppHeader', () => {
     mockOnline = true;
     mockLastSyncedAt = '2026-06-11T09:42:00';
     mockRouterPush.mockClear();
+    mockOpenPalette.mockClear();
     mockSetSidebarOpen.mockClear();
     mockSetWorkspaceRailOpen.mockClear();
     toastErrorMock.mockClear();
@@ -129,12 +136,14 @@ describe('AppHeader', () => {
     expect(screen.getByText('モード:')).toBeTruthy();
 
     const search = screen.getByTestId('app-header-search');
-    expect(search.textContent).toContain('患者・カード・薬剤を検索');
+    // 検索ボックスのコピーは active カテゴリ由来(現在は薬剤のみ active、PHI カテゴリは deferred)。
+    expect(search.textContent).toContain('薬剤');
+    expect(search.textContent).toContain('を検索');
     expect(search.textContent).toContain('/');
 
     const sync = screen.getByTestId('app-header-sync-status');
     expect(sync.textContent).toBe('同期済み 09:42');
-    expect(sync.className).toContain('emerald');
+    expect(sync.className).toContain('text-state-done');
 
     const communication = screen.getByTestId('app-header-communication');
     expect(communication.getAttribute('href')).toBe(
@@ -252,15 +261,34 @@ describe('AppHeader', () => {
     );
   });
 
-  it('navigates to /search when the search box is clicked', () => {
+  it('opens the command palette when the search box is clicked', () => {
     render(<AppHeader />);
 
     fireEvent.click(screen.getByTestId('app-header-search'));
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/search');
+    // F-009: ヘッダ検索ボックスは /search への遷移ではなくパレットを開く。
+    expect(mockOpenPalette).toHaveBeenCalledTimes(1);
+    expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
-  it('navigates to /search on the "/" shortcut, but not while typing in a field', () => {
+  it('opens the command palette from the compact search button', () => {
+    render(<AppHeader />);
+
+    fireEvent.click(screen.getByTestId('app-header-search-compact'));
+
+    expect(mockOpenPalette).toHaveBeenCalledTimes(1);
+  });
+
+  it('labels the search box from active category labels (all categories active)', () => {
+    render(<AppHeader />);
+
+    const box = screen.getByTestId('app-header-search');
+    expect(box.textContent).toContain('患者');
+    expect(box.textContent).toContain('薬剤');
+    expect(box.textContent).toContain('を検索');
+  });
+
+  it('does not register a global "/" shortcut (ownership moved to AppShell)', () => {
     render(
       <div>
         <AppHeader />
@@ -268,23 +296,19 @@ describe('AppHeader', () => {
       </div>,
     );
 
+    // AppHeader はグローバルショートカットを登録しない。"/" 押下でパレットは開かない。
     fireEvent.keyDown(document.body, { key: '/' });
-    expect(mockRouterPush).toHaveBeenCalledWith('/search');
-
-    mockRouterPush.mockClear();
-    const input = screen.getByRole('textbox', { name: '自由記入' });
-    input.focus();
-    fireEvent.keyDown(input, { key: '/' });
+    expect(mockOpenPalette).not.toHaveBeenCalled();
     expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
-  it('shows オフライン (amber) instead of the sync time when offline', () => {
+  it('shows オフライン (blocked) instead of the sync time when offline', () => {
     mockOnline = false;
     render(<AppHeader />);
 
     const sync = screen.getByTestId('app-header-sync-status');
     expect(sync.textContent).toContain('オフライン');
-    expect(sync.className).toContain('amber');
+    expect(sync.className).toContain('text-state-blocked');
   });
 
   it('renders 同期済み without a time when no sync timestamp exists yet', () => {

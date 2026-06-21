@@ -267,6 +267,15 @@ function TransferDialog({
     draft.rationale.trim().length > 0 &&
     draft.deadline.length > 0;
 
+  // 責任移譲は取消不可。無効ボタンが何で詰まっているかを示し、解消対象を明確にする。
+  const missingFields = [
+    draft.content.trim().length === 0 ? '件名' : null,
+    draft.recipient_label.trim().length === 0 ? '宛先(誰に渡すか)' : null,
+    draft.scope.trim().length === 0 ? '①何を(作業の範囲)' : null,
+    draft.rationale.trim().length === 0 ? '②なぜ(根拠)' : null,
+    draft.deadline.length === 0 ? '③いつまで(期限)' : null,
+  ].filter((label): label is string => label !== null);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!boardId) throw new Error('ボードが見つかりません');
@@ -393,11 +402,25 @@ function TransferDialog({
               onChange={(event) => setDraft((prev) => ({ ...prev, deadline: event.target.value }))}
             />
           </div>
+          {!isComplete && !createMutation.isPending && boardId ? (
+            <p
+              id="handoff-transfer-missing"
+              role="status"
+              className="text-xs text-muted-foreground"
+            >
+              未入力のため渡せません: {missingFields.join('、')}
+            </p>
+          ) : null}
           <DialogFooter>
             <Button
               type="submit"
               className="min-h-[44px]"
               disabled={!isComplete || createMutation.isPending || !boardId}
+              aria-describedby={
+                !isComplete && !createMutation.isPending && boardId
+                  ? 'handoff-transfer-missing'
+                  : undefined
+              }
             >
               {createMutation.isPending ? '送信中...' : '渡す(責任を移す)'}
             </Button>
@@ -419,15 +442,15 @@ const RESOLUTION_ACTIONS: {
 }[] = [
   {
     action: 'acknowledged',
-    buttonClassName: 'bg-emerald-600 text-white hover:bg-emerald-700',
+    buttonClassName: 'bg-state-done text-white hover:bg-state-done/90',
   },
   {
     action: 'escalated_to_physician',
-    buttonClassName: 'bg-blue-600 text-white hover:bg-blue-700',
+    buttonClassName: 'bg-tag-info text-white hover:bg-tag-info/90',
   },
   {
     action: 'returned_to_clerk',
-    buttonClassName: 'bg-violet-600 text-white hover:bg-violet-700',
+    buttonClassName: 'bg-state-waiting text-white hover:bg-state-waiting/90',
   },
 ];
 
@@ -491,7 +514,9 @@ function ConsultDetail({ item }: { item: HandoffBoardItem | null }) {
       </h3>
       {item ? (
         <div className="mt-3 space-y-2">
-          <p className="text-sm font-bold text-amber-700">{item.created_by_name} から薬剤師へ</p>
+          <p className="text-sm font-bold text-state-confirm">
+            {item.created_by_name} から薬剤師へ
+          </p>
           <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{item.content}</p>
           {item.rationale ? (
             <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
@@ -499,7 +524,7 @@ function ConsultDetail({ item }: { item: HandoffBoardItem | null }) {
             </p>
           ) : null}
           {item.resolution_note ? (
-            <div className="mt-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-sm leading-6 text-violet-800">
+            <div className="mt-2 rounded-md border border-state-waiting/30 bg-state-waiting/10 px-3 py-2 text-sm leading-6 text-state-waiting">
               <span className="font-bold">薬剤師のメモ:</span> {item.resolution_note}
             </div>
           ) : null}
@@ -760,7 +785,7 @@ function VisitHandoffConfirmationWorkspace({
       </div>
 
       {selectedTask ? (
-        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+        <p className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm font-medium text-state-confirm">
           {selectedTask.title}
         </p>
       ) : null}
@@ -987,7 +1012,7 @@ export function HandoffWorkspace() {
                 </h2>
                 {incomingItems.length === 0 ? (
                   <p
-                    className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700"
+                    className="mt-3 rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2.5 text-sm font-semibold text-state-done"
                     data-testid="handoff-incoming-empty"
                   >
                     なし — 受け取り待ちはありません
@@ -1006,13 +1031,13 @@ export function HandoffWorkspace() {
                     ))}
                   </div>
                 )}
-                <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm leading-6 text-blue-800">
+                <p className="mt-3 rounded-md border border-tag-info/30 bg-tag-info/10 px-3 py-2.5 text-sm leading-6 text-tag-info">
                   事務から薬剤師への依頼(疑義・判断・確認)もここに届きます。口頭やメモではなくハンドオフで渡すのがチームのルールです。
                 </p>
               </section>
 
               <p
-                className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800"
+                className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm leading-6 text-tag-info"
                 data-testid="handoff-rule-bar"
               >
                 <strong className="font-bold">ハンドオフの3点セット:</strong> ①何を(作業の範囲)

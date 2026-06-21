@@ -80,10 +80,17 @@ describe('PatientCareTeamPanel', () => {
     expect(screen.getByLabelText('多職種連携先1件目のFAX')).toBeTruthy();
     expect(screen.getByLabelText('多職種連携先1件目の住所')).toBeTruthy();
     expect(screen.getByLabelText('多職種連携先1件目の連絡メモ')).toBeTruthy();
+    const quickCreateButton = screen.getByRole('button', {
+      name: '多職種連携先1件目の他職種マスターを新規登録',
+    });
+    const deleteButton = screen.getByRole('button', { name: '多職種連携先1件目を削除' });
+    for (const button of [quickCreateButton, deleteButton]) {
+      expect(button.getAttribute('aria-label')).not.toMatch(/佐藤|千代田|03-0000-0000|主治医/);
+    }
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+    fireEvent.click(quickCreateButton);
 
     expect(screen.getByLabelText('職種')).toBeTruthy();
     expect(screen.getByLabelText('他職種マスター追加の氏名')).toBeTruthy();

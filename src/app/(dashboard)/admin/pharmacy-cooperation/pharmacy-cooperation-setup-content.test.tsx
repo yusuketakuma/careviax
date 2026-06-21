@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PharmacyCooperationSetupContent } from './pharmacy-cooperation-setup-content';
 
@@ -74,6 +75,7 @@ describe('PharmacyCooperationSetupContent', () => {
                   status: 'active',
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -111,6 +113,7 @@ describe('PharmacyCooperationSetupContent', () => {
                   },
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -145,6 +148,7 @@ describe('PharmacyCooperationSetupContent', () => {
                   },
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -162,6 +166,7 @@ describe('PharmacyCooperationSetupContent', () => {
                   is_default: true,
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -188,24 +193,85 @@ describe('PharmacyCooperationSetupContent', () => {
           );
         }
         if (url === '/api/partner-pharmacies' && init?.method === 'POST') {
-          return new Response(JSON.stringify({ id: 'partner_pharmacy_2', status: 'active' }), {
-            status: 201,
-          });
+          return new Response(
+            JSON.stringify({
+              id: 'partner_pharmacy_2',
+              pharmacy_code: 'P002',
+              name: '新協力薬局',
+              tel: null,
+              status: 'active',
+              updated_at: '2026-06-19T10:30:00.000Z',
+            }),
+            { status: 201 },
+          );
         }
         if (url === '/api/pharmacy-partnerships' && init?.method === 'POST') {
-          return new Response(JSON.stringify({ id: 'partnership_2', status: 'draft' }), {
-            status: 201,
-          });
+          return new Response(
+            JSON.stringify({
+              id: 'partnership_2',
+              status: 'draft',
+              base_site_id: 'site_1',
+              partner_pharmacy_id: 'partner_pharmacy_1',
+              effective_from: '2026-06-01T00:00:00.000Z',
+              effective_to: null,
+              base_site: { id: 'site_1', name: '基幹薬局' },
+              partner_pharmacy: {
+                id: 'partner_pharmacy_1',
+                name: '協力薬局',
+                status: 'active',
+              },
+            }),
+            { status: 201 },
+          );
         }
         if (url === '/api/pharmacy-partnerships/partnership_1/activate') {
-          return new Response(JSON.stringify({ id: 'partnership_1', status: 'active' }), {
-            status: 200,
-          });
+          return new Response(
+            JSON.stringify({
+              id: 'partnership_1',
+              status: 'active',
+              base_site_id: 'site_1',
+              partner_pharmacy_id: 'partner_pharmacy_1',
+              effective_from: '2026-06-01T00:00:00.000Z',
+              effective_to: null,
+              base_site: { id: 'site_1', name: '基幹薬局' },
+              partner_pharmacy: {
+                id: 'partner_pharmacy_1',
+                name: '協力薬局',
+                status: 'active',
+              },
+            }),
+            { status: 200 },
+          );
         }
         if (url === '/api/pharmacy-contracts' && init?.method === 'POST') {
-          return new Response(JSON.stringify({ id: 'contract_2', status: 'active' }), {
-            status: 201,
-          });
+          return new Response(
+            JSON.stringify({
+              id: 'contract_2',
+              status: 'active',
+              effective_from: '2026-06-01T00:00:00.000Z',
+              effective_to: null,
+              partnership: {
+                id: 'partnership_active',
+                status: 'active',
+                base_site: { id: 'site_1', name: '基幹薬局' },
+                partner_pharmacy: {
+                  id: 'partner_pharmacy_1',
+                  name: '協力薬局',
+                  status: 'active',
+                },
+              },
+              latest_version: {
+                version_no: 1,
+                status: 'active',
+                active_fee_rule: {
+                  billing_model: 'fixed_per_visit',
+                  unit_price: 5500,
+                  tax_category: 'tax_pending',
+                },
+              },
+            }),
+            { status: 201 },
+          );
         }
         if (url === '/api/pharmacy-contracts/contract_1/documents' && init?.method === 'POST') {
           const body = JSON.parse(String(init.body));
@@ -289,6 +355,164 @@ describe('PharmacyCooperationSetupContent', () => {
     );
   });
 
+  it('shows the setup error state for malformed contract list success payloads', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-contracts?limit=20') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'contract_1',
+                status: 'active',
+                effective_from: '2026-06-01T00:00:00.000Z',
+                effective_to: null,
+                partnership: {
+                  id: 'partnership_active',
+                  status: 'active',
+                  base_site: { id: 'site_1', name: '基幹薬局' },
+                  partner_pharmacy: {
+                    id: 'partner_pharmacy_1',
+                    name: '協力薬局',
+                  },
+                },
+                latest_version: {
+                  version_no: 1,
+                  active_fee_rule: null,
+                },
+              },
+            ],
+            hasMore: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力設定を表示できません')).toBeTruthy();
+    expect(screen.getByText('薬局間契約の取得に失敗しました')).toBeTruthy();
+  });
+
+  it('rejects malformed contract preview success payloads before rendering preview text', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-contracts/contract_1/documents' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        if (body.mode === 'preview') {
+          return new Response(
+            JSON.stringify({
+              mode: 'preview',
+              document_type: 'basic_contract',
+              hash_value: 'hash_preview',
+              rendered_text: '第1条 目的',
+            }),
+            { status: 200 },
+          );
+        }
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('契約書作成');
+    fireEvent.click(screen.getByRole('button', { name: /プレビュー/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('契約書プレビューに失敗しました');
+    });
+    expect(screen.queryByText(/第1条 目的/)).toBeNull();
+  });
+
+  it('rejects malformed contract save success payloads before treating the document as saved', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-contracts/contract_1/documents' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        if (body.mode === 'save') {
+          return new Response(
+            JSON.stringify({
+              id: 'contract_document_2',
+              contract_id: 'contract_1',
+              version_id: 'contract_version_1',
+              template_id: 'template_contract_1',
+              file_id: 'generated_file_1',
+              document_type: 'basic_contract',
+              hash_value: 'hash_saved',
+              signed_at: null,
+              created_at: '2026-06-19T11:00:00.000Z',
+              updated_at: '2026-06-19T11:00:00.000Z',
+            }),
+            { status: 201 },
+          );
+        }
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('契約書作成');
+    fireEvent.click(screen.getByRole('button', { name: /契約書保存/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('契約書の保存に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('契約書を保存しました');
+  });
+
+  it('does not upload a signed contract PDF when presigned upload response is malformed', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/files/presigned-upload' && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            data: {
+              id: 'file_signed_pdf_1',
+            },
+          }),
+          { status: 201 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('契約書作成');
+    const signedPdf = new File(['signed'], 'signed-contract.pdf', {
+      type: 'application/pdf',
+    });
+    fireEvent.change(screen.getByLabelText('署名済み契約書PDF'), {
+      target: { files: [signedPdf] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /契約書保存/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('署名付きアップロードURLの取得に失敗しました');
+    });
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([input, init]) =>
+            String(input) === 'https://uploads.example.test/signed-contract.pdf' &&
+            init?.method === 'PUT',
+        ),
+    ).toBe(false);
+  });
+
   it('renders setup lists without patient data', async () => {
     renderContent();
 
@@ -352,6 +576,56 @@ describe('PharmacyCooperationSetupContent', () => {
     });
   });
 
+  it('rejects malformed partner pharmacy create success payloads before clearing the form', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/partner-pharmacies' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'partner_pharmacy_2', status: 'active' }), {
+          status: 201,
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('協力薬局登録');
+    fireEvent.change(screen.getByLabelText('協力薬局名'), { target: { value: '新協力薬局' } });
+    fireEvent.click(screen.getByRole('button', { name: /^登録$/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('協力薬局の登録に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('協力薬局を登録しました');
+    expect((screen.getByLabelText('協力薬局名') as HTMLInputElement).value).toBe('新協力薬局');
+  });
+
+  it('rejects malformed pharmacy partnership create success payloads before showing success', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-partnerships' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'partnership_2', status: 'draft' }), {
+          status: 201,
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('協力薬局登録');
+    fireEvent.click(screen.getByRole('button', { name: /連携作成/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('薬局間連携の作成に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('薬局間連携を作成しました');
+  });
+
   it('activates a partnership and creates an active contract with approvals', async () => {
     renderContent();
 
@@ -408,6 +682,70 @@ describe('PharmacyCooperationSetupContent', () => {
         },
       });
     });
+  });
+
+  it('rejects malformed partnership activation success payloads before showing success', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-partnerships/partnership_1/activate' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'partnership_1', status: 'active' }), {
+          status: 200,
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    const partnershipsTable = await screen.findByRole('table', { name: '薬局間連携一覧' });
+    fireEvent.change(within(partnershipsTable).getByLabelText('partnership_1 の基幹承認者'), {
+      target: { value: 'base_manager' },
+    });
+    fireEvent.change(within(partnershipsTable).getByLabelText('partnership_1 の協力承認者'), {
+      target: { value: 'partner_manager' },
+    });
+    fireEvent.click(
+      within(partnershipsTable).getByRole('button', {
+        name: 'partnership_1 協力薬局 の薬局間連携を有効化',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('薬局間連携の有効化に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('薬局間連携を有効化しました');
+  });
+
+  it('rejects malformed pharmacy contract create success payloads before showing success', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-contracts' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'contract_2', status: 'active' }), {
+          status: 201,
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('協力薬局登録');
+    fireEvent.change(screen.getByLabelText('契約の基幹承認者'), {
+      target: { value: 'base_manager' },
+    });
+    fireEvent.change(screen.getByLabelText('契約の協力承認者'), {
+      target: { value: 'partner_manager' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /契約登録/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('薬局間契約の登録に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('薬局間契約を登録しました');
   });
 
   it('previews and saves a contract document from the setup screen', async () => {

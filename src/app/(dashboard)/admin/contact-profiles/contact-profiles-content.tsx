@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -247,9 +248,9 @@ export function ContactProfilesContent() {
                   <p className="font-medium text-muted-foreground">表示中</p>
                   <p className="mt-1 text-base font-semibold text-foreground">{rows.length}件</p>
                 </div>
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                  <p className="font-medium text-amber-700">未完了</p>
-                  <p className="mt-1 text-base font-semibold text-amber-800">
+                <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-2">
+                  <p className="font-medium text-state-confirm">未完了</p>
+                  <p className="mt-1 text-base font-semibold text-state-confirm">
                     {pendingRowsCount}件
                   </p>
                 </div>
@@ -263,7 +264,16 @@ export function ContactProfilesContent() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {profilesQuery.isLoading ? (
+            {profilesQuery.isError ? (
+              // 取得失敗を「送付先がありません」(空)に倒さず、ErrorState + 再試行で示す
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="送付先を取得できませんでした"
+                description="時間をおいて再試行してください。"
+                action={{ label: '再試行', onClick: () => profilesQuery.refetch() }}
+              />
+            ) : profilesQuery.isLoading ? (
               <p className="rounded-lg border border-dashed border-border/70 px-4 py-8 text-sm text-muted-foreground">
                 連携先を読み込んでいます。
               </p>

@@ -27,6 +27,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -1417,19 +1418,9 @@ export function ScheduleWeeklyOptimizer({
                                 <Badge variant="outline">{cellProposals.length}候補</Badge>
                               ) : null}
                               {isNextBillableDay ? (
-                                <Badge
-                                  variant="outline"
-                                  className="border-emerald-200 bg-emerald-50 text-emerald-700"
-                                >
-                                  次回算定可
-                                </Badge>
+                                <StateBadge role="done">次回算定可</StateBadge>
                               ) : isSuggestedBillableDay ? (
-                                <Badge
-                                  variant="outline"
-                                  className="border-sky-200 bg-sky-50 text-sky-700"
-                                >
-                                  候補日
-                                </Badge>
+                                <StateBadge role="info">候補日</StateBadge>
                               ) : null}
                             </div>
                           </div>
@@ -1458,7 +1449,7 @@ export function ScheduleWeeklyOptimizer({
                                   'rounded-xl border px-3 py-2 text-sm',
                                   schedule.confirmed_at
                                     ? 'border-border/60 bg-muted/20'
-                                    : 'cursor-grab border-sky-200 bg-sky-50 active:cursor-grabbing',
+                                    : 'cursor-grab border-tag-info/30 bg-tag-info/10 active:cursor-grabbing',
                                 ].join(' ')}
                               >
                                 <div className="flex items-start justify-between gap-2">
@@ -1484,12 +1475,12 @@ export function ScheduleWeeklyOptimizer({
                             {cellProposals.slice(0, 3).map((proposal) => (
                               <div
                                 key={proposal.id}
-                                className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs"
+                                className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs"
                               >
-                                <p className="font-medium text-amber-900">
+                                <p className="font-medium text-foreground">
                                   {proposal.case_.patient.name}
                                 </p>
-                                <p className="mt-1 text-amber-800">
+                                <p className="mt-1 text-state-confirm">
                                   {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
                                 </p>
                               </div>
@@ -1530,7 +1521,7 @@ export function ScheduleWeeklyOptimizer({
         <Card className="border-border/70 bg-card/95">
           <CardHeader className="pb-3">
             <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
-              <Sparkles className="size-4 text-violet-600" />
+              <Sparkles className="size-4 text-muted-foreground" />
               施設一括訪問の自動グループ化候補
             </h2>
             <CardDescription>

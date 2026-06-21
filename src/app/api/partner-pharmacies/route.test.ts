@@ -33,6 +33,7 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 }));
 
 import { POST as rawPOST } from './route';
+import { partnerPharmacyRowSchema } from '@/lib/pharmacy-cooperation/api-contracts';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
@@ -50,7 +51,9 @@ describe('/api/partner-pharmacies POST', () => {
     vi.clearAllMocks();
     partnerPharmacyCreateMock.mockResolvedValue({
       id: 'partner_pharmacy_1',
+      name: '連携薬局',
       pharmacy_code: 'EXT-001',
+      tel: null,
       status: 'active',
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
@@ -75,6 +78,8 @@ describe('/api/partner-pharmacies POST', () => {
     );
 
     expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(partnerPharmacyRowSchema.safeParse(body).success).toBe(true);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(partnerPharmacyCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({

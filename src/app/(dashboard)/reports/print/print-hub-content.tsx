@@ -8,6 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
+import {
+  careReportPrintAuditResponseSchema,
+  type CareReportPrintAuditResponse,
+} from '@/lib/reports/care-report-print-audit-contract';
 import { cn } from '@/lib/utils';
 import {
   buildDocumentReceiptRows,
@@ -47,6 +52,7 @@ import {
  * 右「出力設定」(チェック 4 つ + 印刷する)の 3 カラム。
  * 印刷時はプレビューの帳票のみを出力する(他カラムとカード枠は print:hidden)。
  */
+const PRINT_DISABLED_REASON_ID = 'print-submit-disabled-reason';
 
 // ─── データ取得 ──────────────────────────────────────────────────────────────
 
@@ -56,15 +62,6 @@ type PatientPrescriptionsResponse = {
   data: PrescriptionIntakeForPrint[];
 };
 type CareReportsResponse = { data: CareReportForPrint[] };
-type CareReportPrintAuditResponse = {
-  data: {
-    report: {
-      id: string;
-      report_type: string;
-      content: unknown;
-    };
-  };
-};
 type PatientDocumentsForPrintResponse = {
   patient: { id: string; name: string; name_kana: string };
   print_readiness: FirstVisitPrintReadinessForPrint;
@@ -627,9 +624,9 @@ function FirstVisitPrintReadinessPanel({ summary }: { summary: FirstVisitPrintRe
   const badgeVariant = summary.status === 'blocked' ? 'destructive' : 'outline';
   const badgeClassName =
     summary.status === 'ready'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      ? 'border-transparent bg-state-done/10 text-state-done'
       : summary.status === 'warning'
-        ? 'border-amber-200 bg-amber-50 text-amber-800'
+        ? 'border-transparent bg-state-confirm/10 text-state-confirm'
         : undefined;
   const detailLabels =
     summary.status === 'blocked' ? summary.missingRequiredLabels : summary.warningLabels;
@@ -640,10 +637,10 @@ function FirstVisitPrintReadinessPanel({ summary }: { summary: FirstVisitPrintRe
       className={cn(
         'rounded-lg border p-3 text-xs leading-5',
         summary.status === 'blocked'
-          ? 'border-destructive/30 bg-destructive/5'
+          ? 'border-state-blocked/30 bg-state-blocked/5'
           : summary.status === 'warning'
-            ? 'border-amber-200 bg-amber-50/60'
-            : 'border-emerald-200 bg-emerald-50/60',
+            ? 'border-state-confirm/30 bg-state-confirm/10'
+            : 'border-state-done/30 bg-state-done/10',
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -656,10 +653,10 @@ function FirstVisitPrintReadinessPanel({ summary }: { summary: FirstVisitPrintRe
         className={cn(
           'mt-2',
           summary.status === 'blocked'
-            ? 'text-destructive'
+            ? 'text-state-blocked'
             : summary.status === 'warning'
-              ? 'text-amber-900'
-              : 'text-emerald-900',
+              ? 'text-state-confirm'
+              : 'text-state-done',
         )}
       >
         {summary.message}
@@ -690,6 +687,9 @@ export function PrintHubContent() {
   const searchParams = useSearchParams();
   const documentType = parsePrintDocumentType(searchParams.get('type'));
   const explicitPatientId = searchParams.get('patient_id');
+  const [visitReportAuditRunId] = useState(
+    () => `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   const [settings, setSettings] = useState<PrintOutputSettings>(DEFAULT_PRINT_OUTPUT_SETTINGS);
   const [printError, setPrintError] = useState<string | null>(null);
   const [firstVisitPrintConfirmationKey, setFirstVisitPrintConfirmationKey] = useState<
@@ -712,7 +712,12 @@ export function PrintHubContent() {
   const receiptRows = useMemo(() => buildDocumentReceiptRows(reports), [reports]);
   const visitReportSource = useMemo(() => pickVisitReportForPrint(reports), [reports]);
   const auditedVisitReportQuery = useQuery({
-    queryKey: ['print-hub-care-report-print-audit', orgId, visitReportSource?.id],
+    queryKey: [
+      'print-hub-care-report-print-audit',
+      orgId,
+      visitReportSource?.id,
+      visitReportAuditRunId,
+    ],
     queryFn: async () => {
       if (!visitReportSource) throw new Error('印刷対象の報告書がありません');
       const res = await fetch(`/api/care-reports/${visitReportSource.id}/print-audit`, {
@@ -720,24 +725,32 @@ export function PrintHubContent() {
         headers: { 'content-type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ intent: 'preview_rendered' }),
       });
-      if (!res.ok) throw new Error('報告書の印刷監査に失敗しました');
-      return res.json() as Promise<CareReportPrintAuditResponse>;
+      return readApiJson<CareReportPrintAuditResponse>(res, {
+        fallbackMessage: '報告書の印刷監査に失敗しました',
+        schema: careReportPrintAuditResponseSchema,
+      });
     },
     enabled: !!orgId && documentType === 'visit_report' && !!visitReportSource,
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+    refetchOnMount: 'always',
     staleTime: 0,
   });
+  const auditedVisitReportPayload = auditedVisitReportQuery.data?.data;
+  const canRenderAuditedVisitReport =
+    auditedVisitReportPayload?.audited === true &&
+    Boolean(visitReportSource) &&
+    auditedVisitReportPayload.report?.id === visitReportSource?.id;
   const auditedVisitReport = useMemo<CareReportForPrint | null>(() => {
-    const audited = auditedVisitReportQuery.data?.data.report;
-    if (!visitReportSource || !audited) return null;
+    const audited = auditedVisitReportPayload?.report;
+    if (!visitReportSource || !canRenderAuditedVisitReport || !audited) return null;
     return {
       ...visitReportSource,
       report_type: audited.report_type,
       content: audited.content,
     };
-  }, [auditedVisitReportQuery.data, visitReportSource]);
+  }, [auditedVisitReportPayload, canRenderAuditedVisitReport, visitReportSource]);
   const visitReport = useMemo(
     () => buildVisitReportDocument(auditedVisitReport),
     [auditedVisitReport],
@@ -824,7 +837,20 @@ export function PrintHubContent() {
         headers: { 'content-type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ intent: 'print_requested' }),
       });
-      if (!res.ok) {
+      try {
+        const audit = await readApiJson<CareReportPrintAuditResponse>(res, {
+          fallbackMessage: '報告書の印刷監査を記録できませんでした。再読み込みしてください。',
+          schema: careReportPrintAuditResponseSchema,
+        });
+        if (
+          audit.data.audited !== true ||
+          !audit.data.report ||
+          audit.data.report.id !== visitReportSource.id
+        ) {
+          setPrintError('報告書の印刷監査を記録できませんでした。再読み込みしてください。');
+          return;
+        }
+      } catch {
         setPrintError('報告書の印刷監査を記録できませんでした。再読み込みしてください。');
         return;
       }
@@ -894,22 +920,33 @@ export function PrintHubContent() {
   const shouldConfirmFirstVisitPrint = isFirstVisitPrint && firstVisitDocuments.length > 0;
   const awaitingFirstVisitPrintConfirmation =
     firstVisitPrintConfirmationKey === currentFirstVisitPrintConfirmationKey;
-  const printDisabled =
-    firstVisitPrintHistoryMutation.isPending ||
-    (documentType === 'visit_report' &&
-      Boolean(visitReportSource) &&
-      (auditedVisitReportQuery.isPending || auditedVisitReportQuery.isError)) ||
-    (isFirstVisitPrint && Boolean(firstVisitPrintBlockMessage));
   const outputIsLoading =
     isLoading ||
     (documentType === 'visit_report' &&
       Boolean(visitReportSource) &&
-      auditedVisitReportQuery.isPending);
+      !canRenderAuditedVisitReport &&
+      (auditedVisitReportQuery.isPending || auditedVisitReportQuery.isFetching));
   const outputIsError =
     isError ||
     (documentType === 'visit_report' &&
       Boolean(visitReportSource) &&
-      auditedVisitReportQuery.isError);
+      (auditedVisitReportQuery.isError ||
+        (auditedVisitReportQuery.isSuccess && !canRenderAuditedVisitReport)));
+  const printDisabledReason =
+    documentType === 'visit_report' &&
+    visitReportSource &&
+    !canRenderAuditedVisitReport &&
+    (auditedVisitReportQuery.isPending || auditedVisitReportQuery.isFetching)
+      ? '報告書の印刷監査を確認しています。'
+      : documentType === 'visit_report' &&
+          visitReportSource &&
+          !canRenderAuditedVisitReport &&
+          (auditedVisitReportQuery.isError || auditedVisitReportQuery.isSuccess)
+        ? '報告書の印刷監査が完了していません。再読み込みしてください。'
+        : isFirstVisitPrint
+          ? firstVisitPrintBlockMessage
+          : null;
+  const printDisabled = firstVisitPrintHistoryMutation.isPending || Boolean(printDisabledReason);
 
   return (
     <div
@@ -1003,13 +1040,22 @@ export function PrintHubContent() {
             className="min-h-11 w-full"
             data-testid="print-submit-button"
             onClick={() => void handlePrint()}
+            aria-describedby={printDisabledReason ? PRINT_DISABLED_REASON_ID : undefined}
             disabled={printDisabled}
           >
             {awaitingFirstVisitPrintConfirmation ? 'もう一度印刷する' : '印刷する'}
           </Button>
+          {printDisabledReason ? (
+            <p
+              id={PRINT_DISABLED_REASON_ID}
+              className="mt-2 text-xs leading-5 text-muted-foreground"
+            >
+              {printDisabledReason}
+            </p>
+          ) : null}
           {shouldConfirmFirstVisitPrint && awaitingFirstVisitPrintConfirmation ? (
-            <div className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
-              <p className="text-xs leading-5 text-amber-900">
+            <div className="mt-3 space-y-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-3">
+              <p className="text-xs leading-5 text-state-confirm">
                 紙またはPDFの出力が完了してから、印刷履歴を記録してください。
               </p>
               <Button

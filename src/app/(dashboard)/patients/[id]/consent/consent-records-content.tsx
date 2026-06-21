@@ -10,6 +10,7 @@ import { FileText, Pencil, Plus, ShieldOff, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -158,9 +159,9 @@ function useColumns(args: {
           <span className="flex items-center gap-1.5 text-sm">
             {format(parseISO(expiryDate), 'yyyy/MM/dd', { locale: ja })}
             {isExpiringSoon && (
-              <Badge variant="outline" className="border-orange-400 text-orange-600 text-xs">
+              <StateBadge role="confirm" className="text-xs">
                 {daysUntilExpiry === 0 ? '本日期限' : `${daysUntilExpiry}日後`}
-              </Badge>
+              </StateBadge>
             )}
           </span>
         );

@@ -44,6 +44,8 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'PatientShareConsent',
     'PharmacyVisitRequest',
     'PartnerVisitRecord',
+    'PharmacyCooperationMessageThread',
+    'PharmacyCooperationMessage',
     'PharmacyContract',
     'VisitBillingCandidate',
     'PharmacyInvoice',

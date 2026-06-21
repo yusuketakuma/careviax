@@ -104,8 +104,8 @@ function ConditionBanner({ data }: { data: DashboardCockpitResponse }) {
         className={cn(
           'inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-bold',
           summary.tone === 'conditional'
-            ? 'bg-amber-100 text-amber-800'
-            : 'bg-emerald-100 text-emerald-800',
+            ? 'bg-state-confirm/10 text-state-confirm'
+            : 'bg-state-done/10 text-state-done',
         )}
       >
         {summary.pillLabel}
@@ -145,13 +145,13 @@ function UrgentNowCard({
   now: Date;
 }) {
   const accentClass = item.has_narcotic
-    ? 'bg-red-500'
+    ? 'bg-tag-hazard'
     : item.priority === 'emergency' || item.priority === 'urgent'
-      ? 'bg-orange-500'
-      : 'bg-blue-500';
+      ? 'bg-state-confirm'
+      : 'bg-tag-info';
   const typePill = item.has_narcotic
-    ? { label: '麻薬監査', className: 'bg-red-100 text-red-700' }
-    : { label: '調剤監査', className: 'bg-blue-100 text-blue-700' };
+    ? { label: '麻薬監査', className: 'bg-tag-hazard/10 text-tag-hazard' }
+    : { label: '調剤監査', className: 'bg-tag-info/10 text-tag-info' };
   const rxNumber = formatPrescriptionCardNumber(
     item.intake_id ?? item.cycle_id,
     item.prescribed_date,
@@ -209,7 +209,7 @@ function UrgentNowCard({
           期限 {formatTimeOfDay(item.due_at as string)} — {countdown.label}
         </p>
       ) : waitingMinutes != null ? (
-        <p className="text-sm font-semibold text-amber-700">
+        <p className="text-sm font-semibold text-state-confirm">
           {formatAgeLabel(waitingMinutes)}前から監査待ちです
         </p>
       ) : null}
@@ -282,7 +282,7 @@ function UrgentNowSection({
 // ---------------------------------------------------------------------------
 
 const TIMELINE_BLOCK_CLASSES = {
-  visit: 'bg-emerald-700 text-white',
+  visit: 'bg-chart-2 text-white',
   desk: 'bg-primary text-primary-foreground',
   break: 'border border-border/70 bg-muted text-muted-foreground',
 } as const;
@@ -319,7 +319,7 @@ function TodayFlowSection({
           今日の流れ
         </h3>
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Lock className="size-3 text-emerald-700" aria-hidden="true" />
+          <Lock className="size-3 text-chart-2" aria-hidden="true" />
           訪問は動かせない固定点・デスク作業はその間を流れます
         </p>
         <Button asChild variant="outline" size="sm" className="ml-auto">
@@ -363,14 +363,14 @@ function TodayFlowSection({
           {showNowMarker ? (
             <span
               aria-hidden="true"
-              className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-red-500"
+              className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-tag-info"
               style={{ left: `${timelinePercent(nowMinutes)}%` }}
             />
           ) : null}
         </div>
         {showNowMarker ? (
           <p
-            className="mt-1 text-xs font-semibold text-red-600"
+            className="mt-1 text-xs font-semibold text-tag-info"
             style={{ paddingLeft: `${Math.min(timelinePercent(nowMinutes), 88)}%` }}
           >
             いま {formatTimeOfDay(now.toISOString())}
@@ -386,8 +386,8 @@ function TodayFlowSection({
 // ---------------------------------------------------------------------------
 
 const PROCESS_TILE_TONE_CLASSES: Record<ProcessNowTile['tone'], { tile: string; count: string }> = {
-  over: { tile: 'border-red-300 bg-red-50', count: 'text-red-600' },
-  near: { tile: 'border-amber-300 bg-amber-50', count: 'text-amber-700' },
+  over: { tile: 'border-state-blocked/40 bg-state-blocked/10', count: 'text-state-blocked' },
+  near: { tile: 'border-state-confirm/40 bg-state-confirm/10', count: 'text-state-confirm' },
   normal: { tile: 'border-border/70 bg-background', count: 'text-foreground' },
 };
 
@@ -435,7 +435,7 @@ function ProcessNowSection({ statusCounts }: { statusCounts: Record<string, numb
         ))}
       </ol>
       {bottleneckNote ? (
-        <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm leading-5 text-red-800">
+        <p className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm leading-5 text-destructive">
           {bottleneckNote}
         </p>
       ) : null}
@@ -453,9 +453,9 @@ const TEAM_SLACK_AMPLE_MINUTES = 90;
 type TeamSlackTone = 'critical' | 'normal' | 'ample';
 
 const TEAM_SLACK_TONE_CLASSES: Record<TeamSlackTone, { bar: string; label: string }> = {
-  critical: { bar: 'bg-red-500', label: 'text-red-600' },
-  normal: { bar: 'bg-blue-500', label: 'text-foreground' },
-  ample: { bar: 'bg-green-500', label: 'text-green-600' },
+  critical: { bar: 'bg-state-blocked', label: 'text-state-blocked' },
+  normal: { bar: 'bg-tag-info', label: 'text-foreground' },
+  ample: { bar: 'bg-state-done', label: 'text-state-done' },
 };
 
 function teamSlackTone(slackMinutes: number): TeamSlackTone {
@@ -537,11 +537,11 @@ function TeamCapacityCard({
         })}
       </ul>
       {suggestion ? (
-        <p className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-5 text-amber-900">
+        <p className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm leading-5 text-state-confirm">
           <span>{suggestion}</span>
           <Link
             href="/handoff"
-            className="inline-flex items-center rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+            className="inline-flex items-center rounded border border-state-confirm/40 bg-card px-2 py-0.5 text-xs font-medium text-state-confirm hover:bg-state-confirm/15"
           >
             → ハンドオフへ
           </Link>

@@ -36,7 +36,7 @@ function toQrDraftResponse<T extends QrDraftResponse>(draft: T) {
 // ── GET: fetch single draft by id ──
 
 export const GET = withAuthContext(
-  async (req, ctx, { params }) => {
+  async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('QRスキャン下書きIDが不正です');
@@ -81,7 +81,7 @@ export const GET = withAuthContext(
 // ── DELETE: discard a draft (set status to 'discarded') ──
 
 export const DELETE = withAuthContext(
-  async (req, ctx, { params }) => {
+  async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('QRスキャン下書きIDが不正です');

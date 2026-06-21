@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { Prisma } from '@prisma/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -83,34 +84,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (parsed.data.sort !== undefined) {
     data.sort =
-      parsed.data.sort === null
-        ? Prisma.JsonNull
-        : (parsed.data.sort as Prisma.InputJsonValue);
+      parsed.data.sort === null ? Prisma.JsonNull : (parsed.data.sort as Prisma.InputJsonValue);
   }
   if (parsed.data.is_shared !== undefined) data.is_shared = parsed.data.is_shared;
   if (parsed.data.sort_order !== undefined) data.sort_order = parsed.data.sort_order;
 
-  const updated = await withOrgContext(ctx.orgId, async (tx) => {
-    const view = await tx.savedView.update({
-      where: { id: viewId },
-      data,
-    });
+  let updated: Awaited<ReturnType<typeof prisma.savedView.update>>;
+  try {
+    updated = await withOrgContext(ctx.orgId, async (tx) => {
+      const view = await tx.savedView.update({
+        where: { id: viewId },
+        data,
+      });
 
-    await createAuditLogEntry(tx, ctx, {
-      action: 'saved_view_updated',
-      targetType: 'SavedView',
-      targetId: viewId,
-      changes: {
-        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
-        ...(parsed.data.is_shared !== undefined ? { is_shared: parsed.data.is_shared } : {}),
-        ...(parsed.data.sort_order !== undefined ? { sort_order: parsed.data.sort_order } : {}),
-        ...(parsed.data.filters !== undefined ? { filters_updated: true } : {}),
-        ...(parsed.data.sort !== undefined ? { sort_updated: true } : {}),
-      },
-    });
+      await createAuditLogEntry(tx, ctx, {
+        action: 'saved_view_updated',
+        targetType: 'SavedView',
+        targetId: viewId,
+        changes: {
+          ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+          ...(parsed.data.is_shared !== undefined ? { is_shared: parsed.data.is_shared } : {}),
+          ...(parsed.data.sort_order !== undefined ? { sort_order: parsed.data.sort_order } : {}),
+          ...(parsed.data.filters !== undefined ? { filters_updated: true } : {}),
+          ...(parsed.data.sort !== undefined ? { sort_updated: true } : {}),
+        },
+      });
 
-    return view;
-  });
+      return view;
+    });
+  } catch (error) {
+    if (isPrismaUniqueConstraintError(error)) {
+      return conflict('同じ名前の保存ビューが既に存在します');
+    }
+    throw error;
+  }
 
   return success({ data: toSavedViewRecord(updated, ctx.userId) });
 }

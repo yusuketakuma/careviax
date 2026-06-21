@@ -128,4 +128,40 @@ describe('AlertRulesPage', () => {
       '"severity": "high"',
     );
   });
+
+  it('shows ErrorState (not a false-empty) with retry when the rules query fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('boom', { status: 500 })),
+    );
+    renderPage();
+
+    // 取得失敗 → 空状態ではなく ErrorState（サーバーエラー）+ 再読み込み。
+    expect(await screen.findByText('サーバーエラーが発生しました')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+    // false-empty（「まだ…ありません」）を出していないこと。
+    expect(screen.queryByText('まだ処方安全アラートルールはありません。')).toBeNull();
+  });
+
+  it('retry re-runs the rules query (calls fetch again)', async () => {
+    const fetchMock = vi.fn(async () => new Response('boom', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    await screen.findByText('サーバーエラーが発生しました');
+    const callsBefore = fetchMock.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBefore));
+  });
+
+  it('shows true-empty only when no rules are returned (and no error)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ data: [] }), { status: 200 })),
+    );
+    renderPage();
+
+    expect(await screen.findByText('まだ処方安全アラートルールはありません。')).toBeTruthy();
+    expect(screen.queryByText('サーバーエラーが発生しました')).toBeNull();
+  });
 });

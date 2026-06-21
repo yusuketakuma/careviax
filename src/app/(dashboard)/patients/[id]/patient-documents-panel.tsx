@@ -1,28 +1,31 @@
 'use client';
 
 import Link from 'next/link';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { FileCheck2, FileDown, FilePlus2, FileQuestion, Printer, Save } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loading } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
-import { useOrgId } from '@/lib/hooks/use-org-id';
-import { ManagementPlanPanel } from './management-plan-panel';
-import { ExternalShareContent } from './share/external-share-content';
+import { readApiJson } from '@/lib/api/client-json';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import type { PatientDocumentsSnapshot, PatientOverview } from './patient-detail.types';
 
 type FirstVisitDocumentItem = PatientDocumentsSnapshot['first_visit_documents'][number];
 type FirstVisitDocumentStatus = PatientDocumentsSnapshot['document_statuses'][number];
 type FirstVisitPrintReadiness = PatientDocumentsSnapshot['print_readiness'];
+
+// §10 fail-closed: validate the minimal mutation success envelope ({ data: { id } }).
+// Unknown fields are stripped, so the raw FirstVisitDocument row never reaches the client.
+const firstVisitDocumentMutationResponseSchema = apiDataSchema(z.object({ id: z.string() }));
 
 const DOCUMENT_ACTION_LABELS: Record<string, string> = {
   generated: '作成',
@@ -42,6 +45,22 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   other: 'その他',
 };
 
+const FIRST_VISIT_DOCUMENT_SAVE_BLOCKER_ID_PREFIX = 'first-visit-document-save-blocker';
+
+function getFirstVisitDocumentSaveBlocker(args: {
+  missingRequiredDocumentUrl: boolean;
+  missingRequiredDeliveryTarget: boolean;
+  missingRequiredReason: boolean;
+}): string | null {
+  const missingFields: string[] = [];
+  if (args.missingRequiredDocumentUrl) missingFields.push('文書URL');
+  if (args.missingRequiredDeliveryTarget) missingFields.push('交付先');
+  if (args.missingRequiredReason) missingFields.push('理由');
+
+  if (missingFields.length === 0) return null;
+  return `保存するには、${missingFields.join('、')}を入力してください。`;
+}
+
 const DOCUMENT_STORAGE_LABELS: Record<string, string> = {
   store: '店舗',
   headquarters: '本部',
@@ -57,80 +76,6 @@ const SIGNER_TYPE_LABELS: Record<string, string> = {
   guardian: '後見人',
   other: 'その他',
 };
-
-export function PatientDocumentsPanel({
-  patientId,
-  patientName,
-  cases,
-  enabled,
-}: {
-  patientId: string;
-  patientName: string;
-  cases: PatientOverview['cases'];
-  enabled: boolean;
-}) {
-  const orgId = useOrgId();
-  const documentsQuery = useQuery<PatientDocumentsSnapshot>({
-    queryKey: ['patient-documents', patientId, orgId],
-    enabled: Boolean(orgId && patientId && enabled),
-    queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/documents`, {
-        headers: { 'x-org-id': orgId ?? '' },
-      });
-      if (!response.ok) {
-        throw new Error('文書情報の取得に失敗しました');
-      }
-      return response.json();
-    },
-  });
-
-  if (!orgId) {
-    return <Loading label="文書情報を読み込み中..." />;
-  }
-
-  if (documentsQuery.isLoading) {
-    return <Loading label="文書情報を読み込み中..." />;
-  }
-
-  if (documentsQuery.error instanceof Error || !documentsQuery.data) {
-    return (
-      <Card>
-        <CardHeader>
-          <h2 className="font-heading text-base leading-snug font-medium">文書</h2>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-destructive">
-            {documentsQuery.error instanceof Error
-              ? documentsQuery.error.message
-              : '文書情報の取得に失敗しました'}
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-      <ManagementPlanPanel
-        patientId={patientId}
-        patientName={patientName}
-        cases={cases}
-        orgId={orgId}
-      />
-      <ExternalShareContent patientId={patientId} />
-      <div className="xl:col-span-2">
-        <FirstVisitDocumentsPanel
-          cases={cases}
-          documents={documentsQuery.data.first_visit_documents}
-          documentStatuses={documentsQuery.data.document_statuses}
-          printReadiness={documentsQuery.data.print_readiness}
-          orgId={orgId}
-          patientId={patientId}
-        />
-      </div>
-    </div>
-  );
-}
 
 export function FirstVisitDocumentsPanel({
   cases,
@@ -318,7 +263,9 @@ export function FirstVisitDocumentsPanel({
                               </span>
                             ) : null}
                             {history.reason ? (
-                              <span className="block text-amber-800">理由: {history.reason}</span>
+                              <span className="block text-state-confirm">
+                                理由: {history.reason}
+                              </span>
                             ) : null}
                             {history.note ? (
                               <span className="block">備考: {history.note}</span>
@@ -400,11 +347,10 @@ function MissingFirstVisitDocumentsCreatePanel({
               template_id: template?.template_id,
             }),
           });
-          if (!response.ok) {
-            const errorBody = await response.json().catch(() => ({}));
-            throw new Error(errorBody.message ?? `${status.label}の作成に失敗しました`);
-          }
-          return response.json();
+          return readApiJson(response, {
+            schema: firstVisitDocumentMutationResponseSchema,
+            fallbackMessage: '初回訪問書類の作成に失敗しました',
+          });
         }),
       );
       return results;
@@ -426,11 +372,11 @@ function MissingFirstVisitDocumentsCreatePanel({
   const labels = statuses.map((status) => status.label).join('、');
 
   return (
-    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+    <div className="mb-4 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm font-semibold text-amber-950">未作成書類を起票できます</p>
-          <p className="mt-1 text-xs leading-5 text-amber-900">
+          <p className="text-sm font-semibold text-state-confirm">未作成書類を起票できます</p>
+          <p className="mt-1 text-xs leading-5 text-state-confirm">
             既定テンプレートから {labels} の作成履歴を登録します。
           </p>
         </div>
@@ -457,10 +403,10 @@ function PrintReadinessSummary({ readiness }: { readiness: FirstVisitPrintReadin
         : '不足あり';
   const statusClass =
     readiness.overall_status === 'ready'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+      ? 'border-transparent bg-state-done/10 text-state-done'
       : readiness.overall_status === 'warning'
-        ? 'border-amber-200 bg-amber-50 text-amber-950'
-        : 'border-red-200 bg-red-50 text-red-950';
+        ? 'border-transparent bg-state-confirm/10 text-state-confirm'
+        : 'border-transparent bg-destructive/10 text-destructive';
 
   return (
     <div
@@ -625,7 +571,7 @@ function DocumentStatusSummary({ statuses }: { statuses: FirstVisitDocumentStatu
               </div>
             </dl>
             {status.alerts.length > 0 ? (
-              <ul className="mt-2 space-y-1 text-xs text-amber-800">
+              <ul className="mt-2 space-y-1 text-xs text-state-confirm">
                 {status.alerts.slice(0, 2).map((alert) => (
                   <li key={alert}>{alert}</li>
                 ))}
@@ -673,8 +619,13 @@ function FirstVisitDocumentStatusForm({
   const missingRequiredDocumentUrl = requiresDocumentUrl && !documentUrl.trim();
   const requiresRecoveredDelivery = documentAction === 'recovered';
   const missingRequiredDeliveryTarget = requiresRecoveredDelivery && !deliveredTo.trim();
-  const cannotSubmit =
-    missingRequiredReason || missingRequiredDocumentUrl || missingRequiredDeliveryTarget;
+  const saveBlocker = getFirstVisitDocumentSaveBlocker({
+    missingRequiredDocumentUrl,
+    missingRequiredDeliveryTarget,
+    missingRequiredReason,
+  });
+  const saveBlockerId = `${FIRST_VISIT_DOCUMENT_SAVE_BLOCKER_ID_PREFIX}-${document.id}`;
+  const cannotSubmit = Boolean(saveBlocker);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -705,11 +656,10 @@ function FirstVisitDocumentStatusForm({
           },
         }),
       });
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.message ?? '初回訪問文書の更新に失敗しました');
-      }
-      return response.json();
+      return readApiJson(response, {
+        schema: firstVisitDocumentMutationResponseSchema,
+        fallbackMessage: '初回訪問文書の更新に失敗しました',
+      });
     },
     onSuccess: async () => {
       toast.success('初回訪問文書の状態を更新しました');
@@ -731,6 +681,7 @@ function FirstVisitDocumentStatusForm({
       className="mt-4 rounded-lg border border-border/60 bg-background p-3"
       onSubmit={(event) => {
         event.preventDefault();
+        if (cannotSubmit) return;
         mutation.mutate();
       }}
     >
@@ -1001,7 +952,17 @@ function FirstVisitDocumentStatusForm({
         ) : null}
       </div>
       <div className="mt-3 flex justify-end">
-        <Button type="submit" size="sm" disabled={mutation.isPending || cannotSubmit}>
+        {saveBlocker ? (
+          <p id={saveBlockerId} className="mr-auto self-center text-xs text-destructive">
+            {saveBlocker}
+          </p>
+        ) : null}
+        <Button
+          type="submit"
+          size="sm"
+          disabled={mutation.isPending || cannotSubmit}
+          aria-describedby={saveBlocker ? saveBlockerId : undefined}
+        >
           <Save className="size-4" aria-hidden="true" />
           {mutation.isPending ? '保存中...' : '保存'}
         </Button>

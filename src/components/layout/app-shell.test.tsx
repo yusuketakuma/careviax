@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+
+import { render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
   deriveShellViewport,
   resolveQuickCreateTarget,
@@ -6,6 +10,69 @@ import {
   shouldUseMinimalShell,
   shouldRenderCompactSidebarSheet,
 } from './app-shell';
+
+setupDomTestEnv();
+
+// AppShell が useKeyboardShortcuts に渡すグローバルショートカット定義を捕捉する。
+const { capturedShortcuts, mockOpenPalette, mockClosePalette, paletteState, nav } = vi.hoisted(
+  () => ({
+    capturedShortcuts: [] as Array<{ key: string; metaKey?: boolean; handler: () => void }>,
+    mockOpenPalette: vi.fn(),
+    mockClosePalette: vi.fn(),
+    paletteState: { open: false },
+    nav: { pathname: '/dashboard' },
+  }),
+);
+
+vi.mock('@/components/features/keyboard/use-keyboard-shortcuts', () => ({
+  useKeyboardShortcuts: (shortcuts: typeof capturedShortcuts) => {
+    capturedShortcuts.length = 0;
+    capturedShortcuts.push(...shortcuts);
+  },
+}));
+vi.mock('@/lib/stores/command-palette-store', () => ({
+  useCommandPaletteStore: (selector: (s: Record<string, unknown>) => unknown) =>
+    selector({
+      open: paletteState.open,
+      openPalette: mockOpenPalette,
+      closePalette: mockClosePalette,
+    }),
+}));
+vi.mock('@/lib/stores/ui-store', () => ({
+  useUIStore: () => ({
+    sidebarOpen: false,
+    setSidebarOpen: vi.fn(),
+    workspaceRailOpen: false,
+    setWorkspaceRailOpen: vi.fn(),
+    shortcutHelpOpen: false,
+    setShortcutHelpOpen: vi.fn(),
+    toggleShortcutHelp: vi.fn(),
+  }),
+}));
+vi.mock('next/navigation', () => ({
+  usePathname: () => nav.pathname,
+  useRouter: () => ({ push: vi.fn() }),
+}));
+vi.mock('sonner', () => ({ toast: { info: vi.fn(), error: vi.fn() } }));
+
+vi.mock('@/components/layout/app-header', () => ({ AppHeader: () => null }));
+vi.mock('@/components/layout/network-status-banner', () => ({ NetworkStatusBanner: () => null }));
+vi.mock('@/components/layout/route-progress', () => ({ RouteProgress: () => null }));
+vi.mock('@/components/features/pwa/install-prompt', () => ({ InstallPrompt: () => null }));
+vi.mock('@/components/layout/sidebar', () => ({ Sidebar: () => null }));
+vi.mock('@/components/layout/mobile-nav', () => ({ MobileNav: () => null }));
+vi.mock('@/components/auth/session-timeout-modal', () => ({ SessionTimeoutModal: () => null }));
+vi.mock('@/components/features/mobile/mobile-orientation-guard', () => ({
+  MobileOrientationGuard: () => null,
+}));
+vi.mock('@/components/features/keyboard/shortcut-help-modal', () => ({
+  ShortcutHelpModal: () => null,
+}));
+vi.mock('@/components/features/search/command-palette', () => ({ CommandPalette: () => null }));
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SheetContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
 
 describe('resolveQuickCreateTarget', () => {
   it('keeps real create routes for primary modules', () => {
@@ -98,5 +165,67 @@ describe('shouldRenderCompactSidebarSheet', () => {
         isCompactLayout: false,
       }),
     ).toBe(true);
+  });
+});
+
+describe('AppShell global search shortcuts', () => {
+  it('owns Cmd/Ctrl+K and "/" and wires both to open the command palette', async () => {
+    const { AppShell } = await import('./app-shell');
+    capturedShortcuts.length = 0;
+    mockOpenPalette.mockClear();
+
+    render(<AppShell>content</AppShell>);
+
+    const cmdK = capturedShortcuts.find((s) => s.key === 'k' && s.metaKey === true);
+    const slash = capturedShortcuts.find((s) => s.key === '/');
+    expect(cmdK, 'Cmd/Ctrl+K shortcut is registered').toBeTruthy();
+    expect(slash, '"/" shortcut is registered (AppShell owns it)').toBeTruthy();
+    // "/" must not carry a meta modifier (it is the bare-key global search opener).
+    expect(slash?.metaKey ?? false).toBe(false);
+
+    cmdK?.handler();
+    expect(mockOpenPalette).toHaveBeenCalledTimes(1);
+    slash?.handler();
+    expect(mockOpenPalette).toHaveBeenCalledTimes(2);
+  });
+
+  it('registers the global Escape shortcut when the palette is closed', async () => {
+    paletteState.open = false;
+    const { AppShell } = await import('./app-shell');
+    capturedShortcuts.length = 0;
+    render(<AppShell>content</AppShell>);
+    expect(capturedShortcuts.some((s) => s.key === 'Escape')).toBe(true);
+  });
+
+  it('does NOT register the global Escape shortcut while the palette is open', async () => {
+    // rev2 #2: 開いている間 AppShell が Escape を奪うと、useKeyboardShortcuts の
+    // preventDefault/stopPropagation で Dialog の native Escape に届かず閉じられない。
+    paletteState.open = true;
+    const { AppShell } = await import('./app-shell');
+    capturedShortcuts.length = 0;
+    render(<AppShell>content</AppShell>);
+    expect(capturedShortcuts.some((s) => s.key === 'Escape')).toBe(false);
+    // ⌘K / "/" は開いていても所有し続ける(再フォーカス用)。
+    expect(capturedShortcuts.some((s) => s.key === 'k' && s.metaKey)).toBe(true);
+    paletteState.open = false; // reset for other tests
+  });
+
+  it('does NOT register palette shortcuts on a minimal-shell route, and closes a leaked open palette', async () => {
+    // rev3 #2: print/capture 等の最小シェルでは CommandPalette を描画しないため、
+    // ⌘K/"/" を登録しない(不可視 open を作らない)。進入時に開いていたら closePalette。
+    nav.pathname = '/reports/report_1/print'; // shouldUseMinimalShell=true
+    paletteState.open = true;
+    mockClosePalette.mockClear();
+    const { AppShell } = await import('./app-shell');
+    capturedShortcuts.length = 0;
+    render(<AppShell>content</AppShell>);
+
+    expect(capturedShortcuts.some((s) => s.key === 'k' && s.metaKey)).toBe(false);
+    expect(capturedShortcuts.some((s) => s.key === '/')).toBe(false);
+    // 最小シェル進入時に開いていたパレットは閉じる。
+    expect(mockClosePalette).toHaveBeenCalled();
+
+    nav.pathname = '/dashboard'; // reset
+    paletteState.open = false;
   });
 });

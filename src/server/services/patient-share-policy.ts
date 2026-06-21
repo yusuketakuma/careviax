@@ -1,18 +1,10 @@
 import type { PatientShareCaseLifecycleStatus, PharmacyOwner } from './pharmacy-partnerships';
 import { enabledPatientShareScopeKeys, type PatientShareScopeKey } from './patient-share-scope';
+import type { PatientShareCorrectionTargetType } from '@/lib/patient-share/correction-request-domain';
+import { PATIENT_SHARE_CORRECTION_TARGET_TYPES } from '@/lib/patient-share/correction-request-domain';
 
-export const PATIENT_SHARE_CORRECTION_TARGET_TYPES = [
-  'patient_profile',
-  'care_case',
-  'management_plan',
-  'visit_request',
-  'partner_visit_record',
-  'claim_note',
-  'billing_candidate',
-] as const;
-
-export type PatientShareCorrectionTargetType =
-  (typeof PATIENT_SHARE_CORRECTION_TARGET_TYPES)[number];
+export { PATIENT_SHARE_CORRECTION_TARGET_TYPES };
+export type { PatientShareCorrectionTargetType };
 
 export const PATIENT_SHARE_DATA_OUTPUT_ACTIONS = [
   'view_attachment',

@@ -48,7 +48,7 @@ function getRequirementBadge(status: Record<string, boolean> | null) {
     return (
       <Badge
         variant="outline"
-        className="flex w-fit items-center gap-1 text-xs text-green-700 border-green-300 bg-green-50"
+        className="flex w-fit items-center gap-1 border-transparent bg-state-done/10 text-xs text-state-done"
       >
         <CheckCircle2 className="size-3" aria-hidden="true" /> 充足
       </Badge>
@@ -58,7 +58,7 @@ function getRequirementBadge(status: Record<string, boolean> | null) {
     return (
       <Badge
         variant="outline"
-        className="flex w-fit items-center gap-1 text-xs text-red-700 border-red-300 bg-red-50"
+        className="flex w-fit items-center gap-1 border-transparent bg-state-blocked/10 text-xs text-state-blocked"
       >
         <XCircle className="size-3" aria-hidden="true" /> 不足
       </Badge>
@@ -67,7 +67,7 @@ function getRequirementBadge(status: Record<string, boolean> | null) {
   return (
     <Badge
       variant="outline"
-      className="flex w-fit items-center gap-1 text-xs text-orange-700 border-orange-300 bg-orange-50"
+      className="flex w-fit items-center gap-1 border-transparent bg-state-confirm/10 text-xs text-state-confirm"
     >
       <AlertTriangle className="size-3" aria-hidden="true" /> 一部不足
     </Badge>
@@ -82,7 +82,7 @@ function ExpiryCell({ expiryDate }: { expiryDate: string | null }) {
 
   if (days < 0) {
     return (
-      <span className="flex items-center gap-1 text-xs text-red-700">
+      <span className="flex items-center gap-1 text-xs text-state-blocked">
         <XCircle className="size-3.5" aria-hidden="true" />
         {formatted}（期限切れ）
       </span>
@@ -90,7 +90,7 @@ function ExpiryCell({ expiryDate }: { expiryDate: string | null }) {
   }
   if (days <= 30) {
     return (
-      <span className="flex items-center gap-1 text-xs text-red-700">
+      <span className="flex items-center gap-1 text-xs text-state-blocked">
         <Bell className="size-3.5" aria-hidden="true" />
         {formatted}（残{days}日）
       </span>
@@ -98,7 +98,7 @@ function ExpiryCell({ expiryDate }: { expiryDate: string | null }) {
   }
   if (days <= 90) {
     return (
-      <span className="flex items-center gap-1 text-xs text-orange-700">
+      <span className="flex items-center gap-1 text-xs text-state-confirm">
         <Bell className="size-3.5" aria-hidden="true" />
         {formatted}（残{days}日）
       </span>
@@ -109,7 +109,11 @@ function ExpiryCell({ expiryDate }: { expiryDate: string | null }) {
 
 function ClaimStatusBadge({ status }: { status: FacilityStandard['claim_status'] }) {
   if (status === 'claimable') {
-    return <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">算定可</Badge>;
+    return (
+      <Badge variant="outline" className="border-transparent bg-state-done/10 text-state-done">
+        算定可
+      </Badge>
+    );
   }
   if (status === 'blocked') {
     return <Badge variant="destructive">算定不可</Badge>;
@@ -261,11 +265,11 @@ export function FacilityStandardsContent() {
 
       {/* Alert banner */}
       {(alertItems.length > 0 || standards.some((item) => item.claim_status === 'blocked')) && (
-        <div className="flex items-start gap-3 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+        <div className="flex items-start gap-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <div>
             <p className="font-medium">更新期限または要件未達の届出があります</p>
-            <ul className="mt-1 list-inside list-disc text-orange-700">
+            <ul className="mt-1 list-inside list-disc text-state-confirm">
               {standards
                 .filter((item) => item.claim_status === 'blocked')
                 .map((item) => (

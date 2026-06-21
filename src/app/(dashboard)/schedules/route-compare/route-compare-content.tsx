@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
@@ -39,10 +39,11 @@ import {
  * 移動分は外部地図 API を使わない定数近似(route-scenarios.ts 参照)。
  */
 
+// 3 案の折れ線は系列の識別であって状態色ではない → chart トークンを使う(状態トークンは流用しない)。
 const SCENARIO_TONE_COLORS: Record<RouteScenarioTone, string> = {
-  blue: '#2563eb', // blue-600
-  emerald: '#059669', // emerald-600
-  amber: '#f59e0b', // amber-500
+  blue: 'var(--chart-1)',
+  emerald: 'var(--chart-2)',
+  amber: 'var(--chart-3)',
 };
 
 const CHART_WIDTH = 340;
@@ -104,7 +105,7 @@ function ScenarioRouteChart({ scenario }: { scenario: RouteScenario }) {
   }));
 
   return (
-    <div className="rounded-lg bg-blue-50/80 p-2">
+    <div className="rounded-lg bg-muted/40 p-2">
       <svg
         viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
         className="h-auto w-full"
@@ -148,7 +149,7 @@ function ScenarioRouteChart({ scenario }: { scenario: RouteScenario }) {
 
 const DETAIL_CHART_WIDTH = 520;
 const DETAIL_CHART_HEIGHT = 300;
-const DETAIL_CHART_COLOR = '#2563eb'; // blue-600(推奨案の主役色)
+const DETAIL_CHART_COLOR = 'var(--chart-1)'; // 推奨案の主役系列色(状態色ではない)
 
 /** 詳細ビューの「地図と候補」: 推奨案の訪問順を折れ線+番号ノードで示す模式チャート */
 function RecommendedRouteChart({ stops }: { stops: RouteScenarioStop[] }) {
@@ -158,7 +159,7 @@ function RecommendedRouteChart({ stops }: { stops: RouteScenarioStop[] }) {
   }));
 
   return (
-    <div className="rounded-lg bg-blue-50/80 p-3">
+    <div className="rounded-lg bg-muted/40 p-3">
       <svg
         viewBox={`0 0 ${DETAIL_CHART_WIDTH} ${DETAIL_CHART_HEIGHT}`}
         className="h-auto w-full"
@@ -272,9 +273,7 @@ function RecommendedRouteDetail({
       <div className="flex flex-col gap-4 rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:p-5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-[15px] font-bold text-foreground">守る条件</h2>
-          {isApplied ? (
-            <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">適用済み</Badge>
-          ) : null}
+          {isApplied ? <StateBadge role="done">適用済み</StateBadge> : null}
         </div>
         <ul className="flex flex-col gap-2.5">
           {detail.constraints.map((constraint) => (
@@ -287,7 +286,7 @@ function RecommendedRouteDetail({
                 aria-hidden="true"
                 className={
                   constraint.checked
-                    ? 'flex h-4 w-4 shrink-0 items-center justify-center text-emerald-600'
+                    ? 'flex h-4 w-4 shrink-0 items-center justify-center text-state-done'
                     : 'flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground/50'
                 }
               >
@@ -556,14 +555,8 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-[15px] font-bold text-foreground">{scenario.label}</h2>
                   <div className="flex flex-wrap justify-end gap-1.5">
-                    {scenario.recommended ? (
-                      <Badge className="border-blue-200 bg-blue-50 text-blue-700">推奨</Badge>
-                    ) : null}
-                    {isApplied ? (
-                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                        適用済み
-                      </Badge>
-                    ) : null}
+                    {scenario.recommended ? <StateBadge role="info">推奨</StateBadge> : null}
+                    {isApplied ? <StateBadge role="done">適用済み</StateBadge> : null}
                   </div>
                 </div>
 

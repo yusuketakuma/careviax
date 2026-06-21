@@ -86,7 +86,7 @@ export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
         {!isRestricted && summary ? (
           <div className="space-y-2">
             {link?.lastSyncError ? (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              <p className="rounded-lg border border-transparent bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
                 同期エラー中のため、以下は前回成功時点の MCS 要約です。
               </p>
             ) : null}

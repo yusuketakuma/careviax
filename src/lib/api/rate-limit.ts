@@ -770,6 +770,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/staff-workload',
   '/api/tasks',
   '/api/tasks/:id',
+  '/api/tasks/bulk',
   '/api/templates',
   '/api/templates/:id',
   '/api/tracing-reports',

@@ -312,6 +312,89 @@ export async function ensureGroupedVisitFixtures() {
   }
 }
 
+export async function ensureTodayVisitPreparationBoardFixtures(scheduledDate: string) {
+  await ensureGroupedVisitFixtures();
+  assertSafeE2eDatabase();
+
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+
+  try {
+    const baseResult = await client.query<{
+      org_id: string;
+      user_id: string;
+      site_id: string | null;
+    }>(
+      `
+        SELECT u.org_id, u.id AS user_id, m.site_id
+        FROM "User" u
+        LEFT JOIN "Membership" m ON m.user_id = u.id AND m.org_id = u.org_id
+        WHERE lower(u.email) = lower('demo@ph-os.example.com')
+        ORDER BY m.created_at DESC NULLS LAST, u.created_at DESC
+        LIMIT 1
+      `,
+    );
+    const base = baseResult.rows[0];
+    if (!base) throw new Error('Visits today fixture requires the local auth user');
+
+    const siteId =
+      base.site_id ??
+      (
+        await client.query<{ id: string }>(
+          `SELECT id FROM "PharmacySite" WHERE org_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [base.org_id],
+        )
+      ).rows[0]?.id;
+    if (!siteId) throw new Error('Visits today fixture requires a pharmacy site');
+
+    await client.query(
+      `
+        UPDATE "FacilityVisitBatch"
+        SET "scheduled_date" = $1,
+            "pharmacist_id" = $2,
+            "updated_at" = NOW()
+        WHERE "id" = $3
+          AND "org_id" = $4
+      `,
+      [scheduledDate, base.user_id, GROUPED_VISIT_IDS.facilityBatch, base.org_id],
+    );
+
+    await client.query(
+      `
+        UPDATE "VisitSchedule"
+        SET "site_id" = $1,
+            "scheduled_date" = $2,
+            "time_window_start" = '09:00',
+            "time_window_end" = '10:00',
+            "schedule_status" = 'ready',
+            "pharmacist_id" = $3,
+            "assignment_mode" = 'primary',
+            "confirmed_at" = NOW(),
+            "confirmed_by" = $3,
+            "carry_items_status" = 'ready',
+            "updated_at" = NOW()
+        WHERE "id" = ANY($4::text[])
+          AND "org_id" = $5
+      `,
+      [
+        siteId,
+        scheduledDate,
+        base.user_id,
+        [
+          ...GROUPED_VISIT_IDS.facilitySchedules,
+          ...GROUPED_VISIT_IDS.homeSchedules,
+          GROUPED_VISIT_IDS.confirmedActionSchedule,
+        ],
+        base.org_id,
+      ],
+    );
+
+    return GROUPED_VISIT_IDS;
+  } finally {
+    await client.end();
+  }
+}
+
 type ConfirmedScheduleActionFixtureOptions = {
   carryItemsStatus?: 'ready' | 'partial' | 'blocked';
   carryItemsConfirmed?: boolean;

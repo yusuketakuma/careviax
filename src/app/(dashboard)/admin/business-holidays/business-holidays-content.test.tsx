@@ -92,6 +92,16 @@ describe('BusinessHolidaysContent', () => {
 
     fireEvent.click(
       await screen.findByRole('button', {
+        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を編集',
+      }),
+    );
+
+    expect(screen.getByText('休日を編集')).toBeTruthy();
+    expect((screen.getByLabelText('休日名') as HTMLInputElement).value).toBe('年始休業');
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
         name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を削除',
       }),
     );

@@ -20,6 +20,10 @@ import {
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import {
+  EMAIL_DELIVERY_FAILURE_REASON,
+  resolveEmailDeliveryFailureReason,
+} from '@/lib/reports/delivery-failure-reasons';
 import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidence';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { sendCareReportEmail } from '@/server/services/report-delivery';
@@ -34,6 +38,7 @@ import {
   normalizeCareReportSendPayload,
   type CareReportSendRecipient as SendRecipient,
 } from '@/lib/reports/care-report-send-validation';
+import { logCareReportEmailDeliveryFailure } from '@/server/services/care-report-send-observability';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -58,7 +63,6 @@ function maskRecipientContact(channel: string, contact: string) {
   return contact ? '***' : '';
 }
 
-const EMAIL_DELIVERY_FAILURE_REASON = 'メール送信に失敗しました';
 const STALE_DRAFT_DELIVERY_MS = 10 * 60 * 1000;
 const STALE_SEND_REQUEST_MS = 10 * 60 * 1000;
 
@@ -1063,8 +1067,15 @@ async function processRecipient(args: {
         reportId: report.id,
         pdfUrl: report.pdf_url,
       });
-    } catch {
-      const failureReason = EMAIL_DELIVERY_FAILURE_REASON;
+    } catch (sendError) {
+      const failureReason = resolveEmailDeliveryFailureReason();
+
+      logCareReportEmailDeliveryFailure({
+        ctx,
+        reportId,
+        deliveryRecordId: attemptedDeliveryRecord.id,
+        error: sendError,
+      });
 
       await withOrgContext(
         ctx.orgId,
@@ -1541,7 +1552,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const responseBody = {
       code: 'EXTERNAL_EMAIL_SEND_FAILED',
-      message: 'メール送信に失敗しました',
+      message: EMAIL_DELIVERY_FAILURE_REASON,
       details: {
         provider: 'ses',
         failed_recipients: failures.length,

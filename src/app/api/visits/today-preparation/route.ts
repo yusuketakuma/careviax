@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import {
   buildVisitScheduleAssignmentWhere,
@@ -49,12 +50,6 @@ const SAFETY_TAG_ORDER = [
 /** セット工程を通過済みの MedicationCycleStatus。 */
 const SET_DONE_STATUSES = ['set_audited', 'visit_ready', 'visit_completed', 'reported'];
 const SET_IN_PROGRESS_STATUSES = ['audited', 'setting'];
-
-function formatTimeOfDay(date: Date): string {
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
 
 function minutesBetween(start: Date | null, end: Date | null): number | null {
   if (!start || !end) return null;

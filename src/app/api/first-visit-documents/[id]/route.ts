@@ -12,6 +12,7 @@ import { canAccessCareCase } from '@/server/services/patient-access';
 import { getPatientDocumentsData } from '@/server/services/patient-detail-documents';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import type { FirstVisitDocument } from '@prisma/client';
+import { toSafeFirstVisitDocumentMutationResponse } from '../response';
 
 type FirstVisitDocumentPatchResult =
   | { document: FirstVisitDocument }
@@ -232,7 +233,7 @@ export const PATCH = withAuthContext<{ id: string }>(
       return notFound('初回文書が見つかりません');
     }
 
-    return success({ data: result.document });
+    return success({ data: toSafeFirstVisitDocumentMutationResponse(result.document) });
   },
   {
     permission: 'canVisit',

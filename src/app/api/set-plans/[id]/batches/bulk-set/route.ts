@@ -9,18 +9,17 @@ import {
   buildSetBatchHistorySnapshot,
   createSetBatchChangeLog,
 } from '@/lib/dispensing/set-batch-history';
+import {
+  findDuplicateSetBatchCellId,
+  setBatchCellRefSchema,
+} from '@/lib/dispensing/set-batch-cell-mutation';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
 
 const bulkSetSchema = z.object({
   cells: z
-    .array(
-      z.object({
-        batch_id: z.string().min(1, 'セルIDは必須です'),
-        expected_version: z.number().int().min(1),
-      }),
-    )
+    .array(setBatchCellRefSchema)
     .min(1, 'セットするセルを1件以上指定してください')
     .max(500, '一度にセットできるセルは500件までです'),
 });
@@ -70,7 +69,7 @@ export const POST = withAuthContext<{ id: string }>(
 
     const { cells } = parsed.data;
 
-    const duplicateId = findDuplicateBatchId(cells.map((cell) => cell.batch_id));
+    const duplicateId = findDuplicateSetBatchCellId(cells);
     if (duplicateId) {
       return validationError('同じセルが重複して指定されています');
     }
@@ -241,15 +240,6 @@ export const POST = withAuthContext<{ id: string }>(
   },
   { permission: 'canSet', message: 'セット作業の権限がありません' },
 );
-
-function findDuplicateBatchId(batchIds: string[]): string | null {
-  const seen = new Set<string>();
-  for (const batchId of batchIds) {
-    if (seen.has(batchId)) return batchId;
-    seen.add(batchId);
-  }
-  return null;
-}
 
 function isBulkSetNoop(batch: {
   set_state: string;

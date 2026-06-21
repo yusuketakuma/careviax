@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { formatNullableUtcDateKey } from '@/lib/date-key';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -196,8 +197,7 @@ export function normalizePharmacyContractTemplateContent(
 }
 
 function formatDateKey(date: Date | null) {
-  if (!date) return null;
-  return date.toISOString().slice(0, 10);
+  return formatNullableUtcDateKey(date);
 }
 
 function formatAmount(value: number | null) {

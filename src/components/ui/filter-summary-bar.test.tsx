@@ -20,7 +20,7 @@ describe('FilterSummaryBar', () => {
     );
 
     expect(screen.getByText('適用中フィルタ 2件')).toBeTruthy();
-    expect(screen.getByText('同意不足 1名').className).toContain('border-amber-300');
+    expect(screen.getByText('同意不足 1名').className).toContain('text-state-confirm');
     expect(screen.getByRole('button', { name: '解除' })).toBeTruthy();
   });
 });

@@ -1,13 +1,16 @@
+import { readApiJson } from '@/lib/api/client-json';
+import {
+  generatedCareReportFromVisitResponseSchema,
+  type GeneratedCareReportFromVisitResponse,
+  type GeneratedCareReportSummary,
+} from './generate-from-visit-contract';
+
 export type GenerateCareReportFromVisitInput = {
   orgId: string;
   visitRecordId: string;
   expectedVisitRecordUpdatedAt: string;
   reportType?: string;
   expectedReportUpdatedAt?: string;
-};
-
-export type GeneratedCareReportSummary = {
-  id: string;
 };
 
 export async function generateCareReportFromVisit<TReport extends GeneratedCareReportSummary>(
@@ -27,11 +30,9 @@ export async function generateCareReportFromVisit<TReport extends GeneratedCareR
     headers: { 'Content-Type': 'application/json', 'x-org-id': input.orgId },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => null);
-    throw new Error((err as { message?: string } | null)?.message ?? fallbackMessage);
-  }
-
-  const json = (await res.json()) as { data?: TReport[] };
-  return json.data ?? [];
+  const json = await readApiJson<GeneratedCareReportFromVisitResponse>(res, {
+    fallbackMessage,
+    schema: generatedCareReportFromVisitResponseSchema,
+  });
+  return (json.data ?? []) as TReport[];
 }

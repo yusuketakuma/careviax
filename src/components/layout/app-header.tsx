@@ -1,8 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ChevronDown,
@@ -15,10 +14,6 @@ import {
 } from 'lucide-react';
 import { NotificationBell } from '@/components/features/notifications/notification-bell';
 import { OfflineDraftIndicator } from '@/components/features/offline/offline-draft-indicator';
-import {
-  useKeyboardShortcuts,
-  type ShortcutDefinition,
-} from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -27,6 +22,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { memberRoleLabel } from '@/lib/auth/member-roles';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
+import { useCommandPaletteStore } from '@/lib/stores/command-palette-store';
+import { ACTIVE_PALETTE_CATEGORIES } from '@/lib/search/categories';
+
+// ヘッダ検索ボックスの案内文も、実際に検索される(active)カテゴリのラベルから導出する
+// (deferred の処方カード/連絡先を約束しない)。
+const SEARCH_BOX_LABEL = `${ACTIVE_PALETTE_CATEGORIES.map((c) => c.label).join('・')}を検索`;
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -46,9 +48,8 @@ const CARE_MODE_OPTIONS: { value: CareMode; label: string }[] = [
 
 export function formatSyncTime(isoString: string | null): string | null {
   if (!isoString) return null;
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) return null;
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  const label = formatTimeOfDay(isoString);
+  return label === '—' ? null : label;
 }
 
 const emptySubscribe = () => () => {};
@@ -62,7 +63,7 @@ function useHydrated() {
   );
 }
 
-/** 「同期済み HH:MM」(緑) / オフライン時は「オフライン」(橙)。 */
+/** 「同期済み HH:MM」(done=緑) / オフライン時は「オフライン」(blocked=赤・通信なし)。 */
 function HeaderSyncStatus() {
   const online = useNetworkOnline();
   const lastSyncedAt = useOfflineStore((state) => state.lastSyncedAt);
@@ -74,7 +75,7 @@ function HeaderSyncStatus() {
     return (
       <Link
         href="/offline-sync"
-        className="hidden shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-amber-600 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
+        className="hidden shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-blocked hover:bg-state-blocked/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
         data-testid="app-header-sync-status"
         aria-label="オフライン — 同期状況を開く"
       >
@@ -89,7 +90,7 @@ function HeaderSyncStatus() {
   return (
     <Link
       href="/offline-sync"
-      className="hidden shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline"
+      className="hidden shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-done hover:bg-state-done/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline"
       data-testid="app-header-sync-status"
       aria-label="同期状況を開く"
     >
@@ -113,7 +114,7 @@ function HeaderOfflineDrafts() {
 }
 
 export function AppHeader() {
-  const router = useRouter();
+  const openPalette = useCommandPaletteStore((state) => state.openPalette);
   const orgId = useOrgId();
   const {
     sidebarOpen,
@@ -152,16 +153,11 @@ export function AppHeader() {
     [careMode, orgId, setCareMode],
   );
 
+  // ヘッダの検索アフォーダンス(常設ボックス / compact アイコン)はパレットを開く。
+  // グローバルショートカット(⌘K / "/")の所有は AppShell に一本化(ここでは登録しない)。
   const goToSearch = useCallback(() => {
-    router.push('/search');
-  }, [router]);
-
-  // "/" でグローバル検索へ(入力中フィールドでは useKeyboardShortcuts 側で抑止される)
-  const searchShortcuts = useMemo<ShortcutDefinition[]>(
-    () => [{ key: '/', handler: goToSearch, description: '検索へ移動', scope: 'global' }],
-    [goToSearch],
-  );
-  useKeyboardShortcuts(searchShortcuts);
+    openPalette();
+  }, [openPalette]);
 
   return (
     <header
@@ -224,7 +220,7 @@ export function AppHeader() {
           data-testid="app-header-search"
         >
           <Search className="size-4 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate text-left">患者・カード・薬剤を検索</span>
+          <span className="min-w-0 flex-1 truncate text-left">{SEARCH_BOX_LABEL}</span>
           <kbd
             className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
             aria-hidden="true"

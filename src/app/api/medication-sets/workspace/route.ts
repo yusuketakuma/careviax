@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -41,12 +42,6 @@ const HANDLING_TAG_SHORT_LABELS: Record<string, string> = {
   narcotic: '麻薬',
   cold_storage: '冷所',
 };
-
-function formatTimeOfDay(value: Date): string {
-  const hours = `${value.getHours()}`.padStart(2, '0');
-  const minutes = `${value.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
 
 type RoleLike = { role: string } | undefined;
 

@@ -274,6 +274,12 @@ describe('VisitsToday', () => {
 
     const primary = screen.getByRole('button', { name: '訪問モードを開始' });
     expect(primary.hasAttribute('disabled')).toBe(true);
+    // 無効ボタンは理由を支援技術に接続し、解消導線を提示する
+    const reasonId = primary.getAttribute('aria-describedby');
+    expect(reasonId).toBe('visit-start-disabled-reason');
+    const reason = document.getElementById(reasonId!);
+    expect(reason?.textContent).toContain('本日の訪問予定がないため開始できません');
+    expect(screen.getByRole('link', { name: '訪問予定を確認' })).toBeTruthy();
     expect(screen.getByText('本日の訪問予定はありません。')).toBeTruthy();
     expect(screen.getByRole('link', { name: '今日のルートを確認する' })).toBeTruthy();
   });

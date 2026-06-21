@@ -2,7 +2,7 @@ import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, forbidden, success, validationError } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { parseOptionalBoundedIntegerParam, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -88,11 +88,14 @@ const careReportListOrderBy = [
   { id: 'desc' },
 ] satisfies Prisma.CareReportOrderByWithRelationInput[];
 const CARE_REPORT_KEYWORD_SCAN_LIMIT = 500;
+const DEFAULT_CARE_REPORT_PALETTE_LIMIT = 8;
+const MAX_CARE_REPORT_PALETTE_LIMIT = 50;
 
 const reportStatusSchema = z.nativeEnum(ReportStatus);
 const reportTypeSchema = z.nativeEnum(ReportType);
 const optionalDateParamSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional();
 const careReportQuerySchema = z.object({
+  view: z.enum(['palette']).optional(),
   patient_id: z.string().trim().min(1).optional(),
   visit_record_id: z.string().trim().min(1).optional(),
   include_content: z.enum(['1', 'true']).optional(),
@@ -110,6 +113,47 @@ const careReportQuerySchema = z.object({
 
 function optionalTrimmedSearchParam(value: string | null) {
   return value?.trim() || undefined;
+}
+
+function parseCareReportPaletteLimit(value: string | null) {
+  const parsed = parseOptionalBoundedIntegerParam(value, 1, MAX_CARE_REPORT_PALETTE_LIMIT);
+  if (!parsed.ok) {
+    return {
+      ok: false as const,
+      response: validationError('limit は 1〜50 の整数で指定してください', {
+        limit: ['limit は 1〜50 の整数で指定してください'],
+      }),
+    };
+  }
+
+  return {
+    ok: true as const,
+    value: parsed.value ?? DEFAULT_CARE_REPORT_PALETTE_LIMIT,
+  };
+}
+
+function findUnsupportedPaletteCareReportFilters(args: {
+  cursor?: string;
+  visitRecordId?: string;
+  includeContent?: string;
+  deliveryStatus?: ReportStatus;
+  recipient?: string;
+  keyword?: string;
+  sentFrom?: string;
+  sentTo?: string;
+}) {
+  const entries = [
+    ['cursor', args.cursor],
+    ['visit_record_id', args.visitRecordId],
+    ['include_content', args.includeContent],
+    ['delivery_status', args.deliveryStatus],
+    ['recipient', args.recipient],
+    ['keyword', args.keyword],
+    ['sent_from', args.sentFrom],
+    ['sent_to', args.sentTo],
+  ] as const;
+
+  return entries.filter(([, value]) => value !== undefined).map(([key]) => key);
 }
 
 function readSearchableReportText(contentValue: Prisma.JsonValue) {
@@ -382,6 +426,7 @@ export const GET = withAuthContext(
     const { cursor, limit } = parsePaginationParams(searchParams);
 
     const parsedQuery = careReportQuerySchema.safeParse({
+      view: optionalTrimmedSearchParam(searchParams.get('view')),
       patient_id: optionalTrimmedSearchParam(searchParams.get('patient_id')),
       visit_record_id: optionalTrimmedSearchParam(searchParams.get('visit_record_id')),
       include_content: optionalTrimmedSearchParam(searchParams.get('include_content')),
@@ -401,6 +446,7 @@ export const GET = withAuthContext(
     }
 
     const {
+      view,
       patient_id: patientId,
       visit_record_id: visitRecordId,
       include_content: includeContent,
@@ -415,6 +461,36 @@ export const GET = withAuthContext(
       sent_from: sentFromRaw,
       sent_to: sentToRaw,
     } = parsedQuery.data;
+    const paletteLimit =
+      view === 'palette' ? parseCareReportPaletteLimit(searchParams.get('limit')) : null;
+    if (paletteLimit && !paletteLimit.ok) {
+      return paletteLimit.response;
+    }
+    if (view === 'palette') {
+      const unsupportedPaletteFilters = findUnsupportedPaletteCareReportFilters({
+        cursor,
+        visitRecordId,
+        includeContent,
+        deliveryStatus,
+        recipient,
+        keyword,
+        sentFrom: sentFromRaw,
+        sentTo: sentToRaw,
+      });
+      if (unsupportedPaletteFilters.length > 0) {
+        return validationError(
+          'palette 表示では対応していない検索条件です',
+          Object.fromEntries(
+            unsupportedPaletteFilters.map((key) => [
+              key,
+              [
+                'palette 表示では q/limit/patient_id/status/report_type/date_from/date_to のみ指定できます',
+              ],
+            ]),
+          ),
+        );
+      }
+    }
     const sentFrom = sentFromRaw ? new Date(`${sentFromRaw}T00:00:00.000Z`) : null;
     const sentTo = sentToRaw ? new Date(`${sentToRaw}T23:59:59.999Z`) : null;
     const canOutputReport = canOutputCareReport(ctx.role);
@@ -427,25 +503,59 @@ export const GET = withAuthContext(
       });
     }
 
-    const matchingPatients = query
-      ? await prisma.patient.findMany({
-          where: {
-            org_id: ctx.orgId,
-            OR: [
-              { name: { contains: query, mode: 'insensitive' } },
-              { name_kana: { contains: query, mode: 'insensitive' } },
-            ],
-          },
-          select: {
-            id: true,
-            name: true,
-            name_kana: true,
-          },
-        })
-      : [];
+    const resolvedPaletteLimit =
+      view === 'palette' && paletteLimit?.ok
+        ? paletteLimit.value
+        : DEFAULT_CARE_REPORT_PALETTE_LIMIT;
 
-    const matchedPatientIds = matchingPatients.map((patient) => patient.id);
+    const paletteMatchingPatients =
+      query && view === 'palette'
+        ? await prisma.patient.findMany({
+            where: {
+              org_id: ctx.orgId,
+              OR: [
+                { name: { contains: query, mode: 'insensitive' } },
+                { name_kana: { contains: query, mode: 'insensitive' } },
+              ],
+            },
+            select: {
+              id: true,
+              name: true,
+            },
+            take: resolvedPaletteLimit + 1,
+          })
+        : [];
+
+    const matchingPatients =
+      query && view !== 'palette'
+        ? await prisma.patient.findMany({
+            where: {
+              org_id: ctx.orgId,
+              OR: [
+                { name: { contains: query, mode: 'insensitive' } },
+                { name_kana: { contains: query, mode: 'insensitive' } },
+              ],
+            },
+            select: {
+              id: true,
+              name: true,
+              name_kana: true,
+            },
+          })
+        : [];
+
+    const matchedPatientIds =
+      view === 'palette'
+        ? paletteMatchingPatients.map((patient) => patient.id)
+        : matchingPatients.map((patient) => patient.id);
     if (query && matchedPatientIds.length === 0 && !keyword) {
+      if (view === 'palette') {
+        return success({
+          data: [],
+          hasMore: false,
+        });
+      }
+
       return success({
         data: [],
         hasMore: false,
@@ -502,6 +612,55 @@ export const GET = withAuthContext(
         : {}),
       ...(accessWhere ? { AND: [accessWhere] } : {}),
     };
+
+    if (view === 'palette') {
+      const reports = await prisma.careReport.findMany({
+        where,
+        orderBy: careReportListOrderBy,
+        select: {
+          id: true,
+          patient_id: true,
+          report_type: true,
+          status: true,
+          created_at: true,
+        },
+        take: resolvedPaletteLimit + 1,
+      });
+      const hasMore = reports.length > resolvedPaletteLimit;
+      const dataRows = hasMore ? reports.slice(0, resolvedPaletteLimit) : reports;
+      const patientIds = Array.from(new Set(dataRows.map((report) => report.patient_id)));
+      const patientRows =
+        paletteMatchingPatients.length > 0 && !patientId
+          ? paletteMatchingPatients.filter((patient) => patientIds.includes(patient.id))
+          : patientIds.length === 0
+            ? []
+            : await prisma.patient.findMany({
+                where: {
+                  org_id: ctx.orgId,
+                  id: { in: patientIds },
+                },
+                select: {
+                  id: true,
+                  name: true,
+                },
+              });
+      const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
+
+      return success({
+        data: dataRows.map((report) => ({
+          id: report.id,
+          report_type: report.report_type,
+          status: report.status,
+          created_at: report.created_at,
+          patient_id: report.patient_id,
+          patient: patientNameById.has(report.patient_id)
+            ? { name: patientNameById.get(report.patient_id)! }
+            : null,
+        })),
+        hasMore,
+      });
+    }
+
     const canUseDbPagination = !keyword;
     const shouldReadContent = Boolean((includeContent && canOutputReport) || keyword);
     const cursorReport =

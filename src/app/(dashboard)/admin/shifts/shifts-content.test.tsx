@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { ShiftsContent } from './shifts-content';
@@ -169,6 +169,46 @@ describe('ShiftsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     expect(mutationMutateMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'holiday_1' }));
+  });
+
+  it('names repeated shift management actions by target', () => {
+    render(<ShiftsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎 のメンバー情報を編集' }));
+
+    const memberDialog = screen.getByRole('dialog', { name: 'メンバー情報を編集' });
+    expect(memberDialog).toBeTruthy();
+    expect((screen.getByLabelText('氏名') as HTMLInputElement).value).toBe('山田 太郎');
+
+    fireEvent.click(within(memberDialog).getByText('閉じる', { selector: 'button' }));
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎 を停止' }));
+
+    const actionDialog = screen.getByRole('dialog', { name: '薬剤師を停止' });
+    expect(actionDialog).toBeTruthy();
+    expect(screen.getByText('山田 太郎 の状態を更新します。')).toBeTruthy();
+
+    fireEvent.click(within(actionDialog).getByText('閉じる', { selector: 'button' }));
+    expect(screen.getByRole('button', { name: '山田 太郎 を退職処理' })).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '山田 太郎 / 月曜日 / 本店 / 勤務不可 の定型シフトを編集',
+      }),
+    );
+
+    expect(screen.getByRole('button', { name: '定型シフトを更新' })).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: '棚卸休業 / 2026年6月20日 / 本店 の休日設定を編集',
+      }),
+    );
+
+    const holidayDialog = screen.getByRole('dialog', { name: '休日設定を編集' });
+    expect(holidayDialog).toBeTruthy();
+    expect((within(holidayDialog).getByLabelText('休日名') as HTMLInputElement).value).toBe(
+      '棚卸休業',
+    );
   });
 
   it('renders monthly shift cells as keyboard-accessible buttons in edit mode', async () => {

@@ -113,6 +113,58 @@ describe('ManagementPlanPanel', () => {
     expect(mutateMock).not.toHaveBeenCalled();
   });
 
+  it('names draft management-plan edit actions by row without duplicating plan PHI', () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 'plan_1',
+            case_id: 'case_active_123456',
+            title: '訪問薬剤管理指導計画書 更新版',
+            summary: '疼痛管理を重点確認',
+            content: { visit_policy: '週1回訪問' },
+            version: 2,
+            status: 'draft',
+            effective_from: '2026-06-02',
+            next_review_date: '2026-07-02',
+            approved_at: null,
+            updated_at: '2026-06-10T00:00:00.000Z',
+            created_at: '2026-06-02T00:00:00.000Z',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    render(
+      <ManagementPlanPanel
+        patientId="patient_1"
+        patientName="山田花子"
+        orgId="org_1"
+        cases={[
+          {
+            id: 'case_active_123456',
+            status: 'active',
+            primary_pharmacist_id: 'pharmacist_1',
+            referral_source: '居宅介護支援事業所',
+            start_date: '2026-06-02',
+            end_date: null,
+          },
+        ]}
+      />,
+    );
+
+    const editButton = screen.getByRole('button', { name: '管理計画書1件目を編集' });
+    expect(editButton.getAttribute('aria-label')).not.toMatch(/山田|訪問薬剤|疼痛|週1回/);
+
+    fireEvent.click(editButton);
+
+    expect(screen.getByRole('dialog', { name: '計画書を編集' })).toBeTruthy();
+  });
+
   it('submits valid management-plan editor values through the existing mutation path', () => {
     const mutateMock = vi.fn();
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });

@@ -369,10 +369,21 @@ export function BusinessHolidaysContent() {
                 return (
                   <div
                     key={cell.dateStr}
-                    className={`min-h-[80px] cursor-pointer bg-background p-1 transition-colors hover:bg-muted/50 ${
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${cell.day}日`}
+                    aria-pressed={bulkMode ? isSelected : undefined}
+                    className={`min-h-[80px] cursor-pointer bg-background p-1 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
                       isSelected ? 'ring-2 ring-primary ring-inset' : ''
                     }`}
                     onClick={() => handleDateClick(cell.dateStr)}
+                    onKeyDown={(event) => {
+                      // 日セルをキーボードでも選択可能にする(Enter/Space)
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleDateClick(cell.dateStr);
+                      }
+                    }}
                   >
                     <div
                       className={`text-xs font-medium ${
@@ -512,7 +523,12 @@ export function BusinessHolidaysContent() {
                   )}
                 </div>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="outline" onClick={() => openEdit(h)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={`${holidaySummary(h)}を編集`}
+                    onClick={() => openEdit(h)}
+                  >
                     編集
                   </Button>
                   <Button

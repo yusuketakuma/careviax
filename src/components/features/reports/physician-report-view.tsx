@@ -3,6 +3,7 @@
 import { AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StateBadge } from '@/components/ui/state-badge';
 import { ADHERENCE_LABELS } from '@/lib/constants/soap-options';
 import type { PhysicianReportContent } from '@/types/care-report-content';
 import { formatReportDate } from './report-date-format';
@@ -29,12 +30,12 @@ function FunctionalItem({ label, value }: { label: string; value: string }) {
   return (
     <div
       className={`flex items-start justify-between rounded-md px-3 py-2 text-sm ${
-        hasIssue ? 'bg-yellow-50 ring-1 ring-yellow-300' : 'bg-muted/30'
+        hasIssue ? 'bg-state-confirm/10 ring-1 ring-state-confirm/30' : 'bg-muted/30'
       }`}
     >
       <span className="font-medium text-muted-foreground">{label}</span>
       <span
-        className={`ml-2 text-right ${hasIssue ? 'font-semibold text-amber-800' : 'text-foreground'}`}
+        className={`ml-2 text-right ${hasIssue ? 'font-semibold text-state-confirm' : 'text-foreground'}`}
       >
         {value || '—'}
       </span>
@@ -49,16 +50,16 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
     <div className="space-y-4">
       {/* Warnings */}
       {content.warnings.length > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-state-confirm">
             <AlertTriangle className="size-3.5" aria-hidden="true" />
             算定要件の未充足項目
           </p>
           <div className="flex flex-wrap gap-1.5">
             {content.warnings.map((w, i) => (
-              <Badge key={i} className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+              <StateBadge key={i} role="confirm">
                 {w}
-              </Badge>
+              </StateBadge>
             ))}
           </div>
         </div>
@@ -263,9 +264,7 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
                     <td className="px-3 py-2 text-right tabular-nums">{med.excess_days}日</td>
                     <td className="px-3 py-2">
                       {med.reduction_proposal ? (
-                        <Badge variant="outline" className="border-amber-300 text-amber-700">
-                          提案あり
-                        </Badge>
+                        <StateBadge role="info">提案あり</StateBadge>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}

@@ -60,10 +60,10 @@ export function VoiceSoapAssist({
   const voiceControlsDisabled = disabled || isOffline || !isSupported;
 
   return (
-    <Card className="border-emerald-200 bg-emerald-50/50">
+    <Card className="border-border bg-muted/30">
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-sm text-emerald-950">
-          <Languages className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+        <CardTitle className="flex items-center gap-2 text-sm text-foreground">
+          <Languages className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           SOAP 音声入力
         </CardTitle>
       </CardHeader>
@@ -79,12 +79,7 @@ export function VoiceSoapAssist({
                   variant={isActive ? 'default' : 'outline'}
                   disabled={voiceControlsDisabled}
                   onClick={() => onToggle(target.field)}
-                  className={cn(
-                    'min-h-16 justify-start gap-2 rounded-xl px-3 text-left',
-                    isActive
-                      ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
-                      : 'border-emerald-200 bg-white/90 text-emerald-950 hover:bg-emerald-50',
-                  )}
+                  className={cn('min-h-16 justify-start gap-2 rounded-xl px-3 text-left')}
                   aria-pressed={isActive}
                 >
                   {isActive ? (
@@ -99,7 +94,7 @@ export function VoiceSoapAssist({
                     <span
                       className={cn(
                         'mt-0.5 block text-xs',
-                        isActive ? 'text-white/85' : 'text-emerald-900/70',
+                        isActive ? 'text-primary-foreground/85' : 'text-muted-foreground',
                       )}
                     >
                       {target.description}
@@ -111,7 +106,7 @@ export function VoiceSoapAssist({
           </div>
         ) : null}
 
-        <div className="rounded-lg border border-emerald-200 bg-background px-3 py-2">
+        <div className="rounded-lg border border-border bg-background px-3 py-2">
           {isOffline ? (
             <p className="text-xs text-muted-foreground">
               オフライン時は Web Speech API を利用できません。再接続後に各 SOAP 欄の
@@ -119,7 +114,7 @@ export function VoiceSoapAssist({
             </p>
           ) : activeField ? (
             <div className="space-y-1">
-              <p className="text-xs font-medium text-emerald-700">
+              <p className="text-xs font-medium text-foreground">
                 {SOAP_VOICE_FIELD_LABELS[activeField]} 欄に音声入力中
               </p>
               <p className="text-xs italic text-muted-foreground">
@@ -128,7 +123,7 @@ export function VoiceSoapAssist({
             </div>
           ) : lastTranscript ? (
             <div className="space-y-1">
-              <p className="text-xs font-medium text-emerald-700">直近の反映テキスト</p>
+              <p className="text-xs font-medium text-foreground">直近の反映テキスト</p>
               <p className="text-sm text-foreground">{lastTranscript}</p>
             </div>
           ) : (
@@ -145,17 +140,17 @@ export function VoiceSoapAssist({
         <div className="grid gap-2 md:grid-cols-3">
           <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
             <p className="text-xs font-medium text-foreground">デスクトップ</p>
-            <p className="mt-1 text-xs text-emerald-700">{supportMatrix.desktop}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{supportMatrix.desktop}</p>
             <p className="mt-1 text-[11px] text-muted-foreground">Chrome / Edge を推奨</p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
             <p className="text-xs font-medium text-foreground">タブレット</p>
-            <p className="mt-1 text-xs text-emerald-700">{supportMatrix.tablet}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{supportMatrix.tablet}</p>
             <p className="mt-1 text-[11px] text-muted-foreground">iPad Safari / Chrome を想定</p>
           </div>
           <div className="rounded-lg border border-border/70 bg-background px-3 py-2">
             <p className="text-xs font-medium text-foreground">モバイル/PWA</p>
-            <p className="mt-1 text-xs text-emerald-700">{supportMatrix.mobile}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{supportMatrix.mobile}</p>
             <p className="mt-1 text-[11px] text-muted-foreground">
               HTTPS 必須。初回のみマイク権限を要求し、バックグラウンド遷移時は録音を自動停止します。
             </p>

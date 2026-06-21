@@ -130,15 +130,16 @@ export function dailyDose(r: Pick<Drug, 'name' | 'a' | 'h' | 'y' | 'n'>): string
 export function formOf(r: Pick<Drug, 'name' | 'tag' | 'note'>): FormInfo {
   const n = r.name;
   if (r.tag === '頓用' || /頓服|便秘時|疼痛時|必要時/.test(r.note))
-    return { l: '頓', bg: '#9a6a18', label: '頓服' };
+    return { l: '頓', bg: 'var(--wb-form-tonyo)', label: '頓服' };
   if (/テープ|軟膏|クリーム|ローション|貼付|坐/.test(n))
-    return { l: '外', bg: '#b75a28', label: '外用' };
-  if (/カプセル/.test(n)) return { l: 'カ', bg: '#7b4ba0', label: 'カプセル' };
+    return { l: '外', bg: 'var(--wb-form-gaiyo)', label: '外用' };
+  if (/カプセル/.test(n)) return { l: 'カ', bg: 'var(--wb-form-capsule)', label: 'カプセル' };
   if (/(細粒|顆粒|散|末|ＤＳ|DS|ドライシロップ)/.test(n))
-    return { l: '散', bg: '#2c7a3d', label: '散剤' };
-  if (/(内用液|懸濁|シロップ|液)/.test(n)) return { l: '液', bg: '#2a7d8f', label: '液剤' };
-  if (/錠/.test(n)) return { l: '錠', bg: '#1f4e79', label: '錠剤' };
-  return { l: '薬', bg: '#6b7280', label: 'その他' };
+    return { l: '散', bg: 'var(--wb-form-powder)', label: '散剤' };
+  if (/(内用液|懸濁|シロップ|液)/.test(n))
+    return { l: '液', bg: 'var(--wb-form-liquid)', label: '液剤' };
+  if (/錠/.test(n)) return { l: '錠', bg: 'var(--wb-form-tablet)', label: '錠剤' };
+  return { l: '薬', bg: 'var(--wb-form-other)', label: 'その他' };
 }
 
 /** 頓・外他 列の表示（頓服/外用/起床時/食間/時刻/別容器/空文字）*/

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { logger } from '@/lib/utils/logger';
 import { acquireSseConnection, releaseSseConnection } from '@/lib/api/rate-limit';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { sanitizeOrgRealtimeEvent } from '@/server/services/org-realtime';
@@ -271,6 +272,9 @@ export async function GET(req: NextRequest) {
 
       // Keep a low-frequency DB safety poll even when the user channel is subscribed.
       // Some legacy jobs still create notifications directly and cannot publish realtime payloads.
+      // 連続失敗を数えて、無音障害(DB障害でストリームは生きているが通知が一切届かない状態)を
+      // 観測可能にする。クライアントへのイベント契約は変更しない(ログのみ)。
+      let consecutivePollFailures = 0;
       const poll = async () => {
         if (stopped) return;
         const windowEnd = new Date();
@@ -291,11 +295,29 @@ export async function GET(req: NextRequest) {
 
           lastCheckAt = windowEnd;
 
+          if (consecutivePollFailures > 0) {
+            logger.info('notification stream poll recovered', {
+              event: 'notification_stream_poll_recovered',
+              previous_consecutive_failures: consecutivePollFailures,
+            });
+            consecutivePollFailures = 0;
+          }
+
           if (notifications.length > 0) {
             sendEvent(notifications);
           }
-        } catch {
-          // Swallow DB errors to keep stream alive
+        } catch (error) {
+          // ストリームは生かしたまま、無音障害を観測可能にする。
+          // ログ氾濫を避け、初回と12回毎のみ警告(非購読時 poll 5s で約60秒毎、
+          // ユーザーチャネル購読時は安全 poll 60s のため約12分毎)。
+          consecutivePollFailures += 1;
+          if (consecutivePollFailures === 1 || consecutivePollFailures % 12 === 0) {
+            logger.warn('notification stream poll failed', {
+              event: 'notification_stream_poll_failed',
+              consecutive_failures: consecutivePollFailures,
+              error_name: error instanceof Error ? error.name : 'unknown',
+            });
+          }
         }
         if (!stopped) {
           pollTimer = scheduleSseTimer(

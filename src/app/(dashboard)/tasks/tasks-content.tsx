@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { CheckSquare, Filter, Send, UserRoundCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { PageSection } from '@/components/layout/page-section';
 import { DataTable } from '@/components/ui/data-table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -26,10 +27,21 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
-import { badgeToneClass } from '@/lib/ui/badge-semantics';
+import {
+  bulkCompleteTasksResponseSchema,
+  type BulkCompleteTasksResponse,
+} from '@/lib/tasks/bulk-completion-contract';
+import { summarizeBulkCompleteTaskFailures } from '@/lib/tasks/bulk-completion-messages';
+import { StateBadge } from '@/components/ui/state-badge';
+import {
+  PRIORITY_ROLE,
+  TASK_STATUS_ROLE,
+  type StatusRoleOrNeutral,
+} from '@/lib/constants/status-labels';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import type {
   TasksAssignedFilter,
@@ -57,6 +69,24 @@ type Task = {
   completed_at: string | null;
   created_at: string;
 };
+
+const taskSchema: z.ZodType<Task> = z.object({
+  id: z.string(),
+  task_type: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  status: z.string(),
+  priority: z.string(),
+  assigned_to: z.string().nullable(),
+  assigned_to_name: z.string().nullable().optional(),
+  can_complete_inline: z.boolean().optional(),
+  due_date: z.string().nullable(),
+  sla_due_at: z.string().nullable(),
+  related_entity_type: z.string().nullable(),
+  related_entity_id: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  created_at: z.string(),
+});
 
 type StaffWorkload = {
   id: string;
@@ -126,19 +156,37 @@ const WORK_REQUEST_OPTIONS = [
   { value: 'staff_work_request_general', label: 'その他の業務を依頼' },
 ];
 
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pending: { label: '未着手', className: badgeToneClass('info') },
-  in_progress: { label: '進行中', className: badgeToneClass('attention') },
-  completed: { label: '完了', className: badgeToneClass('neutral') },
-  cancelled: { label: 'キャンセル', className: badgeToneClass('urgent') },
+// 状態色は 6 軸セマンティック（status-labels.ts の *_ROLE）を正本とする。
+// docs/state-color-migration-map.md の TASK_STATUS_ROLE / PRIORITY_ROLE に追随。
+const STATUS_CONFIG: Record<string, { label: string; role: StatusRoleOrNeutral }> = {
+  pending: { label: '未着手', role: TASK_STATUS_ROLE.pending },
+  in_progress: { label: '進行中', role: TASK_STATUS_ROLE.in_progress },
+  completed: { label: '完了', role: TASK_STATUS_ROLE.completed },
+  cancelled: { label: 'キャンセル', role: TASK_STATUS_ROLE.cancelled },
 };
 
-const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
-  urgent: { label: '緊急', className: badgeToneClass('urgent') },
-  high: { label: '高', className: badgeToneClass('attention') },
-  normal: { label: '通常', className: badgeToneClass('info') },
-  low: { label: '低', className: badgeToneClass('neutral') },
+const PRIORITY_CONFIG: Record<string, { label: string; role: StatusRoleOrNeutral }> = {
+  urgent: { label: '緊急', role: PRIORITY_ROLE.urgent },
+  high: { label: '高', role: PRIORITY_ROLE.high },
+  normal: { label: '通常', role: PRIORITY_ROLE.normal },
+  low: { label: '低', role: PRIORITY_ROLE.low },
 };
+
+// neutral は状態色を付けず既定 Badge / text-muted で描く（移行台帳の neutral 運用）。
+function TaskStateBadge({ label, role }: { label: string; role: StatusRoleOrNeutral }) {
+  if (role === 'neutral') {
+    return (
+      <Badge variant="outline" className="text-xs text-muted-foreground">
+        {label}
+      </Badge>
+    );
+  }
+  return (
+    <StateBadge role={role} showIcon={false} className="text-xs">
+      {label}
+    </StateBadge>
+  );
+}
 
 // --- Main ---
 
@@ -203,6 +251,7 @@ export function TasksContent({
         params: new URLSearchParams(queryParams),
         init: { headers: { 'x-org-id': orgId } },
         errorMessage: 'タスクの取得に失敗しました',
+        itemSchema: taskSchema,
       });
     },
     enabled: !!orgId,
@@ -281,24 +330,29 @@ export function TasksContent({
 
   const bulkCompleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const results = await Promise.allSettled(
-        ids.map(async (id) => {
-          const res = await fetch(`/api/tasks/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-            body: JSON.stringify({ status: 'completed' }),
-          });
-          if (!res.ok) throw new Error('タスク更新に失敗しました');
-        }),
-      );
-      const failed = results.filter((r) => r.status === 'rejected').length;
-      return { total: ids.length, failed };
+      const res = await fetch('/api/tasks/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({ ids }),
+      });
+      const payload = await readApiJson<BulkCompleteTasksResponse>(res, {
+        fallbackMessage: 'タスク更新に失敗しました',
+        schema: bulkCompleteTasksResponseSchema,
+      });
+      return payload.data;
     },
-    onSuccess: ({ total, failed }) => {
+    onSuccess: ({ total, completed, failed, failures }) => {
       if (failed === 0) {
         toast.success(`${total}件のタスクを完了しました`);
       } else {
-        toast.warning(`${total - failed}件完了、${failed}件失敗しました`);
+        const failureSummary = summarizeBulkCompleteTaskFailures(failures);
+        if (failureSummary) {
+          toast.warning(`${completed}件完了、${failed}件失敗しました`, {
+            description: failureSummary,
+          });
+        } else {
+          toast.warning(`${completed}件完了、${failed}件失敗しました`);
+        }
       }
       setSelectedTasks([]);
       void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
@@ -329,9 +383,7 @@ export function TasksContent({
         cell: ({ row }) => {
           const cfg = PRIORITY_CONFIG[row.original.priority];
           return cfg ? (
-            <Badge variant="outline" className={`text-xs ${cfg.className}`}>
-              {cfg.label}
-            </Badge>
+            <TaskStateBadge label={cfg.label} role={cfg.role} />
           ) : (
             <span className="text-xs text-muted-foreground">{row.original.priority}</span>
           );
@@ -365,9 +417,7 @@ export function TasksContent({
         cell: ({ row }) => {
           const cfg = STATUS_CONFIG[row.original.status];
           return cfg ? (
-            <Badge variant="outline" className={`text-xs ${cfg.className}`}>
-              {cfg.label}
-            </Badge>
+            <TaskStateBadge label={cfg.label} role={cfg.role} />
           ) : (
             <span className="text-xs text-muted-foreground">{row.original.status}</span>
           );
@@ -394,7 +444,7 @@ export function TasksContent({
             due && row.original.status !== 'completed' ? new Date(due) < new Date() : false;
           return (
             <span
-              className={`text-xs tabular-nums ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}
+              className={`text-xs tabular-nums ${isOverdue ? 'font-semibold text-state-blocked' : 'text-muted-foreground'}`}
             >
               {label}
             </span>
@@ -409,9 +459,12 @@ export function TasksContent({
   return (
     <div className="space-y-6">
       {contextSummary ? (
-        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="tasks-context-banner">
-          <Filter className="size-4 text-sky-700" aria-hidden="true" />
-          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        <Alert
+          className="border-tag-info/30 bg-tag-info/10 text-tag-info"
+          data-testid="tasks-context-banner"
+        >
+          <Filter className="size-4 text-tag-info" aria-hidden="true" />
+          <AlertDescription className="text-tag-info">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
       <PageSection
@@ -756,21 +809,13 @@ export function TasksContent({
             return (
               <div key={task.id} className="space-y-2 rounded-xl border border-border/70 p-4">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {priCfg && (
-                    <Badge variant="outline" className={`text-xs ${priCfg.className}`}>
-                      {priCfg.label}
-                    </Badge>
-                  )}
-                  {cfg && (
-                    <Badge variant="outline" className={`text-xs ${cfg.className}`}>
-                      {cfg.label}
-                    </Badge>
-                  )}
+                  {priCfg && <TaskStateBadge label={priCfg.label} role={priCfg.role} />}
+                  {cfg && <TaskStateBadge label={cfg.label} role={cfg.role} />}
                 </div>
                 <p className="text-sm font-medium">{task.title}</p>
                 <div className="flex items-center justify-between">
                   <span
-                    className={`text-xs ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}
+                    className={`text-xs ${isOverdue ? 'font-semibold text-state-blocked' : 'text-muted-foreground'}`}
                   >
                     期限: {formatDateLabel(due, { pattern: 'MM/dd' })}
                   </span>

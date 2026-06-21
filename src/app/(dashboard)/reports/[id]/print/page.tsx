@@ -8,29 +8,17 @@ import { PrintPageToolbar } from '@/components/features/workflow/print-page-tool
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import type {
   PhysicianReportContent,
   CareManagerReportContent,
   AudienceReportContent,
 } from '@/types/care-report-content';
-import type { CareReportActionPermissions } from '@/types/care-report-permissions';
-
-// ─── API response type ────────────────────────────────────────────────────────
-
-type CareReportResponse = {
-  id: string;
-  report_type: 'physician_report' | 'care_manager_report' | 'nurse_share' | 'facility_handoff';
-  pharmacy_name?: string;
-  content: PhysicianReportContent | CareManagerReportContent | AudienceReportContent;
-  permissions?: CareReportActionPermissions;
-};
-
-type CareReportPrintAuditApiResponse = {
-  data: {
-    audited: boolean;
-    report: CareReportResponse;
-  };
-};
+import {
+  careReportPrintAuditResponseSchema,
+  type CareReportPrintAuditPrintableReport,
+  type CareReportPrintAuditResponse,
+} from '@/lib/reports/care-report-print-audit-contract';
 
 // ─── Physician report layout (別紙様式1準拠) ─────────────────────────────────
 
@@ -415,7 +403,9 @@ function AudienceReportPrint({ content }: { content: AudienceReportContent }) {
   const title =
     content.report_audience === 'visiting_nurse'
       ? '訪問看護向け服薬情報共有'
-      : '施設向け服薬介助申し送り';
+      : content.report_audience === 'family'
+        ? 'ご家族向け服薬情報共有'
+        : '施設向け服薬介助申し送り';
   const sections = [
     ['今日の要点', content.summary],
     ['服薬状況', content.medication],
@@ -467,7 +457,9 @@ export default function ReportPrintPage() {
   const [auditRunId] = useState(() => `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [manualPrintError, setManualPrintError] = useState<string | null>(null);
 
-  const printAuditQuery = useQuery<CareReportPrintAuditApiResponse>({
+  const printAuditQuery = useQuery<
+    CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>
+  >({
     queryKey: ['care-report-print-audit', orgId, reportId, auditRunId],
     queryFn: async () => {
       const res = await fetch(`/api/care-reports/${reportId}/print-audit`, {
@@ -479,8 +471,10 @@ export default function ReportPrintPage() {
         body: JSON.stringify({ intent: 'preview_rendered' }),
       });
       if (res.status === 403) throw new Error('PRINT_FORBIDDEN');
-      if (!res.ok) throw new Error('報告書の印刷監査を記録できませんでした');
-      return res.json() as Promise<CareReportPrintAuditApiResponse>;
+      return readApiJson<CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>>(res, {
+        fallbackMessage: '報告書の印刷監査を記録できませんでした',
+        schema: careReportPrintAuditResponseSchema,
+      });
     },
     enabled: !!orgId && !!reportId,
     retry: false,
@@ -489,7 +483,7 @@ export default function ReportPrintPage() {
     staleTime: 0,
   });
   const data = printAuditQuery.data?.data.report;
-  const canRenderPrintBody = printAuditQuery.data?.data.audited === true && Boolean(data);
+  const canRenderPrintBody = printAuditQuery.data?.data.audited === true && data?.id === reportId;
   const isPrintForbidden =
     printAuditQuery.isError &&
     printAuditQuery.error instanceof Error &&
@@ -508,7 +502,16 @@ export default function ReportPrintPage() {
       setManualPrintError('印刷権限がないため、再印刷できません。');
       return false;
     }
-    if (!res.ok) {
+    try {
+      const audit = await readApiJson<CareReportPrintAuditResponse>(res, {
+        fallbackMessage: '印刷監査を記録できないため、再印刷できません。',
+        schema: careReportPrintAuditResponseSchema,
+      });
+      if (audit.data.audited !== true || !audit.data.report || audit.data.report.id !== reportId) {
+        setManualPrintError('印刷監査を記録できないため、再印刷できません。');
+        return false;
+      }
+    } catch {
       setManualPrintError('印刷監査を記録できないため、再印刷できません。');
       return false;
     }

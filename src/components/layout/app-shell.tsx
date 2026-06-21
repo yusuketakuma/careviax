@@ -17,6 +17,8 @@ import {
 } from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { ShortcutHelpModal } from '@/components/features/keyboard/shortcut-help-modal';
 import { GLOBAL_SHORTCUTS } from '@/components/features/keyboard/global-shortcuts';
+import { CommandPalette } from '@/components/features/search/command-palette';
+import { useCommandPaletteStore } from '@/lib/stores/command-palette-store';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -129,6 +131,9 @@ export function AppShell({ children }: AppShellProps) {
     setShortcutHelpOpen,
     toggleShortcutHelp,
   } = useUIStore();
+  const paletteOpen = useCommandPaletteStore((state) => state.open);
+  const openPalette = useCommandPaletteStore((state) => state.openPalette);
+  const closePalette = useCommandPaletteStore((state) => state.closePalette);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const sidebarWasOpenRef = useRef(false);
   const sidebarSheetOpen = resolveSidebarSheetOpen(viewport.isCompactLayout, sidebarOpen);
@@ -211,8 +216,8 @@ export function AppShell({ children }: AppShellProps) {
   }, [sidebarOpen, setSidebarOpen, viewport.isTabletLayout]);
 
   const handleCommandK = useCallback(() => {
-    router.push('/search');
-  }, [router]);
+    openPalette();
+  }, [openPalette]);
 
   const handleCommandN = useCallback(() => {
     const target = resolveQuickCreateTarget(pathname);
@@ -248,13 +253,26 @@ export function AppShell({ children }: AppShellProps) {
 
   const globalShortcuts: ShortcutDefinition[] = useMemo(
     () => [
-      {
-        key: 'k',
-        metaKey: true,
-        handler: handleCommandK,
-        description: '全体検索',
-        scope: 'global' as const,
-      },
+      // パレット起動(⌘K / "/")は最小シェル(print/capture 等、CommandPalette 非描画)では登録しない。
+      // 登録すると不可視のまま store.open=true になり、通常シェル復帰時に open 状態が漏れる(rev3 #2)。
+      ...(useMinimalShell
+        ? []
+        : [
+            {
+              key: 'k',
+              metaKey: true,
+              handler: handleCommandK,
+              description: '全体検索',
+              scope: 'global' as const,
+            },
+            {
+              // "/" もパレットを開く(唯一の所有者は AppShell)。入力欄では useKeyboardShortcuts が抑止する。
+              key: '/',
+              handler: handleCommandK,
+              description: '全体検索',
+              scope: 'global' as const,
+            },
+          ]),
       {
         key: 'n',
         metaKey: true,
@@ -268,17 +286,38 @@ export function AppShell({ children }: AppShellProps) {
         description: 'ショートカット一覧',
         scope: 'global' as const,
       },
-      {
-        key: 'Escape',
-        handler: handleEscape,
-        description: 'モーダルを閉じる',
-        scope: 'global' as const,
-      },
+      // パレットが開いている間は Escape を AppShell で登録しない。
+      // useKeyboardShortcuts が先に preventDefault/stopPropagation するため、登録したままだと
+      // focus が input 外のとき Dialog の native Escape に届かず閉じられなくなる(rev2 #2)。
+      ...(paletteOpen
+        ? []
+        : [
+            {
+              key: 'Escape',
+              handler: handleEscape,
+              description: 'モーダルを閉じる',
+              scope: 'global' as const,
+            },
+          ]),
     ],
-    [handleCommandK, handleCommandN, toggleShortcutHelp, handleEscape],
+    [
+      handleCommandK,
+      handleCommandN,
+      toggleShortcutHelp,
+      handleEscape,
+      paletteOpen,
+      useMinimalShell,
+    ],
   );
 
   useKeyboardShortcuts(globalShortcuts);
+
+  // 最小シェルへ遷移したら、もし開いていたパレットを閉じる(不可視 open 状態の漏れ防止, rev3 #2)。
+  useEffect(() => {
+    if (useMinimalShell && paletteOpen) {
+      closePalette();
+    }
+  }, [useMinimalShell, paletteOpen, closePalette]);
 
   if (useMinimalShell) {
     return (
@@ -397,6 +436,11 @@ export function AppShell({ children }: AppShellProps) {
           />
         </div>
       )}
+
+      {/* グローバル検索コマンドパレット(⌘K / "/" で開く。AppShell が唯一の描画元) */}
+      <div data-print-skip="true">
+        <CommandPalette />
+      </div>
     </div>
   );
 }

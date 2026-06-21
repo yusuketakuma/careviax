@@ -311,7 +311,9 @@ function isAudienceReportContent(content: unknown): content is AudienceReportCon
   const value = readReportContentObject(content);
   return (
     value != null &&
-    (value.report_audience === 'visiting_nurse' || value.report_audience === 'facility') &&
+    (value.report_audience === 'visiting_nurse' ||
+      value.report_audience === 'facility' ||
+      value.report_audience === 'family') &&
     hasStringFields(value.patient, ['name', 'birth_date']) &&
     typeof value.report_date === 'string' &&
     typeof value.visit_date === 'string' &&
@@ -339,7 +341,9 @@ function AudienceReportView({ content }: { content: AudienceReportContent }) {
         <CardTitle className="text-base">
           {content.report_audience === 'visiting_nurse'
             ? '訪問看護向け服薬情報共有'
-            : '施設向け服薬介助申し送り'}
+            : content.report_audience === 'family'
+              ? 'ご家族向け服薬情報共有'
+              : '施設向け服薬介助申し送り'}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -653,10 +657,10 @@ export default function ReportDetailPage() {
     return (
       <PageScaffold>
         <WorkflowBackLink href="/reports" label="報告書一覧へ戻る" className="mb-3" />
-        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
-          <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+        <Alert className="border-transparent bg-state-confirm/10 text-state-confirm">
+          <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
           <AlertTitle>報告書を取得できませんでした</AlertTitle>
-          <AlertDescription className="text-amber-900">
+          <AlertDescription className="text-state-confirm">
             通信状態または権限を確認して、再読み込みしてください。
           </AlertDescription>
         </Alert>
@@ -707,7 +711,9 @@ export default function ReportDetailPage() {
   const isPhysician = report.report_type === 'physician_report';
   const isCareManager = report.report_type === 'care_manager_report';
   const isAudienceReport =
-    report.report_type === 'nurse_share' || report.report_type === 'facility_handoff';
+    report.report_type === 'nurse_share' ||
+    report.report_type === 'facility_handoff' ||
+    report.report_type === 'family_share';
   const hasPhysicianContent = isPhysician && isPhysicianReportContent(report.content);
   const hasCareManagerContent = isCareManager && isCareManagerReportContent(report.content);
   const hasAudienceContent = isAudienceReport && isAudienceReportContent(report.content);
@@ -1272,10 +1278,10 @@ export default function ReportDetailPage() {
               />
             ) : null}
             {report.status === 'draft' && !canEditReport ? (
-              <Alert className="border-amber-200 bg-amber-50 text-amber-950">
-                <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+              <Alert className="border-transparent bg-state-confirm/10 text-state-confirm">
+                <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
                 <AlertTitle>薬剤師確認待ちです</AlertTitle>
-                <AlertDescription className="text-amber-900">
+                <AlertDescription className="text-state-confirm">
                   この下書きは編集・確認権限を持つ薬剤師または管理者の確認後に送付できます。
                 </AlertDescription>
               </Alert>
@@ -1393,10 +1399,10 @@ export default function ReportDetailPage() {
             </DialogHeader>
 
             <div className="space-y-4 py-2">
-              <Alert className="border-amber-200 bg-amber-50 text-amber-950">
-                <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+              <Alert className="border-transparent bg-state-confirm/10 text-state-confirm">
+                <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
                 <AlertTitle>送付前確認</AlertTitle>
-                <AlertDescription className="text-amber-900">
+                <AlertDescription className="text-state-confirm">
                   患者、報告書種別、送付先、チャネルを確認してから送付します。送付操作は送達履歴と連携ログに記録されます。
                 </AlertDescription>
               </Alert>
@@ -1446,11 +1452,11 @@ export default function ReportDetailPage() {
               </dl>
 
               {prescriberInstitutionSuggestion ? (
-                <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-sm">
-                  <p className="font-medium text-sky-900">
+                <div className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-3 py-3 text-sm">
+                  <p className="font-medium text-tag-info">
                     処方元医療機関候補: {prescriberInstitutionSuggestion.name}
                   </p>
-                  <p className="mt-1 text-xs text-sky-800">
+                  <p className="mt-1 text-xs text-tag-info">
                     最新処方日{' '}
                     {format(
                       new Date(prescriberInstitutionSuggestion.prescribed_date),
@@ -1473,7 +1479,7 @@ export default function ReportDetailPage() {
                     候補を適用
                   </Button>
                   {deliveryRuleSuggestion ? (
-                    <p className="mt-2 text-xs text-sky-800">
+                    <p className="mt-2 text-xs text-tag-info">
                       送達ルール: {deliveryRuleSuggestion.target_role} 向けは{' '}
                       {CHANNEL_LABELS[deliveryRuleSuggestion.channel] ??
                         deliveryRuleSuggestion.channel}{' '}
@@ -1484,9 +1490,9 @@ export default function ReportDetailPage() {
               ) : null}
 
               {externalProfessionalSuggestions.length > 0 ? (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-sm">
-                  <p className="font-medium text-emerald-900">患者情報のケアチーム送付候補</p>
-                  <p className="mt-1 text-xs text-emerald-800">
+                <div className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-3 py-3 text-sm">
+                  <p className="font-medium text-tag-info">患者情報のケアチーム送付候補</p>
+                  <p className="mt-1 text-xs text-tag-info">
                     患者情報ページのクリニック・訪問看護・ケアマネジャーを送付先候補として取得しています。
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -1504,7 +1510,7 @@ export default function ReportDetailPage() {
                       </Button>
                     ))}
                   </div>
-                  <p className="mt-2 text-xs text-emerald-800">
+                  <p className="mt-2 text-xs text-tag-info">
                     他職種マスターに未登録でも、患者情報ページのケアチームに入力されていれば候補に出ます。
                   </p>
                 </div>

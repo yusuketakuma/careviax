@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -108,6 +108,33 @@ describe('RealtimePage', () => {
     );
   });
 
+  it('reflects SSE connection state in the indicator color (connected=emerald, reconnecting=amber)', () => {
+    // 接続中: emerald(正常)。
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      const [scope] = queryKey;
+      if (scope === 'admin-realtime-workflow') return { data: WORKFLOW_DATA, connected: true };
+      return { data: NOTIFICATIONS_DATA, connected: true };
+    });
+    const { unmount } = render(<RealtimePage />);
+    const connected = screen.getByText('SSE 接続中です。新着通知は即時反映されます。');
+    expect(connected.className).toContain('text-emerald-100');
+    expect(connected.className).not.toContain('amber');
+    unmount();
+
+    // 再接続中(両ストリーム未接続): amber(注意)。常時 emerald の偽シグナルを避ける。
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      const [scope] = queryKey;
+      if (scope === 'admin-realtime-workflow') return { data: WORKFLOW_DATA, connected: false };
+      return { data: NOTIFICATIONS_DATA, connected: false };
+    });
+    render(<RealtimePage />);
+    const reconnecting = screen.getByText(
+      'SSE 再接続中です。未接続時は定期再取得へフォールバックします。',
+    );
+    expect(reconnecting.className).toContain('text-amber-100');
+    expect(reconnecting.className).not.toContain('emerald');
+  });
+
   it('merges notification stream items into the admin realtime cache', () => {
     const setQueryData = vi.fn();
     useQueryClientMock.mockReturnValue({ setQueryData });
@@ -201,5 +228,49 @@ describe('RealtimePage', () => {
     onRealtimeEvent?.({ type: 'ignored' });
 
     expect(setQueryData).not.toHaveBeenCalled();
+  });
+
+  it('shows ErrorState (not a false-empty) with retry when the notifications query fails', () => {
+    const refetch = vi.fn();
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      const [scope] = queryKey;
+      if (scope === 'admin-realtime-workflow') {
+        return { data: WORKFLOW_DATA, connected: true };
+      }
+      // 通知取得が失敗 → 空状態ではなく ErrorState + 再読み込み。
+      return { data: undefined, isError: true, refetch, connected: false };
+    });
+
+    render(<RealtimePage />);
+
+    expect(screen.getByText('サーバーエラーが発生しました')).toBeTruthy();
+    // false-empty（「未読通知はありません」）を出していないこと。
+    expect(screen.queryByText('未読通知はありません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows ErrorState (not a false-empty) with retry when the workflow query fails', () => {
+    const refetch = vi.fn();
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      const [scope] = queryKey;
+      if (scope === 'admin-realtime-notifications') {
+        return { data: NOTIFICATIONS_DATA, connected: true };
+      }
+      // ワークフロー取得が失敗 → ワークベンチは空状態ではなく ErrorState + 再読み込み。
+      return { data: undefined, isError: true, refetch, connected: false };
+    });
+
+    render(<RealtimePage />);
+
+    // ワークフロー失敗は KPI グリッドとワークベンチの両方を ErrorState 化する。
+    expect(screen.getAllByText('サーバーエラーが発生しました').length).toBeGreaterThanOrEqual(1);
+    // false-empty（「未処理項目はありません」）と KPI の false-zero を出していないこと。
+    expect(screen.queryByText('未処理項目はありません')).toBeNull();
+
+    const retryButtons = screen.getAllByRole('button', { name: '再読み込み' });
+    fireEvent.click(retryButtons[retryButtons.length - 1]);
+    expect(refetch).toHaveBeenCalled();
   });
 });

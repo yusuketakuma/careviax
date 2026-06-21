@@ -38,6 +38,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -318,6 +319,8 @@ const TAB_LABELS: Record<DashboardTab, string> = {
 const PROPOSAL_TOUCH_TARGET_CLASS = 'min-h-[44px] sm:h-auto sm:min-h-[44px]';
 const PROPOSAL_CHECKBOX_TOUCH_TARGET_CLASS =
   'size-11 rounded-lg sm:size-11 after:inset-0 [&_svg]:size-4';
+const BULK_REJECT_DISABLED_REASON_ID = 'schedule-proposals-bulk-reject-disabled-reason';
+const BULK_APPROVE_DISABLED_REASON_ID = 'schedule-proposals-bulk-approve-disabled-reason';
 
 const FILTER_PRESET_LABELS: Record<FilterPreset, string> = {
   all: '全て',
@@ -337,21 +340,15 @@ function ProposalDecisionBadges({ proposal }: { proposal: Proposal }) {
   return (
     <div className="flex flex-wrap gap-2">
       {proposal.assignment_mode === 'fallback' ? (
-        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
-          代替担当
-        </Badge>
+        <StateBadge role="confirm">代替担当</StateBadge>
       ) : (
         <Badge variant="outline">主担当</Badge>
       )}
       {isPriorityRouteProposal(proposal) ? (
-        <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">
-          緊急度で前倒し
-        </Badge>
+        <StateBadge role="blocked">緊急度で前倒し</StateBadge>
       ) : null}
       {isPatientPreferenceAlignedProposal(proposal) ? (
-        <Badge variant="outline" className="border-sky-300 bg-sky-50 text-sky-800">
-          患者希望枠内
-        </Badge>
+        <StateBadge role="info">患者希望枠内</StateBadge>
       ) : null}
       {proposal.vehicle_resource ? (
         <Badge variant="outline">
@@ -400,14 +397,10 @@ function ProposalRankingCard({
             配置 {candidate.assignment_mode === 'primary' ? '主担当優先' : '代替担当'}
           </Badge>
           {isPriorityRouteProposal(candidate) ? (
-            <Badge variant="outline" className="border-red-300 bg-red-50 text-red-700">
-              緊急度で前倒し
-            </Badge>
+            <StateBadge role="blocked">緊急度で前倒し</StateBadge>
           ) : null}
           {isPatientPreferenceAlignedProposal(candidate) ? (
-            <Badge variant="outline" className="border-sky-300 bg-sky-50 text-sky-800">
-              患者希望枠内
-            </Badge>
+            <StateBadge role="info">患者希望枠内</StateBadge>
           ) : null}
           {candidate.vehicle_resource ? (
             <Badge variant="outline">
@@ -435,7 +428,7 @@ function ProposalReasonChips({ proposal, className }: { proposal: Proposal; clas
       {proposalReasons.map((reason) => (
         <span
           key={`${proposal.id}-${reason}`}
-          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
+          className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground"
         >
           {reason}
         </span>
@@ -584,7 +577,7 @@ function ProposalMedicationWorkflowCard({
               className={cn(
                 'rounded-xl border px-3 py-2.5',
                 check.status === 'warning'
-                  ? 'border-amber-200 bg-amber-50 text-amber-950'
+                  ? 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm'
                   : 'border-border/70 bg-muted/20 text-foreground',
               )}
             >
@@ -592,7 +585,7 @@ function ProposalMedicationWorkflowCard({
                 <Icon
                   className={cn(
                     'mt-0.5 size-4 shrink-0',
-                    check.status === 'warning' ? 'text-amber-700' : 'text-emerald-700',
+                    check.status === 'warning' ? 'text-state-confirm' : 'text-state-done',
                   )}
                   aria-hidden="true"
                 />
@@ -1589,6 +1582,16 @@ export function ScheduleProposalsContent({
     bulkApproveEligibleCount > 0
       ? `選択中${bulkApproveEligibleCount}件の訪問候補を一括承認`
       : '承認できる訪問候補を選択して一括承認';
+  const bulkRejectDisabledReason = bulkActionMutation.isPending
+    ? '一括操作の実行が完了するまで操作できません。'
+    : bulkRejectEligibleCount === 0
+      ? '一括却下できる訪問候補を選択してください。'
+      : null;
+  const bulkApproveDisabledReason = bulkActionMutation.isPending
+    ? '一括操作の実行が完了するまで操作できません。'
+    : bulkApproveEligibleCount === 0
+      ? '一括承認できる訪問候補を選択してください。'
+      : null;
   const caseSearchResults = casesQuery.data?.data ?? [];
   const vehicleResourceOptions = vehicleResourcesQuery.data?.data ?? [];
   const selectedReproposalVehicle = vehicleResourceOptions.find(
@@ -1604,14 +1607,14 @@ export function ScheduleProposalsContent({
           title: '未架電・連絡対応の候補を表示中です。',
           description: '患者連絡中タブに固定し、架電や折返し確認が必要な候補を優先表示しています。',
           icon: PhoneCall,
-          className: 'border-sky-200 bg-sky-50 text-sky-900',
+          className: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
         }
       : filterPreset === 'reschedule'
         ? {
             title: '再調整が必要な候補を表示中です。',
             description: 'リスケ由来の候補に絞り、差替や再提案が必要な案件を追いやすくしています。',
             icon: RefreshCw,
-            className: 'border-orange-200 bg-orange-50 text-orange-900',
+            className: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
           }
         : filterPreset === 'today'
           ? {
@@ -1619,7 +1622,7 @@ export function ScheduleProposalsContent({
               description:
                 '当日中に処理したい未承認候補へすぐ着手できるよう、今日の日付帯で絞り込んでいます。',
               icon: CalendarClock,
-              className: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+              className: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
             }
           : filterPreset === 'stale'
             ? {
@@ -1627,7 +1630,7 @@ export function ScheduleProposalsContent({
                 description:
                   '却下タブに切り替え、追跡が必要な stale 候補を確認しやすくしています。',
                 icon: XCircle,
-                className: 'border-amber-200 bg-amber-50 text-amber-900',
+                className: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
               }
             : null;
   const PresetBannerIcon = presetBanner?.icon;
@@ -1839,27 +1842,53 @@ export function ScheduleProposalsContent({
         actions={
           proposalsQuery.isError ? null : (
             <ActionRail>
-              <Button
-                variant="outline"
-                size="sm"
-                className={PROPOSAL_TOUCH_TARGET_CLASS}
-                onClick={() => setBulkConfirmAction('reject')}
-                disabled={bulkRejectEligibleCount === 0 || bulkActionMutation.isPending}
-                aria-label={bulkRejectButtonLabel}
-              >
-                <XCircle className="mr-1.5 size-4" />
-                {bulkRejectButtonLabel}
-              </Button>
-              <Button
-                size="sm"
-                className={PROPOSAL_TOUCH_TARGET_CLASS}
-                onClick={() => setBulkConfirmAction('approve')}
-                disabled={bulkApproveEligibleCount === 0 || bulkActionMutation.isPending}
-                aria-label={bulkApproveButtonLabel}
-              >
-                <CheckCircle2 className="mr-1.5 size-4" />
-                {bulkApproveButtonLabel}
-              </Button>
+              <div className="flex max-w-full flex-col items-start gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={PROPOSAL_TOUCH_TARGET_CLASS}
+                  onClick={() => setBulkConfirmAction('reject')}
+                  disabled={Boolean(bulkRejectDisabledReason)}
+                  aria-label={bulkRejectButtonLabel}
+                  aria-describedby={
+                    bulkRejectDisabledReason ? BULK_REJECT_DISABLED_REASON_ID : undefined
+                  }
+                >
+                  <XCircle className="mr-1.5 size-4" />
+                  {bulkRejectButtonLabel}
+                </Button>
+                {bulkRejectDisabledReason ? (
+                  <span
+                    id={BULK_REJECT_DISABLED_REASON_ID}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {bulkRejectDisabledReason}
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex max-w-full flex-col items-start gap-1">
+                <Button
+                  size="sm"
+                  className={PROPOSAL_TOUCH_TARGET_CLASS}
+                  onClick={() => setBulkConfirmAction('approve')}
+                  disabled={Boolean(bulkApproveDisabledReason)}
+                  aria-label={bulkApproveButtonLabel}
+                  aria-describedby={
+                    bulkApproveDisabledReason ? BULK_APPROVE_DISABLED_REASON_ID : undefined
+                  }
+                >
+                  <CheckCircle2 className="mr-1.5 size-4" />
+                  {bulkApproveButtonLabel}
+                </Button>
+                {bulkApproveDisabledReason ? (
+                  <span
+                    id={BULK_APPROVE_DISABLED_REASON_ID}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {bulkApproveDisabledReason}
+                  </span>
+                ) : null}
+              </div>
             </ActionRail>
           )
         }
@@ -1941,7 +1970,7 @@ export function ScheduleProposalsContent({
 
             {activeBulkActionFailureSummary ? (
               <Alert
-                className="border-amber-300 bg-amber-50 text-amber-900"
+                className="border-state-confirm/30 bg-state-confirm/10 text-state-confirm"
                 data-testid="proposal-bulk-partial-failure"
               >
                 <XCircle className="size-4" aria-hidden="true" />
@@ -1955,7 +1984,7 @@ export function ScheduleProposalsContent({
                     {activeBulkActionFailureSummary.failures.map((failure) => (
                       <li
                         key={failure.id}
-                        className="rounded-md border border-amber-200 bg-white/70 p-2"
+                        className="rounded-md border border-state-confirm/30 bg-background/70 p-2"
                       >
                         <p className="font-medium">{failure.patientName}</p>
                         <p className="text-xs leading-5">
@@ -1971,7 +2000,7 @@ export function ScheduleProposalsContent({
                           size="sm"
                           className={cn(
                             PROPOSAL_TOUCH_TARGET_CLASS,
-                            'mt-2 border-amber-300 bg-white text-amber-950 hover:bg-amber-100',
+                            'mt-2 border-state-confirm/40 bg-background text-state-confirm hover:bg-state-confirm/10',
                           )}
                           onClick={() => openDetail(failure.id)}
                           aria-label={`${failure.patientName} ${formatNullableDateLabel(failure.proposedDate)} ${timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} / 候補 ${proposalShortEntityIdentifier(failure.id)} の未更新候補を詳細で確認`}
@@ -2186,26 +2215,26 @@ export function ScheduleProposalsContent({
                           {proposalListVisitPlaceLabel(proposal)}
                         </p>
                         {proposal.escalation_reason ? (
-                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                          <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
                             {proposal.escalation_reason}
                           </p>
                         ) : null}
                         {proposalCadence ? (
-                          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                          <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-sm text-tag-info">
                             <p className="font-medium">算定 cadence</p>
                             <p className="mt-1">
                               次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} /
                               残回数 {proposalCadence.remaining_month_count}
                             </p>
                             {proposalWarningMessages.length > 0 ? (
-                              <p className="mt-1 text-xs text-amber-800">
+                              <p className="mt-1 text-xs text-state-confirm">
                                 {proposalWarningMessages.slice(0, 2).join(' / ')}
                               </p>
                             ) : null}
                           </div>
                         ) : null}
                         {impactedCount ? (
-                          <p className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
+                          <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
                             リスケ影響 {impactedCount} 件
                             {impactedNames.length > 0 ? ` / ${impactedNames.join('、')}` : ''}
                           </p>
@@ -2713,7 +2742,7 @@ export function ScheduleProposalsContent({
                     ) : null}
                   </div>
                   {detailPreview ? (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-sm text-tag-info">
                       <p className="font-medium">算定 cadence</p>
                       <p className="mt-1">
                         次回算定可能日: {detailPreview.cadence.next_billable_date ?? '提案不可'} /
@@ -2790,7 +2819,7 @@ export function ScheduleProposalsContent({
                               step.state === 'current'
                                 ? 'border-primary/40 bg-primary/5 font-medium text-foreground'
                                 : step.state === 'done'
-                                  ? 'border-emerald-200 bg-emerald-50/60 text-foreground'
+                                  ? 'border-state-done/30 bg-state-done/10 text-foreground'
                                   : 'border-border bg-muted/30 text-muted-foreground',
                             )}
                           >
@@ -2996,7 +3025,7 @@ export function ScheduleProposalsContent({
               <Card>
                 <CardHeader className="pb-3">
                   <h3 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
-                    <PhoneCall className="size-4 text-amber-600" />
+                    <PhoneCall className="size-4 text-muted-foreground" />
                     患者連絡ワークフロー
                   </h3>
                   <CardDescription>
@@ -3149,7 +3178,7 @@ export function ScheduleProposalsContent({
               <Card id="schedule-proposal-reproposal">
                 <CardHeader className="pb-3">
                   <h3 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
-                    <RefreshCw className="size-4 text-indigo-600" />
+                    <RefreshCw className="size-4 text-muted-foreground" />
                     変更希望時の再提案
                   </h3>
                   <CardDescription>

@@ -249,15 +249,15 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
             alignItems: 'center',
             gap: 7,
             padding: '7px 12px',
-            borderRight: '1px solid #b6cbe5',
+            borderRight: '1px solid var(--wb-line)',
           }}
         >
-          <div style={{ fontSize: 10.5, color: '#3f5878', lineHeight: 1.2 }}>
+          <div style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', lineHeight: 1.2 }}>
             患者番号
             <br />
             <span
               className={styles.mono}
-              style={{ fontSize: 15, fontWeight: 700, color: '#15355c', letterSpacing: 1 }}
+              style={{ fontSize: 15, fontWeight: 700, color: 'var(--wb-ink)', letterSpacing: 1 }}
             >
               {cur.no}
             </span>
@@ -269,15 +269,18 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
             flexDirection: 'column',
             justifyContent: 'center',
             padding: '5px 14px',
-            borderRight: '1px solid #b6cbe5',
+            borderRight: '1px solid var(--wb-line)',
             minWidth: 236,
           }}
         >
           {cur.kana && (
-            <div style={{ fontSize: 11, color: '#3f5878', letterSpacing: 1 }}>{cur.kana}</div>
+            <div style={{ fontSize: 11, color: 'var(--wb-ink-muted)', letterSpacing: 1 }}>
+              {cur.kana}
+            </div>
           )}
           <div className={styles.ribbonName}>
-            {cur.name} <span style={{ fontSize: 12, fontWeight: 400, color: '#43597a' }}>様</span>
+            {cur.name}{' '}
+            <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--wb-ink-muted)' }}>様</span>
           </div>
         </div>
         <div
@@ -349,12 +352,15 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           <span>監査者：佐々木 健（管理薬剤師）</span>
           <span style={{ opacity: 0.55 }}>|</span>
           <span>
-            モード：<span style={{ color: '#9fd3ff', fontWeight: 700 }}>{view.phaseLabel}</span>
+            モード：
+            <span style={{ color: 'var(--wb-status-info)', fontWeight: 700 }}>
+              {view.phaseLabel}
+            </span>
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span>
-            接続：<span style={{ color: '#8fe39a' }}>オンライン</span>
+            接続：<span style={{ color: 'var(--wb-status-online)' }}>オンライン</span>
           </span>
           <span className={styles.mono} style={{ letterSpacing: '.5px' }} suppressHydrationWarning>
             <StatusClock />

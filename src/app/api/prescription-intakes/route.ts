@@ -52,6 +52,73 @@ type IntakeInTxResult = Awaited<ReturnType<typeof createPrescriptionIntakeInTx>>
 type IntakeInTxSuccessResult = Extract<IntakeInTxResult, { kind: 'intake' }>;
 type IntakeInTxErrorResult = Extract<IntakeInTxResult, { kind: 'error' }>;
 
+function normalizeSearchQuery(value: string | null) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return null;
+  return trimmed.slice(0, 100);
+}
+
+function buildPrescriptionIntakeSearchWhere(query: string): Prisma.PrescriptionIntakeWhereInput {
+  return {
+    OR: [
+      { rx_number: { contains: query, mode: 'insensitive' } },
+      { prescriber_name: { contains: query, mode: 'insensitive' } },
+      { prescriber_institution: { contains: query, mode: 'insensitive' } },
+      { prescriber_institution_ref: { is: { name: { contains: query, mode: 'insensitive' } } } },
+      {
+        cycle: {
+          case_: {
+            patient: {
+              OR: [
+                { name: { contains: query, mode: 'insensitive' } },
+                { name_kana: { contains: query, mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
+      },
+    ],
+  };
+}
+
+function toPrescriptionSearchResponse(input: {
+  id: string;
+  prescribed_date: Date;
+  prescriber_name: string | null;
+  prescriber_institution: string | null;
+  prescriber_institution_ref: { name: string } | null;
+  cycle: {
+    overall_status: string;
+    case_: {
+      patient: {
+        name: string;
+        name_kana: string | null;
+      } | null;
+    } | null;
+  };
+}) {
+  const institutionName = input.prescriber_institution_ref?.name ?? input.prescriber_institution;
+  return {
+    id: input.id,
+    prescribed_date: input.prescribed_date.toISOString(),
+    prescriber_name: input.prescriber_name,
+    prescriber_institution: institutionName ? { name: institutionName } : null,
+    cycle: {
+      overall_status: input.cycle.overall_status,
+      case_: input.cycle.case_
+        ? {
+            patient: input.cycle.case_.patient
+              ? {
+                  name: input.cycle.case_.patient.name,
+                  name_kana: input.cycle.case_.patient.name_kana,
+                }
+              : null,
+          }
+        : null,
+    },
+  };
+}
+
 class PrescriptionIntakeRollback extends Error {
   constructor(readonly result: IntakeInTxErrorResult) {
     super('Prescription intake creation rolled back');
@@ -320,6 +387,7 @@ export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
+    const searchQuery = normalizeSearchQuery(searchParams.get('q'));
 
     const statusParam = searchParams.get('status') ?? undefined;
     const sourceTypeParam = searchParams.get('source_type') ?? undefined;
@@ -345,8 +413,12 @@ export const GET = withAuthContext(
     }
     const includeTotal = searchParams.get('include_total') === '1';
     const assignmentWhere = buildPrescriptionIntakeAssignmentWhere(ctx);
+    const accessAndSearchWhere = [
+      assignmentWhere,
+      searchQuery ? buildPrescriptionIntakeSearchWhere(searchQuery) : null,
+    ].filter((item): item is Prisma.PrescriptionIntakeWhereInput => Boolean(item));
 
-    const where = {
+    const where: Prisma.PrescriptionIntakeWhereInput = {
       org_id: ctx.orgId,
       ...(sourceType ? { source_type: sourceType.data } : {}),
       ...(status
@@ -367,8 +439,54 @@ export const GET = withAuthContext(
             },
           }
         : {}),
-      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      ...(accessAndSearchWhere.length > 0 ? { AND: accessAndSearchWhere } : {}),
     };
+
+    if (searchQuery) {
+      const [intakes, totalCount] = await Promise.all([
+        prisma.prescriptionIntake.findMany({
+          where,
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            prescribed_date: true,
+            prescriber_name: true,
+            prescriber_institution: true,
+            prescriber_institution_ref: {
+              select: {
+                name: true,
+              },
+            },
+            cycle: {
+              select: {
+                overall_status: true,
+                case_: {
+                  select: {
+                    patient: {
+                      select: { name: true, name_kana: true },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        includeTotal ? prisma.prescriptionIntake.count({ where }) : Promise.resolve(undefined),
+      ]);
+
+      const hasMore = intakes.length > limit;
+      const data = hasMore ? intakes.slice(0, limit) : intakes;
+      const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
+
+      return success({
+        data: data.map(toPrescriptionSearchResponse),
+        hasMore,
+        nextCursor,
+        ...(includeTotal ? { totalCount } : {}),
+      });
+    }
 
     const [intakes, totalCount] = await Promise.all([
       prisma.prescriptionIntake.findMany({

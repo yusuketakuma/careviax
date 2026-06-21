@@ -190,7 +190,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
                 className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background px-4 py-5"
               >
                 <span className="text-[15px] font-bold text-foreground">{record.drug_name}</span>
-                <span className="shrink-0 text-[15px] font-semibold text-amber-600">
+                <span className="shrink-0 text-[15px] font-semibold text-state-confirm">
                   {formatRemainingLabel(record)}
                 </span>
               </li>
@@ -305,7 +305,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
             </Button>
             <Button
               type="button"
-              className="min-h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700"
+              className="min-h-11 w-full"
               disabled={plan.rows.length === 0 || confirmMutation.isPending}
               onClick={() => setConfirmOpen(true)}
             >

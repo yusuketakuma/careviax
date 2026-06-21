@@ -39,7 +39,7 @@ function immutableSetBatchConflict(currentStatus: string) {
 type DeleteSetBatchResult = { success: true } | { error: string; conflict: true };
 
 export const GET = withAuthContext<{ id: string }>(
-  async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
+  async (_req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
     const assignmentWhere = buildSetBatchAssignmentWhere(ctx);
 

@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { toast } from 'sonner';
+import type { BulkCompleteTasksResponse } from '@/lib/tasks/bulk-completion-contract';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -33,9 +35,26 @@ vi.mock('next/navigation', () => ({
   useSearchParams: useSearchParamsMock,
 }));
 
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
+}));
+
 vi.mock('@/components/ui/data-table', () => ({
-  DataTable: ({ data }: { data: Array<{ title: string }> }) => (
-    <div data-testid="tasks-table">{data.map((item) => item.title).join(',')}</div>
+  DataTable: ({
+    data,
+    onSelectionChange,
+  }: {
+    data: Array<{ title: string }>;
+    onSelectionChange?: (rows: Array<{ title: string }>) => void;
+  }) => (
+    <div>
+      {onSelectionChange ? (
+        <button type="button" onClick={() => onSelectionChange(data.slice(0, 2))}>
+          テスト用に2件選択
+        </button>
+      ) : null}
+      <div data-testid="tasks-table">{data.map((item) => item.title).join(',')}</div>
+    </div>
   ),
 }));
 
@@ -43,7 +62,22 @@ import { TasksContent } from './tasks-content';
 
 setupDomTestEnv();
 
+type BulkCompleteMutationOptions = {
+  mutationFn: (ids: string[]) => Promise<BulkCompleteTasksResponse['data']>;
+  onSuccess: (result: BulkCompleteTasksResponse['data']) => void;
+};
+
+function getBulkCompleteMutationOptions() {
+  const options = useMutationMock.mock.calls[1]?.[0] as BulkCompleteMutationOptions | undefined;
+  expect(options).toBeTruthy();
+  return options as BulkCompleteMutationOptions;
+}
+
 describe('TasksContent', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
@@ -121,6 +155,22 @@ describe('TasksContent', () => {
               completed_at: null,
               created_at: '2026-04-10T08:00:00.000Z',
             },
+            {
+              id: 'task_2',
+              task_type: 'follow_up_call',
+              title: 'フォロー電話',
+              description: null,
+              status: 'pending',
+              priority: 'normal',
+              assigned_to: 'user_1',
+              assigned_to_name: '山田 薬剤師',
+              due_date: null,
+              sla_due_at: null,
+              related_entity_type: 'patient',
+              related_entity_id: 'patient_1',
+              completed_at: null,
+              created_at: '2026-04-10T08:10:00.000Z',
+            },
           ],
         },
         isLoading: false,
@@ -161,9 +211,187 @@ describe('TasksContent', () => {
     );
 
     expect(screen.getByText('監査をしてほしい')).toBeTruthy();
-    expect(screen.getByText('通常')).toBeTruthy();
+    expect(screen.getAllByText('通常').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByDisplayValue('田中さんの監査をしてほしい')).toBeTruthy();
     expect(screen.getByDisplayValue('14:00訪問前に完了')).toBeTruthy();
     expect(screen.getByText('対象の監査タスクに紐づけて依頼します。')).toBeTruthy();
+  });
+
+  it('surfaces server-provided bulk completion failure details', async () => {
+    const invalidateQueriesMock = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: {
+              total: 2,
+              completed: 1,
+              failed: 1,
+              failures: [
+                {
+                  id: 'task_2',
+                  code: 'dedicated_completion_required',
+                  message: 'このタスクは専用画面で完了してください',
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    render(<TasksContent />);
+
+    const bulkCompleteOptions = getBulkCompleteMutationOptions();
+
+    const result = await bulkCompleteOptions.mutationFn(['task_1', 'task_2']);
+    await act(async () => {
+      bulkCompleteOptions.onSuccess(result);
+    });
+
+    expect(fetch).toHaveBeenCalledWith('/api/tasks/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+      body: JSON.stringify({ ids: ['task_1', 'task_2'] }),
+    });
+    expect(toast.warning).toHaveBeenCalledWith('1件完了、1件失敗しました', {
+      description: '失敗理由: このタスクは専用画面で完了してください',
+    });
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['tasks', 'org_1'] });
+  });
+
+  it('rejects malformed successful bulk completion envelopes without invalidating task caches', async () => {
+    const invalidateQueriesMock = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: {
+              total: 2,
+              completed: 1,
+              failed: 1,
+              failures: 'bad-shape',
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    render(<TasksContent />);
+
+    const bulkCompleteOptions = getBulkCompleteMutationOptions();
+
+    await expect(bulkCompleteOptions.mutationFn(['task_1', 'task_2'])).rejects.toThrow(
+      'タスク更新に失敗しました',
+    );
+
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.warning).not.toHaveBeenCalled();
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps selected tasks when a malformed bulk completion success is rejected', async () => {
+    const invalidateQueriesMock = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn: (payload: unknown) => Promise<unknown>;
+        onSuccess?: (result: unknown) => void;
+        onError?: (error: unknown) => void;
+      }) => ({
+        mutate: (payload: unknown) => {
+          void options
+            .mutationFn(payload)
+            .then((result) => options.onSuccess?.(result))
+            .catch((error: unknown) => options.onError?.(error));
+        },
+        isPending: false,
+      }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: {
+              total: 2,
+              completed: 1,
+              failed: 1,
+              failures: 'bad-shape',
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    render(<TasksContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'テスト用に2件選択' }));
+    expect(screen.getByText('選択中 2件')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /選択した2件を完了/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('タスクの一括完了に失敗しました');
+    });
+    expect(screen.getByText('選択中 2件')).toBeTruthy();
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+  });
+
+  it('clears selected tasks and refreshes task caches after successful bulk completion', async () => {
+    const invalidateQueriesMock = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn: (payload: unknown) => Promise<unknown>;
+        onSuccess?: (result: unknown) => void;
+        onError?: (error: unknown) => void;
+      }) => ({
+        mutate: (payload: unknown) => {
+          void options
+            .mutationFn(payload)
+            .then((result) => options.onSuccess?.(result))
+            .catch((error: unknown) => options.onError?.(error));
+        },
+        isPending: false,
+      }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: {
+              total: 2,
+              completed: 2,
+              failed: 0,
+              failures: [],
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+
+    render(<TasksContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'テスト用に2件選択' }));
+    expect(screen.getByText('選択中 2件')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /選択した2件を完了/ }));
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith('2件のタスクを完了しました');
+    });
+    expect(screen.queryByText('選択中 2件')).toBeNull();
+    expect(screen.queryByRole('button', { name: /選択した2件を完了/ })).toBeNull();
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['tasks', 'org_1'] });
   });
 });

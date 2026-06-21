@@ -7,6 +7,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminAlertRulesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -316,7 +317,14 @@ export default function AlertRulesPage() {
           </PageSection>
 
           <PageSection title="登録済みルール" contentClassName="space-y-3">
-            {rules.length === 0 ? (
+            {rulesQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void rulesQuery.refetch() }}
+              />
+            ) : rules.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 まだ処方安全アラートルールはありません。
               </p>

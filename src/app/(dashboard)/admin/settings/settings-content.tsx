@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Activity, Database, HardDriveDownload, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -61,17 +63,17 @@ type HealthPayload = {
 const EMPTY_SETTING_ITEMS: SettingValueItem[] = [];
 const HEALTH_REFETCH_INTERVAL_MS = 60_000;
 
-function statusBadgeClass(status: string) {
+function statusBadgeRole(status: string): StatusRole | null {
   switch (status) {
     case 'ok':
-      return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      return 'done';
     case 'degraded':
-      return 'bg-amber-100 text-amber-800 border-amber-200';
+      return 'confirm';
     case 'down':
     case 'error':
-      return 'bg-rose-100 text-rose-800 border-rose-200';
+      return 'blocked';
     default:
-      return 'bg-muted text-muted-foreground border-border';
+      return null;
   }
 }
 
@@ -308,7 +310,7 @@ function ScopePanel({
           {query.isLoading ? (
             <div className="py-6 text-sm text-muted-foreground">設定を読み込んでいます...</div>
           ) : query.error instanceof Error ? (
-            <div className="py-6 text-sm text-rose-700">{query.error.message}</div>
+            <div className="py-6 text-sm text-destructive">{query.error.message}</div>
           ) : editorMode === 'json' ? (
             <div className="space-y-3 py-4">
               <p className="text-xs text-muted-foreground">
@@ -487,14 +489,21 @@ function HealthCard({
   description: string;
   icon: typeof Activity;
 }) {
+  const role = statusBadgeRole(value);
   return (
     <Card>
       <CardContent className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <Badge variant="outline" className={`mt-2 text-xs ${statusBadgeClass(value)}`}>
-            {value}
-          </Badge>
+          {role ? (
+            <StateBadge role={role} className="mt-2 text-xs">
+              {value}
+            </StateBadge>
+          ) : (
+            <Badge variant="outline" className="mt-2 text-xs">
+              {value}
+            </Badge>
+          )}
           <p className="mt-2 text-xs text-muted-foreground">{description}</p>
         </div>
         <div className="rounded-full border border-border bg-background p-2">

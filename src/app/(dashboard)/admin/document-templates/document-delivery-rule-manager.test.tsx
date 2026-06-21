@@ -56,6 +56,14 @@ describe('DocumentDeliveryRuleManager', () => {
                   fallback_channels: ['mcs'],
                   is_active: true,
                 },
+                {
+                  id: 'rule_2',
+                  document_type: 'management_plan',
+                  target_role: 'care_manager',
+                  channel: 'email',
+                  fallback_channels: ['fax'],
+                  is_active: true,
+                },
               ],
             }),
             { status: 200 },
@@ -115,14 +123,20 @@ describe('DocumentDeliveryRuleManager', () => {
   it('names the edit action and loads the selected delivery rule into the form', async () => {
     renderManager();
 
-    fireEvent.click(
+    expect(
       await screen.findByRole('button', {
         name: '報告書 / 医師 / FAX の送達ルールを編集',
+      }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '計画書 / ケアマネ / メール の送達ルールを編集',
       }),
     );
 
     expect(screen.getByText('送達ルールを編集')).toBeTruthy();
     expect(screen.getByRole('button', { name: '更新する' })).toBeTruthy();
-    expect((screen.getByLabelText('フォールバック順') as HTMLInputElement).value).toBe('mcs');
+    expect((screen.getByLabelText('フォールバック順') as HTMLInputElement).value).toBe('fax');
   });
 });

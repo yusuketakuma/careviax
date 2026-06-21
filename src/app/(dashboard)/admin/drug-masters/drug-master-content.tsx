@@ -542,7 +542,10 @@ const baseColumns: ColumnDef<DrugMasterRow>[] = [
     header: '採用',
     cell: ({ row }) =>
       row.original.stock_config?.is_stocked ? (
-        <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+        <Badge
+          variant="outline"
+          className="gap-1 border-transparent bg-state-done/10 text-state-done"
+        >
           <CheckCircle2 className="size-3" aria-hidden="true" />
           採用
         </Badge>
@@ -577,35 +580,38 @@ const baseColumns: ColumnDef<DrugMasterRow>[] = [
     cell: ({ row }) => (
       <div className="flex flex-wrap gap-1">
         {row.original.is_generic && (
-          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">
+          <Badge
+            variant="outline"
+            className="border-transparent bg-tag-info/10 text-[10px] text-tag-info"
+          >
             後発
           </Badge>
         )}
         {row.original.is_narcotic && (
-          <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 py-0.5 text-[10px] font-medium text-red-700">
+          <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-medium text-tag-hazard">
             <AlertTriangle className="size-2.5" aria-hidden="true" />
             麻薬
           </span>
         )}
         {row.original.is_psychotropic && (
-          <span className="inline-flex items-center gap-0.5 rounded bg-orange-100 px-1 py-0.5 text-[10px] font-medium text-orange-700">
+          <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-medium text-tag-hazard">
             <Shield className="size-2.5" aria-hidden="true" />
             向精神
           </span>
         )}
         {row.original.is_high_risk && (
-          <span className="inline-flex items-center gap-0.5 rounded border border-red-300 bg-red-50 px-1 py-0.5 text-[10px] font-medium text-red-700">
+          <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-medium text-tag-hazard">
             <AlertTriangle className="size-2.5" aria-hidden="true" />
             ハイリスク
           </span>
         )}
         {row.original.outpatient_injection_eligible && (
-          <span className="inline-flex items-center gap-0.5 rounded border border-emerald-300 bg-emerald-50 px-1 py-0.5 text-[10px] font-medium text-emerald-800">
+          <span className="inline-flex items-center gap-0.5 rounded border border-tag-info/30 bg-tag-info/10 px-1 py-0.5 text-[10px] font-medium text-tag-info">
             自己注射
           </span>
         )}
         {row.original.is_lasa_risk && (
-          <span className="inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-[10px] font-medium text-amber-800">
+          <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-medium text-tag-hazard">
             LASA
           </span>
         )}
@@ -768,7 +774,7 @@ function DrugNameCell({ drug }: { drug: DrugMasterRow }) {
         <Pill className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="font-medium text-foreground">{displayName}</span>
         {hasTallMan && (
-          <Badge variant="outline" className="border-amber-300 text-[10px] text-amber-800">
+          <Badge variant="outline" className="border-tag-hazard/30 text-[10px] text-tag-hazard">
             Tall Man
           </Badge>
         )}
@@ -780,7 +786,7 @@ function DrugNameCell({ drug }: { drug: DrugMasterRow }) {
         <div className="mt-0.5 text-xs text-muted-foreground">一般名: {drug.generic_name}</div>
       )}
       {(drug.is_lasa_risk || drug.lasa_group_key) && (
-        <div className="mt-1 text-xs font-medium text-amber-800">
+        <div className="mt-1 text-xs font-medium text-tag-hazard">
           LASA注意{drug.lasa_group_key ? `: ${drug.lasa_group_key}` : ''}
         </div>
       )}
@@ -3330,7 +3336,9 @@ function DrugMasterOperationalContent({
                     {new Date(log.imported_at).toLocaleString('ja-JP')} ・{' '}
                     {log.record_count.toLocaleString()}件
                   </div>
-                  {log.error_log && <div className="text-xs text-red-600">{log.error_log}</div>}
+                  {log.error_log && (
+                    <div className="text-xs text-state-blocked">{log.error_log}</div>
+                  )}
                 </div>
               </div>
             ))
@@ -3518,7 +3526,7 @@ function DrugMasterOperationalContent({
             {detailQuery.isLoading ? (
               <p className="text-sm text-muted-foreground">医薬品詳細を読み込み中です…</p>
             ) : detailQuery.isError ? (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-state-blocked">
                 {detailQuery.error instanceof Error
                   ? detailQuery.error.message
                   : '医薬品詳細の取得に失敗しました'}
@@ -3549,14 +3557,17 @@ function DrugMasterOperationalContent({
                               : 'この薬を採用品として登録できます。'}
                           </p>
                           {selectedPendingRequest && (
-                            <p className="mt-1 text-xs font-medium text-amber-700">
+                            <p className="mt-1 text-xs font-medium text-state-confirm">
                               未承認の変更申請があります。
                             </p>
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           {stockConfig?.is_stocked ? (
-                            <Badge className="gap-1 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
+                            <Badge
+                              variant="outline"
+                              className="gap-1 border-transparent bg-state-done/10 text-state-done"
+                            >
                               <CheckCircle2 className="size-3.5" aria-hidden="true" />
                               採用品
                             </Badge>
@@ -3665,8 +3676,8 @@ function DrugMasterOperationalContent({
                                         <span
                                           className={
                                             candidate.price_delta < 0
-                                              ? 'font-medium text-emerald-700'
-                                              : 'font-medium text-amber-700'
+                                              ? 'font-medium text-state-done'
+                                              : 'font-medium text-state-confirm'
                                           }
                                         >
                                           {candidate.price_delta < 0 ? '差額' : '増額'} ¥
@@ -3674,7 +3685,7 @@ function DrugMasterOperationalContent({
                                         </span>
                                       )}
                                       {candidate.site_stock?.is_stocked && (
-                                        <span className="font-medium text-emerald-700">
+                                        <span className="font-medium text-state-done">
                                           採用済み
                                         </span>
                                       )}
@@ -3945,7 +3956,7 @@ function DrugMasterOperationalContent({
                                 </span>
                               )}
                               {member.site_stock?.is_stocked ? (
-                                <span className="font-medium text-emerald-700">採用済み</span>
+                                <span className="font-medium text-state-done">採用済み</span>
                               ) : (
                                 <span>未採用</span>
                               )}
@@ -4027,53 +4038,61 @@ function DrugMasterOperationalContent({
                       <Badge variant="outline">HOT {detailQuery.data.hot_code}</Badge>
                     )}
                     {detailQuery.data.is_generic && <Badge variant="outline">後発品</Badge>}
-                    {detailQuery.data.is_narcotic && <Badge variant="destructive">麻薬</Badge>}
+                    {detailQuery.data.is_narcotic && (
+                      <Badge variant="outline" className="border-tag-hazard/30 text-tag-hazard">
+                        麻薬
+                      </Badge>
+                    )}
                     {detailQuery.data.is_psychotropic && (
-                      <Badge variant="outline" className="border-orange-300 text-orange-700">
+                      <Badge variant="outline" className="border-tag-hazard/30 text-tag-hazard">
                         向精神
                       </Badge>
                     )}
                     {detailQuery.data.is_high_risk && (
-                      <Badge variant="destructive">ハイリスク薬</Badge>
+                      <Badge variant="outline" className="border-tag-hazard/30 text-tag-hazard">
+                        ハイリスク薬
+                      </Badge>
                     )}
                     {detailQuery.data.outpatient_injection_eligible && (
-                      <Badge variant="outline" className="border-emerald-300 text-emerald-800">
+                      <Badge variant="outline" className="border-tag-info/30 text-tag-info">
                         外来/在宅自己注射確認済み
                       </Badge>
                     )}
                     {detailQuery.data.is_lasa_risk && (
-                      <Badge variant="outline" className="border-amber-300 text-amber-800">
+                      <Badge variant="outline" className="border-tag-hazard/30 text-tag-hazard">
                         LASA注意
                       </Badge>
                     )}
                   </div>
                   {drugSafetyDisplay?.hasSafetyWarning && (
-                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-                      <h2 className="font-semibold">薬剤名・高リスク確認</h2>
+                    <div className="rounded-lg border border-tag-hazard/30 bg-tag-hazard/10 p-4 text-sm text-foreground">
+                      <h2 className="font-semibold text-tag-hazard">薬剤名・高リスク確認</h2>
                       <dl className="mt-2 grid gap-2 sm:grid-cols-2">
                         <div>
-                          <dt className="text-xs font-medium text-amber-800">表示名</dt>
+                          <dt className="text-xs font-medium text-tag-hazard">表示名</dt>
                           <dd className="mt-0.5 font-medium">
                             {detailQuery.data.tall_man_name ?? detailQuery.data.drug_name}
                           </dd>
                         </div>
                         <div>
-                          <dt className="text-xs font-medium text-amber-800">通常表記</dt>
+                          <dt className="text-xs font-medium text-tag-hazard">通常表記</dt>
                           <dd className="mt-0.5">{detailQuery.data.drug_name}</dd>
                         </div>
                         <div>
-                          <dt className="text-xs font-medium text-amber-800">LASAグループ</dt>
+                          <dt className="text-xs font-medium text-tag-hazard">LASAグループ</dt>
                           <dd className="mt-0.5">{detailQuery.data.lasa_group_key ?? '—'}</dd>
                         </div>
                         <div>
-                          <dt className="text-xs font-medium text-amber-800">安全属性</dt>
+                          <dt className="text-xs font-medium text-tag-hazard">安全属性</dt>
                           <dd className="mt-0.5">
                             {drugSafetyDisplay.safetyAttributeLabels.join(' / ') || '—'}
                           </dd>
                         </div>
                         {detailQuery.data.outpatient_injection_note && (
                           <div className="sm:col-span-2">
-                            <dt className="text-xs font-medium text-amber-800">自己注射確認メモ</dt>
+                            <dt className="text-xs font-medium text-tag-hazard">
+                              自己注射確認メモ
+                            </dt>
                             <dd className="mt-0.5">{detailQuery.data.outpatient_injection_note}</dd>
                           </div>
                         )}

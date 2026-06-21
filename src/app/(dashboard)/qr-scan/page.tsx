@@ -47,6 +47,7 @@ import {
   type JahisQRData,
   type JahisParseResult,
 } from '@/lib/pharmacy/jahis-qr';
+import type { IScannerControls } from '@zxing/browser';
 import { buildQrScanDraftPayload } from './qr-scan-draft-payload';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -82,6 +83,7 @@ export default function QRScanPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const readerRef = useRef<unknown>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
 
   const [phase, setPhase] = useState<ScanPhase>('camera');
   const [cameraActive, setCameraActive] = useState(false);
@@ -104,6 +106,16 @@ export default function QRScanPage() {
 
   // ── カメラ停止 ──
   const stopCamera = useCallback(() => {
+    // ZXing の継続デコードを停止（コールバックループ + 参照のリーク防止）
+    if (controlsRef.current) {
+      try {
+        controlsRef.current.stop();
+      } catch {
+        // 停止済み等は無視
+      }
+      controlsRef.current = null;
+    }
+    readerRef.current = null;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -227,30 +239,57 @@ export default function QRScanPage() {
   }, [handleQRResult]);
 
   // ── カメラ起動 ──
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (isCancelled?: () => boolean) => {
     setCameraError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
       });
+      // await 中に phase 変更/unmount でキャンセルされた場合、後発 stream を確実に解放
+      if (isCancelled?.()) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        if (isCancelled?.()) {
+          stream.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+          return;
+        }
         setCameraActive(true);
       }
 
       // @zxing/browser を dynamic import
       const { BrowserQRCodeReader } = await import('@zxing/browser');
+      if (isCancelled?.()) {
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        return;
+      }
       const reader = new BrowserQRCodeReader();
       readerRef.current = reader;
 
-      reader.decodeFromVideoElement(videoRef.current!, (result) => {
+      const controls = await reader.decodeFromVideoElement(videoRef.current!, (result) => {
+        // ZXing は controls を返す前に scan() を開始しうるため、callback 自身でも
+        // キャンセル済み(phase変更/unmount)を確認し、teardown後の副作用を防ぐ
+        if (isCancelled?.()) return;
         if (result) {
           handleQRResultRef.current(result.getText());
         }
       });
+      // controls 取得までの間にキャンセルされたら即停止
+      if (isCancelled?.()) {
+        controls.stop();
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        readerRef.current = null;
+        return;
+      }
+      controlsRef.current = controls;
     } catch (err) {
       const message =
         err instanceof DOMException && err.name === 'NotAllowedError'
@@ -273,16 +312,20 @@ export default function QRScanPage() {
 
       const img = new Image();
       const url = URL.createObjectURL(file);
-      img.src = url;
+      try {
+        img.src = url;
 
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-      });
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+        });
 
-      const result = await reader.decodeFromImageElement(img);
-      URL.revokeObjectURL(url);
-      handleQRResultRef.current(result.getText());
+        const result = await reader.decodeFromImageElement(img);
+        handleQRResultRef.current(result.getText());
+      } finally {
+        // decode 失敗時も Blob URL を確実に解放（リーク防止）
+        URL.revokeObjectURL(url);
+      }
     } catch {
       setCameraError('QRコードを画像から読み取れませんでした。鮮明な画像をお試しください。');
     }
@@ -353,9 +396,11 @@ export default function QRScanPage() {
       return;
     }
 
-    const timer = window.setTimeout(() => startCamera(), 0);
+    let cancelled = false;
+    const timer = window.setTimeout(() => startCamera(() => cancelled), 0);
 
     return () => {
+      cancelled = true;
       window.clearTimeout(timer);
       stopCamera();
     };
@@ -476,7 +521,7 @@ export default function QRScanPage() {
                     variant="outline"
                     size="sm"
                     className="min-h-[44px] sm:min-h-0"
-                    onClick={startCamera}
+                    onClick={() => startCamera()}
                   >
                     <Camera className="mr-1.5 h-4 w-4" />
                     再試行
@@ -710,7 +755,7 @@ export default function QRScanPage() {
                 </dl>
                 {parseResult?.warnings.length ? (
                   <div
-                    className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                    className="mt-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm"
                     role="alert"
                     aria-live="assertive"
                   >
@@ -831,7 +876,7 @@ export default function QRScanPage() {
                   role="alert"
                   aria-live="polite"
                 >
-                  <AlertTriangle className="h-8 w-8 text-amber-500" aria-hidden="true" />
+                  <AlertTriangle className="h-8 w-8 text-state-confirm" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground">
                     該当する患者が見つかりませんでした。
                   </p>
@@ -878,7 +923,7 @@ export default function QRScanPage() {
                 role="status"
                 aria-live="polite"
               >
-                <CheckCircle className="h-10 w-10 text-green-600" aria-hidden="true" />
+                <CheckCircle className="h-10 w-10 text-state-done" aria-hidden="true" />
                 <div>
                   <p className="text-base font-semibold">PCに送信しました</p>
                   <p className="mt-1 text-sm text-muted-foreground">PCで確認・確定してください</p>
@@ -889,7 +934,7 @@ export default function QRScanPage() {
                   <div className="w-full space-y-2 rounded-md border p-3 text-left">
                     {/* 成功薬剤 */}
                     {parseResult.success && mergedQRData.medications.length > 0 && (
-                      <div className="flex items-center gap-2 text-sm text-green-700">
+                      <div className="flex items-center gap-2 text-sm text-state-done">
                         <CircleCheck className="h-4 w-4 shrink-0" />
                         <span>薬剤 {mergedQRData.medications.length}件 を読取</span>
                       </div>
@@ -899,7 +944,10 @@ export default function QRScanPage() {
                     {parseResult.warnings.length > 0 && (
                       <div className="space-y-1" role="alert" aria-live="assertive">
                         {parseResult.warnings.map((w, i) => (
-                          <div key={i} className="flex items-start gap-2 text-sm text-amber-700">
+                          <div
+                            key={i}
+                            className="flex items-start gap-2 text-sm text-state-confirm"
+                          >
                             <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                             <span>{w.message}</span>
                           </div>

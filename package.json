@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "postinstall": "prisma generate --schema=prisma/schema/ && node tools/scripts/link-prisma-client.mjs",
     "typecheck": "next typegen && tsc --noEmit --pretty false && tsc -p tsconfig.sw.json --pretty false",
+    "typecheck:no-unused": "tsc --noEmit --pretty false --incremental false --noUnusedLocals --noUnusedParameters --skipLibCheck && tsc -p tsconfig.sw.json --noEmit --pretty false --incremental false --noUnusedLocals --noUnusedParameters --skipLibCheck",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

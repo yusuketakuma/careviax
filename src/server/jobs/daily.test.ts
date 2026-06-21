@@ -332,9 +332,10 @@ describe('checkPcaPumpRentalOverdues', () => {
         }),
       }),
     );
+    // org 単位集約により updateMany は当該 org の rental id をまとめて更新する
     expect(updateManyMock).toHaveBeenCalledWith({
       where: {
-        id: 'rental_1',
+        id: { in: ['rental_1'] },
         org_id: 'org_1',
         status: { in: ['scheduled', 'active'] },
         due_at: { lt: today },
@@ -365,6 +366,122 @@ describe('checkPcaPumpRentalOverdues', () => {
           action_href: '/admin/pca-pumps',
         }),
       }),
+    );
+  });
+
+  it('batches overdue status updates by org while preserving one task per rental', async () => {
+    const updateManyByOrg = new Map<string, ReturnType<typeof vi.fn>>();
+    const today = new Date('2026-06-08T00:00:00.000Z');
+    pcaPumpRentalFindManyMock.mockResolvedValue([
+      {
+        id: 'rental_1',
+        org_id: 'org_1',
+        pump_id: 'pump_1',
+        institution_id: 'institution_1',
+        rented_at: new Date('2026-05-20T00:00:00.000Z'),
+        due_at: new Date('2026-06-01T00:00:00.000Z'),
+        rental_fee_yen: 12000,
+        pump: {
+          asset_code: 'PCA-001',
+          model_name: 'CADD Legacy',
+        },
+        institution: {
+          name: 'サンプル在宅クリニック',
+        },
+      },
+      {
+        id: 'rental_2',
+        org_id: 'org_1',
+        pump_id: 'pump_2',
+        institution_id: 'institution_2',
+        rented_at: new Date('2026-05-21T00:00:00.000Z'),
+        due_at: new Date('2026-06-02T00:00:00.000Z'),
+        rental_fee_yen: 8000,
+        pump: {
+          asset_code: 'PCA-002',
+          model_name: 'CADD Solis',
+        },
+        institution: {
+          name: '東薬局',
+        },
+      },
+      {
+        id: 'rental_3',
+        org_id: 'org_2',
+        pump_id: 'pump_3',
+        institution_id: 'institution_3',
+        rented_at: new Date('2026-05-22T00:00:00.000Z'),
+        due_at: new Date('2026-06-03T00:00:00.000Z'),
+        rental_fee_yen: 9000,
+        pump: {
+          asset_code: 'PCA-003',
+          model_name: 'CADD Legacy',
+        },
+        institution: {
+          name: '西薬局',
+        },
+      },
+    ]);
+    withOrgContextMock.mockImplementation(async (orgId: string, callback) => {
+      const updateManyMock = vi.fn().mockResolvedValue({ count: orgId === 'org_1' ? 2 : 1 });
+      updateManyByOrg.set(orgId, updateManyMock);
+      return callback({
+        pcaPumpRental: {
+          updateMany: updateManyMock,
+        },
+        task: {
+          upsert: vi.fn(),
+        },
+      });
+    });
+
+    const result = await checkPcaPumpRentalOverdues();
+
+    expect(result).toEqual({ processedCount: 3 });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_2', expect.any(Function));
+    expect(updateManyByOrg.get('org_1')).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['rental_1', 'rental_2'] },
+        org_id: 'org_1',
+        status: { in: ['scheduled', 'active'] },
+        due_at: { lt: today },
+      },
+      data: {
+        status: 'overdue',
+      },
+    });
+    expect(updateManyByOrg.get('org_2')).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['rental_3'] },
+        org_id: 'org_2',
+        status: { in: ['scheduled', 'active'] },
+        due_at: { lt: today },
+      },
+      data: {
+        status: 'overdue',
+      },
+    });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledTimes(3);
+    expect(upsertOperationalTaskMock.mock.calls.map(([, spec]) => spec)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          orgId: 'org_1',
+          relatedEntityId: 'rental_1',
+          dedupeKey: 'pca-pump-rental-overdue:rental_1',
+        }),
+        expect.objectContaining({
+          orgId: 'org_1',
+          relatedEntityId: 'rental_2',
+          dedupeKey: 'pca-pump-rental-overdue:rental_2',
+        }),
+        expect.objectContaining({
+          orgId: 'org_2',
+          relatedEntityId: 'rental_3',
+          dedupeKey: 'pca-pump-rental-overdue:rental_3',
+        }),
+      ]),
     );
   });
 

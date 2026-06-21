@@ -98,7 +98,7 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
             minHeight: 0,
             overflowY: 'auto',
             padding: '12px 14px',
-            background: '#f5f6f8',
+            background: 'var(--wb-surface-alt)',
           }}
         >
           {compareSections.map((sec) => (
@@ -133,17 +133,19 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
                       display: 'flex',
                       alignItems: 'center',
                       gap: 8,
-                      background: '#fff',
-                      border: '1px solid #e2e6eb',
+                      background: 'var(--wb-surface)',
+                      border: '1px solid var(--wb-line)',
                       borderLeft: `3px solid ${sec.color}`,
                       borderRadius: 4,
                       padding: '6px 10px',
                     }}
                   >
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#1f3350' }}>
+                    <span
+                      style={{ flex: 1, fontSize: 12, fontWeight: 700, color: 'var(--wb-ink)' }}
+                    >
                       {it.name}
                     </span>
-                    <span style={{ fontSize: 11, color: '#69788c' }}>{it.sub}</span>
+                    <span style={{ fontSize: 11, color: 'var(--wb-ink-muted)' }}>{it.sub}</span>
                   </div>
                 ))}
               </div>
@@ -158,8 +160,8 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
             display: 'flex',
             justifyContent: 'flex-end',
             padding: '10px 14px',
-            borderTop: '1px solid #d8dde3',
-            background: '#fff',
+            borderTop: '1px solid var(--wb-line)',
+            background: 'var(--wb-surface)',
           }}
         >
           <button
@@ -171,8 +173,8 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
               fontSize: 12.5,
               fontWeight: 700,
               color: '#fff',
-              background: '#3f5e8c',
-              border: '1px solid #2c4a6e',
+              background: 'var(--wb-accent)',
+              border: '1px solid var(--wb-accent)',
               borderRadius: 6,
               padding: '8px 22px',
               fontFamily: 'inherit',

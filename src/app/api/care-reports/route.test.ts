@@ -295,6 +295,163 @@ describe('/api/care-reports GET', () => {
     });
   });
 
+  it('returns a bounded minimal projection for palette report search', async () => {
+    patientFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'patient_1',
+        name: '山田 太郎',
+      },
+    ]);
+    careReportFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'report_palette_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: null,
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        status: 'response_waiting',
+        content: {
+          summary: '服薬状況は安定。夜間の眠気について経過観察。',
+          body: '東京都港区2-2-2 090-1234-5678',
+        },
+        template_id: null,
+        pdf_url: '/api/files/report_1/download',
+        created_by: 'user_1',
+        created_at: new Date('2026-03-28T09:00:00.000Z'),
+        updated_at: new Date('2026-03-28T09:15:00.000Z'),
+        delivery_records: [
+          {
+            id: 'delivery_1',
+            recipient_name: '在宅主治医',
+            status: 'response_waiting',
+          },
+        ],
+      },
+      {
+        id: 'report_palette_2',
+        patient_id: 'patient_1',
+        report_type: 'care_manager_report',
+        status: 'draft',
+        created_at: new Date('2026-03-27T09:00:00.000Z'),
+      },
+    ]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?view=palette&q=山田&limit=1'),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'report_palette_1',
+          report_type: 'physician_report',
+          status: 'response_waiting',
+          created_at: '2026-03-28T09:00:00.000Z',
+          patient_id: 'patient_1',
+          patient: {
+            name: '山田 太郎',
+          },
+        },
+      ],
+      hasMore: true,
+    });
+    const listCall = careReportFindManyMock.mock.calls[0]?.[0];
+    expect(listCall).toMatchObject({
+      take: 2,
+      where: expect.objectContaining({
+        patient_id: { in: ['patient_1'] },
+      }),
+      select: {
+        id: true,
+        patient_id: true,
+        report_type: true,
+        status: true,
+        created_at: true,
+      },
+    });
+    expect(listCall.where).not.toHaveProperty('case_');
+    expect(listCall.select).not.toHaveProperty('content');
+    expect(listCall.select).not.toHaveProperty('pdf_url');
+    expect(listCall.select).not.toHaveProperty('delivery_records');
+    expect(patientFindManyMock).toHaveBeenCalledTimes(1);
+    expect(patientFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        OR: [
+          { name: { contains: '山田', mode: 'insensitive' } },
+          { name_kana: { contains: '山田', mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      take: 2,
+    });
+    expect(deliveryRecordCountMock).not.toHaveBeenCalled();
+    expect(deliveryRecordGroupByMock).not.toHaveBeenCalled();
+    expect(deliveryRecordFindManyMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(body)).not.toContain('/api/files/report_1/download');
+    expect(JSON.stringify(body)).not.toContain('在宅主治医');
+    expect(JSON.stringify(body)).not.toContain('服薬状況');
+    expect(JSON.stringify(body)).not.toContain('東京都港区');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(body.data[0]).not.toHaveProperty('content');
+    expect(body.data[0]).not.toHaveProperty('pdf_url');
+    expect(body.data[0]).not.toHaveProperty('delivery_records');
+    expect(body.data[0]).not.toHaveProperty('latest_delivery_recipient_name');
+    expect(body.data[0]).not.toHaveProperty('billing');
+  });
+
+  it.each([
+    ['include_content=1', 'include_content'],
+    ['keyword=眠気', 'keyword'],
+    ['recipient=主治医', 'recipient'],
+    ['delivery_status=response_waiting', 'delivery_status'],
+    ['sent_from=2026-03-01', 'sent_from'],
+    ['sent_to=2026-03-31', 'sent_to'],
+    ['visit_record_id=visit_1', 'visit_record_id'],
+    ['cursor=report_1', 'cursor'],
+  ])(
+    'rejects full-list-only palette report filter %s before querying reports',
+    async (queryString, field) => {
+      const response = await getCareReports(
+        createAuthenticatedRequest(`http://localhost/api/care-reports?view=palette&${queryString}`),
+      );
+
+      expect(response.status).toBe(400);
+      expect(careReportFindManyMock).not.toHaveBeenCalled();
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(deliveryRecordCountMock).not.toHaveBeenCalled();
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'palette 表示では対応していない検索条件です',
+        details: {
+          [field]: [
+            'palette 表示では q/limit/patient_id/status/report_type/date_from/date_to のみ指定できます',
+          ],
+        },
+      });
+    },
+  );
+
+  it('rejects malformed palette report limits before querying reports', async () => {
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?view=palette&limit=abc'),
+    );
+
+    expect(response.status).toBe(400);
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'limit は 1〜50 の整数で指定してください',
+    });
+  });
+
   it('redacts stored report file URLs from list rows when the caller cannot send reports', async () => {
     careReportFindManyMock.mockResolvedValueOnce([
       {

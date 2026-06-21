@@ -123,9 +123,9 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
             key={item.key}
             className={`rounded-xl border p-3 ${
               item.completed
-                ? 'border-emerald-200 bg-emerald-50/60'
+                ? 'border-state-done/30 bg-state-done/10'
                 : item.severity === 'high'
-                  ? 'border-amber-200 bg-amber-50/70'
+                  ? 'border-state-confirm/30 bg-state-confirm/10'
                   : 'border-border/70 bg-muted/10'
             }`}
           >
@@ -133,9 +133,9 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   {item.completed ? (
-                    <CheckCircle2 className="size-4 text-emerald-700" aria-hidden="true" />
+                    <CheckCircle2 className="size-4 text-state-done" aria-hidden="true" />
                   ) : (
-                    <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+                    <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
                   )}
                   <p className="text-sm font-medium text-foreground">{item.label}</p>
                 </div>

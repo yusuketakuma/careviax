@@ -97,6 +97,36 @@ describe('ClerkSupportContent', () => {
     expect(within(consult).getByText(/算定できるかの判断/)).toBeTruthy();
   });
 
+  it('does not paint state/ad-hoc colors on KPI counts and dims zero counts', () => {
+    useQueryMock.mockReturnValue({
+      data: {
+        ...buildFixture(),
+        kpis: {
+          intake_pending: 0,
+          delivery_target_missing: 8,
+          schedule_confirmation: 6,
+          document_drafts: 11,
+          reply_pending: 7,
+          pharmacist_review: 5,
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<ClerkSupportContent />);
+    const grid = screen.getByTestId('clerk-kpi-grid');
+
+    // ゼロ件は明度コントラストで弱調、非ゼロ件は foreground 強調（色シグナルなし）。
+    expect(within(grid).getByText('0').className).toContain('text-muted-foreground');
+    const nonZero = within(grid).getByText('8');
+    expect(nonZero.className).toContain('text-foreground');
+
+    // 件数に ad-hoc 状態色を塗らない（赤=危険等の偽シグナル回避）。
+    expect(grid.innerHTML).not.toMatch(/text-(red|amber|blue|emerald|violet|sky)-\d/);
+  });
+
   it('shows the empty-task message when no clerk work is pending', () => {
     useQueryMock.mockReturnValue({
       data: { ...buildFixture(), tasks: [] },

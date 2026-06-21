@@ -5,6 +5,7 @@ import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { formatNullableUtcDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   createPharmacyInvoiceDraft,
@@ -39,7 +40,7 @@ function optionalSearchParam(value: string | null) {
 }
 
 function toDateKey(value: Date | null) {
-  return value ? value.toISOString().slice(0, 10) : null;
+  return formatNullableUtcDateKey(value);
 }
 
 function draftErrorResponse(error: PharmacyInvoiceDraftError) {

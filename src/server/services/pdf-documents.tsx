@@ -13,7 +13,7 @@ import {
 } from '@/lib/patient/home-visit-intake';
 import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
 import { flattenPdfJson, readPdfJsonObject } from '@/server/services/pdf-document-json';
-import { formatYen } from '@/lib/ui/currency-format';
+import { formatYen } from '@/lib/format/currency';
 import {
   MEDICATION_CALENDAR_SLOT_KEYS,
   MEDICATION_CALENDAR_SLOT_LABELS,
@@ -58,6 +58,7 @@ import {
   sanitizePdfFileName,
   type PdfRenderResult,
 } from '@/server/services/pdf-rendering';
+import { defaultAudienceForReportType } from '@/lib/communications/share-audience';
 
 type PdfShellProps = {
   title: string;
@@ -638,7 +639,9 @@ function isAudienceReportPdfContent(value: unknown): value is AudienceReportPdfC
   const object = readPdfJsonObject(value);
   const patient = readPdfJsonObject(object.patient);
   return (
-    (object.report_audience === 'visiting_nurse' || object.report_audience === 'facility') &&
+    (object.report_audience === 'visiting_nurse' ||
+      object.report_audience === 'facility' ||
+      object.report_audience === 'family') &&
     typeof patient.name === 'string' &&
     typeof patient.birth_date === 'string' &&
     typeof object.report_date === 'string' &&
@@ -857,9 +860,13 @@ function renderCareReportContent(report: CareReportRecord) {
     }
   }
 
-  if (report.report_type === 'nurse_share' || report.report_type === 'facility_handoff') {
+  if (
+    report.report_type === 'nurse_share' ||
+    report.report_type === 'facility_handoff' ||
+    report.report_type === 'family_share'
+  ) {
     const content = readPdfJsonObject(report.content);
-    const expectedAudience = report.report_type === 'nurse_share' ? 'visiting_nurse' : 'facility';
+    const expectedAudience = defaultAudienceForReportType(report.report_type);
     if (isAudienceReportPdfContent(content) && content.report_audience === expectedAudience) {
       return (
         <>
@@ -875,7 +882,9 @@ function renderCareReportContent(report: CareReportRecord) {
                   value:
                     content.report_audience === 'visiting_nurse'
                       ? '訪問看護向け服薬情報共有'
-                      : '施設向け服薬介助申し送り',
+                      : content.report_audience === 'family'
+                        ? 'ご家族向け服薬情報共有'
+                        : '施設向け服薬介助申し送り',
                 },
                 {
                   label: '確認状態',

@@ -108,7 +108,7 @@ function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
     return (
       <Badge
         variant="outline"
-        className="flex w-fit items-center gap-1 border-red-300 bg-red-50 text-xs text-red-700"
+        className="flex w-fit items-center gap-1 border-transparent bg-state-blocked/10 text-xs text-state-blocked"
       >
         <XCircle className="size-3" aria-hidden="true" />
         {formatted}（期限切れ）
@@ -119,7 +119,7 @@ function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
     return (
       <Badge
         variant="outline"
-        className="flex w-fit items-center gap-1 border-red-300 bg-red-50 text-xs text-red-700"
+        className="flex w-fit items-center gap-1 border-transparent bg-state-blocked/10 text-xs text-state-blocked"
       >
         <Bell className="size-3" aria-hidden="true" />
         {formatted}（残{days}日）
@@ -130,7 +130,7 @@ function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
     return (
       <Badge
         variant="outline"
-        className="flex w-fit items-center gap-1 border-orange-300 bg-orange-50 text-xs text-orange-700"
+        className="flex w-fit items-center gap-1 border-transparent bg-state-confirm/10 text-xs text-state-confirm"
       >
         <Bell className="size-3" aria-hidden="true" />
         {formatted}（残{days}日）
@@ -138,7 +138,7 @@ function ExpiryBadge({ expiryDate }: { expiryDate: string | null }) {
     );
   }
   return (
-    <span className="flex items-center gap-1 text-xs text-green-700">
+    <span className="flex items-center gap-1 text-xs text-state-done">
       <CheckCircle2 className="size-3.5" aria-hidden="true" />
       {formatted}
     </span>
@@ -379,6 +379,7 @@ export function PharmacistCredentialsContent() {
             <Button
               size="sm"
               variant="outline"
+              aria-label={`${row.original.user_name} の ${row.original.certification_type} を編集`}
               onClick={() => {
                 setEditingCredential(row.original);
                 setForm(buildForm(row.original));
@@ -387,7 +388,12 @@ export function PharmacistCredentialsContent() {
             >
               編集
             </Button>
-            <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(row.original)}>
+            <Button
+              size="sm"
+              variant="destructive"
+              aria-label={`${row.original.user_name} の ${row.original.certification_type} を失効`}
+              onClick={() => setDeleteTarget(row.original)}
+            >
               失効
             </Button>
           </div>
@@ -400,11 +406,11 @@ export function PharmacistCredentialsContent() {
   return (
     <div className="space-y-4">
       {alertItems.length > 0 ? (
-        <div className="flex items-start gap-3 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+        <div className="flex items-start gap-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <div>
             <p className="font-medium">認定期限が近い薬剤師がいます</p>
-            <ul className="mt-1 list-inside list-disc text-orange-700">
+            <ul className="mt-1 list-inside list-disc text-state-confirm">
               {alertItems.map((credential) => {
                 const days = differenceInDays(parseISO(credential.expiry_date!), new Date());
                 return (

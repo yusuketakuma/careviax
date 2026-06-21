@@ -5,7 +5,11 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { BillingCandidatesContent } from './billing-candidates-content';
+import {
+  BillingCandidatesContent,
+  getBillingCloseDisabledReason,
+  getBillingCsvExportDisabledReason,
+} from './billing-candidates-content';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
@@ -193,6 +197,84 @@ describe('BillingCandidatesContent', () => {
     const rows = within(table).getAllByRole('row');
     const targetRow = rows.find((row) => row.textContent?.includes('在宅患者訪問薬剤管理指導料'));
     expect(targetRow?.className).toContain('ring-primary');
+  });
+
+  it('describes the disabled monthly close action without leaking patient values', async () => {
+    renderBillingCandidatesContent();
+
+    const closeButton = await screen.findByRole('button', { name: '医療・介護月次締め' });
+    const closeReason = screen.getByText('患者で絞り込み中は月次締めを実行できません。');
+
+    expect(closeButton).toHaveProperty('disabled', true);
+    expect(closeButton.getAttribute('aria-describedby')).toBe(closeReason.id);
+    expect(closeReason.textContent).not.toMatch(/patient_1|山田|太郎/);
+  });
+
+  it('keeps billing operation disabled reasons fixed and value-free', () => {
+    expect(
+      getBillingCloseDisabledReason({
+        closeBlocked: 1,
+        closeReady: 1,
+        patientIdFilter: 'patient_1',
+      }),
+    ).toBe('患者で絞り込み中は月次締めを実行できません。');
+    expect(
+      getBillingCloseDisabledReason({
+        closeBlocked: 2,
+        closeReady: 1,
+        patientIdFilter: null,
+      }),
+    ).toBe('レビュー待ちまたは根拠不足の候補があります。');
+    expect(
+      getBillingCloseDisabledReason({
+        closeBlocked: 0,
+        closeReady: 0,
+        patientIdFilter: null,
+      }),
+    ).toBe('月次締めできる候補がありません。');
+    expect(
+      getBillingCloseDisabledReason({
+        closeBlocked: 0,
+        closeReady: 1,
+        patientIdFilter: null,
+      }),
+    ).toBeNull();
+    expect(
+      getBillingCsvExportDisabledReason({
+        exportableCount: 1,
+        isPreviewLoading: true,
+      }),
+    ).toBe('出力前確認を読み込んでいます。');
+    expect(
+      getBillingCsvExportDisabledReason({
+        exportableCount: 0,
+        isPreviewLoading: false,
+      }),
+    ).toBe('CSV出力できる確定または締め済み候補がありません。');
+    expect(
+      getBillingCsvExportDisabledReason({
+        exportableCount: 1,
+        isPreviewLoading: false,
+      }),
+    ).toBeNull();
+
+    const allReasons = [
+      getBillingCloseDisabledReason({
+        closeBlocked: 1,
+        closeReady: 1,
+        patientIdFilter: 'patient_1',
+      }),
+      getBillingCloseDisabledReason({
+        closeBlocked: 1,
+        closeReady: 1,
+        patientIdFilter: null,
+      }),
+      getBillingCsvExportDisabledReason({
+        exportableCount: 0,
+        isPreviewLoading: false,
+      }),
+    ].join(' ');
+    expect(allReasons).not.toMatch(/patient_1|山田|太郎|candidate_/);
   });
 
   it('shows full export preview before CSV download', async () => {

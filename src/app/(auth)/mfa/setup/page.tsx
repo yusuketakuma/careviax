@@ -35,6 +35,17 @@ export default function MfaSetupPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [setupLoading, setSetupLoading] = useState(true);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // コピー完了トグルのタイマーを unmount 時に確実にクリア（unmount 後 setState 防止）
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const setRef = useCallback(
     (index: number) => (el: HTMLInputElement | null) => {
@@ -191,7 +202,11 @@ export default function MfaSetupPage() {
         recoveryCodes.length > 0 ? recoveryCodes.join('\n') : secretCode || otpauthUri,
       );
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null;
+        setCopied(false);
+      }, 2000);
     } catch {
       // Fallback: select text for manual copy
     }
@@ -229,21 +244,21 @@ export default function MfaSetupPage() {
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors ${
                     s < step
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-primary text-primary-foreground'
                       : s === step
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-200 text-slate-500'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-muted text-muted-foreground'
                   }`}
                   aria-current={s === step ? 'step' : undefined}
                 >
                   {s < step ? <Check className="h-4 w-4" aria-hidden="true" /> : s}
                 </div>
-                <span className="text-xs text-slate-500 text-center">{stepLabels[s - 1]}</span>
+                <span className="text-xs text-muted-foreground text-center">
+                  {stepLabels[s - 1]}
+                </span>
               </div>
               {s < 3 && (
-                <div
-                  className={`h-0.5 w-full mx-2 mb-5 ${s < step ? 'bg-blue-600' : 'bg-slate-200'}`}
-                />
+                <div className={`h-0.5 w-full mx-2 mb-5 ${s < step ? 'bg-primary' : 'bg-muted'}`} />
               )}
             </div>
           ))}
@@ -253,7 +268,7 @@ export default function MfaSetupPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />
+            <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
             <CardTitle>MFA設定</CardTitle>
           </div>
           <CardDescription>
@@ -273,9 +288,9 @@ export default function MfaSetupPage() {
           {/* Step 1: QR Code */}
           {step === 1 && (
             <div className="flex flex-col items-center gap-6">
-              <div className="flex h-48 w-48 items-center justify-center rounded-lg border-2 border-dashed border-slate-300 bg-slate-50">
+              <div className="flex h-48 w-48 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted">
                 {setupLoading ? (
-                  <div className="flex flex-col items-center gap-2 text-slate-400">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <LoaderCircle className="h-12 w-12 animate-spin" aria-hidden="true" />
                     <span className="text-xs">設定を準備中</span>
                   </div>
@@ -283,29 +298,29 @@ export default function MfaSetupPage() {
                   <Image
                     src={qrCodeDataUrl}
                     alt="MFA設定用QRコード"
-                    className="h-48 w-48 rounded-md bg-white p-2"
+                    className="h-48 w-48 rounded-md bg-background p-2"
                     width={192}
                     height={192}
                     unoptimized
                   />
                 ) : (
-                  <div className="flex flex-col items-center gap-2 text-slate-400">
+                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <QrCode className="h-12 w-12" aria-hidden="true" />
                     <span className="text-xs">認証アプリで手動登録</span>
                   </div>
                 )}
               </div>
 
-              <div className="w-full rounded-lg bg-slate-50 p-3">
-                <p className="mb-1 text-xs font-medium text-slate-500">
+              <div className="w-full rounded-lg bg-muted p-3">
+                <p className="mb-1 text-xs font-medium text-muted-foreground">
                   手動入力用シークレットキー
                 </p>
-                <code className="block break-all text-sm font-mono text-slate-700">
+                <code className="block break-all text-sm font-mono text-foreground">
                   {secretCode || '取得中...'}
                 </code>
               </div>
 
-              <div className="w-full text-sm text-slate-600 space-y-2">
+              <div className="w-full text-sm text-muted-foreground space-y-2">
                 <p className="font-medium">対応アプリ:</p>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>Google Authenticator</li>
@@ -316,7 +331,7 @@ export default function MfaSetupPage() {
 
               <Button
                 size="lg"
-                className="w-full bg-blue-600 hover:bg-blue-700"
+                className="w-full"
                 onClick={() => setStep(2)}
                 disabled={setupLoading || !secretCode}
               >
@@ -365,7 +380,7 @@ export default function MfaSetupPage() {
                 <Button
                   type="submit"
                   size="lg"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  className="flex-1"
                   disabled={isLoading || digits.join('').length !== 6}
                   aria-busy={isLoading}
                 >
@@ -378,27 +393,27 @@ export default function MfaSetupPage() {
           {/* Step 3: Completed */}
           {step === 3 && (
             <div className="flex flex-col gap-6">
-              <Alert className="border-green-200 bg-green-50">
-                <ShieldCheck className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-green-800">
+              <Alert className="border-state-done/30 bg-state-done/10">
+                <ShieldCheck className="h-4 w-4 text-state-done" />
+                <AlertDescription className="text-state-done">
                   二要素認証の設定が完了しました。次回ログインから認証アプリの6桁コードが必要になります。
                 </AlertDescription>
               </Alert>
 
-              <Alert className="border-amber-200 bg-amber-50 text-amber-900">
-                <AlertCircle className="h-4 w-4 text-amber-600" />
-                <AlertDescription>
+              <Alert className="border-state-confirm/30 bg-state-confirm/10 text-state-confirm">
+                <AlertCircle className="h-4 w-4 text-state-confirm" />
+                <AlertDescription className="text-state-confirm">
                   以下のリカバリーコードはこの画面でのみ表示されます。印刷または安全な場所に保存してください。
                 </AlertDescription>
               </Alert>
 
-              <div className="rounded-lg border bg-slate-50 p-4">
-                <p className="mb-3 text-sm font-medium text-slate-700">リカバリーコード</p>
+              <div className="rounded-lg border bg-muted p-4">
+                <p className="mb-3 text-sm font-medium text-foreground">リカバリーコード</p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {recoveryCodes.map((code) => (
                     <code
                       key={code}
-                      className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-mono text-slate-700"
+                      className="rounded-md border border-border bg-background px-3 py-2 text-sm font-mono text-foreground"
                     >
                       {code}
                     </code>
@@ -410,7 +425,7 @@ export default function MfaSetupPage() {
                 <Button variant="outline" size="lg" className="w-full" onClick={handleCopySecret}>
                   {copied ? (
                     <>
-                      <Check className="mr-2 h-4 w-4 text-green-600" />
+                      <Check className="mr-2 h-4 w-4 text-state-done" />
                       コピーしました
                     </>
                   ) : (
@@ -431,11 +446,7 @@ export default function MfaSetupPage() {
                 </Button>
               </div>
 
-              <Button
-                size="lg"
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                onClick={() => router.push(callbackUrl)}
-              >
+              <Button size="lg" className="w-full" onClick={() => router.push(callbackUrl)}>
                 設定を完了する
               </Button>
             </div>

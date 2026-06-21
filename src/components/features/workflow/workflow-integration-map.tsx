@@ -123,7 +123,7 @@ export function WorkflowIntegrationMap({
                 </div>
                 <p className="mt-3 flex items-start gap-2 text-xs leading-5 text-muted-foreground">
                   <CheckCircle2
-                    className="mt-0.5 size-3.5 shrink-0 text-emerald-600"
+                    className="mt-0.5 size-3.5 shrink-0 text-state-done"
                     aria-hidden="true"
                   />
                   {handoff.userCheck}

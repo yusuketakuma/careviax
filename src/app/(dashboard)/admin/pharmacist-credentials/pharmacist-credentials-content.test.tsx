@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PharmacistCredentialsContent } from './pharmacist-credentials-content';
@@ -22,7 +23,25 @@ vi.mock('@tanstack/react-query', () => ({
     const key = queryKey[0];
 
     if (key === 'pharmacist-credentials') {
-      return { data: { data: [] }, isLoading: false };
+      return {
+        data: {
+          data: [
+            {
+              id: 'credential_1',
+              user_id: 'user_1',
+              user_name: '山田 太郎',
+              certification_type: '研修認定',
+              certification_number: 'CERT-001',
+              issued_date: '2025-04-01T00:00:00.000Z',
+              expiry_date: '2028-03-31T00:00:00.000Z',
+              tenure_years: 5.5,
+              weekly_work_hours: 32,
+              consented_patients: [],
+            },
+          ],
+        },
+        isLoading: false,
+      };
     }
 
     if (key === 'pharmacist-options') {
@@ -42,7 +61,27 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 
 vi.mock('@/components/ui/data-table', () => ({
-  DataTable: () => <div data-testid="credentials-table" />,
+  DataTable: ({
+    columns,
+    data,
+  }: {
+    columns: Array<{ id?: string; cell?: (args: { row: { original: unknown } }) => ReactNode }>;
+    data: unknown[];
+  }) => (
+    <div data-testid="credentials-table">
+      {data.map((row, rowIndex) => (
+        <div key={rowIndex}>
+          {columns.map((column, columnIndex) =>
+            column.cell ? (
+              <div key={`${column.id ?? columnIndex}`}>
+                {column.cell({ row: { original: row } })}
+              </div>
+            ) : null,
+          )}
+        </div>
+      ))}
+    </div>
+  ),
 }));
 
 vi.mock('@/components/ui/select', async () => {
@@ -168,5 +207,22 @@ describe('PharmacistCredentialsContent', () => {
 
     fireEvent.click(saveButton);
     expect(mutationMutateMock).not.toHaveBeenCalled();
+  });
+
+  it('names row actions by pharmacist and certification target', () => {
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎 の 研修認定 を編集' }));
+
+    expect(screen.getByRole('dialog', { name: '資格情報を編集' })).toBeTruthy();
+    expect((screen.getByLabelText('対象スタッフ') as HTMLSelectElement).value).toBe('user_1');
+    expect((screen.getByLabelText('認定種別') as HTMLInputElement).value).toBe('研修認定');
+    expect((screen.getByLabelText('認定番号') as HTMLInputElement).value).toBe('CERT-001');
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎 の 研修認定 を失効' }));
+
+    expect(screen.getByRole('dialog', { name: '資格情報を失効しますか' })).toBeTruthy();
+    expect(screen.getByText('山田 太郎 の 研修認定 を削除します。')).toBeTruthy();
   });
 });

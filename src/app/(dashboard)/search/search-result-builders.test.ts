@@ -59,6 +59,15 @@ describe('buildPatientResult', () => {
     expect(row.badgeClassName).toBe(SEARCH_CATEGORY_BADGE_CLASSES.patient);
     expect(row.badgeLabel).toBe('患者');
   });
+
+  it('encodes a malicious id so it cannot escape the /patients/ path segment', () => {
+    const row = buildPatientResult({ id: '../settings?x=1#y', name: '田中' });
+    expect(row.href).toBe(`/patients/${encodeURIComponent('../settings?x=1#y')}`);
+    // raw slash/query/hash がそのまま出ず、別 route へ抜けない。
+    expect(row.href).not.toContain('/settings');
+    expect(row.href).not.toContain('?x=1');
+    expect(row.href).not.toContain('#y');
+  });
 });
 
 describe('buildPrescriptionResult', () => {
@@ -88,6 +97,14 @@ describe('buildPrescriptionResult', () => {
   it('href goes to /prescriptions/:id', () => {
     const row = buildPrescriptionResult({ id: 'rx001' });
     expect(row.href).toBe('/prescriptions/rx001');
+  });
+
+  it('encodes a malicious id so it cannot escape the /prescriptions/ path segment', () => {
+    const row = buildPrescriptionResult({ id: '../settings?x=1#y' });
+    expect(row.href).toBe(`/prescriptions/${encodeURIComponent('../settings?x=1#y')}`);
+    expect(row.href).not.toContain('/settings');
+    expect(row.href).not.toContain('?x=1');
+    expect(row.href).not.toContain('#y');
   });
 });
 
@@ -179,6 +196,19 @@ describe('buildReportResult', () => {
     });
     expect(row.title).toContain('報告書');
   });
+
+  it('encodes a malicious id so it cannot escape the /reports/ path segment', () => {
+    const row = buildReportResult({
+      id: '../settings?x=1#y',
+      report_type: 'physician_report',
+      status: 'draft',
+      created_at: '2026-06-01T00:00:00.000Z',
+    });
+    expect(row.href).toBe(`/reports/${encodeURIComponent('../settings?x=1#y')}`);
+    expect(row.href).not.toContain('/settings');
+    expect(row.href).not.toContain('?x=1');
+    expect(row.href).not.toContain('#y');
+  });
 });
 
 describe('buildContactResult', () => {
@@ -224,6 +254,21 @@ describe('buildScheduleProposalResult', () => {
     expect(row.subtitle).toContain('未架電');
     expect(row.subtitle).toContain('佐藤 薬剤師');
     expect(row.href).toBe('/schedules/proposals?workspace=dashboard&detail=proposal_1');
+  });
+
+  it('encodes a malicious id in the detail query param so it cannot inject extra params/path', () => {
+    const row = buildScheduleProposalResult({
+      id: '../settings?x=1#y',
+      proposal_status: 'patient_contact_pending',
+      proposed_date: '2026-06-18',
+    });
+    expect(row.href).toBe(
+      `/schedules/proposals?workspace=dashboard&detail=${encodeURIComponent('../settings?x=1#y')}`,
+    );
+    // 生の追加パラメータ/パスが detail 値から漏れない。
+    expect(row.href).not.toContain('/settings');
+    expect(row.href).not.toContain('x=1');
+    expect(row.href).not.toContain('#y');
   });
 });
 

@@ -1,4 +1,10 @@
 import type { CockpitAuditQueueItem, DashboardCockpitResponse } from '@/types/dashboard-cockpit';
+import { formatElapsedLabel } from '@/lib/datetime/relative-time';
+import { formatTimeOfDay as formatDailyOpsTime } from '@/lib/datetime/time-of-day';
+import { familyNameOf } from '@/lib/utils/person-name';
+
+export { familyNameOf };
+export { formatDailyOpsTime };
 
 /**
  * design/images/new の右レール「次にやること / 止まっている理由」共通ビルダー。
@@ -8,28 +14,8 @@ import type { CockpitAuditQueueItem, DashboardCockpitResponse } from '@/types/da
  * 既存 /api/dashboard/cockpit の集計をそのまま画面横断で使う。
  */
 
-/** ISO → HH:mm(ローカル時刻)。 */
-export function formatDailyOpsTime(iso: string): string {
-  const date = new Date(iso);
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
-
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間表示)。 */
-export function formatDailyOpsAgeLabel(minutes: number): string {
-  const safeMinutes = Math.max(minutes, 0);
-  if (safeMinutes < 60) return `${safeMinutes}分`;
-  if (safeMinutes < 24 * 60) return `${Math.floor(safeMinutes / 60)}時間`;
-  return `${Math.floor(safeMinutes / (24 * 60))}日`;
-}
-
-/** 「田中 一郎」→「田中」(右レール説明文の「(田中様)」表記用)。 */
-export function familyNameOf(fullName: string): string {
-  const trimmed = fullName.trim();
-  if (!trimmed) return fullName;
-  return trimmed.split(/[\s　]+/)[0] ?? trimmed;
-}
+export const formatDailyOpsAgeLabel = formatElapsedLabel;
 
 function describeTopAudit(topAudit: CockpitAuditQueueItem, data: DashboardCockpitResponse): string {
   const visit = data.today_visits.find(

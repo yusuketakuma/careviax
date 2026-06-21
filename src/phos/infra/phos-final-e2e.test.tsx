@@ -751,7 +751,7 @@ describe('PH-OS final review executable E2E coverage', () => {
     const { unmount } = render(<BoardClient client={managerClient} initialItems={[boardItem()]} />);
 
     await waitFor(() => expect(managerClient.getCapacity).toHaveBeenCalled());
-    expect(screen.getByRole('heading', { name: 'Capacity' })).not.toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Capacity' })).not.toBeNull();
     unmount();
 
     const clerkClient = boardClient();
@@ -787,7 +787,7 @@ describe('PH-OS final review executable E2E coverage', () => {
       expect(document.activeElement).toBe(screen.getByRole('button', { name: '参照情報を開く' })),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     await waitFor(() => expect(document.activeElement).toBe(sourceCard));
 
     fireEvent.keyDown(sourceCard, { key: ' ' });

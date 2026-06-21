@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
 import type { HomeVisit2026BillingBlocker } from '@/lib/visits/home-visit-2026-evidence';
 import type { VisitPriority, VisitType } from '@/lib/validations/visit-schedule';
 import {
@@ -643,16 +644,17 @@ export function countCompletedPreparationItems(preparation: VisitPreparation | n
   return PREPARATION_ITEMS.filter(([field]) => preparation[field]).length;
 }
 
+// 状態色は中央トークン(STATUS_TOKENS)を正本とする。優先度は PRIORITY_ROLE 準拠
+// (urgent/high=confirm, normal=info, low=readonly)。
 export function taskPriorityClass(priority: ScheduleTaskPriority) {
   switch (priority) {
     case 'urgent':
-      return 'border-rose-200 bg-rose-50 text-rose-700';
     case 'high':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
+      return STATUS_TOKENS.confirm.badgeClassName;
     case 'low':
-      return 'border-slate-200 bg-slate-50 text-slate-600';
+      return STATUS_TOKENS.readonly.badgeClassName;
     default:
-      return 'border-sky-200 bg-sky-50 text-sky-700';
+      return STATUS_TOKENS.info.badgeClassName;
   }
 }
 
@@ -662,24 +664,28 @@ export function formatTaskDueLabel(task: ScheduleTask) {
   return format(parseISO(value), 'M/d HH:mm', { locale: ja });
 }
 
+// ProposalStatus/ScheduleStatus を SSOT ロールへ写像。confirmed/completed=done、
+// patient_contact_pending=waiting(他者待ち)、ready=info、再調整/延期=confirm、
+// 却下/取消/不在=blocked、その他=readonly。
 export function statusBadgeClass(status: ProposalStatus | ScheduleStatus) {
   switch (status) {
     case 'confirmed':
     case 'completed':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      return STATUS_TOKENS.done.badgeClassName;
     case 'patient_contact_pending':
+      return STATUS_TOKENS.waiting.badgeClassName;
     case 'ready':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
+      return STATUS_TOKENS.info.badgeClassName;
     case 'reschedule_pending':
     case 'rescheduled':
     case 'postponed':
-      return 'border-orange-200 bg-orange-50 text-orange-700';
+      return STATUS_TOKENS.confirm.badgeClassName;
     case 'rejected':
     case 'cancelled':
     case 'no_show':
-      return 'border-rose-200 bg-rose-50 text-rose-700';
+      return STATUS_TOKENS.blocked.badgeClassName;
     default:
-      return 'border-slate-200 bg-slate-50 text-slate-700';
+      return STATUS_TOKENS.readonly.badgeClassName;
   }
 }
 
@@ -706,14 +712,15 @@ export function readImpactedPatientNames(
   return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
 }
 
+// 訪問優先度の強調(emergency=blocked, urgent=confirm)。その他は強調しない=readonly。
 export function priorityBadgeClass(priority: VisitPriority) {
   switch (priority) {
     case 'emergency':
-      return 'border-rose-200 bg-rose-50 text-rose-700';
+      return STATUS_TOKENS.blocked.badgeClassName;
     case 'urgent':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
+      return STATUS_TOKENS.confirm.badgeClassName;
     default:
-      return 'border-slate-200 bg-slate-50 text-slate-700';
+      return STATUS_TOKENS.readonly.badgeClassName;
   }
 }
 

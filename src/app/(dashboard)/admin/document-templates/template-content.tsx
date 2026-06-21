@@ -326,7 +326,7 @@ export function DocumentTemplateContent() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <FileText className="h-4 w-4 text-blue-600" aria-hidden="true" />
+              <FileText className="h-4 w-4 text-primary" aria-hidden="true" />
               {editingTemplateId ? 'テンプレートを編集' : 'テンプレートを登録'}
             </CardTitle>
             <CardDescription>JSON 形式でブロック構成や固定文言を管理します。</CardDescription>

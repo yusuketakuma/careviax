@@ -6,7 +6,7 @@ import { format, parseISO } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CalendarCheck2 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
@@ -28,9 +28,10 @@ import {
  * 検知・調整案合成のロジックは lib/schedules/visit-schedule-conflicts.ts に集約する。
  */
 
+// 調整案カードの面色は意味トークンへ。blue=推奨/情報(info 青)、amber=要確認(confirm 橙)、slate=中立。
 const PLAN_CARD_TONE: Record<AdjustmentPlanTone, string> = {
-  blue: 'border-sky-200 bg-sky-50/60',
-  amber: 'border-amber-200 bg-amber-50/40',
+  blue: 'border-tag-info/30 bg-tag-info/5',
+  amber: 'border-state-confirm/30 bg-state-confirm/5',
   slate: 'border-border/70 bg-card',
 };
 
@@ -92,7 +93,9 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
 
   const pharmacistNameById = useMemo(
     () =>
-      new Map((pharmacistsQuery.data?.data ?? []).map((pharmacist) => [pharmacist.id, pharmacist.name])),
+      new Map(
+        (pharmacistsQuery.data?.data ?? []).map((pharmacist) => [pharmacist.id, pharmacist.name]),
+      ),
     [pharmacistsQuery.data],
   );
 
@@ -110,7 +113,11 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
 
   if (!orgId || schedulesQuery.isLoading || pharmacistsQuery.isLoading) {
     return (
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr_0.7fr] xl:gap-5" role="status" aria-label="重なり読み込み中">
+      <div
+        className="grid gap-4 lg:grid-cols-[1fr_1fr_0.7fr] xl:gap-5"
+        role="status"
+        aria-label="重なり読み込み中"
+      >
         <Skeleton className="h-96 w-full rounded-xl" />
         <Skeleton className="h-96 w-full rounded-xl" />
         <Skeleton className="h-96 w-full rounded-xl" />
@@ -133,7 +140,10 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
 
   if (!viewModel.hasConflict) {
     return (
-      <div className="rounded-xl border border-border/70 bg-card p-6" data-testid="schedule-conflict-resolution">
+      <div
+        className="rounded-xl border border-border/70 bg-card p-6"
+        data-testid="schedule-conflict-resolution"
+      >
         <h1 className="text-base font-bold text-foreground">予定の重なりを直す</h1>
         <EmptyState
           className="mt-4"
@@ -186,13 +196,15 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
                     <span className="flex items-center gap-2">
                       {row.subject}
                       {row.confirmed ? (
-                        <Badge className="border-emerald-200 bg-emerald-50 text-[11px] text-emerald-700">
+                        <StateBadge role="done" className="text-[11px]">
                           確定
-                        </Badge>
+                        </StateBadge>
                       ) : null}
                     </span>
                   </td>
-                  <td className="px-3 py-3 align-top tabular-nums text-foreground">{row.timeLabel}</td>
+                  <td className="px-3 py-3 align-top tabular-nums text-foreground">
+                    {row.timeLabel}
+                  </td>
                   <td className="px-3 py-3 align-top text-foreground">{row.detail}</td>
                 </tr>
               ))}
@@ -221,11 +233,7 @@ export function ConflictResolutionContent({ initialDate }: { initialDate?: strin
               >
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="text-[15px] font-bold text-foreground">{plan.title}</h3>
-                  {isAdopted ? (
-                    <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                      採用
-                    </Badge>
-                  ) : null}
+                  {isAdopted ? <StateBadge role="done">採用</StateBadge> : null}
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{plan.note}</p>
               </article>

@@ -70,6 +70,8 @@ export type ReportFailedDelivery = {
 
 export type ReportCreatedRow = {
   id: string;
+  /** 患者詳細への導線に使う。患者未設定の報告書では null。 */
+  patient_id: string | null;
   patient_label: string;
   report_type: string;
   report_type_label: string;

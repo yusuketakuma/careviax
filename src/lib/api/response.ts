@@ -27,6 +27,14 @@ export function validationError(message: string, details?: unknown) {
   return error('VALIDATION_ERROR', message, 400, details);
 }
 
+/**
+ * 想定外の throw を標準 {code,message} 500 エンベロープに変換する。
+ * 生のエラーメッセージは情報漏洩を避けるため出さず、固定文言を返す。
+ */
+export function internalError(message = 'サーバー内部でエラーが発生しました') {
+  return error('INTERNAL_ERROR', message, 500);
+}
+
 export function compatibilityError(
   code: string,
   message: string,

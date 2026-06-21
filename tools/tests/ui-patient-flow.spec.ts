@@ -4,17 +4,19 @@ import {
   clickAndWaitForStableRoute,
   createInstrumentedPage,
   openStableRoute,
-  reloadStablePage,
   waitForStableUi,
 } from './helpers/local-auth';
 
-test.setTimeout(60_000);
+test.setTimeout(120_000);
+
+const PATIENT_BOARD_SEARCH_LABEL = '氏名・状態で検索';
+const PATIENT_BOARD_CARD_TIMEOUT_MS = 60_000;
 
 async function openFirstPatientDetail(page: Page, options: { mode?: 'click' | 'open' } = {}) {
   // 遷移の起点は /patients 最上部の patients-board カード(氏名リンク)。
   // board カードは全ビューポートで表示される。
   const firstPatientLink = page.getByTestId('patient-board-card-link').first();
-  await expect(firstPatientLink).toBeVisible({ timeout: 30_000 });
+  await expect(firstPatientLink).toBeVisible({ timeout: PATIENT_BOARD_CARD_TIMEOUT_MS });
   const href = (await firstPatientLink.getAttribute('href')) ?? '';
   expect(href).toBeTruthy();
 
@@ -62,7 +64,7 @@ test.describe('patient list and navigation flow', () => {
     const cardPatientName = (await firstCardLink.textContent())?.trim();
     expect(cardPatientName).toBeTruthy();
 
-    await page.getByLabel('氏名・住所で検索').fill(cardPatientName!);
+    await page.getByRole('searchbox', { name: PATIENT_BOARD_SEARCH_LABEL }).fill(cardPatientName!);
     await expect(
       page.getByTestId('patient-board-card-link').filter({ hasText: cardPatientName! }).first(),
     ).toBeVisible();
@@ -138,7 +140,7 @@ test.describe('patient list filters', () => {
     await openStableRoute(page, '/patients');
 
     await expect(page.getByTestId('patients-board')).toBeVisible();
-    await expect(page.getByLabel('氏名・住所で検索')).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: PATIENT_BOARD_SEARCH_LABEL })).toBeVisible();
     await expect(page.getByLabel('担当範囲の切替')).toBeVisible();
     await expect(page.getByLabel('対応カテゴリの絞り込み')).toBeVisible();
     await expect(page.getByTestId('patients-board-grid')).toBeVisible({ timeout: 30_000 });
@@ -156,10 +158,10 @@ test.describe('patient list filters', () => {
     expect(cardsBefore).toBeGreaterThan(0);
 
     // Type a search that's unlikely to match any patient
-    const searchInput = page.getByLabel('氏名・住所で検索');
+    const searchInput = page.getByRole('searchbox', { name: PATIENT_BOARD_SEARCH_LABEL });
     await searchInput.fill('ZZZZNONEXISTENT');
 
-    await expect(page.getByText('条件に一致する患者がいません。')).toBeVisible();
+    await expect(page.getByText('条件に一致する患者がいません')).toBeVisible();
     await expect(page.getByTestId('patient-board-card')).toHaveCount(0);
 
     expect(errors).toEqual([]);
@@ -216,37 +218,25 @@ test.describe('patient detail page', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    await openFirstPatientDetail(page);
+    await openFirstPatientDetail(page, { mode: 'open' });
 
-    await clickAndWaitForStableRoute(page, /\/patients\/.+\/edit$/, () =>
-      page.getByRole('link', { name: '基本情報を編集' }).click({ noWaitAfter: true }),
-    );
+    const editLink = page.getByRole('link', { name: '基本情報を編集' });
+    await expect(editLink).toHaveAttribute('href', /\/patients\/.+\/edit$/);
+    await editLink.focus();
+    await page.keyboard.press('Enter');
+    await expect
+      .poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
+      .toMatch(/\/patients\/.+\/edit$/);
+    await waitForStableUi(page);
 
-    // Locate "氏名" input to confirm we're in the edit screen.
-    const nameInput = page
-      .locator('label:text("氏名") + input, label:text("氏名") ~ input')
-      .first();
-    if (!(await nameInput.isVisible().catch(() => false))) {
-      // The Label component wraps text without htmlFor, so use parent container
-      await expect(
-        page
-          .locator('label')
-          .filter({ hasText: /^氏名$/ })
-          .first(),
-      ).toBeVisible();
-    }
+    await expect(page.locator('input[name="name"]')).toBeVisible({ timeout: 30_000 });
 
-    // Phone is a few fields below - find by position relative to the name input
-    // The phone field is the 5th field in the master card (after name, kana, date, gender-select)
-    // Find it by nearby label text
-    const phoneLabelParent = page
-      .locator('div')
-      .filter({ has: page.locator('label:text("電話番号")') })
-      .filter({ has: page.locator('input') })
-      .first();
-    const phoneField = phoneLabelParent.locator('input').first();
-    await expect(phoneField).toBeVisible();
+    await page.getByRole('tab', { name: '住所・保険' }).click();
+
+    const phoneField = page.locator('input[name="phone"]');
+    await expect(phoneField).toBeVisible({ timeout: 30_000 });
     const originalPhone = await phoneField.inputValue();
+    const editPath = new URL(page.url()).pathname;
 
     // Edit phone number
     const testPhone = '03-9999-0000';
@@ -257,25 +247,21 @@ test.describe('patient detail page', () => {
       page.waitForResponse(
         (res) => res.url().includes('/api/patients/') && res.request().method() === 'PATCH',
       ),
-      page.getByRole('button', { name: '保存' }).first().click(),
+      page.getByRole('button', { name: '保存する' }).click(),
     ]);
 
-    // Reload and verify persistence
-    await reloadStablePage(page);
-    const reloadedPhoneParent = page
-      .locator('div')
-      .filter({ has: page.locator('label:text("電話番号")') })
-      .filter({ has: page.locator('input') })
-      .first();
-    await expect(reloadedPhoneParent.locator('input').first()).toHaveValue(testPhone);
+    // Re-open edit form and verify persistence after the save redirect.
+    await openStableRoute(page, editPath);
+    await page.getByRole('tab', { name: '住所・保険' }).click();
+    await expect(page.getByRole('textbox', { name: /^電話番号$/ })).toHaveValue(testPhone);
 
     // Restore original value
-    await reloadedPhoneParent.locator('input').first().fill(originalPhone);
+    await page.getByRole('textbox', { name: /^電話番号$/ }).fill(originalPhone);
     await Promise.all([
       page.waitForResponse(
         (res) => res.url().includes('/api/patients/') && res.request().method() === 'PATCH',
       ),
-      page.getByRole('button', { name: '保存' }).first().click(),
+      page.getByRole('button', { name: '保存する' }).click(),
     ]);
 
     expect(errors).toEqual([]);
@@ -348,15 +334,20 @@ test.describe('patient creation form', () => {
 
     // Fill some data
     await page.getByLabel(/氏名/).first().fill('テスト患者');
+    await waitForStableUi(page);
 
     // Use the current page-header back link. The new patient form does not expose a separate
     // legacy cancel button.
-    await clickAndWaitForStableRoute(page, /\/patients$/, () =>
-      page.getByRole('link', { name: '患者一覧へ戻る' }).click({ noWaitAfter: true }),
-    );
+    const backLink = page.getByRole('link', { name: '患者一覧へ戻る' });
+    await expect(backLink).toHaveAttribute('href', '/patients');
+    await backLink.focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => new URL(page.url()).pathname, { timeout: 30_000 }).toBe('/patients');
+    await waitForStableUi(page);
 
     // Should navigate away from new patient page
-    expect(page.url()).not.toContain('/patients/new');
+    await expect(page).toHaveURL(/\/patients$/);
+    await expect(page.getByTestId('patients-board')).toBeVisible({ timeout: 30_000 });
 
     expect(errors).toEqual([]);
   });

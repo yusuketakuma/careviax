@@ -1964,4 +1964,150 @@ describe('/api/prescription-intakes GET', () => {
       totalCount: 2,
     });
   });
+
+  it('applies server-side q search with the same count where and returns a minimal response', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'intake_search_1',
+        prescribed_date: new Date('2026-03-30T00:00:00.000Z'),
+        prescriber_name: '佐藤 医師',
+        prescriber_institution: '旧クリニック名',
+        prescriber_institution_ref: {
+          name: '在宅クリニック',
+        },
+        original_document_url: 's3://private/prescription.pdf',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            notes: 'raw line note',
+          },
+        ],
+        cycle: {
+          overall_status: 'intake',
+          case_: {
+            patient: {
+              name: '山田 太郎',
+              name_kana: 'ヤマダ タロウ',
+            },
+          },
+        },
+      },
+      {
+        id: 'intake_search_2',
+        prescribed_date: new Date('2026-03-29T00:00:00.000Z'),
+        prescriber_name: '鈴木 医師',
+        prescriber_institution: null,
+        prescriber_institution_ref: null,
+        cycle: {
+          overall_status: 'ready_to_dispense',
+          case_: {
+            patient: {
+              name: '山田 花子',
+              name_kana: 'ヤマダ ハナコ',
+            },
+          },
+        },
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/prescription-intakes?q=%E5%B1%B1%E7%94%B0&limit=1&include_total=1',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const findManyArgs = prescriptionIntakeFindManyMock.mock.calls[0]?.[0];
+    expect(findManyArgs).toEqual(
+      expect.objectContaining({
+        take: 2,
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          AND: [
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                { rx_number: { contains: '山田', mode: 'insensitive' } },
+                { prescriber_name: { contains: '山田', mode: 'insensitive' } },
+                { prescriber_institution: { contains: '山田', mode: 'insensitive' } },
+                {
+                  prescriber_institution_ref: {
+                    is: { name: { contains: '山田', mode: 'insensitive' } },
+                  },
+                },
+                {
+                  cycle: {
+                    case_: {
+                      patient: {
+                        OR: [
+                          { name: { contains: '山田', mode: 'insensitive' } },
+                          { name_kana: { contains: '山田', mode: 'insensitive' } },
+                        ],
+                      },
+                    },
+                  },
+                },
+              ]),
+            }),
+          ],
+        }),
+      }),
+    );
+    expect(findManyArgs.select).toEqual({
+      id: true,
+      prescribed_date: true,
+      prescriber_name: true,
+      prescriber_institution: true,
+      prescriber_institution_ref: {
+        select: {
+          name: true,
+        },
+      },
+      cycle: {
+        select: {
+          overall_status: true,
+          case_: {
+            select: {
+              patient: {
+                select: { name: true, name_kana: true },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(findManyArgs.select).not.toHaveProperty('lines');
+    expect(findManyArgs.select).not.toHaveProperty('original_document_url');
+    expect(prescriptionIntakeCountMock).toHaveBeenCalledWith({ where: findManyArgs.where });
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'intake_search_1',
+          prescribed_date: '2026-03-30T00:00:00.000Z',
+          prescriber_name: '佐藤 医師',
+          prescriber_institution: {
+            name: '在宅クリニック',
+          },
+          cycle: {
+            overall_status: 'intake',
+            case_: {
+              patient: {
+                name: '山田 太郎',
+                name_kana: 'ヤマダ タロウ',
+              },
+            },
+          },
+        },
+      ],
+      hasMore: true,
+      nextCursor: 'intake_search_1',
+      totalCount: 2,
+    });
+    expect(body.data[0]).not.toHaveProperty('lines');
+    expect(body.data[0]).not.toHaveProperty('original_document_url');
+    expect(body.data[0]).not.toHaveProperty('prescriber_institution_ref');
+  });
 });

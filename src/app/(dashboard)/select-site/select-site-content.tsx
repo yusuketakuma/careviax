@@ -117,7 +117,7 @@ export function SelectSiteContent() {
               </div>
               <p className="text-sm text-muted-foreground">本日訪問 {site.todays_visit_count}件</p>
               {site.has_home_visit ? (
-                <span className="inline-flex w-fit items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+                <span className="inline-flex w-fit items-center rounded-full bg-tag-info/10 px-2.5 py-0.5 text-xs font-semibold text-tag-info">
                   在宅あり
                 </span>
               ) : null}

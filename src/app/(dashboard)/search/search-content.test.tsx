@@ -183,6 +183,35 @@ describe('SearchContent', () => {
     expect(screen.getByText('田中 一郎 様')).toBeTruthy();
   });
 
+  it('uses minimal search contracts where they preserve /search row content', async () => {
+    render(<SearchContent />);
+    await triggerSearch('田中');
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    const patientUrl = urls.find((url) => url.includes('/api/patients'));
+    const proposalUrl = urls.find((url) => url.includes('/api/visit-schedule-proposals'));
+    const reportUrl = urls.find((url) => url.includes('/api/care-reports'));
+    const contactUrl = urls.find((url) => url.includes('/api/contact-profiles'));
+
+    // The dedicated /search page uses a middle projection that keeps the
+    // condition/next-visit fields required for the row subtitle without the full
+    // patient-list enrichment payload.
+    expect(patientUrl).toContain('view=search');
+    expect(patientUrl).toContain('limit=8');
+    expect(proposalUrl).toContain('view=palette');
+    expect(proposalUrl).toContain('limit=8');
+    expect(reportUrl).toContain('view=palette');
+    expect(reportUrl).toContain('limit=8');
+    expect(contactUrl).toContain('limit=8');
+  });
+
+  it('keeps rich patient subtitles when optimizing backend search contracts', async () => {
+    render(<SearchContent />);
+    await triggerSearch('田中');
+
+    expect(screen.getByText('心不全。次回訪問 6/17')).toBeTruthy();
+  });
+
   it('switching chip shows results for the new category', async () => {
     render(<SearchContent />);
     await triggerSearch('アムロジピン');
@@ -221,6 +250,7 @@ describe('SearchContent', () => {
       .map((call) => String(call[0]))
       .filter((url) => url.includes('/api/visit-schedule-proposals'));
     expect(proposalUrls.at(-1)).toContain('q=%E7%94%B0%E4%B8%AD');
+    expect(proposalUrls.at(-1)).toContain('view=palette');
     expect(proposalUrls.at(-1)).toContain('limit=8');
   });
 

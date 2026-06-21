@@ -101,7 +101,7 @@ export type CareManagerReportContent = {
   warnings: string[];
 };
 
-export type AudienceReportAudience = 'visiting_nurse' | 'facility';
+export type AudienceReportAudience = 'visiting_nurse' | 'facility' | 'family';
 
 export type AudienceReportContent = {
   report_audience: AudienceReportAudience;

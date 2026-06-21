@@ -4,6 +4,7 @@ import { success, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { formatUtcDateKey } from '@/lib/date-key';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getProcessStepKeyForStatus } from '@/lib/prescription/cycle-workspace';
 import { careLevelLabels } from '@/lib/patient/home-visit-intake';
@@ -113,12 +114,6 @@ const STEADY_STATUS_TEXT: Record<string, string> = {
   report: '報告書 作成待ち',
   billing: '報告済み — 算定チェック待ち',
 };
-
-function formatTimeOfDay(date: Date): string {
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
 
 function daysBetween(from: Date, to: Date): number {
   return Math.max(0, Math.floor((to.getTime() - from.getTime()) / (24 * 60 * 60_000)));

@@ -448,9 +448,18 @@ describe('/api/facility-visit-batches POST', () => {
       where: {
         org_id: 'org_1',
         id: { notIn: ['schedule_2', 'schedule_1'] },
-        pharmacist_id: 'ph_1',
-        scheduled_date: new Date('2026-03-28'),
-        route_order: { in: [1, 2] },
+        OR: [
+          {
+            pharmacist_id: 'ph_1',
+            scheduled_date: new Date('2026-03-28'),
+            route_order: 1,
+          },
+          {
+            pharmacist_id: 'ph_1',
+            scheduled_date: new Date('2026-03-28'),
+            route_order: 2,
+          },
+        ],
       },
       select: { id: true },
     });
@@ -554,13 +563,22 @@ describe('/api/facility-visit-batches POST', () => {
     expect(proposalConflictFindFirstMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
-        proposed_pharmacist_id: 'ph_1',
-        proposed_date: new Date('2026-03-28'),
-        route_order: { in: [1, 2] },
         finalized_schedule_id: null,
         proposal_status: {
           in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
         },
+        OR: [
+          {
+            proposed_pharmacist_id: 'ph_1',
+            proposed_date: new Date('2026-03-28'),
+            route_order: 1,
+          },
+          {
+            proposed_pharmacist_id: 'ph_1',
+            proposed_date: new Date('2026-03-28'),
+            route_order: 2,
+          },
+        ],
       },
       select: { id: true },
     });

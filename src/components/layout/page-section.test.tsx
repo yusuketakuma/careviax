@@ -21,7 +21,7 @@ describe('PageSection', () => {
 
     const section = screen.getByRole('region', { name: '現在の状況' });
 
-    expect(section.className).toContain('rounded-2xl');
+    expect(section.className).toContain('rounded-xl');
     expect(section.className).toContain('border-border/70');
     expect(screen.getByText('件数サマリーを確認します。')).toBeTruthy();
     expect(screen.getByRole('button', { name: '一括出力' })).toBeTruthy();

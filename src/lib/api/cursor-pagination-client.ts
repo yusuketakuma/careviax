@@ -1,11 +1,6 @@
-import { readJsonObject } from '@/lib/db/json';
+import type { ZodType } from 'zod';
+import { normalizeCursorPaginatedPagePayload, type CursorPaginatedPage } from './response-schemas';
 import { readJsonResponseBody } from './response-body';
-
-export type CursorPaginatedPage<T> = {
-  data: T[];
-  hasMore: boolean;
-  nextCursor?: string;
-};
 
 type CursorPaginatedResult<T, TPage extends CursorPaginatedPage<T>> = Omit<
   TPage,
@@ -25,26 +20,6 @@ function normalizeMaxPages(maxPages: number | undefined) {
   return Math.max(Math.trunc(maxPages), 1);
 }
 
-function normalizeCursorPage<T, TPage extends CursorPaginatedPage<T>>(
-  payload: unknown,
-): { page: CursorPaginatedPage<T>; metadata: Omit<TPage, keyof CursorPaginatedPage<T>> } | null {
-  const object = readJsonObject(payload);
-  if (!object) return null;
-  if (!Array.isArray(object.data)) return null;
-  if (typeof object.hasMore !== 'boolean') return null;
-  if (object.nextCursor !== undefined && typeof object.nextCursor !== 'string') return null;
-
-  const { data, hasMore, nextCursor, ...metadata } = object;
-  return {
-    page: {
-      data: data as T[],
-      hasMore,
-      ...(nextCursor !== undefined ? { nextCursor } : {}),
-    },
-    metadata: metadata as Omit<TPage, keyof CursorPaginatedPage<T>>,
-  };
-}
-
 export async function fetchAllCursorPages<
   T,
   TPage extends CursorPaginatedPage<T> = CursorPaginatedPage<T>,
@@ -56,6 +31,7 @@ export async function fetchAllCursorPages<
   limit?: number;
   maxPages?: number;
   errorMessage: string;
+  itemSchema?: ZodType<T>;
 }): Promise<CursorPaginatedResult<T, TPage>> {
   const fetchImpl = args.fetchImpl ?? fetch;
   const limit = normalizePageLimit(args.limit);
@@ -74,13 +50,16 @@ export async function fetchAllCursorPages<
       throw new Error(args.errorMessage);
     }
 
-    const normalized = normalizeCursorPage<T, TPage>(await readJsonResponseBody(response));
+    const normalized = normalizeCursorPaginatedPagePayload<T>(
+      await readJsonResponseBody(response),
+      args.itemSchema,
+    );
     if (!normalized) {
       throw new Error(args.errorMessage);
     }
 
     const { data, hasMore, nextCursor } = normalized.page;
-    const metadata = normalized.metadata;
+    const metadata = normalized.metadata as Omit<TPage, keyof CursorPaginatedPage<T>>;
     firstPageMetadata ??= metadata;
     aggregated.push(...data);
 

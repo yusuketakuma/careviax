@@ -418,6 +418,15 @@ function InsuranceEditor({
   );
 }
 
+function insuranceActionLabel(
+  sectionTitle: string,
+  index: number,
+  item: InsuranceRecord,
+  action: string,
+) {
+  return `${sectionTitle} ${index + 1}件目の${INSURANCE_TYPE_LABELS[item.insurance_type]}を${action}`;
+}
+
 function InsuranceBlock({
   title,
   items,
@@ -453,7 +462,7 @@ function InsuranceBlock({
         <p className="text-sm text-muted-foreground">該当する保険情報はありません。</p>
       ) : (
         <div className="space-y-3">
-          {items.map((item) => {
+          {items.map((item, index) => {
             const draft = drafts[item.id] ?? toFormState(item);
             const isEditing = editingId === item.id;
             const isSaving = savingId === item.id;
@@ -474,6 +483,7 @@ function InsuranceBlock({
                         type="button"
                         size="sm"
                         variant="outline"
+                        aria-label={insuranceActionLabel(title, index, item, '編集')}
                         onClick={() => onEdit(item)}
                       >
                         編集
@@ -483,6 +493,7 @@ function InsuranceBlock({
                           type="button"
                           size="sm"
                           variant="outline"
+                          aria-label={insuranceActionLabel(title, index, item, '失効')}
                           onClick={() => onDeactivate(item)}
                         >
                           失効
@@ -492,6 +503,7 @@ function InsuranceBlock({
                           type="button"
                           size="sm"
                           variant="outline"
+                          aria-label={insuranceActionLabel(title, index, item, '削除')}
                           onClick={() => onDelete(item)}
                         >
                           削除

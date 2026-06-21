@@ -1,10 +1,17 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   attachLocalSession,
   clickAndWaitForStableRoute,
   createInstrumentedPage,
   openStableRoute,
 } from './helpers/local-auth';
+
+async function openNavigationDrawer(page: Page): Promise<Locator> {
+  await page.getByRole('button', { name: 'ナビを開く' }).click();
+  const drawer = page.getByRole('dialog', { name: 'ナビゲーション' });
+  await expect(drawer).toBeVisible();
+  return drawer;
+}
 
 test.describe('dashboard page', () => {
   test.beforeEach(async ({ context }) => {
@@ -48,10 +55,10 @@ test.describe('sidebar navigation', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/dashboard');
 
-    const sidebar = page.getByTestId('app-sidebar');
+    const sidebar = await openNavigationDrawer(page);
 
     // グループ見出し
-    for (const heading of ['今日', '患者', '工程', '連携', '管理']) {
+    for (const heading of ['今日', '患者', '工程', '連携', '統計', '管理']) {
       await expect(sidebar.getByText(heading, { exact: true })).toBeVisible();
     }
 
@@ -84,7 +91,7 @@ test.describe('sidebar navigation', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/dashboard');
 
-    const sidebar = page.getByTestId('app-sidebar');
+    const sidebar = await openNavigationDrawer(page);
     await clickAndWaitForStableRoute(page, /\/patients$/, () =>
       sidebar.getByRole('link', { name: '患者一覧' }).click(),
     );
@@ -98,7 +105,7 @@ test.describe('sidebar navigation', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/patients');
 
-    const sidebar = page.getByTestId('app-sidebar');
+    const sidebar = await openNavigationDrawer(page);
     await expect(sidebar.getByRole('link', { name: '患者一覧' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -112,7 +119,7 @@ test.describe('sidebar navigation', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/dashboard');
 
-    const sidebar = page.getByTestId('app-sidebar');
+    const sidebar = await openNavigationDrawer(page);
     const settingsLink = sidebar.getByRole('link', { name: '設定' });
     await expect(settingsLink).toBeVisible();
 
@@ -126,7 +133,7 @@ test.describe('sidebar navigation', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/dashboard');
 
-    const sidebar = page.getByTestId('app-sidebar');
+    const sidebar = await openNavigationDrawer(page);
     await expect(sidebar.getByRole('button', { name: 'ログアウト' })).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -150,9 +157,8 @@ test.describe('global navigation', () => {
 
     // Navigate to patient detail (= card workspace)
     const firstPatientLink = page
-      .locator('tbody tr')
-      .first()
-      .locator('a[href^="/patients/"]')
+      .getByRole('region', { name: '患者カード一覧' })
+      .locator('a[href^="/patients/"]:not([href*="#"])')
       .first();
     const href = await firstPatientLink.getAttribute('href');
     expect(href).toBeTruthy();
@@ -164,7 +170,7 @@ test.describe('global navigation', () => {
     await expect(page.getByRole('navigation', { name: 'パンくずリスト' })).toHaveCount(0);
 
     // サイドバーの現在地: カード=アクティブ、患者一覧=非アクティブ
-    const sidebar = page.getByTestId('app-sidebar');
+    const sidebar = await openNavigationDrawer(page);
     await expect(sidebar.getByRole('link', { name: 'カード' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -183,7 +189,7 @@ test.describe('global navigation', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await openStableRoute(page, '/patients');
 
-    const sidebar = page.getByTestId('app-sidebar');
+    const sidebar = await openNavigationDrawer(page);
     await clickAndWaitForStableRoute(page, /\/dashboard$/, () =>
       sidebar.getByRole('link', { name: 'ダッシュボード' }).click(),
     );

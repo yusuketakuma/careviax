@@ -121,16 +121,23 @@ export function summarizeFacilityCriteriaRows(
   };
 }
 
+// 要件達成状態を 6 軸トークンへ:OK=done(緑) / 不足=confirm(橙 要対応) / 確認中=confirm(橙 要確認)。
 const STATUS_BADGES: Record<FacilityCriteriaStatus, { label: string; className: string }> = {
-  ok: { label: 'OK', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  missing: { label: '不足', className: 'border-amber-300 bg-amber-50 text-amber-800' },
-  checking: { label: '確認中', className: 'border-amber-300 bg-amber-50 text-amber-800' },
+  ok: { label: 'OK', className: 'border-state-done/30 bg-state-done/10 text-state-done' },
+  missing: {
+    label: '不足',
+    className: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  },
+  checking: {
+    label: '確認中',
+    className: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  },
 };
 
 const ROW_TONES: Record<FacilityCriteriaStatus, string> = {
-  ok: 'border-emerald-200 bg-emerald-50/50',
-  missing: 'border-amber-300 bg-amber-50/60',
-  checking: 'border-amber-300 bg-amber-50/60',
+  ok: 'border-state-done/30 bg-state-done/10',
+  missing: 'border-state-confirm/30 bg-state-confirm/10',
+  checking: 'border-state-confirm/30 bg-state-confirm/10',
 };
 
 export function FacilityCriteriaChecklist({

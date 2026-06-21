@@ -30,4 +30,35 @@ describe('QRScanPage accessibility status contract', () => {
     expect(SOURCE).toContain('buildQrScanDraftPayload({');
     expect(SOURCE).toContain('siteId,');
   });
+
+  it('stops the ZXing continuous-decode controls when the camera is torn down', () => {
+    // decodeFromVideoElement returns IScannerControls; it must be retained and stopped
+    // so the decode loop and its callback do not leak after stopCamera / unmount.
+    expect(SOURCE).toContain('controlsRef');
+    expect(SOURCE).toContain('const controls = await reader.decodeFromVideoElement(');
+    expect(SOURCE).toContain('controlsRef.current = controls;');
+    expect(SOURCE).toContain('controlsRef.current.stop();');
+  });
+
+  it('ignores ZXing decode callbacks once the camera lifecycle is cancelled', () => {
+    // ZXing may start scan() before returning controls, so the callback itself must
+    // bail out on cancellation to avoid setState/navigation after teardown.
+    expect(SOURCE).toMatch(/decodeFromVideoElement\([\s\S]*?if \(isCancelled\?\.\(\)\) return;/);
+  });
+
+  it('guards startCamera against unmount/phase-change races', () => {
+    // In-flight getUserMedia/import must not assign a stream or call setState after teardown.
+    expect(SOURCE).toContain('async (isCancelled?: () => boolean)');
+    expect(SOURCE).toContain('if (isCancelled?.()) {');
+    expect(SOURCE).toContain('stream.getTracks().forEach((t) => t.stop());');
+    expect(SOURCE).toContain('let cancelled = false;');
+    expect(SOURCE).toContain('startCamera(() => cancelled)');
+    // The retry button must not pass the click event as the cancellation predicate.
+    expect(SOURCE).toContain('onClick={() => startCamera()}');
+  });
+
+  it('revokes the uploaded image object URL even when decoding fails', () => {
+    expect(SOURCE).toContain('} finally {');
+    expect(SOURCE).toContain('URL.revokeObjectURL(url);');
+  });
 });

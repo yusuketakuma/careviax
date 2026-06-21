@@ -1,17 +1,35 @@
 import { expect, test } from '@playwright/test';
-import type { Locator } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   attachLocalSession,
   clickAndWaitForStableRoute,
   createInstrumentedPage,
   openStableRoute,
-  waitForStableUi,
 } from './helpers/local-auth';
 
 async function expectWorkbenchChromeRemoved(main: Locator) {
   await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toHaveCount(0);
   await expect(main).not.toContainText('ファーマ在宅 調剤システム');
   await expect(main.getByRole('button', { name: /^F(?:[1-9]|1[0-2])\b/ })).toHaveCount(0);
+}
+
+async function fetchFirstPatientOption(page: Page) {
+  const response = await page.request.get('/api/patients?limit=5&sort=name_kana&order=asc');
+  expect(response.ok()).toBeTruthy();
+
+  const payload = (await response.json()) as {
+    data?: Array<{ id?: unknown; name?: unknown; name_kana?: unknown }>;
+  };
+  const patient = payload.data?.find(
+    (item) =>
+      typeof item.id === 'string' &&
+      item.id.length > 0 &&
+      typeof item.name === 'string' &&
+      item.name.length > 0,
+  );
+  expect(patient).toBeTruthy();
+
+  return patient as { id: string; name: string; name_kana?: string };
 }
 
 test.describe('prescription intake flow', () => {
@@ -57,27 +75,29 @@ test.describe('prescription intake flow', () => {
   test('prescription intake form pre-fills patient from URL params', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
 
-    // First get a patient ID from the patient list.
-    // 新デザインの患者一覧はカード起点(patient-board-card-link)で旧 tbody テーブルは無い。
-    await openStableRoute(page, '/patients');
-    const firstPatientLink = page.getByTestId('patient-board-card-link').first();
-    const href = await firstPatientLink.getAttribute('href');
-    const patientId = href?.replace('/patients/', '') ?? '';
-    expect(patientId).toBeTruthy();
+    // This workflow test verifies the prescription form's patient_id URL contract.
+    // Patient-list rendering itself is covered by ui-patient-flow.spec.ts, so avoid
+    // coupling this path to /patients card hydration.
+    const patient = await fetchFirstPatientOption(page);
 
     // Navigate to prescription intake with patient_id param
-    await openStableRoute(page, `/prescriptions/new?patient_id=${patientId}`);
+    const selectedPatientResponse = page
+      .waitForResponse(
+        (res) => {
+          const url = new URL(res.url());
+          return url.pathname === `/api/patients/${patient.id}` && res.status() === 200;
+        },
+        { timeout: 30_000 },
+      )
+      .catch(() => null);
+    await openStableRoute(page, `/prescriptions/new?patient_id=${patient.id}`);
+    await selectedPatientResponse;
 
     await expect(page.getByRole('heading', { name: '新規処方受付' })).toBeVisible();
 
-    // Patient should be pre-selected (patient name should appear somewhere)
-    // Wait for patient data to load
-    await page
-      .waitForResponse((res) => res.url().includes('/api/patients') && res.status() === 200, {
-        timeout: 5000,
-      })
-      .catch(() => null);
-    await waitForStableUi(page);
+    await expect(page.getByLabel('患者検索')).toHaveValue(new RegExp(patient.name), {
+      timeout: 30_000,
+    });
 
     expect(errors).toEqual([]);
   });

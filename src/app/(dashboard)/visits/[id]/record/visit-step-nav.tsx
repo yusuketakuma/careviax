@@ -103,7 +103,7 @@ export function VisitStepNav({ activeId }: { activeId: VisitRecordStepId | null 
                   state === 'current'
                     ? 'border-primary/40 bg-primary/5 font-medium text-foreground'
                     : state === 'done'
-                      ? 'border-emerald-200 bg-emerald-50/60 text-foreground'
+                      ? 'border-state-done/30 bg-state-done/10 text-foreground'
                       : 'border-border bg-card text-muted-foreground hover:bg-muted/40',
                 )}
               >
@@ -111,7 +111,7 @@ export function VisitStepNav({ activeId }: { activeId: VisitRecordStepId | null 
                   {index + 1}. {step.label}
                 </span>
                 {state === 'done' ? (
-                  <span className="inline-flex shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">
+                  <span className="inline-flex shrink-0 items-center rounded-full border border-state-done/30 bg-state-done/10 px-1.5 py-0.5 text-[11px] font-medium text-state-done">
                     済
                   </span>
                 ) : null}
@@ -155,12 +155,12 @@ export function VisitModeHeader({
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {isOffline ? (
-          <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+          <span className="inline-flex items-center rounded-full border border-state-confirm/30 bg-state-confirm/10 px-2.5 py-0.5 text-xs font-semibold text-state-confirm">
             オフライン
           </span>
         ) : null}
         {pendingSyncCount > 0 ? (
-          <span className="inline-flex items-center rounded-full border border-red-300 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+          <span className="inline-flex items-center rounded-full border border-state-blocked/30 bg-state-blocked/10 px-2.5 py-0.5 text-xs font-semibold text-state-blocked">
             未同期 {pendingSyncCount}件
           </span>
         ) : null}
@@ -197,14 +197,14 @@ export function VisitMobileModeHeader({
         <p className="text-lg font-bold tracking-tight text-primary">PH-OS</p>
         <div className="flex items-center gap-2">
           {isOffline ? (
-            <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+            <span className="inline-flex items-center rounded-full border border-state-confirm/30 bg-state-confirm/10 px-2.5 py-0.5 text-xs font-semibold text-state-confirm">
               オフライン
             </span>
           ) : null}
           {pendingSyncCount > 0 ? (
             <span
               data-testid="visit-mobile-pending-sync-badge"
-              className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-600"
+              className="inline-flex items-center rounded-full border border-state-blocked/30 bg-state-blocked/10 px-2.5 py-0.5 text-xs font-semibold text-state-blocked"
             >
               未同期{pendingSyncCount}
             </span>
@@ -276,10 +276,13 @@ export function VisitUnsyncedEvidenceBanner({ className }: { className?: string 
     <div
       role="status"
       data-testid="visit-unsynced-evidence-banner"
-      className={cn('rounded-lg border border-amber-300 bg-amber-50/80 px-4 py-3', className)}
+      className={cn(
+        'rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3',
+        className,
+      )}
     >
-      <p className="text-sm font-bold text-amber-700">未同期の写真があります</p>
-      <p className="mt-1 text-xs leading-5 text-amber-900/80">訪問完了前に同期してください。</p>
+      <p className="text-sm font-bold text-state-confirm">未同期の写真があります</p>
+      <p className="mt-1 text-xs leading-5 text-state-confirm/80">訪問完了前に同期してください。</p>
     </div>
   );
 }
@@ -331,8 +334,8 @@ export function VisitEvidenceRail({ items }: { items: VisitEvidenceRailItem[] })
                   className={cn(
                     'inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[11px] font-medium',
                     item.statusTone === 'pending'
-                      ? 'border-amber-300 bg-amber-50 text-amber-800'
-                      : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                      ? 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm'
+                      : 'border-state-done/30 bg-state-done/10 text-state-done',
                   )}
                 >
                   {item.statusLabel}
@@ -409,7 +412,7 @@ export function VisitStepActionBar({
             type="submit"
             loading={submitPending}
             loadingLabel="保存中..."
-            className="min-h-11 bg-emerald-600 text-white hover:bg-emerald-700 sm:min-w-32"
+            className="min-h-11 bg-state-done text-white hover:bg-state-done/90 sm:min-w-32"
           >
             訪問完了
           </LoadingButton>
@@ -440,7 +443,7 @@ export function VisitStepActionBar({
             type="submit"
             loading={submitPending}
             loadingLabel="保存中..."
-            className="min-h-12 flex-1 bg-emerald-600 text-white hover:bg-emerald-700"
+            className="min-h-12 flex-1 bg-state-done text-white hover:bg-state-done/90"
           >
             訪問完了
           </LoadingButton>

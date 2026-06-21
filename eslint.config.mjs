@@ -15,6 +15,7 @@ const eslintConfig = defineConfig([
     'test-results/**',
     'coverage/**',
     'artifacts/**',
+    'agmsg/**',
     '.ds-sync/**',
     '.design-sync/.cache/**',
     '.design-sync/learnings/**',

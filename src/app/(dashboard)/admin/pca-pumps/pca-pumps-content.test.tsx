@@ -16,11 +16,20 @@ import {
 
 setupDomTestEnv();
 
-const { useOrgIdMock } = vi.hoisted(() => ({
+const { queryErrorKeysMock, queryRefetchMock, useOrgIdMock } = vi.hoisted(() => ({
+  queryErrorKeysMock: new Set<string>(),
+  queryRefetchMock: vi.fn(),
   useOrgIdMock: vi.fn(),
 }));
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+
+function queryState(key: string) {
+  return {
+    isError: queryErrorKeysMock.has(key),
+    refetch: queryRefetchMock,
+  };
+}
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -88,6 +97,7 @@ vi.mock('@tanstack/react-query', () => ({
           ],
         },
         isLoading: false,
+        ...queryState('pca-pumps'),
       };
     }
     if (key === 'pca-pump-rentals') {
@@ -127,6 +137,7 @@ vi.mock('@tanstack/react-query', () => ({
             ],
           },
           isLoading: false,
+          ...queryState('pca-pump-rentals:return-inspection-pending'),
         };
       }
       return {
@@ -164,6 +175,7 @@ vi.mock('@tanstack/react-query', () => ({
           ],
         },
         isLoading: false,
+        ...queryState('pca-pump-rentals'),
       };
     }
     if (key === 'prescriber-institutions') {
@@ -178,19 +190,34 @@ vi.mock('@tanstack/react-query', () => ({
           ],
         },
         isLoading: false,
+        ...queryState('prescriber-institutions'),
       };
     }
-    return { data: undefined, isLoading: false };
+    return { data: undefined, isLoading: false, isError: false, refetch: queryRefetchMock };
   },
 }));
 
 vi.mock('@/components/ui/data-table', () => ({
   DataTable: ({
     data,
+    errorMessage,
+    onRetry,
   }: {
     data: Array<{ id: string; asset_code?: string; pump?: { asset_code: string } }>;
+    errorMessage?: string;
+    onRetry?: () => void;
   }) => (
     <div data-testid="data-table">
+      {errorMessage ? (
+        <div role="alert">
+          <p>{errorMessage}</p>
+          {onRetry ? (
+            <button type="button" onClick={onRetry}>
+              再読み込み
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {data.map((row) => (
         <div key={row.id}>{row.asset_code ?? row.pump?.asset_code}</div>
       ))}
@@ -277,6 +304,7 @@ vi.mock('@/components/ui/select', async () => {
 describe('PcaPumpsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    queryErrorKeysMock.clear();
     useOrgIdMock.mockReturnValue('org_1');
   });
 
@@ -294,6 +322,28 @@ describe('PcaPumpsContent', () => {
         name: /検品 PCA-RETURNED サンプル在宅クリニック 返却日 2026\/6\/8/,
       }),
     ).toBeTruthy();
+  });
+
+  it('passes pump inventory failures to DataTable instead of showing a false empty table', () => {
+    queryErrorKeysMock.add('pca-pumps');
+
+    render(<PcaPumpsContent />);
+
+    expect(screen.getByRole('alert').textContent).toContain('PCAポンプ台帳を取得できませんでした');
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+
+    expect(queryRefetchMock).toHaveBeenCalled();
+  });
+
+  it('passes rental list failures to DataTable instead of showing a false empty table', () => {
+    queryErrorKeysMock.add('pca-pump-rentals');
+
+    render(<PcaPumpsContent />);
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      'PCAポンプ貸出一覧を取得できませんでした',
+    );
   });
 
   it('surfaces rental required fields and date/fee blockers inline before mutation', () => {

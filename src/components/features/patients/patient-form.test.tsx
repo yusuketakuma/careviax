@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PatientForm } from './patient-form';
@@ -11,6 +11,9 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const routerBackMock = vi.hoisted(() => vi.fn());
 const routerPushMock = vi.hoisted(() => vi.fn());
+const allowNavigationMock = vi.hoisted(() => vi.fn());
+// 実 hook は allowNavigation 関数を直接返す。mock も同形にする(分割代入しない)。
+const unsavedGuardMock = vi.hoisted(() => vi.fn(() => allowNavigationMock));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -32,6 +35,10 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
     error: vi.fn(),
   },
+}));
+
+vi.mock('@/lib/hooks/use-unsaved-changes-guard', () => ({
+  useUnsavedChangesGuard: unsavedGuardMock,
 }));
 
 describe('PatientForm', () => {
@@ -184,5 +191,145 @@ describe('PatientForm', () => {
       name: '山田 太郎',
       duplicate_acknowledged: true,
     });
+  });
+
+  it('guards unsaved changes while dirty and bypasses navigation on cancel', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    render(<PatientForm />);
+
+    const lastEnabled = () => {
+      const calls = unsavedGuardMock.mock.calls as unknown as Array<[{ enabled: boolean }]>;
+      return calls.at(-1)?.[0]?.enabled;
+    };
+    // 初期(未変更)は guard 無効。
+    expect(lastEnabled()).toBe(false);
+
+    // 入力で dirty → guard 有効(離脱防止が効く)。
+    fireEvent.change(screen.getByLabelText('氏名 *'), { target: { value: '山田 太郎' } });
+    expect(lastEnabled()).toBe(true);
+
+    // キャンセルは離脱を許可(allowNavigation で bypass)してから戻る。
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    expect(allowNavigationMock).toHaveBeenCalled();
+    expect(routerBackMock).toHaveBeenCalled();
+  });
+
+  it('overlays a stepper: step 1 is registerable and 次へ/戻る move steps (tabs preserved)', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    render(<PatientForm />);
+
+    // Step1 は基本のみで登録可能の明示 + 基本タブが現在ステップ(選択中)。
+    expect(screen.getByText(/基本情報だけで登録できます/)).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '基本', selected: true })).toBeTruthy();
+
+    // 次へ: 住所・保険 で step2 を activate(Tabs を内部維持)。
+    fireEvent.click(screen.getByRole('button', { name: /次へ: 住所・保険/ }));
+    expect(screen.getByRole('tab', { name: '住所・保険', selected: true })).toBeTruthy();
+
+    // 戻る で step1 に戻る。
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }));
+    expect(screen.getByRole('tab', { name: '基本', selected: true })).toBeTruthy();
+  });
+
+  it('offers an open-existing-patient link in the duplicate alert (keeping それでも登録する)', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        message: '重複',
+        details: {
+          duplicate_type: 'patient_identity',
+          duplicates: [
+            {
+              id: 'patient_existing',
+              name: '山田 太郎',
+              name_kana: 'ヤマダ タロウ',
+              birth_date: '1950-01-01T00:00:00.000Z',
+              gender: 'male',
+            },
+          ],
+        },
+      }),
+    } as Response);
+
+    render(<PatientForm />);
+    fillRequiredPatientFields();
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('同名の患者が存在します:')).toBeTruthy();
+    });
+
+    // 「それでも登録する」は維持。
+    expect(screen.getByRole('button', { name: 'それでも登録する' })).toBeTruthy();
+    // 「既存患者を開く」で患者詳細へ遷移。
+    fireEvent.click(screen.getByRole('button', { name: '既存患者を開く' }));
+    expect(routerPushMock).toHaveBeenCalledWith('/patients/patient_existing');
+  });
+
+  it('ignores a superseded duplicate-check response after the inputs change (stale race)', async () => {
+    vi.useFakeTimers();
+    try {
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryMock.mockReturnValue({ data: [], isLoading: false });
+      const fetchMock = vi.mocked(fetch);
+
+      // 1本目の重複チェック: 後で stale なレスポンスを解決できるよう保留にする
+      let resolveFirst: ((res: Response) => void) | undefined;
+      let firstSignal: AbortSignal | undefined;
+      fetchMock.mockImplementationOnce((_url, init) => {
+        firstSignal = (init as RequestInit | undefined)?.signal ?? undefined;
+        return new Promise<Response>((resolve) => {
+          resolveFirst = resolve;
+        });
+      });
+      // 2本目以降は保留(解決しない)
+      fetchMock.mockImplementation(() => new Promise<Response>(() => {}));
+
+      render(<PatientForm />);
+      fillRequiredPatientFields();
+
+      // 500ms デバウンス経過 → 1本目の checkDuplicate 発火
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(fetchMock).toHaveBeenCalled();
+      expect(firstSignal?.aborted).toBe(false);
+
+      // 入力変更 → 直前 effect の cleanup が controller.abort() を呼ぶ
+      fireEvent.change(screen.getByLabelText('氏名 *'), { target: { value: '山田 次郎' } });
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(firstSignal?.aborted).toBe(true);
+
+      // abort 後に 1本目の stale レスポンスを解決 → guard により setDuplicates されない
+      await act(async () => {
+        resolveFirst?.({
+          ok: true,
+          json: async () => ({
+            duplicates: [
+              {
+                id: 'patient_stale',
+                name: '山田 太郎',
+                name_kana: 'ヤマダ タロウ',
+                birth_date: '1950-01-01T00:00:00.000Z',
+                gender: 'male',
+              },
+            ],
+          }),
+        } as Response);
+        vi.advanceTimersByTime(0);
+      });
+
+      expect(screen.queryByText('同名の患者が存在します:')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -270,10 +270,10 @@ const postVisitStatusLabel: Record<VisitWorkflowAction['status'], string> = {
 };
 
 const postVisitStatusClassName: Record<VisitWorkflowAction['status'], string> = {
-  ready: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  needs_review: 'border-amber-200 bg-amber-50 text-amber-800',
-  waiting: 'border-slate-200 bg-slate-50 text-slate-700',
-  blocked: 'border-red-200 bg-red-50 text-red-800',
+  ready: 'border-state-done/30 bg-state-done/10 text-state-done',
+  needs_review: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  waiting: 'border-state-readonly/30 bg-state-readonly/10 text-state-readonly',
+  blocked: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
 };
 
 function PostVisitWorkflowPanel({
@@ -888,14 +888,14 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
         </div>
       )}
       {record.postpone_reason && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-          <p className="text-xs font-medium text-amber-700">延期理由</p>
+        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3">
+          <p className="text-xs font-medium text-state-confirm">延期理由</p>
           <p className="mt-1 text-sm">{record.postpone_reason}</p>
         </div>
       )}
       {record.revisit_reason && (
-        <div className="rounded-lg border border-blue-300 bg-blue-50 p-3">
-          <p className="text-xs font-medium text-blue-700">再訪理由</p>
+        <div className="rounded-lg border border-tag-info/30 bg-tag-info/10 p-3">
+          <p className="text-xs font-medium text-tag-info">再訪理由</p>
           <p className="mt-1 text-sm">{record.revisit_reason}</p>
         </div>
       )}
@@ -1107,7 +1107,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
                           {med.is_reduction_target && !med.is_prohibited_reduction && (
                             <Badge
                               variant="outline"
-                              className="text-xs text-amber-600 border-amber-300"
+                              className="text-xs text-state-confirm border-state-confirm/30"
                             >
                               減数対象
                             </Badge>

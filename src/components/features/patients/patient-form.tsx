@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
   adlLabels,
@@ -246,6 +247,18 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
   const [duplicates, setDuplicates] = useState<DuplicatePatient[]>([]);
   const [duplicateConfirmedKey, setDuplicateConfirmedKey] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PatientFormTab>('basic');
+  // 段階表示: Tabs を内部維持したまま、現在ステップ index と前後ナビを被せる。
+  // deep-link(?section=/#patient-form-*) と findFirstErrorTab は従来どおり activeTab を駆動する。
+  const currentStepIndex = Math.max(
+    0,
+    PATIENT_FORM_TABS.findIndex((t) => t.value === activeTab),
+  );
+  const goStep = (delta: number) =>
+    setActiveTab(
+      PATIENT_FORM_TABS[
+        Math.min(PATIENT_FORM_TABS.length - 1, Math.max(0, currentStepIndex + delta))
+      ].value,
+    );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAutofilledAddressRef = useRef<string | null>(null);
   const errorSummaryId = 'patient-form-error-summary';
@@ -255,11 +268,15 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
     handleSubmit,
     control,
     setValue,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<CreatePatientInput>({
     resolver: zodResolver(createPatientSchema),
     defaultValues: defaultValues ?? {},
   });
+
+  // 入力中の離脱防止(CLAUDE.md エラー防止)。未保存かつ送信中でないときのみ guard。
+  // submit 成功 / キャンセル / 既存患者を開く は allowNavigation() で bypass する。
+  const allowNavigation = useUnsavedChangesGuard({ enabled: isDirty && !isSubmitting });
 
   const [watchedName, watchedBirthDate, watchedGender] = useWatch({
     control,
@@ -379,18 +396,21 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
   );
 
   const checkDuplicate = useCallback(
-    async (name: string, birthDate: string, gender: string) => {
+    async (name: string, birthDate: string, gender: string, signal?: AbortSignal) => {
       try {
         const params = new URLSearchParams({ name, date_of_birth: birthDate, gender });
         const res = await fetch(`/api/patients/check-duplicate?${params}`, {
           headers: { 'x-org-id': orgId },
+          signal,
         });
         if (res.ok) {
           const data = await res.json();
+          // 解決済みレスポンスの json parse 中に abort された場合、古い結果での上書きを防ぐ
+          if (signal?.aborted) return;
           setDuplicates(data.duplicates ?? []);
         }
       } catch {
-        // Silently ignore duplicate check errors
+        // Silently ignore duplicate check errors (incl. AbortError for superseded requests)
       }
     },
     [orgId],
@@ -453,13 +473,16 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
       return;
     }
 
+    const controller = new AbortController();
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      checkDuplicate(watchedName.trim(), watchedBirthDate, watchedGender);
+      checkDuplicate(watchedName.trim(), watchedBirthDate, watchedGender, controller.signal);
     }, 500);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      // 入力が更新されたら進行中の重複チェックを中断し、古いレスポンスでの上書きを防ぐ
+      controller.abort();
     };
   }, [patientId, watchedName, watchedBirthDate, watchedGender, checkDuplicate]);
 
@@ -532,6 +555,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
 
     const patient = await res.json();
     toast.success(patientId ? '患者情報を更新しました' : '患者を登録しました');
+    allowNavigation(); // 正常保存後の遷移は離脱防止プロンプトを出さない。
     onSuccess?.(patient.id ?? patientId);
     if (redirectTo) {
       router.push(redirectTo);
@@ -550,9 +574,27 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PatientFormTab)}>
         <div className="rounded-lg border border-border/70 bg-card p-2">
+          <div
+            className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1"
+            role="status"
+            aria-label={`入力ステップ ${currentStepIndex + 1} / ${PATIENT_FORM_TABS.length}`}
+          >
+            <p className="text-xs font-medium text-muted-foreground">
+              ステップ <span className="tabular-nums text-foreground">{currentStepIndex + 1}</span>{' '}
+              / {PATIENT_FORM_TABS.length} — {PATIENT_FORM_TABS[currentStepIndex]?.label}
+            </p>
+            {!patientId && currentStepIndex === 0 ? (
+              <span className="text-[11px] font-medium text-state-done">
+                基本情報だけで登録できます（残りは後からでも追記できます）
+              </span>
+            ) : null}
+          </div>
           <TabsList variant="line" className="flex w-full flex-wrap justify-start gap-1">
-            {PATIENT_FORM_TABS.map((tab) => (
+            {PATIENT_FORM_TABS.map((tab, index) => (
               <TabsTrigger key={tab.value} value={tab.value} className="flex-none px-3">
+                <span className="mr-1 tabular-nums text-muted-foreground" aria-hidden="true">
+                  {index + 1}.
+                </span>
                 {tab.label}
               </TabsTrigger>
             ))}
@@ -690,15 +732,15 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                   variant="default"
                   className={
                     serviceAreaWarning.level === 'covered'
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                      : 'border-amber-300 bg-amber-50 text-amber-900'
+                      ? 'border-state-done/40 bg-state-done/5 text-state-done'
+                      : 'border-state-confirm/40 bg-state-confirm/5 text-state-confirm'
                   }
                 >
                   <AlertTriangle
                     className={
                       serviceAreaWarning.level === 'covered'
-                        ? 'h-4 w-4 text-emerald-600'
-                        : 'h-4 w-4 text-amber-600'
+                        ? 'h-4 w-4 text-state-done'
+                        : 'h-4 w-4 text-state-confirm'
                     }
                   />
                   <AlertDescription>{serviceAreaWarning.message}</AlertDescription>
@@ -749,7 +791,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                   {selectedFacilityId &&
                     !facilityUnitsQuery.isLoading &&
                     (facilityUnitsQuery.data?.length ?? 0) === 0 && (
-                      <p className="text-xs text-amber-700" role="status">
+                      <p className="text-xs text-state-confirm" role="status">
                         この施設には登録済みユニットがありません。施設管理から先にユニットを追加してください。
                       </p>
                     )}
@@ -2226,9 +2268,9 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
       {activeDuplicates.length > 0 && !duplicateConfirmed && (
         <Alert
           variant="default"
-          className="border-amber-400 bg-amber-50 text-amber-900 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-200"
+          className="border-state-confirm/40 bg-state-confirm/5 text-state-confirm"
         >
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertTriangle className="h-4 w-4 text-state-confirm" />
           <AlertDescription className="space-y-2">
             <p className="font-medium">同名の患者が存在します:</p>
             <ul className="list-disc pl-5 text-sm">
@@ -2238,8 +2280,22 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 const genderLabel =
                   d.gender === 'male' ? '男性' : d.gender === 'female' ? '女性' : 'その他';
                 return (
-                  <li key={d.id}>
-                    {d.name}（{birthStr}・{genderLabel}）
+                  <li key={d.id} className="flex flex-wrap items-center gap-2">
+                    <span>
+                      {d.name}（{birthStr}・{genderLabel}）
+                    </span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-state-confirm underline-offset-2"
+                      onClick={() => {
+                        allowNavigation();
+                        router.push(`/patients/${encodeURIComponent(d.id)}`);
+                      }}
+                    >
+                      既存患者を開く
+                    </Button>
                   </li>
                 );
               })}
@@ -2248,7 +2304,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               type="button"
               variant="outline"
               size="sm"
-              className="mt-2 border-amber-500 text-amber-800 hover:bg-amber-100 dark:border-amber-500 dark:text-amber-200 dark:hover:bg-amber-900"
+              className="mt-2 border-state-confirm/50 text-state-confirm hover:bg-state-confirm/10"
               onClick={() => setDuplicateConfirmedKey(duplicateLookupKey)}
             >
               それでも登録する
@@ -2257,11 +2313,34 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
         </Alert>
       )}
 
+      {/* 段階ナビ: 任意ステップを順に進む。登録ボタンは常時表示(Step1 のみで登録可)。 */}
+      <div className="flex items-center justify-between gap-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => goStep(-1)}
+          disabled={currentStepIndex === 0 || isSubmitting}
+        >
+          ← 戻る
+        </Button>
+        {currentStepIndex < PATIENT_FORM_TABS.length - 1 ? (
+          <Button type="button" variant="outline" size="sm" onClick={() => goStep(1)}>
+            次へ: {PATIENT_FORM_TABS[currentStepIndex + 1].label} →
+          </Button>
+        ) : (
+          <span />
+        )}
+      </div>
+
       <div className="flex justify-end gap-3">
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.back()}
+          onClick={() => {
+            allowNavigation();
+            router.back();
+          }}
           disabled={isSubmitting}
         >
           キャンセル

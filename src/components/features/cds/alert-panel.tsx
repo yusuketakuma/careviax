@@ -28,16 +28,16 @@ function AlertItem({ alert }: AlertItemProps) {
     },
     warning: {
       icon: AlertCircle,
-      containerClass: 'border-orange-400/40 bg-orange-50',
-      iconClass: 'text-orange-600',
-      titleClass: 'text-orange-700 font-semibold',
+      containerClass: 'border-state-confirm/40 bg-state-confirm/5',
+      iconClass: 'text-state-confirm',
+      titleClass: 'text-state-confirm font-semibold',
       label: '注意',
     },
     info: {
       icon: Info,
-      containerClass: 'border-blue-400/40 bg-blue-50',
-      iconClass: 'text-blue-600',
-      titleClass: 'text-blue-700 font-semibold',
+      containerClass: 'border-tag-info/40 bg-tag-info/5',
+      iconClass: 'text-tag-info',
+      titleClass: 'text-tag-info font-semibold',
       label: '情報',
     },
   } as const satisfies Record<
@@ -250,13 +250,13 @@ export function CdsAlertPanel({ alerts, isLoading, isUnavailable, className }: A
     return (
       <div
         className={cn(
-          'rounded-md border border-green-300 bg-green-50 px-3 py-2.5 text-sm',
+          'rounded-md border border-state-done/40 bg-state-done/5 px-3 py-2.5 text-sm',
           className,
         )}
         role="status"
         aria-live="polite"
       >
-        <div className="flex items-center gap-2 text-green-700">
+        <div className="flex items-center gap-2 text-state-done">
           <Info className="size-4 shrink-0" aria-hidden="true" />
           <span>処方安全アラートはありません</span>
         </div>
@@ -279,12 +279,12 @@ export function CdsAlertPanel({ alerts, isLoading, isUnavailable, className }: A
           </span>
         )}
         {warnings.length > 0 && (
-          <span className="rounded-full bg-orange-500 px-2 py-0.5 text-xs font-semibold text-white">
+          <span className="rounded-full bg-state-confirm px-2 py-0.5 text-xs font-semibold text-white">
             注意 {warnings.length}
           </span>
         )}
         {infos.length > 0 && (
-          <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-semibold text-white">
+          <span className="rounded-full bg-tag-info px-2 py-0.5 text-xs font-semibold text-white">
             情報 {infos.length}
           </span>
         )}

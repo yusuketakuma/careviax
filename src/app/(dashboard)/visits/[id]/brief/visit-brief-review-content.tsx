@@ -35,9 +35,9 @@ import {
 
 /** 選択中 3 択カードの強調(色のみに依存せずチェックアイコンを併記する)。 */
 const SELECTED_CHOICE_CLASSES: Record<PharmacistConfirmChoice, string> = {
-  correct: 'border-emerald-300 bg-emerald-50 text-emerald-900',
-  needs_edit: 'border-amber-300 bg-amber-50 text-amber-900',
-  do_not_use: 'border-slate-300 bg-slate-100 text-slate-900',
+  correct: 'border-state-done/30 bg-state-done/10 text-state-done',
+  needs_edit: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  do_not_use: 'border-state-readonly/30 bg-state-readonly/10 text-state-readonly',
 };
 
 export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
@@ -105,12 +105,9 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
           summary_kind: summary.kind,
           rating: feedback.rating,
           ...(feedback.comment ? { comment: feedback.comment } : {}),
-          ...(feedback.corrected_summary
-            ? { corrected_summary: feedback.corrected_summary }
-            : {}),
+          ...(feedback.corrected_summary ? { corrected_summary: feedback.corrected_summary } : {}),
           provider: summary.kind === 'ai' ? brief.ai_summary.provider : 'rule',
-          requested_provider:
-            summary.kind === 'ai' ? brief.ai_summary.requested_provider : 'rule',
+          requested_provider: summary.kind === 'ai' ? brief.ai_summary.requested_provider : 'rule',
           model: summary.kind === 'ai' ? brief.ai_summary.model : null,
           is_fallback: summary.kind === 'ai' ? brief.ai_summary.is_fallback : false,
         }),
@@ -261,10 +258,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
         </p>
 
         {paragraph ? (
-          <p
-            className="mt-4 text-sm leading-7 text-foreground"
-            data-testid="visit-brief-paragraph"
-          >
+          <p className="mt-4 text-sm leading-7 text-foreground" data-testid="visit-brief-paragraph">
             {paragraph}
           </p>
         ) : (
@@ -317,7 +311,7 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
           <div
             id="visit-brief-correction-editor"
             data-testid="visit-brief-correction-editor"
-            className="mt-3 rounded-lg border border-amber-300 bg-amber-50/60 p-4"
+            className="mt-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-4"
           >
             <label
               htmlFor="visit-brief-correction-textarea"

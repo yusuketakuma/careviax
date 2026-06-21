@@ -503,15 +503,11 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     expect(scheduleFindFirstMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
-        id: { notIn: ['schedule_1'] },
+        id: { not: 'schedule_1' },
         schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-        OR: [
-          {
-            pharmacist_id: 'pharmacist_1',
-            scheduled_date: new Date('2026-04-09'),
-            route_order: 3,
-          },
-        ],
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-09'),
+        route_order: 3,
       },
       select: { id: true },
     });
@@ -541,13 +537,9 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         org_id: 'org_1',
         finalized_schedule_id: null,
         proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
-        OR: [
-          {
-            proposed_pharmacist_id: 'pharmacist_1',
-            proposed_date: new Date('2026-04-09'),
-            route_order: 3,
-          },
-        ],
+        proposed_pharmacist_id: 'pharmacist_1',
+        proposed_date: new Date('2026-04-09'),
+        route_order: 3,
       },
       select: { id: true },
     });

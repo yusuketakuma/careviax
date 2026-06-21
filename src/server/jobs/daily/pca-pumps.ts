@@ -47,12 +47,22 @@ export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = 
         orderBy: [{ due_at: 'asc' }, { created_at: 'asc' }],
       });
 
+      // org 単位でまとめて RLS コンテキスト確立と status 更新の往復を削減
+      // (旧: rental ごとに withOrgContext + updateMany → 新: org ごとに 1 回)。
+      // dedupeKey により task upsert は冪等で、処理順序にも依存しない。
+      const rentalsByOrg = new Map<string, typeof overdueRentals>();
       for (const rental of overdueRentals) {
-        await withOrgContext(rental.org_id, async (tx) => {
+        const existing = rentalsByOrg.get(rental.org_id);
+        if (existing) existing.push(rental);
+        else rentalsByOrg.set(rental.org_id, [rental]);
+      }
+
+      for (const [orgId, rentals] of rentalsByOrg) {
+        await withOrgContext(orgId, async (tx) => {
           await tx.pcaPumpRental.updateMany({
             where: {
-              id: rental.id,
-              org_id: rental.org_id,
+              id: { in: rentals.map((rental) => rental.id) },
+              org_id: orgId,
               status: { in: ['scheduled', 'active'] },
               due_at: { lt: today },
             },
@@ -61,40 +71,42 @@ export async function checkPcaPumpRentalOverdues(context: JobExecutionContext = 
             },
           });
 
-          const overdueDays = rental.due_at
-            ? Math.max(
-                1,
-                // due_at は UTC 深夜の @db.Date 値なのでそのまま日数差を取る
-                Math.floor((today.getTime() - rental.due_at.getTime()) / 86_400_000),
-              )
-            : 0;
-          const pumpLabel = `${rental.pump.asset_code} ${rental.pump.model_name}`.trim();
-          await upsertOperationalTask(tx, {
-            orgId: rental.org_id,
-            taskType: 'pca_pump_rental_overdue',
-            title: 'PCAポンプの返却期限を超過しています',
-            description: `${rental.institution.name} への貸出 ${pumpLabel} が返却予定日を${overdueDays}日超過しています。返却予定の確認、延長可否、請求調整を確認してください。`,
-            priority: overdueDays >= 7 ? 'urgent' : 'high',
-            assignedTo: null,
-            dueDate: rental.due_at,
-            slaDueAt: rental.due_at,
-            relatedEntityType: 'pca_pump_rental',
-            relatedEntityId: rental.id,
-            dedupeKey: buildPcaPumpRentalOverdueTaskKey(rental.id),
-            metadata: {
-              rental_id: rental.id,
-              pump_id: rental.pump_id,
-              pump_asset_code: rental.pump.asset_code,
-              institution_id: rental.institution_id,
-              institution_name: rental.institution.name,
-              rented_at: formatDateKey(rental.rented_at),
-              due_at: rental.due_at ? formatDateKey(rental.due_at) : null,
-              overdue_days: overdueDays,
-              rental_fee_yen: rental.rental_fee_yen,
-              action_href: '/admin/pca-pumps',
-              action_label: 'PCAポンプ貸出を確認',
-            },
-          });
+          for (const rental of rentals) {
+            const overdueDays = rental.due_at
+              ? Math.max(
+                  1,
+                  // due_at は UTC 深夜の @db.Date 値なのでそのまま日数差を取る
+                  Math.floor((today.getTime() - rental.due_at.getTime()) / 86_400_000),
+                )
+              : 0;
+            const pumpLabel = `${rental.pump.asset_code} ${rental.pump.model_name}`.trim();
+            await upsertOperationalTask(tx, {
+              orgId: rental.org_id,
+              taskType: 'pca_pump_rental_overdue',
+              title: 'PCAポンプの返却期限を超過しています',
+              description: `${rental.institution.name} への貸出 ${pumpLabel} が返却予定日を${overdueDays}日超過しています。返却予定の確認、延長可否、請求調整を確認してください。`,
+              priority: overdueDays >= 7 ? 'urgent' : 'high',
+              assignedTo: null,
+              dueDate: rental.due_at,
+              slaDueAt: rental.due_at,
+              relatedEntityType: 'pca_pump_rental',
+              relatedEntityId: rental.id,
+              dedupeKey: buildPcaPumpRentalOverdueTaskKey(rental.id),
+              metadata: {
+                rental_id: rental.id,
+                pump_id: rental.pump_id,
+                pump_asset_code: rental.pump.asset_code,
+                institution_id: rental.institution_id,
+                institution_name: rental.institution.name,
+                rented_at: formatDateKey(rental.rented_at),
+                due_at: rental.due_at ? formatDateKey(rental.due_at) : null,
+                overdue_days: overdueDays,
+                rental_fee_yen: rental.rental_fee_yen,
+                action_href: '/admin/pca-pumps',
+                action_label: 'PCAポンプ貸出を確認',
+              },
+            });
+          }
         });
       }
 

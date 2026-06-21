@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
@@ -55,10 +55,11 @@ export function ScheduleDayOfflinePanel({
   if (!offlineStatus.visible) return null;
 
   const manualSyncDisabledHintId = 'schedule-day-manual-sync-disabled-reason';
+  const manualSyncDisabledReason = manualSyncPending
+    ? '同期処理が完了するまで操作できません。'
+    : offlineStatus.manualSyncDisabledReason;
   const manualSyncDisabled =
-    manualSyncPending ||
-    !offlineStatus.canManualSync ||
-    Boolean(offlineStatus.manualSyncDisabledReason);
+    manualSyncPending || !offlineStatus.canManualSync || Boolean(manualSyncDisabledReason);
 
   return (
     <PageSection
@@ -106,19 +107,17 @@ export function ScheduleDayOfflinePanel({
               variant="outline"
               onClick={onManualSync}
               disabled={manualSyncDisabled}
-              aria-describedby={
-                offlineStatus.manualSyncDisabledReason ? manualSyncDisabledHintId : undefined
-              }
+              aria-describedby={manualSyncDisabledReason ? manualSyncDisabledHintId : undefined}
             >
               {manualSyncPending ? '同期中...' : '今すぐ同期'}
             </Button>
-            {offlineStatus.manualSyncDisabledReason && (
+            {manualSyncDisabledReason && (
               <span id={manualSyncDisabledHintId} className="text-xs text-muted-foreground">
-                {offlineStatus.manualSyncDisabledReason}
+                {manualSyncDisabledReason}
               </span>
             )}
             {offlineStatus.showConflictResolutionHint && (
-              <span className="text-xs text-amber-700">409 競合は下のカードで解決します</span>
+              <span className="text-xs text-state-confirm">409 競合は下のカードで解決します</span>
             )}
           </div>
           {syncConflicts.length > 0 ? (
@@ -181,10 +180,16 @@ function SyncConflictCard({
   onDiscardConflict: (itemId: number) => void;
 }) {
   const [confirmingAction, setConfirmingAction] = useState<'overwrite' | 'discard' | null>(null);
+  const disabledReasonId = useId();
   const hasConflictId = typeof item.id === 'number';
   const actionPending = overwriteConflictPending || discardConflictPending;
   const targetLabel = `schedule ${item.scope_id ?? '不明'}`;
   const actionUnavailable = !hasConflictId || actionPending;
+  const actionDisabledReason = !hasConflictId
+    ? '競合IDを確認できないため、同期状態を再読み込みしてください。'
+    : actionPending
+      ? '競合解決処理が完了するまで操作できません。'
+      : null;
   const localOutcome = String(item.conflict?.local.outcome_status ?? '未設定');
   const localPlan = String(item.conflict?.local.soap_plan ?? 'P未入力');
   const serverOutcome = item.conflict?.server?.outcome_status ?? '未設定';
@@ -195,11 +200,11 @@ function SyncConflictCard({
       : 'ローカル下書きを破棄してサーバー版を残します';
 
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+    <div className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-medium">訪問記録の競合</p>
-          <p className="mt-1 text-xs text-amber-800/90">
+          <p className="mt-1 text-xs text-state-confirm/90">
             {targetLabel} / {item.lastError ?? '競合あり'}
           </p>
         </div>
@@ -208,6 +213,7 @@ function SyncConflictCard({
             size="sm"
             onClick={() => setConfirmingAction('overwrite')}
             disabled={actionUnavailable}
+            aria-describedby={actionDisabledReason ? disabledReasonId : undefined}
             aria-label={`${targetLabel} をサーバーへ上書き`}
           >
             上書き
@@ -217,6 +223,7 @@ function SyncConflictCard({
             variant="outline"
             onClick={() => setConfirmingAction('discard')}
             disabled={actionUnavailable}
+            aria-describedby={actionDisabledReason ? disabledReasonId : undefined}
             aria-label={`${targetLabel} のローカル下書きを破棄`}
           >
             破棄
@@ -225,10 +232,11 @@ function SyncConflictCard({
             <Link
               href={`/visits/${item.scope_id}/record`}
               aria-disabled={actionPending}
+              aria-describedby={actionPending ? disabledReasonId : undefined}
               aria-label={`${targetLabel} を再編集`}
               className={cn(
                 buttonVariants({ variant: 'outline', size: 'sm' }),
-                'border-amber-300 bg-white/50 hover:bg-white/80',
+                'border-state-confirm/40 bg-background/50 hover:bg-background/80',
                 actionPending && 'pointer-events-none opacity-50',
               )}
               onClick={(event) => {
@@ -241,21 +249,21 @@ function SyncConflictCard({
         </div>
       </div>
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <div className="rounded-lg border border-white/70 bg-white/70 px-3 py-2">
-          <p className="text-xs font-medium text-amber-900">ローカル下書き</p>
-          <p className="mt-1 text-xs text-amber-800/90">結果 {localOutcome}</p>
-          <p className="mt-1 text-xs leading-5 text-amber-800/90">{localPlan}</p>
+        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+          <p className="text-xs font-medium text-state-confirm">ローカル下書き</p>
+          <p className="mt-1 text-xs text-state-confirm/90">結果 {localOutcome}</p>
+          <p className="mt-1 text-xs leading-5 text-state-confirm/90">{localPlan}</p>
         </div>
-        <div className="rounded-lg border border-white/70 bg-white/70 px-3 py-2">
-          <p className="text-xs font-medium text-amber-900">サーバー版</p>
-          <p className="mt-1 text-xs text-amber-800/90">結果 {serverOutcome}</p>
-          <p className="mt-1 text-xs leading-5 text-amber-800/90">{serverPlan}</p>
+        <div className="rounded-lg border border-border/60 bg-background/70 px-3 py-2">
+          <p className="text-xs font-medium text-state-confirm">サーバー版</p>
+          <p className="mt-1 text-xs text-state-confirm/90">結果 {serverOutcome}</p>
+          <p className="mt-1 text-xs leading-5 text-state-confirm/90">{serverPlan}</p>
         </div>
       </div>
       {confirmingAction ? (
-        <div className="mt-3 rounded-lg border border-amber-300 bg-white/80 px-3 py-3">
-          <p className="text-sm font-medium text-amber-950">{confirmTitle}</p>
-          <p className="mt-1 text-xs leading-5 text-amber-800">
+        <div className="mt-3 rounded-lg border border-state-confirm/40 bg-background/80 px-3 py-3">
+          <p className="text-sm font-medium text-state-confirm">{confirmTitle}</p>
+          <p className="mt-1 text-xs leading-5 text-state-confirm/90">
             ローカル下書き: {localOutcome} / {localPlan}、サーバー版: {serverOutcome} / {serverPlan}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -263,6 +271,7 @@ function SyncConflictCard({
               size="sm"
               variant={confirmingAction === 'discard' ? 'destructive' : 'default'}
               disabled={!hasConflictId || actionPending}
+              aria-describedby={actionDisabledReason ? disabledReasonId : undefined}
               onClick={() => {
                 if (!hasConflictId) return;
                 if (confirmingAction === 'overwrite') {
@@ -279,6 +288,7 @@ function SyncConflictCard({
               size="sm"
               variant="outline"
               disabled={actionPending}
+              aria-describedby={actionPending ? disabledReasonId : undefined}
               onClick={() => setConfirmingAction(null)}
             >
               キャンセル
@@ -286,9 +296,9 @@ function SyncConflictCard({
           </div>
         </div>
       ) : null}
-      {!hasConflictId ? (
-        <p className="mt-3 text-xs text-amber-800">
-          競合IDを確認できないため、同期状態を再読み込みしてください。
+      {actionDisabledReason ? (
+        <p id={disabledReasonId} className="mt-3 text-xs text-state-confirm/90">
+          {actionDisabledReason}
         </p>
       ) : null}
     </div>
@@ -311,7 +321,7 @@ function CachedVisitBrief({ item }: { item: CachedVisitBriefCard }) {
           {item.provider === 'openai' && !item.isFallback ? 'AI生成' : 'ルール生成'}
         </Badge>
       </div>
-      <p className="mt-2 text-sm font-medium text-slate-900">{item.headline}</p>
+      <p className="mt-2 text-sm font-medium text-foreground">{item.headline}</p>
       {item.mustCheckToday.length > 0 && (
         <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
           {item.mustCheckToday.slice(0, 3).map((check) => (

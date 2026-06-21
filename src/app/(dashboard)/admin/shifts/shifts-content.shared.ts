@@ -1,10 +1,4 @@
-import {
-  eachDayOfInterval,
-  endOfMonth,
-  format,
-  parseISO,
-  startOfMonth,
-} from 'date-fns';
+import { eachDayOfInterval, endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
 
 export type Pharmacist = {
   id: string;
@@ -222,20 +216,5 @@ export function pharmacistStatusLabel(status: Pharmacist['account_status']) {
       return '退職';
     default:
       return status;
-  }
-}
-
-export function pharmacistStatusClass(status: Pharmacist['account_status']) {
-  switch (status) {
-    case 'active':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    case 'invited':
-      return 'border-sky-200 bg-sky-50 text-sky-700';
-    case 'suspended':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    case 'retired':
-      return 'border-slate-200 bg-slate-100 text-slate-700';
-    default:
-      return 'border-slate-200 bg-slate-50 text-slate-700';
   }
 }

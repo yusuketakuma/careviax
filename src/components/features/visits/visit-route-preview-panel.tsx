@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { StateBadge } from '@/components/ui/state-badge';
 import { formatDistanceLabel, formatDurationLabel } from '@/lib/visits/route-labels';
 import type { VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 import { VisitRouteMap, type VisitRouteMapPoint } from './visit-route-map';
@@ -228,12 +229,7 @@ export function VisitRoutePreviewPanel({
                                 {point.pointKind === 'proposal' ? '候補' : '確定予定'}
                               </Badge>
                               {isCurrentDiff && currentOrder ? (
-                                <Badge
-                                  variant="outline"
-                                  className="border-sky-200 bg-sky-50 text-sky-800"
-                                >
-                                  現順 {currentOrder}
-                                </Badge>
+                                <StateBadge role="info">現順 {currentOrder}</StateBadge>
                               ) : null}
                             </div>
                           ) : null}

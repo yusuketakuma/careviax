@@ -26,6 +26,8 @@ vi.mock('@/components/ui/data-table', () => ({
   DataTable: ({
     columns,
     data,
+    errorMessage,
+    onRetry,
     renderExpandedRow,
   }: {
     columns: Array<{
@@ -33,9 +35,21 @@ vi.mock('@/components/ui/data-table', () => ({
       cell?: (args: { row: { original: Record<string, unknown> } }) => ReactNode;
     }>;
     data: Array<{ job_type: string } & Record<string, unknown>>;
+    errorMessage?: string;
+    onRetry?: () => void;
     renderExpandedRow?: (row: Row<{ job_type: string } & Record<string, unknown>>) => ReactNode;
   }) => (
     <div data-testid="jobs-table">
+      {errorMessage ? (
+        <div role="alert">
+          <p>{errorMessage}</p>
+          {onRetry ? (
+            <button type="button" onClick={onRetry}>
+              再読み込み
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {data.map((entry) => (
         <section key={entry.job_type}>
           <p>{entry.job_type}</p>
@@ -211,5 +225,25 @@ describe('JobsDashboardContent', () => {
       endpoint: '/api/jobs/monthly',
       jobType: 'monthly',
     });
+  });
+
+  it('passes job query failures to DataTable without showing false-zero counts', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      isError: true,
+      data: undefined,
+      refetch,
+    });
+
+    render(<JobsDashboardContent />);
+
+    expect(screen.getByRole('alert').textContent).toContain('ジョブ一覧を取得できませんでした');
+    expect(screen.getAllByText('—')).toHaveLength(4);
+    expect(screen.getByText('—件')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+
+    expect(refetch).toHaveBeenCalled();
   });
 });

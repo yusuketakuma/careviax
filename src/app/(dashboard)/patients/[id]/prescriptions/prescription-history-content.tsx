@@ -27,6 +27,8 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
+import { MEDICATION_CYCLE_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import {
@@ -185,24 +187,23 @@ const SOURCE_LABELS: Record<string, string> = {
   refill: 'リフィル',
 };
 
-const STATUS_LABELS: Record<
-  string,
-  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
-> = {
-  intake_received: { label: CYCLE_STATUS_LABELS.intake_received, variant: 'outline' },
-  structuring: { label: CYCLE_STATUS_LABELS.structuring, variant: 'outline' },
-  inquiry_pending: { label: CYCLE_STATUS_LABELS.inquiry_pending, variant: 'secondary' },
-  ready_to_dispense: { label: CYCLE_STATUS_LABELS.ready_to_dispense, variant: 'default' },
-  dispensing: { label: CYCLE_STATUS_LABELS.dispensing, variant: 'default' },
-  audit_pending: { label: CYCLE_STATUS_LABELS.audit_pending, variant: 'secondary' },
-  audited: { label: CYCLE_STATUS_LABELS.audited, variant: 'default' },
-  setting: { label: CYCLE_STATUS_LABELS.setting, variant: 'default' },
-  set_audited: { label: CYCLE_STATUS_LABELS.set_audited, variant: 'default' },
-  visit_ready: { label: CYCLE_STATUS_LABELS.visit_ready, variant: 'default' },
-  visit_completed: { label: CYCLE_STATUS_LABELS.visit_completed, variant: 'default' },
-  reported: { label: CYCLE_STATUS_LABELS.reported, variant: 'outline' },
-  on_hold: { label: CYCLE_STATUS_LABELS.on_hold, variant: 'destructive' },
-  cancelled: { label: CYCLE_STATUS_LABELS.cancelled, variant: 'destructive' },
+// cycle status バッジの色は SSOT(MEDICATION_CYCLE_STATUS_ROLE)で決める。ここは
+// 「どの status をバッジ表示するか」と表示ラベルのゲートのみを担い、色は持たない。
+const STATUS_LABELS: Record<string, { label: string }> = {
+  intake_received: { label: CYCLE_STATUS_LABELS.intake_received },
+  structuring: { label: CYCLE_STATUS_LABELS.structuring },
+  inquiry_pending: { label: CYCLE_STATUS_LABELS.inquiry_pending },
+  ready_to_dispense: { label: CYCLE_STATUS_LABELS.ready_to_dispense },
+  dispensing: { label: CYCLE_STATUS_LABELS.dispensing },
+  audit_pending: { label: CYCLE_STATUS_LABELS.audit_pending },
+  audited: { label: CYCLE_STATUS_LABELS.audited },
+  setting: { label: CYCLE_STATUS_LABELS.setting },
+  set_audited: { label: CYCLE_STATUS_LABELS.set_audited },
+  visit_ready: { label: CYCLE_STATUS_LABELS.visit_ready },
+  visit_completed: { label: CYCLE_STATUS_LABELS.visit_completed },
+  reported: { label: CYCLE_STATUS_LABELS.reported },
+  on_hold: { label: CYCLE_STATUS_LABELS.on_hold },
+  cancelled: { label: CYCLE_STATUS_LABELS.cancelled },
 };
 
 // 一包化不適応キーワード（OD錠, 徐放製剤, 貼付剤, 坐剤, 点眼, 吸入等）
@@ -366,13 +367,18 @@ const CHANGE_BADGES: Record<
   ChangeType,
   { label: string; icon: typeof Plus; color: string } | null
 > = {
-  added: { label: '新規', icon: Plus, color: 'bg-green-100 text-green-800' },
-  removed: { label: '中止', icon: Minus, color: 'bg-red-100 text-red-800' },
-  dose_changed: { label: '用量変更', icon: ArrowRight, color: 'bg-orange-100 text-orange-800' },
+  // 変更種別は state 軸（新規=情報 / 中止=止まり / 用量・用法変更=要確認）。6軸トークンへ集約。
+  added: { label: '新規', icon: Plus, color: 'bg-tag-info/10 text-tag-info' },
+  removed: { label: '中止', icon: Minus, color: 'bg-state-blocked/10 text-state-blocked' },
+  dose_changed: {
+    label: '用量変更',
+    icon: ArrowRight,
+    color: 'bg-state-confirm/10 text-state-confirm',
+  },
   frequency_changed: {
     label: '用法変更',
     icon: ArrowRight,
-    color: 'bg-orange-100 text-orange-800',
+    color: 'bg-state-confirm/10 text-state-confirm',
   },
   unchanged: null,
   do: null,
@@ -438,7 +444,7 @@ function buildLatestChangeSummary(
     items.push({
       drugName: line.drug_name,
       label: cfg?.label ?? '変更',
-      color: cfg?.color ?? 'bg-slate-100 text-slate-700',
+      color: cfg?.color ?? 'bg-muted text-muted-foreground',
       detail:
         change === 'added'
           ? `${line.dose} / ${line.frequency}`
@@ -456,7 +462,7 @@ function buildLatestChangeSummary(
     items.push({
       drugName: line.drug_name,
       label: '中止',
-      color: 'bg-red-100 text-red-800',
+      color: 'bg-state-blocked/10 text-state-blocked',
       detail: `${line.dose} / ${line.frequency}`,
     });
   }
@@ -521,11 +527,11 @@ function DrugLineRow({
     <div
       className={[
         'flex items-start gap-3 border-b border-border/30 px-4 py-2 last:border-0 transition-colors',
-        changeType === 'added' ? 'bg-green-50/40' : '',
+        changeType === 'added' ? 'bg-tag-info/10' : '',
         changeType === 'dose_changed' || changeType === 'frequency_changed'
-          ? 'bg-orange-50/40'
+          ? 'bg-state-confirm/10'
           : '',
-        hasOverlap ? 'ring-1 ring-inset ring-red-300' : '',
+        hasOverlap ? 'ring-1 ring-inset ring-state-blocked/40' : '',
       ].join(' ')}
     >
       {/* Drug info */}
@@ -542,9 +548,10 @@ function DrugLineRow({
             </Badge>
           )}
           {line.is_generic && (
+            // 後発/先発は分類値（状態でない）→ 色を付けず枠線のみ(SSOT: state-color-migration-map)。
             <Badge
               variant="outline"
-              className="h-4 px-1 text-[10px] font-normal text-blue-600 border-blue-300"
+              className="h-4 px-1 text-[10px] font-normal text-muted-foreground"
             >
               後発
             </Badge>
@@ -631,25 +638,25 @@ function DrugLineRow({
           )}
 
           {unitDoseWarn && (
-            <span className="flex items-center gap-0.5 text-red-600 font-medium" role="alert">
+            <span className="flex items-center gap-0.5 text-state-blocked font-medium" role="alert">
               <Ban className="size-3" aria-hidden="true" />
               一包化不適
             </span>
           )}
           {crushedWarn && (
-            <span className="flex items-center gap-0.5 text-red-600 font-medium" role="alert">
+            <span className="flex items-center gap-0.5 text-state-blocked font-medium" role="alert">
               <Ban className="size-3" aria-hidden="true" />
               粉砕不可
             </span>
           )}
           {hasOverlap && (
-            <span className="flex items-center gap-0.5 text-red-600 font-medium" role="alert">
+            <span className="flex items-center gap-0.5 text-state-blocked font-medium" role="alert">
               <AlertTriangle className="size-3" aria-hidden="true" />
               期間重複
             </span>
           )}
           {line.notes && (
-            <span className="flex items-center gap-0.5 text-amber-600">
+            <span className="flex items-center gap-0.5 text-state-confirm">
               <AlertTriangle className="size-3" aria-hidden="true" />
               {line.notes}
             </span>
@@ -780,6 +787,7 @@ function PrescriptionIntakeCard({
 }) {
   const [expanded, setExpanded] = useState(true);
   const statusCfg = STATUS_LABELS[intake.cycle.overall_status];
+  const statusRole = MEDICATION_CYCLE_STATUS_ROLE[intake.cycle.overall_status];
   const isDo = prevIntake ? isDoPrescription(intake, prevIntake) : false;
   const prevLines = prevIntake?.lines ?? null;
   const isFax = intake.source_type === 'fax';
@@ -846,13 +854,15 @@ function PrescriptionIntakeCard({
                   <span className="text-xs text-muted-foreground">
                     {SOURCE_LABELS[intake.source_type] ?? intake.source_type}
                   </span>
-                  {statusCfg && (
-                    <Badge variant={statusCfg.variant} className="h-5 text-[10px]">
+                  {statusCfg && statusRole && statusRole !== 'neutral' && (
+                    // 色は SSOT role 駆動（on_hold=confirm / cancelled=blocked を区別）。
+                    // 隣接ラベルが非色シグナルを担うため showIcon は省く。
+                    <StateBadge role={statusRole} showIcon={false} className="h-5 text-[10px]">
                       {statusCfg.label}
-                    </Badge>
+                    </StateBadge>
                   )}
                   {isDo && (
-                    <span className="inline-flex items-center gap-0.5 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">
+                    <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
                       <Copy className="size-2.5" aria-hidden="true" />
                       Do
                     </span>
@@ -907,8 +917,8 @@ function PrescriptionIntakeCard({
         <CardContent className="p-0">
           {/* Removed drugs alert */}
           {removedDrugs.length > 0 && (
-            <div className="border-t bg-red-50/50 px-4 py-2">
-              <div className="flex items-start gap-2 text-xs text-red-700">
+            <div className="border-t bg-state-blocked/10 px-4 py-2">
+              <div className="flex items-start gap-2 text-xs text-state-blocked">
                 <Minus className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 <div>
                   <span className="font-semibold">前回から中止:</span>
@@ -923,10 +933,10 @@ function PrescriptionIntakeCard({
           )}
 
           {(intake.original_document_url || (isFax && !originalCollected)) && (
-            <div className="border-t bg-slate-50/60 px-4 py-3">
+            <div className="border-t bg-muted/40 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     原本管理
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -1009,10 +1019,11 @@ const METHOD_FILTER_OPTIONS = [
 
 // ─── p0_11 処方の変化を確認(差分レビュー)ビュー ───────────────────────────
 
+// 差分の変化種別も state 軸（新規=情報 / 中止=止まり / 変更=要確認）。6軸トークンへ。
 const DIFF_CHANGE_TEXT_COLOR: Record<DiffReviewChangeType, string> = {
-  added: 'text-emerald-700',
-  removed: 'text-red-700',
-  changed: 'text-orange-700',
+  added: 'text-tag-info',
+  removed: 'text-state-blocked',
+  changed: 'text-state-confirm',
   unchanged: 'text-muted-foreground',
 };
 
@@ -1049,7 +1060,7 @@ function DiffReviewView({
 
       <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
         {/* 4 列テーブル: 変化 / 前回 / 今回 / 薬剤師メモ */}
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -1083,7 +1094,7 @@ function DiffReviewView({
         </Card>
 
         {/* 次にやること + CTA */}
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader className="pb-2">
             <h3 className="font-heading text-base font-semibold text-foreground">次にやること</h3>
           </CardHeader>
@@ -1103,7 +1114,7 @@ function DiffReviewView({
 
       {/* サブカード: セットにも影響する変化 / 患者さんに確認したいこと */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader className="pb-2">
             <h3 className="font-heading text-base font-semibold text-foreground">
               セットにも影響する変化
@@ -1129,7 +1140,7 @@ function DiffReviewView({
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader className="pb-2">
             <h3 className="font-heading text-base font-semibold text-foreground">
               患者さんに確認したいこと
@@ -1364,13 +1375,13 @@ export function PrescriptionHistoryContent() {
             </Badge>
           )}
           {stats.warnings > 0 && (
-            <Badge className="bg-red-200 text-red-900 hover:bg-red-200">
+            <Badge className="border-transparent bg-state-blocked/10 text-state-blocked">
               <AlertTriangle className="mr-0.5 size-3" aria-hidden="true" />
               警告 {stats.warnings}
             </Badge>
           )}
           {stats.overlaps > 0 && (
-            <Badge className="bg-red-200 text-red-900 hover:bg-red-200">
+            <Badge className="border-transparent bg-state-blocked/10 text-state-blocked">
               期間重複 {(stats.overlaps / 2) | 0}件
             </Badge>
           )}
@@ -1380,14 +1391,14 @@ export function PrescriptionHistoryContent() {
       {overviewCards.length > 0 && (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {overviewCards.map((item) => (
-            <Card key={item.label} className="border-slate-200 shadow-sm">
+            <Card key={item.label} className="border-border shadow-sm">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
                   <HelpPopover title={item.label} description={item.description} />
                 </div>
                 <p className="flex items-center gap-2 font-heading text-xl leading-snug font-medium">
-                  <CalendarDays className="size-4 text-sky-700" aria-hidden="true" />
+                  <CalendarDays className="size-4 text-muted-foreground" aria-hidden="true" />
                   {item.value}
                 </p>
               </CardHeader>
@@ -1397,7 +1408,7 @@ export function PrescriptionHistoryContent() {
       )}
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader>
             <h2 className="font-heading text-base leading-snug font-medium">
               処方変更ダッシュボード
@@ -1411,7 +1422,7 @@ export function PrescriptionHistoryContent() {
               latestChanges.map((item) => (
                 <div
                   key={`${item.drugName}-${item.label}`}
-                  className="rounded-xl border border-slate-200 bg-white p-3"
+                  className="rounded-xl border border-border bg-card p-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -1430,7 +1441,7 @@ export function PrescriptionHistoryContent() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader>
             <h2 className="font-heading text-base leading-snug font-medium">調剤方法ワンビュー</h2>
             <CardDescription>
@@ -1446,16 +1457,14 @@ export function PrescriptionHistoryContent() {
               dispensingOverview.map((item) => (
                 <div
                   key={`${item.drugName}-${item.note}`}
-                  className="rounded-xl border border-slate-200 bg-white p-3"
+                  className="rounded-xl border border-border bg-card p-3"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium text-foreground">{item.drugName}</p>
                         <Badge variant="outline">{item.routeLabel}</Badge>
-                        {item.hasWarning ? (
-                          <Badge className="bg-red-100 text-red-800 hover:bg-red-100">要確認</Badge>
-                        ) : null}
+                        {item.hasWarning ? <StateBadge role="confirm">要確認</StateBadge> : null}
                       </div>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.note}</p>
                     </div>

@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
 import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { cn } from '@/lib/utils';
+import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { SOURCE_LABELS } from './new/prescription-form.shared';
 import { CYCLE_STATUS_CONFIG } from './prescription.shared';
 
@@ -89,10 +91,10 @@ type IntakeDetail = {
   };
 };
 
-const INQUIRY_RESULT_CONFIG: Record<string, { label: string; className: string }> = {
-  changed: { label: '処方変更', className: 'bg-amber-100 text-amber-800' },
-  unchanged: { label: '変更なし', className: 'bg-gray-100 text-gray-700' },
-  pending: { label: '回答待ち', className: 'bg-red-100 text-red-800' },
+const INQUIRY_RESULT_CONFIG: Record<string, { label: string; role: StatusRole }> = {
+  changed: { label: '処方変更', role: 'info' },
+  unchanged: { label: '変更なし', role: 'readonly' },
+  pending: { label: '回答待ち', role: 'waiting' },
 };
 
 const GENDER_LABELS: Record<string, string> = {
@@ -260,7 +262,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
                     </span>
                   )}
                   {line.packaging_instructions && (
-                    <div className="text-[10px] text-amber-700">
+                    <div className="text-[10px] text-state-confirm">
                       包: {line.packaging_instructions}
                     </div>
                   )}
@@ -270,11 +272,11 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
                 <td className="px-2 py-1 tabular-nums">{line.days}日</td>
                 <td className="px-2 py-1">
                   {line.is_generic ? (
-                    <span className="rounded bg-blue-50 px-1 py-0.5 text-[9px] font-medium text-blue-700">
+                    <span className="rounded bg-tag-info/10 px-1 py-0.5 text-[9px] font-medium text-tag-info">
                       後発
                     </span>
                   ) : line.is_generic_name_prescription ? (
-                    <span className="rounded bg-green-50 px-1 py-0.5 text-[9px] font-medium text-green-700">
+                    <span className="rounded bg-state-done/10 px-1 py-0.5 text-[9px] font-medium text-state-done">
                       一般名
                     </span>
                   ) : (
@@ -294,9 +296,9 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
       {/* ── 疑義照会 (ある場合のみ表示) ── */}
       {inquiries.length > 0 && (
         <div className="border-t">
-          <div className="flex items-center gap-1.5 bg-amber-50/50 px-3 py-1.5">
-            <MessageSquare className="size-3 text-amber-700" aria-hidden="true" />
-            <span className="text-[11px] font-semibold text-amber-800">
+          <div className="flex items-center gap-1.5 bg-state-confirm/10 px-3 py-1.5">
+            <MessageSquare className="size-3 text-state-confirm" aria-hidden="true" />
+            <span className="text-[11px] font-semibold text-state-confirm">
               疑義照会 {inquiries.length}件
             </span>
           </div>
@@ -309,7 +311,10 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
                     <span className="font-medium">{inq.reason}</span>
                     {resultCfg && (
                       <span
-                        className={`rounded px-1 py-0.5 text-[9px] font-medium ${resultCfg.className}`}
+                        className={cn(
+                          'rounded px-1 py-0.5 text-[9px] font-medium',
+                          STATUS_TOKENS[resultCfg.role].badgeClassName,
+                        )}
                       >
                         {inq.resolved_at ? (
                           <CheckCircle2 className="mr-0.5 inline size-2.5" />
@@ -320,12 +325,12 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
                       </span>
                     )}
                     {inq.proposal_origin === 'pre_issuance' && (
-                      <span className="rounded bg-blue-100 px-1 py-0.5 text-[9px] font-medium text-blue-800">
+                      <span className="rounded bg-tag-info/10 px-1 py-0.5 text-[9px] font-medium text-tag-info">
                         事前提案反映
                       </span>
                     )}
                     {inq.residual_adjustment && (
-                      <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium text-amber-800">
+                      <span className="rounded bg-state-confirm/10 px-1 py-0.5 text-[9px] font-medium text-state-confirm">
                         残薬調整
                       </span>
                     )}

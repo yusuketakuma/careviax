@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import {
   conflict,
@@ -13,14 +12,17 @@ import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
+import {
+  careReportPrintAuditRequestSchema,
+  isPrintableCareReportContent,
+  isPrintableCareReportType,
+  type CareReportPrintAuditResponse,
+  type CareReportPrintAuditPrintableReport,
+} from '@/lib/reports/care-report-print-audit-contract';
 import { recordCareReportPrintAudit } from '@/server/services/export-audit';
 import { canAccessCareReportSource } from '@/server/services/care-report-access';
 
 export const runtime = 'nodejs';
-
-const printAuditSchema = z.object({
-  intent: z.enum(['preview_rendered', 'print_requested']).optional(),
-});
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return withSensitiveNoStore(validationError('報告書IDが不正です'));
   const payload = await readOptionalJsonObjectRequestBody(req);
-  const parsedIntent = printAuditSchema.safeParse(payload ?? {});
+  const parsedIntent = careReportPrintAuditRequestSchema.safeParse(payload ?? {});
   if (!parsedIntent.success) {
     return withSensitiveNoStore(
       validationError('入力値が不正です', parsedIntent.error.flatten().fieldErrors),
@@ -92,11 +94,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   ) {
     return withSensitiveNoStore(await forbiddenResponse('この報告書を印刷する権限がありません'));
   }
+  if (!isPrintableCareReportType(printReport.report_type)) {
+    return withSensitiveNoStore(conflict('印刷対象外の報告書です'));
+  }
+  if (printReport.content === null) {
+    return withSensitiveNoStore(conflict('報告書本文がないため印刷できません'));
+  }
+  if (!isPrintableCareReportContent(printReport.report_type, printReport.content)) {
+    return withSensitiveNoStore(conflict('印刷用の報告書形式が不正です'));
+  }
 
   try {
     await recordCareReportPrintAudit(prisma, {
       orgId: ctx.orgId,
       actorId: ctx.userId,
+      actorSiteId: ctx.actorSiteId,
+      patientId: printReport.patient_id,
       reportId: id,
       intent,
       reportUpdatedAt: printReport.updated_at,
@@ -109,16 +122,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  return withSensitiveNoStore(
-    success({
-      data: {
-        audited: true,
-        report: {
-          id: printReport.id,
-          report_type: printReport.report_type,
-          content: printReport.content,
-        },
+  const responseBody = {
+    data: {
+      audited: true,
+      report: {
+        id: printReport.id,
+        report_type: printReport.report_type,
+        content: printReport.content as CareReportPrintAuditPrintableReport['content'],
       },
-    }),
-  );
+    },
+  } satisfies CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>;
+
+  return withSensitiveNoStore(success(responseBody));
 }

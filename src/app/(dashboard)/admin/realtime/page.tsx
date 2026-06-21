@@ -10,6 +10,10 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ErrorState } from '@/components/ui/error-state';
+import { StateBadge } from '@/components/ui/state-badge';
+import type { StatusRole } from '@/lib/constants/status-tokens';
+import { PRIORITY_ROLE } from '@/lib/constants/status-labels';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
@@ -49,15 +53,14 @@ type WorkflowSnapshot = {
   }>;
 };
 
-const TYPE_CONFIG: Record<NotificationType, { label: string; badge: string; icon: ElementType }> = {
-  urgent: { label: '緊急', badge: 'border-red-200 bg-red-50 text-red-700', icon: AlertTriangle },
-  business: { label: '業務', badge: 'border-blue-200 bg-blue-50 text-blue-700', icon: BellRing },
-  reminder: { label: '通知', badge: 'border-amber-200 bg-amber-50 text-amber-700', icon: Clock },
-  system: {
-    label: 'システム',
-    badge: 'border-slate-200 bg-slate-50 text-slate-700',
-    icon: Sparkles,
-  },
+const TYPE_CONFIG: Record<
+  NotificationType,
+  { label: string; role: StatusRole; icon: ElementType }
+> = {
+  urgent: { label: '緊急', role: 'blocked', icon: AlertTriangle },
+  business: { label: '業務', role: 'info', icon: BellRing },
+  reminder: { label: '通知', role: 'confirm', icon: Clock },
+  system: { label: 'システム', role: 'readonly', icon: Sparkles },
 };
 
 function mergeNotifications(current: Notification[], incoming: Notification[]) {
@@ -176,7 +179,15 @@ export default function RealtimePage() {
               <span className="text-slate-300">ワークベンチ</span>
               <span className="font-medium">{workbenchItems.length}</span>
             </div>
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+            {/* 接続状態を色でも示す。再接続中(=ライブ未保証)を常時 emerald にすると緑=正常の偽シグナルになるため、
+                未接続時は amber(注意)へ切替える。文言も併記し色のみ依存にはしない。dark hero 上のため chrome 配色。 */}
+            <div
+              className={`rounded-xl border px-3 py-2 text-xs ${
+                realtimeConnected
+                  ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
+                  : 'border-amber-500/20 bg-amber-500/10 text-amber-100'
+              }`}
+            >
               {realtimeConnected
                 ? 'SSE 接続中です。新着通知は即時反映されます。'
                 : 'SSE 再接続中です。未接続時は定期再取得へフォールバックします。'}
@@ -185,36 +196,47 @@ export default function RealtimePage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {routeHealth.map((item) => (
-          <Card key={item.title}>
+      {workflowQuery.isError ? (
+        // ワークフロー取得失敗時は KPI を 0 (false-zero) 表示せず、再読み込み導線つきの ErrorState を出す。
+        <ErrorState
+          variant="server"
+          size="inline"
+          action={{ label: '再読み込み', onClick: () => void workflowQuery.refetch() }}
+        />
+      ) : (
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {routeHealth.map((item) => (
+            <Card key={item.title}>
+              <CardContent className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">{item.title}</p>
+                  <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+                    {item.value}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                </div>
+                <div className="rounded-full border border-border bg-background p-2">
+                  <item.icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          <Card>
             <CardContent className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{item.title}</p>
-                <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{item.value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                <p className="text-sm font-medium text-muted-foreground">未処理例外</p>
+                <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+                  {workflow?.workflow_exceptions.open ?? 0}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">ワークフロー例外</p>
               </div>
               <div className="rounded-full border border-border bg-background p-2">
-                <item.icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
               </div>
             </CardContent>
           </Card>
-        ))}
-        <Card>
-          <CardContent className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">未処理例外</p>
-              <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-                {workflow?.workflow_exceptions.open ?? 0}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">ワークフロー例外</p>
-            </div>
-            <div className="rounded-full border border-border bg-background p-2">
-              <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+        </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <Card>
@@ -225,6 +247,13 @@ export default function RealtimePage() {
           <CardContent className="space-y-3">
             {notificationsQuery.isLoading ? (
               <p className="text-sm text-muted-foreground">通知を読み込んでいます...</p>
+            ) : notificationsQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void notificationsQuery.refetch() }}
+              />
             ) : liveNotifications.length === 0 ? (
               <p className="text-sm text-muted-foreground">未読通知はありません</p>
             ) : (
@@ -243,9 +272,7 @@ export default function RealtimePage() {
                         </span>
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline" className={config.badge}>
-                              {config.label}
-                            </Badge>
+                            <StateBadge role={config.role}>{config.label}</StateBadge>
                             {!notification.is_read ? <Badge variant="secondary">未読</Badge> : null}
                           </div>
                           <p className="mt-1 font-medium text-foreground">{notification.title}</p>
@@ -282,6 +309,13 @@ export default function RealtimePage() {
           <CardContent className="space-y-3">
             {workflowQuery.isLoading ? (
               <p className="text-sm text-muted-foreground">ワークベンチを読み込んでいます...</p>
+            ) : workflowQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void workflowQuery.refetch() }}
+              />
             ) : workbenchItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">未処理項目はありません</p>
             ) : (
@@ -294,9 +328,15 @@ export default function RealtimePage() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline">{item.queue_label}</Badge>
-                        <Badge variant={item.priority === 'urgent' ? 'destructive' : 'secondary'}>
+                        <StateBadge
+                          role={
+                            (PRIORITY_ROLE[item.priority] as StatusRole | 'neutral') === 'neutral'
+                              ? 'info'
+                              : (PRIORITY_ROLE[item.priority] as StatusRole)
+                          }
+                        >
                           {item.priority}
-                        </Badge>
+                        </StateBadge>
                       </div>
                       <p className="mt-2 font-medium text-foreground">{item.title}</p>
                       <p className="mt-1 text-sm text-muted-foreground">{item.summary}</p>

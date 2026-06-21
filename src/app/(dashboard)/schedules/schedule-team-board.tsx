@@ -8,14 +8,20 @@ import { AlertTriangle, Car, Lock, Plus, Route, Send } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { StateBadge } from '@/components/ui/state-badge';
+import { SCHEDULE_STATUS_ROLE } from '@/lib/constants/status-labels';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 import {
   WorkspaceActionRail,
   type BlockedReason,
   type EvidenceItem,
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
+import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { familyNameOf } from '@/lib/utils/person-name';
 import { cn } from '@/lib/utils';
 import type { ScheduleStatus } from '@/lib/validations/visit-schedule';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -59,8 +65,10 @@ async function fetchScheduleDayBoard(
   const res = await fetch(`/api/visit-schedules/day-board?date=${date}`, {
     headers: { 'x-org-id': orgId },
   });
-  if (!res.ok) throw new Error('全員スケジュールの取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: ScheduleDayBoardResponse }>(
+    res,
+    '全員スケジュールの取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -68,8 +76,10 @@ async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitRespo
   const res = await fetch('/api/dashboard/cockpit', {
     headers: { 'x-org-id': orgId },
   });
-  if (!res.ok) throw new Error('当日の優先タスク取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
+    res,
+    '当日の優先タスク取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -93,8 +103,10 @@ async function fetchScheduleOperationalTasks(orgId: string): Promise<ScheduleTas
   const res = await fetch(`/api/tasks?${params.toString()}`, {
     headers: { 'x-org-id': orgId },
   });
-  if (!res.ok) throw new Error('スケジュール運用タスクの取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: ScheduleTask[] }>(
+    res,
+    'スケジュール運用タスクの取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -153,15 +165,10 @@ async function patchVisitSchedule({
 }
 
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
-function formatAgeLabel(minutes: number): string {
-  const safeMinutes = Math.max(minutes, 0);
-  if (safeMinutes < 60) return `${safeMinutes}分`;
-  if (safeMinutes < 24 * 60) return `${Math.floor(safeMinutes / 60)}時間`;
-  return `${Math.floor(safeMinutes / (24 * 60))}日`;
-}
+const formatAgeLabel = formatElapsedLabel;
 
 function familyName(name: string): string {
-  return name.split(/[\s　]+/)[0] || name;
+  return familyNameOf(name) || name;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,13 +220,13 @@ export function ScheduleViewModeToggle({
 // ---------------------------------------------------------------------------
 
 const BLOCK_KIND_CLASSES: Record<BoardBlock['kind'], string> = {
-  visit: 'bg-emerald-600 text-white',
+  visit: 'bg-tag-info text-white',
   desk: 'bg-primary text-primary-foreground',
   prep: 'bg-amber-500 text-white',
   travel:
     'bg-[repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0_4px,#cbd5e1_4px,#cbd5e1_8px)] text-transparent',
   break: 'border border-dashed border-border bg-muted/40 text-muted-foreground',
-  idle: 'border border-dashed border-emerald-400 bg-emerald-50/50 text-emerald-700',
+  idle: 'border border-dashed border-state-done/50 bg-state-done/10 text-state-done',
 };
 
 const SCHEDULE_STATUS_OPTIONS: Array<{ value: ScheduleStatus; label: string }> = [
@@ -241,17 +248,20 @@ const INLINE_SCHEDULE_STATUS_OPTIONS = SCHEDULE_STATUS_OPTIONS.filter(
     ).includes(option.value),
 );
 
+// 訪問ステータスのガント塗り(写像: 線形フロー→info(青) / completed→done(緑) /
+// postponed・rescheduled→confirm(橙) / no_show・cancelled→blocked(赤))。
+// state/tag トークンはフル彩度なので白文字の塗りに使える。
 const SCHEDULE_STATUS_CLASSES: Record<ScheduleStatus, string> = {
-  planned: 'bg-slate-600 text-white',
-  in_preparation: 'bg-amber-600 text-white',
-  ready: 'bg-sky-600 text-white',
-  departed: 'bg-violet-600 text-white',
-  in_progress: 'bg-blue-700 text-white',
-  completed: 'bg-emerald-700 text-white',
-  postponed: 'bg-orange-600 text-white',
-  rescheduled: 'bg-orange-700 text-white',
-  no_show: 'bg-rose-700 text-white',
-  cancelled: 'bg-rose-800 text-white',
+  planned: 'bg-tag-info text-white',
+  in_preparation: 'bg-tag-info text-white',
+  ready: 'bg-tag-info text-white',
+  departed: 'bg-tag-info text-white',
+  in_progress: 'bg-tag-info text-white',
+  completed: 'bg-state-done text-white',
+  postponed: 'bg-state-confirm text-white',
+  rescheduled: 'bg-state-confirm text-white',
+  no_show: 'bg-state-blocked text-white',
+  cancelled: 'bg-state-blocked text-white',
 };
 const UNKNOWN_PREPARATION_SUMMARY: DayBoardVisit['preparation_summary'] = {
   completed_count: 0,
@@ -266,13 +276,19 @@ function scheduleStatusLabel(status: string | null): string {
   );
 }
 
+/** 訪問ステータス → 6軸セマンティックロール(全 ScheduleStatus は非 neutral。未知値は info にフォールバック)。 */
+function resolveScheduleStatusRole(status: string | null): StatusRole {
+  const role = status ? SCHEDULE_STATUS_ROLE[status] : undefined;
+  return role && role !== 'neutral' ? role : 'info';
+}
+
 function blockClassName(block: BoardBlock): string {
   if (block.kind === 'visit') {
     const statusClass =
       block.status && block.status in SCHEDULE_STATUS_CLASSES
         ? SCHEDULE_STATUS_CLASSES[block.status as ScheduleStatus]
         : BLOCK_KIND_CLASSES.visit;
-    return cn(statusClass, block.risk && 'ring-2 ring-amber-400');
+    return cn(statusClass, block.risk && 'ring-2 ring-state-confirm');
   }
   return BLOCK_KIND_CLASSES[block.kind];
 }
@@ -399,14 +415,12 @@ function ScheduleStatusControlPanel({
                       <p className="truncate text-sm font-semibold text-foreground">
                         {block.label}
                       </p>
-                      <span
-                        className={cn(
-                          'mt-1 inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-bold',
-                          SCHEDULE_STATUS_CLASSES[status],
-                        )}
+                      <StateBadge
+                        role={resolveScheduleStatusRole(status)}
+                        className="mt-1 text-[11px] font-bold"
                       >
                         {scheduleStatusLabel(status)}
-                      </span>
+                      </StateBadge>
                     </div>
                     <select
                       aria-label={`${block.label}のステータスを変更`}
@@ -455,7 +469,7 @@ function GanttRow({ lane }: { lane: StaffLane }) {
       <p
         className={cn(
           'flex items-center justify-end gap-0.5 text-xs font-bold tabular-nums',
-          lane.idleTone === 'tight' ? 'text-red-600' : 'text-emerald-700',
+          lane.idleTone === 'tight' ? 'text-state-confirm' : 'text-state-done',
         )}
         data-testid="team-board-idle"
       >
@@ -545,7 +559,7 @@ function VehicleRoutePanel({
           <h4 id="vehicle-resource-heading" className="text-sm font-bold text-foreground">
             車両リソース
           </h4>
-          <span className="ml-auto text-xs font-semibold text-emerald-700">
+          <span className="ml-auto text-xs font-semibold text-state-done">
             空き {availableVehicleCount}台
           </span>
         </div>
@@ -561,7 +575,7 @@ function VehicleRoutePanel({
                 className={cn(
                   'rounded-md border px-2.5 py-2',
                   vehicle.recommended
-                    ? 'border-emerald-300 bg-emerald-50'
+                    ? 'border-state-done/40 bg-state-done/10'
                     : 'border-border/60 bg-card',
                 )}
               >
@@ -573,8 +587,8 @@ function VehicleRoutePanel({
                     className={cn(
                       'rounded px-1.5 py-0.5 text-[11px] font-bold',
                       vehicle.available && vehicle.remaining_stops > 0
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-amber-100 text-amber-800',
+                        ? 'bg-state-done/10 text-state-done'
+                        : 'bg-state-confirm/10 text-state-confirm',
                     )}
                   >
                     {vehicle.recommended ? '推奨' : vehicle.available ? '空きあり' : '停止中'}
@@ -592,8 +606,8 @@ function VehicleRoutePanel({
           </ul>
         )}
         {recommendedVehicle ? (
-          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/70 p-2.5">
-            <p className="text-xs leading-5 text-emerald-900">
+          <div className="mt-3 rounded-md border border-tag-info/30 bg-tag-info/10 p-2.5">
+            <p className="text-xs leading-5 text-tag-info">
               自動提案: {recommendedVehicle.label} を未割当訪問
               {recommendedVehicleTargets.length}件へ反映できます。
             </p>
@@ -755,17 +769,15 @@ function PreparationSummaryChip({
         'inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 font-semibold leading-4',
         compact ? 'h-5 shrink-0 text-[10px]' : 'mt-1 text-[11px]',
         ready
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-          : summary.status === 'blocked' || summary.status === 'unknown' || readyBlocked
-            ? 'border-amber-300 bg-amber-50 text-amber-900'
-            : 'border-amber-200 bg-amber-50 text-amber-800',
+          ? 'border-state-done/30 bg-state-done/10 text-state-done'
+          : 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
       )}
       aria-label={preparationSummaryAriaLabel(summary)}
     >
       {!ready ? <AlertTriangle className="size-3 shrink-0" aria-hidden="true" /> : null}
       <span className="truncate">{label}</span>
       {detailLabel && !compact ? (
-        <span className="hidden truncate text-amber-950 sm:inline">{detailLabel}</span>
+        <span className="hidden truncate text-state-confirm sm:inline">{detailLabel}</span>
       ) : null}
     </span>
   );
@@ -815,7 +827,7 @@ function TeamGanttCard({
 
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const showNowMarker = nowMinutes >= BOARD_START_MINUTES && nowMinutes <= BOARD_END_MINUTES;
-  const nowLabel = `${`${now.getHours()}`.padStart(2, '0')}:${`${now.getMinutes()}`.padStart(2, '0')}`;
+  const nowLabel = formatTimeOfDayIso(now);
   const hourLabels: string[] = [];
   for (let minutes = BOARD_START_MINUTES; minutes <= BOARD_END_MINUTES; minutes += 60) {
     hourLabels.push(`${Math.floor(minutes / 60)}:00`);
@@ -861,7 +873,7 @@ function TeamGanttCard({
             {showNowMarker ? (
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 z-10 w-0.5 -translate-x-1/2 bg-red-500"
+                className="pointer-events-none absolute inset-y-0 z-10 w-0.5 -translate-x-1/2 bg-tag-info"
                 style={{
                   left: `calc(88px + 0.5rem + (100% - 88px - 92px - 1rem) * ${boardPercent(nowMinutes) / 100})`,
                 }}
@@ -878,7 +890,7 @@ function TeamGanttCard({
             <span>斜線＝移動時間</span>
             <span>緑点線＝余白</span>
             {showNowMarker ? (
-              <span className="font-semibold text-red-600">|＝いま {nowLabel}</span>
+              <span className="font-semibold text-tag-info">|＝いま {nowLabel}</span>
             ) : null}
           </p>
           <ScheduleStatusControlPanel
@@ -896,12 +908,12 @@ function TeamGanttCard({
 
       {riskAlert ? (
         <div
-          className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5"
+          className="mt-4 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2.5"
           role="alert"
           data-testid="schedule-risk-banner"
         >
-          <p className="flex items-start gap-2 text-sm leading-6 text-amber-900">
-            <AlertTriangle className="mt-1 size-4 shrink-0 text-amber-600" aria-hidden="true" />
+          <p className="flex items-start gap-2 text-sm leading-6 text-state-confirm">
+            <AlertTriangle className="mt-1 size-4 shrink-0 text-state-confirm" aria-hidden="true" />
             <span>
               <strong className="font-bold">リスクのある予定:</strong>
               {riskAlert.message.replace(/^リスクのある予定:/, '')}
@@ -950,11 +962,11 @@ function PendingProposalRow({
 
   return (
     <li
-      className="rounded-md border border-amber-200/80 bg-amber-50/40 px-3 py-2.5"
+      className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2.5"
       data-testid="pending-proposal-row"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex shrink-0 items-center rounded bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800">
+        <span className="inline-flex shrink-0 items-center rounded bg-state-confirm/10 px-2 py-0.5 text-xs font-bold text-state-confirm">
           {proposal.badge_label}
         </span>
         <p className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
@@ -962,7 +974,7 @@ function PendingProposalRow({
           {proposal.patient_name}様 — {dateLabel} {timeLabel} {pharmacistLabel}
         </p>
         {proposal.response_due_at ? (
-          <span className="shrink-0 text-sm font-bold text-amber-700">
+          <span className="shrink-0 text-sm font-bold text-state-confirm">
             返答期限 {formatTimeOfDayIso(proposal.response_due_at)}
           </span>
         ) : null}
@@ -1154,7 +1166,7 @@ function ScheduleOperationalTasksCard({
           運用タスクを確認しています...
         </p>
       ) : error ? (
-        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <p className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
           運用タスクを取得できませんでした。右レールの止まっている理由も確認してください。
         </p>
       ) : (

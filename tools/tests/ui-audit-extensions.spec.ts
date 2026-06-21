@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR, PLAYWRIGHT_SCREENSHOT_DIR } from './helpers/artifacts';
 import {
   attachLocalSession,
@@ -14,6 +14,7 @@ import {
 const SCREENSHOT_DIR = PLAYWRIGHT_SCREENSHOT_DIR;
 const ELEMENT_SCREEN_DIR = PLAYWRIGHT_ELEMENT_SCREENSHOT_DIR;
 const FALLBACK_PATIENT_PATH = '/patients/e2e_mobile_qr_draft_patient';
+const PATIENT_BOARD_SEARCH_LABEL = '氏名・状態で検索';
 
 test.setTimeout(240_000);
 
@@ -32,6 +33,13 @@ async function writeElementScreenshot(locator: ReturnType<Page['locator']>, name
     path: path.join(ELEMENT_SCREEN_DIR, `${name}.png`),
     caret: 'initial',
   });
+}
+
+async function openNavigationDrawer(page: Page): Promise<Locator> {
+  await page.getByRole('button', { name: 'ナビを開く' }).click();
+  const drawer = page.getByRole('dialog', { name: 'ナビゲーション' });
+  await expect(drawer).toBeVisible();
+  return drawer;
 }
 
 function summarizeViolations(
@@ -124,7 +132,7 @@ test('patients accessibility has no critical or serious violations', async ({
     ['critical', 'serious'].includes(violation.impact ?? ''),
   );
 
-  const searchInput = page.getByRole('searchbox', { name: '氏名・住所で検索' });
+  const searchInput = page.getByRole('searchbox', { name: PATIENT_BOARD_SEARCH_LABEL });
   await expect(searchInput).toBeVisible();
   await writeScreenshot(page, 'patients-a11y');
   await writeElementScreenshot(searchInput, 'patients-search-input');
@@ -186,7 +194,7 @@ test('mobile patients screen preserves search usability without horizontal overf
   const { page, errors } = await createInstrumentedPage(context);
   await openStableRoute(page, '/patients');
 
-  const searchInput = page.getByRole('searchbox', { name: '氏名・住所で検索' });
+  const searchInput = page.getByRole('searchbox', { name: PATIENT_BOARD_SEARCH_LABEL });
   await expect(searchInput).toBeVisible();
 
   const overflowWidth = await page.evaluate(() => {
@@ -214,7 +222,9 @@ test.describe('environment emulation audit', () => {
     await openStableRoute(page, '/dashboard');
 
     await expect(page.locator('html')).toHaveClass(/dark/);
-    await expect(page.getByTestId('app-sidebar').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'ナビを開く' })).toBeVisible();
+    const drawer = await openNavigationDrawer(page);
+    await expect(drawer.getByRole('link', { name: '患者一覧' })).toBeVisible();
     await writeScreenshot(page, 'dashboard-dark-mode');
     expect(errors).toEqual([]);
   });
@@ -296,10 +306,13 @@ test.describe('ARIA and keyboard contracts', () => {
     await clickAndWaitForStableRoute(
       page,
       /\/patients$/,
-      () => page.getByTestId('sidebar-nav-patients').click(),
+      async () => {
+        const drawer = await openNavigationDrawer(page);
+        await drawer.getByTestId('sidebar-nav-patients').click();
+      },
       { timeout: 20_000 },
     );
-    await expect(page.getByRole('searchbox', { name: '氏名・住所で検索' })).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: PATIENT_BOARD_SEARCH_LABEL })).toBeVisible();
     expect(errors).toEqual([]);
   });
 
@@ -331,7 +344,8 @@ test.describe('ARIA and keyboard contracts', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dashboard');
 
-    const nav = page.getByRole('navigation', { name: 'ワークフローナビ' }).first();
+    const drawer = await openNavigationDrawer(page);
+    const nav = drawer.getByRole('navigation', { name: 'ワークフローナビ' }).first();
     await expect(nav).toBeVisible();
     await expect(nav.getByText('今日', { exact: true })).toBeVisible();
     await expect(nav.getByText('患者', { exact: true })).toBeVisible();
@@ -370,8 +384,9 @@ test.describe('ARIA and keyboard contracts', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dashboard');
 
-    const homeLink = page.getByTestId('sidebar-nav-home').first();
-    const schedulesLink = page.getByTestId('sidebar-nav-schedules').first();
+    const drawer = await openNavigationDrawer(page);
+    const homeLink = drawer.getByTestId('sidebar-nav-home').first();
+    const schedulesLink = drawer.getByTestId('sidebar-nav-schedules').first();
 
     await homeLink.focus();
     await expect(homeLink).toBeFocused();
@@ -392,11 +407,14 @@ test.describe('ARIA and keyboard contracts', () => {
     await clickAndWaitForStableRoute(
       page,
       /\/patients$/,
-      () => page.getByTestId('sidebar-nav-patients').first().click(),
+      async () => {
+        const drawer = await openNavigationDrawer(page);
+        await drawer.getByTestId('sidebar-nav-patients').first().click();
+      },
       { timeout: 20_000 },
     );
     await expect(page).toHaveURL(/\/patients$/);
-    await expect(page.getByRole('searchbox', { name: '氏名・住所で検索' })).toBeVisible();
+    await expect(page.getByRole('searchbox', { name: PATIENT_BOARD_SEARCH_LABEL })).toBeVisible();
 
     expect(errors).toEqual([]);
   });

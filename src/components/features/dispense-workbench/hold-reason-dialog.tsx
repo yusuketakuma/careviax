@@ -35,15 +35,15 @@ const CARD_STYLE: CSSProperties = { width: 420 };
 const FIELD_INPUT_STYLE: CSSProperties = {
   width: '100%',
   fontSize: 12,
-  border: '1px solid #c2cad4',
+  border: '1px solid var(--wb-line)',
   borderRadius: 5,
   padding: '5px 7px',
-  color: '#22344a',
+  color: 'var(--wb-ink)',
 };
 
 const FIELD_LABEL_STYLE: CSSProperties = {
   fontSize: 11,
-  color: '#69788c',
+  color: 'var(--wb-ink-muted)',
   fontWeight: 700,
   marginBottom: 3,
 };
@@ -127,7 +127,12 @@ export function HoldReasonDialog({ view, phase, handlers }: HoldReasonDialogProp
         <div style={{ padding: '13px 15px' }}>
           {/* 保留理由（必須）ラジオ群 */}
           <div
-            style={{ fontSize: 11.5, fontWeight: 700, color: '#46566a', marginBottom: 6 }}
+            style={{
+              fontSize: 11.5,
+              fontWeight: 700,
+              color: 'var(--wb-ink-muted)',
+              marginBottom: 6,
+            }}
             id="hold-reason-legend"
           >
             保留理由（必須）
@@ -140,10 +145,10 @@ export function HoldReasonDialog({ view, phase, handlers }: HoldReasonDialogProp
           >
             {view.holdReasons.map((hr, i) => {
               // 設計 L1058 と同値の選択色を selected から導出
-              const border = hr.selected ? '#e0972b' : '#dde2e8';
-              const bg = hr.selected ? '#fff7ea' : '#fff';
-              const dotBorder = hr.selected ? '#e0972b' : '#9aa8b8';
-              const dotBg = hr.selected ? '#e0972b' : '#fff';
+              const border = hr.selected ? 'var(--wb-state-confirm)' : 'var(--wb-line)';
+              const bg = hr.selected ? 'var(--wb-confirm-bg-pale)' : 'var(--wb-surface)';
+              const dotBorder = hr.selected ? 'var(--wb-state-confirm)' : 'var(--wb-line)';
+              const dotBg = hr.selected ? 'var(--wb-state-confirm)' : 'var(--wb-surface)';
               const selectReason = () => setHoldField('reason', hr.label);
               return (
                 <div
@@ -181,7 +186,7 @@ export function HoldReasonDialog({ view, phase, handlers }: HoldReasonDialogProp
                       background: dotBg,
                     }}
                   />
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: '#2a3a4d' }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--wb-ink)' }}>
                     {hr.label}
                   </span>
                 </div>
@@ -241,9 +246,9 @@ export function HoldReasonDialog({ view, phase, handlers }: HoldReasonDialogProp
                 cursor: 'pointer',
                 fontSize: 12.5,
                 fontWeight: 700,
-                color: '#5a6878',
-                background: '#eef1f4',
-                border: '1px solid #c2cad4',
+                color: 'var(--wb-ink-muted)',
+                background: 'var(--wb-surface-muted)',
+                border: '1px solid var(--wb-line)',
                 borderRadius: 6,
                 padding: '8px 18px',
                 fontFamily: 'inherit',

@@ -24,7 +24,7 @@ export function StagnationIndicator({
   return (
     <Badge
       variant="outline"
-      className="gap-1 border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+      className="gap-1 border-state-confirm/40 bg-state-confirm/10 text-state-confirm"
     >
       <Clock className="size-3" aria-hidden="true" />
       {label}

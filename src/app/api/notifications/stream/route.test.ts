@@ -10,6 +10,8 @@ const {
   subscribeToChannelMock,
   unsubscribeFromChannelMock,
   canAccessCollaborationEntityMock,
+  loggerWarnMock,
+  loggerInfoMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   notificationFindManyMock: vi.fn(),
@@ -18,6 +20,17 @@ const {
   subscribeToChannelMock: vi.fn(),
   unsubscribeFromChannelMock: vi.fn(),
   canAccessCollaborationEntityMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
+  loggerInfoMock: vi.fn(),
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: loggerInfoMock,
+    warn: loggerWarnMock,
+    error: vi.fn(),
+  },
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -469,6 +482,44 @@ describe('/api/notifications/stream', () => {
     expect(firstCall?.where.created_at.lte.getTime()).toBeGreaterThan(
       firstCall?.where.created_at.gt.getTime(),
     );
+
+    controller.abort();
+    await vi.runOnlyPendingTimersAsync();
+  });
+
+  it('logs a warning but keeps the stream alive when a safety poll fails', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T00:00:00.000Z'));
+    subscribeToChannelMock.mockRejectedValue(new Error('realtime unavailable'));
+    notificationFindManyMock.mockRejectedValue(new Error('db down'));
+
+    const controller = new AbortController();
+    const response = (await GET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+
+    // 1回目の poll 失敗 → 初回警告
+    vi.setSystemTime(new Date('2026-04-01T00:00:05.000Z'));
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(notificationFindManyMock).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      'notification stream poll failed',
+      expect.objectContaining({
+        event: 'notification_stream_poll_failed',
+        consecutive_failures: 1,
+        error_name: 'Error',
+      }),
+    );
+
+    // ストリームは生存し、次の poll が再スケジュールされている(2回目も発火)
+    vi.setSystemTime(new Date('2026-04-01T00:00:10.000Z'));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(notificationFindManyMock).toHaveBeenCalledTimes(2);
+
+    // ログ氾濫を避けるため、2回目の連続失敗では警告を増やさない
+    expect(loggerWarnMock).toHaveBeenCalledTimes(1);
 
     controller.abort();
     await vi.runOnlyPendingTimersAsync();

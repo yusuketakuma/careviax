@@ -59,6 +59,13 @@ function createRequest(headers?: Record<string, string>, body?: unknown) {
   return new NextRequest('http://localhost/api/admin/facilities', init);
 }
 
+function createGetRequest(url: string, headers?: Record<string, string>) {
+  return new NextRequest(url, {
+    method: 'GET',
+    headers,
+  });
+}
+
 function createMalformedJsonRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/admin/facilities', {
     method: 'POST',
@@ -166,6 +173,120 @@ describe('/api/admin/facilities GET', () => {
         }),
       ],
     });
+  });
+
+  it('uses bounded server-side search and returns a minimal facility projection', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    facilityFindManyMock.mockResolvedValue([
+      {
+        id: 'facility_1',
+        name: 'あおば苑',
+        facility_type: 'nursing_home',
+        address: '東京都新宿区1-1-1',
+        phone: '03-1234-5678',
+        fax: '03-1234-5679',
+        notes: 'internal note',
+        contacts: [{ name: '施設担当' }],
+      },
+      {
+        id: 'facility_2',
+        name: 'あおば第二',
+        facility_type: 'group_home',
+        address: null,
+        phone: null,
+        fax: null,
+        notes: null,
+        contacts: [],
+      },
+      {
+        id: 'facility_3',
+        name: 'あおば第三',
+        facility_type: 'group_home',
+        address: null,
+        phone: null,
+        fax: null,
+        notes: null,
+        contacts: [],
+      },
+    ]);
+    residenceGroupByMock.mockResolvedValue([
+      {
+        facility_id: 'facility_1',
+        _count: {
+          _all: 3,
+        },
+      },
+      {
+        facility_id: 'facility_2',
+        _count: {
+          _all: 1,
+        },
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/admin/facilities?q=%E3%81%82%E3%81%8A%E3%81%B0&limit=2',
+        {
+          'x-org-id': 'org_1',
+        },
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(facilityFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        OR: [
+          { name: { contains: 'あおば', mode: 'insensitive' } },
+          { address: { contains: 'あおば', mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        facility_type: true,
+        address: true,
+      },
+      take: 3,
+      orderBy: [{ name: 'asc' }],
+    });
+    expect(residenceGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          facility_id: {
+            in: ['facility_1', 'facility_2'],
+          },
+        }),
+      }),
+    );
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'facility_1',
+          name: 'あおば苑',
+          facility_type: 'nursing_home',
+          address: '東京都新宿区1-1-1',
+          patient_count: 3,
+        },
+        {
+          id: 'facility_2',
+          name: 'あおば第二',
+          facility_type: 'group_home',
+          address: null,
+          patient_count: 1,
+        },
+      ],
+      hasMore: true,
+    });
+    expect(body.data[0]).not.toHaveProperty('contacts');
+    expect(body.data[0]).not.toHaveProperty('phone');
+    expect(body.data[0]).not.toHaveProperty('fax');
+    expect(body.data[0]).not.toHaveProperty('notes');
   });
 
   it('creates a facility with regular visit weekdays', async () => {

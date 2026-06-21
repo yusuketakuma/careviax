@@ -64,6 +64,10 @@ const relationLabel: Record<ContactRow['relation'], string> = {
   other: 'その他',
 };
 
+const CONTACT_DELETE_DISABLED_REASON_ID = 'patient-contact-delete-disabled-reason';
+const CONTACT_SAVE_EMPTY_REASON_ID = 'patient-contact-save-empty-reason';
+const CONTACT_SAVE_EMPTY_REASON = '保存するには連絡先の氏名を入力してください。';
+
 export function PatientContactsPanel({
   patientId,
   orgId,
@@ -163,6 +167,8 @@ export function PatientContactsPanel({
       toast.error(error instanceof Error ? error.message : '連絡先の保存に失敗しました');
     },
   });
+  const hasPersistableContact = contacts.some((contact) => contact.name.trim());
+  const saveDisabledReason = hasPersistableContact ? null : CONTACT_SAVE_EMPTY_REASON;
 
   return (
     <Card>
@@ -353,6 +359,10 @@ export function PatientContactsPanel({
                 type="button"
                 variant="ghost"
                 size="sm"
+                aria-label={`連絡先${index + 1}件目を削除`}
+                aria-describedby={
+                  contacts.length === 1 ? CONTACT_DELETE_DISABLED_REASON_ID : undefined
+                }
                 onClick={() =>
                   setContacts((current) => current.filter((_, itemIndex) => itemIndex !== index))
                 }
@@ -361,6 +371,11 @@ export function PatientContactsPanel({
                 <Trash2 className="mr-1 size-4" />
                 削除
               </Button>
+              {contacts.length === 1 ? (
+                <p id={CONTACT_DELETE_DISABLED_REASON_ID} className="text-xs text-muted-foreground">
+                  連絡先は最低1件必要です。
+                </p>
+              ) : null}
             </div>
           </div>
         ))}
@@ -391,7 +406,17 @@ export function PatientContactsPanel({
             <Plus className="mr-1 size-4" />
             行追加
           </Button>
-          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          {saveDisabledReason ? (
+            <p id={CONTACT_SAVE_EMPTY_REASON_ID} className="text-xs text-muted-foreground">
+              {saveDisabledReason}
+            </p>
+          ) : null}
+          <Button
+            type="button"
+            aria-describedby={saveDisabledReason ? CONTACT_SAVE_EMPTY_REASON_ID : undefined}
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || Boolean(saveDisabledReason)}
+          >
             {saveMutation.isPending ? '保存中...' : '保存'}
           </Button>
         </ActionRail>

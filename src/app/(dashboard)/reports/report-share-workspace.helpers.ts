@@ -5,6 +5,9 @@ import type {
   EvidenceItem,
   NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
+import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
+import { familyNameOf as sharedFamilyNameOf } from '@/lib/utils/person-name';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
 
@@ -14,25 +17,13 @@ import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-worksp
  * (/api/dashboard/cockpit)から組み立てる(09_set/11_billing/12_handoff と共通の文脈)。
  */
 
-export function formatTimeOfDay(iso: string): string {
-  const date = new Date(iso);
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
+export { formatTimeOfDay };
 
 /** 経過分 → 「30分」「2時間」「1日」 */
-export function formatAgeLabel(minutes: number): string {
-  const safeMinutes = Math.max(minutes, 0);
-  if (safeMinutes < 60) return `${safeMinutes}分`;
-  if (safeMinutes < 24 * 60) return `${Math.floor(safeMinutes / 60)}時間`;
-  return `${Math.floor(safeMinutes / (24 * 60))}日`;
-}
+export const formatAgeLabel = formatElapsedLabel;
 
 /** 「田中 一郎」→「田中」 */
-export function familyNameOf(fullName: string): string {
-  return fullName.split(/[\s　]+/)[0] ?? fullName;
-}
+export const familyNameOf = sharedFamilyNameOf;
 
 /** ヘッダーメタ「6/11(木) — 書く3件・待つ2件・解決1件」 */
 export function buildHeaderMeta(

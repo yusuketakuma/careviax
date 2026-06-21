@@ -18,6 +18,21 @@ type VisitMapStatus =
 
 type VisitMapPriority = 'normal' | 'urgent' | 'emergency';
 
+/**
+ * data-URI SVG の fill には CSS トークン(var(--state-*))を注入できないため、
+ * globals.css の状態トークン(oklch)を 16進近似した値を 1 箇所に集約する。
+ * 状態色とマップピン色の二重定義によるドリフトを防ぐための単一ソース。
+ * role は 6 軸セマンティック(status-tokens.ts の StatusRole)に対応する。
+ */
+type MarkerRole = 'blocked' | 'done' | 'confirm' | 'info';
+
+const MARKER_ROLE_HEX: Record<MarkerRole, string> = {
+  blocked: '#bb1322', // --state-blocked (赤) — 止まっている理由
+  done: '#2a7b42', // --state-done (緑) — 完了
+  confirm: '#955600', // --state-confirm (橙) — 要確認・候補
+  info: '#005f9e', // --tag-info (青) — 通常・予定・進行中
+};
+
 export type VisitRouteMapPoint = {
   scheduleId: string;
   patientName: string;
@@ -32,12 +47,20 @@ export type VisitRouteMapPoint = {
   pointKind?: 'proposal' | 'schedule';
 };
 
+function markerRole(
+  point: Pick<VisitRouteMapPoint, 'status' | 'priority' | 'pointKind'>,
+): MarkerRole {
+  if (point.priority === 'emergency') return 'blocked';
+  if (point.pointKind === 'proposal') return 'confirm';
+  if (point.status === 'completed') return 'done';
+  if (point.status === 'cancelled' || point.status === 'no_show') return 'blocked';
+  if (point.status === 'postponed' || point.status === 'rescheduled') return 'confirm';
+  // planned / in_preparation / ready / departed / in_progress → info(青)
+  return 'info';
+}
+
 function markerColor(point: Pick<VisitRouteMapPoint, 'status' | 'priority' | 'pointKind'>) {
-  if (point.priority === 'emergency') return '#dc2626';
-  if (point.pointKind === 'proposal') return '#d97706';
-  if (point.status === 'in_progress') return '#16a34a';
-  if (point.status === 'completed') return '#6b7280';
-  return '#2563eb';
+  return MARKER_ROLE_HEX[markerRole(point)];
 }
 
 const statusLabel: Record<VisitMapStatus, string> = {
@@ -197,10 +220,14 @@ export function VisitRouteMap(props: {
                 onCloseClick={() => setActiveScheduleId(null)}
               >
                 <div className="max-w-[220px] space-y-1 text-sm">
-                  <div className="font-medium text-slate-900">{activePoint.patientName}</div>
-                  <div className="text-xs leading-5 text-slate-600">{activePoint.address}</div>
+                  <div className="font-medium text-foreground">{activePoint.patientName}</div>
+                  <div className="text-xs leading-5 text-muted-foreground">
+                    {activePoint.address}
+                  </div>
                   {activePoint.timeLabel ? (
-                    <div className="text-xs text-slate-600">時間 {activePoint.timeLabel}</div>
+                    <div className="text-xs text-muted-foreground">
+                      時間 {activePoint.timeLabel}
+                    </div>
                   ) : null}
                   <div className="flex flex-wrap gap-1 pt-1">
                     <Badge variant="outline">順路 {activePoint.orderLabel}</Badge>

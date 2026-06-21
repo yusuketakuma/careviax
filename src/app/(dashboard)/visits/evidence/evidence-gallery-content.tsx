@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { ErrorState } from '@/components/ui/error-state';
 import { listEvidenceDraftSummaries } from '@/lib/offline/evidence-drafts';
 import { cn } from '@/lib/utils';
 import {
@@ -51,8 +52,8 @@ export async function fetchVisitRecordsWithAttachments(
 }
 
 const SYNC_BADGE_CLASSES: Record<EvidenceGalleryItem['syncState'], string> = {
-  pending: 'bg-amber-100 text-amber-800',
-  synced: 'bg-emerald-100 text-emerald-700',
+  pending: 'bg-state-confirm/10 text-state-confirm',
+  synced: 'bg-state-done/10 text-state-done',
 };
 
 const SYNC_BADGE_LABELS: Record<EvidenceGalleryItem['syncState'], string> = {
@@ -66,7 +67,12 @@ export function EvidenceGalleryContent() {
     React.useState<EvidenceCategoryId>('residual_photo');
   const [demoItems, setDemoItems] = React.useState<EvidenceGalleryItem[] | null>(null);
 
-  const { data: serverItems, isLoading } = useQuery({
+  const {
+    data: serverItems,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['visit-evidence-gallery', orgId],
     enabled: !!orgId,
     queryFn: async () =>
@@ -130,13 +136,13 @@ export function EvidenceGalleryContent() {
               <p className="text-[11px] font-bold text-muted-foreground">合計</p>
               <p className="mt-1 text-lg font-bold text-foreground">{summary.totalCount}枚</p>
             </div>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-              <p className="text-[11px] font-bold text-amber-700">未同期</p>
-              <p className="mt-1 text-lg font-bold text-amber-800">{summary.pendingCount}枚</p>
+            <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-2">
+              <p className="text-[11px] font-bold text-state-confirm">未同期</p>
+              <p className="mt-1 text-lg font-bold text-state-confirm">{summary.pendingCount}枚</p>
             </div>
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-              <p className="text-[11px] font-bold text-emerald-700">同期済み</p>
-              <p className="mt-1 text-lg font-bold text-emerald-800">{summary.syncedCount}枚</p>
+            <div className="rounded-lg border border-state-done/30 bg-state-done/10 px-3 py-2">
+              <p className="text-[11px] font-bold text-state-done">同期済み</p>
+              <p className="mt-1 text-lg font-bold text-state-done">{summary.syncedCount}枚</p>
             </div>
             <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
               <p className="text-[11px] font-bold text-muted-foreground">
@@ -198,6 +204,16 @@ export function EvidenceGalleryContent() {
               <p className="py-10 text-center text-sm text-muted-foreground">
                 画像を読み込んでいます...
               </p>
+            ) : isError && visibleItems.length === 0 ? (
+              // 取得失敗を「画像はまだありません」(空)に倒さない。オフライン下書き等で
+              // 表示できるものがある場合はそちらを優先し、何も無いときだけ ErrorState。
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="画像・証跡を取得できませんでした"
+                description="時間をおいて再試行してください。"
+                action={{ label: '再試行', onClick: () => refetch() }}
+              />
             ) : visibleItems.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
                 <p className="text-sm leading-6 text-muted-foreground">
@@ -218,11 +234,14 @@ export function EvidenceGalleryContent() {
                     <li
                       key={item.id}
                       data-testid="evidence-photo-card"
-                      className="flex min-h-44 flex-col rounded-lg border border-border/60 bg-slate-50/80 p-3"
+                      className="flex min-h-44 flex-col rounded-lg border border-border/60 bg-muted/40 p-3"
                     >
                       {/* 実画像なしのプレースホルダー(target 準拠) */}
                       <div className="flex flex-1 items-center justify-center py-8">
-                        <span className="text-lg font-medium text-slate-400" aria-hidden="true">
+                        <span
+                          className="text-lg font-medium text-muted-foreground"
+                          aria-hidden="true"
+                        >
                           写真
                         </span>
                         {item.fileName ? <span className="sr-only">{item.fileName}</span> : null}

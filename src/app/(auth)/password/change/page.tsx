@@ -3,13 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,11 +28,11 @@ function evaluatePasswordStrength(password: string): PasswordStrength {
   const capped = Math.min(score, 4) as 0 | 1 | 2 | 3 | 4;
 
   const levels: Record<number, Omit<PasswordStrength, 'score'>> = {
-    0: { label: '非常に弱い', color: 'text-red-600', bgColor: 'bg-red-500' },
-    1: { label: '弱い', color: 'text-red-600', bgColor: 'bg-red-500' },
-    2: { label: '中', color: 'text-amber-600', bgColor: 'bg-amber-500' },
-    3: { label: '強い', color: 'text-blue-600', bgColor: 'bg-blue-500' },
-    4: { label: '非常に強い', color: 'text-green-600', bgColor: 'bg-green-500' },
+    0: { label: '非常に弱い', color: 'text-state-blocked', bgColor: 'bg-state-blocked' },
+    1: { label: '弱い', color: 'text-state-blocked', bgColor: 'bg-state-blocked' },
+    2: { label: '中', color: 'text-state-confirm', bgColor: 'bg-state-confirm' },
+    3: { label: '強い', color: 'text-tag-info', bgColor: 'bg-tag-info' },
+    4: { label: '非常に強い', color: 'text-state-done', bgColor: 'bg-state-done' },
   };
 
   return { score: capped, ...levels[capped] };
@@ -60,10 +54,7 @@ export default function PasswordChangePage() {
   const isLongEnough = newPassword.length >= 13;
 
   const canSubmit =
-    currentPassword.length > 0 &&
-    isLongEnough &&
-    passwordsMatch &&
-    confirmPassword.length > 0;
+    currentPassword.length > 0 && isLongEnough && passwordsMatch && confirmPassword.length > 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -92,7 +83,7 @@ export default function PasswordChangePage() {
       setError(
         err instanceof Error
           ? err.message
-          : 'パスワードの変更に失敗しました。現在のパスワードを確認してください。'
+          : 'パスワードの変更に失敗しました。現在のパスワードを確認してください。',
       );
     } finally {
       setIsLoading(false);
@@ -105,20 +96,14 @@ export default function PasswordChangePage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                <Check className="h-6 w-6 text-green-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-state-done/15">
+                <Check className="h-6 w-6 text-state-done" />
               </div>
-              <h2 className="text-lg font-semibold text-slate-800">
-                パスワードを変更しました
-              </h2>
-              <p className="text-sm text-slate-500">
+              <h2 className="text-lg font-semibold text-foreground">パスワードを変更しました</h2>
+              <p className="text-sm text-muted-foreground">
                 新しいパスワードでログインしてください。
               </p>
-              <Button
-                size="lg"
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                onClick={() => router.push('/login')}
-              >
+              <Button size="lg" className="w-full" onClick={() => router.push('/login')}>
                 ログイン画面へ
               </Button>
             </div>
@@ -133,9 +118,7 @@ export default function PasswordChangePage() {
       <Card>
         <CardHeader>
           <CardTitle>パスワード変更</CardTitle>
-          <CardDescription>
-            現在のパスワードと新しいパスワードを入力してください
-          </CardDescription>
+          <CardDescription>現在のパスワードと新しいパスワードを入力してください</CardDescription>
         </CardHeader>
         <CardContent>
           {error && (
@@ -161,7 +144,7 @@ export default function PasswordChangePage() {
                 />
                 <button
                   type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
                   onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                   aria-label={showCurrentPassword ? 'パスワードを隠す' : 'パスワードを表示'}
                 >
@@ -189,15 +172,11 @@ export default function PasswordChangePage() {
                 />
                 <button
                   type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
                   onClick={() => setShowNewPassword(!showNewPassword)}
                   aria-label={showNewPassword ? 'パスワードを隠す' : 'パスワードを表示'}
                 >
-                  {showNewPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
 
@@ -209,21 +188,17 @@ export default function PasswordChangePage() {
                       <div
                         key={i}
                         className={`h-1.5 flex-1 rounded-full transition-colors ${
-                          i < strength.score ? strength.bgColor : 'bg-slate-200'
+                          i < strength.score ? strength.bgColor : 'bg-muted'
                         }`}
                       />
                     ))}
                   </div>
-                  <p className={`text-xs ${strength.color}`}>
-                    パスワード強度: {strength.label}
-                  </p>
+                  <p className={`text-xs ${strength.color}`}>パスワード強度: {strength.label}</p>
                 </div>
               )}
 
               {newPassword.length > 0 && !isLongEnough && (
-                <p className="text-xs text-red-600">
-                  パスワードは13文字以上で入力してください
-                </p>
+                <p className="text-xs text-destructive">パスワードは13文字以上で入力してください</p>
               )}
             </div>
 
@@ -240,16 +215,14 @@ export default function PasswordChangePage() {
                 disabled={isLoading}
               />
               {confirmPassword.length > 0 && !passwordsMatch && (
-                <p className="text-xs text-red-600">
-                  パスワードが一致しません
-                </p>
+                <p className="text-xs text-destructive">パスワードが一致しません</p>
               )}
             </div>
 
             <Button
               type="submit"
               size="lg"
-              className="mt-2 w-full bg-blue-600 hover:bg-blue-700"
+              className="mt-2 w-full"
               disabled={!canSubmit || isLoading}
               aria-busy={isLoading}
             >
@@ -260,7 +233,7 @@ export default function PasswordChangePage() {
           <div className="mt-4">
             <Link
               href="/login"
-              className="inline-flex items-center text-sm text-slate-500 hover:text-slate-700"
+              className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="mr-1 h-4 w-4" />
               ログインに戻る

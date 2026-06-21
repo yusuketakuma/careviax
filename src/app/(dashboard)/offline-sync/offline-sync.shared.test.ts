@@ -4,6 +4,8 @@ import {
   buildOfflineSyncConflictView,
   buildOfflineSyncRows,
   collectOfflineSyncScheduleIds,
+  getOfflineSyncLocalOverwriteDisabledReason,
+  getOfflineSyncRetryAllDisabledReason,
   resolveSyncRowPatientLabel,
 } from './offline-sync.shared';
 
@@ -147,5 +149,30 @@ describe('buildOfflineSyncConflictView', () => {
         NAMES,
       ),
     ).toBeNull();
+  });
+});
+
+describe('offline sync disabled reasons', () => {
+  it('keeps retry and conflict disabled reasons fixed and value-free', () => {
+    expect(getOfflineSyncRetryAllDisabledReason({ isPending: false, rowCount: 0 })).toBe(
+      '未同期のデータはありません。',
+    );
+    expect(getOfflineSyncRetryAllDisabledReason({ isPending: false, rowCount: 1 })).toBeNull();
+    expect(getOfflineSyncRetryAllDisabledReason({ isPending: true, rowCount: 0 })).toBeNull();
+    expect(
+      getOfflineSyncLocalOverwriteDisabledReason({ canOverwrite: false, isPending: false }),
+    ).toBe('サーバー側の記録を取得できないため上書きできません。');
+    expect(
+      getOfflineSyncLocalOverwriteDisabledReason({ canOverwrite: true, isPending: false }),
+    ).toBeNull();
+    expect(
+      getOfflineSyncLocalOverwriteDisabledReason({ canOverwrite: false, isPending: true }),
+    ).toBeNull();
+
+    const allReasons = [
+      getOfflineSyncRetryAllDisabledReason({ isPending: false, rowCount: 0 }),
+      getOfflineSyncLocalOverwriteDisabledReason({ canOverwrite: false, isPending: false }),
+    ].join(' ');
+    expect(allReasons).not.toMatch(/patient_|sched_|田中|一郎|rec_/);
   });
 });

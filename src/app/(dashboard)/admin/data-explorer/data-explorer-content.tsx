@@ -71,12 +71,24 @@ const SUMMARY_KEYS = [
   'yj_code',
 ] as const;
 
+const DATA_EXPLORER_EDITOR_DISABLED_REASON_ID = 'data-explorer-editor-disabled-reason';
+
 function summarizeRow(row: Record<string, unknown>) {
   for (const key of SUMMARY_KEYS) {
     const value = row[key];
     if (typeof value === 'string' && value.trim()) return value;
   }
   return typeof row.id === 'string' ? row.id : 'レコード';
+}
+
+function dataExplorerRowActionLabel(tableName: string, index: number) {
+  return `${tableName} テーブルの ${index + 1} 行目を選択`;
+}
+
+function getEditorDisabledReason(args: { hasSelectedRow: boolean; hasEditableFields: boolean }) {
+  if (!args.hasSelectedRow) return 'レコードを選択してください。';
+  if (!args.hasEditableFields) return 'このテーブルは閲覧のみです。';
+  return null;
 }
 
 function extractEditablePatch(row: Record<string, unknown> | null, columns: ExplorerField[]) {
@@ -86,6 +98,10 @@ function extractEditablePatch(row: Record<string, unknown> | null, columns: Expl
       .filter((column) => column.isEditable)
       .map((column) => [column.name, row[column.name] ?? null]),
   );
+}
+
+function orgScopedHeaders(orgId: string): HeadersInit | undefined {
+  return orgId ? { 'x-org-id': orgId } : undefined;
 }
 
 export function DataExplorerContent() {
@@ -105,12 +121,11 @@ export function DataExplorerContent() {
     queryKey: ['admin-data-explorer-models', orgId],
     queryFn: async () => {
       const response = await fetch('/api/admin/data-explorer/models', {
-        headers: { 'x-org-id': orgId },
+        headers: orgScopedHeaders(orgId),
       });
       if (!response.ok) throw new Error('モデル一覧の取得に失敗しました');
       return response.json() as Promise<{ data: ExplorerModel[] }>;
     },
-    enabled: !!orgId,
   });
 
   const filteredModels = useMemo(
@@ -141,13 +156,13 @@ export function DataExplorerContent() {
       const response = await fetch(
         `/api/admin/data-explorer/${effectiveSelectedTable}?${params.toString()}`,
         {
-          headers: { 'x-org-id': orgId },
+          headers: orgScopedHeaders(orgId),
         },
       );
       if (!response.ok) throw new Error('テーブルデータの取得に失敗しました');
       return response.json() as Promise<{ data: ExplorerRowsPayload }>;
     },
-    enabled: !!orgId && !!effectiveSelectedTable,
+    enabled: !!effectiveSelectedTable,
   });
 
   const tableData = rowsQuery.data?.data ?? null;
@@ -186,7 +201,7 @@ export function DataExplorerContent() {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
-            'x-org-id': orgId,
+            ...(orgId ? { 'x-org-id': orgId } : {}),
           },
           body: JSON.stringify({ patch }),
         },
@@ -222,6 +237,13 @@ export function DataExplorerContent() {
   const editableFields =
     tableData?.columns.filter((column) => column.isEditable).map((column) => column.name) ?? [];
   const hasEditableFields = editableFields.length > 0;
+  const editorDisabledReason = getEditorDisabledReason({
+    hasSelectedRow: Boolean(selectedRow),
+    hasEditableFields,
+  });
+  const editorDisabledDescription = editorDisabledReason
+    ? DATA_EXPLORER_EDITOR_DISABLED_REASON_ID
+    : undefined;
 
   return (
     <PageScaffold>
@@ -232,7 +254,7 @@ export function DataExplorerContent() {
       />
 
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_minmax(0,1.1fr)]">
-        <Card className="xl:h-[calc(100vh-13rem)] xl:overflow-hidden">
+        <Card className="xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>モデル一覧</CardTitle>
             <CardDescription>監査カテゴリごとにフィルタできます。</CardDescription>
@@ -299,7 +321,7 @@ export function DataExplorerContent() {
           </CardContent>
         </Card>
 
-        <Card className="xl:h-[calc(100vh-13rem)] xl:overflow-hidden">
+        <Card className="xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>{effectiveSelectedTable || 'テーブル選択待ち'}</CardTitle>
             <CardDescription>
@@ -325,12 +347,13 @@ export function DataExplorerContent() {
               {rowsQuery.isLoading ? (
                 <div className="text-sm text-muted-foreground">読み込み中...</div>
               ) : tableData?.rows.length ? (
-                tableData.rows.map((row) => {
+                tableData.rows.map((row, index) => {
                   const rowId = String(row.id);
                   return (
                     <button
                       key={rowId}
                       type="button"
+                      aria-label={dataExplorerRowActionLabel(tableData.tableName, index)}
                       onClick={() => setSelectedRowId(rowId)}
                       className={`w-full rounded-xl border p-3 text-left transition ${
                         rowId === effectiveSelectedRowId
@@ -361,7 +384,7 @@ export function DataExplorerContent() {
           </CardContent>
         </Card>
 
-        <Card className="xl:h-[calc(100vh-13rem)] xl:overflow-hidden">
+        <Card className="xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>詳細 / 許可フィールド更新</CardTitle>
             <CardDescription>
@@ -388,8 +411,17 @@ export function DataExplorerContent() {
                       このテーブルは専用ワークフローで更新します。Data Explorer では閲覧のみです。
                     </div>
                   ) : null}
+                  {editorDisabledReason ? (
+                    <p
+                      id={DATA_EXPLORER_EDITOR_DISABLED_REASON_ID}
+                      className="text-xs text-muted-foreground"
+                    >
+                      {editorDisabledReason}
+                    </p>
+                  ) : null}
                   <Textarea
                     aria-label="許可フィールド JSON"
+                    aria-describedby={editorDisabledDescription}
                     value={editorValue}
                     onChange={(event) => {
                       if (!editorKey) return;
@@ -399,13 +431,14 @@ export function DataExplorerContent() {
                       }));
                     }}
                     className="min-h-[20rem] flex-1 font-mono text-xs"
-                    disabled={!selectedRow || !hasEditableFields}
+                    disabled={Boolean(editorDisabledReason)}
                   />
                   <div className="flex items-center gap-2">
                     <LoadingButton
                       loading={saveMutation.isPending}
                       onClick={() => saveMutation.mutate()}
-                      disabled={!selectedRow || !hasEditableFields}
+                      disabled={Boolean(editorDisabledReason)}
+                      aria-describedby={editorDisabledDescription}
                     >
                       <Save className="mr-2 size-4" aria-hidden="true" />
                       保存
@@ -421,7 +454,8 @@ export function DataExplorerContent() {
                           return next;
                         });
                       }}
-                      disabled={!selectedRow}
+                      disabled={Boolean(editorDisabledReason)}
+                      aria-describedby={editorDisabledDescription}
                     >
                       <RefreshCcw className="mr-2 size-4" aria-hidden="true" />
                       リセット

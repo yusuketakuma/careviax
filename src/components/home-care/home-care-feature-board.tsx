@@ -28,10 +28,10 @@ const STATUS_LABELS: Record<HomeCareFeatureStatus, string> = {
 };
 
 const STATUS_TONE: Record<HomeCareFeatureStatus, string> = {
-  blocked: 'border-rose-200 bg-rose-50 text-rose-700',
-  attention: 'border-amber-200 bg-amber-50 text-amber-700',
-  monitoring: 'border-sky-200 bg-sky-50 text-sky-700',
-  ready: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  blocked: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
+  attention: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  monitoring: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
+  ready: 'border-state-done/30 bg-state-done/10 text-state-done',
 };
 
 type HomeCareFeatureBoardProps = {
@@ -78,8 +78,8 @@ function FeatureTile({
     <div
       className={cn(
         'rounded-xl border border-border/70 bg-background px-4 py-3',
-        feature.status === 'blocked' && 'border-rose-200/80',
-        feature.status === 'attention' && 'border-amber-200/80',
+        feature.status === 'blocked' && 'border-state-blocked/40',
+        feature.status === 'attention' && 'border-state-confirm/40',
       )}
     >
       <div className="flex items-start justify-between gap-3">

@@ -20,13 +20,55 @@ Do not stop until the concrete task is actually complete or an explicit blocker 
 
 For each iteration:
 
+0. **Drain the agmsg inbox first** (`~/.agents/skills/agmsg/scripts/inbox.sh phos codex`). A busy main loop does not process pushed agmsg events until it reaches a turn boundary, so polling here every iteration is the reliable delivery path — do not rely on push alone. Act on any `PAUSE_REQUEST`/`HANDOFF_REQUEST`/conflicting `LOCK`/`REQUEST CHANGES` before doing anything else.
 1. Read repository state and `.codex/ralph-state.md` if present.
 2. Choose the highest-value next action.
-3. Inspect affected code and impact radius.
-4. Make the smallest complete fix.
-5. Run available validation.
-6. Update `.codex/ralph-state.md`.
-7. Continue.
+3. **Before editing, re-drain the inbox and check no peer holds a `LOCK` on the target files.** Declare your own `LOCK` and wait for `ACK`/no-conflict before editing shared/high-risk files.
+4. Inspect affected code and impact radius.
+5. Make the smallest complete fix.
+6. Run available validation.
+7. Update `.codex/ralph-state.md`; send an agmsg `FYI:`/`READY_FOR_REVIEW:` at start and finish of each owned group.
+8. **Drain the inbox again** before committing (catch a just-arrived `PAUSE_REQUEST`/conflict), then continue.
+
+## Multi-agent coordination (agmsg)
+
+This worktree is shared with a peer Claude Code agent (`claude` in team `phos`). Messaging is best-effort: a pushed event is only processed when the receiver hits a turn boundary, so **never assume a message was received**.
+
+- **Poll, don't trust push.** Drain the inbox at every iteration boundary, before every edit, and before every commit (steps 0/3/8 above). This is the guaranteed delivery channel; the Monitor stream is only a latency optimization.
+- **Priority prefixes.** Tag messages so a draining peer can triage fast: `URGENT:` (act before anything else — conflicts, data-loss risk, broken main), `LOCK:`/`PAUSE_REQUEST:`/`HANDOFF_REQUEST:` (coordination), `DELEGATE:`/`REQUEST CHANGES:`/`READY_FOR_REVIEW:`/`FYI:`. Scan for `URGENT:` first on every drain.
+- **ACK-gate blocking operations.** `URGENT`, `LOCK`, `DELEGATE`, `PAUSE_REQUEST`, `HANDOFF_REQUEST`, and `REQUEST CHANGES` require an explicit reply (`ACK`/`ACCEPT`/`DECLINE`) before the sender proceeds. If you send one, wait for the ack; if you receive one, ack promptly. No ack within your next 1–2 iterations → re-send.
+- **Optional relay.** If one agent's main loop is saturated for long stretches, a third lightweight resident agent (separate identity, no heavy work) can ack/route messages immediately and queue them — receipt is decoupled from the busy loop. Spawn only when the saturation is sustained; it adds an agent to coordinate.
+- **File-level locks are mandatory for shared edits.** Announce `LOCK: <paths>` before touching files; respect peer locks; never edit a peer-locked path. Resolve overlaps via `PAUSE_REQUEST`/`HANDOFF_REQUEST`.
+- **Own your commits.** Commit your own groups in isolation and announce them; do not mix the peer's in-flight (unlocked) changes into your commits.
+- **High-risk areas** (auth, patient/medical data, audit logs, permissions, DB/RLS, offline sync, realtime, billing) require mutual review before landing.
+
+## Agent loop SSOT
+
+The Claude x Codex x agmsg x gbrain operational loop SSOT is `.agent-loop/README.md`. Before editing, LOCK via agmsg; before committing, drain the inbox; stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
+
+## gbrain memory writeback
+
+gbrain is the loop's **long-term memory layer** for reusable knowledge that raises the next cycle's decision accuracy — not a log archive. The schema (what/how to store) is the SSOT `.agent-loop/GBRAIN_SCHEMA.md`; fill-in templates are in `.agent-loop/templates/gbrain/`.
+
+- **Recall first** (Memory Bootstrap): `gbrain search "<terms>"` and `gbrain list --type <Type> --tag <tag>` (esp. `FailurePattern`, `DuplicateMap`, `RejectedApproach`, `GateResult`) before planning. `gbrain query`/`search` (semantic) work — embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress; 2026-06-20). Recall is **subordinate to live repo/tests/types/lint/build**; on conflict, trust the repo and file a `StaleMemory`.
+- **As codex you mainly write**: `ImplementationDecision`, `FailurePattern`, `FixPattern`, `DuplicateMap`, `GateResult`, `TypeSafetyDecision`, `PerformanceFinding`, `SecurityFinding`, `RejectedApproach`; shared with claude: `LoopRun`, `ReviewFinding`, `CandidateLesson`, `BlockedContext`, `StaleMemory`.
+- **Before writing** (§15): redact secrets/PHI (env-var **name** only, never the value), attach evidence (file/commit/test), set `confidence`/`evidence_level`/`validity_scope`, tag, link typed edges (`gbrain link --link-type`), dedupe by key; then append the `memory_id` slug to `.agent-loop/STATE.md`.
+- **Never** persist raw conversation, full command output, secrets/tokens/`.env`, or PHI into gbrain. Never auto-promote a `CandidateLesson` to a permanent rule — promotion goes through `.agent-loop/PROMOTION_QUEUE.md` (2+ runs, both supervisors agree, gate-backed, explicit human approval).
+
+## Periodic autonomous commits
+
+For long-running Ralph loops, do not let validated work accumulate indefinitely. Commit automatically and periodically when a coherent owned slice is complete.
+
+- Treat periodic commits as the default operating behavior for repository work. Do not wait for a separate user instruction to commit once an owned, validated, coherent slice is ready.
+- Commit after each validated logical group, or at minimum after roughly 30-45 minutes of successful implementation work if a safe group boundary exists.
+- Mandatory commit trigger points include: finished implementation slice, finished test-only slice, finished validation/CI wiring slice, finished progress-ledger slice, or before switching to a substantially different task area.
+- A group is committable only when its affected code paths were inspected, relevant focused validation passed, and `.codex/ralph-state.md` / `CODEX_GOAL_PROGRESS.md` are updated when required.
+- Before every commit, drain `agmsg` inbox, resolve any `URGENT:` / `LOCK:` / `PAUSE_REQUEST:` / `HANDOFF_REQUEST:` / `REQUEST CHANGES:` message, inspect `git status --short --untracked-files=all`, and stage only explicit owned paths.
+- Never use `git add -A` or broad staging in a shared dirty worktree. Do not include peer-owned files, peer locks, generated artifacts, or unrelated user changes.
+- Prefer small commit groups such as implementation, tests, validation/CI wiring, and progress-ledger updates. If one file contains unrelated hunks, split or delay the commit rather than mixing ownership.
+- If automatic commit is skipped because validation is failing, the slice is not coherent, files are peer-locked, or unrelated hunks cannot be separated safely, record the skip reason in the progress ledger or user-facing update and continue toward the next safe commit boundary.
+- After committing, send an `agmsg` `FYI:` with the commit hash, scope, validation summary, and any remaining locks or review needs.
+- Automatic commits do not imply automatic push, deploy, migration application, secret rotation, or destructive operations; those still require explicit current-task instruction.
 
 ## Whole-repository scope
 

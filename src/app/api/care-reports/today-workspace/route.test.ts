@@ -464,6 +464,7 @@ describe('/api/care-reports/today-workspace', () => {
     expect(json.data.created_reports).toHaveLength(3);
     expect(json.data.created_reports[0]).toMatchObject({
       id: 'report_sent',
+      patient_id: 'p_tanaka',
       patient_label: '田中 一郎 様',
       report_type_label: '医師への報告',
       status_label: '送付済',
@@ -474,12 +475,14 @@ describe('/api/care-reports/today-workspace', () => {
     });
     expect(json.data.created_reports[1]).toMatchObject({
       id: 'report_draft',
+      patient_id: 'p_kato',
       patient_label: '加藤 ミサ 様',
       reported_to_professional: false,
       last_sent_at: null,
     });
     expect(json.data.created_reports[2]).toMatchObject({
       id: 'report_failed',
+      patient_id: 'p_takahashi',
       patient_label: '高橋 茂 様',
       reported_to_professional: false,
       last_sent_at: null,

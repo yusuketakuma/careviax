@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { VisitHandoff } from '@/types/visit-brief';
@@ -59,12 +60,12 @@ function EditableTagList({
         {items.map((item, i) => (
           <span
             key={`${item}-${i}`}
-            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700"
+            className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground"
           >
             {item}
             <button
               type="button"
-              className="ml-0.5 rounded-full p-0.5 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20 focus:outline-none focus:ring-1 focus:ring-ring"
               onClick={() => removeItem(i)}
               aria-label={`${item} を削除`}
             >
@@ -170,16 +171,18 @@ export function HandoffConfirmPanel({
   return (
     <Card
       className={
-        isUnconfirmed ? 'border-amber-300 bg-amber-50/30 shadow-sm' : 'border-slate-200 shadow-sm'
+        isUnconfirmed
+          ? 'border-state-confirm/40 bg-state-confirm/5 shadow-sm'
+          : 'border-border shadow-sm'
       }
     >
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base">
             {isUnconfirmed ? (
-              <AlertTriangle className="size-4 text-amber-600" aria-hidden="true" />
+              <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
             ) : (
-              <CheckCircle2 className="size-4 text-green-600" aria-hidden="true" />
+              <CheckCircle2 className="size-4 text-state-done" aria-hidden="true" />
             )}
             申し送り
           </CardTitle>
@@ -190,24 +193,18 @@ export function HandoffConfirmPanel({
               </Badge>
             )}
             {isUnconfirmed ? (
-              <Badge
-                variant="outline"
-                className="border-amber-300 bg-amber-100 text-amber-700 text-xs"
-              >
+              <StateBadge role="confirm" className="text-xs">
                 未確認
-              </Badge>
+              </StateBadge>
             ) : (
-              <Badge
-                variant="outline"
-                className="border-green-300 bg-green-50 text-green-700 text-xs"
-              >
+              <StateBadge role="done" className="text-xs">
                 確認済
-              </Badge>
+              </StateBadge>
             )}
           </div>
         </div>
         {isUnconfirmed && (
-          <div className="mt-2 rounded-md border border-amber-300 bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800">
+          <div className="mt-2 rounded-md border border-state-confirm/40 bg-state-confirm/10 px-3 py-2 text-sm font-medium text-state-confirm">
             申し送り項目を確認してください
           </div>
         )}
@@ -261,7 +258,7 @@ export function HandoffConfirmPanel({
                     <Badge
                       key={item}
                       variant="outline"
-                      className="border-sky-200 bg-sky-50 text-sky-700 text-xs font-normal"
+                      className="border-transparent bg-tag-info/10 text-tag-info text-xs font-normal"
                     >
                       {item}
                     </Badge>

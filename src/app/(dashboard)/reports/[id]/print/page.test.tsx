@@ -68,7 +68,7 @@ const physicianContent = {
   },
   adverse_events: { has_events: false, events: [] },
   functional_assessment: {
-    lab_values: null,
+    lab_values: '未確認',
     sleep: '良好',
     cognition: '変化なし',
     diet_oral: '摂取良好',
@@ -79,9 +79,32 @@ const physicianContent = {
   assessment: '服薬管理は安定しています',
   plan: '次回訪問で残薬を再確認します',
   physician_communication: '処方継続で問題ありません',
+  warnings: [],
 };
 
-function mockReportQueries(auditState: 'success' | 'loading' | 'error' | 'forbidden' = 'success') {
+const familyShareContent = {
+  report_audience: 'family',
+  patient: { name: '佐藤 花子', birth_date: '1940-01-01' },
+  report_date: '2026-05-12',
+  visit_date: '2026-03-29',
+  pharmacist_name: '薬剤師 太郎',
+  summary: '今日の要点',
+  medication: '服薬状況',
+  residual: '残薬なし',
+  evaluation: '安定',
+  requests: '継続確認',
+  warnings: [],
+};
+
+function mockReportQueries(
+  auditState: 'success' | 'loading' | 'error' | 'forbidden' = 'success',
+  reportOverride: Partial<{
+    id: string;
+    report_type: string;
+    pharmacy_name: string;
+    content: unknown;
+  }> = {},
+) {
   useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
     const queryScope = options.queryKey?.[0];
     if (queryScope === 'care-report-print-audit') {
@@ -96,6 +119,7 @@ function mockReportQueries(auditState: 'success' | 'loading' | 'error' | 'forbid
                     report_type: 'physician_report',
                     pharmacy_name: '青葉薬局',
                     content: physicianContent,
+                    ...reportOverride,
                   },
                 },
               }
@@ -291,6 +315,95 @@ describe('ReportPrintPage', () => {
     expect(printMock).not.toHaveBeenCalled();
   });
 
+  it('blocks manual print when a fresh print audit response is not audited', async () => {
+    mockReportQueries();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            audited: false,
+            report: {
+              id: 'report_1',
+              report_type: 'physician_report',
+              content: physicianContent,
+            },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ReportPrintPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      '印刷監査を記録できないため、再印刷できません。',
+    );
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks manual print when a fresh print audit success response is malformed', async () => {
+    mockReportQueries();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: { audited: true } }), { status: 200 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ReportPrintPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      '印刷監査を記録できないため、再印刷できません。',
+    );
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks manual print when the fresh print audit response is for another report', async () => {
+    mockReportQueries();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            audited: true,
+            report: {
+              id: 'report_other',
+              report_type: 'physician_report',
+              content: physicianContent,
+            },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ReportPrintPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole('alert').textContent).toContain(
+      '印刷監査を記録できないため、再印刷できません。',
+    );
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
   it('uses a fresh print audit query key for each direct print page mount', () => {
     mockReportQueries();
     const firstRender = render(<ReportPrintPage />);
@@ -322,6 +435,22 @@ describe('ReportPrintPage', () => {
     expect(printMock).not.toHaveBeenCalled();
   });
 
+  it('renders family share print bodies through the audited print response', () => {
+    mockReportQueries('success', {
+      report_type: 'family_share',
+      content: familyShareContent,
+    });
+
+    render(<ReportPrintPage />);
+
+    expect(screen.getByTestId('print-layout')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'ご家族向け服薬情報共有' })).toBeTruthy();
+    expect(screen.getByText('佐藤 花子 様')).toBeTruthy();
+    expect(screen.getByText('今日の要点')).toBeTruthy();
+    expect(screen.getByText('服薬状況')).toBeTruthy();
+    expect(screen.getByText('継続確認')).toBeTruthy();
+  });
+
   it('does not render or print when the print audit fails', () => {
     mockReportQueries('error');
 
@@ -329,6 +458,25 @@ describe('ReportPrintPage', () => {
 
     expect(screen.getByRole('heading', { name: '印刷監査を記録できませんでした' })).toBeTruthy();
     expect(screen.queryByTestId('print-layout')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(printMock).not.toHaveBeenCalled();
+  });
+
+  it('does not render or print when the preview audit response is for another report', () => {
+    mockReportQueries('success', {
+      id: 'report_other',
+      content: { ...physicianContent, assessment: '別報告書として返された監査本文' },
+    });
+
+    render(<ReportPrintPage />);
+
+    expect(screen.getByRole('heading', { name: '印刷監査を記録できませんでした' })).toBeTruthy();
+    expect(screen.queryByTestId('print-layout')).toBeNull();
+    expect(screen.queryByText('別報告書として返された監査本文')).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(1000);

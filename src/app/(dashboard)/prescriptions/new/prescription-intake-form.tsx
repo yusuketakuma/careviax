@@ -232,7 +232,7 @@ function GenericCandidatePanel({
   if (!enabled) return null;
   if (isLoading) {
     return (
-      <div className="rounded-md border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs text-blue-700">
+      <div className="rounded-md border border-tag-info/20 bg-tag-info/10 px-3 py-2 text-xs text-tag-info">
         後発候補を検索中...
       </div>
     );
@@ -240,17 +240,17 @@ function GenericCandidatePanel({
 
   if (candidatesWithPriceDiff.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-blue-200 bg-blue-50/30 px-3 py-2 text-xs text-blue-700">
+      <div className="rounded-md border border-dashed border-tag-info/20 bg-tag-info/5 px-3 py-2 text-xs text-tag-info">
         一般名処方の候補はまだ見つかっていません。薬剤名を一般名で入力すると候補が表示されます。
       </div>
     );
   }
 
   return (
-    <div className="space-y-2 rounded-md border border-blue-200 bg-blue-50/50 px-3 py-3">
+    <div className="space-y-2 rounded-md border border-tag-info/20 bg-tag-info/10 px-3 py-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">後発候補</p>
-        <span className="text-[11px] text-blue-700">候補を選ぶと YJ コードを記録します</span>
+        <p className="text-xs font-semibold uppercase tracking-wide text-tag-info">後発候補</p>
+        <span className="text-[11px] text-tag-info">候補を選ぶと YJ コードを記録します</span>
       </div>
       <div className="space-y-2">
         {candidatesWithPriceDiff.map((candidate) => (
@@ -258,7 +258,7 @@ function GenericCandidatePanel({
             key={candidate.id}
             type="button"
             onClick={() => onSelect(candidate)}
-            className="flex w-full items-start justify-between gap-3 rounded-md border border-blue-200 bg-background px-3 py-2 text-left hover:bg-blue-100/40"
+            className="flex w-full items-start justify-between gap-3 rounded-md border border-tag-info/20 bg-background px-3 py-2 text-left hover:bg-tag-info/10"
           >
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">{candidate.drug_name}</p>
@@ -268,7 +268,7 @@ function GenericCandidatePanel({
               </p>
             </div>
             <div className="shrink-0 text-right">
-              <p className="text-xs font-medium text-blue-700">
+              <p className="text-xs font-medium text-tag-info">
                 {candidate.drug_price != null
                   ? `¥${Number(candidate.drug_price).toFixed(1)} / ${candidate.unit ?? '単位'}`
                   : '薬価未設定'}
@@ -1074,9 +1074,9 @@ export function PrescriptionIntakeForm() {
   }
 
   function badgeClassName(tone: LineBadgeTone) {
-    if (tone === 'success') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
-    if (tone === 'warning') return 'border-amber-200 bg-amber-50 text-amber-900';
-    if (tone === 'info') return 'border-sky-200 bg-sky-50 text-sky-900';
+    if (tone === 'success') return 'border-transparent bg-state-done/10 text-state-done';
+    if (tone === 'warning') return 'border-transparent bg-state-confirm/10 text-state-confirm';
+    if (tone === 'info') return 'border-transparent bg-tag-info/10 text-tag-info';
     return 'border-border/70 bg-background text-muted-foreground';
   }
 
@@ -1575,20 +1575,23 @@ export function PrescriptionIntakeForm() {
         </div>
 
         {initialQrDraftId ? (
-          <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-4">
+          <div className="rounded-lg border border-tag-info/20 bg-tag-info/10 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-sky-950">QR下書き取込</p>
-                  <Badge variant="outline" className="border-sky-300 bg-background text-sky-900">
+                  <p className="text-sm font-medium text-tag-info">QR下書き取込</p>
+                  <Badge
+                    variant="outline"
+                    className="border-tag-info/30 bg-background text-tag-info"
+                  >
                     {appliedQrDraftId ? '取込済み' : '読込中'}
                   </Badge>
                 </div>
-                <p className="text-xs text-sky-900/80">
+                <p className="text-xs text-tag-info/80">
                   QR下書き `{initialQrDraftId.slice(0, 8)}` を処方登録フォームへ反映します。
                 </p>
                 {qrDraftData?.parsed_data.prescriberInstitution ? (
-                  <p className="text-xs text-sky-900/80">
+                  <p className="text-xs text-tag-info/80">
                     医療機関: {qrDraftData.parsed_data.prescriberInstitution}
                     {qrDraftData.parsed_data.prescriberInstitutionCode
                       ? ` (${qrDraftData.parsed_data.prescriberInstitutionCode})`
@@ -1597,12 +1600,12 @@ export function PrescriptionIntakeForm() {
                   </p>
                 ) : null}
                 {qrDraftData?.parsed_data.prescriptionExpirationDate ? (
-                  <p className="text-xs text-sky-900/80">
+                  <p className="text-xs text-tag-info/80">
                     使用期限: {qrDraftData.parsed_data.prescriptionExpirationDate}
                   </p>
                 ) : null}
                 {qrDraftData?.parsed_data.prescriptionInsurance ? (
-                  <p className="text-xs text-sky-900/80">
+                  <p className="text-xs text-tag-info/80">
                     保険:
                     {[
                       qrDraftData.parsed_data.prescriptionInsurance.insurerNumber,
@@ -1620,12 +1623,12 @@ export function PrescriptionIntakeForm() {
                   </p>
                 ) : null}
                 {qrDraftData?.parsed_data.rawRecords?.length ? (
-                  <p className="text-xs text-sky-900/80">
+                  <p className="text-xs text-tag-info/80">
                     QR原文レコード: {qrDraftData.parsed_data.rawRecords.length}件を下書きに保持
                   </p>
                 ) : null}
                 {qrDraftData?.parsed_data.dispensingInstitution?.name ? (
-                  <p className="text-xs text-sky-900/80">
+                  <p className="text-xs text-tag-info/80">
                     調剤機関: {qrDraftData.parsed_data.dispensingInstitution.name}
                     {qrDraftData.parsed_data.dispensingInstitution.institutionCode
                       ? ` (${qrDraftData.parsed_data.dispensingInstitution.institutionCode})`
@@ -1633,18 +1636,18 @@ export function PrescriptionIntakeForm() {
                   </p>
                 ) : null}
                 {qrDraftData?.parsed_data.splitInfo ? (
-                  <p className="text-xs text-sky-900/80">
+                  <p className="text-xs text-tag-info/80">
                     分割QR: {qrDraftData.parsed_data.splitInfo.sequenceNumber}/
                     {qrDraftData.parsed_data.splitInfo.splitCount}
                   </p>
                 ) : null}
                 {qrDraftData?.parsed_data.remarks?.length ? (
-                  <p className="text-xs text-sky-900/80">
+                  <p className="text-xs text-tag-info/80">
                     QR備考: {qrDraftData.parsed_data.remarks.join(' / ')}
                   </p>
                 ) : null}
                 {qrDraftData?.parsed_data.patientNotes?.length ? (
-                  <p className="text-xs text-sky-900/80">
+                  <p className="text-xs text-tag-info/80">
                     患者特記: {qrDraftData.parsed_data.patientNotes.join(' / ')}
                   </p>
                 ) : null}
@@ -1653,7 +1656,7 @@ export function PrescriptionIntakeForm() {
                 <button
                   type="button"
                   onClick={requestLatestPreviousPrescription}
-                  className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-sky-300 bg-background px-3 text-sm font-medium text-sky-950 hover:bg-sky-100/40"
+                  className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-tag-info/30 bg-background px-3 text-sm font-medium text-tag-info hover:bg-tag-info/10"
                 >
                   <ClipboardCopy className="size-4" aria-hidden="true" />
                   前回処方を引用
@@ -1662,7 +1665,7 @@ export function PrescriptionIntakeForm() {
             </div>
 
             {qrDraftData?.parse_errors?.length ? (
-              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <div className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
                 <p className="font-medium">QR解析時の確認事項</p>
                 <ul className="mt-1 space-y-1">
                   {qrDraftData.parse_errors.map((item, index) => (
@@ -1676,7 +1679,7 @@ export function PrescriptionIntakeForm() {
             ) : null}
 
             {qrDraftData?.parsed_data.parseWarnings?.length ? (
-              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <div className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
                 <p className="font-medium">QR解析時の確認事項</p>
                 <ul className="mt-1 space-y-1">
                   {qrDraftData.parsed_data.parseWarnings.map((item, index) => (
@@ -1700,13 +1703,13 @@ export function PrescriptionIntakeForm() {
             ) : null}
 
             {qrDraftData?.parsed_data.unmatchedDrugs?.length ? (
-              <div className="mt-3 rounded-md border border-amber-200 bg-background px-3 py-2 text-xs text-foreground">
-                <p className="font-medium text-amber-900">薬剤マスター未一致</p>
+              <div className="mt-3 rounded-md border border-state-confirm/30 bg-background px-3 py-2 text-xs text-foreground">
+                <p className="font-medium text-state-confirm">薬剤マスター未一致</p>
                 <div className="mt-1 flex flex-wrap gap-2">
                   {qrDraftData.parsed_data.unmatchedDrugs.map((item) => (
                     <span
                       key={`${item.lineIndex}-${item.drugName}`}
-                      className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900"
+                      className="rounded-full border border-state-confirm/30 bg-state-confirm/10 px-2 py-1 text-state-confirm"
                     >
                       {item.drugName}
                     </span>
@@ -2082,8 +2085,8 @@ export function PrescriptionIntakeForm() {
         </div>
 
         {sourceType === 'refill' && (
-          <div className="grid grid-cols-1 gap-3 rounded-lg border border-amber-200 bg-amber-50/60 p-4 md:grid-cols-2">
-            <div className="md:col-span-2 rounded-md border border-amber-200 bg-background/80 px-3 py-2 text-xs leading-5 text-amber-800">
+          <div className="grid grid-cols-1 gap-3 rounded-lg border border-tag-info/20 bg-tag-info/10 p-4 md:grid-cols-2">
+            <div className="md:col-span-2 rounded-md border border-tag-info/20 bg-background/80 px-3 py-2 text-xs leading-5 text-tag-info">
               リフィル処方箋は薬局保管として扱います。次回調剤予定日と残回数を保存し、期限が近づくとダッシュボードと通知で再調剤を案内します。
             </div>
             <div>
@@ -2214,8 +2217,8 @@ export function PrescriptionIntakeForm() {
           </div>
 
           {originalDocumentUrl ? (
-            <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-emerald-800">
+            <div className="space-y-3 rounded-lg border border-state-done/30 bg-state-done/10 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-state-done">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="size-4" aria-hidden="true" />
                   <span>{originalDocumentName || '処方箋原本を登録済み'}</span>
@@ -2283,14 +2286,14 @@ export function PrescriptionIntakeForm() {
               </div>
               {/* Drug warnings from master */}
               {'_narcotic' in line && (line as Record<string, unknown>)._narcotic === true && (
-                <div className="flex items-center gap-1 rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
+                <div className="flex items-center gap-1 rounded bg-tag-hazard/10 px-2 py-1 text-xs font-medium text-tag-hazard">
                   <AlertTriangle className="size-3" aria-hidden="true" />
                   麻薬 — 特別管理が必要です
                 </div>
               )}
               {'_psychotropic' in line &&
                 (line as Record<string, unknown>)._psychotropic === true && (
-                  <div className="flex items-center gap-1 rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
+                  <div className="flex items-center gap-1 rounded bg-tag-hazard/10 px-2 py-1 text-xs font-medium text-tag-hazard">
                     <Shield className="size-3" aria-hidden="true" />
                     向精神薬
                   </div>
@@ -2485,18 +2488,18 @@ export function PrescriptionIntakeForm() {
         <fieldset className="space-y-3">
           <legend className="text-sm font-semibold text-foreground">施設まとめ処方</legend>
 
-          <div className="space-y-4 rounded-lg border border-sky-200 bg-sky-50/50 p-4">
+          <div className="space-y-4 rounded-lg border border-tag-info/20 bg-tag-info/10 p-4">
             <div className="space-y-1">
-              <p className="text-sm font-medium text-sky-950">
+              <p className="text-sm font-medium text-tag-info">
                 施設看護師から受領した処方箋を患者単位へ分離して登録します
               </p>
-              <p className="text-xs leading-5 text-sky-900/80">
+              <p className="text-xs leading-5 text-tag-info/80">
                 処方日・処方医・原本は共通で入力し、患者ごとの明細を一旦リストへ積んでからまとめて
                 MedicationCycle を起票します。
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-sky-200 bg-background/80 px-3 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-tag-info/20 bg-background/80 px-3 py-3">
               <div className="space-y-1 text-sm">
                 <p className="font-medium text-foreground">
                   現在の患者: {selectedPatientName || '未選択'}
@@ -2513,7 +2516,7 @@ export function PrescriptionIntakeForm() {
                 type="button"
                 onClick={addCurrentFacilityBatchEntry}
                 disabled={!selectedCaseId}
-                className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-sky-300 bg-sky-100 px-3 text-sm font-medium text-sky-950 hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-[44px] sm:h-9 sm:min-h-0 items-center gap-2 rounded-md border border-tag-info/30 bg-tag-info/10 px-3 text-sm font-medium text-tag-info hover:bg-tag-info/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Plus className="size-4" aria-hidden="true" />
                 一括リストへ追加
@@ -2558,6 +2561,7 @@ export function PrescriptionIntakeForm() {
                       </div>
                       <button
                         type="button"
+                        aria-label={`施設一括登録${index + 1}件目を削除`}
                         onClick={() => removeFacilityBatchEntry(entry.case_id)}
                         className="inline-flex min-h-[44px] sm:h-8 sm:min-h-0 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs font-medium hover:bg-accent"
                       >
@@ -2581,7 +2585,7 @@ export function PrescriptionIntakeForm() {
         <fieldset className="space-y-3">
           <legend className="text-sm font-semibold text-foreground">疑義照会</legend>
 
-          <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-4">
+          <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-4">
             <p className="text-sm font-medium text-foreground">必要時のみ起票</p>
             <p className="mt-1 text-xs text-muted-foreground">
               入力すると、処方受付の登録直後に疑義照会を起票し、サイクルを `疑義照会中`
@@ -2705,16 +2709,16 @@ export function PrescriptionIntakeForm() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 text-xs">
-                <span className="rounded-full bg-green-100 px-2 py-1 text-green-800">
+                <span className="rounded-full bg-state-done/10 px-2 py-1 text-state-done">
                   追加 {prescriptionDiff.added.length}
                 </span>
-                <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-800">
+                <span className="rounded-full bg-state-confirm/10 px-2 py-1 text-state-confirm">
                   変更 {prescriptionDiff.changed.length}
                 </span>
-                <span className="rounded-full bg-red-100 px-2 py-1 text-red-800">
+                <span className="rounded-full bg-state-blocked/10 px-2 py-1 text-state-blocked">
                   中止 {prescriptionDiff.removed.length}
                 </span>
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">
+                <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
                   同一 {prescriptionDiff.unchangedCount}
                 </span>
               </div>
@@ -2731,17 +2735,17 @@ export function PrescriptionIntakeForm() {
                       {prescriptionDiff.added.map((line, index) => (
                         <div
                           key={`${line.drug_code ?? line.drug_name}-added-${index}`}
-                          className="rounded-md border border-green-200 bg-green-50/60 px-3 py-2 text-sm"
+                          className="rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2 text-sm"
                         >
-                          <div className="flex items-center gap-2 font-medium text-green-900">
+                          <div className="flex items-center gap-2 font-medium text-state-done">
                             <Plus className="size-4" aria-hidden="true" />
                             {line.drug_name}
                           </div>
-                          <p className="mt-1 text-xs text-green-800">
+                          <p className="mt-1 text-xs text-state-done">
                             {line.dose} / {line.frequency} / {line.days}日分
                           </p>
                           {line.start_date ? (
-                            <p className="mt-1 text-[11px] text-green-900/80">
+                            <p className="mt-1 text-[11px] text-state-done/80">
                               開始日 {line.start_date}
                             </p>
                           ) : null}
@@ -2774,13 +2778,13 @@ export function PrescriptionIntakeForm() {
                       {prescriptionDiff.changed.map(({ current, reasons }, index) => (
                         <div
                           key={`${current.drug_code ?? current.drug_name}-changed-${index}`}
-                          className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm"
+                          className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm"
                         >
-                          <div className="flex items-center gap-2 font-medium text-amber-900">
+                          <div className="flex items-center gap-2 font-medium text-state-confirm">
                             <ArrowRight className="size-4" aria-hidden="true" />
                             {current.drug_name}
                           </div>
-                          <ul className="mt-1 space-y-1 text-xs text-amber-800">
+                          <ul className="mt-1 space-y-1 text-xs text-state-confirm">
                             {reasons.map((reason) => (
                               <li key={reason}>{reason}</li>
                             ))}
@@ -2816,17 +2820,17 @@ export function PrescriptionIntakeForm() {
                       {prescriptionDiff.removed.map((line) => (
                         <div
                           key={line.id}
-                          className="rounded-md border border-red-200 bg-red-50/60 px-3 py-2 text-sm"
+                          className="rounded-md border border-state-blocked/30 bg-state-blocked/10 px-3 py-2 text-sm"
                         >
-                          <div className="flex items-center gap-2 font-medium text-red-900">
+                          <div className="flex items-center gap-2 font-medium text-state-blocked">
                             <Minus className="size-4" aria-hidden="true" />
                             {line.drug_name}
                           </div>
-                          <p className="mt-1 text-xs text-red-800">
+                          <p className="mt-1 text-xs text-state-blocked">
                             {line.dose} / {line.frequency} / {line.days}日分
                           </p>
                           {line.start_date ? (
-                            <p className="mt-1 text-[11px] text-red-900/80">
+                            <p className="mt-1 text-[11px] text-state-blocked/80">
                               開始日 {line.start_date}
                             </p>
                           ) : null}
@@ -2918,18 +2922,18 @@ export function PrescriptionIntakeForm() {
           {submitBlockers.length > 0 ? (
             <div
               id={submitBlockersId}
-              className="w-full rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 sm:flex-1"
+              className="w-full rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 sm:flex-1"
               role="status"
             >
-              <p className="text-sm font-medium text-amber-950">登録前に必要な確認</p>
-              <ul className="mt-2 space-y-1 text-sm text-amber-900">
+              <p className="text-sm font-medium text-state-confirm">登録前に必要な確認</p>
+              <ul className="mt-2 space-y-1 text-sm text-state-confirm">
                 {submitBlockers.map((blocker) => (
                   <li key={blocker}>- {blocker}</li>
                 ))}
               </ul>
             </div>
           ) : (
-            <div className="w-full rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-900 sm:flex-1">
+            <div className="w-full rounded-lg border border-state-done/30 bg-state-done/10 px-4 py-3 text-sm text-state-done sm:flex-1">
               登録可能です。内容を確認してから受付を確定してください。
             </div>
           )}

@@ -1,5 +1,8 @@
 import type { CockpitAuditQueueItem } from '@/types/dashboard-cockpit';
 import type { DayBoardStaff, DayBoardVisit } from '@/types/schedule-day-board';
+import { formatTimeOfDay as formatTimeOfDayIso } from '@/lib/datetime/time-of-day';
+import { formatDateKey } from '@/lib/date-key';
+import { familyNameOf } from '@/lib/utils/person-name';
 
 /**
  * new_03_schedule(今日のスケジュール — 全員)の表示計算ヘルパー。
@@ -67,10 +70,7 @@ export function minutesOfDayIso(iso: string): number {
   return date.getHours() * 60 + date.getMinutes();
 }
 
-export function formatTimeOfDayIso(iso: string): string {
-  const date = new Date(iso);
-  return `${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}`;
-}
+export { formatTimeOfDayIso };
 
 function clampToBoard(minutes: number): number {
   return Math.min(Math.max(minutes, BOARD_START_MINUTES), BOARD_END_MINUTES);
@@ -78,7 +78,7 @@ function clampToBoard(minutes: number): number {
 
 /** 姓のみ(スペース区切りの先頭)+職種サフィックス。例: 山田(薬)。 */
 export function staffRowLabel(staff: Pick<DayBoardStaff, 'name' | 'role_kind'>): string {
-  const familyName = staff.name.split(/[\s　]+/)[0] || staff.name;
+  const familyName = familyNameOf(staff.name) || staff.name;
   return `${familyName}(${staff.role_kind === 'clerk' ? '事務' : '薬'})`;
 }
 
@@ -519,7 +519,7 @@ export function pendingProposalDateLabel(proposedDate: string, todayKey: string)
   const today = new Date(`${todayKey}T00:00:00`);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowKey = `${tomorrow.getFullYear()}-${`${tomorrow.getMonth() + 1}`.padStart(2, '0')}-${`${tomorrow.getDate()}`.padStart(2, '0')}`;
+  const tomorrowKey = formatDateKey(tomorrow);
   if (proposedDate === tomorrowKey) return '明日';
   const date = new Date(`${proposedDate}T00:00:00`);
   return `${date.getMonth() + 1}/${date.getDate()}`;

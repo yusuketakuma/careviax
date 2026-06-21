@@ -250,7 +250,7 @@ export function UsersContent() {
   const [statusFilter, setStatusFilter] = useState<'all' | string>('all');
   const [credentialFilter, setCredentialFilter] = useState<'all' | string>('all');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-users', orgId],
     queryFn: async () => {
       const response = await fetch('/api/pharmacists?include_collaborators=true', {
@@ -536,6 +536,7 @@ export function UsersContent() {
       (user) => user.account_status === 'suspended' || user.account_status === 'retired',
     ).length,
   };
+  const userCountsUnavailable = (isLoading || isError) && !data;
 
   const operationalRole = detailForm ? isOperationalMemberRole(detailForm.role) : false;
   const siteRequired = detailForm ? roleRequiresSite(detailForm.role) : false;
@@ -555,10 +556,13 @@ export function UsersContent() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-4">
-        <SummaryCard label="総ユーザー数" value={summary.total} />
-        <SummaryCard label="稼働中" value={summary.active} />
-        <SummaryCard label="招待済（未承認）" value={summary.invited} />
-        <SummaryCard label="停止/退職" value={summary.suspended} />
+        <SummaryCard label="総ユーザー数" value={userCountsUnavailable ? '—' : summary.total} />
+        <SummaryCard label="稼働中" value={userCountsUnavailable ? '—' : summary.active} />
+        <SummaryCard
+          label="招待済（未承認）"
+          value={userCountsUnavailable ? '—' : summary.invited}
+        />
+        <SummaryCard label="停止/退職" value={userCountsUnavailable ? '—' : summary.suspended} />
       </div>
 
       <Card>
@@ -655,6 +659,8 @@ export function UsersContent() {
             columns={columns}
             data={filteredUsers}
             isLoading={isLoading}
+            errorMessage={isError ? 'ユーザー一覧を取得できませんでした' : undefined}
+            onRetry={() => void refetch()}
             caption="ユーザー一覧"
           />
         </CardContent>
@@ -1245,7 +1251,7 @@ export function UsersContent() {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: number }) {
+function SummaryCard({ label, value }: { label: string; value: number | string }) {
   return (
     <Card>
       <CardContent>

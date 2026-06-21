@@ -208,9 +208,17 @@ describe('/api/consent-records', () => {
   it('fails closed when consent list view audit cannot be recorded', async () => {
     recordConsentRecordsViewedAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
 
-    await expect(
-      GET(createRequest('http://localhost/api/consent-records?patient_id=patient_1')),
-    ).rejects.toThrow('audit unavailable');
+    // 監査記録に失敗したら成功扱いにせず fail closed。withAuthContext が想定外 throw を
+    // 標準 500 エンベロープに変換するため、200 ではなく 500/INTERNAL_ERROR を返す。
+    const response = (await GET(
+      createRequest('http://localhost/api/consent-records?patient_id=patient_1'),
+    ))!;
+
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as { code?: string; data?: unknown };
+    expect(body.code).toBe('INTERNAL_ERROR');
+    // 監査未記録のまま同意レコードを漏らさない
+    expect(body.data).toBeUndefined();
   });
 
   it('does not list consent records outside the patient assignment scope', async () => {
@@ -378,17 +386,20 @@ describe('/api/consent-records', () => {
   it('fails closed when consent create audit cannot be recorded', async () => {
     recordConsentRecordCreatedAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
 
-    await expect(
-      POST(
-        createRequest('http://localhost/api/consent-records', {
-          patient_id: 'patient_1',
-          consent_type: 'external_sharing',
-          method: 'paper_scan',
-          obtained_date: '2026-03-29',
-        }),
-      ),
-    ).rejects.toThrow('audit unavailable');
+    // 監査記録に失敗したら成功(2xx)を返さず fail closed。withAuthContext が想定外 throw を
+    // 標準 500 エンベロープに変換するため、クライアントには 500/INTERNAL_ERROR を返す。
+    const response = (await POST(
+      createRequest('http://localhost/api/consent-records', {
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        method: 'paper_scan',
+        obtained_date: '2026-03-29',
+      }),
+    ))!;
 
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).toBe('INTERNAL_ERROR');
     expect(consentRecordCreateMock).toHaveBeenCalled();
   });
 

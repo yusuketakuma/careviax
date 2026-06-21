@@ -7,6 +7,13 @@ import { offlineDb, type OfflineSyncQueue } from './offline-db';
 
 const MAX_RETRIES = 3;
 const activeSyncQueueRuns = new Map<string, Promise<{ synced: number; failed: number }>>();
+const autoSyncSubscriptions = new Map<
+  string,
+  {
+    handler: () => void;
+    refCount: number;
+  }
+>();
 
 type SyncConfig = {
   orgId: string;
@@ -564,12 +571,46 @@ export async function overwriteVisitRecordConflict(
  * Setup online listener that triggers sync automatically.
  */
 export function setupAutoSync(config: SyncConfig): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  const key = syncConfigKey(config);
+  const existing = autoSyncSubscriptions.get(key);
+  if (existing) {
+    existing.refCount += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      releaseAutoSyncSubscription(key, existing);
+    };
+  }
+
   const handler = () => {
     processSyncQueue(config).catch((error) => {
       console.warn('[offline-sync] automatic sync failed', error);
     });
   };
 
+  const subscription = { handler, refCount: 1 };
+  autoSyncSubscriptions.set(key, subscription);
   window.addEventListener('online', handler);
-  return () => window.removeEventListener('online', handler);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    releaseAutoSyncSubscription(key, subscription);
+  };
+}
+
+function releaseAutoSyncSubscription(
+  key: string,
+  subscription: { handler: () => void; refCount: number },
+) {
+  const current = autoSyncSubscriptions.get(key);
+  if (current !== subscription) return;
+  current.refCount -= 1;
+  if (current.refCount > 0) return;
+
+  window.removeEventListener('online', current.handler);
+  autoSyncSubscriptions.delete(key);
 }

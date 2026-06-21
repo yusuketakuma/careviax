@@ -5,33 +5,20 @@ import { ja } from 'date-fns/locale';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { Loading } from '@/components/ui/loading';
+import { MEDICATION_CYCLE_STATUS_ROLE } from '@/lib/constants/status-labels';
+import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import {
   fetchCycleTransitionLogs,
   WORKFLOW_HISTORY_INVALIDATION_EVENTS,
   WORKFLOW_STATUS_LABELS,
 } from './cycle-transition-query';
 
-const WAITING_STATUSES = new Set([
-  'intake_received',
-  'inquiry_pending',
-  'audit_pending',
-  'ready_to_dispense',
-  'visit_ready',
-]);
-
-const COMPLETED_STATUSES = new Set([
-  'audited',
-  'set_audited',
-  'visit_completed',
-  'reported',
-  'cancelled',
-]);
-
+// 工程ドットの色は MedicationCycleStatus の正本ロール写像に従う。
+// neutral(状態色を付けない)は中立の灰=readonly トークンに寄せる。
 function dotColor(status: string): string {
-  if (status === 'on_hold' || status === 'cancelled') return 'bg-slate-400';
-  if (COMPLETED_STATUSES.has(status)) return 'bg-slate-400';
-  if (WAITING_STATUSES.has(status)) return 'bg-blue-500';
-  return 'bg-emerald-500';
+  const role = MEDICATION_CYCLE_STATUS_ROLE[status];
+  const tokenRole: StatusRole = role && role !== 'neutral' ? role : 'readonly';
+  return STATUS_TOKENS[tokenRole].dotClassName;
 }
 
 type StageTimelineProps = {
@@ -65,9 +52,7 @@ export function StageTimeline({ cycleId }: StageTimelineProps) {
         return (
           <div key={log.id} className="relative pb-6 last:pb-0">
             {/* Vertical line */}
-            {!isLast && (
-              <div className="absolute left-[-18px] top-3 h-full w-px bg-border" />
-            )}
+            {!isLast && <div className="absolute left-[-18px] top-3 h-full w-px bg-border" />}
             {/* Dot */}
             <div
               className={`absolute left-[-22px] top-1.5 size-2.5 rounded-full ring-2 ring-background ${dotColor(log.to_status)}`}
@@ -89,9 +74,7 @@ export function StageTimeline({ cycleId }: StageTimelineProps) {
                 {log.actor_name} ・{' '}
                 {format(parseISO(log.created_at), 'yyyy/MM/dd HH:mm', { locale: ja })}
               </p>
-              {log.note && (
-                <p className="mt-1 text-xs text-muted-foreground/80">{log.note}</p>
-              )}
+              {log.note && <p className="mt-1 text-xs text-muted-foreground/80">{log.note}</p>}
             </div>
           </div>
         );

@@ -126,7 +126,9 @@ function isCareManagerContent(value: unknown): value is CareManagerReportContent
 function isAudienceContent(value: unknown): value is AudienceReportContent {
   return (
     isStringRecord(value) &&
-    (value.report_audience === 'visiting_nurse' || value.report_audience === 'facility') &&
+    (value.report_audience === 'visiting_nurse' ||
+      value.report_audience === 'facility' ||
+      value.report_audience === 'family') &&
     typeof value.summary === 'string' &&
     typeof value.medication === 'string' &&
     typeof value.residual === 'string' &&

@@ -124,7 +124,31 @@ describe('ScheduleDayOfflinePanel', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: '今すぐ同期' }).disabled).toBe(
       true,
     );
-    expect(screen.getByText('競合を解決してから同期してください')).toBeTruthy();
+    const reason = screen.getByText('競合を解決してから同期してください');
+    expect(reason).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: '今すぐ同期' }).getAttribute('aria-describedby'),
+    ).toBe(reason.id);
+  });
+
+  it('describes manual sync while a sync mutation is pending', () => {
+    render(
+      <ScheduleDayOfflinePanel
+        {...panelProps({
+          manualSyncPending: true,
+          offlineStatus: {
+            ...offlineStatus,
+            canManualSync: true,
+            manualSyncDisabledReason: null,
+          },
+        })}
+      />,
+    );
+
+    const syncButton = screen.getByRole<HTMLButtonElement>('button', { name: '同期中...' });
+    const reason = screen.getByText('同期処理が完了するまで操作できません。');
+    expect(syncButton.disabled).toBe(true);
+    expect(syncButton.getAttribute('aria-describedby')).toBe(reason.id);
   });
 
   it('shows visit brief coverage and failure status in the sync group', () => {
@@ -213,6 +237,15 @@ describe('ScheduleDayOfflinePanel', () => {
     expect(
       screen.getByText('競合IDを確認できないため、同期状態を再読み込みしてください。'),
     ).toBeTruthy();
+    const reason = screen.getByText('競合IDを確認できないため、同期状態を再読み込みしてください。');
+    const overwriteButton = screen.getByRole('button', {
+      name: 'schedule schedule_conflict をサーバーへ上書き',
+    });
+    const discardButton = screen.getByRole('button', {
+      name: 'schedule schedule_conflict のローカル下書きを破棄',
+    });
+    expect(overwriteButton.getAttribute('aria-describedby')).toBe(reason.id);
+    expect(discardButton.getAttribute('aria-describedby')).toBe(reason.id);
     expect(onOverwriteConflict).not.toHaveBeenCalled();
     expect(onDiscardConflict).not.toHaveBeenCalled();
   });
@@ -242,6 +275,20 @@ describe('ScheduleDayOfflinePanel', () => {
         .getByRole('link', { name: 'schedule schedule_conflict を再編集' })
         .getAttribute('aria-disabled'),
     ).toBe('true');
+    const reason = screen.getByText('競合解決処理が完了するまで操作できません。');
+    const overwriteButton = screen.getByRole('button', {
+      name: 'schedule schedule_conflict をサーバーへ上書き',
+    });
+    const discardButton = screen.getByRole('button', {
+      name: 'schedule schedule_conflict のローカル下書きを破棄',
+    });
+    const reeditLink = screen.getByRole('link', { name: 'schedule schedule_conflict を再編集' });
+    expect(overwriteButton.getAttribute('aria-describedby')).toBe(reason.id);
+    expect(discardButton.getAttribute('aria-describedby')).toBe(reason.id);
+    expect(reeditLink.getAttribute('aria-describedby')).toBe(reason.id);
+    expect(reason.textContent ?? '').not.toMatch(
+      /patient_|患者A|schedule_conflict|ローカル下書きのP/,
+    );
   });
 
   it('renders cached briefs as a labelled list with generated provider labels', () => {

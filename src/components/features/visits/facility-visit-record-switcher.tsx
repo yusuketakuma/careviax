@@ -150,15 +150,18 @@ export function FacilityVisitRecordSwitcher({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-foreground">訪問先全体の進捗</p>
           <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">
+            <Badge
+              variant="outline"
+              className="border-transparent bg-state-done/10 text-state-done"
+            >
               記録済み {completedCount}/{orderedPatients.length}
             </Badge>
             <Badge
               variant="outline"
               className={
                 preparationBlockersCount > 0
-                  ? 'border-amber-200 bg-amber-50 text-amber-800'
-                  : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  ? 'border-transparent bg-state-confirm/10 text-state-confirm'
+                  : 'border-transparent bg-state-done/10 text-state-done'
               }
             >
               準備不足 {preparationBlockersCount}
@@ -174,9 +177,9 @@ export function FacilityVisitRecordSwitcher({
       </div>
 
       {context.commonNotes ? (
-        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-          <p className="text-xs font-semibold text-amber-950">訪問先共通メモ</p>
-          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-amber-950">
+        <div className="mt-3 rounded-xl border border-state-confirm/40 bg-state-confirm/10 px-3 py-2">
+          <p className="text-xs font-semibold text-state-confirm">訪問先共通メモ</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-foreground">
             {context.commonNotes}
           </p>
         </div>
@@ -214,7 +217,7 @@ export function FacilityVisitRecordSwitcher({
                   className={cn(
                     'shrink-0 bg-white text-[11px]',
                     patient.visitRecordId
-                      ? 'bg-emerald-600 text-white'
+                      ? 'border-transparent bg-state-done text-white'
                       : active
                         ? 'border-sky-300 text-sky-900'
                         : 'text-muted-foreground',

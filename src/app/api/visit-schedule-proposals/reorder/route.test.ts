@@ -438,7 +438,7 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
         org_id: 'org_1',
         pharmacist_id: 'pharmacist_1',
         scheduled_date: new Date('2026-04-03'),
-        route_order: { in: [1] },
+        route_order: 1,
         schedule_status: { notIn: ['cancelled', 'rescheduled'] },
       },
       select: { id: true },

@@ -88,7 +88,9 @@ export function PackagingMethodsContent() {
     <div className="grid gap-4 xl:grid-cols-[minmax(22rem,0.42fr)_minmax(0,1fr)]">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{form.id ? '配薬方法を編集' : '配薬方法を追加'}</CardTitle>
+          <CardTitle className="text-base">
+            {form.id ? '配薬方法を編集' : '配薬方法を追加'}
+          </CardTitle>
           <CardDescription>
             一包化、服薬カレンダー、施設カートなど、セット工程で選ぶ方法を登録します。
           </CardDescription>
@@ -109,7 +111,9 @@ export function PackagingMethodsContent() {
               id="packaging-method-description"
               rows={3}
               value={form.description}
-              onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, description: event.target.value }))
+              }
               placeholder="セット・監査・訪問時に確認するポイント"
             />
           </div>
@@ -119,7 +123,9 @@ export function PackagingMethodsContent() {
               <Input
                 id="packaging-method-icon"
                 value={form.icon_key}
-                onChange={(event) => setForm((current) => ({ ...current, icon_key: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, icon_key: event.target.value }))
+                }
                 placeholder="package"
               />
             </div>
@@ -130,7 +136,9 @@ export function PackagingMethodsContent() {
                 type="number"
                 min={0}
                 value={form.sort_order}
-                onChange={(event) => setForm((current) => ({ ...current, sort_order: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, sort_order: event.target.value }))
+                }
               />
             </div>
           </div>
@@ -138,7 +146,9 @@ export function PackagingMethodsContent() {
             <span>有効</span>
             <Switch
               checked={form.is_active}
-              onCheckedChange={(checked) => setForm((current) => ({ ...current, is_active: checked }))}
+              onCheckedChange={(checked) =>
+                setForm((current) => ({ ...current, is_active: checked }))
+              }
             />
           </label>
           <div className="flex flex-wrap gap-2">
@@ -166,7 +176,7 @@ export function PackagingMethodsContent() {
         </CardHeader>
         <CardContent>
           {methods.length === 0 ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
               配薬方法が未登録です。セット作成前に最低1件登録してください。
             </p>
           ) : (

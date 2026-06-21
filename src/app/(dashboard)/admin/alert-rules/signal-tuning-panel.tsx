@@ -21,10 +21,12 @@ import {
  * 強く表示 = その alert_type の critical ルールを有効化(無ければ作成)。
  */
 
+// 安全シグナルの見え方プレビュー(p1_14)。tone は重大度のニュアンスを保持しつつ
+// 中央の状態/タグトークンへ寄せる(red=止まる赤 / amber=要確認橙 / blue=情報青)。
 const TAG_TONE_CLASSES: Record<string, string> = {
-  red: 'border-red-200 bg-red-50 text-red-700',
-  amber: 'border-amber-300 bg-amber-50 text-amber-800',
-  blue: 'border-blue-200 bg-blue-50 text-blue-700',
+  red: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
+  amber: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  blue: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
 };
 
 export function SignalTuningPanel() {

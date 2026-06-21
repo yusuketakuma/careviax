@@ -20,6 +20,7 @@ import { getAdminPerformanceShortcutLinks } from '@/components/features/admin/ad
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -129,11 +130,12 @@ type RuntimePerformanceSnapshot = {
   }>;
 };
 
+// KPI 健全度: 目標達成=done(緑) / 未達=confirm(橙, 要対応)
 function kpiToneClass(value: number, target: number, reverse = false) {
   const good = reverse ? value <= target : value >= target;
   return good
-    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-    : 'border-amber-200 bg-amber-50 text-amber-700';
+    ? 'border-state-done/30 bg-state-done/10 text-state-done'
+    : 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm';
 }
 
 function KpiCard({
@@ -248,6 +250,14 @@ export default function PerformancePage() {
   const proposals = useMemo(() => proposalsQuery.data?.data ?? [], [proposalsQuery.data]);
   const runtime = runtimeQuery.data?.data;
 
+  // 業務 KPI は workflow/schedules/proposals の集計。いずれか失敗時は 0 (false-zero) 表示せず ErrorState を出す。
+  const metricsError = workflowQuery.isError || schedulesQuery.isError || proposalsQuery.isError;
+  const refetchMetrics = () => {
+    void workflowQuery.refetch();
+    void schedulesQuery.refetch();
+    void proposalsQuery.refetch();
+  };
+
   const performance = useMemo(() => {
     const lockedSchedules = schedules.filter((schedule) => Boolean(schedule.confirmed_at)).length;
     const pendingOverrides = schedules.filter(
@@ -303,33 +313,33 @@ export default function PerformancePage() {
         description="訪問制御、変更負荷、ルート確定率、API 遅延の主要運用指標を継続監視します。"
         shortcuts={getAdminPerformanceShortcutLinks()}
       />
-      <Card className="overflow-hidden border-none bg-[linear-gradient(135deg,rgba(248,250,252,1),rgba(236,253,245,1))] ring-1 ring-slate-200">
+      <Card className="overflow-hidden border-none bg-muted/40 ring-1 ring-border">
         <CardContent className="grid gap-5 px-5 py-5 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Operational Performance
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900">
+            <h2 className="mt-2 text-xl font-semibold text-foreground">
               ルート確定率と変更負荷をそのまま業務指標にする
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               訪問ロック、変更承認待ち、緊急影響、電話確認率を同じ画面で追い、
               現場の詰まりがどこにあるかを可視化します。
             </p>
           </div>
-          <div className="grid gap-2 rounded-2xl border border-white/70 bg-white/70 p-4 shadow-sm backdrop-blur">
+          <div className="grid gap-2 rounded-2xl border border-border bg-background p-4 shadow-sm">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">対象期間</span>
-              <span className="font-medium text-slate-900">
+              <span className="text-muted-foreground">対象期間</span>
+              <span className="font-medium text-foreground">
                 {format(weekStart, 'M/d', { locale: ja })} -{' '}
                 {format(weekEnd, 'M/d', { locale: ja })}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">計測更新</span>
-              <span className="font-medium text-slate-900">30秒ごと</span>
+              <span className="text-muted-foreground">計測更新</span>
+              <span className="font-medium text-foreground">30秒ごと</span>
             </div>
-            <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+            <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-xs text-tag-info">
               業務KPIに加えて、auth 配下 API の current-process latency snapshot
               も並べて確認します。
             </div>
@@ -337,98 +347,120 @@ export default function PerformancePage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          title="確定ロック件数"
-          value={performance.lockedSchedules}
-          description="電話確定済みの予定"
-          icon={CheckCircle2}
-          tone={kpiToneClass(performance.routeLockRate, 80)}
+      {metricsError ? (
+        // 業務 KPI の元クエリ(workflow/schedules/proposals)失敗時は 0 (false-zero) を出さず ErrorState + 再読み込み。
+        <ErrorState
+          variant="server"
+          size="inline"
+          action={{ label: '再読み込み', onClick: refetchMetrics }}
         />
-        <KpiCard
-          title="変更承認待ち"
-          value={performance.pendingOverrides}
-          description="専用リスケが必要な件数"
-          icon={RefreshCw}
-          tone={kpiToneClass(performance.pendingOverrides, 0, true)}
-        />
-        <KpiCard
-          title="緊急影響"
-          value={performance.emergencyItems}
-          description="緊急訪問・割込影響の合算"
-          icon={AlertTriangle}
-          tone={kpiToneClass(performance.emergencyItems, 0, true)}
-        />
-        <KpiCard
-          title="電話確認率"
-          value={performance.phoneConfirmationRate}
-          description="候補の電話確認済み比率"
-          unit="%"
-          icon={Route}
-          tone={kpiToneClass(performance.phoneConfirmationRate, 80)}
-        />
-        <KpiCard
-          title="平均ルート負荷"
-          value={performance.avgRouteScore.toFixed(1)}
-          description="候補の移動スコア平均"
-          icon={TrendingUp}
-        />
-        <KpiCard
-          title="代替割当"
-          value={performance.fallbackAssignments}
-          description="主担当以外の割当総数"
-          icon={Users}
-          tone={kpiToneClass(performance.fallbackAssignments, 0, true)}
-        />
-        <KpiCard
-          title="確定率"
-          value={performance.routeLockRate}
-          description="対象期間の確定率"
-          unit="%"
-          icon={ShieldAlert}
-          tone={kpiToneClass(performance.routeLockRate, 80)}
-        />
-        <KpiCard
-          title="報告待ち"
-          value={workflow?.outcome_metrics.awaiting_reports ?? 0}
-          description="訪問後の後続作業"
-          icon={AlertTriangle}
-          tone={kpiToneClass(workflow?.outcome_metrics.awaiting_reports ?? 0, 0, true)}
-        />
-      </section>
+      ) : (
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            title="確定ロック件数"
+            value={performance.lockedSchedules}
+            description="電話確定済みの予定"
+            icon={CheckCircle2}
+            tone={kpiToneClass(performance.routeLockRate, 80)}
+          />
+          <KpiCard
+            title="変更承認待ち"
+            value={performance.pendingOverrides}
+            description="専用リスケが必要な件数"
+            icon={RefreshCw}
+            tone={kpiToneClass(performance.pendingOverrides, 0, true)}
+          />
+          <KpiCard
+            title="緊急影響"
+            value={performance.emergencyItems}
+            description="緊急訪問・割込影響の合算"
+            icon={AlertTriangle}
+            tone={kpiToneClass(performance.emergencyItems, 0, true)}
+          />
+          <KpiCard
+            title="電話確認率"
+            value={performance.phoneConfirmationRate}
+            description="候補の電話確認済み比率"
+            unit="%"
+            icon={Route}
+            tone={kpiToneClass(performance.phoneConfirmationRate, 80)}
+          />
+          <KpiCard
+            title="平均ルート負荷"
+            value={performance.avgRouteScore.toFixed(1)}
+            description="候補の移動スコア平均"
+            icon={TrendingUp}
+          />
+          <KpiCard
+            title="代替割当"
+            value={performance.fallbackAssignments}
+            description="主担当以外の割当総数"
+            icon={Users}
+            tone={kpiToneClass(performance.fallbackAssignments, 0, true)}
+          />
+          <KpiCard
+            title="確定率"
+            value={performance.routeLockRate}
+            description="対象期間の確定率"
+            unit="%"
+            icon={ShieldAlert}
+            tone={kpiToneClass(performance.routeLockRate, 80)}
+          />
+          <KpiCard
+            title="報告待ち"
+            value={workflow?.outcome_metrics.awaiting_reports ?? 0}
+            description="訪問後の後続作業"
+            icon={AlertTriangle}
+            tone={kpiToneClass(workflow?.outcome_metrics.awaiting_reports ?? 0, 0, true)}
+          />
+        </section>
+      )}
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          title="API P95"
-          value={runtime?.summary.overall_p95_ms ?? 0}
-          description="current-process の横断 P95"
-          unit="ms"
-          icon={Timer}
-          tone={kpiToneClass(runtime?.summary.overall_p95_ms ?? 0, runtime?.target_ms ?? 500, true)}
+      {runtimeQuery.isError ? (
+        // ランタイム指標(runtime)失敗時は 0 (false-zero) を出さず ErrorState + 再読み込み。
+        <ErrorState
+          variant="server"
+          size="inline"
+          action={{ label: '再読み込み', onClick: () => void runtimeQuery.refetch() }}
         />
-        <KpiCard
-          title="API P50"
-          value={runtime?.summary.overall_p50_ms ?? 0}
-          description="current-process の横断 P50"
-          unit="ms"
-          icon={TrendingUp}
-        />
-        <KpiCard
-          title="閾値超過率"
-          value={runtime?.summary.slow_request_rate ?? 0}
-          description={`>${runtime?.target_ms ?? 500}ms の割合`}
-          unit="%"
-          icon={AlertTriangle}
-          tone={kpiToneClass(runtime?.summary.slow_request_rate ?? 0, 5, true)}
-        />
-        <KpiCard
-          title="閾値超過 route"
-          value={runtime?.summary.routes_over_target ?? 0}
-          description="P95 が目標を超える endpoint"
-          icon={ShieldAlert}
-          tone={kpiToneClass(runtime?.summary.routes_over_target ?? 0, 0, true)}
-        />
-      </section>
+      ) : (
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            title="API P95"
+            value={runtime?.summary.overall_p95_ms ?? 0}
+            description="current-process の横断 P95"
+            unit="ms"
+            icon={Timer}
+            tone={kpiToneClass(
+              runtime?.summary.overall_p95_ms ?? 0,
+              runtime?.target_ms ?? 500,
+              true,
+            )}
+          />
+          <KpiCard
+            title="API P50"
+            value={runtime?.summary.overall_p50_ms ?? 0}
+            description="current-process の横断 P50"
+            unit="ms"
+            icon={TrendingUp}
+          />
+          <KpiCard
+            title="閾値超過率"
+            value={runtime?.summary.slow_request_rate ?? 0}
+            description={`>${runtime?.target_ms ?? 500}ms の割合`}
+            unit="%"
+            icon={AlertTriangle}
+            tone={kpiToneClass(runtime?.summary.slow_request_rate ?? 0, 5, true)}
+          />
+          <KpiCard
+            title="閾値超過 route"
+            value={runtime?.summary.routes_over_target ?? 0}
+            description="P95 が目標を超える endpoint"
+            icon={ShieldAlert}
+            tone={kpiToneClass(runtime?.summary.routes_over_target ?? 0, 0, true)}
+          />
+        </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <Card>
@@ -438,17 +470,17 @@ export default function PerformancePage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {performance.pendingOverrides > 0 && (
-              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+              <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-state-confirm">
                 確定済み予定の変更承認が {performance.pendingOverrides} 件あります。
               </p>
             )}
             {performance.emergencyItems > 0 && (
-              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800">
+              <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive">
                 緊急訪問・割込対応の影響が {performance.emergencyItems} 件あります。
               </p>
             )}
             {performance.avgRouteScore > 0 && (
-              <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sky-800">
+              <p className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-tag-info">
                 平均移動スコアは {performance.avgRouteScore.toFixed(1)} です。
               </p>
             )}
@@ -485,7 +517,14 @@ export default function PerformancePage() {
             <CardDescription>移動負荷の高い候補とロック状況を確認します</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {topProposals.length === 0 ? (
+            {proposalsQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void proposalsQuery.refetch() }}
+              />
+            ) : topProposals.length === 0 ? (
               <p className="text-sm text-muted-foreground">対象期間の訪問候補はありません</p>
             ) : (
               topProposals.map((proposal) => (
@@ -530,7 +569,7 @@ export default function PerformancePage() {
                       .map((part) => (
                         <span
                           key={part}
-                          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
+                          className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground"
                         >
                           {part}
                         </span>
@@ -590,40 +629,51 @@ export default function PerformancePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">収集開始</span>
-                <span className="font-medium text-foreground">
-                  {runtime?.collected_since
-                    ? format(new Date(runtime.collected_since), 'M/d HH:mm', { locale: ja })
-                    : '未計測'}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-muted-foreground">サンプル総数</span>
-                <span className="font-medium text-foreground">
-                  {runtime?.summary.total_requests ?? 0}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-muted-foreground">記録 route 数</span>
-                <span className="font-medium text-foreground">
-                  {runtime?.summary.route_count ?? 0}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-muted-foreground">5xx 件数</span>
-                <span className="font-medium text-foreground">
-                  {runtime?.summary.error_requests ?? 0}
-                </span>
-              </div>
-            </div>
-            {(runtime?.summary.total_requests ?? 0) === 0 ? (
-              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
-                まだ API サンプルがありません。通常画面を操作すると current-process
-                の計測が蓄積されます。
-              </p>
-            ) : null}
+            {runtimeQuery.isError ? (
+              // 取得失敗時はサマリ数値(未計測/0 = false-zero)を一切出さず、ErrorState のみを出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void runtimeQuery.refetch() }}
+              />
+            ) : (
+              <>
+                <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">収集開始</span>
+                    <span className="font-medium text-foreground">
+                      {runtime?.collected_since
+                        ? format(new Date(runtime.collected_since), 'M/d HH:mm', { locale: ja })
+                        : '未計測'}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-muted-foreground">サンプル総数</span>
+                    <span className="font-medium text-foreground">
+                      {runtime?.summary.total_requests ?? 0}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-muted-foreground">記録 route 数</span>
+                    <span className="font-medium text-foreground">
+                      {runtime?.summary.route_count ?? 0}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-muted-foreground">5xx 件数</span>
+                    <span className="font-medium text-foreground">
+                      {runtime?.summary.error_requests ?? 0}
+                    </span>
+                  </div>
+                </div>
+                {(runtime?.summary.total_requests ?? 0) === 0 ? (
+                  <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-state-confirm">
+                    まだ API サンプルがありません。通常画面を操作すると current-process
+                    の計測が蓄積されます。
+                  </p>
+                ) : null}
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -633,7 +683,14 @@ export default function PerformancePage() {
             <CardDescription>現時点で P95 が高い route を上から確認します</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {(runtime?.routes.length ?? 0) === 0 ? (
+            {runtimeQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void runtimeQuery.refetch() }}
+              />
+            ) : (runtime?.routes.length ?? 0) === 0 ? (
               <p className="text-sm text-muted-foreground">
                 表示できる API latency sample はまだありません
               </p>

@@ -43,7 +43,7 @@ function SectionHeading({ color, label }: { color: string; label: string }) {
       style={{
         fontSize: '11.5px',
         fontWeight: 700,
-        color: '#46566a',
+        color: 'var(--wb-ink-muted)',
         marginBottom: '5px',
         display: 'flex',
         alignItems: 'center',
@@ -93,7 +93,7 @@ function CheckBox({ look, size = 17 }: { look: CheckboxLook; size?: number }) {
 function look(checked: boolean, onColor: string): CheckboxLook {
   return checked
     ? { bg: onColor, border: onColor, mark: '✓' }
-    : { bg: '#fff', border: '#9aa8b8', mark: '' };
+    : { bg: 'var(--wb-surface)', border: 'var(--wb-line)', mark: '' };
 }
 
 export function RightPane({ view, phase, handlers, isPending }: RightPaneProps) {
@@ -106,7 +106,7 @@ export function RightPane({ view, phase, handlers, isPending }: RightPaneProps) 
           display: 'flex',
           alignItems: 'center',
           padding: '0 10px',
-          background: 'linear-gradient(180deg,#3a5e8c,#27466c)',
+          background: 'var(--wb-accent)',
           color: '#fff',
           fontSize: '12px',
           fontWeight: 700,
@@ -143,8 +143,8 @@ function GridInfo({ view }: { view: WorkbenchView }) {
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          borderBottom: '1px solid #d8dde3',
-          background: '#fff',
+          borderBottom: '1px solid var(--wb-line)',
+          background: 'var(--wb-surface)',
         }}
       >
         <div
@@ -165,13 +165,15 @@ function GridInfo({ view }: { view: WorkbenchView }) {
           {cur.initial}
         </div>
         <div>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: '#16263a' }}>{cur.name}</div>
-          <div style={{ fontSize: '11px', color: '#69788c' }}>{cur.kana}</div>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--wb-ink)' }}>
+            {cur.name}
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--wb-ink-muted)' }}>{cur.kana}</div>
         </div>
       </div>
 
       {/* 患者情報行 */}
-      <div style={{ flex: 'none', padding: '6px 11px', borderBottom: '1px solid #d8dde3' }}>
+      <div style={{ flex: 'none', padding: '6px 11px', borderBottom: '1px solid var(--wb-line)' }}>
         {infoItems.map((it) => (
           <div
             key={it.label}
@@ -179,13 +181,20 @@ function GridInfo({ view }: { view: WorkbenchView }) {
               display: 'flex',
               alignItems: 'flex-start',
               padding: '3px 0',
-              borderBottom: '1px dotted #e1e5ea',
+              borderBottom: '1px dotted var(--wb-line)',
             }}
           >
-            <span style={{ width: '96px', flex: 'none', fontSize: '11px', color: '#69788c' }}>
+            <span
+              style={{
+                width: '96px',
+                flex: 'none',
+                fontSize: '11px',
+                color: 'var(--wb-ink-muted)',
+              }}
+            >
               {it.label}
             </span>
-            <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: '#22344a' }}>
+            <span style={{ flex: 1, fontSize: '12px', fontWeight: 700, color: 'var(--wb-ink)' }}>
               {it.value}
             </span>
           </div>
@@ -197,7 +206,7 @@ function GridInfo({ view }: { view: WorkbenchView }) {
         style={{
           flex: 'none',
           padding: '8px 11px',
-          borderBottom: '1px solid #d8dde3',
+          borderBottom: '1px solid var(--wb-line)',
           display: 'flex',
           flexWrap: 'wrap',
           gap: '5px',
@@ -231,15 +240,15 @@ function GridInfo({ view }: { view: WorkbenchView }) {
           padding: '8px 11px',
         }}
       >
-        <SectionHeading color="#d99441" label="備考・申し送り" />
+        <SectionHeading color="var(--wb-state-confirm)" label="備考・申し送り" />
         <div
           data-testid="calendar-outside-meds-confirmation"
           style={{
             flex: 1,
             minHeight: 0,
             overflowY: 'auto',
-            background: '#fffdf6',
-            border: '1px solid #e6dcb9',
+            background: 'var(--wb-confirm-bg-pale)',
+            border: '1px solid var(--wb-confirm-border)',
             borderRadius: '5px',
             padding: '9px 11px',
           }}
@@ -253,10 +262,10 @@ function GridInfo({ view }: { view: WorkbenchView }) {
                 marginBottom: '5px',
                 fontSize: '12px',
                 lineHeight: 1.6,
-                color: '#5b4a22',
+                color: 'var(--wb-state-confirm)',
               }}
             >
-              <span aria-hidden style={{ color: '#c98f2f', fontWeight: 700 }}>
+              <span aria-hidden style={{ color: 'var(--wb-state-confirm)', fontWeight: 700 }}>
                 ●
               </span>
               <span style={{ flex: 1 }}>{b}</span>
@@ -305,14 +314,14 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
         style={{
           flex: 'none',
           margin: '9px',
-          border: '1.5px solid #2f6fd6',
+          border: '1.5px solid var(--wb-phase-disp-strong)',
           borderRadius: '7px',
           overflow: 'hidden',
         }}
       >
         <div
           style={{
-            background: '#2f6fd6',
+            background: 'var(--wb-phase-disp-strong)',
             color: '#fff',
             fontSize: '12px',
             fontWeight: 700,
@@ -321,14 +330,17 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
         >
           ▶ 次にセットする薬剤
         </div>
-        <div style={{ padding: '9px 11px', background: '#fff' }}>
-          <div style={{ fontSize: '15px', fontWeight: 800, color: '#16345a' }}>
-            {target.date} <span style={{ color: '#2f6fd6' }}>{target.timing}</span>
+        <div style={{ padding: '9px 11px', background: 'var(--wb-surface)' }}>
+          <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--wb-ink)' }}>
+            {target.date}{' '}
+            <span style={{ color: 'var(--wb-phase-disp-strong)' }}>{target.timing}</span>
           </div>
-          <div style={{ marginTop: '6px', fontSize: '13px', fontWeight: 700, color: '#22344a' }}>
+          <div
+            style={{ marginTop: '6px', fontSize: '13px', fontWeight: 700, color: 'var(--wb-ink)' }}
+          >
             一包化袋 {target.packetText}
             {target.hasPtp && (
-              <span style={{ fontSize: '11px', color: '#1d6fb8', marginLeft: '6px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--wb-tag-ptp)', marginLeft: '6px' }}>
                 ／ {target.ptpText}
               </span>
             )}
@@ -346,9 +358,14 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
             {target.drugs.map((d, i) => (
               <div
                 key={`${d}-${i}`}
-                style={{ fontSize: '11.5px', color: '#37475c', display: 'flex', gap: '5px' }}
+                style={{
+                  fontSize: '11.5px',
+                  color: 'var(--wb-ink-muted)',
+                  display: 'flex',
+                  gap: '5px',
+                }}
               >
-                <span aria-hidden style={{ color: '#9aa6b4' }}>
+                <span aria-hidden style={{ color: 'var(--wb-state-readonly)' }}>
                   ・
                 </span>
                 <span style={{ flex: 1 }}>{d}</span>
@@ -360,9 +377,9 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               style={{
                 marginTop: '7px',
                 fontSize: '11px',
-                color: '#b3402f',
-                background: '#fdeeec',
-                border: '1px solid #f3cbb3',
+                color: 'var(--wb-state-blocked)',
+                background: 'var(--wb-blocked-bg)',
+                border: '1px solid var(--wb-blocked-border-warm)',
                 borderRadius: '4px',
                 padding: '5px 8px',
               }}
@@ -373,19 +390,29 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
           <div
             style={{
               marginTop: '8px',
-              background: '#eaf2fb',
-              border: '1px solid #c4d8ef',
+              background: 'var(--wb-disp-tint-bg)',
+              border: '1px solid var(--wb-tag-ptp-border)',
               borderRadius: '5px',
               padding: '7px 9px',
             }}
           >
             <div
-              style={{ fontSize: '10px', fontWeight: 700, color: '#5a78a8', letterSpacing: '.5px' }}
+              style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                color: 'var(--wb-ink-muted)',
+                letterSpacing: '.5px',
+              }}
             >
               セット方法
             </div>
             <div
-              style={{ fontSize: '12.5px', fontWeight: 700, color: '#1b3a63', marginTop: '2px' }}
+              style={{
+                fontSize: '12.5px',
+                fontWeight: 700,
+                color: 'var(--wb-ink)',
+                marginTop: '2px',
+              }}
             >
               {setMethod}
             </div>
@@ -400,7 +427,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                     width: '18px',
                     height: '18px',
                     borderRadius: '50%',
-                    background: '#2f6fd6',
+                    background: 'var(--wb-phase-disp-strong)',
                     color: '#fff',
                     display: 'flex',
                     alignItems: 'center',
@@ -412,7 +439,12 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                   {st.n}
                 </span>
                 <span
-                  style={{ flex: 'none', fontSize: '11.5px', fontWeight: 700, color: '#22344a' }}
+                  style={{
+                    flex: 'none',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    color: 'var(--wb-ink)',
+                  }}
                 >
                   {st.label}
                 </span>
@@ -420,7 +452,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                   style={{
                     flex: 1,
                     fontSize: '10.5px',
-                    color: '#7a8a9c',
+                    color: 'var(--wb-ink-muted)',
                     textAlign: 'right',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -446,8 +478,10 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                 fontSize: '12px',
                 fontWeight: 700,
                 color: '#fff',
-                background: cellActionDisabled ? '#a8b3bf' : '#2f6fd6',
-                border: '1px solid #245aad',
+                background: cellActionDisabled
+                  ? 'var(--wb-state-readonly)'
+                  : 'var(--wb-phase-disp-strong)',
+                border: '1px solid var(--wb-phase-disp-border)',
                 borderRadius: '5px',
                 padding: '7px 0',
                 opacity: cellActionDisabled ? 0.72 : 1,
@@ -481,14 +515,14 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
           margin: '0 9px 9px 9px',
         }}
       >
-        <SectionHeading color="#b75a28" label="カレンダー外薬（同梱確認）" />
+        <SectionHeading color="var(--wb-tag-gaiyo)" label="カレンダー外薬（同梱確認）" />
         <div
           style={{
             flex: 1,
             minHeight: 0,
             overflowY: 'auto',
-            background: '#fff',
-            border: '1px solid #e6dcc4',
+            background: 'var(--wb-surface)',
+            border: '1px solid var(--wb-confirm-border)',
             borderRadius: '5px',
             padding: '7px 9px',
           }}
@@ -504,14 +538,14 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '5px 4px',
-                borderBottom: '1px solid #f0ede4',
+                borderBottom: '1px solid var(--wb-line)',
                 cursor: 'pointer',
                 width: '100%',
                 background: 'transparent',
                 textAlign: 'left',
               }}
             >
-              <CheckBox look={look(o.checked, '#3a9d4f')} />
+              <CheckBox look={look(o.checked, 'var(--wb-state-done)')} />
               <span
                 style={{
                   flex: 'none',
@@ -525,14 +559,26 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
               >
                 {o.kind}
               </span>
-              <span style={{ flex: 1, fontSize: '11.5px', color: '#37475c', lineHeight: 1.2 }}>
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: '11.5px',
+                  color: 'var(--wb-ink-muted)',
+                  lineHeight: 1.2,
+                }}
+              >
                 {o.name}
               </span>
             </button>
           ))}
           {outsideEmpty && (
             <div
-              style={{ fontSize: '11px', color: '#9aa6b4', textAlign: 'center', padding: '14px 0' }}
+              style={{
+                fontSize: '11px',
+                color: 'var(--wb-state-readonly)',
+                textAlign: 'center',
+                padding: '14px 0',
+              }}
             >
               カレンダー外薬なし
             </div>
@@ -542,12 +588,12 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
 
       {/* 訪問持出パケット 完成判定 */}
       <div style={{ flex: 'none', margin: '0 9px 9px 9px' }}>
-        <SectionHeading color="#9558c4" label="訪問持出パケット 完成判定" />
+        <SectionHeading color="var(--wb-phase-setp-strong)" label="訪問持出パケット 完成判定" />
         <div
           data-testid="visit-carry-packet-confirmation"
           style={{
-            background: '#faf7fd',
-            border: '1px solid #e0d2ee',
+            background: 'var(--wb-packet-bg)',
+            border: '1px solid var(--wb-packet-border)',
             borderRadius: '5px',
             padding: '5px 9px',
           }}
@@ -563,15 +609,22 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '4px 2px',
-                borderBottom: '1px solid #efe7f5',
+                borderBottom: '1px solid var(--wb-line)',
                 cursor: 'pointer',
                 width: '100%',
                 background: 'transparent',
                 textAlign: 'left',
               }}
             >
-              <CheckBox look={look(pk.checked, '#9558c4')} />
-              <span style={{ flex: 1, fontSize: '11.5px', color: '#37475c', fontWeight: 700 }}>
+              <CheckBox look={look(pk.checked, 'var(--wb-phase-setp-strong)')} />
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: '11.5px',
+                  color: 'var(--wb-ink-muted)',
+                  fontWeight: 700,
+                }}
+              >
                 {pk.label}
               </span>
             </button>
@@ -625,14 +678,14 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
         style={{
           flex: 'none',
           margin: '9px',
-          border: '1.5px solid #27ae60',
+          border: '1.5px solid var(--wb-phase-audit)',
           borderRadius: '7px',
           overflow: 'hidden',
         }}
       >
         <div
           style={{
-            background: '#27ae60',
+            background: 'var(--wb-phase-audit-strong)',
             color: '#fff',
             fontSize: '12px',
             fontWeight: 700,
@@ -641,14 +694,16 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
         >
           期待値（処方・服薬計画）
         </div>
-        <div style={{ padding: '9px 11px', background: '#fff' }}>
-          <div style={{ fontSize: '15px', fontWeight: 800, color: '#16345a' }}>
-            {target.date} <span style={{ color: '#1d8a47' }}>{target.timing}</span>
+        <div style={{ padding: '9px 11px', background: 'var(--wb-surface)' }}>
+          <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--wb-ink)' }}>
+            {target.date} <span style={{ color: 'var(--wb-state-done)' }}>{target.timing}</span>
           </div>
-          <div style={{ marginTop: '5px', fontSize: '13px', fontWeight: 700, color: '#22344a' }}>
+          <div
+            style={{ marginTop: '5px', fontSize: '13px', fontWeight: 700, color: 'var(--wb-ink)' }}
+          >
             一包化袋 {target.packetText}
             {target.hasPtp && (
-              <span style={{ fontSize: '11px', color: '#1d6fb8', marginLeft: '6px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--wb-tag-ptp)', marginLeft: '6px' }}>
                 ／ {target.ptpText}
               </span>
             )}
@@ -666,9 +721,14 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
             {target.drugs.map((d, i) => (
               <div
                 key={`${d}-${i}`}
-                style={{ fontSize: '11px', color: '#37475c', display: 'flex', gap: '5px' }}
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--wb-ink-muted)',
+                  display: 'flex',
+                  gap: '5px',
+                }}
               >
-                <span aria-hidden style={{ color: '#9aa6b4' }}>
+                <span aria-hidden style={{ color: 'var(--wb-state-readonly)' }}>
                   ・
                 </span>
                 <span style={{ flex: 1 }}>{d}</span>
@@ -680,13 +740,20 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
 
       {/* 確認項目 */}
       <div style={{ flex: 'none', margin: '0 9px' }}>
-        <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#46566a', marginBottom: '4px' }}>
+        <div
+          style={{
+            fontSize: '11.5px',
+            fontWeight: 700,
+            color: 'var(--wb-ink-muted)',
+            marginBottom: '4px',
+          }}
+        >
           確認項目
         </div>
         <div
           style={{
-            background: '#fff',
-            border: '1px solid #dde2e8',
+            background: 'var(--wb-surface)',
+            border: '1px solid var(--wb-line)',
             borderRadius: '5px',
             padding: '4px 8px',
           }}
@@ -705,15 +772,17 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '4px 2px',
-                borderBottom: '1px solid #f0f2f4',
+                borderBottom: '1px solid var(--wb-line)',
                 cursor: cellActionDisabled ? 'not-allowed' : 'pointer',
                 width: '100%',
                 background: 'transparent',
                 textAlign: 'left',
               }}
             >
-              <CheckBox look={look(ci.checked, '#27ae60')} size={16} />
-              <span style={{ flex: 1, fontSize: '11.5px', color: '#37475c' }}>{ci.label}</span>
+              <CheckBox look={look(ci.checked, 'var(--wb-phase-audit-strong)')} size={16} />
+              <span style={{ flex: 1, fontSize: '11.5px', color: 'var(--wb-ink-muted)' }}>
+                {ci.label}
+              </span>
             </button>
           ))}
         </div>
@@ -735,8 +804,10 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               fontSize: '12.5px',
               fontWeight: 700,
               color: '#fff',
-              background: cellActionDisabled ? '#a8b3bf' : '#27ae60',
-              border: '1px solid #1f9150',
+              background: cellActionDisabled
+                ? 'var(--wb-state-readonly)'
+                : 'var(--wb-phase-audit-strong)',
+              border: '1px solid var(--wb-state-done)',
               borderRadius: '5px',
               padding: '8px 0',
               opacity: cellActionDisabled ? 0.72 : 1,
@@ -763,8 +834,8 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               fontSize: '12.5px',
               fontWeight: 700,
               color: '#fff',
-              background: ngDisabled ? '#a8b3bf' : '#d9534f',
-              border: '1px solid #b94440',
+              background: ngDisabled ? 'var(--wb-state-readonly)' : 'var(--wb-state-blocked)',
+              border: '1px solid var(--wb-state-blocked)',
               borderRadius: '5px',
               padding: '8px 0',
               opacity: ngDisabled ? 0.72 : 1,
@@ -791,7 +862,12 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
         <div style={{ marginTop: '7px', display: 'flex', alignItems: 'center', gap: '6px' }}>
           <label
             htmlFor="ng-classification"
-            style={{ fontSize: '11px', color: '#69788c', fontWeight: 700, flex: 'none' }}
+            style={{
+              fontSize: '11px',
+              color: 'var(--wb-ink-muted)',
+              fontWeight: 700,
+              flex: 'none',
+            }}
           >
             NG分類
           </label>
@@ -803,9 +879,9 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
             style={{
               flex: 1,
               fontSize: '11px',
-              color: '#173a63',
-              background: '#fff',
-              border: '1px solid #c3402f',
+              color: 'var(--wb-ink)',
+              background: 'var(--wb-surface)',
+              border: '1px solid var(--wb-state-blocked)',
               borderRadius: '4px',
               padding: '3px 4px',
             }}
@@ -822,11 +898,11 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
 
       {/* 差戻し（セットへ戻す）*/}
       <div style={{ flex: 'none', margin: '0 9px 9px 9px' }}>
-        <SectionHeading color="#d9534f" label="差戻し（セットへ戻す）" />
+        <SectionHeading color="var(--wb-state-blocked)" label="差戻し（セットへ戻す）" />
         <div
           style={{
-            background: '#fff',
-            border: '1px solid #ecccc9',
+            background: 'var(--wb-surface)',
+            border: '1px solid var(--wb-blocked-border-soft)',
             borderRadius: '5px',
             padding: '5px 8px',
           }}
@@ -839,14 +915,16 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '5px 2px',
-                borderBottom: '1px solid #f3eaea',
+                borderBottom: '1px solid var(--wb-line)',
               }}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '11.5px', fontWeight: 700, color: '#22344a' }}>
+                <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--wb-ink)' }}>
                   {rj.label}
                 </div>
-                <div style={{ fontSize: '10px', color: '#c0392b' }}>NG：{rj.ng}</div>
+                <div style={{ fontSize: '10px', color: 'var(--wb-state-blocked)' }}>
+                  NG：{rj.ng}
+                </div>
               </div>
               <button
                 type="button"
@@ -858,8 +936,10 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
                   fontSize: '10.5px',
                   fontWeight: 700,
                   color: '#fff',
-                  background: isPending ? '#a8b3bf' : '#9558c4',
-                  border: '1px solid #7c43ab',
+                  background: isPending
+                    ? 'var(--wb-state-readonly)'
+                    : 'var(--wb-phase-setp-strong)',
+                  border: '1px solid var(--wb-phase-setp-border)',
                   borderRadius: '4px',
                   padding: '4px 8px',
                   opacity: isPending ? 0.72 : 1,
@@ -871,7 +951,12 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
           ))}
           {rejectEmpty && (
             <div
-              style={{ fontSize: '11px', color: '#9aa6b4', textAlign: 'center', padding: '8px 0' }}
+              style={{
+                fontSize: '11px',
+                color: 'var(--wb-state-readonly)',
+                textAlign: 'center',
+                padding: '8px 0',
+              }}
             >
               差戻しなし
             </div>
@@ -889,14 +974,14 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
           margin: '0 9px 9px 9px',
         }}
       >
-        <SectionHeading color="#c0392b" label="リスク確認順（上位を先に）" />
+        <SectionHeading color="var(--wb-state-blocked)" label="リスク確認順（上位を先に）" />
         <div
           style={{
             flex: 1,
             minHeight: 0,
             overflowY: 'auto',
-            background: '#fff',
-            border: '1px solid #e3d3d0',
+            background: 'var(--wb-surface)',
+            border: '1px solid var(--wb-blocked-border-soft)',
             borderRadius: '5px',
             padding: '6px 9px',
           }}
@@ -909,7 +994,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
                 alignItems: 'center',
                 gap: '8px',
                 padding: '4px 2px',
-                borderBottom: '1px solid #f3eeed',
+                borderBottom: '1px solid var(--wb-line)',
               }}
             >
               <span
@@ -930,7 +1015,14 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               >
                 {rk.rank}
               </span>
-              <span style={{ flex: 1, fontSize: '11.5px', color: '#37475c', fontWeight: 700 }}>
+              <span
+                style={{
+                  flex: 1,
+                  fontSize: '11.5px',
+                  color: 'var(--wb-ink-muted)',
+                  fontWeight: 700,
+                }}
+              >
                 {rk.label}
               </span>
             </div>
@@ -948,9 +1040,9 @@ const holdButtonStyle: CSSProperties = {
   textAlign: 'center',
   fontSize: '12px',
   fontWeight: 700,
-  color: '#9a6a18',
-  background: '#fff6e6',
-  border: '1px solid #e8c884',
+  color: 'var(--wb-state-confirm)',
+  background: 'var(--wb-confirm-bg-soft)',
+  border: '1px solid var(--wb-confirm-border)',
   borderRadius: '5px',
   padding: '7px 12px',
 };

@@ -4,73 +4,8 @@ import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { serializeFacilityResponse, toFacilityTimeValue } from '@/lib/facilities/facility-api';
 import { updateFacilitySchema } from '@/lib/validations/facility';
-
-function toTimeValue(value?: string | null) {
-  if (!value) return null;
-  const [hours = '0', minutes = '0'] = value.split(':');
-  return new Date(Date.UTC(1970, 0, 1, Number.parseInt(hours, 10), Number.parseInt(minutes, 10)));
-}
-
-function formatTimeValue(value: Date | null) {
-  if (!value) return null;
-  const hours = `${value.getUTCHours()}`.padStart(2, '0');
-  const minutes = `${value.getUTCMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
-
-function toResponse(facility: {
-  id: string;
-  name: string;
-  facility_type: string;
-  address: string | null;
-  phone: string | null;
-  fax: string | null;
-  acceptance_time_from: Date | null;
-  acceptance_time_to: Date | null;
-  regular_visit_weekdays: unknown;
-  notes: string | null;
-  patient_count?: number;
-  contacts: Array<{
-    id: string;
-    name: string;
-    role: string | null;
-    phone: string | null;
-    email: string | null;
-    fax: string | null;
-    is_primary: boolean;
-    notes: string | null;
-  }>;
-  _count?: {
-    residences: number;
-  };
-}) {
-  return {
-    id: facility.id,
-    name: facility.name,
-    facility_type: facility.facility_type,
-    address: facility.address,
-    phone: facility.phone,
-    fax: facility.fax,
-    acceptance_time_from: formatTimeValue(facility.acceptance_time_from),
-    acceptance_time_to: formatTimeValue(facility.acceptance_time_to),
-    regular_visit_weekdays: Array.isArray(facility.regular_visit_weekdays)
-      ? facility.regular_visit_weekdays
-      : [],
-    notes: facility.notes,
-    patient_count: facility.patient_count ?? facility._count?.residences ?? 0,
-    contacts: facility.contacts.map((contact) => ({
-      id: contact.id,
-      name: contact.name,
-      role: contact.role,
-      phone: contact.phone,
-      email: contact.email,
-      fax: contact.fax,
-      is_primary: contact.is_primary,
-      notes: contact.notes,
-    })),
-  };
-}
 
 export const GET = withAuthContext<{ id: string }>(
   async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
@@ -99,7 +34,7 @@ export const GET = withAuthContext<{ id: string }>(
       },
     });
 
-    return success({ data: toResponse({ ...facility, patient_count }) });
+    return success({ data: serializeFacilityResponse({ ...facility, patient_count }) });
   },
   {
     permission: 'canVisit',
@@ -142,10 +77,10 @@ export const PATCH = withAuthContext<{ id: string }>(
           ...(parsed.data.phone !== undefined ? { phone: parsed.data.phone || null } : {}),
           ...(parsed.data.fax !== undefined ? { fax: parsed.data.fax || null } : {}),
           ...(parsed.data.acceptance_time_from !== undefined
-            ? { acceptance_time_from: toTimeValue(parsed.data.acceptance_time_from) }
+            ? { acceptance_time_from: toFacilityTimeValue(parsed.data.acceptance_time_from) }
             : {}),
           ...(parsed.data.acceptance_time_to !== undefined
-            ? { acceptance_time_to: toTimeValue(parsed.data.acceptance_time_to) }
+            ? { acceptance_time_to: toFacilityTimeValue(parsed.data.acceptance_time_to) }
             : {}),
           ...(parsed.data.regular_visit_weekdays !== undefined
             ? {
@@ -178,7 +113,7 @@ export const PATCH = withAuthContext<{ id: string }>(
       });
     });
 
-    return success({ data: toResponse(updated) });
+    return success({ data: serializeFacilityResponse(updated) });
   },
   {
     permission: 'canAdmin',

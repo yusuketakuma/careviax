@@ -40,7 +40,12 @@ vi.mock('./offline-db', () => ({
   },
 }));
 
-import { enqueueForSync, overwriteVisitRecordConflict, processSyncQueue } from './sync-engine';
+import {
+  enqueueForSync,
+  overwriteVisitRecordConflict,
+  processSyncQueue,
+  setupAutoSync,
+} from './sync-engine';
 
 async function waitForAsyncAssertion(assertion: () => void) {
   let lastError: unknown;
@@ -276,6 +281,35 @@ describe('sync-engine PHI persistence', () => {
     ]);
     expect(dbMocks.delete).toHaveBeenCalledTimes(1);
     expect(dbMocks.delete).toHaveBeenCalledWith(26);
+  });
+
+  it('shares one automatic online listener for equivalent sync configs', () => {
+    const addEventListenerMock = vi.fn();
+    const removeEventListenerMock = vi.fn();
+    vi.stubGlobal('window', {
+      addEventListener: addEventListenerMock,
+      removeEventListener: removeEventListenerMock,
+    });
+
+    const unsubscribeFirst = setupAutoSync({ orgId: 'org-1', endpoints: {} });
+    const unsubscribeSecond = setupAutoSync({
+      orgId: 'org-1',
+      endpoints: { visit_record: '/api/visit-records' },
+    });
+
+    expect(addEventListenerMock).toHaveBeenCalledTimes(1);
+    expect(addEventListenerMock).toHaveBeenCalledWith('online', expect.any(Function));
+
+    unsubscribeSecond();
+    unsubscribeSecond();
+    expect(removeEventListenerMock).not.toHaveBeenCalled();
+
+    unsubscribeFirst();
+    expect(removeEventListenerMock).toHaveBeenCalledTimes(1);
+    expect(removeEventListenerMock).toHaveBeenCalledWith(
+      'online',
+      addEventListenerMock.mock.calls[0]![1],
+    );
   });
 
   it('deletes the scoped visit draft only when the completed queue item is still current', async () => {

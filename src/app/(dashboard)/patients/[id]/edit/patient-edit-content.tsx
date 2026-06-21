@@ -8,7 +8,17 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type { CreatePatientInput } from '@/lib/validations/patient';
+import { allergyEntrySchema, type AllergyEntry } from '@/lib/validations/patient-allergy';
 import type { PatientOverview } from '../patient-detail.types';
+
+export function normalizeAllergyInfoForPatientForm(
+  allergyInfo: unknown,
+): AllergyEntry[] | undefined {
+  if (allergyInfo == null) return undefined;
+
+  const parsed = allergyEntrySchema.array().safeParse(allergyInfo);
+  return parsed.success ? parsed.data : undefined;
+}
 
 function buildDefaultValues(patient: PatientOverview): Partial<CreatePatientInput> {
   const primaryResidence = patient.residences.find((residence) => residence.is_primary) ?? null;
@@ -120,7 +130,7 @@ function buildDefaultValues(patient: PatientOverview): Partial<CreatePatientInpu
     facility_id: primaryResidence?.facility_id ?? undefined,
     facility_unit_id: primaryResidence?.facility_unit_id ?? undefined,
     unit_name: primaryResidence?.unit_name ?? undefined,
-    allergy_info: patient.allergy_info ?? undefined,
+    allergy_info: normalizeAllergyInfoForPatientForm(patient.allergy_info),
     notes: patient.notes ?? undefined,
     requester: intake?.requester
       ? {

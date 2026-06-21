@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
@@ -218,13 +219,9 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
             <Badge variant="destructive">取得できません</Badge>
           ) : selectedWeekdayLabels.length > 0 ? (
             selectedWeekdayLabels.map((label) => (
-              <Badge
-                key={label}
-                variant="outline"
-                className="border-sky-200 bg-sky-50 text-sky-700"
-              >
+              <StateBadge key={label} role="info" showIcon={false}>
                 {label}
-              </Badge>
+              </StateBadge>
             ))
           ) : (
             <span className="text-sm text-muted-foreground">曜日希望は未設定です</span>

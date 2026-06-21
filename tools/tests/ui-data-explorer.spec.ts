@@ -1,11 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import {
-  attachLocalSession,
-  createInstrumentedPage,
-  openStableRoute,
-} from './helpers/local-auth';
+import { attachLocalSession, createInstrumentedPage, openStableRoute } from './helpers/local-auth';
 import { PLAYWRIGHT_SCREENSHOT_DIR } from './helpers/artifacts';
 
 const SCREENSHOT_DIR = PLAYWRIGHT_SCREENSHOT_DIR;
@@ -34,7 +30,12 @@ test('admin data explorer surfaces backend-only seed coverage', async ({ context
   await expect(page.locator('main')).toContainText('Patient', { timeout: 15_000 });
 
   await modelSearch.fill('Organization');
-  await expect(page.locator('main')).toContainText('Organization');
+  const organizationModel = page.getByRole('button', { name: /Organization/ });
+  await expect(organizationModel).toBeVisible({ timeout: 15_000 });
+  await organizationModel.click();
+  await expect(
+    page.getByRole('button', { name: 'Organization テーブルの 1 行目を選択' }),
+  ).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('main')).toContainText('backend only');
   await expect(page.locator('main')).toContainText(/rows/);
 

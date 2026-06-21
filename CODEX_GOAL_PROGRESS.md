@@ -1,5 +1,295 @@
 # CODEX Goal Progress
 
+## Current Goal - 2026-06-20 JST Repo-wide Maintainability / Type Safety / Testability Loop
+
+Objective: preserve existing external behavior while maximizing maintainability, readability, responsibility separation, type safety, and testability across the repository. Continue beyond one improvement or one green test until at least two full loops and two consecutive zero-actionable re-audits are complete.
+
+### Stop Gate
+
+- Minimum two loops completed.
+- Short-, mid-, and long-term candidates inventoried.
+- All in-session actionable candidates implemented unless blocked by external approval, credentials, destructive DB changes, product/legal/design decision, active file lock, or environment limitation.
+- Two consecutive re-audits report zero new actionable candidates.
+- Available validation is run and classified as passed, existing failure, environment blocked, or intentionally skipped with reason.
+
+### Coordination and Locks
+
+- Claude has approved D2 backend bulkification after `/api/tasks/bulk` route-catalog registration.
+- Claude currently owns Slice B and has locked `src/lib/auth/context.ts`, `src/lib/api/response.ts`, and `src/lib/api/performance.ts`; Codex will not edit those files while the lock is active.
+- The worktree is intentionally dirty from concurrent Claude/Codex slices. Preserve unrelated changes and do not revert user/Claude edits.
+
+### Loop 0 - Baseline Start
+
+- Required context read: `AGENTS.md`, `.codex/config.toml`, `.codex/hooks.json`, `.codex/rules/default.rules`, `README.md`, `CLAUDE.md`, `package.json`, `.github/workflows/ci.yml`, `docs/testing/README.md`, `docs/testing/TESTING.md`, existing `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+- Missing context files: `AGENTS.override.md` and `CONTRIBUTING.md` are not present in this checkout.
+- Repository shape observed: Next.js App Router under `src/app`, route handlers under `src/app/api`, server services/jobs under `src/server`, shared utilities under `src/lib`, UI components under `src/components`, Playwright under `tools/tests`, split Prisma schema under `prisma/schema/*.prisma`.
+- CI gates observed: `pnpm audit --audit-level moderate`, `pnpm lint`, `pnpm format:check`, `pnpm date-slices:check`, `pnpm eventbridge-schedules:check`, `pnpm typecheck`, `pnpm test:coverage`, `pnpm phos:deploy-template:validate:artifact`, `pnpm build`, migration/RLS gates, and medical UI E2E gate.
+- Required read-only agents launched: Architecture Agent, Duplication Agent, Type & Contract Agent, Behavior/Test Agent, Dead Code Agent, and Review Agent.
+- Initial validation:
+  - `pnpm format:check`: initially failed on this progress file after Loop 0 section insertion, then passed after targeted Prettier.
+  - `pnpm date-slices:check`: failed on six unclassified direct `toISOString().slice(0, 10)` date-key conversions in pharmacy cooperation/share/invoice/report-draft/contract document code.
+  - `pnpm eventbridge-schedules:check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm test -- --reporter=dot --testTimeout=30000`: passed with 1073 files passed / 1 skipped and 8347 tests passed / 1 skipped.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: failed because untracked local `agmsg/` tool checkout under the repo root is included by `eslint .` and violates repo lint rules.
+  - CI-like `pnpm build` with placeholder env: passed.
+- Agent findings received so far:
+  - Behavior/Test: add boundary tests around `/api/tasks/bulk`, notifications SSE recovery/throttling logs, and characterization for untested API routes before broad refactors.
+  - Type & Contract: client response contracts rely on casts; billing candidate POST routes and auth body routes have route-local validation gaps; print audit response types are duplicated.
+  - Duplication: date-key validation/formatting is duplicated; API fetch/error parsing is duplicated; route body validation boilerplate repeats; UI metric/badge components have medium-term consolidation potential.
+  - Review: root-level untracked `agmsg/` and `Plans.md.bak.1781901852` are local artifact risks and should not be allowed into product diffs.
+  - Dead Code: old dashboard/patient-detail/schedule-day subtrees and several unused barrels/helpers/components need staged cleanup, but large UI subtree deletion is blocked by product-decision and scope risk; small noUnused cleanups are actionable.
+- Next loop: wait for Architecture Agent report, then choose the highest-value non-conflicting refactor slice.
+
+### Loop 1 - Date-key Consolidation and Local Artifact Hygiene
+
+Additional agent findings received:
+
+- Architecture: large admin pharmacy-cooperation setup UI and patient/detail API route remain high-complexity long-term candidates; shared helper placement and service slicing should be preferred over adding parallel abstractions.
+- Architecture and Review: root-local agent artifacts should be kept out of source validation and product diffs before continuing broader refactors.
+- Duplication: unclassified direct UTC date-key formatting was a short-term actionable duplicate because the repository already has canonical date-key helpers and a guard command.
+
+Implemented:
+
+- Replaced six direct `toISOString().slice(0, 10)` date-key conversions with canonical UTC helpers:
+  - `formatUtcDateKey(new Date())` in admin pharmacy-cooperation UI.
+  - `formatUtcDateKey(date)` in patient-share-case API derivation.
+  - `formatNullableUtcDateKey(value)` in pharmacy invoice API/service, partner visit-report draft service, and pharmacy contract document service paths.
+- Preserved previous UTC calendar-day semantics instead of changing to local-time date formatting.
+- Added root-local artifact ignores for `agmsg/` and `*.bak.*`, and excluded `agmsg/**` from ESLint global ignores so the local cross-agent tool checkout cannot break product lint.
+- Reviewed Claude Slice B route-error-envelope changes and returned an `APPROVE / no blocking findings` review through `agmsg`; no Codex edits were made to Claude-locked files.
+
+Deleted or consolidated:
+
+- Removed six hand-rolled direct date-slice conversions from product code paths.
+- Consolidated local lint/status artifact handling into repository ignore configuration instead of deleting local artifacts.
+
+Focused validation:
+
+- `pnpm date-slices:check`: passed after the date-key helper migration, reporting seven classified direct ISO date slices.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' src/app/api/patient-share-cases/route.test.ts src/app/api/pharmacy-invoices/route.test.ts src/server/services/partner-visit-report-drafts.test.ts src/server/services/pharmacy-invoices.test.ts --reporter=dot --testTimeout=30000`: passed, 5 files / 41 tests.
+- Touched-file ESLint for the Loop 1 source/test files: passed.
+- Touched-file Prettier check for the Loop 1 source/progress files: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed after excluding root-local `agmsg/`.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check --` for Loop 1 files: passed.
+- Claude Slice B review validation: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/auth/context.test.ts src/app/api/consent-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, 2 files / 15 tests.
+
+Blocked or deferred:
+
+- Large UI/API decomposition candidates remain actionable only when they can be sliced without overlapping Claude locks or changing product behavior.
+- Large old dashboard/patient-detail/schedule-day subtree deletion remains blocked by product-decision and current behavior-preservation risk.
+- Raw internal logger error capture in Claude Slice B remains a PHI logging watchlist item, but it is not a blocker for the generic client 500 envelope because the response does not expose the thrown message.
+
+Next loop:
+
+- Continue with the next non-conflicting actionable item: prefer a small type/contract or duplication cleanup with existing tests, or accept Claude's D3 backend-reliability-dedup delegation if it can be locked away from active Claude files.
+
+### Loop 2 - D3 Backend Reliability / Time Helper Dedup
+
+Coordination:
+
+- Accepted Claude's D3 backend-reliability-dedup delegation through `agmsg`.
+- Codex lock used for this loop: `src/server/services/email.ts`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/(dashboard)/handoff/handoff-workspace.helpers.ts`, `src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.ts`, `src/app/(dashboard)/reports/report-share-workspace.helpers.ts`, `src/app/(dashboard)/schedules/schedule-team-board.helpers.ts`, plus new shared time helper files.
+- Claude lock respected: no edits to `src/lib/auth/context.ts`, `src/lib/api/response.ts`, `src/lib/api/performance.ts`, or `src/app/api/consent-records/*`.
+
+Implemented:
+
+- Moved the canonical SES/email delivery failure reason into `src/server/services/email.ts`.
+- Added `resolveEmailDeliveryFailureReason()` so care-report send persistence uses the email service's safe failure reason instead of a route-local constant.
+- Preserved the existing client/API failure reason string (`メール送信に失敗しました`) and continued to avoid leaking raw provider errors such as `SES unavailable`.
+- Added shared `src/lib/datetime/time-of-day.ts` for local `HH:mm` rendering with invalid timestamp fallback.
+- Re-exported the shared helper from dashboard cockpit, handoff workspace, report-share workspace, and schedule-team-board helpers so existing imports and UI behavior remain compatible.
+
+Deleted or consolidated:
+
+- Removed four duplicated local `formatTimeOfDay` / `formatTimeOfDayIso` implementations from dashboard/handoff/report/schedule helper modules.
+- Removed the route-local `EMAIL_DELIVERY_FAILURE_REASON` duplication from care-report send.
+
+Focused validation:
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/datetime/time-of-day.test.ts src/server/services/email.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.test.ts' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`: passed, 7 files / 100 tests. Existing HandoffWorkspace `act(...)` warnings were emitted but did not fail the suite.
+- Touched-file ESLint for Loop 2 source/test files: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm format:check`: passed.
+- `git diff --check --`: passed.
+
+Blocked or deferred:
+
+- Other local time-of-day duplicates remain in separate dashboard pages (`settings`, `patients-board`, `visits-today`) and are candidates for a later loop; they were not included in D3's agreed lock to keep the delegated slice bounded.
+- Existing HandoffWorkspace test `act(...)` warnings are pre-existing test hygiene debt, not introduced by this helper migration.
+
+Next loop:
+
+- Run the required re-audit set over the current diff. If actionable findings remain, implement them before counting a zero audit. If no actionable findings remain, count Zero Audit 1 and run a second independent re-audit.
+
+### Loop 3 - Complete Dashboard Time-of-day Consolidation
+
+Candidate:
+
+- Loop 2 intentionally kept to Claude D3's agreed lock, leaving equivalent local `formatTimeOfDay()` helpers in settings, patients board, and visits-today screens.
+- The remaining helpers were still in-session actionable because they used the same `HH:mm` formatting behavior and had focused jsdom coverage.
+
+Implemented:
+
+- Reused `src/lib/datetime/time-of-day.ts` from:
+  - `src/app/(dashboard)/settings/operational-policy-content.tsx`
+  - `src/app/(dashboard)/patients/patients-board.tsx`
+  - `src/app/(dashboard)/visits/visits-today.tsx`
+- Removed the remaining local dashboard `formatTimeOfDay()` implementations.
+
+Deleted or consolidated:
+
+- Consolidated all currently scanned dashboard-local time-of-day helper definitions into the shared helper. `rg` now shows only `src/lib/datetime/time-of-day.ts` as the implementation and `schedule-team-board.helpers.ts` as a compatibility re-export alias for `formatTimeOfDayIso`.
+
+Focused validation:
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/datetime/time-of-day.test.ts 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' --reporter=dot --testTimeout=30000`: passed, 4 files / 21 tests.
+- Touched-file ESLint for the Loop 3 files: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+
+Blocked or deferred:
+
+- None for dashboard-local time-of-day helper duplication found by the current scan.
+
+Next loop:
+
+- Wait for the active re-audit agents. If they return actionable findings, implement them. Otherwise record Zero Audit 1 and run the second required re-audit.
+
+### Loop 4 - Re-Audit Follow-up: Contracts, Observability, Hygiene, and Remaining Dedup
+
+Re-audit results:
+
+- Zero audit was not reached. Refactor/Test/Strict/Dead-code re-audits returned in-session actionable items.
+- Adopted the communication protocol added by Claude in `AGENTS.md`: drain `agmsg` inbox at Ralph loop start, before edits/lock-sensitive work, before commits, and after long validations/subagent waits.
+- Claude owns and locked `src/app/api/consent-records/*`; Codex did not edit that area.
+
+Implemented:
+
+- Added invalid `Date` guards to `src/lib/date-key.ts` so `formatDateKey()` / `formatUtcDateKey()` preserve old `toISOString()` fail-fast semantics instead of returning `NaN-NaN-NaN`.
+- Added `src/lib/reports/delivery-failure-reasons.ts` as a client-safe SSOT for safe delivery failure reasons, display filtering, and sanitization.
+- Kept `src/server/services/email.ts` as a compatibility re-export for email delivery failure constants/helpers.
+- Fixed D3-a observability: `src/app/api/care-reports/[id]/send/route.ts` now binds SES/email send errors, logs internal `logger.warn` diagnostics with error name, HTTP status, and transient/permanent/unknown classification, while keeping persisted/client-facing failure text fixed and PHI-safe.
+- Reused delivery failure reason sanitizer in `/api/care-reports/today-workspace` and report-share UI.
+- Added `src/lib/api/client-json.ts` and moved the duplicated `readApiJson()` logic from admin pharmacy cooperation, billing partner cooperation, and workflow pharmacy cooperation screens into it.
+- Added `src/lib/workspace/daily-ops-rail.ts` compatibility re-export to use the shared `formatTimeOfDay()` helper.
+- Extended `src/lib/datetime/time-of-day.ts` to accept both `string` and `Date`, then removed local Date-based time formatters from visits today-preparation, patients board, and medication-set workspace API routes.
+- Narrowed `.gitignore` from global `*.bak.*` to root-only `/*.bak.*` and added a local artifact ignore contract test to ensure `agmsg/` and root backups are ignored without hiding `src/**/foo.bak.ts`.
+- Replaced report-share action-rail expectations that reused the helper under test with literal expected labels.
+- Added invalid timestamp coverage for dashboard and schedule-team-board compatibility exports.
+- Removed lock-free noUnused findings: unused default React imports in four tests, unused request parameters in dashboard clerk-support, QR draft, set-batch, workflow-exception routes, and one route test mock.
+- Inlined the one-use `dateKeyFromDate()` wrapper in `patient-share-cases`.
+
+Deleted or consolidated:
+
+- Consolidated safe report delivery failure reason/display/sanitization logic into one pure module.
+- Consolidated duplicated pharmacy cooperation client JSON/error parsing into one client-safe helper.
+- Consolidated dashboard/API time-of-day formatting under `src/lib/datetime/time-of-day.ts`.
+- Removed global backup ignore that could hide source-like `.bak.*` files under `src/**`.
+
+Focused validation:
+
+- D3-a focused validation: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' src/lib/reports/delivery-failure-reasons.test.ts --reporter=dot --testTimeout=30000`: passed, 2 files / 47 tests.
+- Focused regression bundle for Loop 4: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run ... --reporter=dot --testTimeout=30000`: passed, 24 files / 222 tests.
+- Touched-file ESLint for D3-a: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `pnpm date-slices:check`: passed.
+- `pnpm eventbridge-schedules:check`: passed.
+- `git diff --check --`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec tsc --noEmit --pretty false --incremental false --noUnusedLocals --noUnusedParameters --skipLibCheck`: fails only on `src/app/api/consent-records/[id]/route.ts`, which is Claude's active lock and was acknowledged by Claude as their cleanup item.
+
+Blocked or deferred:
+
+- `src/app/api/consent-records/[id]/route.ts` noUnused cleanup is blocked by Claude's lock and assigned to Claude.
+- `AGENTS.md` communication protocol update is a Claude-owned concurrent diff and was not edited by Codex.
+- Committing grouped changes was requested through Claude's relay, but Codex will not mix Claude-owned changes into Codex groups; commit grouping must respect current dirty worktree boundaries and the latest direct user instructions.
+
+Next loop:
+
+- Re-run zero-audit agents after the latest follow-up changes. If actionable findings remain, implement them. If no actionable findings remain, count Zero Audit 1 and run a second clean audit.
+
+### Loop 5 - Re-Audit Follow-up: Time Boundary, Export Surface, Logger Safety, and TZ-Stable Tests
+
+Re-audit results:
+
+- Zero audit was not reached. Architecture, Duplication, Test, Dead-code, and Strict Review agents returned additional in-session actionable items.
+- Claude locked and completed `src/server/services/file-storage.ts` separately in commit `6afc0164`; Codex did not edit that file.
+- Claude requested a D3 logger-payload negative assertion in `src/app/api/care-reports/[id]/send/route.test.ts`; Codex accepted and implemented it.
+
+Implemented:
+
+- Moved the shared time formatter from UI namespace to neutral `src/lib/datetime/time-of-day.ts` and migrated API routes, dashboard helpers, workspace helpers, and UI consumers away from `@/lib/ui/time-of-day`.
+- Fixed `report-share-workspace.test.tsx` timezone dependence by deriving fixture timestamps from local `Date` objects, then verified the test under `TZ=UTC`.
+- Tightened D3 SES failure observability tests so logger payload keys are fixed and raw provider message/contact/stack fields are not logged.
+- Private-ized `readApiErrorMessage()` and the non-public delivery failure reason constants, keeping tests on public behavior.
+- Reused canonical helpers for the remaining actionable duplicates: `formatDateKey()` in `pendingProposalDateLabel()`, `formatTimeOfDay()` through `formatSyncTime()`, and `formatTimeOfDayIso(now)` for the schedule team-board current-time label.
+- Updated progress ledgers to the current `src/lib/datetime/time-of-day.ts` path.
+
+Deleted or consolidated:
+
+- Removed the `src/lib/ui/time-of-day.ts` untracked helper surface by moving it to `src/lib/datetime/time-of-day.ts`.
+- Removed unnecessary public exports from client JSON and delivery failure helper modules.
+- Removed remaining hand-built local `HH:mm` and local tomorrow date-key formatting in the audited touched areas.
+
+Focused validation:
+
+- `TZ=UTC NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 8 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/client-json.test.ts src/lib/reports/delivery-failure-reasons.test.ts src/lib/datetime/time-of-day.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' 'src/app/(dashboard)/schedules/schedule-team-board.helpers.test.ts' src/lib/workspace/daily-ops-rail.test.ts src/components/layout/app-header.test.tsx --reporter=dot --testTimeout=30000`: passed, 7 files / 80 tests.
+- `pnpm date-slices:check`: passed.
+- Touched-file ESLint for Loop 5 high-signal files: passed.
+- Earlier Loop 5 pre-fix checks: `NODE_OPTIONS=--max-old-space-size=16384 pnpm format:check`, noUnused TypeScript check, `git diff --check --`, `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`, `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`, and `pnpm eventbridge-schedules:check` passed before the final ledger edits except for the now-addressed format/stale-ledger findings.
+
+Blocked or deferred:
+
+- `readApiJson()` blank/whitespace message fallback remains a mid-term product-contract candidate because changing it would alter existing local helper behavior.
+- Broad route response schema decoding remains long-term work because it requires endpoint-by-endpoint contract decisions.
+- Commit grouping remains deferred until Codex-owned paths can be staged explicitly without mixing Claude commits or unrelated concurrent changes.
+
+Next loop:
+
+- Run Prettier/format, type/lint/diff checks after this ledger update, then start another zero-audit pass. If all agents report zero new actionable findings, record Zero Audit 1 and immediately run the second clean pass.
+
+### Loop 6 - Re-Audit Follow-up: Commit Policy, Durable noUnused Gate, and Remaining Changed-Surface Dedup
+
+Re-audit results:
+
+- Zero audit was not reached. Duplication, Dead Code, Test, and Architecture agents returned additional actionable items.
+- User explicitly instructed Codex to update `AGENTS.md` so long-running work commits automatically and periodically.
+- Claude sent `URGENT:` coordination for sync-engine ownership and commit hygiene; Codex ACKed, retained sync-engine ownership, and kept Claude off that file until Codex is ready.
+
+Implemented:
+
+- Updated `AGENTS.md` with a periodic autonomous commit policy: commit validated owned logical groups, drain `agmsg` first, stage only explicit owned paths, announce hashes, and keep push/deploy/destructive operations approval-gated.
+- Added durable `typecheck:no-unused` package script and wired it into GitHub Actions after `pnpm typecheck`.
+- Removed the stale `src/server/services/email.ts` re-export of delivery failure constants/helpers and deleted the compatibility-only test.
+- Added `src/lib/datetime/date-display.ts` for existing string-date display behavior and migrated pharmacy cooperation setup, partner cooperation billing, and pharmacy cooperation workflow screens to it.
+- Migrated changed UI fetchers in report-share workspace, schedule team-board, and patients board to `readApiJson<{ data: ... }>(response, fallback)` while preserving their `.data` return contracts and screen-specific fallback messages.
+
+Deleted or consolidated:
+
+- Removed three duplicated local `formatDate(value)?.slice(0, 10)` display helpers from pharmacy cooperation surfaces.
+- Removed changed-surface duplicated `if (!res.ok) throw ...; await res.json(); return json.data` fetch parsing from report-share, schedule team-board, and patients board query fetchers.
+- Removed the email-service compatibility export surface after all production consumers used `src/lib/reports/delivery-failure-reasons.ts` directly.
+
+Focused validation:
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/datetime/date-display.test.ts src/server/services/email.test.ts 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 8 files / 62 tests.
+- `pnpm typecheck:no-unused`: passed.
+- Touched-file ESLint for Loop 6 code files passed; `AGENTS.md`, `.github/workflows/ci.yml`, and `package.json` were reported only as ignored-file warnings because they are outside ESLint config.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm format:check`: passed.
+
+Blocked or deferred:
+
+- sync-engine multi-subscription hardening is accepted as Codex-owned high-risk offline-sync work, but it is deferred until current committed groups are landed and re-audited.
+- Full test/build are still final-gate validations; focused tests and standard static gates were used for this intermediate commit boundary.
+
+Next loop:
+
+- Re-run `git diff --check`, full lint/typecheck/date/eventbridge after ledger formatting, then commit validated logical groups with explicit path staging and `agmsg` FYI hashes. After commits, re-run the zero-audit pass.
+
 ## Current Goal - 2026-06-19 JST Adjacent Feature and Consistency Loop
 
 Objective: investigate the current CareViaX implementation, add/improve nearby features that naturally extend existing product flows, remove duplication/inconsistency/unfinished behavior, and continue until actionable in-session candidates are exhausted.
@@ -4517,6 +4807,586 @@ Implemented:
 
 - Document-delivery rule edit action names are addressed. Commit this group, then continue scanning remaining admin action candidates if no blocker appears.
 
+## 20260620-0540 JST - Document Delivery Rule Edit Test Hardening
+
+### Summary
+
+- Strengthened the document-delivery edit-action regression after verifier feedback.
+- Added a second delivery-rule fixture and now click the second named edit action to prove the selected row, not just the only row, loads into the form.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- The document-delivery edit-action regression now covers multiple rows. Continue scanning remaining admin action candidates.
+
+## 20260620-0544 JST - Pharmacist Credential Row Action Names
+
+### Summary
+
+- Added target-specific accessible names to pharmacist credential edit and expiry actions.
+- Extended the credentials DataTable mock to render action cells and added a focused regression for edit-form loading and expiry confirmation.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on accessible-name spacing and dialog role/title punctuation, then passed, 1 file / 3 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Pharmacist credential edit/expiry action names are addressed. Continue scanning remaining admin action candidates.
+
+## 20260620-0550 JST - Shift and Business-Holiday Action Names
+
+### Summary
+
+- Added target-specific accessible names to repeated shift-management row actions for member edit/invite resend/reactivate/suspend/retire, shift-template edit, and holiday edit.
+- Added a regression that opens the named member edit/action dialogs and verifies the named shift-template and holiday edit actions target the selected row.
+- Added target-specific accessible names to business-holiday edit buttons using the existing holiday summary, matching the already-targeted delete action.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/shifts/shifts-content.tsx`
+- `src/app/(dashboard)/admin/shifts/shifts-content.test.tsx`
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on ambiguous `閉じる` and `休日名` queries, then passed, 1 file / 4 tests.
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Admin repeated action names were re-scanned after this slice; the next actionable repeated-action candidate moved to patient insurance actions, where PHI minimization is required.
+
+## 20260620-0556 JST - Patient Insurance PHI-Safe Action Names
+
+### Summary
+
+- Added PHI-minimized accessible names for repeated patient-insurance edit, expiry, and delete actions using only section title, 1-based row index, and insurance type.
+- Kept patient name, insurance/card numbers, public subsidy code, insurer number, notes, care level, copay, and effective dates out of action labels.
+- Expanded the focused regression to cover active rows, inactive history delete rows, and a shared PHI non-disclosure assertion across all row action labels after verifier feedback.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Privacy reviewer: recommended section + index + insurance type only; explicitly exclude patient name, card number, symbol/branch, insurer number, public code, dates, notes, care level, and copay.
+- Verifier: first pass found missing delete-action coverage and too-narrow PHI assertions; both gaps were fixed.
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=30000`: passed, 5 files / 13 tests.
+- `pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check` no longer represents only this slice because an unrelated untracked `docs/plans-archive.md` is present and fails Prettier. `.codex/ralph-state.md` is being formatted in this slice; external `Plans.md`/archive changes are preserved.
+
+### Remaining / Next Loop
+
+- Patient insurance repeated action names are target-specific and PHI-minimized. Continue dashboard-wide repeated-action scan outside admin, prioritizing files with existing focused tests and patient-safety/privacy review.
+
+## 20260620-0614 JST - Dashboard Repeated-Action Name Sweep
+
+### Summary
+
+- Added target-specific accessible names to saved-view rename/delete actions.
+- Added PHI-minimized action names to patient detail repeated actions: allergy delete, contact delete, care-team quick-create/delete, management-plan draft edit, and medication-issue edit.
+- Added target-specific names to conference participant delete, facility-packet edit, prescription-intake facility batch delete, and browser notification enable/stop actions.
+- Repaired validation-blocking state-token migration gaps exposed during this sweep: unsafe comments/import gaps in status labels, patients board, billing candidates, PCA pumps, schedule conflicts, and conferences.
+
+### Files Changed
+
+- `src/app/(dashboard)/views/saved-views-content.tsx`
+- `src/app/(dashboard)/views/saved-views-content.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-master-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`
+- `src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx`
+- `src/app/(dashboard)/conferences/conferences-content.tsx`
+- `src/app/(dashboard)/conferences/conferences-content.test.tsx`
+- `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.tsx`
+- `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`
+- `src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts`
+- `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`
+- `src/lib/constants/status-labels.ts`
+- `src/app/(dashboard)/patients/patients-board.tsx`
+- `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`
+- `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`
+- `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Dashboard generic action scan with `rg -n -U -P '<Button...>|<button...>' 'src/app/(dashboard)'`: passed, no remaining matches for the scanned generic labels.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: initially exposed adjacent state-token migration import/comment gaps, then passed after minimal repair.
+- `pnpm exec vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' 'src/app/(dashboard)/views/saved-views-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=30000`: passed, 13 files / 47 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: initially failed on a stale `StateBadge` import gap in conferences, then passed on rerun.
+- Targeted Prettier write/check for the files in this sweep: passed.
+
+### Current Validation Caveat
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm format:check` fails only on unrelated dirty files outside this slice: auth lockout/MFA/password pages, several admin/billing/handoff/patient/schedule/visit files, and untracked docs archive/state-color files. Targeted formatting/checking passed for the files touched in this sweep.
+
+### Remaining / Next Loop
+
+- Generic repeated dashboard action labels covered by this scan are now target-specific or PHI-minimized. Continue with the next UI/UX scan class: non-button accessible-name gaps, responsive table density, or browser/a11y proof for larger patient/report flows.
+
+## 20260620-0627 JST - Data Explorer PHI-Safe Row Actions
+
+### Summary
+
+- Added PHI-safe accessible names for Data Explorer row selection buttons using only table name and 1-based row position.
+- Kept the visible row summary unchanged for scanning, but prevented patient names, drug names, emails, recipient names, row IDs, and free text from becoming the button's accessible name.
+- Added fixed, PHI-free disabled reasons for the JSON editor when no row is selected or a table is read-only, and connected the reason to the textarea, save button, and reset button with `aria-describedby`.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`
+- `src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Privacy reviewer: confirmed the direction and required table+row-index-only action names; disabled reasons must remain fixed strings and exclude patient names, drug names, emails, row IDs, and free text.
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx' 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx' 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --check 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx' 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this Data Explorer slice, as recorded in the prior iteration. The two touched Data Explorer files pass targeted Prettier check.
+
+### Remaining / Next Loop
+
+- Data Explorer row action names and editor disabled reasons are PHI-safe for this slice. Continue with the next UI/UX candidate, likely schedule create/edit disabled reasons or patient document disabled-reason associations.
+
+## 20260620-0632 JST - Schedule Drawer Save Blocker Reasons
+
+### Summary
+
+- Added a PHI-free save blocker for the schedule create/edit drawer when patient, candidate date, or assigned pharmacist is missing.
+- Connected the same reason to both `下書き保存` and `確認待ちにする` via `aria-describedby`.
+- Locked the helper contract so blocker copy uses field labels only and does not include patient names, schedule times/dates, pharmacist names, IDs, addresses, or free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx`
+- `src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Medical safety reviewer: confirmed field-label-only blocker direction and requested exact full/partial wording plus value non-disclosure tests.
+- `pnpm exec prettier --write 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx' 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts' --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx' 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this schedule-drawer slice. The touched schedule drawer files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Schedule drawer save disabled states now show and expose a PHI-free reason. Continue with patient document disabled-reason associations or another high-value UI/UX candidate.
+
+## 20260620-0638 JST - Patient Document Save Blockers
+
+### Summary
+
+- Added a PHI-free save blocker for first-visit document history updates when signed document URL, delivery target, or replacement/invalidation reason is missing.
+- Connected the blocker to the save button with `aria-describedby`.
+- Added a direct `submit` guard so a blocked form cannot bypass the disabled button and send incomplete document audit fields.
+- Kept blocker text to fixed field labels only: `文書URL`, `交付先`, and `理由`.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Privacy reviewer: required fixed field-label-only wording, blocked direct-submit guard, and tests for URL-only, URL+reason, delivery-target, and invalidation-reason blockers without sensitive values.
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on a stale empty-state expectation, then passed, 1 file / 4 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this patient-document slice. The touched patient document files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- First-visit document save disabled reasons and blocked direct submit are addressed. Continue with single-row delete disabled reasons in patient contacts/conditions or another accessible disabled-action association.
+
+## 20260620-0646 JST - Patient Contact and Condition Delete Reasons
+
+### Summary
+
+- Added visible fixed disabled reasons when the last remaining patient contact or condition row cannot be deleted.
+- Connected those reasons to the disabled delete buttons with `aria-describedby`.
+- Kept the messages free of contact names, phone numbers, relationships, condition names, notes, patient IDs, and clinical free text.
+- Added multi-row regressions proving the reason disappears and delete actions become available when removal is safe.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Privacy reviewer: approved fixed, non-value-bearing disabled reasons and requested multi-row enabled-state coverage.
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this contacts/conditions slice. The touched contacts and conditions files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Contact and condition single-row delete disabled reasons are addressed. Separate follow-up: if the product/API requires at least one persisted contact/condition, guard saving a single empty row so blank-row filtering cannot persist zero records.
+
+## 20260620-0651 JST - Patient Contact and Condition Blank-Save Guard
+
+### Summary
+
+- Added save blockers when every contact or condition row has a blank name and the UI would otherwise submit an empty replacement payload.
+- Connected those blockers to the save buttons with `aria-describedby`.
+- Preserved the API contract: the contacts/conditions replacement endpoints still accept empty arrays for callers that intentionally replace with zero records.
+- Kept blocker text fixed and free of patient IDs, contact names, phone numbers, relationships, condition names, notes, and clinical free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 7 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this contacts/conditions slice. The touched contacts and conditions files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- The contacts/conditions cards now prevent this UI from replacing all persisted rows via a single blank visible row. Continue with the next UI/UX candidate.
+
+## 20260620-0656 JST - Billing Operation Disabled Reasons
+
+### Summary
+
+- Added fixed disabled reasons for billing candidate monthly close when the view is patient-filtered, has no close-ready candidates, or has close blockers.
+- Added fixed disabled reasons for CSV export while the export preview is loading or no confirmed/exported candidates can be exported.
+- Connected those reasons to the monthly close and CSV export buttons with `aria-describedby`.
+- Kept reason text free of patient IDs, patient names, candidate IDs, billing target IDs, billing names, and free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`
+- `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this billing-operation slice. The touched billing candidates files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Billing monthly close and CSV export disabled states now expose fixed reasons through their buttons. Continue with the next UI/UX candidate.
+
+## 20260620-0659 JST - Incident Memo Empty-State Disabled Reason
+
+### Summary
+
+- Added a fixed disabled reason when the incident memo form has no incident record to edit.
+- Connected that reason to the text inputs, process Select trigger, and save button with `aria-describedby`.
+- Added a direct submit guard so an empty-list form submit returns before the mutation path.
+- Covered the empty-list behavior with a new focused jsdom regression.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/incidents/incidents-content.tsx`
+- `src/app/(dashboard)/admin/incidents/incidents-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/admin/incidents/incidents-content.tsx' 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/admin/incidents/incidents-content.tsx' 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this incidents slice. The touched incidents files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Incident memo disabled controls now expose a fixed empty-list reason and direct blocked submits do not reach the PATCH path. Continue with the next UI/UX candidate.
+
+## 20260620-0702 JST - Offline Sync Disabled Reasons
+
+### Summary
+
+- Added fixed disabled reasons for the offline sync all-retry action when the queue is empty.
+- Added fixed disabled reasons for local overwrite when a conflict has no server snapshot to overwrite.
+- Connected those reasons to the affected buttons with `aria-describedby`.
+- Kept reason text free of patient names, patient IDs, schedule IDs, visit record IDs, SOAP text, outcomes, dates, and free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`
+- `src/app/(dashboard)/offline-sync/offline-sync.shared.ts`
+- `src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts' --reporter=dot --testTimeout=30000`: passed, 1 file / 9 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this offline-sync slice. The touched offline-sync files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Offline sync retry/overwrite disabled states now expose fixed reasons through their buttons. Continue with the next UI/UX candidate.
+
+## 20260620-0706 JST - Medication Calendar Structural Labels
+
+### Summary
+
+- Added month-specific table caption/name for the patient medication calendar.
+- Added scoped weekday header labels and hidden full-date labels inside each day cell.
+- Added time-slot group labels for rendered medication slots.
+- Added month-specific accessible names for the PDF and print actions.
+- Kept structural labels free of patient IDs, patient names, drug names, doses, frequencies, and free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx`
+- `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this medication-calendar slice. The touched medication-calendar files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Medication calendar structural labels are addressed. Continue with the next UI/UX candidate or rescan remaining disabled/action accessible-name gaps.
+
+## 20260620-0710 JST - Print Hub Disabled Print Reason
+
+### Summary
+
+- Derived a durable disabled reason for the print submit button from first-visit document readiness and visit-report print-audit readiness.
+- Connected the reason to the print button with `aria-describedby`.
+- Added regression coverage for a blocked first-visit print with no documents.
+- Kept the connected reason free of patient IDs, patient names, document IDs, report IDs, URLs, and free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/reports/print/print-hub-content.tsx`
+- `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on async readiness timing, then passed, 1 file / 4 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this print-hub slice. The touched print-hub files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Print-hub blocked print states now expose readiness/audit reasons through the print button. Continue with another high-value disabled/action gap or run a tighter re-scan.
+
+## 20260620-0718 JST - Schedule Offline Action Disabled Reasons
+
+### Summary
+
+- Added a fixed disabled reason for manual sync while a sync mutation is pending.
+- Connected conflict overwrite/discard/re-edit disabled states to fixed reasons for pending conflict resolution and missing conflict IDs.
+- Added focused regression coverage for `aria-describedby` wiring and value non-disclosure.
+
+### Files Changed
+
+- `src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx`
+- `src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx' 'src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx' --reporter=dot --testTimeout=30000`: initially failed because this test file does not install jest-dom's `toHaveAttribute` matcher, then passed after switching assertions to `getAttribute`; final run passed, 1 file / 9 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx' 'src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this schedule-offline slice. The touched schedule-offline files pass targeted Prettier write.
+- `src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx` already had unrelated state-token migration changes in the worktree; they were preserved.
+
+### Remaining / Next Loop
+
+- Schedule-day offline manual sync and conflict actions now expose fixed disabled reasons through their controls. Continue with another high-value disabled/action gap or run a tighter re-scan.
+
+## 20260620-0712 JST - Report Delivery Reminder Disabled Reason
+
+### Summary
+
+- Added a fixed disabled reason for the report delivery reminder action while delivery analytics are loading.
+- Connected the reason to the reminder-task button with `aria-describedby`.
+- Added focused regression coverage for loading disabled state and value non-disclosure.
+
+### Files Changed
+
+- `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`
+- `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this report-delivery slice. The touched report-delivery files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Report delivery reminder loading disabled state now exposes a fixed reason through the action button. Continue with another high-value disabled/action gap or run a tighter re-scan.
+
 ## 20260620-0525 JST - Job Rerun Action Names
 
 ### Summary
@@ -6728,3 +7598,1281 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+---
+
+# === PERFORMANCE/RELIABILITY GOAL TRACK (claude / Opus 4.8) ===
+
+## Loop 0 — Baseline (20260620 JST)
+
+### Goal
+
+リポジトリ全体を対象に既存仕様維持で、速度/レスポンス/リソース効率/例外耐性/非同期安全性/安定性を最大化。Actionable が0件になるまで Loop 継続。codex と相談しながら進行。
+
+### Repo facts
+
+- Next.js 16 (App Router, Turbopack dev / webpack build), React 19, Prisma 7 + PostgreSQL RLS, TanStack Query 5, Zustand 5, Dexie 4 (offline), Serwist PWA.
+- src TS/TSX file count: 2601.
+- Validation commands: `pnpm typecheck` (next typegen + tsc x2), `pnpm lint` (eslint), `pnpm test` (vitest run), `pnpm test:e2e` (playwright), `pnpm format:check`.
+
+### Baseline validation
+
+- `pnpm typecheck`: **PASS (exit 0, clean)** — next typegen + tsc --noEmit + tsc -p tsconfig.sw.json all clean.
+- `pnpm test`: baseline run started (results recorded below once complete).
+
+### Audit fan-out (read-only subagents launched)
+
+- Performance Agent (dup request/N+1/heavy compute/over-fetch/re-render)
+- Async Safety Agent (race/cleanup leak/unhandled rejection/timeout-cancel)
+- Reliability Agent (external API/AWS SDK failure, null boundaries, error swallowing)
+- Duplication + Backend/Data Agent (fetcher/db-helper/error-handler dup, query count, over-fetch, transaction)
+
+### Next
+
+Collect agent findings → triage by [evidence + low-risk + spec-preserving] → implement Loop 1 (重複I/O) first.
+
+### Codex hotspot map (received via agmsg, read-only grounding)
+
+1. offline sync/IndexedDB: src/lib/stores/sync-engine.ts:219,320,337,368, offline-store.ts, app/(dashboard)/offline-sync/\*, visit-record-form.tsx:642. Focus: all refreshSyncCount calls, processSyncQueue concurrency, deleteSyncedQueueItem/idempotency, 409 conflict overwrite, IndexedDB crypto/key read dup.
+2. realtime collab: src/lib/hooks/use-yjs-collaboration-room.ts:33, use-collaborative-form.ts. Focus: room token refresh, unmount cleanup, sub dup on orgId/roomId change, reconnect storm, query invalidation excess.
+3. heavy read-model/BFF: src/server/services/patient-detail.ts:833, api/patients/[id]/route.ts:1533 (buildPatientTimelineEvents merged). Many findMany/count Promise.all. visit-brief.ts, home-care-ops.ts query dense. Focus: N+1, over-include, double-fetch.
+4. today-workspace billing: api/care-reports/today-workspace/route.ts. billing candidate oversample, source_snapshot readBillingValidationLayers/collectBillingValidationMessages CPU/JSON parse.
+5. Data Explorer: src/server/services/data-explorer.ts:488 count+rows Promise.all, deferredRowSearch. Focus: pagination/debounce preserve, row summary/JSON stringify over-compute, count frequency.
+6. export/print: src/server/services/export-audit.ts:66 recordCareReportPrintAudit, safe-csv. Focus: avoid double audit, reuse lib/csv/safe-csv.ts.
+7. Constraint: worktree has unrelated dirty (.codex/ralph-state.md, ledger, UI/a11y). Do NOT touch those; read-only fan-out first.
+
+### Audit result: Performance Agent
+
+- [High] card-workspace.tsx (4545行, useMemo/useCallback=0, 17 query/mutation): 派生値memo化+子panel React.memo。最頻画面の再レンダ削減。
+- [Med] workflow-dashboard-queries.ts:375 conferenceNote.action_items 全件JSON取得→件数のみ使用。where/count化。
+- [Med] tasks-content.tsx:282 一括完了が1件1PATCH → POST /api/tasks/bulk (updateMany) 化。pharmacist-shifts/bulk パターン流用。
+- [Med] patient-documents-panel.tsx:406 初回訪問書類一括作成が1件1POST → batch化。
+- [Low] pca-pumps.ts:50 rental毎個別tx → org単位集約。dispense-results.ts:468 line単位upsert(影響限定)。
+- 補足: patient-overview queryKey共有はTanStack dedupe済みで問題なし。compare-board/patients-boardは最適化済み。
+
+### Baseline test result
+
+- `pnpm test`: **PASS** — Test Files 1070 passed | 1 skipped, Tests 8333 passed | 1 skipped, 0 failed. Duration ~119s.
+- Baseline summary: typecheck clean + 8333 tests green. 既存失敗 = 0件（環境/Blockedなし）。回帰判定はこの基準で行う。
+
+### Audit result: Async Safety Agent
+
+- [High] qr-scan/page.tsx:249 ZXing reader 停止漏れ → controls保持しstopCameraでstop/reset。デコードループ+callbackリーク。
+- [High] qr-scan/page.tsx:230,356 startCamera unmount race → capture-content.tsx の cancelled ガード移植。後発MediaStreamリーク+unmount後setState。
+- [Med] qr-scan/page.tsx:275 ObjectURL リーク(decode throw時 revoke漏れ) → try/finally。
+- [Med] patient-form.tsx:385,457 重複チェック stale response → AbortController(既存catch{}がAbortError吸収)。
+- [Med] mfa/setup/page.tsx:194 コピータイマー未クリア → ref保持+unmount clear。
+- [Low] search-content.tsx:98 pharmacistプリフェッチ fire-and-forget(unmount後setState)。sync-engine.ts:573 setupAutoSync 多重購読の可能性(中期)。
+- 良好: shared-event-stream.ts, notifications/stream route teardown, search main effect, use-speech-recognition, capture-content cancelled flag, autosave系。
+- 着手集中: qr-scan/page.tsx 3件は同一ファイル、まとめて修正可能。Loop1最有力。
+
+### Audit result: Reliability Agent
+
+全体: AWS SDK は withAwsClientTimeout+retry、fetch は createFetchTimeout、job runner retry、JSON.parse は guard済みで防御的。残gap:
+
+- [High] #1 Route handler トップレベル try/catch 無し → 想定外throwがNext汎用500になり {code,message} エンベロープ不一致。withAuthContext/performance.ts:253。toApiError導入。#6/#8の根因。
+- [Med] #2 SES送信 failure_reason が定数 → transient/permanent判別不能。email.ts:47, care-reports/[id]/send:1066。エラー名/statusを記録。
+- [Med] #3 file-storage.ts:1296 S3先書き、bulk-export の asset upsert失敗がwarn握り → orphan孤立。
+- [Med] #4 notifications/stream/route.ts:297 SSE poll が catch{}全握り → DB障害が無音の空ストリーム。rate-limited warn + degradedイベント。
+- [Low] #5/#6 client queryFn が res.ok前に json.data/res.json() 直読み(patients-board/compare-board, patient-insurance-card:580他) → HTML500でSyntaxError。res.ok guard。
+- [Low] #7 cleanupExpiredGeneratedFiles errors[] 無検査。#8 cognito-admin send() raw error。
+- Top低リスク: #1(最高レバレッジ), #4(observability), #2短期, #6(res.ok guard), #7。
+- 良好: client-timeout, fetch timeouts, outbound-webhook SSRF+retry, job runner, JSON.parse guards.
+
+### Self-verified (read qr-scan/page.tsx)
+
+- stopCamera(:106) は streamRef のtrack停止のみ、readerRef(:247) を停止していない。decodeFromVideoElement(:249) は @zxing/browser 0.1.x で Promise<IScannerControls> を返す → await して controls.stop() が必要。
+- startCamera(:230) に cancelled ガード無し、cleanup(:358) は stopCamera のみ。
+- handleFileUpload(:284) revokeObjectURL は成功経路のみ、throw時(:286 catch)漏れ。→ try/finally。
+
+### Audit result: Duplication + Backend/Data Agent
+
+- [High] #1 client fetch+error整形が161ファイル重複(共通fetcher不在) → lib/api/client-fetch.ts に apiFetch/apiMutate 新設、ApiError形解釈。段階移行。
+- [High] #2 withOrgContext経由しない直prisma.$transaction(RLS二重防御欠落): pharmacy-drug-stocks/route:389他7ルート → withOrgContext移行。admin/organizationsはクロステナントで意図的除外。
+- [High] #3 formatAgeLabel(minutes) byte同一コピー10箇所 → lib/ui/relative-time.ts に formatElapsedLabel 一本化。機械置換・低リスク。
+- [Med] #4 formatTimeOfDay HH:mm手書き4箇所 → date-format.ts formatTimeLabel。 #5 familyNameOf 姓抽出6箇所 → lib/utils/person-name.ts。
+- [Med] #6 handoff/reports helpers 文言ブロック完全一致(daily-ops-rail.tsへ集約, 型差ありMed)。 #7 mutation版message抽出重複(#1に統合)。
+- [Low] #8 cursor/limit schema重複→validation.tsヘルパ。 #9 patients/[id]/route labRows直列→主Promise.all同梱。 #10 Intl直書き散在。
+- Top低リスク: #3 formatAgeLabel, #5 familyNameOf, #4 formatTimeOfDay, #1+7 apiFetch, #2 withOrgContext移行。
+
+---
+
+## Loop 1 — 着手 (mutual impl/review体制)
+
+- 運用合意: Claude/Codex 相互実装・相互レビュー(ルール1-7)。高リスク面は相互レビュー必須、同一ファイルlock宣言、無関係dirty尊重。
+- [Slice A] Claude実装/Codexレビュー — qr-scan async安全性3件 (LOCK: src/app/(dashboard)/qr-scan/page.tsx)
+- [Slice B] Codex実装/Claudeレビュー — Reliability#1 統一エラーエンベロープ (CodexがLOCK宣言予定: context.ts/response.ts/performance.ts)
+
+### Slice A 完了 (Claude実装) — qr-scan async安全性
+
+- Files: src/app/(dashboard)/qr-scan/page.tsx, page.contract.test.ts
+- 実装:
+  (1) controlsRef 追加、startCamera で `const controls = await reader.decodeFromVideoElement(...)` を保持、stopCamera で controls.stop()。継続デコードループ+callbackリーク解消。
+  (2) startCamera(isCancelled?) cancelled ガード、effect で `let cancelled=false` → `startCamera(()=>cancelled)`、cleanup で cancelled=true。後発MediaStreamリーク+unmount後setState解消。リトライボタンは `onClick={()=>startCamera()}` に修正(MouseEvent誤渡し防止)。
+  (3) handleFileUpload を try/finally 化、decode失敗時も URL.revokeObjectURL。ObjectURL leak解消。
+- Validation: prettier unchanged, eslint exit0, vitest 7 tests pass, `pnpm typecheck` PASS(exit0)。
+- Review: Codex に依頼(医療intake/カメラlifecycle=相互レビュー対象)。
+
+### Slice A レビュー対応 (Codex指摘 medium)
+
+- 指摘: ZXing callback が isCancelled未確認。decodeFromVideoElementはcontrols返却前にscan()開始しうる→cancelled後もcallback発火し得る race残存。
+- 修正: callback冒頭に `if (isCancelled?.()) return;` 追加。contract test に decodeFromVideoElement内の guard 正規表現アサーション追加。
+- 補足: @zxing/browser 実バージョンは 0.2.0(CLAUDE.mdピン0.1.5は古い)。Promise<IScannerControls>/stop():void はd.ts確認済み、stop()はidempotent。
+- Validation: eslint0, vitest 8 pass。再レビュー依頼済み。
+
+### Slice C 完了 (Claude実装) — patient-form stale response + mfa/setup timer
+
+- Files: src/components/features/patients/patient-form.tsx, src/app/(auth)/mfa/setup/page.tsx
+- 実装:
+  (1) [Async Med] patient-form checkDuplicate に signal?:AbortSignal、effectで AbortController生成→signal渡し、cleanupで controller.abort()。debounce連続入力時の stale response上書き防止(既存catch{}がAbortError吸収)。
+  (2) [Async Med] mfa/setup copyTimerRef 追加、再コピー時 clearTimeout、unmount effectでclear。unmount後 setCopied 防止。
+- Validation: eslint0, typecheck0, patient-form 既存テスト5 pass(重複フロー回帰なし)。mfaはauth高リスク→Codexレビュー依頼。
+
+### Slice D 完了 (Claude実装) — client read 堅牢化
+
+- [Async Low] search-content.tsx:96 pharmacistプリフェッチ effect に AbortController(signal+cleanup abort)。unmount/orgId変更後の setState と stale上書き防止。
+- [Reliability #6 検証→no-op] patient-insurance-card:580 / patient-packaging-card:85 / visit-constraints-card:149 は **既に res.ok guard 実装済み**。監査時点と乖離(already-fixed)、推測編集せず検証して確認、変更不要と確定。
+- Validation: eslint0, search-content.test 14 pass。
+- [DELEGATE D2 → Codex] backend perf: tasks bulk API化(tasks-content:282), conferenceNote over-fetch(workflow-dashboard-queries:375)。
+
+### Slice E 完了 (Claude実装) — card-workspace 再レンダリング最適化 [Perf High]
+
+- File: src/app/(dashboard)/patients/[id]/card-workspace.tsx
+- 根拠: 最頻アクセス画面。本体に useMemo/useCallback=0、usePresenceHeartbeat の周期state更新 + 17クエリ/mutationのたびに本体+全パネル再描画。
+- 検証した props 安定性: patient/workspace/homeOperations はいずれも react-query の data 直参照(安定)、mutation.mutate は安定参照、`isPending?variables:null` は idle時 null の primitive。→ shallow比較で等価。
+- 実装: 7パネルを memo()別名でラップ(PatientFoundation/Profile/HomeOperations/ShareCaseCreate/CardDocuments/VisitPreparation/CardToday)。JSX使用13箇所(desktop+mobile)を Memo別名へ差替。ブレース照合事故回避のため定義はそのまま、module末尾で memo(fn) 別名化。
+- 効果: presence heartbeat / 無関係クエリ更新時にこれらパネル(QuickForms内包の重いHomeOperations含む)が再描画されない。表示内容不変。
+- Validation: typecheck0, eslint0, card-workspace.test 25 pass。
+- Review: 患者/医療画面=相互レビュー対象。Codexに依頼。
+
+### レビュー往復ログ
+
+- Slice A: Codex再レビュー → APPROVED (Findings none)。callback guard対応済み。
+- D1 (Codex実装): Claudeレビュー → APPROVE。familyNameOf空白系の微セマンティクス変化はlow/informational・実害なし、新挙動の方が正しい。テスト境界網羅十分、127 tests/typecheck/eslint/prettier pass。card-workspace formatAgeLabel除外・dispense別丸め復元の判断も正しい。
+
+### Slice C レビュー対応 (Codex指摘 medium) + Slice E承認
+
+- Slice E: Codexレビュー → APPROVED (Findings none)。card-workspace memo化 確定。
+- Slice C 指摘: patient-form で abort が fetch解決後/json parse中に起きると setDuplicates が stale で走り得る(残存race)。
+- 修正: `await res.json()` 後・setDuplicates 前に `if (signal?.aborted) return;` 追加。
+- テスト追加: patient-form.test に stale-race 回帰テスト(1本目checkを保留→デバウンス発火→入力変更でabort確認(signal.aborted false→true)→stale解決→banner非表示 を assert)。guard除去時はbanner表示でfailする判別性あり。
+- mfa部分はCodex承認済み。
+- Validation: eslint0, typecheck0, patient-form.test 6 pass。再レビュー依頼。
+
+### Slice F 完了 (Claude実装) — SSE poll 無音障害の観測化 [Reliability #4]
+
+- File: src/app/api/notifications/stream/route.ts, route.test.ts
+- 根拠: poll の catch{} が DB エラーを全握り → DB障害時にストリームは生きているが通知ゼロの「無音障害」が観測不能。
+- 実装: consecutivePollFailures カウンタ導入。catch で +1 し、初回と12回毎(≈60s)のみ logger.warn(event/consecutive_failures/error_name)。成功時に >0 なら logger.info(recovered)してリセット。**クライアントへのイベント契約は不変**(新イベント型を追加しない=仕様維持)。PIIは記録しない(org/user_idを出さず、失敗回数とエラー名のみ)。
+- テスト追加: poll失敗で warn 初回1回発火、連続失敗2回目では warn 増えない(氾濫防止)、findMany 2回目も発火=ストリーム継続、を assert。
+- Validation: eslint0, typecheck0, stream route.test 18 pass(既存17+新1)。
+- Review: realtime/SSE=高リスク→Codex相互レビュー依頼。
+
+### 累積フルテスト検証 (Loop1 統合)
+
+- `pnpm test` 全体: 1 failed / 8347 passed。失敗= src/lib/api/rate-limit.test.ts(route template catalog 整合)。
+- 原因: D2 の新規 /api/tasks/bulk が rate-limit.ts API_ROUTE_TEMPLATES 未登録。Codexのtargeted検証外で見落とし→累積フルテストで捕捉。
+- 私のスライス(A/C/D/E/F)由来の失敗は **なし**(全て個別+統合で緑)。
+
+### レビュー往復ログ(続き)
+
+- Slice C: Codex再レビュー → APPROVED (Findings none)。stale-race guard+テスト確定。
+- D2: Claudeレビュー → REQUEST CHANGES。blocking= rate-limit catalog に /api/tasks/bulk 未登録(フルテスト赤)。low= 逐次 writable チェック(N回, 任意最適化)。他(auth/RLS/部分失敗/client移行/guard抽出)は良好。Codexが catalog 登録→再検証で APPROVE 予定。
+
+### Reliability #5 検証 → no-op
+
+- compare-board.tsx fetchPatientOverview は既に `if (!res.ok) throw` 実装済み。patients-board も同様。監査時点と乖離(already-fixed)。変更不要。
+
+### Loop1 現況サマリ
+
+- Claude実装(全完了): A(qr-scan, APPROVED), C(patient-form/mfa, APPROVED), D(search-content abort), E(card-workspace memo, APPROVED), F(SSE観測化, レビュー中)。
+- Codex実装: D1(pure-fn dedup, Claude APPROVE), D2(tasks bulk, Claude REQUEST CHANGES=rate-limit catalog登録待ち), Slice B(error envelope, 担当判断待ち)。
+- 累積フルテスト: 私のスライス由来失敗0。残失敗1はD2のcatalog未登録(Codex修正待ち)。
+- 監査由来の非競合ソロ項目は出尽くし(#5/#6 already-fixed確認)。残りは backend(Codex), 大型apiFetch(#1,要調整), offline sync-engine(高リスク,要調整), formatTimeOfDay(#4,D1ファイル重複回避)。
+- 次: Codex の D2修正/F レビュー/Slice B 判断を待ち、揃ったら Loop2 再監査へ。
+
+### Slice B 完了 (Claude実装) — route handler 統一エラーエンベロープ [Reliability #1]
+
+- Files: src/lib/auth/context.ts, src/lib/api/response.ts, src/lib/auth/context.test.ts
+- 根拠: withAuthContext(@preferred wrapper)内 handler の想定外throwがNextの汎用500(本文不定)になり、{code,message}エンベロープ不一致。
+- 実装:
+  (1) response.ts に internalError() 追加(固定文言の{code:'INTERNAL_ERROR'}500、生メッセージ非露出で情報漏洩防止)。
+  (2) context.ts withAuthContext で handler呼び出しを try/catch。想定外throwは logger.error(本番Sentry capture)後 internalError()返却。既存 NextResponse early-return(validationError等)は素通し維持。
+  (3) **Next制御フロー例外(redirect()/notFound()の NEXT_REDIRECT/NEXT_NOT_FOUND digest)は isNextControlFlowError で判定し必ず re-throw**(catchで潰すとredirect破壊)。
+- テスト: context.test.ts 3件(実withAuthContextを auth/prisma/logger モックで駆動)— passthrough不変, 想定外throw→500 INTERNAL_ERROR(secret非漏洩), redirect digest→re-throw。
+- Validation: eslint0, typecheck0, context.test 3 pass。累積フルテスト実行中。
+- 設計判断: FileStorageError等の status別マッピングは中期案だが、(a)それらは各handlerでcatch/return済みで通常throwで到達しない (b)生errorのstatus/message露出は情報漏洩リスク のため、今回は安全な汎用500に統一(scope: withAuthContext)。
+- Review: 高リスク(auth/error契約・全route影響)→Codex相互レビュー依頼。
+
+### Slice B 補強 + 回帰対応
+
+- unstable_rethrow 採用: 手書き isNextControlFlowError を Next公式 unstable_rethrow(next/navigation) に置換。全制御フロー digest(redirect/notFound/forbidden/unauthorized/HTTP error)を網羅、将来の Next 変更にも追従。
+- [SECURITY 回帰対応] 累積フルテストで consent-records/route.test.ts 2件回帰検出: 監査失敗時の handler throw を .rejects.toThrow で検証していたが、Slice B が throw→500エンベロープ変換するため reject せず。これはSlice Bの意図した改善。テストを status500+code INTERNAL_ERROR+(list)data非露出/(create)create試行 検証に更新。fail-closed本質(非2xx・同意データ非漏洩・監査失敗の logger.error→Sentry可視化)は維持。consent-records.test 12 pass。Codexにsecurity観点レビュー依頼。
+- Validation: context.test 3 pass, consent-records.test 12 pass, typecheck0, eslint0。最終累積フルテスト実行中。
+
+### Slice B 最終検証
+
+- 最終累積フルテスト: **1074 files passed | 8350 tests passed | 1 skipped | 0 failed (exit 0)**。consent-records回帰解消、全体グリーン。
+- Slice B は typecheck0/eslint0/フルスイート緑。Codexのsecurityレビュー待ち→承認後コミット予定。
+
+### Slice B コミット
+
+- Codex REVIEW: **APPROVE / no blocking findings**(15 tests pass検証)。non-blocking: 将来 route が error message に PHI を含めて throw した場合の logger 記録を PHI watchlist に(現状は redact ctx + 固定文言で client非露出のため許容)。
+- commit: fix(api) 5f617fd2(context.ts/response.ts/context.test.ts/consent-records.test.ts)。
+- 注記: worktree に私の作業でない未コミット変更が出現(.gitignore[agmsg//*.bak.*追加], eslint.config.mjs, pharmacy-invoices/patient-share-cases/partner-visit-report-drafts/pharmacy-contract-documents/pharmacy-cooperation-setup 等)。無関係差分として尊重し未コミット・未変更のまま放置。Codexに出所確認中。
+
+## Loop 2 — 着手
+
+### Slice G 完了 (Claude実装) — patient-detail BFF 直列クエリ並列化 [Duplication/Perf #9]
+
+- File: src/app/api/patients/[id]/route.ts (LOCK宣言済み)
+- 根拠: 患者詳細GETの末尾で homeCareFeatureSummary → operationHistory → actorNameMap → labRows の4本が直列await。homeCareFeatureSummary/operationHistory/labRows は互いに独立(operationHistoryは sync計算の filters のみ依存、labRows/homeCareは orgId+id のみ)。
+- 実装: 独立3本を Promise.all 化(4 RTT→2)。actorNameMap は operationHistory に依存するため後段で逐次維持。operationHistoryFilters の sync計算を Promise.all 前に移動。labRows の二重宣言を解消。
+- 効果: 患者詳細(高頻度BFF)で 2 RTT 削減。クエリ内容・結果・順序非依存で完全に不変。
+- Validation: typecheck0, eslint0, route.test 35 pass(出力不変=回帰なし)。
+- Review: patient-detail は Codex hotspot#3 → 相互レビュー依頼。
+- 注: foreign変更(date-key dedup)は方針A=Codexが自分でコミット&共有。
+
+### 通信対策(ユーザー依頼) + Codex Loop 4 レビュー
+
+- 通信対策: AGENTS.md に agmsg drain規律(毎反復/編集前/コミット前) + ACK-gate + URGENT優先prefix + relay注記 を追加・コミット(9a54e67e, ca37e15d)。Codex 採用済み、協調回復。
+- 原因: monitor push は受信側が turn境界に来て初めて処理。Codexの連続ralphは境界が少なくbusy時に取りこぼし。→ poll規律で解決。
+- Codex Loop 4 (client-json dedup + delivery-failure-reasons SSOT) レビュー → **APPROVE**。独立検証87 tests green。client-json/displayFailureReason は既存ローカルコピーの統合(正しいdedup)、sanitize/display で raw provider error の persisted/display 漏洩を防ぐPHI-safety確認。
+- Slice G commit 6aeb5f7f, consent req \_req commit 7f8834e7。
+- Codex commit待ち: D3, Loop4, date-key dedup, noUnused cleanup(全て私 or ralph で承認済み)。landing後に worktree クリーン化、Loop2 残(apiFetch広域採用/file-storage#3#7/withOrgContext#2/sync-engine)をjoint assessment。
+
+### Loop 2 続き (Claude solo, clean非競合)
+
+- Reliability#7: file-storage cleanupExpiredGeneratedFiles errors[]観測化 + 回帰テスト。commit 6afc0164 (72 tests)。
+- Perf Low: pca-pumps checkPcaPumpRentalOverdues を org単位集約(withOrgContext+updateMany N→M)。daily.test更新(id→{in:[...]})。commit 7ab6abf6 (31 tests)。
+- Claude solo clean backlog ほぼ枯渇。残: sync-engine多重購読(Async Med, 高リスクoffline, Codex hotspot=要調整), withOrgContext#2(pharmacy, Codex ralph競合), apiFetch広域(Codex client-json着手済), dispense-results(監査で許容判定=非actionable)。
+- 残は Codex-lane/高リスク/調整依存。Codex の大量backlog(50+未コミット)のグループコミットが律速。
+
+---
+
+# === UI/UX GOAL TRACK (claude / Opus 4.8) ===
+
+## Loop 0 — Baseline (UI/UX)
+
+- 新ゴール: UI/UX最大化(操作性/視認性/情報設計/feedback/a11y/responsive/状態表示/入力体験)。既存仕様維持、既存共通component再利用優先。
+- 役割分担: Claude=UI/UXリード(src/app/(dashboard)/**, src/components/**), Codex=perf/sync-engine継続(UI非干渉)。各スライスLOCK。
+- SSOT: docs/ui-ux-design-guidelines.md(238行) — Workbench-first, 状態表示(false empty禁止/aria-live), 6軸状態色トークン(StateBadge/StatusDot), 共通component必須, a11y(44px/見出し階層/色依存回避)。
+- UI基盤: src/components/ui/ に充実(empty-state, error-state, loading, loading-button, confirm-dialog, form-error-summary, data-table, action-rail, section-intro, badge, dialog, sheet, segmented-progress-bar 等、多くにテスト有)。Storybook無し。
+- baseline検証: 直前のperfゴールで typecheck/eslint/full test(8350) green確認済み、worktreeクリーン。
+- 監査fan-out(read-only): design-analyst(UX/導線/情報設計), general-purpose(component重複+状態表示), general-purpose(a11y+responsive+form UX)。
+- 次: findings集約→[既存component統合×低リスク×仕様維持]でトリアージ→Loop着手。
+
+### Codex から受領した UI dedup 候補 (backlog)
+
+- readApiJson 採用: src/app/(dashboard) 配下 select-site/select-mode/admin pharmacy-sites/users の local fetch+json を共通 readApiJson(lib/api/client-json.ts) へ。
+- schedule minutes helper 重複: route-compare/conflicts/calendar。
+- pharmacy-cooperation DTO/type dedup。
+- → 私の UI/UX監査3本の結果とクロスリファレンスしてトリアージ。
+
+### UX監査(design-analyst) 結果
+
+- 共通部品到達度: EmptyState/ErrorState 使用47ファイル vs 空文言描画~135ファイル(逸脱母集団)。
+- [High] false-empty: audit-logs-content.tsx:93(isError欠落→失敗が「ログがありません」), contact-profiles-content.tsx:266(isError無し)。安全証跡で危険。
+- [High] 無効ボタン理由欠落: visits-today.tsx:305(訪問開始 disabled 無理由), handoff-workspace.tsx:400(渡す, 不可逆操作で詰まり所不可視)。
+- [Med] EmptyState非採用(自前再実装): prescriptions-table.tsx:115, incidents-content.tsx:143, notifications-content.tsx:249, conferences-content.tsx:1293/1457/1518, tasks-content.tsx:205/489。
+- [Med] 状態色ベタ書き13ファイル(StateBadge/StatusDot未集約): schedule-team-board, medication-calendar, prescription-history 等。
+- SSOT追記提案: EmptyState compact variant正式化, read query 4状態テンプレ明文化, print系の色例外。
+- Top5低リスク: prescriptions-table→EmptyState, incidents空→EmptyState, notifications空→EmptyState, visits-today disabled理由+aria-describedby, audit-logs false-empty→ErrorState。
+
+### A11y/Responsive/Form監査 結果
+
+- 全体: a11y成熟度高い(icon-button aria-label, combobox完全ARIA, FormErrorSummary focus, 44px対応)。残gap:
+- [P1] form field エラー紐付け薄い: referral-form.tsx(aria-describedbyがreferral_typeのみ), prescription-intake-form.tsx(単一error集約)。必須/任意マーカー横断的に欠落。
+- [P2] business-holidays:370 カレンダー日セル div onClick(keyboard不能)。native select<44px(insurance-card/documents-panel/referral-form)。safety-check h1欠落(h2開始)。tasks-content非セマンティック見出し。
+- [P3] 100vh→dvh(data-explorer:254/321/384), min-h-screen→min-h-dvh(structured-soap-wizard/capture/error-state). FormErrorSummary aria-live. async aria-live(LoadingButton内蔵案)。
+- Top5: dvh置換, safety-check h2→h1, referral-form aria-describedby横展開, business-holidays日セルbutton化, FormErrorSummary/alert role=alert確認。
+
+## Loop 1 — UI/UX 実装着手
+
+### Slice U1 完了 (Claude) — audit-logs false-empty解消 [High/安全]
+
+- File: audit-logs-content.tsx(+test)。isError+refetch追加、空判定前にErrorState(再試行)分岐。取得失敗を「ログがありません」に倒さない。
+- Validation: eslint0/typecheck0/test 3 pass(false-empty回帰)。commit d1587491。
+
+### Slice U2 完了 (Claude) — false-empty クラスタ [High/安全]
+
+- contact-profiles-content.tsx, evidence-gallery-content.tsx に isError→ErrorState(再試行)分岐追加。取得失敗を空に倒さない(evidenceはoffline下書き優先)。
+- Validation: eslint0, 該当テスト3 pass。typecheck は Codex の未コミット client-json.ts(TS7053)で red, 私の2ファイルは独立type-clean。commit 7225e32d。Codexに URGENT 報告済み。
+
+---
+
+## Codex Loop 7 — Re-Audit Follow-up (Backend/Shared/Perf Lane)
+
+Re-audit results:
+
+- Zero audit was not reached. Dead Code, Duplication, Type/Contract, Behavior/Test, Architecture, and Review agents returned actionable findings.
+- UI/UX work was delegated to Claude with explicit locks under `src/app/(dashboard)/**` and `src/components/**`. Codex avoided those UI surfaces except for already-owned shared/backend files.
+- Claude reviewed sync-engine commit `71a3ed72` as APPROVE.
+
+Implemented by Codex:
+
+- `730cca88` `refactor: harden shared api and facility contracts`
+  - Hardened `readApiJson` to read compatibility `{ error }` envelopes, trim blank `message`/`error` values to fallback, reject successful empty/non-JSON responses, and optionally validate success payloads through a `safeParse` schema.
+  - Extended `typecheck:no-unused` to cover both the main TS project and `tsconfig.sw.json`, with a package-script contract test.
+  - Extracted facility API time conversion/serialization to `src/lib/facilities/facility-api.ts` and removed duplicate serializers from admin facilities list/detail routes.
+  - Moved elapsed label formatting to neutral `src/lib/datetime/relative-time.ts`; `src/lib/workspace/daily-ops-rail.ts` no longer imports from `src/lib/ui`.
+  - Removed unused `inferCareReportTargetRole` compatibility re-export from `document-delivery-rules.ts`.
+  - Added PCA pump multi-org/multi-rental regression coverage for batched overdue updates while preserving one operational task per rental.
+- `71a3ed72` `fix(sync): share automatic online sync listeners`
+  - Ref-counted `setupAutoSync` subscriptions by normalized sync config so equivalent mounts share one `online` listener.
+  - Preserved existing `processSyncQueue` single-flight behavior and added listener cleanup/idempotent unsubscribe coverage.
+- `80018a88` `refactor(reports): move send failure observability to service`
+  - Extracted SES failure classification and bounded logger payload from the care-report send route into `src/server/services/care-report-send-observability.ts`.
+  - Added unit coverage that raw provider message/contact are not logged.
+
+Ledger correction:
+
+- Earlier Loop 6 ledger text overstated `src/server/services/email.ts` / `src/server/services/email.test.ts` as changed in the reviewed commit range. Current HEAD has no delivery-failure re-export in `email.ts`; canonical production usage is `src/lib/reports/delivery-failure-reasons.ts` and care-report send route imports from that helper.
+
+Validation:
+
+- Focused backend/shared Vitest bundle: passed, 13 files / 143 tests.
+- sync-engine/offline-store focused Vitest: passed, 2 files / 20 tests.
+- care-report observability/send route focused Vitest: passed, 2 files / 45 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed, now covering main + service-worker TS projects.
+- Targeted ESLint, Prettier checks, and `git diff --check` for Codex-owned paths: passed.
+
+Blocked or deferred:
+
+- Claude owns active UI/UX remediation and UI backlog candidates. Codex will not edit locked UI files without coordination.
+- Full final validation and zero-audit counting are still pending after this ledger update and after concurrent UI commits settle.
+
+Next loop:
+
+- Format/check this ledger update, commit ledger-only state, run full static/test/build gates as feasible, then restart Architecture/Duplication/Type/Test/Dead/Review agents. Count Zero Audit only if they return no new actionable findings.
+
+### Slice U2-U6 完了 (Claude) — UI/UX Loop1
+
+- U2 commit 7225e32d: contact-profiles/evidence-gallery false-empty→ErrorState。
+- U3 commit ab77bac8: visits-today 無効ボタン理由+aria-describedby+解消導線。
+- U4 commit d5991011: incidents/notifications 空表示→共通EmptyState。
+- U5 commit 1a416710: dvh responsive(data-explorer/capture/structured-soap-wizard/error-state)。
+- U6 commit ed594917: safety-check h1起点化(h2→h1,h3→h2), business-holidays 日セルkeyboard操作可能化(role/tabIndex/onKeyDown/aria-label/focus ring)。
+- 全スライス eslint0/typecheck0/該当テスト pass。
+- 残backlog: referral-form/prescription-intake-form field-error紐付け(P1), prescriptions-table EmptyState+DataTable(Med), state-color hardcode(prescription-history Med), handoff無効理由(High複雑), medications-content状態表示reimpl(High F3), ConfirmDialog採用(F6 Med), Loading swaps(F8/9 Low), native select 44px(P2), FormErrorSummary aria-live(P3)。
+
+### Codex Addendum — lib dependency boundary guard
+
+- `08140f1c` `test: guard lib dependency boundary`
+  - Added `src/tools/lib-dependency-boundary.test.ts`.
+  - Current `src/lib` reverse dependencies into `@/server`, `@/components`, or `@/app` are now explicit allowlist entries. New reverse dependencies fail the static test until reviewed.
+  - Validation: focused Vitest 1 file / 1 test passed; targeted ESLint and `git diff --check` passed.
+
+### Slice U7-U9 (Claude)
+
+- U7 commit 0ecf580b: referral-form field error aria-describedby紐付け(name/name_kana/birth_date/gender)。
+- U8 検証→no-op: alert.tsx 既に role=alert、FormErrorSummary 通知済み。変更なし。
+- U9 commit (prescriptions-table): 空表示を共通EmptyStateへ + 未使用import除去。
+- UI/UX Loop1 計: 8スライス実装(U1-U7,U9) + U8検証, ~13ファイル改善。
+
+### Slice U10 (Claude) — handoff 無効ボタン理由 [High]
+
+- commit 96443526: 渡す確定ボタンの未充足必須項目(件名/宛先/何を/なぜ/いつまで)を表示+aria-describedby。不可逆操作の詰まり所を可視化。テスト拡張(理由表示+aria-describedby+充足時消失)。
+- UI/UX Loop1 計: 9スライス実装(U1-U7,U9,U10) + U8検証。全High finding解消(false-empty×3, disabled理由×2)+主要Med。~14ファイル。
+- 残: medications-content状態表示reimpl(F3 High/大), state-color hardcode(Med), ConfirmDialog採用(F6 Med), Loading swaps(F8/9 Low), native select 44px(P2)。
+
+### Codex Validation Addendum — Full gate and current UI WIP isolation
+
+- Full validation completed after Codex backend/shared follow-ups and Claude U10 settled: `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, `pnpm date-slices:check`, `pnpm eventbridge-schedules:check`, `git diff --check --`, full Vitest (`1085` files / `8385` tests passed / `1` skipped), and `pnpm build` all passed.
+- Current worktree after that validation includes an uncommitted UI state-color change in `src/app/(dashboard)/tasks/tasks-content.tsx` and generated `.harness-mem/state/continuity.json`. Codex notified Claude and will not stage or overwrite the UI change without coordination.
+- Current re-check: `git diff --check -- 'src/app/(dashboard)/tasks/tasks-content.tsx' CODEX_GOAL_PROGRESS.md .harness-mem/state/continuity.json` passed. `pnpm exec prettier --check CODEX_GOAL_PROGRESS.md 'src/app/(dashboard)/tasks/tasks-content.tsx'` failed before this ledger formatting because `tasks-content.tsx` is still unformatted UI WIP.
+- Zero Audit count remains `0`; re-audit must run after the UI WIP is either committed by Claude or explicitly handed to Codex.
+
+### Codex Loop 8 Addendum — API Contract/Test Follow-up
+
+- Coordination:
+  - Claude completed the state-color consumer migration in UI-owned files and reported commits `d7c1b7d5`, `7e183d81`, `f5793fe4`, `0dfede25`, `0df5dd1e`, and ledger commit `62dbb27f`.
+  - Codex drained agmsg before each commit and left `.harness-mem/state/continuity.json` unstaged as generated local state.
+- Implemented by Codex:
+  - `82ee5357` `refactor(api): share set batch cell mutation contracts`
+    - Extracted shared SetBatch cell reference schema and duplicate-id detection to `src/lib/dispensing/set-batch-cell-mutation.ts`.
+    - Reused the shared schema/helper from both cell mutation and bulk-set routes, removing two local duplicate detectors and repeated Zod object definitions.
+    - Added helper coverage in `src/lib/dispensing/set-batch-cell-mutation.test.ts`.
+  - `37f87cbc` `test(api): cover saved views route contracts`
+    - Added route-level coverage for saved-view list/create/update/delete contracts, including scope validation, owner/shared boundaries, duplicate-name rejection, sort order resolution, and audit writes.
+  - `77a3056b` `test(api): cover billing evidence check contract`
+    - Added route-level coverage for the billing check BFF, including month validation, current/previous billing month selection, org-scoped aggregation calls, review-row projection, and no-transaction invalid query rejection.
+- Validation:
+  - SetBatch focused Vitest: `3` files / `34` tests passed.
+  - saved-views focused Vitest: `1` file / `7` tests passed.
+  - billing-evidence/check focused Vitest: `1` file / `3` tests passed.
+  - Targeted ESLint passed for all Codex-owned changed files.
+  - `pnpm typecheck` passed after each slice.
+  - `pnpm typecheck:no-unused` passed after each slice.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains open.
+  - `readApiJson` schema validation call-site migration remains open and is mostly UI/dashboard-facing.
+  - care-report print-audit DTO/client duplication remains open.
+  - route-order conflict helper dedup across visit route/schedule flows remains open.
+  - Re-audit agents must run again after ledger sync and any current local generated state is classified.
+
+### Codex Loop 8 Addendum — Autonomous Commit Policy + Coverage Gate
+
+- Coordination:
+  - Drained agmsg before committing. Claude yielded `AGENTS.md` and kept `.agent-loop/*` in its own lane; Codex acknowledged and left `.agent-loop/*` untouched.
+  - `.harness-mem/state/continuity.json` remains generated local state and was intentionally not staged.
+- Implemented by Codex:
+  - `a2414cdc` `docs: require periodic autonomous commits`
+    - Strengthened `AGENTS.md` so periodic autonomous commits are the default for repository work.
+    - Added mandatory commit trigger points and a required skip-reason record when a safe commit boundary is unavailable.
+  - `69ff423e` `test: include shared lib in coverage gate`
+    - Expanded Vitest coverage collection to include `src/lib/**/*.ts`.
+    - Hardened PH-OS Board capacity tests to wait for the rendered `Capacity` heading instead of only waiting for `getCapacity`, removing the coverage/full-run timing flake.
+- Validation:
+  - `git diff --check -- AGENTS.md`: passed.
+  - `pnpm exec prettier --check AGENTS.md`: passed.
+  - Focused PH-OS Board Vitest: `2` files / `51` tests passed.
+  - Full coverage gate with `src/lib/**/*.ts`: `1092` files / `8405` tests passed / `1` skipped; statements `83.92%`, branches `71.48%`, functions `87.66%`, lines `86.74%`.
+  - Targeted ESLint for `vitest.config.ts`, `src/phos/infra/phos-final-e2e.test.tsx`, and `src/phos/ui/board/BoardClient.test.tsx`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains open.
+  - `readApiJson` schema validation call-site migration remains open and is mostly UI/dashboard-facing.
+  - care-report print-audit DTO/client duplication remains open.
+  - Re-audit agents must run again after this ledger sync and current generated state classification.
+
+### Codex Loop 8 Addendum — Route Order Conflict Dedup
+
+- Coordination:
+  - Sent `LOCK:` to Claude for the route-order conflict dedup slice and drained agmsg before commit.
+  - Claude committed `.agent-loop/*` scaffold as `2986725b`; Codex left `.agent-loop/*` untouched and acknowledged the separate review request.
+  - `.agent-loop/FEATURE_QUEUE.md`, `.agent-loop/MEMORY_REVIEW.md`, `.agent-loop/STATE.md`, and `.harness-mem/state/continuity.json` remained unstaged outside this Codex slice.
+- Implemented by Codex:
+  - `d259e70e` `refactor(api): share visit route order conflict checks`
+    - Added `src/lib/visits/route-order-conflicts.ts` with shared route-order cell duplicate detection and schedule/proposal conflict lookup.
+    - Reused the helper from mixed route reorder, proposal reorder, schedule reorder, facility visit batch upsert, and single visit schedule PATCH conflict checks.
+    - Preserved existing schedule-scope differences by keeping callers that previously checked all schedule statuses on `scheduleStatusScope: 'any'`, while active-only callers keep the cancelled/rescheduled exclusion.
+    - Added helper regression coverage and updated route tests to assert the helper-backed query shape.
+- Validation:
+  - Related Vitest bundle: `6` files / `124` tests passed.
+  - Targeted ESLint for helper/routes/tests: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains open.
+  - `readApiJson` schema validation call-site migration remains partially open and is mostly UI/dashboard-facing.
+  - Re-audit agents must run again after ledger sync and current generated/peer state classification.
+
+### Codex Loop 8 Addendum — API Client Contract + Agent Loop Review
+
+- Coordination:
+  - `a1c916ac` `docs: link agent loop operating guide` added the `.agent-loop/README.md` SSOT pointer to `AGENTS.md` after Claude's AGLOOP plan request. Validation: `pnpm exec prettier --check AGENTS.md` and `git diff --check -- AGENTS.md` passed.
+  - Reviewed Claude scaffold commit `2986725b`; requested PI-001 because full `pnpm test` was incorrectly listed as cheap/every-slice. Claude fixed it in `c8580b23`, then closed the review in `f7a18195`; Codex approved after `GATE_CONFIG.md` split targeted Vitest and full Vitest cadence.
+  - Claude ACKed the print-audit UI/API lock before Codex touched the print pages.
+  - `.harness-mem/state/continuity.json` remains generated local state and was intentionally not staged.
+- Implemented by Codex:
+  - `083ca83c` `refactor(reports): validate generated report client response`
+    - Migrated `generateCareReportFromVisit` from manual `res.json()` casts to `readApiJson` with a Zod success schema.
+    - Preserved the legacy `data`-omitted success fallback to `[]`, while rejecting malformed successful payloads through the fallback error.
+  - `cb71cfb5` `refactor(reports): share print audit contract`
+    - Added `src/lib/reports/care-report-print-audit-contract.ts` with shared print-audit intent schema and response types.
+    - Reused the contract from the print-audit API route, direct report print page, and print hub, removing local duplicate response types/schema.
+- Validation:
+  - Generated report client focused Vitest: `2` files / `15` tests passed.
+  - Print-audit focused Vitest: `4` files / `23` tests passed.
+  - Targeted ESLint for changed report client / print-audit files: passed.
+  - `pnpm typecheck`: passed after each slice.
+  - `pnpm typecheck:no-unused`: passed after each slice.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains open.
+  - `readApiJson` schema validation call-site migration remains partially open in UI/dashboard-facing call sites.
+  - Re-audit agents must run again after this ledger sync and current generated state classification.
+
+### Codex Loop 9 Addendum — Re-audit API Contract Follow-up
+
+- Coordination:
+  - Drained agmsg before implementation and before each commit; no new Claude messages were pending.
+  - Kept `.harness-mem/state/continuity.json` unstaged as generated local state.
+- Implemented by Codex:
+  - `207adeed` `refactor(reports): harden report api contracts`
+    - Added a shared generated-report response contract and reused it from the generation route, client helper, and report workspace caller.
+    - Hardened successful generated-report and print-audit client responses with `readApiJson` + Zod schemas while preserving existing missing-`data` fallback behavior.
+    - Passed `patientId` and `actorSiteId` into print-audit recording so audit rows keep patient/site scope for both preview and print intents.
+    - Mapped SavedView create/update `P2002` races to the existing duplicate-name `409` response and prevented audit writes when the DB create/update fails.
+  - `1932cccd` `test: cover route order and coverage config contracts`
+    - Added route-order helper coverage for multi-id exclusions and schedule-over-proposal conflict precedence.
+    - Added a static Vitest config contract test to keep `src/lib/**/*.ts` inside the coverage gate.
+  - `69a4b091` `chore(docs): fix branch diff whitespace`
+    - Removed trailing whitespace in `docs/plans-archive.md` that made `git diff --check main..HEAD` fail.
+- Validation:
+  - Focused Vitest: `8` files / `53` tests passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Targeted Prettier check for changed files: passed.
+  - `CODEX_GOAL_PROGRESS.md` Prettier check: passed.
+  - `.codex/ralph-state.md` Prettier check: blocked by Node heap OOM even with `NODE_OPTIONS=--max-old-space-size=8192`; `git diff --check` passed for the Ralph ledger diff.
+  - `git diff --check`: passed.
+  - `git diff --check main..HEAD`: passed after `69a4b091`.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains a broad candidate; actionability still needs a narrower route family to avoid behavior drift.
+  - `readApiJson` schema validation call-site migration remains partially open in UI/dashboard-facing call sites.
+  - Bulk task completion UI still drops server failure details and is a UI/UX/API-message follow-up candidate.
+  - Re-audit agents must run again after this ledger sync; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Print Hub Fresh Audit Gate
+
+- Coordination:
+  - Drained agmsg before implementation. Claude held `.agent-loop/*`, `CLAUDE.md`, `AGENTS.md`, and codex prompt locks for the GBrain schema integration; Codex ACKed and left those paths untouched.
+  - Sent `LOCK:` for `src/app/(dashboard)/reports/print/print-hub-content.tsx`, `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`; no conflict messages were received before editing.
+  - The change is audit/PHI-adjacent, so it is ready for Claude mutual review before an owned commit is created.
+- Implemented by Codex:
+  - Added a per-mount audit run id to the print hub visit-report preview query key, matching the direct print page's fresh audit pattern.
+  - Changed visit-report preview rendering and print button enablement so cached React Query data is not treated as the current `preview_rendered` audit success.
+  - Required `data.audited === true` and a report payload before rendering the `VisitReportSheet`; pending/refetch and failed audit states keep the preview in loading/error UI and keep printing disabled.
+  - Added regression coverage that seeds the old cache key with report body text, then verifies pending, failing, and fresh-success current audit paths never expose stale cached body text.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Print-audit focused bundle: `4` files / `28` tests passed.
+  - Targeted ESLint for print hub files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude mutual review for this print hub audit-gate fix is pending.
+  - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
+  - Bulk task completion UI failure-detail display remains a follow-up candidate.
+  - Re-audit agents must run again after this ledger sync; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Generated Report Workspace Fixture
+
+- Coordination:
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, and prompt diffs untouched while the gbrain schema review remained in `CHANGES_REQUESTED`.
+  - Treated `.harness-mem/state/continuity.json` as generated local state and left it unstaged.
+- Implemented by Codex:
+  - Updated the report-share workspace test fixture for `/api/care-reports/generate-from-visit` to match the hardened generated-report response contract by including `status` and `updated_at` in generated report rows.
+  - This is a test-only compatibility fix; no UI, API, DB, auth, audit, or PHI response behavior changed.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `8` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude gbrain schema integration requires taxonomy consistency fixes before approval.
+  - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
+  - Bulk task completion UI failure-detail display remains a follow-up candidate.
+  - Re-audit agents must run again after current owned commits and Claude's schema revision; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Print Requested Audit Contract
+
+- Coordination:
+  - Continued within Codex-owned print audit/report test scope after notifying Claude of the previous fixture commit.
+  - Left Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, and prompt diffs untouched while the gbrain schema taxonomy review remained in `CHANGES_REQUESTED`.
+- Implemented by Codex:
+  - Changed direct report print and print hub manual print paths to parse `print_requested` audit responses with `careReportPrintAuditResponseSchema` instead of trusting only `res.ok`.
+  - Required `data.audited === true`, a report payload, and a matching report id before calling `window.print()`.
+  - Added regression tests for `200` responses with `audited: false`, malformed `200` success bodies, and wrong-report-id audited success bodies in both direct print and print hub paths, closing reviewer-strict's malformed-2xx and mismatch guard gaps.
+- Validation:
+  - Direct print + print hub + tasks focused Vitest: `3` files / `25` tests passed after reviewer-strict fixes.
+  - Print-audit/tasks focused bundle: `7` files / `55` tests passed after reviewer-strict fixes.
+  - Targeted ESLint for changed print files/tests: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude gbrain schema integration requires taxonomy consistency fixes before approval.
+  - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
+  - Bulk task completion UI failure-detail display remains a follow-up candidate.
+  - Re-audit agents must run again after current owned commits and Claude's schema revision; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Bulk Task Failure Detail
+
+- Coordination:
+  - Sent a `LOCK:` for `src/app/(dashboard)/tasks/tasks-content.tsx`, `src/app/(dashboard)/tasks/tasks-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`; Claude ACKed no conflict.
+  - Read `docs/ui-ux-design-guidelines.md` before editing the dashboard task UI, especially the PH-OS rule that dynamic errors must not be collapsed into false-empty or generic status.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, and prompt diffs untouched.
+- Implemented by Codex:
+  - Preserved the existing `/api/tasks/bulk` response contract and surfaced server-provided `failures[]` messages in the partial-success toast description.
+  - Deduplicated failure messages, capped the visible list at three reasons, and avoided displaying task IDs or patient values.
+  - Added client-side normalization for success counts and `failures[]` so malformed successful payload details cannot crash the UI refresh path.
+  - Added focused component tests that exercise the bulk mutation payload, confirm the partial-failure reason reaches `toast.warning`, and verify malformed `failures` shapes fall back to the count-only warning.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `23` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/reports/care-report-print-audit-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/app/api/tasks/bulk/route.test.ts 'src/app/api/tasks/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `7` files / `53` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for this tasks UI slice is pending before commit.
+  - Claude review for the print-requested audit contract slice is pending before commit.
+  - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
+  - Re-audit agents must run again after current owned commits and Claude's schema revision; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Reviewer-Strict Refresh
+
+- Coordination:
+  - Drained agmsg after the ledger refresh; no new Claude messages were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` unstaged.
+- Implemented by Codex:
+  - Updated the pending print-requested audit contract and bulk task failure-detail entries to include reviewer-strict follow-ups.
+  - No product code changed in this ledger refresh.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `23` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/reports/care-report-print-audit-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/app/api/tasks/bulk/route.test.ts 'src/app/api/tasks/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `7` files / `53` tests.
+  - Targeted ESLint for the changed print/tasks files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check CODEX_GOAL_PROGRESS.md`: passed before this appended addendum.
+  - Targeted `git diff --check` for Codex-owned files and ledgers: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the pending print-requested audit and tasks failure-detail slice is still pending.
+  - API response envelope hardening and broader `readApiJson` migration remain candidates requiring narrower scoping.
+  - Re-audit agents must run again after the current owned diff is committed; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Print Audit Report Match Guard
+
+- Coordination:
+  - Strict Review Agent found no High production-code blocker in the Codex-owned print/tasks diff, but identified a cheap P2 hardening gap: final `print_requested` responses should match the report id being printed.
+  - Claude review remains pending; no approval or change request was received before this follow-up.
+- Implemented by Codex:
+  - Direct report print and print hub now require the final audited response `report.id` to match the current report before `window.print()`.
+  - Added wrong-report-id regression tests for both direct print and print hub.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/[id]/print/page.tsx' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `25` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/reports/care-report-print-audit-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/app/api/tasks/bulk/route.test.ts 'src/app/api/tasks/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `7` files / `55` tests.
+  - Targeted ESLint for the changed print/tasks files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Targeted `git diff --check` for Codex-owned files and ledgers: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the pending print/tasks slice is still pending before commit.
+  - High API client contract candidates remain: generated-report strict `data` response, dashboard `readApiJson` schema migration, and response helper unification by route family.
+  - Dead-code cleanup candidates remain, especially unused UI wrappers and stale test-only modules.
+
+### Codex Loop 11 Addendum — Re-Audit Follow-up: Preview Audit and Bulk Task Contracts
+
+- Re-audit result:
+  - Zero Audit was not reached. Architecture, Duplication, Type/Contract, Behavior/Test, Dead Code, and Strict Review agents all completed.
+  - New in-session actionable findings included preview `report.id` mismatch protection, printable report-type narrowing, `/api/tasks/bulk` response schema sharing, malformed bulk-success fail-closed behavior, and a missing second access-check test.
+  - Dead-code audit also found stale patient-detail wrappers and legacy compatibility layers, but patient wrapper deletion is deferred until the current print/tasks slice is reviewed; legacy file API removal is blocked by external compatibility/product decision.
+- Coordination:
+  - Drained agmsg before edits; no new Claude messages were pending.
+  - Sent a lock/update message to Claude before editing the existing Codex-owned print/tasks scope.
+  - Sent `REVIEW REQUEST UPDATE 3` after implementation. Claude review is still pending before commit.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Added printable report-type SSOT to `src/lib/reports/care-report-print-audit-contract.ts` and narrowed print-audit responses to `physician_report`, `care_manager_report`, `nurse_share`, and `facility_handoff`.
+  - Made `/api/care-reports/[id]/print-audit` fail closed before audit persistence when the confirmed report is not printable or its content is null.
+  - Direct report print and print hub now require `preview_rendered` responses to match the current `report.id` before rendering report content or enabling print.
+  - Added `src/lib/tasks/bulk-completion-contract.ts` with shared Zod response schema, failure-code union, inferred types, and sanitized/deduped failure summary helper.
+  - `/api/tasks/bulk` now returns a body typed against the shared contract; `TasksContent` now reads the response with `readApiJson(..., { schema })` and rejects malformed successful envelopes instead of treating them as all-success.
+  - Added route coverage for non-printable report type, null content, and the second access check becoming forbidden before content output.
+  - Removed unused patient-detail compatibility components from the dead-code re-audit: `PatientWorkspaceRail`, `PharmacistMemoTab`, and the unused `PatientDocumentsPanel` wrapper. Preserved `FirstVisitDocumentsPanel`, which is still used by `CardWorkspace`.
+- Deleted or consolidated:
+  - Removed UI-local bulk task response/failure types, non-negative count normalizer, malformed failure normalizer, and summary helper from `tasks-content.tsx`.
+  - Consolidated bulk task failure-code typing between route and UI into `src/lib/tasks/bulk-completion-contract.ts`.
+  - Deleted `src/app/(dashboard)/patients/[id]/patient-workspace-rail.tsx` and `src/app/(dashboard)/patients/[id]/pharmacist-memo-tab.tsx`.
+  - Removed unused `PatientDocumentsPanel` data-fetching wrapper and its unused imports from `patient-documents-panel.tsx`.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/reports/care-report-print-audit-contract.test.ts src/lib/tasks/bulk-completion-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' src/app/api/tasks/bulk/route.test.ts 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `7` files / `52` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `29` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - Targeted ESLint for changed print/tasks/contract files: passed.
+  - Targeted ESLint for changed patient-detail files/tests: passed.
+  - Targeted `git diff --check` for changed print/tasks/contract files: passed.
+  - Targeted `git diff --check` for changed patient-detail files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks contract slice is pending before commit.
+  - Dashboard `readApiJson` schema migration remains actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Cursor Page Type Consolidation
+
+- Coordination:
+  - Drained agmsg before the edit; no new Claude messages were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Removed local `CursorPage<T>` DTO definitions from the admin pharmacy-cooperation setup screen and workflow pharmacy-cooperation screen.
+  - Reused the shared `CursorPaginatedPage<T>` API type from `src/lib/api/cursor-pagination-client.ts` for cursor-paginated `readApiJson` call sites in those screens.
+- Deleted or consolidated:
+  - Consolidated duplicate cursor page result shapes into the existing shared cursor-pagination client type.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `18` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx'`: passed.
+  - Targeted `git diff --check` for the two changed pharmacy-cooperation files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks contract slice is still pending before commit.
+  - Dashboard `readApiJson` schema migration remains actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Pharmacy Cooperation Cursor Schema Migration
+
+- Coordination:
+  - Drained agmsg before the schema migration; no new Claude messages were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Added `cursorPaginatedPageSchema()` to `src/lib/api/cursor-pagination-client.ts` so `readApiJson(..., { schema })` can share the same cursor-page envelope contract as `fetchAllCursorPages`.
+  - Added helper tests for cursor-page schema normalization and malformed envelope rejection.
+  - Migrated admin pharmacy-cooperation cursor fetches for partner pharmacies, partnerships, contracts, and contract documents to schema-validated `readApiJson`.
+  - Migrated workflow pharmacy-cooperation cursor fetches for share cases, visit requests, partner visit records, correction requests, consents, and message threads to schema-validated `readApiJson`.
+- Deleted or consolidated:
+  - Consolidated cursor-page envelope validation into `cursor-pagination-client.ts` instead of leaving each dashboard caller as a raw generic cast.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/cursor-pagination-client.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `27` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint src/lib/api/cursor-pagination-client.ts src/lib/api/cursor-pagination-client.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for changed cursor schema and pharmacy-cooperation files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks contract slice is still pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Admin Pharmacy Cooperation Data Envelope Schemas
+
+- Coordination:
+  - Claude completed `.codex/ralph-state.md` rotation and released the lock; the 14:24 Codex entry was preserved in the shortened Ralph file.
+  - Drained agmsg during validation; no conflicting Claude edit request was pending for this admin schema slice.
+- Implemented by Codex:
+  - Added `src/lib/api/response-schemas.ts` with `apiDataSchema()` for shared `{ data: ... }` response-envelope validation outside `client-json.ts`.
+  - Added unit coverage for `apiDataSchema()` accepting valid envelopes and rejecting missing/malformed `data`.
+  - Migrated admin pharmacy-cooperation non-cursor `readApiJson` calls for pharmacy sites, contract templates, presigned uploads, and complete uploads to schema-validated reads.
+- Deleted or consolidated:
+  - Consolidated repeated `{ data: T }` envelope validation needs into `apiDataSchema()` so future dashboard migrations do not need ad hoc envelope schemas.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/response-schemas.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `7` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint src/lib/api/response-schemas.ts src/lib/api/response-schemas.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for changed response-schema and admin pharmacy-cooperation files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and pharmacy-cooperation schema slices is pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Workflow Pharmacy Cooperation Mutation Schemas
+
+- Coordination:
+  - Drained agmsg before and after validation; no new Claude messages or conflicting locks were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Reused the workflow pharmacy-cooperation row schemas for mutation responses whose returned values are actually consumed by the UI.
+  - Migrated patient-share consent creation, pharmacy visit request creation, message-thread creation, partner visit record draft save, and report-draft creation reads from raw generic casts to schema-validated `readApiJson`.
+  - Left decision/action endpoints returning `unknown` unchanged where the UI ignores the body and existing route/test fixtures intentionally return partial acknowledgement objects.
+- Deleted or consolidated:
+  - Consolidated workflow mutation response validation into the same local schema definitions used by the cursor fetches.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `12` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for the workflow pharmacy-cooperation file: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and pharmacy-cooperation schema slices is pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Partner Cooperation Billing Schema Migration
+
+- Coordination:
+  - Drained agmsg during validation; Claude confirmed Ralph rotation remained complete and recognized the schema slices as peer-review candidates.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Added local Zod schemas for partner cooperation billing summary, active contract rows, billing candidate rows, invoice rows, candidate generation result, and invoice draft result.
+  - Migrated all `readApiJson` call sites in `partner-cooperation-billing-content.tsx` to schema-validated reads, using `apiDataSchema()` for list envelopes.
+  - Preserved existing UI behavior, request payloads, query keys, and invoice transition flow.
+- Deleted or consolidated:
+  - Consolidated billing list-envelope validation through the shared `apiDataSchema()` helper instead of raw `{ data: T[] }` generic casts.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for the partner cooperation billing file: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and schema slices is pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Contract Document Mutation Schemas
+
+- Coordination:
+  - Drained agmsg during validation; no new Claude messages or conflicting locks were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Added admin pharmacy-cooperation contract document preview/save response schemas, including rendered snapshot, fee schedule, and article list shape.
+  - Migrated contract document preview and save mutation reads from raw generic casts to schema-validated `readApiJson`.
+  - Left partner/partnership/contract create and activate acknowledgement responses unchanged because existing route/test fixtures intentionally return partial acknowledgement objects while the UI ignores the body.
+- Deleted or consolidated:
+  - Reused the existing contract document row schema and the new preview schema for save responses instead of adding ad hoc inline casts.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for the admin pharmacy-cooperation file: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and schema slices is pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family, but the remaining pharmacy-cooperation ack-only responses are intentionally deferred.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Admin Setup Mutation Schema Closure and Cursor Schema Ownership
+
+- Coordination:
+  - Drained `agmsg`; Claude returned `APPROVED (slice 5)` for the admin contract document preview/save schema migration and marked it commit-ready.
+  - Claude's only minor was missing malformed-2xx coverage for contract preview/save. Preview was already covered; Codex added the missing save malformed test before considering the slice closed.
+  - Closed the previously completed focused subagents after integrating their findings; the billing PATCH P1 and missing schema-failure tests had been addressed in the current diff.
+- Implemented by Codex:
+  - Added a malformed successful contract document save response test so missing `preview` fails with the fixed `契約書の保存に失敗しました` fallback and does not show the save success toast.
+  - Schema-validated admin setup create/activate mutation responses for partner pharmacy creation, pharmacy partnership creation, pharmacy partnership activation, and pharmacy contract creation.
+  - Updated admin setup mutation test fixtures to match the real API's full returned row shape instead of legacy partial `{ id, status }` acknowledgements.
+  - Added malformed-2xx rejection tests for the four newly schema-validated admin mutations.
+  - Moved `CursorPaginatedPage<T>` and `cursorPaginatedPageSchema()` from `cursor-pagination-client.ts` to `response-schemas.ts`, keeping a compatibility re-export from `cursor-pagination-client.ts`.
+- Deleted or consolidated:
+  - Removed the response-shape schema implementation from the cursor fetch aggregation helper; response envelope schemas now live together in `src/lib/api/response-schemas.ts`.
+  - Removed raw generic success parsing from the remaining admin setup create/activate mutation responses that have stable full-row API shapes.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `14` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/response-schemas.test.ts src/lib/api/cursor-pagination-client.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `10` tests.
+  - `pnpm exec eslint src/lib/api/response-schemas.ts src/lib/api/response-schemas.test.ts src/lib/api/cursor-pagination-client.ts src/lib/api/cursor-pagination-client.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check` for the admin setup and API schema files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and broader schema slices still needs a final update after this addendum.
+  - Workflow correction-request create response remains a small schema migration candidate if its route response shape is confirmed.
+  - Shared pharmacy-cooperation API contract module remains a mid-size dedup candidate.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Correction Request Safe Response Contract
+
+- Coordination:
+  - Continued on the next API-reviewer short candidate after notifying Claude of the admin/cursor schema hardening.
+  - Inspected the real `/api/patient-share-cases/[id]/correction-requests` route before applying client schema validation.
+- Implemented by Codex:
+  - Changed correction-request POST success responses to use the same `toSafeCorrectionRequest()` projection as GET responses.
+  - Removed raw `reason` / `proposed_value` exposure from the correction-request POST response body while preserving persistence and audit behavior.
+  - Added route-level regression assertions that POST responses contain the created request id but not raw patient name/address text, `reason`, or `proposed_value`.
+  - Migrated workflow correction-request creation from raw `readApiJson` parsing to `readApiJson(..., { schema: correctionRequestRowSchema })`.
+  - Updated workflow component fixtures to the real safe row shape and added malformed-2xx rejection coverage for correction-request creation.
+- Deleted or consolidated:
+  - Consolidated correction-request POST and GET response projection through one safe serializer path.
+  - Removed the last API-reviewer-listed safe workflow mutation candidate that still parsed a consumed response without a schema.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `20` tests.
+  - `pnpm exec eslint 'src/app/api/patient-share-cases/[id]/correction-requests/route.ts' 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check` for the correction-request route/workflow files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and schema slices still needs a final response after this correction-request contract update.
+  - Shared pharmacy-cooperation API contract module remains a mid-size dedup candidate.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Shared Pharmacy Cooperation API Contracts
+
+- Coordination:
+  - Continued after correction-request contract validation; no Claude-owned files were edited.
+  - Kept shape sharing conservative: only identical or route-superset response schemas were moved to the shared module.
+- Implemented by Codex:
+  - Added `src/lib/pharmacy-cooperation/api-contracts.ts` as the shared Zod contract module for pharmacy cooperation named entities, partner pharmacy rows, pharmacy partnership rows, pharmacy contract fee/version summaries, and full pharmacy contract rows.
+  - Migrated admin pharmacy-cooperation setup schemas to the shared module.
+  - Migrated workflow pharmacy-cooperation named entity and partner pharmacy summary schemas to the shared module.
+  - Migrated partner cooperation billing active contract response validation to the shared full contract schema while keeping billing-local invoice/candidate schemas local.
+  - Updated billing active-contract fixtures to the real full `/api/pharmacy-contracts` response shape (`partnership.id/status`, nested site/pharmacy ids, and `latest_version.status`).
+  - Added unit coverage for the shared contract module, including malformed partner summary/partnership rejection and route-only extra stripping on full contract rows.
+- Deleted or consolidated:
+  - Removed duplicated `namedEntitySchema`, `partnerPharmacySummarySchema`, and admin-local pharmacy site/partner/partnership/contract row schemas from dashboard files.
+  - Consolidated the contract active fee-rule/version shape used by admin setup and billing contract selection.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/pharmacy-cooperation/api-contracts.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed because the billing fixture used a legacy partial active-contract shape, then passed after updating the fixture to the real full route shape, `4` files / `40` tests.
+  - `pnpm exec eslint src/lib/pharmacy-cooperation/api-contracts.ts src/lib/pharmacy-cooperation/api-contracts.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check` for the shared contract and touched dashboard files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks/schema/correction contract slices remains pending.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Validation Snapshot Before Re-Audit
+
+- Cumulative focused validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/cursor-pagination-client.test.ts src/lib/api/response-schemas.test.ts src/lib/pharmacy-cooperation/api-contracts.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' src/lib/reports/care-report-print-audit-contract.test.ts src/lib/tasks/bulk-completion-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' src/app/api/tasks/bulk/route.test.ts 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `16` files / `138` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Full `pnpm format:check`: failed only on Claude-owned `.agent-loop/BLOCKED.md`, `.agent-loop/LOCKS.md`, `.agent-loop/MESSAGE_PROTOCOL.md`, and `.agent-loop/STARTUP_RUNBOOK.md`; Codex did not edit those files.
+  - `git diff --check`: passed.
+- Re-audit:
+  - Started fresh read-only strict review, test audit, architecture/duplication audit, and dead-code/export audit agents against the current diff.
+
+### Codex Loop 12 Addendum — Re-Audit Findings Integrated
+
+- Coordination:
+  - Integrated the latest strict/test/architecture/dead-code re-audit findings instead of counting a Zero Audit.
+  - Preserved Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, `.harness-mem/state/continuity.json`, and unrelated patient workspace changes.
+- Implemented by Codex:
+  - Corrected admin contract-document GET validation to match the real `{ data: ContractDocumentRow[] }` endpoint instead of requiring cursor `hasMore`.
+  - Changed partner cooperation billing candidates to validate the real cursor page envelope and added success-side-effect coverage for candidate generation.
+  - Added `itemSchema` support to `fetchAllCursorPages()` and used it for tasks, so malformed successful cursor item rows fail closed.
+  - Split bulk-completion UI messages out of the API contract module and added success UI coverage that selected tasks clear and task caches refresh.
+  - Split patient-share correction request domain validation from UI labels, then added shared correction-request row/page schemas used by workflow and route tests.
+  - Made `family_share` a first-class audience report print target with `family` audience typing, title rendering, PDF rendering, and print-audit fail-closed content validation.
+  - Hardened pharmacy partnership activation for the concurrent idempotent race where another request activates the draft after the pre-read but before `updateMany`.
+  - Removed/de-scoped dead public exports from pharmacy-cooperation and task bulk-completion contract modules.
+- Deleted or consolidated:
+  - Deleted the old mixed `correction-request-contract.ts` in favor of `correction-request-domain.ts` and `correction-request-labels.ts`.
+  - Reused shared pharmacy-cooperation contract schemas for admin/workflow/billing projections instead of local duplicates.
+  - Reused the shared correction-request row/page schema across API and workflow tests instead of route/UI-local row definitions.
+- Validation:
+  - Focused cumulative bundle: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run ... --reporter=dot --testTimeout=30000`: passed, `17` files / `123` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm build`: passed; compiled successfully and generated `286` static pages.
+  - `git diff --check`: passed.
+  - `pnpm format:check`: failed only on known Claude-owned `.agent-loop/BLOCKED.md`, `.agent-loop/LOCKS.md`, `.agent-loop/MESSAGE_PROTOCOL.md`, `.agent-loop/PROMOTION_QUEUE.md`, and `.agent-loop/STARTUP_RUNBOOK.md`; Codex-owned formatting was fixed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Run a fresh re-audit set after these fixes; this loop cannot count as Zero Audit because actionable findings were implemented.
+  - Claude review/agmsg acknowledgement for the latest schema/print/tasks slice remains pending.
+  - If the next re-audit finds actionable items, return to the relevant loop; otherwise record Zero Audit 1 and run the second required independent zero audit.
+
+### Codex Loop 13 Addendum — Re-Audit Follow-up Contract/Test Closure
+
+- Coordination:
+  - Resumed from the Loop 12 re-audit follow-up state and preserved Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, `.harness-mem/state/continuity.json`, and unrelated worktree changes.
+  - Fixed only Codex-owned/test-contract drift surfaced by the expanded validation bundle.
+  - Spawned a fresh read-only re-audit set after validation: Architecture Agent, Duplication Agent, Type & Contract Agent, Behavior/Test Agent, Review Agent, and Dead Code Agent.
+- Implemented by Codex:
+  - Moved cursor page payload normalization into the shared API response-schema module and kept `fetchAllCursorPages()` on the shared invariant path.
+  - Added shared cursor normalizer coverage for metadata preservation, invalid item rejection, and `hasMore` without `nextCursor` rejection.
+  - Added direct `family_share` print/PDF coverage so the family audience title/body/warnings render through audited print/PDF paths and internal provenance/raw IDs remain hidden.
+  - Added correction-request ownership tests for nested `claim_note` and `billing_candidate` targets and direct mismatch rejection for `care_case` / `management_plan`.
+  - Added a bulk task stale-update conflict regression for `updateMany.count < eligibleIds.length`.
+  - Consolidated report type to audience mapping through `defaultAudienceForReportType()` instead of local duplicate maps in print audit/PDF paths.
+  - Added a shared `physicianPrintAuditContent()` test fixture for print hub audit responses so print hub tests use the current physician report content contract instead of legacy partial content.
+  - Widened `PatientShareCorrectionRequestRowInput` to accept DB-produced string target/request types while `toPatientShareCorrectionRequestRow()` still fails closed through the shared Zod output schema.
+- Deleted or consolidated:
+  - Removed the duplicate cursor-page payload normalizer from the cursor pagination client.
+  - Removed local report-type/audience mapping duplication from print audit/PDF code paths.
+  - Replaced repeated partial physician-report print hub fixtures with one contract-complete helper.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `11` tests.
+  - Cumulative focused bundle over API schemas, pharmacy cooperation contracts/screens/routes, correction requests, report print/audit/PDF, tasks bulk UI/API, activation, and visit billing candidates: passed, `25` files / `208` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/patient-share/correction-request-domain.test.ts 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `14` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' src/app/api/visit-billing-candidates/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `13` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed after widening the correction-request serializer input type.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm build`: passed; compiled successfully and generated `286` static pages.
+  - `git diff --check`: passed.
+  - `pnpm format:check`: failed only on known Claude-owned `.agent-loop/BLOCKED.md`, `.agent-loop/LOCKS.md`, `.agent-loop/MESSAGE_PROTOCOL.md`, `.agent-loop/PROMOTION_QUEUE.md`, and `.agent-loop/STARTUP_RUNBOOK.md`; Codex-owned formatting was fixed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Wait for the fresh read-only re-audit agents started in this loop.
+  - Send Claude an agmsg update for Loop 13 validation and current audit status.
+  - If the fresh re-audit returns new actionable findings, implement them and reset the zero-audit count.
+  - If the fresh re-audit returns zero actionable, record Zero Audit 1 and run the second independent zero-actionable audit required by the stop gate.
+
+### UX Runtime Pass — Dashboard Then Patients
+
+- Coordination:
+  - Continued the active dashboard-first UX goal after committing the dashboard nav-drawer E2E slice.
+  - Kept Claude-owned `src/app/(dashboard)/admin/alert-rules/*` changes out of Codex-owned validation/commit scope.
+  - Sent locks for the patient E2E and patient edit-save slice; no conflicting agmsg messages were received during repeated drains.
+- Implemented by Codex:
+  - Updated patient E2E selectors to the current patient board contract: searchbox `氏名・状態で検索`, current empty text, role-based edit form fields, and the `住所・保険` tab where phone is actually edited.
+  - Fixed a real patient edit save blocker: legacy persisted `allergy_info` that does not satisfy current `AllergyEntry` schema no longer becomes hidden form default data, so unrelated edits such as phone changes can submit.
+  - Preserved patient data safety by omitting malformed/legacy allergy JSON from the edit payload instead of converting or deleting it. The existing stored JSON remains untouched by unrelated edits.
+  - Added focused unit coverage for schema-valid vs legacy allergy defaults.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts'`: passed, `1` file / `2` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts' tools/tests/ui-patient-flow.spec.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts' tools/tests/ui-patient-flow.spec.ts`: passed.
+  - Patient desktop Playwright flow: `tools/tests/ui-patient-flow.spec.ts --project=chromium`: passed, `15/15`.
+  - Patient mobile Playwright subset: `tools/tests/ui-mobile-layout.spec.ts --project=mobile-chromium -g patients`: passed, `4/4`.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Claude approved the patient edit behavior slice on 2026-06-21.
+  - Commit only Codex-owned patient files and ledgers; do not include Claude-owned alert-rules files or generated `.harness-mem/state/continuity.json`.
+  - Continue next to the next high-frequency UX route after this slice lands.
+
+### S2a Admin DataTable Caller Error Wiring — Users and Jobs
+
+- Coordination:
+  - Selected S2a from the agreed F-011 Stage2 table: Codex owns mechanical DataTable caller wiring for `admin/users` and `admin/jobs`; Claude owns non-DataTable S2c UI placement work.
+  - Drained agmsg, corrected the target recipient to registered agent `claude`, and received ACK/no-conflict for users/jobs plus `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md`.
+  - Preserved Claude-owned dirty `src/app/(dashboard)/admin/alert-rules/*`, `src/app/(dashboard)/admin/realtime/*`, `src/app/(dashboard)/admin/performance/*`, and generated `.harness-mem/state/continuity.json`.
+- Implemented by Codex:
+  - Threaded React Query `isError` and `refetch` into the users and jobs `DataTable` callers via static `errorMessage` strings and retry actions.
+  - Prevented first-load failures from appearing as 0-count summaries: users summary cards and jobs summary/count labels show `—` / `—件` when no usable query data exists.
+  - Added focused jsdom regressions for users and jobs query failures, retry wiring, and false-zero suppression.
+- Validation:
+  - Baseline `pnpm exec vitest run 'src/app/(dashboard)/admin/users/users-content.test.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `9` tests.
+  - Post-change same focused Vitest command: passed, `2` files / `11` tests.
+  - Scoped ESLint for the four users/jobs files: passed before and after the change.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx'`: passed after targeted Prettier write.
+  - `git diff --check -- ...users/jobs four files...`: passed.
+  - First `pnpm typecheck` / `pnpm typecheck:no-unused` attempt: temporarily blocked by peer-owned in-flight `src/app/(dashboard)/admin/performance/page.tsx` syntax errors (`TS2657` at line 359, `TS1005` at line 727). Codex notified Claude and did not edit that path.
+  - Rerun `pnpm typecheck`: passed after Claude's S2c WIP became syntactically complete.
+  - Rerun `pnpm typecheck:no-unused`: passed.
+  - Full `pnpm lint`: passed.
+  - `pnpm build`: passed; compiled successfully and generated `287` static pages.
+- Remaining:
+  - Claude approved S2a on 2026-06-21 after independent focused Vitest users/jobs 11/11 and scoped ESLint clean.
+  - Codex reran focused users/jobs Vitest 11/11, scoped users/jobs ESLint, scoped users/jobs Prettier check, scoped users/jobs `git diff --check`, and `pnpm typecheck`; all passed.
+  - S2a product files landed as `f792d41c fix(admin): surface users jobs table errors`.
+  - Commit this ledger update separately; do not include Claude-owned `.agent-loop/FEATURE_QUEUE.md` or generated `.harness-mem/state/continuity.json`.
+  - Continue next to the coupled reports patient navigation BFF+UI slice after the ledger commit.
+
+### Reports Patient Navigation — Created Reports Table
+
+- Coordination:
+  - Continued after S2a/S2c landed and Claude acknowledged no-conflict for the coupled BFF+UI reports navigation slice.
+  - Preserved generated `.harness-mem/state/continuity.json` and did not touch print eligibility; print eligibility expansion remains blocked without human approval.
+  - Re-read the PH-OS UI/UX SSOT and Next.js server/client component guide before changing the client reports workspace.
+- Implemented by Codex:
+  - Added `patient_id: string | null` to `ReportCreatedRow`.
+  - Returned `patient_id` from `/api/care-reports/today-workspace` `created_reports`, reusing the existing `recentReportsPromise` select.
+  - Linked created-report patient labels to `/patients/${encodeURIComponent(patient_id)}` when a patient is present.
+  - Kept `patient_id: null` reports such as `患者未設定` as plain text instead of linking to an invalid patient route.
+  - Added focused route/UI regressions for `created_reports.patient_id`, normal patient links, encoded path segments, and unassigned reports.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `29` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/types/reports-today-workspace.ts' 'src/app/api/care-reports/today-workspace/route.ts' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --check 'src/types/reports-today-workspace.ts' 'src/app/api/care-reports/today-workspace/route.ts' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+  - `git diff --check -- 'src/types/reports-today-workspace.ts' 'src/app/api/care-reports/today-workspace/route.ts' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Claude approved this reports nav slice on 2026-06-21 after independent focused Vitest 29/29 and scoped ESLint clean.
+  - Commit only owned files and ledger entries.
+  - Continue next to the acknowledged test-only UI audit drift slice if no higher-priority agmsg arrives.
+
+### UI Audit Extensions Test Drift — Current Navigation and Patient Search
+
+- Coordination:
+  - Continued the ACKed, no-conflict test-only slice for `tools/tests/ui-audit-extensions.spec.ts`.
+  - Product UI stayed unchanged; generated `.harness-mem/state/continuity.json` was preserved and left unstaged.
+- Implemented by Codex:
+  - Updated patient-board search assertions from stale `氏名・住所で検索` to the current `氏名・状態で検索` accessible name.
+  - Added an `openNavigationDrawer()` helper matching the current top-bar `ナビを開く` flow.
+  - Updated dashboard nav/dark-mode/keyboard contracts to inspect and click links inside the `ナビゲーション` dialog instead of assuming a persistent visible sidebar.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write tools/tests/ui-audit-extensions.spec.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint tools/tests/ui-audit-extensions.spec.ts`: passed.
+  - `git diff --check -- tools/tests/ui-audit-extensions.spec.ts`: passed.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-audit-extensions.spec.ts`: passed, `21` passed / `21` skipped.
+- Remaining:
+  - Commit only the test file and ledger entries.
+
+### Schedule and Visits E2E Drift — Current High-frequency UX
+
+- Coordination:
+  - Continued the dashboard-first UX/runtime goal after the worktree was made clean with `e168954d`.
+  - Drained agmsg before and during the slice. Claude acknowledged the `F-UX-VISITS-TODAY-FIXTURE` lock for `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/grouped-visit-fixtures.ts`, and ledgers.
+  - Preserved Claude-owned `src/app/(dashboard)/clerk-support/*` work and reviewed/approved its separate S2e patch without staging those files.
+- Implemented by Codex:
+  - Added an E2E helper that reuses the grouped visit fixtures but aligns their `scheduled_date` to the current local date so `/visits` can deterministically render actionable today-board cards.
+  - Converted the formerly weak visits detail test from a table no-op into a real `訪問モードを開始` click-through to `/visits/[id]/record`, then waited for the visit record workspace content.
+  - Updated the visits workspace E2E to prove visible `カードへ`, `ルート詳細`, `セットへ`, and offline guidance when today-board cards exist.
+  - Aligned schedule board locators with current URLs: proposal links now point at `workspace=dashboard`, while the top create/scheduling action remains `workspace=optimizer`.
+  - Tightened the weekly optimizer locator from ambiguous text to the labeled `提案対象ケース` control, avoiding strict-mode collisions with the validation alert.
+- Validation:
+  - Baseline `tools/tests/ui-schedule-visit-report.spec.ts --project=chromium -g "visits workspace exposes card, route, set, and offline guidance"` failed because `/visits` rendered the no-today-visits empty state and no `カードへ` link existed.
+  - Post-fix same focused Playwright test: passed, `1/1`.
+  - `tools/tests/ui-schedule-visit-report.spec.ts --project=chromium -g "visits page"`: passed, `6/6`.
+  - Focused rerun for the two schedule drift tests (`current schedule board exposes...` and `weekly optimizer exposes...`): passed, `2/2`.
+  - Full `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-schedule-visit-report.spec.ts --project=chromium`: passed, `20/20`.
+  - `pnpm exec prettier --check tools/tests/helpers/grouped-visit-fixtures.ts tools/tests/ui-schedule-visit-report.spec.ts`: passed.
+  - `pnpm exec eslint tools/tests/helpers/grouped-visit-fixtures.ts tools/tests/ui-schedule-visit-report.spec.ts`: passed.
+  - `git diff --check -- tools/tests/helpers/grouped-visit-fixtures.ts tools/tests/ui-schedule-visit-report.spec.ts`: passed.
+- Remaining:
+  - Commit only the two Codex-owned E2E files and ledger entries.
+  - Continue the UX sweep after commit with the next high-frequency route that is not under Claude lock.
+
+### Patient Flow E2E Drift — Current Detail/Edit Navigation
+
+- Coordination:
+  - Continued the dashboard-first UX/runtime goal after `02e6c2a8` landed the visits/schedule E2E slice.
+  - Kept Claude-owned prescription-history and admin realtime state-color work out of Codex staging scope.
+  - Reused the ACKed `F-UX-PATIENT-FLOW-E2E-DRIFT` lock for `tools/tests/ui-patient-flow.spec.ts` and ledgers.
+- Implemented by Codex:
+  - Increased the patient board card wait budget through a named timeout because the current board can spend longer in authenticated dev/E2E loading before cards appear.
+  - Stabilized the patient detail edit navigation test by opening the detail route directly after the separate patient-card click test, verifying the `基本情報を編集` href, activating it through keyboard, and waiting on the actual edit route path plus form inputs.
+  - Stabilized the new-patient back-link test by verifying the `患者一覧へ戻る` href, activating it through keyboard, and waiting for `/patients` plus the `patients-board` surface.
+  - Left product links untouched. Manual Playwright smoke confirmed pointer-click navigation for both links works; this change only removes runner drift around click/focus timing in the dev-rendered E2E path.
+- Validation:
+  - Baseline `tools/tests/ui-patient-flow.spec.ts --project=chromium`: failed `13/15`; failures were stale edit-page/skeleton timing and back-link navigation wait drift.
+  - Focused rerun for `patient detail edit saves and reflects changes|back link navigates away without submission`: passed, `2/2`.
+  - Full `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-patient-flow.spec.ts --project=chromium`: passed, `15/15`.
+  - `pnpm exec prettier --check tools/tests/ui-patient-flow.spec.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint tools/tests/ui-patient-flow.spec.ts`: passed.
+- Remaining:
+  - Commit only `tools/tests/ui-patient-flow.spec.ts` plus ledger entries.
+  - Continue the UX sweep after commit with the next non-overlapping high-frequency route.
+
+### Workflow E2E Drift — Prescription Intake URL Contract
+
+- Coordination:
+  - Continued the dashboard-first UX/runtime sweep under `F-UX-WORKFLOW-FLOW-E2E-DRIFT`.
+  - Claude ACKed no-conflict for `tools/tests/ui-workflow-flow.spec.ts` and ledgers while owning separate state-color follow-up paths.
+  - Reviewed and approved Claude-owned S2e SSOT/card-workspace/generic-badge patches without staging those files.
+- Implemented by Codex:
+  - Removed the workflow test's hidden dependency on `/patients` card hydration for the `patient_id` prefill case.
+  - Added an authenticated API helper that reads the first patient via `/api/patients?limit=5&sort=name_kana&order=asc`.
+  - Kept the test's target contract focused on `/prescriptions/new?patient_id=...`: the selected patient detail request returns 200 and the patient search field is prefilled with that patient's name.
+  - Left patient-list rendering coverage in `ui-patient-flow.spec.ts`, where it already passes separately.
+- Validation:
+  - Baseline full `tools/tests/ui-workflow-flow.spec.ts --project=chromium`: failed `10/11`; the prefill test timed out for 240s waiting for `patient-board-card-link` on a white `/patients` screen.
+  - Focused rerun for `prescription intake form pre-fills patient from URL params`: passed, `1/1` in 10.9s.
+  - Full `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-workflow-flow.spec.ts --project=chromium`: passed, `11/11` in 31.3s.
+  - Scoped ESLint for workflow plus Claude-reviewed state-color files: passed.
+  - Scoped Prettier check for workflow plus Claude-reviewed state-color files: passed after formatting `tools/tests/ui-workflow-flow.spec.ts`.
+  - Scoped `git diff --check`: passed.
+- Remaining:
+  - Commit only `tools/tests/ui-workflow-flow.spec.ts` plus ledger entries.
+  - Continue UX sweep with the next non-overlapping route after Claude commits its approved state-color follow-ups.
+
+### Mobile Layout E2E Baseline — Current Dashboard-first UX Sweep
+
+- Coordination:
+  - Continued under the ACKed `F-UX-MOBILE-LAYOUT-E2E-DRIFT` lock for `tools/tests/ui-mobile-layout.spec.ts` and ledgers.
+  - Claude confirmed no conflict while owning independent S2d reports work and loop tooling work.
+  - No product or test file change was needed; the mobile layout suite already matched the current UI after the earlier dashboard/patient/workflow E2E drift fixes.
+- Validation:
+  - Full mobile Chromium run: `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-mobile-layout.spec.ts --project=mobile-chromium`: passed, `42/42` in `9.9m`.
+- Remaining:
+  - Commit this validation-only ledger update without staging Claude-owned `src/app/(dashboard)/reports/report-share-workspace.tsx` or `.agent-loop/loop-cycle.mjs`.
+  - Continue with non-overlapping S2d reviews and the next dashboard-first UX route after the ledger commit.
+
+### Workflow Lightweight Views E2E Baseline — View-specific Dashboard APIs
+
+- Coordination:
+  - Continued under the ACKed `F-UX-WORKFLOW-LIGHTWEIGHT-VIEWS-E2E-DRIFT` lock for `tools/tests/ui-workflow-lightweight-views.spec.ts` and ledgers.
+  - Kept Claude-owned S2d reports files and loop-cycle tooling out of Codex staging scope.
+  - No test or product code change was needed; the current mocked workflow view contracts already pass.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-workflow-lightweight-views.spec.ts --project=chromium`: passed, `3/3` in `2.6m`.
+- Review work handled in parallel:
+  - Returned `REQUEST_CHANGES` on `.agent-loop/loop-cycle.mjs` rev2 because `--agent` was parsed as a gate/test arg, quoted `#` notes did not round-trip through `parseState`, and joint dirty wording could imply editing a peer-locked `.agent-loop` file.
+  - Approved S2d Slice1 reports order-only reorder after focused Vitest `9/9`, scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+- Remaining:
+  - Commit this validation-only ledger update without staging Claude-owned `src/app/(dashboard)/reports/report-share-workspace.tsx`, `src/app/(dashboard)/reports/report-share-workspace.test.tsx`, or `.agent-loop/loop-cycle.mjs`.
+  - Continue with incoming S2d/loop-code reviews or the next non-overlapping dashboard-first UX route.
+
+### Auth Flow E2E Baseline — Login, MFA, and Password Reset
+
+- Coordination:
+  - Continued under the ACKed `F-UX-AUTH-FLOW-E2E-BASELINE` lock for `tools/tests/e2e-auth-flow.spec.ts` and ledgers.
+  - No product or test code change was needed; the current auth smoke coverage already matched the local authenticated E2E environment.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-auth-flow.spec.ts --project=chromium`: passed, `9/9` in `3.9m`.
+- Remaining:
+  - Record this baseline with the Data Explorer slice and continue the dashboard-first UX sweep.
+
+### Admin Data Explorer E2E Bootstrap — Session-resolved Org Loading
+
+- Coordination:
+  - Started from the ACKed `F-UX-DATA-EXPLORER-E2E-DRIFT` E2E lock, then expanded to `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx` and `.test.tsx` after finding a product bootstrap bug.
+  - Claude explicitly handed off `data-explorer-content.tsx(+test)` to Codex for this slice with Claude as reviewer. Codex did not touch Claude-locked `src/components/features/patients/patient-form.tsx` / `.test.tsx`.
+  - Re-read the PH-OS UI/UX SSOT and the Next.js Server/Client Components guide before modifying the client component.
+- Bug found:
+  - The Data Explorer client required `!!orgId` before fetching models/rows and always sent `x-org-id`, so local authenticated E2E could render a blank model list when the Zustand auth store had not hydrated yet. The API route already resolves org from the authenticated session when the header is absent.
+- Implemented by Codex:
+  - Added optional org-scoped headers and allowed the model query to run before `useOrgId()` has a value.
+  - Changed the rows query gate from `!!orgId && !!effectiveSelectedTable` to `!!effectiveSelectedTable`.
+  - Kept PATCH requests org-scoped when an org id exists, while omitting `x-org-id` during bootstrap fallback.
+  - Added jsdom regression coverage proving model/row queries still run with `useOrgId()` returning an empty string.
+  - Tightened the Data Explorer Playwright spec to select the `Organization` model and assert the current row-selection accessibility contract instead of relying only on page text.
+- Validation:
+  - Baseline `tools/tests/ui-data-explorer.spec.ts --project=chromium`: failed `0/1`; the page shell rendered but no `AuditLog`/`Patient` models appeared.
+  - Playwright probe after the fix confirmed `/api/admin/data-explorer/models` returned `200` and the page rendered `AuditLog`, `Patient`, and `Organization` rows.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-data-explorer.spec.ts --project=chromium`: passed, `1/1`.
+  - Scoped ESLint for Data Explorer product/test and Playwright spec: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: initially failed on Claude-owned/peer-locked `src/components/features/patients/patient-form.tsx` and `.test.tsx` Slice3 rev1 WIP (`allowNavigation` and test tuple typing); after Claude rev2, rerun passed with route types generated successfully.
+- Remaining:
+  - Claude approved the patch and Codex landed it as `20feec1d fix(admin): load data explorer before org hydration`.
+
+### Browser Matrix Smoke Drift — Dashboard Ready Marker
+
+- Coordination:
+  - Continued under the ACKed `F-UX-BROWSER-MATRIX-DASHBOARD-DRIFT` lock for `tools/tests/ui-browser-matrix-smoke.spec.ts` and ledgers.
+  - Kept Claude-owned `src/components/features/patients/patient-form.tsx` / `.test.tsx` Slice3 WIP out of Codex staging scope.
+- Bug found:
+  - The browser-matrix smoke spec still waited for stale `dashboard-priority-actions`, which no longer exists in the current dashboard. The current dashboard exposes `data-testid="dashboard-cockpit"`, and the mobile layout spec already uses that as the route ready marker.
+- Implemented by Codex:
+  - Updated only the dashboard route's ready marker in `tools/tests/ui-browser-matrix-smoke.spec.ts` from `dashboard-priority-actions` to `dashboard-cockpit`.
+- Validation:
+  - Baseline `tools/tests/ui-browser-matrix-smoke.spec.ts --project=chromium`: failed `1/6`; `/dashboard` timed out on `dashboard-priority-actions`, while `/patients`, `/reports`, `/handoff`, `/workflow`, and `/billing` passed.
+  - Post-fix `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-browser-matrix-smoke.spec.ts --project=chromium`: passed, `6/6` in `48.0s`.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint tools/tests/ui-browser-matrix-smoke.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-browser-matrix-smoke.spec.ts`: clean.
+  - `git diff --check -- tools/tests/ui-browser-matrix-smoke.spec.ts`: passed.
+- Remaining:
+  - Commit only `tools/tests/ui-browser-matrix-smoke.spec.ts` plus ledger entries, then continue with the next high-frequency UX baseline/fix.
+
+### Page/Detail Layout E2E Baselines — Current Route Scaffold
+
+- Coordination:
+  - Ran under ACKed `F-UX-PAGE-DETAIL-LAYOUT-E2E-BASELINE` ledger lock.
+  - No product or test code changes were needed for page/detail layout; both suites already matched the current UI.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-page-layout.spec.ts --project=chromium`: passed, `13/13` in `1.3m`.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-detail-layout.spec.ts --project=chromium`: passed, `4/4` in `1.9m`.
+
+### Major Screens E2E Drift — Patient Search, Report Print, Reports Navigation
+
+- Coordination:
+  - Ran under ACKed `F-UX-MAJOR-SCREENS-E2E-DRIFT` lock for `tools/tests/ui-major-screens.spec.ts` plus ledgers.
+  - Claude paused PR push/create until this Codex-owned test slice is committed or released, and confirmed not to stage this file.
+- Bugs found:
+  - Patient-list representative-data test waited for a stale `/api/patients?q=...` response and old accessible name `氏名・住所で検索`; the current patient board filters locally through `氏名・状態で検索`.
+  - The report-print smoke fixture seeded the demo report as `response_waiting`, but the current print-audit route correctly fail-closes printing to `confirmed` reports only.
+  - The reports-list navigation test still expected a `詳細を開く` button; the current created-reports table exposes direct links including `→ 詳細へ` and a patient link.
+- Implemented by Codex:
+  - Removed the stale patient API response wait and asserted the visible filtered patient card.
+  - Seeded the UI demo care report as `confirmed` so print-audit can render the report print view.
+  - Scoped reports-list assertions to `report-created-list` and verified the direct report detail link plus patient-card link.
+- Validation:
+  - Baseline `tools/tests/ui-major-screens.spec.ts --project=chromium`: failed `3/44` on patient search response wait, report-print fail-closed screen, and reports-list `詳細を開く` button drift; `41/44` passed.
+  - Focused post-fix rerun for those 3 tests: passed `3/3`.
+  - Full rerun after the fix reached the corrected patient search test successfully and then was environment-interrupted: `schedule-proposals` timed out, after which `localhost:3012` was down and later tests failed with `ERR_CONNECTION_REFUSED`.
+  - After restarting `pnpm dev:e2e:local`, focused route/fix rerun passed `4/4`: `schedule-proposals`, patient search, report-print, and reports-list navigation.
+  - After restarting `pnpm dev:e2e:local`, back-half regression subset passed `14/14`, covering patient prescriptions/share, report/visit detail, shared print chrome, DB-backed share/visit/report/billing flow, free cooperation report, medication profile data, and reports-list navigation.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint tools/tests/ui-major-screens.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-major-screens.spec.ts`: clean.
+  - `git diff --check -- tools/tests/ui-major-screens.spec.ts`: passed.
+- Remaining:
+  - Commit `tools/tests/ui-major-screens.spec.ts` plus this ledger update, notify Claude, then release PR pause.

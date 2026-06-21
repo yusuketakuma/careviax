@@ -13,7 +13,7 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      include: ['src/app/api/**/*.ts', 'src/server/**/*.ts'],
+      include: ['src/app/api/**/*.ts', 'src/server/**/*.ts', 'src/lib/**/*.ts'],
       exclude: ['**/*.test.ts', '**/__tests__/**'],
       thresholds: {
         statements: 80,

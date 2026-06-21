@@ -7,6 +7,8 @@ import { Filter, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -66,11 +68,12 @@ const SOURCE_FILTER_OPTIONS = [
 
 const JOBS_REFETCH_INTERVAL_MS = 60_000;
 
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pending: { label: '待機中', className: 'bg-blue-100 text-blue-800 border-blue-200' },
-  running: { label: '実行中', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-  completed: { label: '完了', className: 'bg-green-100 text-green-800 border-green-200' },
-  failed: { label: '失敗', className: 'bg-red-100 text-red-800 border-red-200' },
+// ジョブ実行状態: 待機中=neutral(キュー待ち) / 実行中=info(現在進行) / 完了=done / 失敗=blocked
+const STATUS_CONFIG: Record<string, { label: string; role: StatusRole | 'neutral' }> = {
+  pending: { label: '待機中', role: 'neutral' },
+  running: { label: '実行中', role: 'info' },
+  completed: { label: '完了', role: 'done' },
+  failed: { label: '失敗', role: 'blocked' },
 };
 
 type BulkExportRunSummary = {
@@ -132,7 +135,7 @@ export function JobsDashboardContent() {
   const [statusFilter, setStatusFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['integration-jobs', orgId],
     queryFn: async () => {
       const res = await fetch('/api/jobs', {
@@ -199,12 +202,17 @@ export function JobsDashboardContent() {
             return <span className="text-xs text-muted-foreground">未実行</span>;
           }
           const cfg = STATUS_CONFIG[status];
-          return cfg ? (
-            <Badge variant="outline" className={`text-xs ${cfg.className}`}>
+          if (!cfg) {
+            return <span className="text-xs text-muted-foreground">{status}</span>;
+          }
+          return cfg.role === 'neutral' ? (
+            <Badge variant="outline" className="text-xs text-muted-foreground">
               {cfg.label}
             </Badge>
           ) : (
-            <span className="text-xs text-muted-foreground">{status}</span>
+            <StateBadge role={cfg.role} className="text-xs">
+              {cfg.label}
+            </StateBadge>
           );
         },
         size: 90,
@@ -257,7 +265,7 @@ export function JobsDashboardContent() {
           if (summary) {
             return (
               <span
-                className="max-w-[220px] truncate text-xs text-amber-700"
+                className="max-w-[220px] truncate text-xs text-state-confirm"
                 title={formatBulkExportSummary(summary)}
               >
                 一部失敗 {summary.failedCount}件
@@ -266,7 +274,7 @@ export function JobsDashboardContent() {
           }
           if (!err) return <span className="text-xs text-muted-foreground">—</span>;
           return (
-            <span className="max-w-[200px] truncate text-xs text-red-600" title={err}>
+            <span className="max-w-[200px] truncate text-xs text-destructive" title={err}>
               {err}
             </span>
           );
@@ -304,20 +312,22 @@ export function JobsDashboardContent() {
     const bulkExportSummary = getJobBulkExportRunSummary(row.original);
     if (!run?.error_log && !bulkExportSummary) return null;
     return (
-      <div className="space-y-3 bg-red-50 px-4 py-3">
+      <div className="space-y-3 bg-destructive/10 px-4 py-3">
         {bulkExportSummary && (
           <div className="space-y-1">
-            <p className="text-xs font-semibold text-amber-800">一括出力の部分失敗</p>
-            <p className="text-xs text-amber-800">{formatBulkExportSummary(bulkExportSummary)}</p>
-            <p className="text-xs text-amber-900">
+            <p className="text-xs font-semibold text-state-confirm">一括出力の部分失敗</p>
+            <p className="text-xs text-state-confirm">
+              {formatBulkExportSummary(bulkExportSummary)}
+            </p>
+            <p className="text-xs text-state-confirm">
               詳細は監査ログと保管元ジョブを確認してください。
             </p>
           </div>
         )}
         {run?.error_log && (
           <div>
-            <p className="mb-1 text-xs font-semibold text-red-700">エラーログ</p>
-            <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-red-800">
+            <p className="mb-1 text-xs font-semibold text-destructive">エラーログ</p>
+            <pre className="overflow-x-auto whitespace-pre-wrap break-all text-xs text-destructive">
               {run.error_log}
             </pre>
           </div>
@@ -331,6 +341,7 @@ export function JobsDashboardContent() {
   const partialWarningCount = (data?.data ?? []).filter((e) =>
     Boolean(getJobBulkExportRunSummary(e)),
   ).length;
+  const jobCountsUnavailable = (isLoading || isError) && !data;
 
   return (
     <div className="space-y-4">
@@ -343,7 +354,9 @@ export function JobsDashboardContent() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold">{data?.data.length ?? '—'}</p>
+            <p className="text-2xl font-semibold">
+              {jobCountsUnavailable ? '—' : (data?.data.length ?? '—')}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -351,8 +364,8 @@ export function JobsDashboardContent() {
             <CardTitle className="text-sm font-medium text-muted-foreground">実行中</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold text-yellow-600">
-              {isLoading ? '—' : runningCount}
+            <p className="text-2xl font-semibold text-tag-info">
+              {jobCountsUnavailable ? '—' : runningCount}
             </p>
           </CardContent>
         </Card>
@@ -361,8 +374,8 @@ export function JobsDashboardContent() {
             <CardTitle className="text-sm font-medium text-muted-foreground">失敗</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className={`text-2xl font-semibold ${failedCount > 0 ? 'text-red-600' : ''}`}>
-              {isLoading ? '—' : failedCount}
+            <p className={`text-2xl font-semibold ${failedCount > 0 ? 'text-destructive' : ''}`}>
+              {jobCountsUnavailable ? '—' : failedCount}
             </p>
           </CardContent>
         </Card>
@@ -372,9 +385,9 @@ export function JobsDashboardContent() {
           </CardHeader>
           <CardContent>
             <p
-              className={`text-2xl font-semibold ${partialWarningCount > 0 ? 'text-amber-700' : ''}`}
+              className={`text-2xl font-semibold ${partialWarningCount > 0 ? 'text-state-confirm' : ''}`}
             >
-              {isLoading ? '—' : partialWarningCount}
+              {jobCountsUnavailable ? '—' : partialWarningCount}
             </p>
           </CardContent>
         </Card>
@@ -425,13 +438,17 @@ export function JobsDashboardContent() {
       </Card>
 
       {/* Count */}
-      <p className="text-sm text-muted-foreground">{filteredJobs.length}件</p>
+      <p className="text-sm text-muted-foreground">
+        {jobCountsUnavailable ? '—件' : `${filteredJobs.length}件`}
+      </p>
 
       {/* Table */}
       <DataTable
         columns={columns}
         data={filteredJobs}
         isLoading={isLoading}
+        errorMessage={isError ? 'ジョブ一覧を取得できませんでした' : undefined}
+        onRetry={() => void refetch()}
         caption="IntegrationJob 一覧"
         renderExpandedRow={renderExpandedRow}
         getRowId={(row) => row.job_type}

@@ -30,6 +30,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
@@ -81,11 +82,12 @@ type Task = {
   related_entity_id: string | null;
 };
 
+// QueuePriority 写像(PRIORITY_ROLE 準拠): urgent(緊急+至急統合)=blocked, high=confirm, normal=info, low=readonly。
 const PRIORITY_STYLES: Record<string, string> = {
-  urgent: 'bg-red-100 text-red-800',
-  high: 'bg-orange-100 text-orange-800',
-  normal: 'bg-blue-100 text-blue-800',
-  low: 'bg-gray-100 text-gray-600',
+  urgent: 'bg-state-blocked/10 text-state-blocked',
+  high: 'bg-state-confirm/10 text-state-confirm',
+  normal: 'bg-tag-info/10 text-tag-info',
+  low: 'bg-state-readonly/10 text-state-readonly',
 };
 
 function toQueuePriority(priority: string): QueuePriority {
@@ -335,17 +337,17 @@ export function MyDayContent({
     <div className="w-full space-y-4 p-3 sm:p-4 lg:p-6" data-testid="my-day-content">
       {contextSummary ? (
         <Alert
-          className="border-sky-200 bg-sky-50 text-sky-900"
+          className="border-tag-info/30 bg-tag-info/10 text-tag-info"
           data-testid="my-day-context-banner"
         >
-          <AlertCircle className="size-4 text-sky-700" aria-hidden="true" />
-          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+          <AlertCircle className="size-4 text-tag-info" aria-hidden="true" />
+          <AlertDescription className="text-tag-info">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
       {isUserPending ? (
-        <Alert className="border-amber-200 bg-amber-50 text-amber-900">
-          <AlertCircle className="size-4 text-amber-700" aria-hidden="true" />
-          <AlertDescription className="text-amber-800">
+        <Alert className="border-state-confirm/30 bg-state-confirm/10 text-state-confirm">
+          <AlertCircle className="size-4 text-state-confirm" aria-hidden="true" />
+          <AlertDescription className="text-state-confirm">
             担当者情報を確認中です。担当者が確定するまで、自分の訪問・タスクだけを取得します。
           </AlertDescription>
         </Alert>
@@ -395,9 +397,9 @@ export function MyDayContent({
                 label="ワークフローを確認"
               />
             ) : urgentActions.length > 0 ? (
-              <Card className="border-red-200 bg-red-50/50">
+              <Card className="border-state-blocked/30 bg-state-blocked/5">
                 <CardHeader className="pb-2">
-                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-red-700">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-state-blocked">
                     <TriangleAlert className="size-4" aria-hidden="true" />
                     緊急・高優先アクション
                   </h3>
@@ -407,7 +409,7 @@ export function MyDayContent({
                     <Link
                       key={item.id}
                       href={item.action_href}
-                      className="flex min-h-[44px] items-center justify-between rounded-md border border-red-200 bg-white p-2.5 transition-colors hover:bg-red-50"
+                      className="flex min-h-[44px] items-center justify-between rounded-md border border-state-blocked/30 bg-card p-2.5 transition-colors hover:bg-state-blocked/5"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium">{item.title}</p>
@@ -531,12 +533,9 @@ export function MyDayContent({
                             {SCHEDULE_STATUS_LABELS[visit.schedule_status] ?? visit.schedule_status}
                           </Badge>
                           {!visit.preparation?.prepared_at && (
-                            <Badge
-                              variant="outline"
-                              className="border-orange-300 text-[10px] text-orange-600"
-                            >
+                            <StateBadge role="confirm" showIcon={false} className="text-[10px]">
                               準備未
-                            </Badge>
+                            </StateBadge>
                           )}
                         </div>
                       </Link>

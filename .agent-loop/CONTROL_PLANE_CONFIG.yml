@@ -1,0 +1,239 @@
+# Agent Loop Control Plane Configuration
+#
+# This file is advisory/descriptive in the current MVP. It is NOT a runtime
+# enforcement engine. Supervisors apply these rules manually through agmsg,
+# explicit LOCKs, peer review, objective gates, and explicit-path staging.
+# Runtime enforcement is a future phase and must not be claimed as wired until a
+# validator/controller exists and is verified.
+
+version: 0.1
+status: advisory_mvp
+run_id: RUN-20260620-001
+updated_at: 2026-06-21
+
+control_plane:
+  can_merge: false
+  default_max_iterations: 4
+  default_max_runtime_minutes: 90
+  default_max_cost_usd: null # no automated cost meter in this MVP
+  require_plan_before_edit: true
+  require_lock_before_edit: true
+  require_peer_review_before_done: true
+  enforcement:
+    mode: manual_supervisor
+    runtime_controller: not_implemented
+    note: 'Rules here are applied by claude-lead/codex-lead, not by an automated daemon.'
+  idle_auto_discovery:
+    enabled: true
+    trigger: no_actionable_review_plan_verify_lock_or_user_priority_task
+    default_action: select_and_execute_bounded_non_conflicting_work
+    note: 'Automatic means every supervisor cycle must run this selection contract before waiting; it is still manually enforced by the active supervisor, not a daemon.'
+    selection_order:
+      - drain_agmsg_and_handle_priority_messages
+      - check_peer_locks_and_dirty_worktree
+      - review_pending_peer_requests
+      - recall_gbrain_for_failure_duplicate_gate_context
+      - inspect_feature_queue_state_and_recent_ledgers
+      - choose_highest_value_safe_candidate
+    execution_contract:
+      require_explicit_lock_before_writes: true
+      require_peer_review_before_done: true
+      require_validation_before_completion: true
+      yield_on_inbound_priority_message: true
+      record_decision_in_state: true
+      stage_only_owned_paths: true
+    allowed_work:
+      - read_only_peer_review_grounding
+      - queued_task_recon_and_scope_notes
+      - approved_handoff_subtask
+      - targeted_test_or_validation_hygiene
+      - loop_policy_prompt_or_gbrain_cleanup
+      - coherent_commit_of_already_reviewed_owned_slice
+    denied_work:
+      - broad_rewrite
+      - unapproved_product_feature
+      - cross_lane_edit_without_handoff
+      - auth_billing_security_migration_or_production_work
+      - speculative_gbrain_write
+      - external_send_deploy_or_destructive_action
+
+task_manifest:
+  storage: .agent-loop/FEATURE_QUEUE.md
+  legacy_compatible: true
+  missing_control_plane_fields: inherit_defaults
+  required_fields:
+    - task_id
+    - status
+    - owner
+    - reviewer
+    - feature_name
+    - acceptance_criteria
+  recommended_fields:
+    - type
+    - risk_level
+    - scope.allowed_paths
+    - scope.denied_paths
+    - scope.max_diff_lines
+    - loop_policy.primary_loop
+    - loop_policy.max_iterations
+    - loop_policy.max_runtime_minutes
+    - loop_policy.concurrency_key
+    - success_gates.required
+    - approval.human_required_if
+
+loops:
+  coding:
+    primary_owner_default: claude-lead
+    reviewer_default: codex-lead
+    allowed_paths:
+      - src/**
+      - tests/**
+      - docs/**
+      - .agent-loop/**
+    denied_paths:
+      - evals/golden/**
+      - control-plane/**
+      - .github/workflows/**
+    proposal_only: false
+  improvement:
+    primary_owner_default: codex-lead
+    reviewer_default: claude-lead
+    allowed_paths:
+      - .agent-loop/**
+      - docs/agent-playbooks/**
+      - evals/candidates/**
+    denied_paths:
+      - evals/golden/**
+      - production/**
+      - .github/workflows/**
+    proposal_only: true
+
+default_denied_paths:
+  - .env
+  - .env.*
+  - '**/*secret*'
+  - '**/*token*'
+  - evals/golden/**
+  - production/**
+  - .github/workflows/**
+
+approval_gate:
+  human_required_if:
+    - touches_auth
+    - touches_payment
+    - touches_billing
+    - touches_security_policy
+    - adds_dependency
+    - removes_dependency
+    - changes_database_schema
+    - destructive_migration
+    - modifies_workflow
+    - modifies_eval_threshold
+    - modifies_golden_eval
+    - escalates_permissions
+    - changes_auto_merge_policy
+    - production_deploy
+  record_in: .agent-loop/BLOCKED.md
+  mode: manual_supervisor
+
+stop_conditions:
+  iteration_exceeded:
+    condition: iterations >= loop_policy.max_iterations
+    action: stop_and_summarize
+  runtime_exceeded:
+    condition: runtime_minutes > loop_policy.max_runtime_minutes
+    action: stop
+  budget_exceeded:
+    condition: cost_usd > loop_policy.max_cost_usd
+    action: stop
+    status: not_automated
+  scope_violation:
+    condition: modifies_denied_path
+    action: stop_and_escalate
+  secret_or_phi_detected:
+    condition: trace_or_diff_contains_secret_or_phi
+    action: redact_and_escalate
+  repeated_same_failure:
+    condition: same_failure_type_count >= 3
+    action: create_loop_improvement_task
+  large_diff:
+    condition: diff_lines > scope.max_diff_lines
+    action: require_human_review
+  high_risk_surface:
+    condition: touches_auth_billing_security_migration_or_prod
+    action: require_human_review
+  tool_error_runaway:
+    condition: tool_error_count >= 3
+    action: pause_loop_and_notify
+
+eval_gates:
+  product:
+    required:
+      - typecheck
+      - typecheck_no_unused
+      - lint
+      - format_check
+      - targeted_unit_tests
+      - no_scope_violation
+      - diff_review
+    conditional:
+      - full_unit_tests
+      - build
+      - e2e
+      - e2e_audit
+      - dependency_audit
+      - migration_dry_run
+      - security_scan
+  loop:
+    metrics:
+      - task_success_rate
+      - mean_iterations_to_green
+      - cost_per_accepted_slice
+      - human_intervention_rate
+      - scope_violation_rate
+      - rollback_rate
+      - repeated_failure_rate
+      - review_gate_miss_count
+
+eval_pollution_guard:
+  golden_eval: read_only
+  candidate_eval_path: evals/candidates/**
+  threshold_decrease: human_approval_required
+  same_task_set_required_for_promotion: true
+
+ledgers:
+  run_state: .agent-loop/STATE.md
+  task_manifest: .agent-loop/FEATURE_QUEUE.md
+  lock_ledger: .agent-loop/LOCKS.md
+  plan_patch_reviews: .agent-loop/REVIEW_LOG.md
+  objective_gates: .agent-loop/VERIFY_LOG.md
+  changes_requested: .agent-loop/PATCH_INBOX.md
+  blocked: .agent-loop/BLOCKED.md
+  metrics: .agent-loop/METRICS.md
+  promotions: .agent-loop/PROMOTION_QUEUE.md
+
+promotion:
+  states:
+    - candidate
+    - shadow
+    - canary
+    - default
+    - locked
+    - rejected
+    - rolled_back
+  required:
+    - baseline_non_degradation
+    - product_eval_success_not_lower
+    - scope_violation_rate_not_worse
+    - cost_per_task_not_more_than_20_percent_worse
+    - failures_not_hidden
+    - rollback_locked_version_exists
+    - peer_agreement
+    - human_approval_for_permission_or_policy_expansion
+
+gbrain_writeback:
+  canonical_new_slug_layout: projects/careviax/<type-dir>/<yyyy-mm-dd>/<id>
+  date_timezone: Asia/Tokyo
+  old_slugs: stable_do_not_bulk_migrate
+  type_listing: frontmatter_type
+  note: 'gbrain list --type uses frontmatter type, so date partitioning does not break typed queries.'

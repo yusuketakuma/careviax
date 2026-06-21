@@ -2,12 +2,17 @@
  * 調剤ワークベンチスタイル（設計プロト 調剤ワークベンチ.dc.html のインライン CSS を
  * CSS Module 定数として隔離）。globals.css / Tailwind テーマには手を入れない。
  *
- * 寸法・配色は業務画面の視認性を維持する：
+ * F-011 Stage1（配色揃え）: レセコン風の独自 hex（灰背景 #e8ebee・青グラデヘッダ等）を
+ * 標準パレットの CSS 変数（globals.css の oklch トークン）参照へ置換し、他画面との色調差を解消する。
+ * 操作体系（F1-F12・phase 遷移・レイアウト寸法）は不変＝寸法/構造はそのまま、color/background/border の
+ * 値のみトークン化する。base chrome は var(--background/--card/--muted/--secondary/--accent/--border/--primary)、
+ * hold モーダル（保留=注意）は var(--state-confirm)、compare モーダル（情報）は var(--primary) を用いる。
+ *
+ * 寸法は業務画面の視認性を維持する：
  *  - フォント: Meiryo → Hiragino → Yu Gothic → MS PGothic → sans-serif
  *  - ペインヘッダ 24px / グリッド帯 30/23px
  *  - 左ペイン 212px / 右ペイン 300px / 本体 min-width 1540px
- *  - スクロールバー 13px / 青グラデ #2c558a→#193454, #3a5e8c→#27466c
- *  - 主要パレット #1f4e79（accent）等
+ *  - スクロールバー 13px
  */
 
 /* ===== ルート（デスクトップ専用）===== */
@@ -18,10 +23,176 @@
   flex-direction: column;
   overflow: hidden;
   font-family: Meiryo, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'MS PGothic', sans-serif;
-  background: #e8ebee;
-  color: #1c2530;
+  background: var(--muted);
+  color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   position: relative;
+
+  /*
+   * filled surface（塗りつぶしヘッダ/バー/モーダルヘッダ）の bg/fg ペア（ローカル）。
+   * bg はテーマトークン（light/dark 自動追従）。fg は light=白(--primary-foreground)で十分だが、
+   * dark テーマでは --primary/--state-confirm が明色化し白文字だと WCAG AA を割るため、
+   * 下の :global(.dark) で fg を暗色(--background)へ切替えてコントラストを確保する。
+   * （light: primary/白≈9.45:1, confirm/白≈5.48:1 / dark: primary/暗≈5.55:1, confirm/暗≈10.56:1）
+   */
+  --wb-primary-bg: var(--primary);
+  --wb-primary-fg: var(--primary-foreground);
+  --wb-confirm-bg: var(--state-confirm);
+  --wb-confirm-fg: var(--primary-foreground);
+
+  /*
+   * status bar（暗 primary 塗り）上の強調アクセント（mode=情報青 / online=稼働緑）。
+   * 隣接ラベル（モード/接続）が非色 affordance を担うため装飾的。暗 chrome 上の明アクセントとして
+   * 現値を固定（theme 安定）。
+   */
+  --wb-status-info: #9fd3ff;
+  --wb-status-online: #8fe39a;
+
+  /*
+   * F-011 Stage1b（A-prime）: view が返す全色は workbench ローカルの theme 安定トークンで供給する。
+   * 外殻 chrome（pane header/status bar/modal header）は Stage1a の adaptive --wb-primary/confirm を維持。
+   * データ面（行/セル/state/text/line）は light-first で安定させ、light/dark 双方で AA を保証する
+   * （globals --state-* の dark light-ink flip を高密度業務面に持ち込まない）。定義群:
+   *  - phase accent（工程識別テーマ色。state ではない。dispense/audit/setp/seta を区別。
+   *    dot/progress=明、strong=白ラベル AA の暗塗り、border=枠。hue は識別を維持）。
+   *  - category（剤形・属性タグ・アバター/チップ装飾。固有意味色。state へ畳まない）。
+   *  - state solid（fill 兼 ink、theme 安定 dark）/ state-tint（淡背景・枠、固定 light）。
+   *  - data-plane surface/text/line（行・セル・地・文字・罫線、theme 安定 light）。
+   */
+  /* dot/progress=明（小指標・非文字 3:1）、strong=primary ボタン塗り（白ラベル AA 4.5:1 に足る暗さ・
+     theme 安定）、border=枠。hue は工程識別を維持。 */
+  --wb-phase-disp: #2f80ed;
+  --wb-phase-disp-strong: oklch(0.45 0.15 252);
+  --wb-phase-disp-border: #245aad;
+  --wb-phase-audit: #27ae60;
+  --wb-phase-audit-strong: oklch(0.45 0.12 152);
+  --wb-phase-audit-border: #218040;
+  --wb-phase-setp: #b07cd6;
+  --wb-phase-setp-strong: oklch(0.46 0.15 300);
+  --wb-phase-setp-border: #7c43ab;
+  --wb-phase-seta: #d6905a;
+  --wb-phase-seta-strong: oklch(0.47 0.1 55);
+  --wb-phase-seta-border: #a9632c;
+
+  /* category tag（色 / 淡背景 / 枠）。state でない固有意味色。 */
+  --wb-tag-tonyo: #7b4ba0;
+  --wb-tag-tonyo-bg: #f3ecf8;
+  --wb-tag-tonyo-border: #ddc8ec;
+  --wb-tag-ptp: #1d6fb8;
+  --wb-tag-ptp-bg: #e6f0fb;
+  --wb-tag-ptp-border: #bcd8f3;
+  --wb-tag-gaiyo: #b75a28;
+  --wb-tag-gaiyo-bg: #fdeee6;
+  --wb-tag-gaiyo-border: #f3cbb3;
+  --wb-tag-reisho: #2a7d8f;
+  --wb-tag-reisho-bg: #e4f3f5;
+  --wb-tag-reisho-border: #bce0e5;
+  --wb-tag-shoni: #a04a6a;
+  --wb-tag-shoni-bg: #fbe9f0;
+  --wb-tag-shoni-border: #eec4d4;
+  /* 前回処方比較（category）。頓用/頓服とは別意味なので --wb-tag-tonyo とは分離する。 */
+  --wb-compare: #7c43ab;
+  --wb-compare-bg: #f3ecf8;
+  --wb-compare-border: #ddc8ec;
+  /* 訪問持出パケット 完成判定コンテナ（setp 系 workflow セクション。頓服 category ではない）。 */
+  --wb-packet-bg: #f3f0f8;
+  --wb-packet-border: #e2dcea;
+  /* カレンダー外薬リスク（外用/冷所/注射/液剤/別容器も含む総称）。頓用/頓服(--wb-tag-tonyo)に
+     畳むと PRN と誤読されるため専用 token。白地に載るテキスト色＝白地 AA に足る暗 slate-blue。 */
+  --wb-outside-med: oklch(0.45 0.06 265);
+
+  /*
+   * state solid（A-prime）: workflow state の塗り(fill, 白文字を載せる)兼 文字(ink, 淡 tint/明面上)。
+   * **theme 安定**（light/dark 不変）。workbench は light-first 高密度面のため、globals --state-* の
+   * dark light-ink flip を継承せず、ここで固定 dark 値に pin する。hue は 6 軸 SSOT を踏襲しつつ、
+   * 白文字 AA(4.5:1, 9-13px) と 淡 tint 上 ink AA を両立する暗さに設定。
+   */
+  --wb-state-done: oklch(0.45 0.13 150);
+  --wb-state-blocked: oklch(0.47 0.19 25);
+  --wb-state-confirm: oklch(0.45 0.09 75);
+  --wb-state-readonly: oklch(0.46 0.015 255);
+  --wb-info: oklch(0.45 0.13 245);
+  --wb-hazard: oklch(0.45 0.09 75);
+
+  /* state-tint（6 軸 state の淡背景/枠。固定 light パステル・theme 安定）。 */
+  --wb-done-bg: #eef8f0;
+  --wb-done-border: #9ed6ad;
+  --wb-blocked-bg: #fdeeec;
+  --wb-blocked-border: #e7a59e;
+  --wb-blocked-border-soft: #f0c4bd;
+  --wb-blocked-border-warm: #f3cbb3;
+  --wb-confirm-bg-soft: #fff6e6;
+  --wb-confirm-bg-warm: #fef4e2;
+  --wb-confirm-bg-pale: #fff8e8;
+  --wb-confirm-border: #e8c884;
+  --wb-confirm-border-warm: #f0dca6;
+  --wb-disp-tint-bg: #eef4fd;
+  --wb-dispnew-bg: #f1f9f2;
+  --wb-dispchg-bg: #fdf7ea;
+
+  /*
+   * data-plane surface / text / line（行・セル・地・文字・罫線）。**theme 安定 light**。
+   * consumer 側の固定濃色テキスト（1b-2 で token 化予定）と固定 ink がこの面に載るため、
+   * 外殻 chrome（Stage1a の adaptive --wb-primary/confirm）とは別に、データ面は light で安定させて
+   * light/dark 双方で AA を保証する（高密度業務面を一般画面の adaptive レイヤから分離）。
+   */
+  --wb-surface: #ffffff;
+  --wb-surface-alt: #f6f8fa;
+  --wb-surface-muted: #eef1f4;
+  --wb-surface-selected: #dde9f8;
+  --wb-accent: #1f4e79;
+  --wb-ink: #16345a;
+  --wb-ink-muted: #5a6878;
+  --wb-line: #d2dae3;
+
+  /* 患者アバター回転パレット（装飾・category）。 */
+  --wb-avatar-1: #3a6ea5;
+  --wb-avatar-2: #5a8f4a;
+  --wb-avatar-3: #b06a2a;
+  --wb-avatar-4: #7b4ba0;
+  --wb-avatar-5: #2a7d8f;
+  --wb-avatar-6: #a04a6a;
+  --wb-avatar-7: #4a6aa0;
+  --wb-avatar-8: #8a6a2a;
+
+  /*
+   * 剤形 fill（drug-form category。logic.ts formOf の bg。白ラベルを載せる固有意味色）。
+   * theme 安定 light、白ラベル AA(4.5:1) を満たす暗さに pin（現 hex 相当を維持）。
+   */
+  --wb-form-tonyo: #9a6a18;
+  --wb-form-gaiyo: #b75a28;
+  --wb-form-capsule: #7b4ba0;
+  --wb-form-powder: #2c7a3d;
+  --wb-form-liquid: #2a7d8f;
+  --wb-form-tablet: #1f4e79;
+  --wb-form-other: #6b7280;
+
+  /* 属性チップ回転パレット（装飾・category: bg/border/fg）。 */
+  --wb-chip-1-bg: #e8f0fb;
+  --wb-chip-1-border: #b9d0ee;
+  --wb-chip-1-fg: #1f4e79;
+  --wb-chip-2-bg: #eaf6ec;
+  --wb-chip-2-border: #bfe0c4;
+  --wb-chip-2-fg: #2c7a3d;
+  --wb-chip-3-bg: #fdeee6;
+  --wb-chip-3-border: #f3cbb3;
+  --wb-chip-3-fg: #b75a28;
+  --wb-chip-4-bg: #f3ecf8;
+  --wb-chip-4-border: #ddc8ec;
+  --wb-chip-4-fg: #7b4ba0;
+  --wb-chip-5-bg: #fef4e2;
+  --wb-chip-5-border: #f0dca6;
+  --wb-chip-5-fg: #9a6a18;
+}
+
+/* dark/system テーマ: filled surface の文字を暗色へ切替（明色化した bg 上で AA を満たす）。 */
+:global(.dark) .root {
+  --wb-primary-fg: var(--background);
+  --wb-confirm-fg: var(--background);
+  /* status bar は dark で --wb-primary-bg が明色化するため、明アクセント(#9fd3ff/#8fe39a)だと
+     AA を割る。暗色(--background)へ切替えてコントラストを確保（隣接ラベルが意味を担う）。 */
+  --wb-status-info: var(--background);
+  --wb-status-online: var(--background);
 }
 
 /* AppShell 配下にマウントする場合のヘッダ控除高（計画 §3・単一変更点） */
@@ -35,15 +206,15 @@
   height: 13px;
 }
 .root ::-webkit-scrollbar-track {
-  background: #e7eaee;
+  background: var(--muted);
 }
 .root ::-webkit-scrollbar-thumb {
-  background: #b3bcc6;
-  border: 3px solid #e7eaee;
+  background: var(--border);
+  border: 3px solid var(--muted);
   border-radius: 7px;
 }
 .root ::-webkit-scrollbar-thumb:hover {
-  background: #94a0ad;
+  background: var(--muted-foreground);
 }
 
 .root select,
@@ -68,26 +239,26 @@
   flex: none;
   display: flex;
   align-items: stretch;
-  background: #d4e3f4;
-  border-bottom: 2px solid #9fb8d6;
+  background: var(--secondary);
+  border-bottom: 2px solid var(--border);
 }
 .ribbonCell {
   padding: 5px 14px;
-  border-right: 1px solid #b6cbe5;
+  border-right: 1px solid var(--border);
 }
 .ribbonLabel {
   font-size: 10.5px;
-  color: #3f5878;
+  color: var(--muted-foreground);
 }
 .ribbonValue {
   font-size: 13px;
   font-weight: 700;
-  color: #1a3656;
+  color: var(--foreground);
 }
 .ribbonName {
   font-size: 21px;
   font-weight: 700;
-  color: #10294a;
+  color: var(--foreground);
   line-height: 1.15;
   letter-spacing: 0.5px;
 }
@@ -105,11 +276,11 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  background: #f5f6f8;
-  border-right: 1px solid #c6ccd4;
+  background: var(--muted);
+  border-right: 1px solid var(--border);
 }
 
-/* ペインヘッダ（24px・青グラデ） */
+/* ペインヘッダ（24px・標準 primary のフラット塗り） */
 .paneHeader {
   flex: none;
   height: 24px;
@@ -117,8 +288,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 9px;
-  background: linear-gradient(180deg, #3a5e8c, #27466c);
-  color: #fff;
+  background: var(--wb-primary-bg);
+  color: var(--wb-primary-fg);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -134,7 +305,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 9px;
-  border-bottom: 1px solid #e3e6ea;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
 .patientAvatar {
@@ -142,7 +313,7 @@
   width: 24px;
   height: 24px;
   border-radius: 4px;
-  color: #fff;
+  color: var(--primary-foreground);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -156,20 +327,20 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--card);
 }
 
 /* 工程タブ */
 .phaseTabBar {
   flex: none;
-  background: #eef1f5;
-  border-bottom: 1px solid #c6ccd4;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
 }
 .phaseTab {
   padding: 6px 18px 7px 18px;
   font-size: 12.5px;
   font-weight: 700;
-  border: 1px solid #c2cad4;
+  border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 5px 5px 0 0;
   cursor: pointer;
@@ -184,27 +355,27 @@
   flex: none;
   display: flex;
   align-items: stretch;
-  background: linear-gradient(180deg, #e2eaf3, #d2deec);
-  border-bottom: 1.5px solid #9fb3cc;
+  background: var(--secondary);
+  border-bottom: 1.5px solid var(--border);
   font-size: 11px;
   font-weight: 700;
-  color: #1c3d63;
+  color: var(--foreground);
 }
 .gridSection {
   display: flex;
   align-items: center;
   gap: 9px;
   padding: 5px 10px;
-  background: linear-gradient(180deg, #cedbea, #bfd0e3);
-  border-top: 1px solid #a9bdd6;
-  border-bottom: 1px solid #a9bdd6;
+  background: var(--accent);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
 /* 薬剤行（帯高さ 30px・zebra は inline bg で制御） */
 .gridDrugRow {
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid #e0e4e9;
+  border-bottom: 1px solid var(--border);
   font-size: 12.5px;
   min-height: 30px;
 }
@@ -212,12 +383,12 @@
 .gridTotalRow {
   display: flex;
   align-items: stretch;
-  border-bottom: 2px solid #b6c5d8;
-  border-top: 1px solid #b6c5d8;
-  background: #eef2f7;
+  border-bottom: 2px solid var(--border);
+  border-top: 1px solid var(--border);
+  background: var(--muted);
   font-size: 12px;
   font-weight: 700;
-  color: #1c3d63;
+  color: var(--foreground);
   min-height: 28px;
 }
 
@@ -227,19 +398,19 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  background: #f5f6f8;
-  border-left: 1px solid #c6ccd4;
+  background: var(--muted);
+  border-left: 1px solid var(--border);
 }
 
-/* ===== ステータスバー（23px・青グラデ）===== */
+/* ===== ステータスバー（23px・標準 primary のフラット塗り）===== */
 .statusBar {
   flex: none;
   height: 23px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(180deg, #2c4a6e, #1e3450);
-  color: #cfdcec;
+  background: var(--wb-primary-bg);
+  color: var(--wb-primary-fg);
   font-size: 11px;
   padding: 0 10px;
 }
@@ -248,21 +419,22 @@
 .modalOverlay {
   position: absolute;
   inset: 0;
-  background: rgba(20, 32, 50, 0.42);
+  background: color-mix(in oklch, var(--foreground) 42%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
 }
 .modalCard {
-  background: #fff;
+  background: var(--card);
   border-radius: 9px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
   overflow: hidden;
 }
+/* 保留（=注意・確認が必要）は 6 軸の state-confirm（琥珀）。fg は light/dark 両対応の local token。 */
 .modalHeaderHold {
-  background: linear-gradient(180deg, #e0972b, #c97f18);
-  color: #fff;
+  background: var(--wb-confirm-bg);
+  color: var(--wb-confirm-fg);
   font-size: 13px;
   font-weight: 700;
   padding: 9px 14px;
@@ -270,9 +442,10 @@
   align-items: center;
   justify-content: space-between;
 }
+/* 比較（=情報提示）は標準 primary。fg は light/dark 両対応の local token。 */
 .modalHeaderCompare {
-  background: linear-gradient(180deg, #5a78a8, #3f5e8c);
-  color: #fff;
+  background: var(--wb-primary-bg);
+  color: var(--wb-primary-fg);
   font-size: 13px;
   font-weight: 700;
   padding: 9px 14px;

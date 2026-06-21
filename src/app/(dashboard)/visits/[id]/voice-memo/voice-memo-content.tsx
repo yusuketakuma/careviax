@@ -451,10 +451,10 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
         {/* 録音不可環境の案内(マイク権限なし/非対応) */}
         {recordingUnavailable ? (
           <div
-            className="mt-6 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3"
+            className="mt-6 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3"
             data-testid="voice-memo-unavailable-note"
           >
-            <p className="text-sm font-bold leading-6 text-amber-700">録音できない環境です</p>
+            <p className="text-sm font-bold leading-6 text-state-confirm">録音できない環境です</p>
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
               マイクの使用が許可されていないか、この端末では録音に対応していません。上の波形は表示確認用のデモです。
             </p>
@@ -506,7 +506,7 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
             <div className="mt-5">
               <Button
                 type="button"
-                className="min-h-11 min-w-56 bg-emerald-600 text-[15px] font-bold text-white hover:bg-emerald-700"
+                className="min-h-11 min-w-56 text-[15px] font-bold"
                 disabled={appendMutation.isPending || !orgId}
                 onClick={() => appendMutation.mutate()}
                 data-testid="voice-memo-append-button"

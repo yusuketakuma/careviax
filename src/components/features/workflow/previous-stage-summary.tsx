@@ -29,7 +29,7 @@ export function PreviousStageSummary({ cycleId }: PreviousStageSummaryProps) {
   const latest = logs[logs.length - 1]!;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
       <span>
         <span className="font-medium text-foreground">
           {WORKFLOW_STATUS_LABELS[latest.from_status] ?? latest.from_status}
@@ -40,7 +40,9 @@ export function PreviousStageSummary({ cycleId }: PreviousStageSummaryProps) {
         </span>
       </span>
       <span>{latest.actor_name}</span>
-      <span>{formatDistanceToNow(parseISO(latest.created_at), { locale: ja, addSuffix: true })}</span>
+      <span>
+        {formatDistanceToNow(parseISO(latest.created_at), { locale: ja, addSuffix: true })}
+      </span>
     </div>
   );
 }

@@ -221,11 +221,11 @@ describe('Sidebar', () => {
 
     const auditingBadge = screen.getByTestId('sidebar-nav-badge--audit');
     expect(auditingBadge.textContent).toBe('6');
-    expect(auditingBadge.className).toContain('bg-red-500');
+    expect(auditingBadge.className).toContain('bg-state-blocked');
 
     const handoffBadge = screen.getByTestId('sidebar-nav-badge--handoff');
     expect(handoffBadge.textContent).toBe('3');
-    expect(handoffBadge.className).toContain('bg-amber-500');
+    expect(handoffBadge.className).toContain('bg-state-confirm');
   });
 
   it('hides the badge on the active item', () => {

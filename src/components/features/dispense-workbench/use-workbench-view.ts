@@ -7,7 +7,10 @@
  * useMemo で組み立てて返す。renderVals の生 onClick は store action へ写像済みのため、
  * このフックは「表示データ」を返し、ハンドラはコンポーネントが store から直接取得する。
  *
- * 設計プロトの accent/showKana props はデフォルト固定（accent='#1f4e79', showKana=true）。
+ * 設計プロトの accent/showKana props はデフォルト固定（accent=var(--wb-accent)≒#1f4e79, showKana=true）。
+ * F-011 Stage1b(A-prime): view が返す全色は module.css 定義の workbench theme 安定トークン
+ * （wb-state / wb-tint / wb-phase / wb-tag / wb-surface・ink・line 系）。data 面を light-first で
+ * 安定させ light/dark 双方 AA を保証（hue は 6 軸 SSOT を踏襲）。外殻 chrome は Stage1a の adaptive を維持。
  */
 
 import { useMemo } from 'react';
@@ -60,7 +63,7 @@ import type {
 } from './dispensing-workbench.types';
 import { isCalendarPhase, isGridPhase } from './dispensing-workbench.types';
 
-const ACCENT = '#1f4e79';
+const ACCENT = 'var(--wb-accent)';
 const SHOW_KANA = true;
 
 const METHOD_OPTIONS: DispenseMethod[] = [
@@ -102,22 +105,24 @@ const HOLD_REASON_OPTS = [
 
 const SEED_PATIENTS: SeedPatient[] = loadPatients();
 
+// 患者アバター回転パレット（装飾・category）。値は module.css のローカルトークン参照。
 const AV_PAL = [
-  '#3a6ea5',
-  '#5a8f4a',
-  '#b06a2a',
-  '#7b4ba0',
-  '#2a7d8f',
-  '#a04a6a',
-  '#4a6aa0',
-  '#8a6a2a',
+  'var(--wb-avatar-1)',
+  'var(--wb-avatar-2)',
+  'var(--wb-avatar-3)',
+  'var(--wb-avatar-4)',
+  'var(--wb-avatar-5)',
+  'var(--wb-avatar-6)',
+  'var(--wb-avatar-7)',
+  'var(--wb-avatar-8)',
 ];
+// 属性チップ回転パレット（装飾・category）。値は module.css のローカルトークン参照。
 const CHIP_PAL: Pick<ChipView, 'bg' | 'border' | 'color'>[] = [
-  { bg: '#e8f0fb', border: '#b9d0ee', color: '#1f4e79' },
-  { bg: '#eaf6ec', border: '#bfe0c4', color: '#2c7a3d' },
-  { bg: '#fdeee6', border: '#f3cbb3', color: '#b75a28' },
-  { bg: '#f3ecf8', border: '#ddc8ec', color: '#7b4ba0' },
-  { bg: '#fef4e2', border: '#f0dca6', color: '#9a6a18' },
+  { bg: 'var(--wb-chip-1-bg)', border: 'var(--wb-chip-1-border)', color: 'var(--wb-chip-1-fg)' },
+  { bg: 'var(--wb-chip-2-bg)', border: 'var(--wb-chip-2-border)', color: 'var(--wb-chip-2-fg)' },
+  { bg: 'var(--wb-chip-3-bg)', border: 'var(--wb-chip-3-border)', color: 'var(--wb-chip-3-fg)' },
+  { bg: 'var(--wb-chip-4-bg)', border: 'var(--wb-chip-4-border)', color: 'var(--wb-chip-4-fg)' },
+  { bg: 'var(--wb-chip-5-bg)', border: 'var(--wb-chip-5-border)', color: 'var(--wb-chip-5-fg)' },
 ];
 
 const DNW = ['日', '月', '火', '水', '木', '金', '土'];
@@ -289,13 +294,13 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     const pp = pts.find((x) => x.id === pid)!;
     const pr = patientProgress(model, pid, done, audit);
     let sl = '未着手';
-    let sc = '#9aa6b4';
+    let sc = 'var(--wb-state-readonly)';
     if (pr.audit > 0 && pr.audit === pr.total) {
       sl = '監査済';
-      sc = '#5aa84a';
+      sc = 'var(--wb-state-done)';
     } else if (pr.done > 0) {
       sl = '作業中';
-      sc = '#e0972b';
+      sc = 'var(--wb-state-confirm)';
     }
     const isSel = pid === id;
     const sk = startKeyOf(model[pid] ?? []);
@@ -307,7 +312,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       age: pp.age + '歳',
       initial: pp.short,
       avatarBg: isSel ? ACCENT : AV_PAL[idxOf(pid) % AV_PAL.length],
-      bg: isSel ? '#dde9f8' : '#f5f6f8',
+      bg: isSel ? 'var(--wb-surface-selected)' : 'var(--wb-surface-alt)',
       barColor: isSel ? ACCENT : 'transparent',
       statusLabel: sl,
       statusColor: sc,
@@ -322,24 +327,24 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     key: sb.key,
     label: sb.label,
     active: sortMode === sb.key,
-    color: sortMode === sb.key ? '#fff' : '#3f5878',
-    bg: sortMode === sb.key ? '#3a5e8c' : '#fff',
-    border: sortMode === sb.key ? '#2c4a6e' : '#bcc7d4',
+    color: sortMode === sb.key ? 'var(--wb-primary-fg)' : 'var(--wb-ink-muted)',
+    bg: sortMode === sb.key ? 'var(--wb-primary-bg)' : 'var(--wb-surface)',
+    border: sortMode === sb.key ? 'var(--wb-accent)' : 'var(--wb-line)',
   }));
 
   // ---- 工程タブ ----
   const pdDefs: { id: Phase; label: string; dot: string }[] = [
-    { id: 'dispense', label: '調剤', dot: '#2f80ed' },
-    { id: 'audit', label: '調剤監査', dot: '#27ae60' },
-    { id: 'setp', label: 'セット', dot: '#b07cd6' },
-    { id: 'seta', label: 'セット監査', dot: '#d6905a' },
+    { id: 'dispense', label: '調剤', dot: 'var(--wb-phase-disp)' },
+    { id: 'audit', label: '調剤監査', dot: 'var(--wb-phase-audit)' },
+    { id: 'setp', label: 'セット', dot: 'var(--wb-phase-setp)' },
+    { id: 'seta', label: 'セット監査', dot: 'var(--wb-phase-seta)' },
   ];
   const phases = pdDefs.map((pd) => ({
     id: pd.id,
     label: pd.label,
-    bg: pd.id === ph ? '#fff' : '#dde4ec',
-    color: pd.id === ph ? '#16345a' : '#3f5878',
-    dot: pd.id === ph ? pd.dot : '#b3bdc8',
+    bg: pd.id === ph ? 'var(--wb-surface)' : 'var(--wb-surface-alt)',
+    color: pd.id === ph ? 'var(--wb-ink)' : 'var(--wb-ink-muted)',
+    dot: pd.id === ph ? pd.dot : 'var(--wb-ink-muted)',
     active: pd.id === ph,
   }));
   const flowHint = '調剤 → 調剤監査 → セット → セット監査';
@@ -347,7 +352,11 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   const chips: ChipView[] = p.chips.map((c, i) => ({ label: c, ...CHIP_PAL[i % CHIP_PAL.length] }));
 
   // ---- グリッド行（model groups から）----
-  const tagColors: Record<string, string> = { 頓用: '#7b4ba0', PTP: '#1d6fb8', 外用: '#b75a28' };
+  const tagColors: Record<string, string> = {
+    頓用: 'var(--wb-tag-tonyo)',
+    PTP: 'var(--wb-tag-ptp)',
+    外用: 'var(--wb-tag-gaiyo)',
+  };
   const groups: Group[] = model[id] ?? [];
   let no = 0;
   const rows: WorkbenchView['rows'] = [];
@@ -418,47 +427,51 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
             : prescribedQuantity != null
               ? `処方 ${formatQuantity(prescribedQuantity)}${r.unit ?? ''}`
               : '数量未確定';
-      let cBg = '#fff';
-      let cBd = '#9aa8b8';
+      let cBg = 'var(--wb-surface)';
+      let cBd = 'var(--wb-line)';
       let cMk = '';
-      let bg = no % 2 === 0 ? '#f6f8fa' : '#fff';
+      let bg = no % 2 === 0 ? 'var(--wb-surface-alt)' : 'var(--wb-surface)';
       let note = r.note || '';
-      let noteColor = /賦形なし/.test(note) ? '#a06a2a' : /要/.test(note) ? '#b3402f' : '#5a6878';
+      let noteColor = /賦形なし/.test(note)
+        ? 'var(--wb-state-confirm)'
+        : /要/.test(note)
+          ? 'var(--wb-state-blocked)'
+          : 'var(--wb-ink-muted)';
       if (ph === 'dispense') {
         if (isDone) {
-          cBg = '#3a9d4f';
-          cBd = '#3a9d4f';
+          cBg = 'var(--wb-state-done)';
+          cBd = 'var(--wb-state-done)';
           cMk = '✓';
-          bg = '#eef8f0';
+          bg = 'var(--wb-done-bg)';
         }
       } else {
         if (!isDone) {
-          bg = '#fdeeec';
+          bg = 'var(--wb-blocked-bg)';
           note = '未調剤';
-          noteColor = '#c0392b';
+          noteColor = 'var(--wb-state-blocked)';
         } else if (isAu) {
-          cBg = '#2f80ed';
-          cBd = '#2f80ed';
+          cBg = 'var(--wb-info)';
+          cBd = 'var(--wb-info)';
           cMk = '✓';
-          bg = '#eef4fd';
+          bg = 'var(--wb-disp-tint-bg)';
           note = r.note ? r.note + ' ・監査OK' : '監査OK';
-          noteColor = '#1d6f33';
+          noteColor = 'var(--wb-state-done)';
         } else {
-          bg = '#fff8e8';
+          bg = 'var(--wb-confirm-bg-pale)';
           note = r.note ? r.note + ' ・監査待ち' : '監査待ち';
-          noteColor = '#9a6a18';
+          noteColor = 'var(--wb-state-confirm)';
         }
       }
       const f = formOf(r);
       const oth = otherTiming(r);
       const chgBadge =
         r.chg === 'new'
-          ? { t: '新規', c: '#2c7a3d' }
+          ? { t: '新規', c: 'var(--wb-info)' }
           : r.chg === 'changed'
-            ? { t: '変更', c: '#9a6a18' }
+            ? { t: '変更', c: 'var(--wb-info)' }
             : null;
-      if (r.chg === 'new' && ph === 'dispense') bg = '#f1f9f2';
-      else if (r.chg === 'changed' && ph === 'dispense') bg = '#fdf7ea';
+      if (r.chg === 'new' && ph === 'dispense') bg = 'var(--wb-dispnew-bg)';
+      else if (r.chg === 'changed' && ph === 'dispense') bg = 'var(--wb-dispchg-bg)';
       rows.push({
         kind: 'drug',
         did,
@@ -471,7 +484,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
         other: oth || '－',
         hasChg: !!chgBadge,
         chgText: chgBadge ? chgBadge.t : '',
-        chgColor: chgBadge ? chgBadge.c : '#6b7280',
+        chgColor: chgBadge ? chgBadge.c : 'var(--wb-ink-muted)',
         asa: normCell(r.a),
         hiru: normCell(r.h),
         yu: normCell(r.y),
@@ -481,7 +494,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
         funsai: r.funsai,
         hasTag: !!r.tag,
         tag: r.tag,
-        tagColor: tagColors[r.tag] || '#6b7280',
+        tagColor: tagColors[r.tag] || 'var(--wb-ink-muted)',
         note,
         noteColor,
         bg,
@@ -554,8 +567,15 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   const calDays = days.map((dd) => ({
     d: dd.d,
     w: dd.w,
-    color: dd.cross ? '#b3402f' : dd.w === '日' ? '#c0392b' : dd.w === '土' ? '#1d6fb8' : '#274268',
-    bg: dd.cross ? '#fdeeec' : '#e7edf4',
+    // 日曜=赤 / 土曜=青 のカレンダー慣習色は維持（state ではなく曜日 category）。
+    color: dd.cross
+      ? 'var(--wb-state-blocked)'
+      : dd.w === '日'
+        ? 'var(--wb-state-blocked)'
+        : dd.w === '土'
+          ? 'var(--wb-info)'
+          : 'var(--wb-ink)',
+    bg: dd.cross ? 'var(--wb-blocked-bg)' : 'var(--wb-surface-alt)',
   }));
 
   const tg = autoTarget({ phase: ph, model, id, setCells, auditCells, current: stateTarget });
@@ -566,54 +586,56 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       const key = cellKey(id, day.idx, tk);
       const st = isSeta ? auditCells[key] || '' : setCells[key] || '';
       const isT = !!tg && tg.di === day.idx && tg.tk === tk;
-      let bg = '#fff';
-      let bd = '1px solid #d2dae3';
+      let bg = 'var(--wb-surface)';
+      let bd = '1px solid var(--wb-line)';
       let mark = '';
-      let markColor = '#999';
+      let markColor = 'var(--wb-ink-muted)';
       let stateLabel = '未セット';
-      let stateColor = '#9aa6b4';
+      let stateColor = 'var(--wb-state-readonly)';
       if (isSeta) {
         stateLabel = '未監査';
         if (st === 'ok') {
-          bg = '#eef8f0';
-          bd = '1px solid #9ed6ad';
+          bg = 'var(--wb-done-bg)';
+          bd = '1px solid var(--wb-done-border)';
           mark = '✓';
-          markColor = '#1f9150';
+          markColor = 'var(--wb-state-done)';
           stateLabel = '監査OK';
-          stateColor = '#1f9150';
+          stateColor = 'var(--wb-state-done)';
         } else if (st === 'ng') {
-          bg = '#fdeeec';
-          bd = '1px solid #e7a59e';
+          bg = 'var(--wb-blocked-bg)';
+          bd = '1px solid var(--wb-blocked-border)';
           mark = '✕';
-          markColor = '#c0392b';
+          markColor = 'var(--wb-state-blocked)';
           stateLabel = 'NG・差戻し';
-          stateColor = '#c0392b';
+          stateColor = 'var(--wb-state-blocked)';
         } else if (st === 'hold') {
-          bg = '#fff6e6';
-          bd = '1px solid #e8c884';
+          bg = 'var(--wb-confirm-bg-soft)';
+          bd = '1px solid var(--wb-confirm-border)';
           mark = '⏸';
-          markColor = '#9a6a18';
+          markColor = 'var(--wb-state-confirm)';
           stateLabel = '保留';
-          stateColor = '#9a6a18';
+          stateColor = 'var(--wb-state-confirm)';
         }
       } else {
         if (st === 'set') {
-          bg = '#eef8f0';
-          bd = '1px solid #9ed6ad';
+          bg = 'var(--wb-done-bg)';
+          bd = '1px solid var(--wb-done-border)';
           mark = '✓';
-          markColor = '#1f9150';
+          markColor = 'var(--wb-state-done)';
           stateLabel = 'セット済';
-          stateColor = '#1f9150';
+          stateColor = 'var(--wb-state-done)';
         } else if (st === 'hold') {
-          bg = '#fff6e6';
-          bd = '1px solid #e8c884';
+          bg = 'var(--wb-confirm-bg-soft)';
+          bd = '1px solid var(--wb-confirm-border)';
           mark = '⏸';
-          markColor = '#9a6a18';
+          markColor = 'var(--wb-state-confirm)';
           stateLabel = '保留';
-          stateColor = '#9a6a18';
+          stateColor = 'var(--wb-state-confirm)';
         }
       }
-      if (isT) bd = '2px solid ' + (isSeta ? '#27ae60' : '#2f6fd6');
+      // 選択セル枠は工程アクセント（state でなく phase。現値維持）。
+      if (isT)
+        bd = '2px solid ' + (isSeta ? 'var(--wb-phase-audit)' : 'var(--wb-phase-disp-strong)');
       const hi = holdInfo[key];
       if (st === 'hold' && hi && hi.reason) stateLabel = '保留：' + hi.reason;
       const title =
@@ -626,7 +648,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
           : '';
       return {
         packetText: c.packetText,
-        packetColor: c.packets > 0 ? '#16345a' : '#b9c2cc',
+        packetColor: c.packets > 0 ? 'var(--wb-ink)' : 'var(--wb-ink-muted)',
         ptpText: c.ptpText,
         hasPtp: !!c.ptpText,
         bg,
@@ -646,16 +668,16 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
 
   const calLegend = isSeta
     ? [
-        { label: '監査OK', bg: '#eef8f0', bd: '#9ed6ad' },
-        { label: 'NG・差戻し', bg: '#fdeeec', bd: '#e7a59e' },
-        { label: '保留', bg: '#fff6e6', bd: '#e8c884' },
-        { label: '未監査', bg: '#fff', bd: '#d2dae3' },
+        { label: '監査OK', bg: 'var(--wb-done-bg)', bd: 'var(--wb-done-border)' },
+        { label: 'NG・差戻し', bg: 'var(--wb-blocked-bg)', bd: 'var(--wb-blocked-border)' },
+        { label: '保留', bg: 'var(--wb-confirm-bg-soft)', bd: 'var(--wb-confirm-border)' },
+        { label: '未監査', bg: 'var(--wb-surface)', bd: 'var(--wb-line)' },
       ]
     : [
-        { label: 'セット済', bg: '#eef8f0', bd: '#9ed6ad' },
-        { label: '保留', bg: '#fff6e6', bd: '#e8c884' },
-        { label: '未セット', bg: '#fff', bd: '#d2dae3' },
-        { label: '選択中', bg: '#fff', bd: '#2f6fd6' },
+        { label: 'セット済', bg: 'var(--wb-done-bg)', bd: 'var(--wb-done-border)' },
+        { label: '保留', bg: 'var(--wb-confirm-bg-soft)', bd: 'var(--wb-confirm-border)' },
+        { label: '未セット', bg: 'var(--wb-surface)', bd: 'var(--wb-line)' },
+        { label: '選択中', bg: 'var(--wb-surface)', bd: 'var(--wb-phase-disp-strong)' },
       ];
 
   // ---- セット注意 / 監査リスク チップ ----
@@ -663,34 +685,66 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   const setChips: WorkbenchView['setChips'] = [];
   const SC = (l: string, c: string, b: string, bd: string) =>
     setChips.push({ label: l, color: c, bg: b, border: bd });
-  if (dr.some((r) => r.funsai)) SC('粉砕あり', '#c0392b', '#fdeeec', '#f3cbb3');
-  if (p.chips.indexOf('賦形') >= 0) SC('賦形あり', '#9a6a18', '#fef4e2', '#f0dca6');
-  if (dr.some((r) => /PTP/.test(r.note))) SC('PTPあり', '#1d6fb8', '#e6f0fb', '#bcd8f3');
-  if (cal.outside.some((o) => o.kind === '頓服')) SC('頓服あり', '#7b4ba0', '#f3ecf8', '#ddc8ec');
-  if (dr.some((r) => /別包/.test(r.note))) SC('別包あり', '#2a7d8f', '#e4f3f5', '#bce0e5');
-  if (/残薬/.test(sjoin)) SC('残薬調整', '#b75a28', '#fdeee6', '#f3cbb3');
-  if (p.chips.indexOf('小児') >= 0) SC('小児', '#a04a6a', '#fbe9f0', '#eec4d4');
-  if (/懸濁|冷所/.test(sjoin)) SC('冷所/特殊', '#2a7d8f', '#e4f3f5', '#bce0e5');
+  if (dr.some((r) => r.funsai))
+    SC(
+      '粉砕あり',
+      'var(--wb-state-blocked)',
+      'var(--wb-blocked-bg)',
+      'var(--wb-blocked-border-warm)',
+    );
+  if (p.chips.indexOf('賦形') >= 0)
+    SC(
+      '賦形あり',
+      'var(--wb-state-confirm)',
+      'var(--wb-confirm-bg-warm)',
+      'var(--wb-confirm-border-warm)',
+    );
+  if (dr.some((r) => /PTP/.test(r.note)))
+    SC('PTPあり', 'var(--wb-tag-ptp)', 'var(--wb-tag-ptp-bg)', 'var(--wb-tag-ptp-border)');
+  if (cal.outside.some((o) => o.kind === '頓服'))
+    SC('頓服あり', 'var(--wb-tag-tonyo)', 'var(--wb-tag-tonyo-bg)', 'var(--wb-tag-tonyo-border)');
+  if (dr.some((r) => /別包/.test(r.note)))
+    SC(
+      '別包あり',
+      'var(--wb-tag-reisho)',
+      'var(--wb-tag-reisho-bg)',
+      'var(--wb-tag-reisho-border)',
+    );
+  if (/残薬/.test(sjoin))
+    SC('残薬調整', 'var(--wb-tag-gaiyo)', 'var(--wb-tag-gaiyo-bg)', 'var(--wb-tag-gaiyo-border)');
+  if (p.chips.indexOf('小児') >= 0)
+    SC('小児', 'var(--wb-tag-shoni)', 'var(--wb-tag-shoni-bg)', 'var(--wb-tag-shoni-border)');
+  if (/懸濁|冷所/.test(sjoin))
+    SC(
+      '冷所/特殊',
+      'var(--wb-tag-reisho)',
+      'var(--wb-tag-reisho-bg)',
+      'var(--wb-tag-reisho-border)',
+    );
   const narcoticClassificationUnresolvedCount = groups.reduce(
     (sum, group) => sum + (group.narcoticClassification?.unresolvedLineCount ?? 0),
     0,
   );
   if (narcoticClassificationUnresolvedCount > 0) {
+    // 麻薬は 6 軸の hazard タグ（琥珀）。淡背景/枠は confirm 系パステルを流用（同系色）。
     SC(
       `麻薬分類未確認 ${narcoticClassificationUnresolvedCount}剤`,
-      '#9a6a18',
-      '#fff6e6',
-      '#e8c884',
+      'var(--wb-hazard)',
+      'var(--wb-confirm-bg-soft)',
+      'var(--wb-confirm-border)',
     );
   }
-  if (!setChips.length) SC('特記なし', '#5a6878', '#eef1f4', '#d4dae1');
+  if (!setChips.length)
+    SC('特記なし', 'var(--wb-ink-muted)', 'var(--wb-surface-alt)', 'var(--wb-line)');
 
   // ---- 比較 ----
   const cmp = comparison(model, id, p.discontinued);
+  // 処方差分の種別色は docs/ui-ux-design-guidelines SSOT に従う（追加/変更=info, 解除/中止=readonly）。
+  // workflow state(done/confirm/blocked)とは別系統＝混同しない。
   const changeColors: Record<string, string> = {
-    新規: '#2c7a3d',
-    変更: '#9a6a18',
-    中止: '#c0392b',
+    新規: 'var(--wb-info)',
+    変更: 'var(--wb-info)',
+    中止: 'var(--wb-state-readonly)',
   };
   const changes: ChangeChip[] = ([] as ChangeChip[])
     .concat(cmp.neu.map((d) => ({ type: '新規', text: d.name, color: changeColors['新規'] })))
@@ -713,19 +767,19 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     {
       key: 'cont',
       title: '継続',
-      color: '#5a8f4a',
+      color: 'var(--wb-ink-muted)',
       items: cmp.cont.map((d) => ({ name: d.name, sub: d.yoho })),
     },
     {
       key: 'neu',
       title: '新規',
-      color: '#2c7a3d',
+      color: 'var(--wb-info)',
       items: cmp.neu.map((d) => ({ name: d.name, sub: d.yoho + '（今回追加）' })),
     },
     {
       key: 'chg',
       title: '変更',
-      color: '#9a6a18',
+      color: 'var(--wb-info)',
       items: cmp.chg.map((d) => ({
         name: d.name,
         sub: (d.prevText || '前回') + ' → ' + (d.note || '今回'),
@@ -734,7 +788,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     {
       key: 'disc',
       title: '中止',
-      color: '#c0392b',
+      color: 'var(--wb-state-readonly)',
       items: cmp.disc.map((d) => ({ name: d.name, sub: (d.yoho || '') + '（前回まで）' })),
     },
   ];
@@ -744,12 +798,17 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     const k = id + ':' + o.name;
     const on = !!outChk[k];
     const kc: Record<string, string> = {
-      頓服: '#7b4ba0',
-      外用: '#b75a28',
-      冷所: '#2a7d8f',
-      注射: '#a04a6a',
+      頓服: 'var(--wb-tag-tonyo)',
+      外用: 'var(--wb-tag-gaiyo)',
+      冷所: 'var(--wb-tag-reisho)',
+      注射: 'var(--wb-tag-shoni)',
     };
-    return { name: o.name, kind: o.kind, kindColor: kc[o.kind] || '#6b7280', checked: on };
+    return {
+      name: o.name,
+      kind: o.kind,
+      kindColor: kc[o.kind] || 'var(--wb-ink-muted)',
+      checked: on,
+    };
   });
   const outsideEmpty = outsideMeds.length === 0;
 
@@ -836,13 +895,15 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   const riskList: WorkbenchView['riskList'] = [];
   let rkn = 0;
   const RK = (l: string, c: string) => riskList.push({ rank: ++rkn, label: l, color: c });
-  if (changes.length) RK('処方変更点', '#c0392b');
-  if (dr.some((r) => /平日|隔日|曜日|週/.test(r.note + r.yoho))) RK('曜日・隔日指定', '#c0392b');
-  if (dr.some((r) => r.funsai)) RK('粉砕・賦形', '#d2691e');
-  if (dr.some((r) => /PTP/.test(r.note))) RK('追加PTP混在', '#1d6fb8');
-  if (cal.outside.length) RK('カレンダー外薬', '#7b4ba0');
-  if (/残薬/.test(sjoin)) RK('残薬調整', '#b75a28');
-  if (!riskList.length) RK('通常の定時薬', '#5a8f4a');
+  if (changes.length) RK('処方変更点', 'var(--wb-state-blocked)');
+  if (dr.some((r) => /平日|隔日|曜日|週/.test(r.note + r.yoho)))
+    RK('曜日・隔日指定', 'var(--wb-state-blocked)');
+  if (dr.some((r) => r.funsai)) RK('粉砕・賦形', 'var(--wb-state-confirm)');
+  if (dr.some((r) => /PTP/.test(r.note))) RK('追加PTP混在', 'var(--wb-tag-ptp)');
+  // カレンダー外薬は外用/冷所/注射/液剤も含む総称のため頓服色(tonyo)へ畳まず専用 token。
+  if (cal.outside.length) RK('カレンダー外薬', 'var(--wb-outside-med)');
+  if (/残薬/.test(sjoin)) RK('残薬調整', 'var(--wb-tag-gaiyo)');
+  if (!riskList.length) RK('通常の定時薬', 'var(--wb-state-done)');
 
   // ---- progress + gate + primary ----
   const gateResult = calcGate({
@@ -866,9 +927,9 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   let primaryCursor = 'pointer';
   let primaryOpacity = '1';
   let gateText = '';
-  let gateColor = '#1f9150';
-  let gateBg = '#eef8f0';
-  let gateBorder = '#9ed6ad';
+  let gateColor = 'var(--wb-state-done)';
+  let gateBg = 'var(--wb-done-bg)';
+  let gateBorder = 'var(--wb-done-border)';
   let gateOk = gateResult.ok;
   const auditDoubleCountIncomplete =
     ph === 'audit' &&
@@ -890,17 +951,17 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     progress = {
       label: '調剤ピッキング進捗',
       pct: pct + '%',
-      color: '#2f80ed',
+      color: 'var(--wb-phase-disp)',
       fraction: prog.done + ' / ' + prog.total,
     };
     bulkLabel = '全て調剤済';
     primaryLabel = '調剤完了 → 監査へ ▶';
-    primaryBg = dataUnavailable ? '#b8bfc8' : '#2f6fd6';
-    primaryBorder = dataUnavailable ? '#a3abb5' : '#245aad';
+    primaryBg = dataUnavailable ? 'var(--wb-state-readonly)' : 'var(--wb-phase-disp-strong)';
+    primaryBorder = dataUnavailable ? 'var(--wb-state-readonly)' : 'var(--wb-phase-disp-border)';
     checkHead = '調剤';
     if (!gateResult.ok) {
-      primaryBg = '#b8bfc8';
-      primaryBorder = '#a3abb5';
+      primaryBg = 'var(--wb-state-readonly)';
+      primaryBorder = 'var(--wb-state-readonly)';
       primaryCursor = 'not-allowed';
       primaryOpacity = '.7';
     }
@@ -909,17 +970,17 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     progress = {
       label: '調剤監査 進捗',
       pct: pct + '%',
-      color: '#27ae60',
+      color: 'var(--wb-phase-audit)',
       fraction: prog.audit + ' / ' + prog.total,
     };
     bulkLabel = '全て監査OK';
     primaryLabel = '監査確定 → セットへ ▶';
-    primaryBg = dataUnavailable ? '#b8bfc8' : '#2c9a4e';
-    primaryBorder = dataUnavailable ? '#a3abb5' : '#218040';
+    primaryBg = dataUnavailable ? 'var(--wb-state-readonly)' : 'var(--wb-phase-audit-strong)';
+    primaryBorder = dataUnavailable ? 'var(--wb-state-readonly)' : 'var(--wb-phase-audit-border)';
     checkHead = '監査';
     if (!gateResult.ok || auditDoubleCountIncomplete) {
-      primaryBg = '#b8bfc8';
-      primaryBorder = '#a3abb5';
+      primaryBg = 'var(--wb-state-readonly)';
+      primaryBorder = 'var(--wb-state-readonly)';
       primaryCursor = 'not-allowed';
       primaryOpacity = '.7';
     }
@@ -936,38 +997,38 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       progress = {
         label: 'セット進捗',
         pct: pct + '%',
-        color: '#b07cd6',
+        color: 'var(--wb-phase-setp)',
         fraction: dnC + ' / ' + totC,
       };
       bulkLabel = '全セルをセット済';
       primaryLabel = 'セット完了 → 監査へ ▶';
-      primaryBg = '#9558c4';
-      primaryBorder = '#7c43ab';
+      primaryBg = 'var(--wb-phase-setp-strong)';
+      primaryBorder = 'var(--wb-phase-setp-border)';
       checkHead = 'セット';
     } else {
       progress = {
         label: 'セット監査 進捗',
         pct: pct + '%',
-        color: '#d6905a',
+        color: 'var(--wb-phase-seta)',
         fraction: dnC + ' / ' + totC,
       };
       bulkLabel = '全セルOK';
       primaryLabel = '監査承認（薬剤師）✓';
-      primaryBg = '#c97b3e';
-      primaryBorder = '#a9632c';
+      primaryBg = 'var(--wb-phase-seta-strong)';
+      primaryBorder = 'var(--wb-phase-seta-border)';
       checkHead = '監査';
     }
     gateText = gateResult.text;
     if (gateResult.ok) {
-      gateColor = '#1f9150';
-      gateBg = '#eef8f0';
-      gateBorder = '#9ed6ad';
+      gateColor = 'var(--wb-state-done)';
+      gateBg = 'var(--wb-done-bg)';
+      gateBorder = 'var(--wb-done-border)';
     } else {
-      gateColor = '#b3402f';
-      gateBg = '#fdeeec';
-      gateBorder = '#f0c4bd';
-      primaryBg = '#b8bfc8';
-      primaryBorder = '#a3abb5';
+      gateColor = 'var(--wb-state-blocked)';
+      gateBg = 'var(--wb-blocked-bg)';
+      gateBorder = 'var(--wb-blocked-border-soft)';
+      primaryBg = 'var(--wb-state-readonly)';
+      primaryBorder = 'var(--wb-state-readonly)';
       primaryCursor = 'not-allowed';
       primaryOpacity = '.7';
     }
@@ -975,20 +1036,20 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   if (dataUnavailable) {
     gateOk = false;
     gateText = '実データを取得できませんでした';
-    gateColor = '#b3402f';
-    gateBg = '#fdeeec';
-    gateBorder = '#f0c4bd';
-    primaryBg = '#b8bfc8';
-    primaryBorder = '#a3abb5';
+    gateColor = 'var(--wb-state-blocked)';
+    gateBg = 'var(--wb-blocked-bg)';
+    gateBorder = 'var(--wb-blocked-border-soft)';
+    primaryBg = 'var(--wb-state-readonly)';
+    primaryBorder = 'var(--wb-state-readonly)';
     primaryCursor = 'not-allowed';
     primaryOpacity = '.7';
   }
   if (auditDoubleCountIncomplete) {
     gateOk = false;
     gateText = '麻薬ダブルカウント未完了';
-    gateColor = '#9a6a18';
-    gateBg = '#fff6e6';
-    gateBorder = '#e8c884';
+    gateColor = 'var(--wb-state-confirm)';
+    gateBg = 'var(--wb-confirm-bg-soft)';
+    gateBorder = 'var(--wb-confirm-border)';
   }
 
   // ---- 実装済み物理 F-key shortcuts ----
@@ -1006,7 +1067,10 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
 
   // ---- 右ペイン タイトル / カレンダーバー / 写真 ----
   const rightTitle = isGrid ? '患者情報' : isSet ? 'セット作業' : 'セット監査';
-  const calBarBg = isSet ? '#f7f3fb' : '#fbf3ec';
+  // 右ペインバー背景は工程の淡いテーマ着色（phase tint）。token 由来 + theme 追従に。
+  const calBarBg = isSet
+    ? 'color-mix(in oklch, var(--wb-phase-setp) 8%, var(--wb-surface))'
+    : 'color-mix(in oklch, var(--wb-phase-seta) 8%, var(--wb-surface))';
   const calBarTitle = isSet ? 'セット注意' : '監査リスク';
   const calBarMeta = isSet
     ? `セット者：山田 花子 ／ 期間 ${periodLabel}`
@@ -1121,8 +1185,8 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     holdReady,
     holdSave: {
       label: '保留登録',
-      bg: holdReady ? '#e0972b' : '#d8c39a',
-      border: holdReady ? '#c97f18' : '#c6ad7e',
+      bg: holdReady ? 'var(--wb-state-confirm)' : 'var(--wb-state-readonly)',
+      border: holdReady ? 'var(--wb-state-confirm)' : 'var(--wb-state-readonly)',
       cursor: holdReady ? 'pointer' : 'not-allowed',
       opacity: holdReady ? '1' : '.7',
     },
@@ -1158,7 +1222,7 @@ function fkey(
     key,
     label,
     action,
-    keyColor: active ? '#c0392b' : '#5a6878',
-    labelColor: active ? '#16345a' : '#243040',
+    keyColor: active ? 'var(--wb-state-blocked)' : 'var(--wb-ink-muted)',
+    labelColor: active ? 'var(--wb-ink)' : 'var(--wb-ink)',
   };
 }

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
@@ -449,11 +450,11 @@ function ComplianceEditGuide({
   const missing = checks.filter((item) => !item.passed);
 
   return (
-    <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-sm">
+    <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="space-y-1">
-          <p className="font-medium text-sky-950">算定要件を満たすための編集ナビ</p>
-          <p className="text-xs leading-5 text-sky-900/80">
+          <p className="font-medium text-tag-info">算定要件を満たすための編集ナビ</p>
+          <p className="text-xs leading-5 text-tag-info/80">
             不足している項目をこの画面で補完すると、右側の算定チェックと送付前確認に反映されます。
           </p>
         </div>
@@ -464,17 +465,13 @@ function ComplianceEditGuide({
       {missing.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {missing.map((item) => (
-            <Badge
-              key={item.key}
-              variant="outline"
-              className="border-amber-200 bg-amber-50 text-amber-800"
-            >
+            <StateBadge key={item.key} role="confirm">
               未入力: {item.label}
-            </Badge>
+            </StateBadge>
           ))}
         </div>
       ) : (
-        <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
+        <p className="mt-3 rounded-lg border border-state-done/30 bg-state-done/10 px-3 py-2 text-state-done">
           算定要件チェック上の必須項目は充足しています。送付先と送達方法を確認してください。
         </p>
       )}

@@ -51,18 +51,19 @@ function SummaryList({
     return null;
   }
 
-  return (
-    items.length === 0 ? (
-      <p className="text-xs text-muted-foreground">{emptyLabel}</p>
-    ) : (
-      <ul className="space-y-2">
-        {items.map((item) => (
-          <li key={item} className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
-            {item}
-          </li>
-        ))}
-      </ul>
-    )
+  return items.length === 0 ? (
+    <p className="text-xs text-muted-foreground">{emptyLabel}</p>
+  ) : (
+    <ul className="space-y-2">
+      {items.map((item) => (
+        <li
+          key={item}
+          className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+        >
+          {item}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -116,7 +117,9 @@ export function PatientMcsSummaryCard({
             <CardDescription className="mt-1">{description}</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={summary.provider === 'openai' && !summary.isFallback ? 'default' : 'outline'}>
+            <Badge
+              variant={summary.provider === 'openai' && !summary.isFallback ? 'default' : 'outline'}
+            >
               {summary.provider === 'openai' && !summary.isFallback ? 'AI短文化' : 'ルール要約'}
             </Badge>
             <Badge variant="outline">他職種 {summary.otherProfessionalMessageCount} 件</Badge>
@@ -129,11 +132,19 @@ export function PatientMcsSummaryCard({
           <p className="text-sm font-medium text-foreground">{summary.headline}</p>
           <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <span>生成 {formatDateTime(summary.generatedAt)}</span>
-            {summary.latestPostedAt ? <span>直近投稿 {formatDateTime(summary.latestPostedAt)}</span> : null}
-            {summary.model ? <span>{summary.requestedProvider} / {summary.model}</span> : <span>{summary.requestedProvider}</span>}
+            {summary.latestPostedAt ? (
+              <span>直近投稿 {formatDateTime(summary.latestPostedAt)}</span>
+            ) : null}
+            {summary.model ? (
+              <span>
+                {summary.requestedProvider} / {summary.model}
+              </span>
+            ) : (
+              <span>{summary.requestedProvider}</span>
+            )}
           </div>
           {summary.isFallback ? (
-            <p className="mt-2 text-xs text-amber-700">
+            <p className="mt-2 text-xs text-state-confirm">
               {describeFallbackReason(summary.fallbackReason)}
             </p>
           ) : null}
@@ -144,30 +155,30 @@ export function PatientMcsSummaryCard({
             要点抽出はまだありません。次回同期後に更新します。
           </p>
         ) : (
-        <div className={compact ? 'grid gap-4' : 'grid gap-4 xl:grid-cols-3'}>
-          {sections.length > 0 ? (
-            sections.map((section) => {
-              const Icon = section.icon;
-              return (
-                <div key={section.key} className="space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                    <Icon className="size-3.5" aria-hidden="true" />
-                    {section.label}
+          <div className={compact ? 'grid gap-4' : 'grid gap-4 xl:grid-cols-3'}>
+            {sections.length > 0 ? (
+              sections.map((section) => {
+                const Icon = section.icon;
+                return (
+                  <div key={section.key} className="space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                      <Icon className="size-3.5" aria-hidden="true" />
+                      {section.label}
+                    </div>
+                    <SummaryList
+                      items={section.items}
+                      emptyLabel={section.emptyLabel}
+                      hideWhenEmpty={compact}
+                    />
                   </div>
-                  <SummaryList
-                    items={section.items}
-                    emptyLabel={section.emptyLabel}
-                    hideWhenEmpty={compact}
-                  />
-                </div>
-              );
-            })
-          ) : compact ? (
-            <p className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-muted-foreground">
-              要点抽出はまだありません。次回同期後に更新します。
-            </p>
-          ) : null}
-        </div>
+                );
+              })
+            ) : compact ? (
+              <p className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm text-muted-foreground">
+                要点抽出はまだありません。次回同期後に更新します。
+              </p>
+            ) : null}
+          </div>
         )}
 
         {!compact && summary.sourceRefs.length > 0 ? (

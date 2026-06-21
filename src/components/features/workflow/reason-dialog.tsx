@@ -80,7 +80,7 @@ export function ReasonDialog({
         </DialogHeader>
         <div className="space-y-4">
           {warning ? (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+            <p className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs leading-5 text-state-confirm">
               {warning}
             </p>
           ) : null}

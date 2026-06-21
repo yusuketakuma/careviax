@@ -5,6 +5,9 @@ import { useQuery } from '@tanstack/react-query';
 import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   DRUG_FORECAST_STATUS_LABELS,
@@ -26,11 +29,11 @@ type InventoryForecast = {
   patients: AffectedPatientCard[];
 };
 
-// 警告 3 段階の規約内: 要発注=赤 / 発注候補=橙 / 余裕あり=中立グレー
-const STATUS_BADGE_CLASSES: Record<DrugForecastStatus, string> = {
-  order_required: 'border-red-200 bg-red-50 text-red-700',
-  order_candidate: 'border-amber-200 bg-amber-50 text-amber-700',
-  sufficient: 'border-border/70 bg-muted/40 text-muted-foreground',
+// 警告 3 段階の規約内: 要発注=blocked(赤) / 発注候補=confirm(橙) / 余裕あり=中立(既定 Badge)
+const STATUS_ROLE: Record<DrugForecastStatus, StatusRole | 'neutral'> = {
+  order_required: 'blocked',
+  order_candidate: 'confirm',
+  sufficient: 'neutral',
 };
 
 function formatWeekLabel(week: InventoryForecast['week']): string {
@@ -42,13 +45,15 @@ function formatWeekLabel(week: InventoryForecast['week']): string {
 }
 
 function StatusBadge({ status }: { status: DrugForecastStatus }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASSES[status]}`}
-    >
-      {DRUG_FORECAST_STATUS_LABELS[status]}
-    </span>
-  );
+  const role = STATUS_ROLE[status];
+  if (role === 'neutral') {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        {DRUG_FORECAST_STATUS_LABELS[status]}
+      </Badge>
+    );
+  }
+  return <StateBadge role={role}>{DRUG_FORECAST_STATUS_LABELS[status]}</StateBadge>;
 }
 
 function SummaryCard({ label, value, caption }: { label: string; value: string; caption: string }) {

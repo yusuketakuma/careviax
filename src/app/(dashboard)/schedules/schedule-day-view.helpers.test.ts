@@ -451,12 +451,12 @@ describe('schedule-day-view.helpers', () => {
 
     expect(status.visible).toBe(true);
     expect(status.networkBadgeLabel).toBe('オフライン');
-    expect(status.networkBadgeClassName).toContain('border-amber-200');
+    expect(status.networkBadgeClassName).toContain('state-blocked');
     expect(status.pendingSyncLabel).toBe('同期待ち 2 件');
     expect(status.conflictLabel).toBe('競合 1 件');
     expect(status.ttlLabel).toBe('読取専用 TTL 12h');
     expect(status.visitBriefCoverageLabel).toBe('ブリーフ 3/5 件');
-    expect(status.visitBriefCoverageClassName).toContain('border-amber-200');
+    expect(status.visitBriefCoverageClassName).toContain('state-confirm');
     expect(status.visitBriefStatusLabel).toBe('未取得 2 件。患者詳細と処方を確認してください。');
     expect(status.lastSyncLabel).toBe('4/9 08:15');
     expect(status.canManualSync).toBe(true);
@@ -497,11 +497,11 @@ describe('schedule-day-view.helpers', () => {
 
     expect(status.visible).toBe(true);
     expect(status.visitBriefCoverageLabel).toBe('ブリーフ 0/2 件');
-    expect(status.visitBriefCoverageClassName).toContain('border-amber-200');
+    expect(status.visitBriefCoverageClassName).toContain('state-confirm');
     expect(status.visitBriefStatusLabel).toBe(
       '端末キャッシュを読み込めません。患者詳細と処方を確認してください。',
     );
-    expect(status.visitBriefStatusClassName).toBe('text-amber-700');
+    expect(status.visitBriefStatusClassName).toBe('text-state-confirm');
   });
 
   it('splits workflow traces into trimmed segments', () => {

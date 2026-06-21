@@ -15,8 +15,8 @@ import { cn } from '@/lib/utils';
 
 const TONE_CLASS: Record<WorkflowPhaseAccessItem['tone'], string> = {
   default: 'border-border/70 bg-background',
-  warning: 'border-amber-200 bg-amber-50/60',
-  danger: 'border-red-200 bg-red-50/60',
+  warning: 'border-state-confirm/30 bg-state-confirm/10',
+  danger: 'border-state-blocked/30 bg-state-blocked/10',
 };
 
 type WorkflowPhasePanelProps = {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { createHmac } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { EMAIL_DELIVERY_FAILURE_REASON } from '@/lib/reports/delivery-failure-reasons';
 
 const {
   requireAuthContextMock,
@@ -17,6 +18,7 @@ const {
   resolveOperationalTasksMock,
   learnContactProfileFromCommunicationMock,
   communicationEventCreateMock,
+  loggerWarnMock,
   loggerErrorMock,
   txMock,
 } = vi.hoisted(() => ({
@@ -33,6 +35,7 @@ const {
   resolveOperationalTasksMock: vi.fn(),
   learnContactProfileFromCommunicationMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
   loggerErrorMock: vi.fn(),
   txMock: {
     deliveryRecord: {
@@ -124,7 +127,7 @@ vi.mock('@/lib/utils/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
-    warn: vi.fn(),
+    warn: loggerWarnMock,
     error: loggerErrorMock,
   },
 }));
@@ -1916,7 +1919,11 @@ describe('/api/care-reports/[id]/send POST', () => {
   });
 
   it('marks the delivery as failed when SES send fails', async () => {
-    sendCareReportEmailMock.mockRejectedValue(new Error('SES unavailable'));
+    const sesError = Object.assign(new Error('SES unavailable'), {
+      name: 'ThrottlingException',
+      $metadata: { httpStatusCode: 429 },
+    });
+    sendCareReportEmailMock.mockRejectedValue(sesError);
 
     const response = await POST(
       createRequest({
@@ -1944,7 +1951,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         where: { id: 'delivery_1' },
         data: expect.objectContaining({
           status: 'failed',
-          failure_reason: 'メール送信に失敗しました',
+          failure_reason: EMAIL_DELIVERY_FAILURE_REASON,
         }),
       }),
     );
@@ -1954,6 +1961,23 @@ describe('/api/care-reports/[id]/send POST', () => {
         data: { status: 'failed' },
       }),
     );
+    expect(loggerWarnMock).toHaveBeenCalledWith('care report email delivery failed', {
+      event: 'care_report.email_delivery_failed',
+      orgId: 'org_1',
+      actorId: 'user_1',
+      entityType: 'care_report',
+      entityId: 'report_1',
+      targetId: 'delivery_1',
+      externalProvider: 'ses',
+      error_name: 'ThrottlingException',
+      status: 429,
+      failure_class: 'transient',
+    });
+    const loggerPayloadText = JSON.stringify(loggerWarnMock.mock.calls);
+    expect(loggerPayloadText).not.toContain('SES unavailable');
+    expect(loggerPayloadText).not.toContain('doctor@example.com');
+    expect(loggerPayloadText).not.toContain('message');
+    expect(loggerPayloadText).not.toContain('stack');
     expect(learnContactProfileFromCommunicationMock).toHaveBeenCalledWith(txMock, {
       orgId: 'org_1',
       counterpartName: '山田 太郎',
@@ -1968,7 +1992,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           event_type: 'delivery_failure',
           channel: 'email',
           counterpart_name: '山田 太郎',
-          content: 'メール送信に失敗しました',
+          content: EMAIL_DELIVERY_FAILURE_REASON,
         }),
       }),
     );
@@ -1984,13 +2008,52 @@ describe('/api/care-reports/[id]/send POST', () => {
             channel: 'email',
             recipient_contact_masked: 'd***@example.com',
             status: 'failed',
-            failure_reason: 'メール送信に失敗しました',
+            failure_reason: EMAIL_DELIVERY_FAILURE_REASON,
             retryable: true,
           },
         ],
       },
     });
     expect(JSON.stringify(json)).not.toContain('doctor@example.com');
+  });
+
+  it('logs permanent SES failures without exposing provider details to clients', async () => {
+    const sesError = Object.assign(new Error('Address rejected'), {
+      name: 'MessageRejected',
+      $metadata: { httpStatusCode: 400 },
+    });
+    sendCareReportEmailMock.mockRejectedValue(sesError);
+
+    const response = await POST(
+      createRequest({
+        channel: 'ses',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(502);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      'care report email delivery failed',
+      expect.objectContaining({
+        event: 'care_report.email_delivery_failed',
+        externalProvider: 'ses',
+        error_name: 'MessageRejected',
+        status: 400,
+        failure_class: 'permanent',
+      }),
+    );
+    const loggerPayloadText = JSON.stringify(loggerWarnMock.mock.calls);
+    expect(loggerPayloadText).not.toContain('Address rejected');
+    expect(loggerPayloadText).not.toContain('doctor@example.com');
+    const json = await response.json();
+    expect(JSON.stringify(json)).toContain(EMAIL_DELIVERY_FAILURE_REASON);
+    expect(JSON.stringify(json)).not.toContain('MessageRejected');
+    expect(JSON.stringify(json)).not.toContain('Address rejected');
   });
 
   it('stores and replays keyed all-recipient send failure responses without re-sending', async () => {
@@ -2172,7 +2235,7 @@ describe('/api/care-reports/[id]/send POST', () => {
               expect.objectContaining({
                 delivery_record_id: 'delivery_failed',
                 status: 'failed',
-                failure_reason: 'メール送信に失敗しました',
+                failure_reason: EMAIL_DELIVERY_FAILURE_REASON,
               }),
             ],
           }),
@@ -2190,7 +2253,7 @@ describe('/api/care-reports/[id]/send POST', () => {
           {
             delivery_record_id: 'delivery_failed',
             status: 'failed',
-            failure_reason: 'メール送信に失敗しました',
+            failure_reason: EMAIL_DELIVERY_FAILURE_REASON,
             retryable: true,
             recipient_contact_masked: 'd***@example.com',
           },

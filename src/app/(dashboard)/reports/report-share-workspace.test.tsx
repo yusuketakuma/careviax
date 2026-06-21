@@ -11,11 +11,14 @@ import { ReportShareWorkspace } from './report-share-workspace';
 import {
   buildHeaderMeta,
   buildWorkspaceNextAction,
-  formatTimeOfDay,
   waitingBadgeLabel,
 } from './report-share-workspace.helpers';
 
 setupDomTestEnv();
+
+function localIso(year: number, monthIndex: number, day: number, hour: number, minute = 0) {
+  return new Date(year, monthIndex, day, hour, minute).toISOString();
+}
 
 beforeEach(() => {
   useUIStore.setState({ workspaceRailOpen: true });
@@ -107,6 +110,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
   created_reports: [
     {
       id: 'report_sent',
+      patient_id: 'patient_1',
       patient_label: '田中 一郎 様',
       report_type: 'physician_report',
       report_type_label: '医師への報告',
@@ -116,7 +120,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       created_at: '2026-06-10T01:00:00.000Z',
       updated_at: '2026-06-11T02:00:00.000Z',
       reported_to_professional: true,
-      last_sent_at: '2026-06-11T02:10:00.000Z',
+      last_sent_at: localIso(2026, 5, 11, 11, 10),
       last_recipient_label: '山田 太郎',
       last_channel: 'fax',
       failed_delivery: null,
@@ -124,6 +128,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
     },
     {
       id: 'report_draft',
+      patient_id: 'patient_2',
       patient_label: '加藤 ミサ 様',
       report_type: 'care_manager_report',
       report_type_label: 'ケアマネへの報告',
@@ -141,6 +146,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
     },
     {
       id: 'report_failed',
+      patient_id: 'patient_3',
       patient_label: '高橋 茂 様',
       report_type: 'physician_report',
       report_type_label: '医師への報告',
@@ -200,7 +206,7 @@ const COCKPIT: DashboardCockpitResponse = {
       cycle_id: 'cycle_1',
       patient_name: '田中 一郎',
       priority: 'normal',
-      due_at: '2026-06-11T03:00:00.000Z',
+      due_at: localIso(2026, 5, 11, 12),
       intake_id: 'intake_1',
       prescribed_date: '2026-06-01',
       handling_tags: ['narcotic'],
@@ -214,8 +220,8 @@ const COCKPIT: DashboardCockpitResponse = {
       patient_name: '田中 一郎',
       visit_type: 'regular',
       schedule_status: 'planned',
-      time_start: '2026-06-11T05:00:00.000Z',
-      time_end: '2026-06-11T05:30:00.000Z',
+      time_start: localIso(2026, 5, 11, 14),
+      time_end: localIso(2026, 5, 11, 14, 30),
       facility_batch_id: null,
     },
   ],
@@ -254,7 +260,16 @@ function stubFetch(workspace: ReportsTodayWorkspaceResponse = TODAY_WORKSPACE) {
     }
     if (url.includes('/api/care-reports/generate-from-visit')) {
       return new Response(
-        JSON.stringify({ data: [{ id: 'rep_generated', report_type: 'care_manager_report' }] }),
+        JSON.stringify({
+          data: [
+            {
+              id: 'rep_generated',
+              report_type: 'care_manager_report',
+              status: 'draft',
+              updated_at: '2026-06-11T05:00:00.000Z',
+            },
+          ],
+        }),
         { status: 201 },
       );
     }
@@ -319,6 +334,18 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('加藤 ミサ 様 — 保険・請求根拠未確定')).toBeTruthy();
     expect(screen.getByTestId('report-created-list')).toBeTruthy();
     expect(screen.getByText('作成済み報告書')).toBeTruthy();
+
+    // Slice1: 即時対応優先(guidelines §68-76)。返信待ち(=止まっている)を残課題・作成済みより前に出す。
+    const waiting = screen.getAllByTestId('report-waiting-reply')[0];
+    const issues = screen.getByTestId('report-open-issues');
+    const created = screen.getByTestId('report-created-list');
+    expect(waiting.compareDocumentPosition(issues) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      waiting.compareDocumentPosition(created) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: '田中 一郎 様' }).getAttribute('href')).toBe(
+      '/patients/patient_1',
+    );
     expect(
       screen.getByText((text) => text.includes('医師への報告 / 主治医への服薬状況報告')),
     ).toBeTruthy();
@@ -381,6 +408,39 @@ describe('ReportShareWorkspace', () => {
     expect(issueLink.getAttribute('href')).not.toBe('/reports/null');
   });
 
+  it('encodes created-report patient links and keeps unassigned reports as text', async () => {
+    const workspace = JSON.parse(JSON.stringify(TODAY_WORKSPACE)) as ReportsTodayWorkspaceResponse;
+    workspace.created_reports = [
+      {
+        ...workspace.created_reports[0],
+        patient_id: '../settings?x=1#y',
+      },
+      {
+        ...workspace.created_reports[1],
+        patient_id: null,
+        patient_label: '患者未設定',
+      },
+    ];
+    workspace.counts = { ...workspace.counts, created: 2 };
+
+    stubFetch(workspace);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-created-list')).toBeTruthy();
+    });
+
+    const linkedPatient = screen.getByRole('link', { name: '田中 一郎 様' });
+    expect(linkedPatient.getAttribute('href')).toBe(
+      `/patients/${encodeURIComponent('../settings?x=1#y')}`,
+    );
+    expect(linkedPatient.getAttribute('href')).not.toContain('/settings');
+    expect(linkedPatient.getAttribute('href')).not.toContain('?x=1');
+    expect(linkedPatient.getAttribute('href')).not.toContain('#y');
+
+    expect(screen.getByText('患者未設定').closest('a')).toBeNull();
+  });
+
   it('creates a report draft from a selected not-created row and opens the draft', async () => {
     const fetchMock = stubFetch();
     renderWorkspace();
@@ -432,14 +492,10 @@ describe('ReportShareWorkspace', () => {
 
     // 次にやること: 麻薬監査が主操作(青)・期限付き
     await waitFor(() => {
-      expect(
-        screen.getByText(`麻薬監査を開始 — ${formatTimeOfDay('2026-06-11T03:00:00.000Z')}期限`),
-      ).toBeTruthy();
+      expect(screen.getByText('麻薬監査を開始 — 12:00期限')).toBeTruthy();
     });
     expect(
-      screen.getByText(
-        `${formatTimeOfDay('2026-06-11T05:00:00.000Z')}訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。`,
-      ),
+      screen.getByText('14:00訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。'),
     ).toBeTruthy();
 
     // 止まっている理由(カテゴリ+経過+個別アクション)

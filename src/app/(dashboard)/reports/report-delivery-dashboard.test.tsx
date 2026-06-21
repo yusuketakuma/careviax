@@ -146,4 +146,27 @@ describe('ReportDeliveryDashboard', () => {
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
+
+  it('describes the reminder action while analytics are loading', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    });
+
+    render(<ReportDeliveryDashboard />);
+
+    const reminderButton = screen.getByRole('button', { name: 'リマインドタスク起票' });
+    const reminderReason = screen.getByText('送達分析を読み込んでいます。');
+
+    expect(reminderButton).toHaveProperty('disabled', true);
+    expect(reminderButton.getAttribute('aria-describedby')).toBe(reminderReason.id);
+    expect(reminderReason.textContent).not.toMatch(/patient_|report_|山田|田中|患者A/);
+  });
 });

@@ -142,7 +142,7 @@ export function ComplianceChecklist({ reportType, content, warnings = [] }: Prop
           <span>算定要件チェック</span>
           <span
             className={`text-xs font-normal tabular-nums ${
-              allPassed ? 'text-green-600' : 'text-amber-600'
+              allPassed ? 'text-state-done' : 'text-state-confirm'
             }`}
           >
             {passedCount}/{totalCount} 充足
@@ -155,16 +155,16 @@ export function ComplianceChecklist({ reportType, content, warnings = [] }: Prop
             <li key={item.key} className="flex items-start gap-2 text-xs">
               {item.passed ? (
                 <CheckCircle2
-                  className="mt-0.5 size-3.5 shrink-0 text-green-600"
+                  className="mt-0.5 size-3.5 shrink-0 text-state-done"
                   aria-label="充足"
                 />
               ) : (
                 <AlertCircle
-                  className="mt-0.5 size-3.5 shrink-0 text-amber-500"
+                  className="mt-0.5 size-3.5 shrink-0 text-state-confirm"
                   aria-label="未入力/不足"
                 />
               )}
-              <span className={item.passed ? 'text-foreground' : 'font-medium text-amber-700'}>
+              <span className={item.passed ? 'text-foreground' : 'font-medium text-state-confirm'}>
                 {item.label}
               </span>
             </li>
@@ -174,15 +174,15 @@ export function ComplianceChecklist({ reportType, content, warnings = [] }: Prop
         {/* API warnings from auto-generation */}
         {warnings.length > 0 && (
           <div className="mt-3 border-t border-border pt-3">
-            <p className="mb-2 text-xs font-medium text-amber-700">自動生成時の警告</p>
+            <p className="mb-2 text-xs font-medium text-state-confirm">自動生成時の警告</p>
             <ul className="space-y-1">
               {warnings.map((w, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs">
                   <AlertCircle
-                    className="mt-0.5 size-3.5 shrink-0 text-amber-500"
+                    className="mt-0.5 size-3.5 shrink-0 text-state-confirm"
                     aria-hidden="true"
                   />
-                  <span className="text-amber-700">{w}</span>
+                  <span className="text-state-confirm">{w}</span>
                 </li>
               ))}
             </ul>
@@ -190,7 +190,7 @@ export function ComplianceChecklist({ reportType, content, warnings = [] }: Prop
         )}
 
         {allPassed && (
-          <p className="mt-3 text-center text-xs font-medium text-green-600">
+          <p className="mt-3 text-center text-xs font-medium text-state-done">
             全項目充足 — 算定要件を満たしています
           </p>
         )}

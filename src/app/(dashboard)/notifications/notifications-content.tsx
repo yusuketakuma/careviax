@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { BellOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
@@ -247,10 +248,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
         )}
 
         {!isError && visibleItems.length === 0 && !showUnsyncedRow ? (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border px-6 text-center text-sm text-muted-foreground">
-            <BellOff className="size-7" aria-hidden="true" />
-            <p>この分類のお知らせはありません</p>
-          </div>
+          <EmptyState icon={BellOff} title="この分類のお知らせはありません" />
         ) : !isError ? (
           visibleItems.map(({ notification, category: itemCategory }) => {
             return (
