@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1239 JST
+
+- current task: close F-20260621-003 by committing the approved `/search` patient `view=search` bounded projection slice.
+- files inspected: agmsg inbox and Claude CODE_REVIEW_RESULT approval, `git status --short --untracked-files=all`, `git show --stat --oneline HEAD`, `src/app/(dashboard)/search/search-content.tsx`, `src/app/(dashboard)/search/search-content.test.tsx`, `src/app/api/patients/route.ts`, `src/app/api/patients/route.test.ts`, `src/server/services/patient-service.ts`, and search result builder field consumption.
+- files changed: `src/app/(dashboard)/search/search-content.tsx`, `src/app/(dashboard)/search/search-content.test.tsx`, `src/app/api/patients/route.ts`, `src/app/api/patients/route.test.ts`, `src/server/services/patient-service.ts`, and this Ralph state entry.
+- bugs found: the dedicated `/search` page previously fetched `/api/patients` through the default full-list projection, so patient search rows carried full-list enrichment and PHI-adjacent fields even though the UI only needed id/name/name_kana, condition names, and next visit date.
+- security risks found: `view=search` now serializes only the subtitle-critical patient fields and tests assert absence of phone, insurance numbers, address, contacts, condition notes, case notes, carry item status, risk summary, pharmacy share, and readiness fields. Assignment filtering remains `buildDbWhere` plus `applyPatientAssignmentWhere` and `buildCareCaseAssignmentWhere`.
+- performance issues found: representative JSON payload measurement for the same patient model: full list 1447 bytes, `view=search` 262 bytes, `view=palette` 102 bytes; `view=search` reduces patient payload size by 81.9% versus full while preserving `/search` subtitles.
+- validation commands: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/app/api/patients/route.test.ts 'src/app/(dashboard)/search/search-content.test.tsx' --reporter=dot --testTimeout=30000`; targeted ESLint for the five owned paths; targeted Prettier check for the five owned paths; `git diff --check` for the five owned paths; earlier same-tree `pnpm typecheck`; earlier same-tree `pnpm typecheck:no-unused`; Claude independent patch review.
+- validation results: focused Vitest passed with 2 files / 39 tests, with existing nonfatal `webhook.org_dispatch_failed` stderr in create-patient tests. Targeted ESLint, targeted Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed. Claude approved all 7 review notes. Code commit landed as `fb315065` (`perf(search): add bounded patient search projection`).
+- remaining work: non-blocking follow-up candidate remains to fail-close `/search` client JSON parsing with `readApiJson` plus category schemas; this is pre-existing and not part of F-20260621-003. Claude-owned S2c-1 `dispense-audit-stats` paths remain dirty and approved for Claude to commit.
+- next action: commit this ledger-only entry, release the `.codex/ralph-state.md` lock, then drain agmsg and pick the next idle-auto-discovery candidate if no higher-priority review arrives.
+
 ### 20260621-1228 JST
 
 - current task: configure the CareViaX agent loop so idle capacity automatically discovers and executes useful bounded work instead of passively waiting.
