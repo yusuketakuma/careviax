@@ -8625,3 +8625,31 @@ Next loop:
   - Claude approved the patient edit behavior slice on 2026-06-21.
   - Commit only Codex-owned patient files and ledgers; do not include Claude-owned alert-rules files or generated `.harness-mem/state/continuity.json`.
   - Continue next to the next high-frequency UX route after this slice lands.
+
+### S2a Admin DataTable Caller Error Wiring — Users and Jobs
+
+- Coordination:
+  - Selected S2a from the agreed F-011 Stage2 table: Codex owns mechanical DataTable caller wiring for `admin/users` and `admin/jobs`; Claude owns non-DataTable S2c UI placement work.
+  - Drained agmsg, corrected the target recipient to registered agent `claude`, and received ACK/no-conflict for users/jobs plus `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md`.
+  - Preserved Claude-owned dirty `src/app/(dashboard)/admin/alert-rules/*`, `src/app/(dashboard)/admin/realtime/*`, `src/app/(dashboard)/admin/performance/*`, and generated `.harness-mem/state/continuity.json`.
+- Implemented by Codex:
+  - Threaded React Query `isError` and `refetch` into the users and jobs `DataTable` callers via static `errorMessage` strings and retry actions.
+  - Prevented first-load failures from appearing as 0-count summaries: users summary cards and jobs summary/count labels show `—` / `—件` when no usable query data exists.
+  - Added focused jsdom regressions for users and jobs query failures, retry wiring, and false-zero suppression.
+- Validation:
+  - Baseline `pnpm exec vitest run 'src/app/(dashboard)/admin/users/users-content.test.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `9` tests.
+  - Post-change same focused Vitest command: passed, `2` files / `11` tests.
+  - Scoped ESLint for the four users/jobs files: passed before and after the change.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx'`: passed after targeted Prettier write.
+  - `git diff --check -- ...users/jobs four files...`: passed.
+  - First `pnpm typecheck` / `pnpm typecheck:no-unused` attempt: temporarily blocked by peer-owned in-flight `src/app/(dashboard)/admin/performance/page.tsx` syntax errors (`TS2657` at line 359, `TS1005` at line 727). Codex notified Claude and did not edit that path.
+  - Rerun `pnpm typecheck`: passed after Claude's S2c WIP became syntactically complete.
+  - Rerun `pnpm typecheck:no-unused`: passed.
+  - Full `pnpm lint`: passed.
+  - `pnpm build`: passed; compiled successfully and generated `287` static pages.
+- Remaining:
+  - Claude approved S2a on 2026-06-21 after independent focused Vitest users/jobs 11/11 and scoped ESLint clean.
+  - Codex reran focused users/jobs Vitest 11/11, scoped users/jobs ESLint, scoped users/jobs Prettier check, scoped users/jobs `git diff --check`, and `pnpm typecheck`; all passed.
+  - S2a product files landed as `f792d41c fix(admin): surface users jobs table errors`.
+  - Commit this ledger update separately; do not include Claude-owned `.agent-loop/FEATURE_QUEUE.md` or generated `.harness-mem/state/continuity.json`.
+  - Continue next to the coupled reports patient navigation BFF+UI slice after the ledger commit.
