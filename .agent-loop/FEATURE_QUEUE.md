@@ -484,3 +484,23 @@ old tasks unless they are actively being edited for another reason.
     - projects/careviax/gates/2026-06-21/f-20260620-010-721ce32d
     - projects/careviax/performance-findings/2026-06-21/contact-summary-sequential-bounded-scan
 ```
+
+## F-011 Stage2 — 合意 owner/順序（2026-06-21, claude×codex 調整済）
+
+レーン原則: **codex = 機械的・低リスクの DataTable caller 配線継続（T1 workload-transfer 継続）**、
+**Claude = 判断を要する UI（非DataTable ErrorState 配置 / P-A 個別 / T4 状態色集約）**。
+各スライス小・自レーン LOCK・maker/checker・objective gate・reviewer 相互。path 非重複で並行可。
+
+| slice          | owner  | reviewer | 内容                                                                                                                                                    | 状態                         |
+| -------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| F-20260621-002 | codex  | claude   | T1: DataTable 既存 errorMessage/onRetry を admin/institutions・pca-pumps へ配線（DataTable 不変）                                                       | **done** f6e81a24            |
+| F-20260621-003 | codex  | claude   | perf: /search patient を view=search 中間 projection へ（subtitle 維持で payload 削減、実測 5489B→小）                                                  | review/lock granted          |
+| S2a            | codex  | claude   | T1 DataTable 配線 High: admin/users + admin/jobs（同形・DataTable 不変）                                                                                | queued（codex perf task 後） |
+| S2b            | codex  | claude   | T1 DataTable 配線 Med: facility-standards/document-templates/pharmacist-credentials/billing-rules/audit-logs/tasks/analytics/qr-drafts 等を 1-2 file/PR | queued                       |
+| S2c            | claude | codex    | T1 非DataTable ErrorState 横展開: performance/dispense-audit-stats/alert-rules/realtime（UI 配置判断）                                                  | next（claude）               |
+| S2d            | claude | codex    | P-A 個別: prescriptions/new 手書き error→ErrorState（小）→ patients/new 段階表示・reports グルーピング（大・別 PLAN）                                   | queued                       |
+| S2e            | claude | codex    | T4 状態色6軸集約: clerk-support/patients/[id]/admin/realtime/performance/notification-settings/qr-drafts                                                | queued                       |
+
+並行 housekeeping（joint）: matrix §3 stale 訂正（DataTable は既に skeleton/empty 内蔵、consent は isLoading 済）;
+gbrain promotion review: `projects/careviax/lessons/candidates/api-response-validation-and-consolidation`
+(times_confirmed=2) を §13 gate で VerifiedLesson 昇格検討。
