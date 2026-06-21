@@ -26,15 +26,15 @@ end. It is the first file consulted on resume and the last file written on a har
 current_run_id: RUN-20260621-001
 current_cycle: 1 # User-priority loop-control update: idle-capacity auto-discovery/execution wiring.
 cycle_start_time: 2026-06-21T12:28:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: LOOP-IDLE-AUTO-20260621
-current_cycle_note: 'User requested that available time automatically explore and execute useful work. Codex is wiring the existing ApplyNow §12/§14 idle rule into control-plane config, supervisor prompts, README procedure, and state so waiting requires prior exploration.'
-files_changed_count: 8 # Owned loop-control/ledger paths only; shared worktree also has peer-owned dirty UI/search/patient files.
-claude_status: implementing # Claude has F-011-S2c-1 dispense-audit-stats patch ready/pending Codex review; those paths remain peer-owned.
-codex_status: reviewing # LOOP-IDLE-AUTO-20260621 loop-control configuration is validated; Codex is returning to pending review/handoff work.
-last_memory_bootstrap: 2026-06-21 # Consulted prior CareViaX idle-delegation memory plus live .agent-loop policy/config/state.
-zero_actionable_count: 0 # Idle auto-discovery must run before this increments.
-last_gate_result: pass # Targeted Prettier check and git diff --check passed for loop-control docs/config.
-next_action: return to pending F-011-S2c-1 review / F-20260621-003 handoff work; if no actionable item remains, run idle_auto_discovery before waiting.
+active_task_id: F-011-S2e-patients-id
+current_cycle_note: 'F-011 S2e 進行中: S1(cycle status SSOT role) landed 8996abde; S2-S4(prescription-history 状態色) rev2 peer review 中。並行して LOOP_POLICY に §15(no passive-wait per-turn trigger)を追加し、応答待ち=overlap time として §14 ladder を毎ターン自動実行する運用へ更新。'
+files_changed_count: 2 # 本サイクルの loop-control 編集(LOOP_POLICY.md/STATE.md)。prescription-history 等は別 LOCK/別コミット。
+claude_status: implementing # S2-S4 patch rev2 を peer review に出しつつ、§15 に従い非衝突タスク(loop-update/SSOT 草案)を並行実行。
+codex_status: reviewing # F-011-S2e rev2 と loop POLICY_UPDATE をレビュー予定。
+last_memory_bootstrap: 2026-06-21 # 既存 .agent-loop policy/config/state と design-analyst grounding を参照。
+zero_actionable_count: 0 # §15 により、応答待ちでも §14 ladder を実行してから初めて increment。
+last_gate_result: pass # focused vitest 5/5 + typecheck/eslint/prettier(prescription-history rev2)。
+next_action: §15 適用 — S2-S4 rev2 承認待ちは overlap time とし、非衝突タスク(SSOT migration-map 追記草案の Codex 提案 / 次 UI_AUDIT_MATRIX stage の read-only scope)を進める。inbound review/lock は最優先で yield。
 ```
 
 ## gbrain memory (this run)

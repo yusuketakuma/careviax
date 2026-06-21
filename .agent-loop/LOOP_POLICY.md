@@ -126,6 +126,23 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
       request, URGENT, user-priority); all hard-stops (auth/billing/payments/security/destructive
       migration/production deploy) stay human-gated; no new external sends/deploys. This is a **standing**
       expectation, not a one-off — both Supervisors default to it instead of going idle.
+15. **No passive-wait turns (hard per-turn trigger; both Supervisors).** §14 is a _standing_ rule; this
+    makes it _enforced every turn_. After any send that blocks on the peer or external state
+    (`PATCH_REVIEW_REQUEST` / `PLAN_REVIEW_REQUEST`, `LOCK` request, `HANDOFF`, or a kicked-off
+    build/test), you MUST NOT end the turn in passive wait (e.g. "待機します / awaiting review"). In the
+    **same turn**, immediately begin the highest-value non-conflicting §14-ladder item and report what you
+    started — not that you are waiting. A turn whose only action is announcing a wait is a policy
+    violation. Each blocked turn, in order:
+    - **1. Yield first.** Drain inbox; handle any inbound review/lock/URGENT/user-priority before new work.
+    - **2. Auto-discover + start.** If nothing inbound needs you, run the §14 ladder (a→g) and START the
+      first safe item this turn: independent read-only recon, next-task scoping/plan-ground, SSOT/docs
+      drafting, gbrain writeback, hygiene/coverage, or an **independent-file** slice under a fresh LOCK
+      that touches neither peer-locked nor under-review paths.
+    - **3. Account.** Only after that work is recorded may `zero_actionable_count` increment; record the
+      chosen item in `STATE.next_action`.
+      Peer-review latency is **overlap time, not stop time**: the file under review stays untouched while the
+      next non-conflicting slice/plan/doc proceeds. Same safety envelope as §14 (read-only default;
+      own-lane/gbrain/ledger writes only under LOCK; hard-stops human-gated; yield immediately on inbound).
 
 ## Consider
 
@@ -175,4 +192,6 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §11 (workload-balancing handoff)         | codex-lead  | claude-lead | applied               |
 | ApplyNow §12 (idle-capacity useful work)          | human       | claude-lead | applied               |
 | ApplyNow §13 (loop-engineering PDCA track)        | human       | codex-lead  | applied               |
+| ApplyNow §14 (idle-time productivity playbook)    | claude-lead | codex-lead  | applied               |
+| ApplyNow §15 (no passive-wait per-turn trigger)   | human       | codex-lead  | proposed              |
 | _next candidate_                                  | _name_      | _name_      | proposed              |
