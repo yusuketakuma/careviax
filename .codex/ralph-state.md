@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1626 JST
+
+- current task: record the full mobile layout E2E baseline while reviewing Claude-owned S2d planning and loop-as-code tooling without mixing ownership.
+- files inspected: agmsg inbox/LOCK/ACK/PATCH_REVIEW messages, current `git status`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `docs/ui-ux-design-guidelines.md`, `src/components/features/patients/patient-form.tsx`, `src/lib/hooks/use-unsaved-changes-guard.ts`, `src/app/(dashboard)/reports/report-share-workspace.tsx`, `.agent-loop/loop-cycle.mjs`, `.agent-loop/GATE_CONFIG.md`, `.agent-loop/LOOP_POLICY.md`, `.agent-loop/STATE.md`, and local validation output.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no mobile layout product or test failure was found; `tools/tests/ui-mobile-layout.spec.ts --project=mobile-chromium` passed without code changes. During peer review, `loop-cycle.mjs` rev1 had blocking loop-tooling issues: bare `gates` would run full Vitest while omitting required cheap gates, lane detection was Claude-lane hard-coded but labeled generic own-lane, and §15 in-flight detection ignored `codex_status`.
+- security risks found: no product code, auth, authorization, RLS, DB, API, patient/PHI projection, mutation, audit, export, or print behavior changed. The loop-tooling review was non-product and read-only.
+- performance issues found: no runtime path changed. The mobile E2E baseline confirmed the current mobile suite completes in 9.9m; the loop-tooling review flagged that default full `pnpm test` would unnecessarily stall per-slice gates.
+- validation commands: full mobile Chromium Playwright for `tools/tests/ui-mobile-layout.spec.ts`; `node .agent-loop/loop-cycle.mjs status`; `node .agent-loop/loop-cycle.mjs phases`; `node .agent-loop/loop-cycle.mjs next`; `node .agent-loop/loop-cycle.mjs gates format:check`; scoped ESLint and Prettier check for Claude-owned `.agent-loop/loop-cycle.mjs`.
+- validation results: mobile layout E2E passed `42/42`. `loop-cycle.mjs` status/phases/next executed, `gates format:check` passed, scoped ESLint passed, and scoped Prettier passed; Codex still returned `REQUEST_CHANGES` because the executable policy semantics did not match `GATE_CONFIG` and shared-lane operation.
+- remaining work: format/check ledgers, drain agmsg, stage only `CODEX_GOAL_PROGRESS.md` and this Ralph state file, commit the validation-only ledger slice, then notify Claude. Do not stage Claude-owned `src/app/(dashboard)/reports/report-share-workspace.tsx` or `.agent-loop/loop-cycle.mjs`.
+- next action: run targeted ledger checks, commit the Codex-owned mobile baseline ledger update, then continue with incoming S2d/loop-code reviews or the next non-overlapping UX route.
+
 ### 20260621-1608 JST
 
 - current task: stabilize workflow E2E after patient-flow landed, while reviewing Claude-owned S2e SSOT/card/generic state-color follow-ups.
