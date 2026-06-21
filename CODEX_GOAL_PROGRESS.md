@@ -8842,3 +8842,37 @@ Next loop:
   - `git diff --check -- tools/tests/ui-browser-matrix-smoke.spec.ts`: passed.
 - Remaining:
   - Commit only `tools/tests/ui-browser-matrix-smoke.spec.ts` plus ledger entries, then continue with the next high-frequency UX baseline/fix.
+
+### Page/Detail Layout E2E Baselines — Current Route Scaffold
+
+- Coordination:
+  - Ran under ACKed `F-UX-PAGE-DETAIL-LAYOUT-E2E-BASELINE` ledger lock.
+  - No product or test code changes were needed for page/detail layout; both suites already matched the current UI.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-page-layout.spec.ts --project=chromium`: passed, `13/13` in `1.3m`.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-detail-layout.spec.ts --project=chromium`: passed, `4/4` in `1.9m`.
+
+### Major Screens E2E Drift — Patient Search, Report Print, Reports Navigation
+
+- Coordination:
+  - Ran under ACKed `F-UX-MAJOR-SCREENS-E2E-DRIFT` lock for `tools/tests/ui-major-screens.spec.ts` plus ledgers.
+  - Claude paused PR push/create until this Codex-owned test slice is committed or released, and confirmed not to stage this file.
+- Bugs found:
+  - Patient-list representative-data test waited for a stale `/api/patients?q=...` response and old accessible name `氏名・住所で検索`; the current patient board filters locally through `氏名・状態で検索`.
+  - The report-print smoke fixture seeded the demo report as `response_waiting`, but the current print-audit route correctly fail-closes printing to `confirmed` reports only.
+  - The reports-list navigation test still expected a `詳細を開く` button; the current created-reports table exposes direct links including `→ 詳細へ` and a patient link.
+- Implemented by Codex:
+  - Removed the stale patient API response wait and asserted the visible filtered patient card.
+  - Seeded the UI demo care report as `confirmed` so print-audit can render the report print view.
+  - Scoped reports-list assertions to `report-created-list` and verified the direct report detail link plus patient-card link.
+- Validation:
+  - Baseline `tools/tests/ui-major-screens.spec.ts --project=chromium`: failed `3/44` on patient search response wait, report-print fail-closed screen, and reports-list `詳細を開く` button drift; `41/44` passed.
+  - Focused post-fix rerun for those 3 tests: passed `3/3`.
+  - Full rerun after the fix reached the corrected patient search test successfully and then was environment-interrupted: `schedule-proposals` timed out, after which `localhost:3012` was down and later tests failed with `ERR_CONNECTION_REFUSED`.
+  - After restarting `pnpm dev:e2e:local`, focused route/fix rerun passed `4/4`: `schedule-proposals`, patient search, report-print, and reports-list navigation.
+  - After restarting `pnpm dev:e2e:local`, back-half regression subset passed `14/14`, covering patient prescriptions/share, report/visit detail, shared print chrome, DB-backed share/visit/report/billing flow, free cooperation report, medication profile data, and reports-list navigation.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint tools/tests/ui-major-screens.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-major-screens.spec.ts`: clean.
+  - `git diff --check -- tools/tests/ui-major-screens.spec.ts`: passed.
+- Remaining:
+  - Commit `tools/tests/ui-major-screens.spec.ts` plus this ledger update, notify Claude, then release PR pause.

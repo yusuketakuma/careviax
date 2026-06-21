@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1832 JST
+
+- current task: record page/detail layout baselines and stabilize current `ui-major-screens` E2E drift before Claude opens the branch PR.
+- files inspected: agmsg inbox/LOCK/ACK/PR_INTENT messages, current `git status`, `tools/tests/ui-page-layout.spec.ts`, `tools/tests/ui-detail-layout.spec.ts`, `tools/tests/ui-major-screens.spec.ts`, major-screens Playwright failure contexts/screenshots, `src/app/(dashboard)/patients/patients-board.tsx`, `src/app/(dashboard)/reports/report-share-workspace.tsx`, `src/app/(dashboard)/reports/[id]/print/page.tsx`, `src/app/api/care-reports/[id]/print-audit/route.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `tools/tests/ui-major-screens.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `ui-major-screens` still expected a stale patient search API response and old `氏名・住所で検索` label even though the current patient board filters locally through `氏名・状態で検索`; the demo care report was seeded as `response_waiting` while the current print-audit contract only renders `confirmed` reports; and the reports navigation assertion still expected a `詳細を開く` button instead of the current created-reports direct `→ 詳細へ` link plus patient link.
+- security risks found: no product code, auth, authorization, RLS, DB schema, production data, patient projection, report content, audit behavior, export behavior, or mutation contract changed. The report fixture status change aligns the local E2E demo row with the existing fail-closed print-audit rule for confirmed reports.
+- performance issues found: no runtime code changed. The test update removes a 180s false wait for a client-side patient filter and avoids stale report-navigation assertions.
+- validation commands: Chromium Playwright for `tools/tests/ui-page-layout.spec.ts`; Chromium Playwright for `tools/tests/ui-detail-layout.spec.ts`; baseline full Chromium Playwright for `tools/tests/ui-major-screens.spec.ts`; focused major-screens reruns for the three fixed tests; full major-screens rerun after the fix; restarted `pnpm dev:e2e:local`; focused major-screens rerun for `schedule-proposals` plus the three fixed tests; back-half major-screens regression subset; scoped ESLint, scoped Prettier check, and scoped `git diff --check` for `tools/tests/ui-major-screens.spec.ts`; Claude-side full unit/build PR verification output.
+- validation results: page layout passed `13/13`; detail layout passed `4/4`. Baseline major-screens failed `3/44` and passed `41/44`; focused post-fix rerun passed `3/3`. The subsequent full major-screens rerun reached the corrected patient search test successfully but was environment-interrupted when `localhost:3012` went down after a `schedule-proposals` timeout, causing later `ERR_CONNECTION_REFUSED` failures. After restarting the dev server, the focused schedule/fix rerun passed `4/4` and the back-half subset passed `14/14`. Scoped ESLint, Prettier, and `git diff --check` passed. Claude reported full unit `8669 passed/1 skipped` and `next build` exit 0 before PR creation, while holding PR push for this Codex commit.
+- remaining work: format/check ledgers, drain agmsg, stage only `tools/tests/ui-major-screens.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry, commit, notify Claude to resume PR push/create, and leave the restarted e2e dev server state explicit.
+- next action: run ledger formatting/diff checks, commit the Codex-owned major-screens slice, then release the PR pause to Claude.
+
 ### 20260621-1712 JST
 
 - current task: stabilize the browser matrix smoke baseline after landing the Data Explorer bootstrap fix and reviewing Claude-owned patients/new Slice3 rev2.

@@ -1009,13 +1009,13 @@ async function ensureUiDemoData() {
       `
         INSERT INTO "CareReport" (
           "id","org_id","patient_id","case_id","report_type","status","content","created_by","created_at","updated_at"
-        ) VALUES ($1,$2,$3,$4,'physician_report','response_waiting',$5::jsonb,$6,NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,'physician_report','confirmed',$5::jsonb,$6,NOW(),NOW())
         ON CONFLICT ("id") DO UPDATE
         SET "org_id" = EXCLUDED."org_id",
             "patient_id" = EXCLUDED."patient_id",
             "case_id" = EXCLUDED."case_id",
             "report_type" = EXCLUDED."report_type",
-            "status" = 'response_waiting',
+            "status" = 'confirmed',
             "content" = EXCLUDED."content",
             "created_by" = EXCLUDED."created_by",
             "updated_at" = NOW()
@@ -1780,17 +1780,6 @@ async function fetchFirstPatientId(page: Page) {
   return patientId!;
 }
 
-async function waitForPatientsSearch(page: Page, query: string) {
-  const response = await page.waitForResponse((candidate) => {
-    if (candidate.request().method() !== 'GET') return false;
-
-    const url = new URL(candidate.url());
-    return url.pathname === '/api/patients' && url.searchParams.get('q') === query;
-  });
-
-  expect(response.ok()).toBeTruthy();
-}
-
 test.beforeAll(async () => {
   await fs.mkdir(SCREENSHOT_DIR, { recursive: true });
   demoContext = await ensureUiDemoData();
@@ -1838,10 +1827,7 @@ test.describe('major authenticated screens', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/patients');
 
-    await Promise.all([
-      waitForPatientsSearch(page, demoContext.patientName),
-      page.getByLabel('氏名・住所で検索').fill(demoContext.patientName),
-    ]);
+    await page.getByLabel('氏名・状態で検索').fill(demoContext.patientName);
 
     const patientLink = page
       .locator(`main a[href="/patients/${demoContext.patientId}"]:visible`)
@@ -2992,15 +2978,18 @@ test.describe('major authenticated screens', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/reports');
 
-    const reportLink = page
-      .locator(`main a[href="/reports/${demoContext.reportId}"]:visible`)
+    const createdReportsSection = page.getByTestId('report-created-list');
+    await expect(createdReportsSection).toBeVisible({ timeout: 60_000 });
+
+    const reportLink = createdReportsSection
+      .locator(`a[href="/reports/${demoContext.reportId}"]:visible`)
       .first();
     await expect(reportLink).toBeVisible({ timeout: 60_000 });
-    await expect(reportLink).toHaveAttribute('href', /\/reports\/[^/]+$/);
-    await expect(page.getByRole('button', { name: '詳細を開く' }).first()).toBeVisible();
+    await expect(reportLink).toHaveAttribute('href', `/reports/${demoContext.reportId}`);
+    await expect(reportLink).toContainText('→ 詳細へ');
 
-    const patientLink = page
-      .locator(`main a[href="/patients/${demoContext.patientId}"]:visible`)
+    const patientLink = createdReportsSection
+      .locator(`a[href="/patients/${demoContext.patientId}"]:visible`)
       .first();
     await expect(patientLink).toBeVisible();
     await expect(patientLink).toHaveAttribute('href', `/patients/${demoContext.patientId}`);
