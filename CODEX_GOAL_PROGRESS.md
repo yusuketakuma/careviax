@@ -8653,3 +8653,27 @@ Next loop:
   - S2a product files landed as `f792d41c fix(admin): surface users jobs table errors`.
   - Commit this ledger update separately; do not include Claude-owned `.agent-loop/FEATURE_QUEUE.md` or generated `.harness-mem/state/continuity.json`.
   - Continue next to the coupled reports patient navigation BFF+UI slice after the ledger commit.
+
+### Reports Patient Navigation — Created Reports Table
+
+- Coordination:
+  - Continued after S2a/S2c landed and Claude acknowledged no-conflict for the coupled BFF+UI reports navigation slice.
+  - Preserved generated `.harness-mem/state/continuity.json` and did not touch print eligibility; print eligibility expansion remains blocked without human approval.
+  - Re-read the PH-OS UI/UX SSOT and Next.js server/client component guide before changing the client reports workspace.
+- Implemented by Codex:
+  - Added `patient_id: string | null` to `ReportCreatedRow`.
+  - Returned `patient_id` from `/api/care-reports/today-workspace` `created_reports`, reusing the existing `recentReportsPromise` select.
+  - Linked created-report patient labels to `/patients/${encodeURIComponent(patient_id)}` when a patient is present.
+  - Kept `patient_id: null` reports such as `患者未設定` as plain text instead of linking to an invalid patient route.
+  - Added focused route/UI regressions for `created_reports.patient_id`, normal patient links, encoded path segments, and unassigned reports.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `29` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/types/reports-today-workspace.ts' 'src/app/api/care-reports/today-workspace/route.ts' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --check 'src/types/reports-today-workspace.ts' 'src/app/api/care-reports/today-workspace/route.ts' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+  - `git diff --check -- 'src/types/reports-today-workspace.ts' 'src/app/api/care-reports/today-workspace/route.ts' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Claude approved this reports nav slice on 2026-06-21 after independent focused Vitest 29/29 and scoped ESLint clean.
+  - Commit only owned files and ledger entries.
+  - Continue next to the acknowledged test-only UI audit drift slice if no higher-priority agmsg arrives.

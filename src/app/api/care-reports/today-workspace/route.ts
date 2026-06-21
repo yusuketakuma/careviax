@@ -791,6 +791,7 @@ export const GET = withAuthContext(
           const patient = patientLabel(report.patient_id) ?? '患者未設定';
           return {
             id: report.id,
+            patient_id: report.patient_id,
             patient_label: patient,
             report_type: report.report_type,
             report_type_label:

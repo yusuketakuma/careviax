@@ -454,9 +454,18 @@ function CreatedReportsSection({ reports }: { reports: ReportCreatedRow[] }) {
             {reports.map((report) => (
               <TableRow key={report.id}>
                 <TableCell>
-                  <span className="block font-semibold text-foreground">
-                    {report.patient_label}
-                  </span>
+                  {report.patient_id ? (
+                    <Link
+                      href={`/patients/${encodeURIComponent(report.patient_id)}`}
+                      className="inline-flex min-h-8 items-center rounded-sm font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      {report.patient_label}
+                    </Link>
+                  ) : (
+                    <span className="block font-semibold text-foreground">
+                      {report.patient_label}
+                    </span>
+                  )}
                   <span className="block text-xs leading-5 text-muted-foreground">
                     {report.report_type_label} / {report.title}
                   </span>

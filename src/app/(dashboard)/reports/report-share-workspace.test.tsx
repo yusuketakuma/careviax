@@ -110,6 +110,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
   created_reports: [
     {
       id: 'report_sent',
+      patient_id: 'patient_1',
       patient_label: '田中 一郎 様',
       report_type: 'physician_report',
       report_type_label: '医師への報告',
@@ -127,6 +128,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
     },
     {
       id: 'report_draft',
+      patient_id: 'patient_2',
       patient_label: '加藤 ミサ 様',
       report_type: 'care_manager_report',
       report_type_label: 'ケアマネへの報告',
@@ -144,6 +146,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
     },
     {
       id: 'report_failed',
+      patient_id: 'patient_3',
       patient_label: '高橋 茂 様',
       report_type: 'physician_report',
       report_type_label: '医師への報告',
@@ -331,6 +334,9 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('加藤 ミサ 様 — 保険・請求根拠未確定')).toBeTruthy();
     expect(screen.getByTestId('report-created-list')).toBeTruthy();
     expect(screen.getByText('作成済み報告書')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '田中 一郎 様' }).getAttribute('href')).toBe(
+      '/patients/patient_1',
+    );
     expect(
       screen.getByText((text) => text.includes('医師への報告 / 主治医への服薬状況報告')),
     ).toBeTruthy();
@@ -391,6 +397,39 @@ describe('ReportShareWorkspace', () => {
       '/billing/candidates?billing_month=2026-06-01&candidate_id=candidate_1&patient_id=patient_1',
     );
     expect(issueLink.getAttribute('href')).not.toBe('/reports/null');
+  });
+
+  it('encodes created-report patient links and keeps unassigned reports as text', async () => {
+    const workspace = JSON.parse(JSON.stringify(TODAY_WORKSPACE)) as ReportsTodayWorkspaceResponse;
+    workspace.created_reports = [
+      {
+        ...workspace.created_reports[0],
+        patient_id: '../settings?x=1#y',
+      },
+      {
+        ...workspace.created_reports[1],
+        patient_id: null,
+        patient_label: '患者未設定',
+      },
+    ];
+    workspace.counts = { ...workspace.counts, created: 2 };
+
+    stubFetch(workspace);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-created-list')).toBeTruthy();
+    });
+
+    const linkedPatient = screen.getByRole('link', { name: '田中 一郎 様' });
+    expect(linkedPatient.getAttribute('href')).toBe(
+      `/patients/${encodeURIComponent('../settings?x=1#y')}`,
+    );
+    expect(linkedPatient.getAttribute('href')).not.toContain('/settings');
+    expect(linkedPatient.getAttribute('href')).not.toContain('?x=1');
+    expect(linkedPatient.getAttribute('href')).not.toContain('#y');
+
+    expect(screen.getByText('患者未設定').closest('a')).toBeNull();
   });
 
   it('creates a report draft from a selected not-created row and opens the draft', async () => {

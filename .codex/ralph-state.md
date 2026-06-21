@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1429 JST
+
+- current task: implement the coupled reports patient navigation BFF+UI slice (`F-UX-REPORTS-PATIENT-NAV`) after S2a/S2c landed and Claude acknowledged no-conflict.
+- files inspected: agmsg inbox/ACK messages, current `git status`, `.codex/ralph-state.md`, `CODEX_GOAL_PROGRESS.md`, `.agent-loop/FEATURE_QUEUE.md`, gbrain search output for reports patient navigation and UI audit drift, `docs/ui-ux-design-guidelines.md`, Next.js server/client component docs under `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `src/types/reports-today-workspace.ts`, `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `src/app/(dashboard)/reports/report-share-workspace.tsx`, `src/app/(dashboard)/reports/report-share-workspace.test.tsx`, existing patient-link examples in reports/search/workflow files, and read-only code-mapper output.
+- files changed: `src/types/reports-today-workspace.ts`, `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `src/app/(dashboard)/reports/report-share-workspace.tsx`, `src/app/(dashboard)/reports/report-share-workspace.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the reports today-workspace BFF already selected `patient_id` for recent reports but dropped it from `created_reports`, leaving the created-reports table with a patient label and report detail link but no direct patient-card navigation.
+- security risks found: no new patient fields beyond the existing internal patient id were selected. The route remains `canReport`-guarded and org-scoped through existing `withAuthContext` / `withOrgContext` paths. The UI encodes the id with `encodeURIComponent` before building `/patients/[id]`, and reports with `patient_id: null` remain plain text instead of linking to an invalid patient route. No print eligibility, report content, delivery reason, audit, DB, auth, authorization, or mutation behavior changed.
+- performance issues found: no extra DB query, polling change, query key change, or render fan-out was added. The BFF reuses the `patient_id` already selected by `recentReportsPromise`; the UI adds only a conditional `Link` in existing table rows.
+- validation commands: targeted Prettier write/check for the five reports/type files; focused Vitest for `src/app/api/care-reports/today-workspace/route.test.ts` and `src/app/(dashboard)/reports/report-share-workspace.test.tsx`; targeted ESLint for the five reports/type files; targeted `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: targeted Prettier check passed. Focused Vitest passed with 2 files / 29 tests, covering BFF `created_reports.patient_id`, normal patient links, encoded malicious path segments, and non-linked `patient_id: null` rows. Targeted ESLint, targeted `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- remaining work: commit this approved reports nav slice with only owned files. Do not stage generated `.harness-mem/state/continuity.json`.
+- next action: drain agmsg, stage the five reports/type files plus `CODEX_GOAL_PROGRESS.md` and this Ralph state entry, commit, notify Claude, then continue to the acknowledged test-only UI audit drift slice if no higher-priority message arrives.
+
 ### 20260621-1409 JST
 
 - current task: S2a DataTable caller error-state wiring for admin users and admin jobs while preserving Claude-owned S2c admin error-state work.
