@@ -143,6 +143,17 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
       Peer-review latency is **overlap time, not stop time**: the file under review stays untouched while the
       next non-conflicting slice/plan/doc proceeds. Same safety envelope as §14 (read-only default;
       own-lane/gbrain/ledger writes only under LOCK; hard-stops human-gated; yield immediately on inbound).
+16. **Continuous loop — repeat on drain (while a goal/run is active).** The loop does not terminate when a
+    milestone lands or the actionable queue empties. On **drain** (own work all landed/in-review, inbox
+    empty, no inbound needing action), do not stop — start the **next cycle**: run a **Discover sweep**
+    (scan `FEATURE_QUEUE`/`UI_AUDIT_MATRIX`/roadmap + recent diffs for the next highest-value item),
+    pick the top non-conflicting task, and begin it (read-only scope/plan-ground first when it needs a
+    PLAN; LOCK + implement when it's a ready slice). Record the chosen item in `STATE.next_action` and
+    bump `current_cycle`. Only genuinely-blocked-everywhere state (all candidates need peer/human input
+    or hard-stop approval) may park — and then write a `BlockedContext` and re-check on the next inbound,
+    never a silent stop. Safety envelope unchanged (§14/§15: yield-first, non-conflicting, LOCK for
+    writes, hard-stops human-gated). This makes the loop self-perpetuating: milestone → Discover → plan →
+    implement → verify → land → Discover…, until the human ends the goal/run.
 
 ## Consider
 
@@ -194,4 +205,5 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §13 (loop-engineering PDCA track)        | human       | codex-lead  | applied                                |
 | ApplyNow §14 (idle-time productivity playbook)    | claude-lead | codex-lead  | applied                                |
 | ApplyNow §15 (no passive-wait per-turn trigger)   | human       | codex-lead  | peer-approved (human gate for applied) |
+| ApplyNow §16 (continuous loop — repeat on drain)  | human       | codex-lead  | proposed                               |
 | _next candidate_                                  | _name_      | _name_      | proposed                               |

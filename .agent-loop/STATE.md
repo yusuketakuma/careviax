@@ -24,17 +24,17 @@ end. It is the first file consulted on resume and the last file written on a har
 
 ```yaml
 current_run_id: RUN-20260621-001
-current_cycle: 1 # User-priority loop-control update: idle-capacity auto-discovery/execution wiring.
+current_cycle: 2 # §16 Continuous loop: F-011 S2e 完了マイルストン後、drain せず次サイクル(S2d scope)へ自動継続。
 cycle_start_time: 2026-06-21T12:28:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: F-011-S2e-patients-id
-current_cycle_note: 'F-011 S2e 進行中: S1(cycle status SSOT role) landed 8996abde; S2-S4(prescription-history 状態色) rev2 peer review 中。並行して LOOP_POLICY に §15(no passive-wait per-turn trigger)を追加し、応答待ち=overlap time として §14 ladder を毎ターン自動実行する運用へ更新。'
-files_changed_count: 2 # 本サイクルの loop-control 編集(LOOP_POLICY.md/STATE.md)。prescription-history 等は別 LOCK/別コミット。
-claude_status: implementing # S2-S4 patch rev2 を peer review に出しつつ、§15 に従い非衝突タスク(loop-update/SSOT 草案)を並行実行。
-codex_status: reviewing # F-011-S2e rev2 と loop POLICY_UPDATE をレビュー予定。
-last_memory_bootstrap: 2026-06-21 # 既存 .agent-loop policy/config/state と design-analyst grounding を参照。
-zero_actionable_count: 0 # §15 により、応答待ちでも §14 ladder を実行してから初めて increment。
-last_gate_result: pass # focused vitest 5/5 + typecheck/eslint/prettier(prescription-history rev2)。
-next_action: §15 適用 — S2-S4 rev2 承認待ちは overlap time とし、非衝突タスク(SSOT migration-map 追記草案の Codex 提案 / 次 UI_AUDIT_MATRIX stage の read-only scope)を進める。inbound review/lock は最優先で yield。
+active_task_id: F-011-S2d-scope
+current_cycle_note: 'F-011 S2e(状態色6軸集約)完了マイルストン: clerk-support/S1-S5/realtime SSE/後発 全 landed・codex APPROVED、full unit 8664 pass + build green、SSOT 境界事例 85679a60。§16 Continuous loop により drain せず次サイクルへ: S2d(patients/new 段階表示・reports グルーピング=大規模 UX)を §14b で read-only scope し PLAN 起票する。'
+files_changed_count: 2 # 本サイクルの loop-control 編集(LOOP_POLICY.md/STATE.md §16)。
+claude_status: discovering # §16 Discover sweep: S2e 完了後、次の高価値タスク=S2d を read-only scope 中。
+codex_status: reviewing # loop POLICY_UPDATE(§16)レビュー + dashboard-first UX sweep(mobile E2E) 並行。
+last_memory_bootstrap: 2026-06-21 # .agent-loop policy/config/state + design-analyst grounding。
+zero_actionable_count: 0 # §16 により drain でも Discover を再実行してから判断。
+last_gate_result: pass # full unit 8664 passed/1 skipped + 本番 build green(S2e 完了時点)。
+next_action: §16 Discover — S2d(patients/new 段階表示・reports グルーピング)を read-only で recon/scope し PLAN_REVIEW_REQUEST を起票。実装は plan 承認+LOCK 後。inbound review/lock は最優先 yield。
 ```
 
 ## gbrain memory (this run)
