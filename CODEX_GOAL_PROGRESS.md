@@ -8774,3 +8774,18 @@ Next loop:
 - Remaining:
   - Commit this validation-only ledger update without staging Claude-owned `src/app/(dashboard)/reports/report-share-workspace.tsx` or `.agent-loop/loop-cycle.mjs`.
   - Continue with non-overlapping S2d reviews and the next dashboard-first UX route after the ledger commit.
+
+### Workflow Lightweight Views E2E Baseline — View-specific Dashboard APIs
+
+- Coordination:
+  - Continued under the ACKed `F-UX-WORKFLOW-LIGHTWEIGHT-VIEWS-E2E-DRIFT` lock for `tools/tests/ui-workflow-lightweight-views.spec.ts` and ledgers.
+  - Kept Claude-owned S2d reports files and loop-cycle tooling out of Codex staging scope.
+  - No test or product code change was needed; the current mocked workflow view contracts already pass.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-workflow-lightweight-views.spec.ts --project=chromium`: passed, `3/3` in `2.6m`.
+- Review work handled in parallel:
+  - Returned `REQUEST_CHANGES` on `.agent-loop/loop-cycle.mjs` rev2 because `--agent` was parsed as a gate/test arg, quoted `#` notes did not round-trip through `parseState`, and joint dirty wording could imply editing a peer-locked `.agent-loop` file.
+  - Approved S2d Slice1 reports order-only reorder after focused Vitest `9/9`, scoped ESLint, scoped Prettier, and scoped `git diff --check` passed.
+- Remaining:
+  - Commit this validation-only ledger update without staging Claude-owned `src/app/(dashboard)/reports/report-share-workspace.tsx`, `src/app/(dashboard)/reports/report-share-workspace.test.tsx`, or `.agent-loop/loop-cycle.mjs`.
+  - Continue with incoming S2d/loop-code reviews or the next non-overlapping dashboard-first UX route.

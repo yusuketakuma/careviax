@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1634 JST
+
+- current task: run the non-overlapping workflow lightweight view E2E baseline while reviewing Claude-owned reports Slice1 and loop-cycle rev2.
+- files inspected: agmsg inbox/ACK/PATCH_REVIEW messages, current `git status`, `tools/tests/ui-workflow-lightweight-views.spec.ts`, local DB/web readiness checks, `docs/ui-ux-design-guidelines.md`, Claude-owned `src/app/(dashboard)/reports/report-share-workspace.tsx` and `.test.tsx` diffs, `.agent-loop/loop-cycle.mjs` rev2, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no workflow lightweight E2E product or test failure was found; the Chromium spec passed without code changes. During peer review, `loop-cycle.mjs` rev2 still parsed `--agent` as a gate/test argument and could misread quoted `#` notes after `advance`.
+- security risks found: no product code, auth, authorization, RLS, DB mutation, API payload, patient/PHI projection, audit, export, or print behavior changed. The Playwright baseline used existing mocked workflow responses and local authenticated session helpers.
+- performance issues found: no runtime path changed. The workflow lightweight baseline completed in 2.6m; the loop-tooling review continued to push against avoidable full-suite/default-gate stalls.
+- validation commands: DB readiness `nc -z localhost 5433`; web readiness `nc -z localhost 3012`; full Chromium Playwright for `tools/tests/ui-workflow-lightweight-views.spec.ts`; scoped status/next/gates checks for `.agent-loop/loop-cycle.mjs`; focused Vitest, scoped ESLint, scoped Prettier, and scoped `git diff --check` for Claude-owned reports Slice1.
+- validation results: workflow lightweight E2E passed `3/3`. Reports Slice1 focused Vitest passed `9/9`, scoped ESLint passed, scoped Prettier was clean, and scoped `git diff --check` passed. `loop-cycle.mjs` rev2 status/next ran but Codex returned `REQUEST_CHANGES` for CLI argument parsing and STATE round-trip issues.
+- remaining work: format/check ledgers, drain agmsg, stage only `CODEX_GOAL_PROGRESS.md` and this Ralph state file, commit the validation-only ledger slice, then notify Claude. Do not stage Claude-owned reports files or `.agent-loop/loop-cycle.mjs`.
+- next action: commit the Codex-owned workflow lightweight baseline ledger update, then continue with incoming S2d/loop-code reviews or the next non-overlapping UX route.
+
 ### 20260621-1626 JST
 
 - current task: record the full mobile layout E2E baseline while reviewing Claude-owned S2d planning and loop-as-code tooling without mixing ownership.
