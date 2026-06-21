@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1840 JST
+
+- current task: continue the dashboard-first UX sweep with screenshot/layout and design-fidelity capture baselines after PR #1 was created.
+- files inspected: agmsg inbox/PR_CREATED/LOCK/ACK messages, current `git status`, `tools/tests/ui-layout-screenshot-audit.spec.ts`, `tools/tests/ui-design-fidelity.spec.ts`, `tools/tests/helpers/design-screen-map.ts`, ignored screenshot artifact paths, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no layout screenshot or top-five design capture failure was found. Dashboard, my-day, patients, schedules, dispensing, and the first five new design-map routes all rendered and captured successfully.
+- security risks found: no product code, auth, authorization, RLS, DB schema, PHI projection, audit behavior, report content, export, or mutation surface changed. Screenshot artifacts remain ignored under `test-results/` and `tools/tests/.artifacts/design-fidelity/`.
+- performance issues found: no runtime path changed. The layout audit completed in `42.5s`; the selected design-fidelity capture completed in `42.2s`.
+- validation commands: Chromium Playwright for `tools/tests/ui-layout-screenshot-audit.spec.ts`; Chromium Playwright for `tools/tests/ui-design-fidelity.spec.ts` with `DESIGN_SCREEN_IDS=new_01_dashboard,new_02_patient_list,new_03_schedule,new_04_visit,new_05_import`; git status checks confirming only ignored screenshot artifacts were produced.
+- validation results: layout screenshot audit passed `10/10`; design fidelity top-five capture passed `5/5`. Claude reported PR #1 was created from `HEAD=4bf640b5` and acknowledged this validation-only ledger lock/expand. No source edits were required.
+- remaining work: format/check ledgers, drain agmsg, stage only `CODEX_GOAL_PROGRESS.md` and this Ralph state entry, commit, notify Claude, and push if needed so PR #1 includes this validation evidence.
+- next action: commit the validation-only ledger slice, then continue the UX sweep with the next display/navigation-focused E2E candidate.
+
 ### 20260621-1832 JST
 
 - current task: record page/detail layout baselines and stabilize current `ui-major-screens` E2E drift before Claude opens the branch PR.

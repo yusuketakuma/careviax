@@ -8876,3 +8876,16 @@ Next loop:
   - `git diff --check -- tools/tests/ui-major-screens.spec.ts`: passed.
 - Remaining:
   - Commit `tools/tests/ui-major-screens.spec.ts` plus this ledger update, notify Claude, then release PR pause.
+
+### Layout Screenshot + Design Fidelity Baselines — High-frequency Screens
+
+- Coordination:
+  - Ran under ACKed `F-UX-LAYOUT-SCREENSHOT-AUDIT-BASELINE` lock for `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md`.
+  - Claude confirmed PR #1 was created from `HEAD=4bf640b5` and will include later commits pushed to the shared branch. No product or test source edits were needed for this slice.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-layout-screenshot-audit.spec.ts --project=chromium`: passed, `10/10` in `42.5s`.
+  - Desktop and mobile screenshot/overflow coverage passed for dashboard, my-day, patients, schedules, and dispensing.
+  - `DESIGN_SCREEN_IDS=new_01_dashboard,new_02_patient_list,new_03_schedule,new_04_visit,new_05_import DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-design-fidelity.spec.ts --project=chromium`: passed, `5/5` in `42.2s`.
+  - Generated screenshots are under ignored artifact directories: `test-results/` and `tools/tests/.artifacts/design-fidelity/`.
+- Remaining:
+  - Commit this validation-only ledger update and push so PR #1 includes the latest UX baseline evidence.
