@@ -8677,3 +8677,20 @@ Next loop:
   - Claude approved this reports nav slice on 2026-06-21 after independent focused Vitest 29/29 and scoped ESLint clean.
   - Commit only owned files and ledger entries.
   - Continue next to the acknowledged test-only UI audit drift slice if no higher-priority agmsg arrives.
+
+### UI Audit Extensions Test Drift — Current Navigation and Patient Search
+
+- Coordination:
+  - Continued the ACKed, no-conflict test-only slice for `tools/tests/ui-audit-extensions.spec.ts`.
+  - Product UI stayed unchanged; generated `.harness-mem/state/continuity.json` was preserved and left unstaged.
+- Implemented by Codex:
+  - Updated patient-board search assertions from stale `氏名・住所で検索` to the current `氏名・状態で検索` accessible name.
+  - Added an `openNavigationDrawer()` helper matching the current top-bar `ナビを開く` flow.
+  - Updated dashboard nav/dark-mode/keyboard contracts to inspect and click links inside the `ナビゲーション` dialog instead of assuming a persistent visible sidebar.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write tools/tests/ui-audit-extensions.spec.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint tools/tests/ui-audit-extensions.spec.ts`: passed.
+  - `git diff --check -- tools/tests/ui-audit-extensions.spec.ts`: passed.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-audit-extensions.spec.ts`: passed, `21` passed / `21` skipped.
+- Remaining:
+  - Commit only the test file and ledger entries.

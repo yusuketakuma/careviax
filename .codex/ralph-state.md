@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1439 JST
+
+- current task: fix acknowledged test-only UI audit drift in `tools/tests/ui-audit-extensions.spec.ts` after reports patient navigation landed.
+- files inspected: agmsg inbox/no-conflict ACK, current `git status`, `tools/tests/ui-audit-extensions.spec.ts`, `tools/tests/ui-dashboard-nav.spec.ts`, `src/components/layout/app-shell.tsx`, `src/components/layout/app-header.tsx`, and current patient board search label in `src/app/(dashboard)/patients/patients-board.tsx`.
+- files changed: `tools/tests/ui-audit-extensions.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the audit extension Playwright spec still expected the stale patient search accessible name `氏名・住所で検索` and assumed dashboard navigation links were available from a persistent sidebar instead of the current top-bar `ナビを開く` drawer.
+- security risks found: no product code, auth, authorization, RLS, DB, API, patient data projection, audit, export, or print behavior changed. The update only aligns test selectors and navigation actions with the current UI contract.
+- performance issues found: no runtime code changed. The stale selectors could waste E2E time on avoidable timeouts; the updated spec uses the same drawer interaction as current dashboard navigation coverage.
+- validation commands: targeted Prettier write/check for `tools/tests/ui-audit-extensions.spec.ts`; targeted ESLint for the same file; targeted `git diff --check`; local Playwright `tools/tests/ui-audit-extensions.spec.ts` against `http://localhost:3012` with `PLAYWRIGHT_REUSE_SERVER=1`.
+- validation results: targeted Prettier, ESLint, and `git diff --check` passed. `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-audit-extensions.spec.ts` passed with 21 passed / 21 skipped across chromium and mobile-chromium.
+- remaining work: commit this test-only slice with only owned files. Do not stage generated `.harness-mem/state/continuity.json`.
+- next action: drain agmsg, stage `tools/tests/ui-audit-extensions.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry, commit, and notify Claude.
+
 ### 20260621-1429 JST
 
 - current task: implement the coupled reports patient navigation BFF+UI slice (`F-UX-REPORTS-PATIENT-NAV`) after S2a/S2c landed and Claude acknowledged no-conflict.
