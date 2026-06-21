@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { MonthlyVisitBucket, ProcessDuration } from '@/lib/analytics/operations-insights';
 import {
@@ -122,17 +124,12 @@ export function OperationsInsightsContent() {
     : '実績なし';
 
   return (
-    <div className="space-y-5" data-testid="operations-insights-page">
-      <section className="rounded-lg border border-border/70 bg-card p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              在宅業務の動きを見る
-            </h1>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              月ごとの訪問量と、直近30日の工程所要時間から、次に詰まりを確認する場所を絞ります。
-            </p>
-          </div>
+    <PageScaffold variant="bare" testId="operations-insights-page">
+      {/* SYS-3: 自前 section ヘッダを共通 AdminPageHeader へ。関連導線は supportingContent に。 */}
+      <AdminPageHeader
+        title="在宅業務の動きを見る"
+        description="月ごとの訪問量と、直近30日の工程所要時間から、次に詰まりを確認する場所を絞ります。"
+        supportingContent={
           <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/admin/capacity"
@@ -153,8 +150,9 @@ export function OperationsInsightsContent() {
               ヒヤリハット
             </Link>
           </div>
-        </div>
-
+        }
+      />
+      <section className="rounded-lg border border-border/70 bg-card p-4">
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             label={`${summary.currentMonthLabel}の訪問`}
@@ -229,6 +227,6 @@ export function OperationsInsightsContent() {
           </p>
         </section>
       </div>
-    </div>
+    </PageScaffold>
   );
 }

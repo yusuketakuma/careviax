@@ -6,6 +6,8 @@ import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { Badge } from '@/components/ui/badge';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -158,25 +160,20 @@ export function InventoryForecastContent() {
   });
 
   return (
-    <div className="space-y-5" data-testid="inventory-forecast-page">
-      <section className="rounded-lg border border-border/70 bg-card p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              在庫と定期処方の予測
-            </h1>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              対象期間: {formatWeekLabel(forecast.week)}
-              。来週の訪問予定と直近の定期処方から、不足側の薬と影響患者を先に確認します。
-            </p>
-          </div>
+    <PageScaffold variant="bare" testId="inventory-forecast-page">
+      {/* SYS-3: 自前 section ヘッダを共通 AdminPageHeader へ。次にすること は supportingContent に。 */}
+      <AdminPageHeader
+        title="在庫と定期処方の予測"
+        description={`対象期間: ${formatWeekLabel(forecast.week)}。来週の訪問予定と直近の定期処方から、不足側の薬と影響患者を先に確認します。`}
+        supportingContent={
           <div className="rounded-md border border-border/70 bg-muted/30 px-4 py-3">
             <p className="text-xs font-medium text-muted-foreground">次にすること</p>
             <p className="mt-1 text-base font-bold text-foreground">{summary.nextAction}</p>
           </div>
-        </div>
-
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        }
+      />
+      <section className="rounded-lg border border-border/70 bg-card p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             label="要発注"
             value={`${summary.orderRequiredCount}件`}
@@ -273,6 +270,6 @@ export function InventoryForecastContent() {
           )}
         </section>
       </div>
-    </div>
+    </PageScaffold>
   );
 }
