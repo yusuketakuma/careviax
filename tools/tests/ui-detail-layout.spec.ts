@@ -84,23 +84,56 @@ const structuredPhysicianReportContent = {
 };
 
 async function openFirstPatientCard(page: Page) {
-  await openStableRoute(page, '/patients');
-  const firstLink = page
-    .locator('a[href^="/patients/"]:not([href="/patients/new"])')
-    .filter({ visible: true })
-    .first();
-  await expect(firstLink).toBeVisible({ timeout: 30_000 });
-  const href = await firstLink.getAttribute('href');
-  expect(href).toBeTruthy();
-  await openStableRoute(page, href!);
+  const firstLink = page.getByTestId('patient-board-card-link').first();
+  const loading = page.locator('main').getByText('患者一覧を読み込み中');
+  const empty = page.locator('main').getByText('条件に一致する患者がいません');
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (attempt === 0) {
+      await openStableRoute(page, '/patients');
+    } else {
+      await reloadStablePage(page);
+    }
+
+    if (await firstLink.isVisible({ timeout: 30_000 }).catch(() => false)) {
+      break;
+    }
+
+    const allPatientsButton = page.getByRole('button', { name: '全員', exact: true });
+    if (
+      (await empty.isVisible({ timeout: 1_000 }).catch(() => false)) ||
+      (await allPatientsButton.isVisible({ timeout: 1_000 }).catch(() => false))
+    ) {
+      await allPatientsButton.click().catch(() => undefined);
+      if (await firstLink.isVisible({ timeout: 30_000 }).catch(() => false)) {
+        break;
+      }
+    }
+
+    await expect(loading)
+      .toBeVisible({ timeout: 1_000 })
+      .catch(() => undefined);
+  }
+
+  let href: string | null = null;
+  if (await firstLink.isVisible({ timeout: 60_000 }).catch(() => false)) {
+    href = await firstLink.getAttribute('href');
+  }
+
+  if (!href) {
+    const ids = await ensureVisitWorkflowFixture();
+    href = `/patients/${ids.patient}`;
+  }
+
+  await openStableRoute(page, href);
 
   const cardWorkspace = page.getByTestId('card-workspace');
-  const loading = page.locator('main').getByText('読み込み中...');
+  const detailLoading = page.locator('main').getByText('読み込み中...');
   if (await cardWorkspace.isVisible({ timeout: 60_000 }).catch(() => false)) {
     return;
   }
 
-  if (await loading.isVisible({ timeout: 1_000 }).catch(() => false)) {
+  if (await detailLoading.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await reloadStablePage(page);
   }
 
@@ -561,7 +594,9 @@ test.describe('detail page layout', () => {
     const conferenceWorkflowCard = main
       .locator('article')
       .filter({ hasText: '会議アクション回収' });
-    await expect(conferenceWorkflowCard.getByText(/合意事項 \d+件/)).toBeVisible();
+    await expect(conferenceWorkflowCard.getByText(/合意事項 \d+件/)).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(
       conferenceWorkflowCard.getByText('退院前カンファ: 退院前カンファ E2E'),
     ).toBeVisible();

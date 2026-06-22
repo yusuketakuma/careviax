@@ -10,8 +10,8 @@ import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 setupDomTestEnv();
 
 const ROLES = Object.keys(STATUS_TOKENS) as StatusRole[];
-const expectedText = (r: StatusRole) =>
-  r === 'hazard' || r === 'info' ? `text-tag-${r}` : `text-state-${r}`;
+const tokenPrefix = (role: StatusRole) =>
+  role === 'hazard' || role === 'info' ? `tag-${role}` : `state-${role}`;
 
 describe('StateBadge', () => {
   it.each(ROLES)('renders visible label + icon for "%s"', (role) => {
@@ -27,11 +27,15 @@ describe('StateBadge', () => {
     expect(screen.getByText(STATUS_TOKENS[role].label)).toBeTruthy();
   });
 
-  it.each(ROLES)('applies the role token text class for "%s"', (role) => {
+  it.each(ROLES)('applies the readable role badge contract for "%s"', (role) => {
     const { container } = render(<StateBadge role={role} />);
     const el = container.querySelector('[data-role]') as HTMLElement;
-    // tailwind-merge must keep the token text colour (not the outline variant's text-foreground)
-    expect(el.className).toContain(expectedText(role));
+    // State is carried by icon, role data, tinted surface, and ring; text uses foreground for AA contrast.
+    expect(el.dataset.role).toBe(role);
+    expect(el.className).toContain(`bg-${tokenPrefix(role)}/15`);
+    expect(el.className).toContain('text-foreground');
+    expect(el.className).toContain('ring-1');
+    expect(el.className).toContain(`ring-${tokenPrefix(role)}/25`);
   });
 
   it('omits the icon when showIcon=false', () => {

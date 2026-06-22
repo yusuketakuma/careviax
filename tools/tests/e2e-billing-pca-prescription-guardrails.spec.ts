@@ -1,6 +1,10 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { Client } from 'pg';
 import { attachLocalSession, createInstrumentedPage, openStableRoute } from './helpers/local-auth';
 
+const DB_CONNECTION_STRING = (
+  process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
+).replace('ph-os_dev', 'ph_os_e2e');
 const ORG_ID = 'cmnhseedorg0000amq9ph-os';
 const USER_ID = 'cmnb3swgz0008wgq9gfpgjq6r';
 const IDS = {
@@ -235,6 +239,14 @@ test.describe('billing/PCA/prescription guardrails', () => {
     context,
   }) => {
     const { page, errors } = await createApiPage(context);
+    const warmup = await apiFetch(page, {
+      path: '/api/prescription-intakes?limit=1',
+      method: 'GET',
+    });
+    expect(warmup.status).toBe(200);
+
+    const cycleCountBeforeBlocked = await countPrescriptionCaseCycles();
+    const blockedStartedAt = Date.now();
 
     const blocked = await apiFetch(page, {
       path: '/api/prescription-intakes',
@@ -246,7 +258,9 @@ test.describe('billing/PCA/prescription guardrails', () => {
         receiptCode: '799940202',
       }),
     });
+    const blockedElapsedMs = Date.now() - blockedStartedAt;
     expect(blocked.status).toBe(400);
+    expect(blockedElapsedMs).toBeLessThan(5_000);
     expect(blocked.body.message).toContain('外来/在宅自己注射として調剤可否が未確認');
     expect(blocked.body.details.blocked_lines).toEqual(
       expect.arrayContaining([
@@ -257,13 +271,14 @@ test.describe('billing/PCA/prescription guardrails', () => {
         }),
       ]),
     );
+    await expect.poll(() => countPrescriptionCaseCycles()).toBe(cycleCountBeforeBlocked);
 
     const suffix = Date.now().toString(36);
     const allowed = await apiFetch(page, {
       path: '/api/prescription-intakes',
       method: 'POST',
       body: buildPrescriptionPayload({
-        sourceType: 'fax',
+        sourceType: 'paper',
         drugName: `E2E自己注射対象確認済み注射液 ${suffix}`,
         drugCode: '7999401A1010',
         receiptCode: '799940101',
@@ -277,10 +292,31 @@ test.describe('billing/PCA/prescription guardrails', () => {
         }),
       ]),
     );
+    await expect.poll(() => countPrescriptionCaseCycles()).toBe(cycleCountBeforeBlocked + 1);
 
     expect(withoutExpectedValidationConsole(errors)).toEqual([]);
   });
 });
+
+async function countPrescriptionCaseCycles() {
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+  try {
+    const result = await client.query<{ count: string }>(
+      `
+        SELECT COUNT(*)::text AS count
+        FROM "MedicationCycle"
+        WHERE org_id = $1
+          AND case_id = $2
+          AND patient_id = $3
+      `,
+      [ORG_ID, IDS.prescriptionCase, IDS.prescriptionPatient],
+    );
+    return Number(result.rows[0]?.count ?? '0');
+  } finally {
+    await client.end();
+  }
+}
 
 async function createApiPage(context: BrowserContext) {
   const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
@@ -290,7 +326,11 @@ async function createApiPage(context: BrowserContext) {
 
 async function apiFetch(
   page: Page,
-  args: { path: string; method: 'GET' | 'POST' | 'PATCH'; body?: unknown },
+  args: {
+    path: string;
+    method: 'GET' | 'POST' | 'PATCH';
+    body?: unknown;
+  },
 ) {
   const maxAttempts = args.method === 'POST' ? 1 : 3;
   const requestUrl = new URL(args.path, page.url()).toString();

@@ -256,7 +256,43 @@ type LoadedCycleContext = {
   }>;
 };
 
-async function loadCycleContext(
+type LoadedCareCaseContext = {
+  id: string;
+  patient_id: string;
+  primary_pharmacist_id: string | null;
+};
+
+type PrescriptionIntakeTargetContext =
+  | { kind: 'cycle'; cycle: LoadedCycleContext }
+  | { kind: 'case'; careCase: LoadedCareCaseContext };
+
+async function createMedicationCycleContext(
+  tx: Tx,
+  args: { orgId: string; careCase: LoadedCareCaseContext },
+): Promise<LoadedCycleContext> {
+  const createdCycle = await tx.medicationCycle.create({
+    data: {
+      org_id: args.orgId,
+      case_id: args.careCase.id,
+      patient_id: args.careCase.patient_id,
+      overall_status: 'intake_received',
+      version: 1,
+    },
+  });
+
+  return {
+    id: createdCycle.id,
+    patient_id: createdCycle.patient_id,
+    case_id: createdCycle.case_id,
+    overall_status: createdCycle.overall_status,
+    version: createdCycle.version,
+    primary_pharmacist_id: args.careCase.primary_pharmacist_id ?? null,
+    prescription_intakes: [],
+    dispense_tasks: [],
+  };
+}
+
+async function loadPrescriptionIntakeTargetContext(
   tx: Tx,
   args: {
     orgId: string;
@@ -265,7 +301,7 @@ async function loadCycleContext(
     patientId?: string;
     accessContext?: PrescriptionAccessContext;
   },
-): Promise<LoadedCycleContext | null> {
+): Promise<PrescriptionIntakeTargetContext | null> {
   if (args.cycleId) {
     const assignmentWhere = args.accessContext
       ? buildMedicationCycleAssignmentWhere(args.accessContext)
@@ -326,7 +362,8 @@ async function loadCycleContext(
               primary_pharmacist_id: cycle.case_?.primary_pharmacist_id ?? null,
             }
           : null,
-      );
+      )
+      .then((cycle) => (cycle ? { kind: 'cycle' as const, cycle } : null));
   }
 
   if (!args.caseId || !args.patientId) {
@@ -351,25 +388,13 @@ async function loadCycleContext(
   });
   if (!careCase) return null;
 
-  const createdCycle = await tx.medicationCycle.create({
-    data: {
-      org_id: args.orgId,
-      case_id: careCase.id,
-      patient_id: careCase.patient_id,
-      overall_status: 'intake_received',
-      version: 1,
-    },
-  });
-
   return {
-    id: createdCycle.id,
-    patient_id: createdCycle.patient_id,
-    case_id: createdCycle.case_id,
-    overall_status: createdCycle.overall_status,
-    version: createdCycle.version,
-    primary_pharmacist_id: careCase.primary_pharmacist_id ?? null,
-    prescription_intakes: [],
-    dispense_tasks: [],
+    kind: 'case',
+    careCase: {
+      id: careCase.id,
+      patient_id: careCase.patient_id,
+      primary_pharmacist_id: careCase.primary_pharmacist_id ?? null,
+    },
   };
 }
 
@@ -536,6 +561,72 @@ async function collectOutpatientInjectionBlockedLines(tx: Tx, lines: CreateIntak
     );
 }
 
+async function createStructuringBlockExceptionIfNeeded(
+  tx: Tx,
+  args: {
+    orgId: string;
+    cycle: Pick<LoadedCycleContext, 'id' | 'patient_id'>;
+    blockedLines: Array<{ line_number: number; drug_name: string }>;
+  },
+) {
+  const existingException = await tx.workflowException.findFirst({
+    where: {
+      org_id: args.orgId,
+      cycle_id: args.cycle.id,
+      exception_type: 'prescription_structuring_block',
+      status: 'open' satisfies ExceptionStatus,
+    },
+    select: { id: true },
+  });
+
+  if (existingException) return;
+
+  await tx.workflowException.create({
+    data: {
+      org_id: args.orgId,
+      cycle_id: args.cycle.id,
+      patient_id: args.cycle.patient_id,
+      exception_type: 'prescription_structuring_block',
+      description: `未構造化または不明な処方明細があります: ${args.blockedLines.map((line) => `${line.line_number}行目 ${line.drug_name}`).join(' / ')}`,
+      severity: 'warning' satisfies ExceptionSeverity,
+      status: 'open' satisfies ExceptionStatus,
+    },
+  });
+}
+
+async function createOutpatientInjectionBlockExceptionIfNeeded(
+  tx: Tx,
+  args: {
+    orgId: string;
+    cycle: Pick<LoadedCycleContext, 'id' | 'patient_id'>;
+    blockedLines: Array<{ line_number: number; drug_name: string; reason: string }>;
+  },
+) {
+  const existingException = await tx.workflowException.findFirst({
+    where: {
+      org_id: args.orgId,
+      cycle_id: args.cycle.id,
+      exception_type: 'outpatient_injection_eligibility_block',
+      status: 'open' satisfies ExceptionStatus,
+    },
+    select: { id: true },
+  });
+
+  if (existingException) return;
+
+  await tx.workflowException.create({
+    data: {
+      org_id: args.orgId,
+      cycle_id: args.cycle.id,
+      patient_id: args.cycle.patient_id,
+      exception_type: 'outpatient_injection_eligibility_block',
+      description: `外来/在宅自己注射として調剤可否が未確認の注射剤があります: ${args.blockedLines.map((line) => `${line.line_number}行目 ${line.drug_name}`).join(' / ')}`,
+      severity: 'warning' satisfies ExceptionSeverity,
+      status: 'open' satisfies ExceptionStatus,
+    },
+  });
+}
+
 async function ensureFaxOriginalFollowupTaskTx(
   tx: Tx,
   args: {
@@ -581,7 +672,7 @@ async function validatePreviousPrescriptionLineSources(
   tx: Tx,
   args: {
     orgId: string;
-    cycle: LoadedCycleContext;
+    cycle: Pick<LoadedCycleContext, 'patient_id' | 'case_id'>;
     lines: CreateIntakeLineInput[];
   },
 ): Promise<SourcePrescriptionLineValidationResult> {
@@ -687,20 +778,28 @@ export async function createPrescriptionIntakeInTx(
     }
   }
 
-  const cycle = await loadCycleContext(tx, {
+  const target = await loadPrescriptionIntakeTargetContext(tx, {
     orgId,
     cycleId: cycle_id,
     caseId: case_id,
     patientId: patient_id,
     accessContext: options.accessContext,
   });
-  if (!cycle) {
+  if (!target) {
     return { kind: 'error', error: 'cycle_not_found' };
   }
+  const existingCycle = target.kind === 'cycle' ? target.cycle : null;
+  const cyclePatientScope: Pick<LoadedCycleContext, 'patient_id' | 'case_id'> =
+    target.kind === 'cycle'
+      ? target.cycle
+      : {
+          patient_id: target.careCase.patient_id,
+          case_id: target.careCase.id,
+        };
 
   const sourceValidation = await validatePreviousPrescriptionLineSources(tx, {
     orgId,
-    cycle,
+    cycle: cyclePatientScope,
     lines,
   });
   if (!sourceValidation.ok) {
@@ -715,9 +814,9 @@ export async function createPrescriptionIntakeInTx(
       return { kind: 'error', error: 'missing_refill_next_dispense_date' };
     }
 
-    const previousIntake = cycle.prescription_intakes[0] ?? null;
+    const previousIntake = existingCycle?.prescription_intakes[0] ?? null;
     const previousDispensedAt =
-      cycle.dispense_tasks
+      existingCycle?.dispense_tasks
         .flatMap((task) => task.results)
         .sort((left, right) => right.dispensed_at.getTime() - left.dispensed_at.getTime())[0]
         ?.dispensed_at ?? null;
@@ -754,27 +853,11 @@ export async function createPrescriptionIntakeInTx(
   if (!options.skipStructuringCheck) {
     const structuringBlockedLines = collectStructuringBlockedLines(lines);
     if (structuringBlockedLines.length > 0) {
-      const existingException = await tx.workflowException.findFirst({
-        where: {
-          org_id: orgId,
-          cycle_id: cycle.id,
-          exception_type: 'prescription_structuring_block',
-          status: 'open' satisfies ExceptionStatus,
-        },
-        select: { id: true },
-      });
-
-      if (!existingException) {
-        await tx.workflowException.create({
-          data: {
-            org_id: orgId,
-            cycle_id: cycle.id,
-            patient_id: cycle.patient_id,
-            exception_type: 'prescription_structuring_block',
-            description: `未構造化または不明な処方明細があります: ${structuringBlockedLines.map((line) => `${line.line_number}行目 ${line.drug_name}`).join(' / ')}`,
-            severity: 'warning' satisfies ExceptionSeverity,
-            status: 'open' satisfies ExceptionStatus,
-          },
+      if (existingCycle) {
+        await createStructuringBlockExceptionIfNeeded(tx, {
+          orgId,
+          cycle: existingCycle,
+          blockedLines: structuringBlockedLines,
         });
       }
 
@@ -791,27 +874,11 @@ export async function createPrescriptionIntakeInTx(
 
   const outpatientInjectionBlockedLines = await collectOutpatientInjectionBlockedLines(tx, lines);
   if (outpatientInjectionBlockedLines.length > 0) {
-    const existingException = await tx.workflowException.findFirst({
-      where: {
-        org_id: orgId,
-        cycle_id: cycle.id,
-        exception_type: 'outpatient_injection_eligibility_block',
-        status: 'open' satisfies ExceptionStatus,
-      },
-      select: { id: true },
-    });
-
-    if (!existingException) {
-      await tx.workflowException.create({
-        data: {
-          org_id: orgId,
-          cycle_id: cycle.id,
-          patient_id: cycle.patient_id,
-          exception_type: 'outpatient_injection_eligibility_block',
-          description: `外来/在宅自己注射として調剤可否が未確認の注射剤があります: ${outpatientInjectionBlockedLines.map((line) => `${line.line_number}行目 ${line.drug_name}`).join(' / ')}`,
-          severity: 'warning' satisfies ExceptionSeverity,
-          status: 'open' satisfies ExceptionStatus,
-        },
+    if (existingCycle) {
+      await createOutpatientInjectionBlockExceptionIfNeeded(tx, {
+        orgId,
+        cycle: existingCycle,
+        blockedLines: outpatientInjectionBlockedLines,
       });
     }
 
@@ -826,6 +893,13 @@ export async function createPrescriptionIntakeInTx(
     prescriber_institution_id,
     prescriber_institution: rest.prescriber_institution,
   });
+  const cycle =
+    target.kind === 'cycle'
+      ? target.cycle
+      : await createMedicationCycleContext(tx, {
+          orgId,
+          careCase: target.careCase,
+        });
 
   const intake = await tx.prescriptionIntake.create({
     data: {
