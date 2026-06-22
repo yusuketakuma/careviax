@@ -191,6 +191,44 @@ describe('/api/billing-evidence/check GET', () => {
     });
   });
 
+  it('encodes review-row patient hrefs while preserving raw lookup ids', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
+    txMock.billingCandidate.findMany.mockResolvedValue([
+      {
+        id: 'candidate_hostile',
+        patient_id: rawPatientId,
+        cycle_id: null,
+        rule_id: null,
+        billing_name: '訪問薬剤管理指導料',
+        billing_target_name: null,
+        exclusion_reason: null,
+      },
+    ]);
+    txMock.patient.findMany.mockResolvedValue([{ id: rawPatientId, name: '山田太郎' }]);
+
+    const response = await GET(createRequest(), emptyParams);
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(txMock.patient.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1', id: { in: [rawPatientId] } },
+      }),
+    );
+    expect(json.data.review_rows).toEqual([
+      expect.objectContaining({
+        id: 'candidate_hostile',
+        patient_label: '山田太郎 様',
+        patient_href: encodedPatientHref,
+        billing_name: '訪問薬剤管理指導料',
+        action_label: '→ カードへ',
+        action_href: encodedPatientHref,
+      }),
+    ]);
+  });
+
   it('uses the previous billing month when requested', async () => {
     const response = await GET(createRequest('?month=previous'), emptyParams);
 

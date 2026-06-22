@@ -2,13 +2,11 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 import { buildTodayOpsRail } from '@/server/services/today-ops-rail';
-import type {
-  BillingCheckResponse,
-  BillingCheckReviewRow,
-} from '@/types/billing-check';
+import type { BillingCheckResponse, BillingCheckReviewRow } from '@/types/billing-check';
 
 /**
  * 11_billing(算定チェック)用 BFF。
@@ -209,18 +207,15 @@ export const GET = withAuthContext(
         const preset = CHECK_ACTION_PRESETS.find((item) =>
           item.pattern.test(candidate.billing_name),
         );
-        const fallbackAction = candidate.patient_id
-          ? { label: '→ カードへ', href: `/patients/${candidate.patient_id}` }
+        const patientHref = candidate.patient_id ? buildPatientHref(candidate.patient_id) : null;
+        const fallbackAction = patientHref
+          ? { label: '→ カードへ', href: patientHref }
           : { label: '→ 候補一覧へ', href: '/billing/candidates' };
 
         return {
           id: candidate.id,
-          patient_label: buildPatientLabel(
-            patientName,
-            candidate.billing_target_name,
-            caseStatus,
-          ),
-          patient_href: candidate.patient_id ? `/patients/${candidate.patient_id}` : null,
+          patient_label: buildPatientLabel(patientName, candidate.billing_target_name, caseStatus),
+          patient_href: patientHref,
           billing_name: candidate.billing_name,
           confirm_text: candidate.exclusion_reason ?? '算定要件の事実確認が必要です',
           evidence_label: rule?.source_note?.trim() || '算定要件',
@@ -243,9 +238,7 @@ export const GET = withAuthContext(
         today_pending_count: todayPendingCount,
         review_rows: reviewRows,
         records: {
-          rule_revision_label: formatReiwaRevisionLabel(
-            latestRevisionRule?.effective_from ?? null,
-          ),
+          rule_revision_label: formatReiwaRevisionLabel(latestRevisionRule?.effective_from ?? null),
           rejection_count: rejectionCount,
           summary_template_kind_count: templateKinds.length,
         },
