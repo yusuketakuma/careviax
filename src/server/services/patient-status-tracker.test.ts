@@ -148,6 +148,86 @@ describe('trackPatientStatusChanges', () => {
     );
   });
 
+  it('encodes only the notification link path segment while preserving raw patient identity fields', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    listPatientRiskSummariesMock.mockResolvedValue([
+      {
+        ...highRiskPatientSummary(),
+        patient_id: rawPatientId,
+      },
+    ]);
+    const db = makeDb([{ target_id: rawPatientId, changes: { to: 'attention' } }]);
+
+    const result = await trackPatientStatusChanges(db as unknown as TrackerDb, {
+      orgId: 'org_1',
+      actorId: 'user_1',
+    });
+
+    expect(result.changed).toEqual([
+      {
+        patientId: rawPatientId,
+        patientName: '田中 太郎',
+        from: 'attention',
+        to: 'urgent',
+      },
+    ]);
+    expect(result.notifications).toEqual([
+      {
+        patientId: rawPatientId,
+        patientName: '田中 太郎',
+        severity: 'urgent',
+        title: '田中 太郎が要対応になりました',
+      },
+    ]);
+    expect(db.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          target_id: rawPatientId,
+        }),
+      }),
+    );
+    expect(db.careCase.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: { in: [rawPatientId] },
+        }),
+      }),
+    );
+    for (const call of db.visitSchedule.findMany.mock.calls) {
+      expect(call[0]).toEqual(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            case_: { patient_id: { in: [rawPatientId] } },
+          }),
+        }),
+      );
+    }
+    expect(db.medicationCycle.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: { in: [rawPatientId] },
+        }),
+      }),
+    );
+    expect(db.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          target_id: { in: [rawPatientId] },
+        }),
+      }),
+    );
+    expect(db.notification.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            link: '/patients/patient%2F1%3Ftab%3Dx%23frag',
+            dedupe_key: `patient-status:${rawPatientId}:attention:urgent:2026-06-16`,
+          }),
+        ],
+      }),
+    );
+  });
+
   it('emits a business-type notification with templated title for a high-severity trigger (overdue_visit)', async () => {
     // level not high + score < 7 to avoid the 'urgent' branch; hasOverdueVisit drives overdue_visit
     listPatientRiskSummariesMock.mockResolvedValue([
@@ -160,21 +240,29 @@ describe('trackPatientStatusChanges', () => {
     const db = {
       careCase: { findMany: vi.fn().mockResolvedValue([]) },
       visitSchedule: {
-        findMany: vi.fn().mockImplementation((args: { where?: { schedule_status?: unknown; scheduled_date?: { lt?: unknown } } }) => {
-          // overdueVisits query: planned-ish status + scheduled_date < today
-          const status = args?.where?.schedule_status;
-          const isOverdueQuery =
-            args?.where?.scheduled_date && 'lt' in (args.where.scheduled_date as object);
-          if (status && typeof status === 'object' && isOverdueQuery) {
-            return Promise.resolve([{ case_: { patient_id: 'patient_1' } }]);
-          }
-          return Promise.resolve([]);
-        }),
+        findMany: vi
+          .fn()
+          .mockImplementation(
+            (args: {
+              where?: { schedule_status?: unknown; scheduled_date?: { lt?: unknown } };
+            }) => {
+              // overdueVisits query: planned-ish status + scheduled_date < today
+              const status = args?.where?.schedule_status;
+              const isOverdueQuery =
+                args?.where?.scheduled_date && 'lt' in (args.where.scheduled_date as object);
+              if (status && typeof status === 'object' && isOverdueQuery) {
+                return Promise.resolve([{ case_: { patient_id: 'patient_1' } }]);
+              }
+              return Promise.resolve([]);
+            },
+          ),
       },
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       auditLog: {
         // previous status 'attention' is in the trigger's `from` list for overdue_visit
-        findMany: vi.fn().mockResolvedValue([{ target_id: 'patient_1', changes: { to: 'attention' } }]),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ target_id: 'patient_1', changes: { to: 'attention' } }]),
         create: vi.fn().mockResolvedValue({}),
       },
       notification: {
