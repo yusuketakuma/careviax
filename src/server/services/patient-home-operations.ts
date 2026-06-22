@@ -3,6 +3,7 @@ import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { formatOptionalDate } from '@/lib/patient/home-visit-intake';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { resolvePatientMcsOpenTargets } from '@/lib/patient-mcs/source';
 import { formatYen } from '@/lib/format/currency';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
@@ -723,7 +724,7 @@ function buildDocumentItem(args: {
       : latestDelivered
         ? `交付先 ${latestDelivered.delivered_to ?? '未記録'} / 交付日 ${formatDate(latestDelivered.delivered_at)}`
         : '契約書、重要事項説明書、同意書、初回訪問文書の作成・印刷・回収を確認します。',
-    href: `/patients/${args.patientId}#patient-documents`,
+    href: buildPatientHref(args.patientId, '#patient-documents'),
     action_label: '文書状態へ',
     tone: alerts.length > 0 ? 'attention' : 'ok',
     updated_at: toIso(latestUpdatedAt),
@@ -831,7 +832,7 @@ function buildMcsItem(args: {
     description: link
       ? `${link.project_title ?? 'MCS患者タイムライン'} / 最終確認 ${formatDate(lastCheckedAtValid ? lastCheckedAt : null)}`
       : 'MCS URL、参加状況、最終確認日、連携ログを患者単位で管理します。',
-    href: `/patients/${args.patientId}/mcs`,
+    href: buildPatientHref(args.patientId, '/mcs'),
     action_label: link ? 'MCS連携を管理' : 'MCSを登録',
     external_href: externalHref,
     external_action_label: externalHref ? 'MCSを開く' : null,
@@ -994,7 +995,7 @@ function buildPrescriptionItem(args: {
     description: intake
       ? `${sourceLabel} / ${intake.prescriber_institution ?? intake.prescriber_name ?? '処方元未記録'} / ${formatDate(intake.prescribed_date)}`
       : 'FAX受信、原本到着、電子処方せん、疑義照会、調剤結果登録、保管状況を確認します。',
-    href: `/patients/${args.patientId}/prescriptions`,
+    href: buildPatientHref(args.patientId, '/prescriptions'),
     action_label: '処方履歴へ',
     tone: alerts.length > 0 ? 'attention' : 'ok',
     updated_at: toIso(intake?.updated_at ?? intake?.created_at),
