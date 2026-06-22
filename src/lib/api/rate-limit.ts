@@ -746,6 +746,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/qr-scan-drafts',
   '/api/qr-scan-drafts/:id',
   '/api/qr-scan-drafts/:id/confirm',
+  '/api/referrals',
   '/api/residual-medications',
   '/api/saved-views',
   '/api/saved-views/:id',

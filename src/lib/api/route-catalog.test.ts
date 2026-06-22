@@ -62,6 +62,7 @@ describe('routeCatalog', () => {
       '/api/patient-share-cases/:id/patient-link',
       '/api/pharmacy-cooperation-message-threads',
       '/api/patients/:id/prescriptions/export',
+      '/api/referrals',
       '/api/partner-visit-records',
       '/api/partner-visit-records/:id/physician-report-draft',
       '/api/partner-visit-records/:id/review',

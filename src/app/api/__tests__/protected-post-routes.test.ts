@@ -35,6 +35,7 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { POST as casesPost } from '../cases/route';
 import { POST as patientsPost } from '../patients/route';
+import { POST as referralsPost } from '../referrals/route';
 import { POST as medicationProfilesPost } from '../medication-profiles/route';
 import { POST as medicationIssuesPost } from '../medication-issues/route';
 import { POST as communicationEventsPost } from '../communication-events/route';
@@ -83,6 +84,7 @@ function createRequest(headers?: Record<string, string>, body: unknown = {}) {
 const routes: RouteEntry[] = [
   { name: 'cases POST', handler: (req) => casesPost(req, emptyRouteContext) },
   { name: 'patients POST', handler: (req) => patientsPost(req, emptyRouteContext) },
+  { name: 'referrals POST', handler: (req) => referralsPost(req, emptyRouteContext) },
   {
     name: 'medication-profiles POST',
     handler: (req) => medicationProfilesPost(req, emptyRouteContext),
