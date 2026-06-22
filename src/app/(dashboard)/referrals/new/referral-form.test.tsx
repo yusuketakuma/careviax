@@ -47,25 +47,49 @@ vi.mock('@/lib/hooks/use-unsaved-changes-guard', () => ({
   useUnsavedChangesGuard: useUnsavedChangesGuardMock,
 }));
 
-// Lightweight ConfirmDialog mock: renders title + a confirm button (calling
-// onConfirm) ONLY when `open` is true, so tests can assert "dialog open" via the
-// title and trigger the discard confirmation deterministically (no portal).
+// Higher-fidelity ConfirmDialog mock: renders an `alertdialog` with an
+// accessible name (title) + description, a confirm button (calling onConfirm)
+// and a cancel button (calling onOpenChange(false)) ONLY when `open` is true.
+// This lets a11y tests assert via role + accessible name/description without a
+// portal, and lets the dup-flow assert the description copy / count.
 vi.mock('@/components/ui/confirm-dialog', () => ({
   ConfirmDialog: ({
     open,
     title,
+    description,
     confirmLabel,
+    cancelLabel,
+    confirmDisabled,
     onConfirm,
+    onOpenChange,
   }: {
     open: boolean;
     title: string;
+    description?: string;
     confirmLabel?: string;
+    cancelLabel?: string;
+    confirmDisabled?: boolean;
     onConfirm: () => void;
+    onOpenChange?: (open: boolean) => void;
   }) =>
     open ? (
-      <div data-testid="confirm-dialog">
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={title}
+        aria-describedby="confirm-dialog-description"
+        data-testid="confirm-dialog"
+      >
         <p data-testid="confirm-dialog-title">{title}</p>
-        <button type="button" onClick={onConfirm}>
+        {description !== undefined ? (
+          <p id="confirm-dialog-description" data-testid="confirm-dialog-description">
+            {description}
+          </p>
+        ) : null}
+        <button type="button" onClick={() => onOpenChange?.(false)}>
+          {cancelLabel ?? 'キャンセル'}
+        </button>
+        <button type="button" onClick={onConfirm} disabled={confirmDisabled}>
           {confirmLabel ?? '確認'}
         </button>
       </div>
@@ -248,17 +272,79 @@ function fillRequiredPatientFields() {
   fireEvent.change(screen.getByLabelText('生年月日 *'), { target: { value: '1950-01-01' } });
 }
 
+// Fill every field required for a valid atomic submit (referral_type + patient
+// fields + gender) plus a couple of optional referral fields so the body
+// assertions have content to verify.
+function fillValidReferralForm() {
+  fireEvent.change(document.getElementById('referral_type') as HTMLSelectElement, {
+    target: { value: 'physician' },
+  });
+  fireEvent.change(screen.getByLabelText('依頼元名称'), { target: { value: '〇〇クリニック' } });
+  fireEvent.change(screen.getByLabelText('紹介日'), { target: { value: '2026-06-20' } });
+  fireEvent.change(screen.getByLabelText('備考'), { target: { value: '退院後フォロー' } });
+  fillRequiredPatientFields();
+  fireEvent.click(screen.getByLabelText('指示書を受領済み'));
+  fireEvent.change(document.getElementById('ref-gender') as HTMLSelectElement, {
+    target: { value: 'male' },
+  });
+}
+
+function submitForm() {
+  return act(async () => {
+    fireEvent.submit(screen.getByRole('button', { name: '紹介受付を完了する' }).closest('form')!);
+  });
+}
+
 // Split a className into exact whitespace-delimited tokens so touch-target
 // assertions reject substring false-matches like `not-min-h-[44px]` or
 // `min-h-[44px]-typo` that a bare `.toContain(...)` on the string would allow.
 const classTokens = (cn?: string) => (cn ?? '').split(/\s+/).filter(Boolean);
 
-function lastPatientPostBody(): Record<string, unknown> | null {
+// ---------------------------------------------------------------------------
+// FAIL-CLOSED fetch harness. The form must make EXACTLY ONE atomic POST to
+// /api/referrals. The mock returns the queued responses for that URL and
+// THROWS for any other URL — so a stray /api/patients or /api/cases call (the
+// old two-step flow) fails the test loudly. Every called URL is recorded so a
+// test can assert the exact sequence.
+// ---------------------------------------------------------------------------
+const calledUrls: string[] = [];
+let referralResponses: Array<() => Response | Promise<Response>> = [];
+
+function jsonResponse(status: number, body: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  } as Response;
+}
+
+// A 2xx-but-unparseable response: json() rejects, so the form must fail closed.
+function malformedResponse(status: number): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.reject(new SyntaxError('Unexpected token < in JSON')),
+  } as Response;
+}
+
+function queueReferralResponses(...responses: Array<() => Response | Promise<Response>>) {
+  referralResponses = responses;
+}
+
+function lastReferralPostBody(): Record<string, unknown> | null {
   const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
-  const call = fetchMock.mock.calls.find((c) => c[0] === '/api/patients');
+  const calls = fetchMock.mock.calls.filter((c) => c[0] === '/api/referrals');
+  const call = calls.at(-1);
   if (!call) return null;
   const init = call[1] as RequestInit;
   return JSON.parse(init.body as string);
+}
+
+function referralPostInit(index = 0): RequestInit | null {
+  const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+  const calls = fetchMock.mock.calls.filter((c) => c[0] === '/api/referrals');
+  const call = calls[index];
+  return call ? (call[1] as RequestInit) : null;
 }
 
 beforeEach(() => {
@@ -271,19 +357,31 @@ beforeEach(() => {
   useOrgIdMock.mockReturnValue('org_test');
   capturedSelectItems.length = 0;
   capturedTriggers.length = 0;
+  calledUrls.length = 0;
+  // Default: a single clean 201 success.
+  queueReferralResponses(() =>
+    jsonResponse(201, {
+      patient: { id: 'patient_123' },
+      case: { id: 'case_1' },
+      warnings: [],
+      metadata: {},
+    }),
+  );
 
-  // Patient POST returns {id}; case POST returns {} ok. ordered by URL.
+  let referralCallIndex = 0;
   global.fetch = vi.fn((url: string) => {
-    if (url === '/api/patients') {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ id: 'patient_123' }),
-      } as Response);
+    calledUrls.push(url);
+    if (url === '/api/referrals') {
+      const factory = referralResponses[referralCallIndex] ?? referralResponses.at(-1);
+      referralCallIndex += 1;
+      if (!factory) {
+        throw new Error('No queued /api/referrals response');
+      }
+      return Promise.resolve(factory());
     }
-    return Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({}),
-    } as Response);
+    // FAIL CLOSED: any other endpoint (e.g. the removed /api/patients,
+    // /api/cases two-step) is a regression.
+    throw new Error(`Unexpected fetch to ${url} — only /api/referrals is allowed`);
   }) as unknown as typeof fetch;
 });
 
@@ -345,7 +443,7 @@ describe('ReferralForm Select migration', () => {
     expect(screen.getByTestId('referral_type-display').textContent).toBe('ケアマネ依頼');
   });
 
-  it('gender round-trips through the patient POST body on submit', async () => {
+  it('gender round-trips through the referral POST body on submit', async () => {
     render(<ReferralForm />);
 
     fireEvent.change(document.getElementById('referral_type') as HTMLSelectElement, {
@@ -363,9 +461,9 @@ describe('ReferralForm Select migration', () => {
     });
 
     await waitFor(() => {
-      expect(lastPatientPostBody()).not.toBeNull();
+      expect(lastReferralPostBody()).not.toBeNull();
     });
-    expect(lastPatientPostBody()?.gender).toBe('female');
+    expect(lastReferralPostBody()?.gender).toBe('female');
   });
 });
 
@@ -382,8 +480,9 @@ describe('ReferralForm validation', () => {
     });
     const referralTrigger = document.getElementById('referral_type') as HTMLSelectElement;
     expect(referralTrigger.getAttribute('aria-invalid')).toBe('true');
-    // No patient POST when validation fails.
-    expect(lastPatientPostBody()).toBeNull();
+    // No referral POST when validation fails.
+    expect(lastReferralPostBody()).toBeNull();
+    expect(calledUrls).toEqual([]);
     expect(pushMock).not.toHaveBeenCalled();
   });
 
@@ -413,7 +512,7 @@ describe('ReferralForm validation', () => {
       fireEvent.submit(screen.getByRole('button', { name: '紹介受付を完了する' }).closest('form')!);
     });
     await waitFor(() => {
-      expect(lastPatientPostBody()).not.toBeNull();
+      expect(lastReferralPostBody()).not.toBeNull();
     });
     expect(screen.queryByText('依頼種別を選択してください')).toBeNull();
   });
@@ -435,11 +534,12 @@ describe('ReferralForm validation', () => {
       fireEvent.submit(screen.getByRole('button', { name: '紹介受付を完了する' }).closest('form')!);
     });
 
-    // gender required error + aria-invalid + NO patient POST.
+    // gender required error + aria-invalid + NO referral POST.
     await waitFor(() => {
       expect(genderTrigger.getAttribute('aria-invalid')).toBe('true');
     });
-    expect(lastPatientPostBody()).toBeNull();
+    expect(lastReferralPostBody()).toBeNull();
+    expect(calledUrls).toEqual([]);
     expect(pushMock).not.toHaveBeenCalled();
   });
 });
@@ -501,17 +601,15 @@ describe('ReferralForm unsaved-changes guard', () => {
     expect(allowNavigationMock).not.toHaveBeenCalled();
   });
 
-  it('keeps the guard enabled while the two-step submit is pending (P1-2)', async () => {
-    // Deferred patient POST: never resolves until we release it, so the form
-    // stays in the isSubmitting window throughout the assertion.
-    let releasePatient: (value: Response) => void = () => {};
-    const patientPromise = new Promise<Response>((resolve) => {
-      releasePatient = resolve;
+  it('keeps the guard enabled while the atomic submit is pending (P1-2)', async () => {
+    // Deferred referral POST: never resolves until we release it, so the form
+    // stays in the isSubmitting window throughout the assertion. The fail-closed
+    // harness is preserved: any non-/api/referrals call still throws.
+    let releaseReferral: (value: Response) => void = () => {};
+    const referralPromise = new Promise<Response>((resolve) => {
+      releaseReferral = resolve;
     });
-    global.fetch = vi.fn((url: string) => {
-      if (url === '/api/patients') return patientPromise;
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response);
-    }) as unknown as typeof fetch;
+    queueReferralResponses(() => referralPromise);
 
     render(<ReferralForm />);
     fireEvent.change(document.getElementById('referral_type') as HTMLSelectElement, {
@@ -544,13 +642,17 @@ describe('ReferralForm unsaved-changes guard', () => {
     expect(allowNavigationMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
 
-    // Release the patient POST → submit completes → nav is now allowed.
+    // Release the referral POST → submit completes → nav is now allowed.
     await act(async () => {
-      releasePatient({
-        ok: true,
-        json: () => Promise.resolve({ id: 'patient_123' }),
-      } as Response);
-      await patientPromise;
+      releaseReferral(
+        jsonResponse(201, {
+          patient: { id: 'patient_123' },
+          case: { id: 'case_1' },
+          warnings: [],
+          metadata: {},
+        }),
+      );
+      await referralPromise;
     });
 
     await waitFor(() => {
@@ -601,5 +703,285 @@ describe('ReferralForm unsaved-changes guard', () => {
     expect(allowNavigationMock.mock.invocationCallOrder[0]).toBeLessThan(
       pushMock.mock.invocationCallOrder[0],
     );
+  });
+});
+
+describe('ReferralForm atomic single POST', () => {
+  it('submits EXACTLY ONE POST /api/referrals with the right headers + body, then navigates', async () => {
+    render(<ReferralForm />);
+    fillValidReferralForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalled();
+    });
+
+    // Exactly one fetch, only to /api/referrals.
+    expect(calledUrls).toEqual(['/api/referrals']);
+
+    // Headers: Content-Type + org id.
+    const init = referralPostInit(0)!;
+    const headers = init.headers as Record<string, string>;
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(headers['x-org-id']).toBe('org_test');
+    expect(init.method).toBe('POST');
+
+    // Body: referral_type, the 4 doc_* booleans, referral_source/date/notes,
+    // patient fields.
+    const body = lastReferralPostBody()!;
+    expect(body.referral_type).toBe('physician');
+    expect(body.doc_physician_order).toBe(true);
+    expect(body.doc_consent).toBe(false);
+    expect(body.doc_health_insurance).toBe(false);
+    expect(body.doc_care_insurance).toBe(false);
+    expect(body.referral_source).toBe('〇〇クリニック');
+    expect(body.referral_date).toBe('2026-06-20');
+    expect(body.referral_notes).toBe('退院後フォロー');
+    expect(body.name).toBe('山田 太郎');
+    expect(body.name_kana).toBe('ヤマダ タロウ');
+    expect(body.birth_date).toBe('1950-01-01');
+    expect(body.gender).toBe('male');
+    // First call never acknowledges a duplicate.
+    expect('duplicate_acknowledged' in body).toBe(false);
+
+    // Navigation: encoded patient id, allowNavigation BEFORE push.
+    expect(pushMock).toHaveBeenCalledWith('/patients/patient_123');
+    expect(toastMock.success).toHaveBeenCalledWith('紹介受付が完了しました');
+    expect(allowNavigationMock).toHaveBeenCalled();
+    expect(allowNavigationMock.mock.invocationCallOrder[0]).toBeLessThan(
+      pushMock.mock.invocationCallOrder[0],
+    );
+
+    // The removed two-step endpoints were NEVER hit.
+    expect(calledUrls).not.toContain('/api/patients');
+    expect(calledUrls).not.toContain('/api/cases');
+  });
+});
+
+describe('ReferralForm duplicate-acknowledgement flow', () => {
+  it('409 opens a count-only dialog (no nav, no dup ids), confirm resubmits with duplicate_acknowledged', async () => {
+    // Count-only 409 envelope: matches the production conflict() shape after
+    // F-011 (details = { duplicate_type, duplicate_count }, NO duplicates array).
+    queueReferralResponses(
+      () =>
+        jsonResponse(409, {
+          code: 'WORKFLOW_CONFLICT',
+          message: '重複している可能性がある患者が存在します',
+          details: {
+            duplicate_type: 'patient_identity',
+            duplicate_count: 2,
+          },
+        }),
+      () =>
+        jsonResponse(201, {
+          patient: { id: 'patient_123' },
+          case: { id: 'case_1' },
+          warnings: [],
+          metadata: {},
+        }),
+    );
+
+    render(<ReferralForm />);
+    fillValidReferralForm();
+    await submitForm();
+
+    // Dialog shown with the count; NO navigation; still only ONE fetch.
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeTruthy();
+    });
+    expect(screen.getByTestId('confirm-dialog-description').textContent).toContain('2 件');
+    expect(calledUrls).toEqual(['/api/referrals']);
+    expect(pushMock).not.toHaveBeenCalled();
+
+    // GUARD (now trivially satisfied — the count-only mock carries no id): no
+    // duplicate id may ever leak into the DOM or any toast.
+    const dialog = screen.getByTestId('confirm-dialog');
+    expect(dialog.textContent).not.toContain('patient_existing');
+    expect(document.body.textContent).not.toContain('patient_existing');
+    const toastArgs = [
+      ...toastMock.error.mock.calls.flat(),
+      ...toastMock.success.mock.calls.flat(),
+    ];
+    expect(toastArgs.some((a) => String(a).includes('patient_existing'))).toBe(false);
+
+    // Capture the EXACT first POST body (parsed) before confirming, so the
+    // second body can be proven to equal it plus the ack flag.
+    const firstBody = lastReferralPostBody()!;
+
+    // Confirm → second POST with duplicate_acknowledged:true and NO dup keys.
+    fireEvent.click(screen.getByRole('button', { name: '新規作成して続ける' }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith('/patients/patient_123');
+    });
+    expect(calledUrls).toEqual(['/api/referrals', '/api/referrals']);
+
+    const secondBody = lastReferralPostBody()!;
+    // FINDING 2: the full payload snapshot is resent UNCHANGED plus the ack
+    // flag — not a partial rebuild via getValues. Deep-equal locks every field
+    // (referral_type, all 4 doc_* booleans, referral_source/date/notes, gender,
+    // and all patient fields).
+    expect(secondBody).toEqual({ ...firstBody, duplicate_acknowledged: true });
+    expect(secondBody.duplicate_acknowledged).toBe(true);
+    expect('duplicates' in secondBody).toBe(false);
+    expect('duplicate_ids' in secondBody).toBe(false);
+    expect('duplicate_count' in secondBody).toBe(false);
+    // Same identity as the first submit.
+    expect(secondBody.name).toBe('山田 太郎');
+
+    // Old two-step endpoints NEVER called.
+    expect(calledUrls).not.toContain('/api/patients');
+    expect(calledUrls).not.toContain('/api/cases');
+  });
+
+  it('STALE-ACK: editing a field while the dialog is open dismisses it and sends no acknowledgement', async () => {
+    queueReferralResponses(() =>
+      jsonResponse(409, {
+        code: 'WORKFLOW_CONFLICT',
+        message: '重複している可能性がある患者が存在します',
+        details: {
+          duplicate_type: 'patient_identity',
+          duplicate_count: 1,
+        },
+      }),
+    );
+
+    render(<ReferralForm />);
+    fillValidReferralForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('confirm-dialog')).toBeTruthy();
+    });
+
+    // Mutate the identity → dialog must be invalidated/closed.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('氏名 *'), { target: { value: '佐藤 花子' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('confirm-dialog')).toBeNull();
+    });
+
+    // No second POST, no acknowledgement was ever sent.
+    expect(calledUrls).toEqual(['/api/referrals']);
+    const onlyBody = lastReferralPostBody()!;
+    expect('duplicate_acknowledged' in onlyBody).toBe(false);
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReferralForm PHI-safe error handling', () => {
+  it('400 with a PHI-like message/details shows a FIXED non-PHI toast, no navigation', async () => {
+    queueReferralResponses(() =>
+      jsonResponse(400, {
+        code: 'VALIDATION_ERROR',
+        message: '患者 山田太郎 の生年月日が不正です', // PHI-like free text
+        details: { name: ['山田太郎は重複です'] },
+      }),
+    );
+
+    render(<ReferralForm />);
+    fillValidReferralForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(toastMock.error).toHaveBeenCalled();
+    });
+    const message = String(toastMock.error.mock.calls.at(-1)?.[0] ?? '');
+    expect(message).toBe('紹介受付に失敗しました');
+    expect(message).not.toContain('山田');
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(calledUrls).toEqual(['/api/referrals']);
+  });
+
+  it('500 with a PHI-like body shows a FIXED non-PHI toast, no navigation', async () => {
+    queueReferralResponses(() =>
+      jsonResponse(500, {
+        code: 'INTERNAL_ERROR',
+        message: 'stacktrace at /Users/yusuke patient=山田太郎',
+        details: { stack: '山田太郎' },
+      }),
+    );
+
+    render(<ReferralForm />);
+    fillValidReferralForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(toastMock.error).toHaveBeenCalled();
+    });
+    const message = String(toastMock.error.mock.calls.at(-1)?.[0] ?? '');
+    expect(message).toBe('紹介受付に失敗しました');
+    expect(message).not.toContain('山田');
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the trusted fixed backend copy when present, still PHI-safe', async () => {
+    queueReferralResponses(() =>
+      jsonResponse(500, {
+        code: 'INTERNAL_ERROR',
+        message: '紹介受付の登録に失敗しました',
+        details: { stack: '山田太郎' },
+      }),
+    );
+
+    render(<ReferralForm />);
+    fillValidReferralForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(toastMock.error).toHaveBeenCalled();
+    });
+    const message = String(toastMock.error.mock.calls.at(-1)?.[0] ?? '');
+    // The trusted fixed copy may be surfaced; the PHI in details must NOT.
+    expect(message).toBe('紹介受付の登録に失敗しました');
+    expect(message).not.toContain('山田');
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('malformed 2xx (json throws) fails closed: fixed toast, NO navigation', async () => {
+    queueReferralResponses(() => malformedResponse(201));
+
+    render(<ReferralForm />);
+    fillValidReferralForm();
+    await submitForm();
+
+    await waitFor(() => {
+      expect(toastMock.error).toHaveBeenCalled();
+    });
+    const message = String(toastMock.error.mock.calls.at(-1)?.[0] ?? '');
+    expect(message).toBe('紹介受付に失敗しました');
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(allowNavigationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReferralForm duplicate dialog a11y', () => {
+  it('exposes role=alertdialog with an accessible name + description', async () => {
+    queueReferralResponses(() =>
+      jsonResponse(409, {
+        code: 'WORKFLOW_CONFLICT',
+        message: '重複している可能性がある患者が存在します',
+        details: {
+          duplicate_type: 'patient_identity',
+          duplicate_count: 3,
+        },
+      }),
+    );
+
+    render(<ReferralForm />);
+    fillValidReferralForm();
+    await submitForm();
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog.getAttribute('aria-label')).toBe('重複の可能性がある患者があります');
+    const describedById = dialog.getAttribute('aria-describedby');
+    expect(describedById).toBeTruthy();
+    const description = document.getElementById(describedById!);
+    expect(description?.textContent).toContain('3 件');
+    expect(description?.textContent).toContain('既存への統合ではありません');
+    // The accessible-name dialog must carry the count-only copy, never dup ids.
+    expect(dialog.textContent).not.toContain('patient_existing');
   });
 });
