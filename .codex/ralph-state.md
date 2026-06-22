@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260623-0452 JST
+
+- current task: complete Codex-owned F-20260623-016 daily visit-support patient foundation href hardening after Claude plan and patch approval.
+- files inspected: agmsg inbox/plan/lock/patch-review/approval messages for F-016; `git status --short --untracked-files=all`; `git log --oneline`; `src/lib/patient/navigation.ts`; `src/lib/patient/navigation.test.ts`; `src/server/jobs/daily/visit-support.ts`; `src/server/jobs/daily.test.ts`; adjacent raw patient href inventory in `src/server/jobs/next-day.ts` and `src/server/jobs/daily/compliance-expiry.ts`; and this Ralph state file.
+- files changed: `src/server/jobs/daily/visit-support.ts`, `src/server/jobs/daily.test.ts`, and this Ralph state entry. The source slice was committed as `665901ec fix(jobs): encode visit support patient hrefs`.
+- bugs found: the daily visit-support `patient_foundation_review` task metadata interpolated `careCase.patient_id` directly into `/patients/{id}#patient-foundation`, so a hostile patient id containing `/`, `?`, or `#` could change the route path/query/fragment of the browser-facing action href.
+- security risks found: F-016 reduces patient-id path/query/hash injection risk for the patient foundation action href while preserving raw patient id for DB identity, `buildPatientFoundationReviewTaskKey`, `relatedEntityId`, `metadata.patient_id`, Prisma select fields, and patient map keys. No auth, RLS, DB schema, migration, API route, UI, notification creation, PHI logging, secret, cookie, env value, billing/payment, deploy, or destructive operation changed.
+- performance issues found: no runtime performance issue changed. The patch uses the existing `buildPatientHref` helper at one action-href call site and otherwise preserves job query shape and task generation behavior.
+- validation commands: `pnpm exec vitest run src/server/jobs/daily.test.ts -t "patient foundation" --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/server/jobs/daily.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the two changed source/test files; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; test-auditor and security-auditor read-only checker reviews; Claude PATCH_REVIEW.
+- validation results: focused patient foundation Vitest passed `1/1`; full daily job Vitest passed `32/32`; scoped ESLint, Prettier, diff-check, and full typecheck passed. test-auditor approved the hostile-id href assertion, raw identity assertions, and deterministic mock path. security-auditor approved no security/privacy regression and confirmed only the browser-facing `action_href` is encoded. Claude independently approved the patch, reported reviewer-audit gates green, and source commit `665901ec` landed.
+- remaining work: commit this ledger-only Ralph entry and release the `.codex/ralph-state.md` lock. Untracked `projects/careviax/**` file-plane artifacts remain unrelated and should stay unstaged unless explicitly locked.
+- next action: run scoped ledger Prettier and `git diff --check`, drain agmsg, commit only `.codex/ralph-state.md`, send DONE for the ledger lock, then continue with the next small raw patient href candidate such as `src/server/jobs/next-day.ts` or `src/server/jobs/daily/compliance-expiry.ts` after a fresh plan/lock cycle.
+
 ### 20260623-0244 JST
 
 - current task: complete Codex-owned F-20260623-006 patient-detail documents href hardening after Claude plan and patch approval.
