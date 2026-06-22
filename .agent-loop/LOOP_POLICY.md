@@ -280,22 +280,32 @@ the numbered entries that follow.
       idempotency_key, owner/reviewer set, declared LOCKs). If the peer is silent/stalled with approved-
       but-unstarted or pending work, proactively nudge them (`claude→codex`, idempotent) to pick it up —
       do not wait passively (see also the proactive-nudge feedback memory).
-    - **b. Auto-discover NEW development candidates (feed the pipeline, don't just drain it).** Beyond §16's
-      "pick the next queued item," proactively SOURCE new work: read-only sweep of recent diffs, specs
-      (`docs/*spec*`, roadmap), `UI_AUDIT_MATRIX`, TODO/FIXME, untested contracts, a11y/state-display gaps,
-      duplicate/DuplicateMap candidates, and follow-ups flagged in landed reviews. File each as a
-      `FEATURE_QUEUE` intake entry (via `prompts/feature-intake.md` classification) with a one-line scope +
-      owner-lane guess, so the next cycle always has graded candidates. Discovery is read-only; new
-      candidates still go through normal PLAN_REVIEW + LOCK before implementation.
+    - **b. Auto-discover NEW development candidates — WHOLE codebase, every improvement category (feed the
+      pipeline, don't just drain it).** Beyond §16's "pick the next queued item," proactively SOURCE new
+      work across the ENTIRE codebase (frontend AND backend AND infra/tools), not just one lane. Cover
+      every category (user-directed 2026-06-23): **bug fixes, refactoring, API design/contract
+      improvements, performance / processing-speed, security, plus frontend screen layout / interaction
+      model / UI-UX / a11y / state-display** — any place code can be improved. Read-only sweep of recent
+      diffs, specs (`docs/*spec*`, roadmap), `UI_AUDIT_MATRIX`, TODO/FIXME, untested/weak contracts,
+      slow/hot paths, duplicate/DuplicateMap candidates, error-prone patterns, and follow-ups flagged in
+      landed reviews. File each as a `FEATURE_QUEUE` intake entry (via `prompts/feature-intake.md`
+      classification) with a one-line scope **+ owner-lane tag** (claude = FE/UX/state-display; codex =
+      backend/API/perf/refactor/test/RLS; **hard-stop** = auth/billing/payments/security-policy/destructive
+      migration/prod-deploy → flag for human gate, never auto-action). Discovery is whole-codebase and
+      lane-agnostic (it only SURFACES candidates); IMPLEMENTATION still respects lane ownership + normal
+      PLAN_REVIEW + LOCK. Always dedupe against the existing `FEATURE_QUEUE` backlog before filing.
       **Tooling — prefer gstack skills for discovery/audit over a bespoke general-purpose subagent**
-      (per CLAUDE.md gstack directive; they are purpose-built and higher-signal). Route by domain:
-      `/health` (code-quality / all-checks candidates), `/design-review` or `/design-consultation`
-      (UI/UX / a11y / state-display gaps), `/cso` (security / threat-model — advisory only; security is a
-      hard-stop lane), `/investigate` (root-cause for a specific regression). Use a general-purpose
-      subagent only when no gstack skill fits. gstack runs in the main loop, so keep discovery passes
-      bounded and yield immediately to inbound peer messages. Codex uses the equivalent on its side.
-    - **Symmetric for Codex.** Codex follows the same two idle obligations on its side (delegate/handoff +
-      auto-discover into FEATURE_QUEUE), within its backend/refactor/test lane.
+      (per CLAUDE.md gstack directive; purpose-built, higher-signal). Route by category:
+      `/health` (code-quality / all-checks / refactor / bug candidates, full stack), `/cso` (security /
+      threat-model — advisory; security is a hard-stop lane), `/benchmark` (performance / hot paths),
+      `/investigate` (root-cause for a specific bug/regression), `/code-review` or `/review` (a diff's
+      latent issues), `/design-review` or `/design-consultation` (UI/UX / layout / interaction / a11y /
+      state-display). Use a general-purpose subagent only when no gstack skill fits. gstack runs in the
+      main loop, so keep discovery passes bounded and yield immediately to inbound peer messages.
+    - **Symmetric for Codex.** Codex runs the same two idle obligations: delegate/handoff, and
+      whole-codebase auto-discovery into `FEATURE_QUEUE` (all categories above, owner-lane-tagged) using
+      the same gstack-first tooling — it is NOT limited to its own backend lane for DISCOVERY, only for
+      implementation. Both Supervisors surface candidates anywhere; the owner-lane tag routes who implements.
     - **Safety envelope (unchanged):** discovery/recon read-only; writes only to own lane / gbrain /
       jointly-owned ledgers (incl. FEATURE_QUEUE intake) under explicit LOCK; never edit peer-locked paths
       or start implementation without plan approval; yield immediately to inbound review/LOCK/URGENT/user-
@@ -359,5 +369,5 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §19 (Codex drains Claude-origin first)    | codex-lead  | claude-lead | peer-approved (this-run; human gate for permanent AGENTS/CLAUDE.md promotion) |
 | ApplyNow §20 (main loop free; work in subagents)   | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent) |
 | ApplyNow §21 (max subagent concurrency; main=orch) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent) |
-| ApplyNow §22 (idle delegate + auto-discover pipeline) | human     | _pending_   | proposed (user-directed 2026-06-23; awaiting codex peer ACK; human gate for permanent) |
+| ApplyNow §22 (idle delegate + whole-codebase auto-discover, gstack-first) | human | codex-lead | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; whole-codebase/all-category scope user-directed; human gate for permanent) |
 | _next candidate_                                   | _name_      | _name_      | proposed                                                                      |
