@@ -273,7 +273,7 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
 
   return {
     schedule_id: schedule.id,
-    visit_mode_href: `/visits/${schedule.id}/record`,
+    visit_mode_href: `/visits/${encodeURIComponent(schedule.id)}/record`,
     time_label: schedule.time_window_start ? formatTimeOfDay(schedule.time_window_start) : null,
     title: patient.name,
     is_facility: false,
@@ -350,7 +350,7 @@ function deriveFacilityVisitCard(
 
   return {
     schedule_id: lead.id,
-    visit_mode_href: `/visits/${lead.id}/record`,
+    visit_mode_href: `/visits/${encodeURIComponent(lead.id)}/record`,
     time_label: lead.time_window_start ? formatTimeOfDay(lead.time_window_start) : null,
     title: name.startsWith('施設') ? name : `施設${name}`,
     is_facility: true,

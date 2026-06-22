@@ -166,11 +166,14 @@ describe('/api/visits/today-preparation', () => {
   });
 
   it('adds a departure warning when a home visit has patient foundation gaps', async () => {
+    const rawScheduleId = 'schedule/1?mode=x#frag';
     const rawPatientId = 'patient/1?tab=x#frag';
     const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+    const encodedVisitModeHref = `/visits/${encodeURIComponent(rawScheduleId)}/record`;
 
     visitScheduleFindManyMock.mockResolvedValue([
       buildSchedule({
+        id: rawScheduleId,
         case_: {
           care_team_links: [],
           patient: {
@@ -200,11 +203,15 @@ describe('/api/visits/today-preparation', () => {
         accent: 'caution',
         note: '出発前に正本確認: 訪問前連絡先・駐車可否・介護度 ほか1件',
         note_tone: 'warning',
+        schedule_id: rawScheduleId,
+        visit_mode_href: encodedVisitModeHref,
       }),
     );
-    expect(json.data.cards[0].actions).toEqual(
-      expect.arrayContaining([{ label: 'カードへ', href: encodedPatientHref }]),
-    );
+    expect(json.data.cards[0].actions).toEqual([
+      { label: 'カードへ', href: encodedPatientHref },
+      { label: 'ルート詳細', href: '/schedules' },
+    ]);
+    expect(JSON.stringify(json)).not.toContain(`/visits/${rawScheduleId}/record`);
   });
 
   it('encodes the audit-branch patient card action while keeping the audit action', async () => {
@@ -269,9 +276,12 @@ describe('/api/visits/today-preparation', () => {
   });
 
   it('adds a facility packet warning when one batched patient has foundation gaps', async () => {
+    const rawLeadScheduleId = 'facility-schedule/1?mode=x#frag';
+    const encodedVisitModeHref = `/visits/${encodeURIComponent(rawLeadScheduleId)}/record`;
+
     visitScheduleFindManyMock.mockResolvedValue([
       buildSchedule({
-        id: 'schedule_1',
+        id: rawLeadScheduleId,
         facility_batch_id: 'batch_1',
         facility_batch: {
           id: 'batch_1',
@@ -318,6 +328,8 @@ describe('/api/visits/today-preparation', () => {
       expect.objectContaining({
         title: '施設グリーンヒル',
         patient_count: 2,
+        schedule_id: rawLeadScheduleId,
+        visit_mode_href: encodedVisitModeHref,
         prep_done: 4,
         prep_total: 4,
         accent: 'caution',
@@ -325,5 +337,10 @@ describe('/api/visits/today-preparation', () => {
         note_tone: 'warning',
       }),
     );
+    expect(json.data.cards[0].actions).toEqual([
+      { label: 'セットへ', href: '/set' },
+      { label: '施設パケット', href: '/schedules' },
+    ]);
+    expect(JSON.stringify(json)).not.toContain(`/visits/${rawLeadScheduleId}/record`);
   });
 });
