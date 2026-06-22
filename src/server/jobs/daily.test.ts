@@ -1521,6 +1521,9 @@ describe('checkPrescriptionOriginalRetention', () => {
   });
 
   it('creates overdue fax original follow-up tasks and notifications', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPrescriptionHref = `/patients/${encodeURIComponent(rawPatientId)}/prescriptions`;
+
     prescriptionIntakeFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
       {
         id: 'intake_fax_1',
@@ -1529,9 +1532,9 @@ describe('checkPrescriptionOriginalRetention', () => {
         created_at: new Date('2026-03-24T09:00:00.000Z'),
         original_collected_at: null,
         cycle: {
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           case_: {
-            patient_id: 'patient_1',
+            patient_id: rawPatientId,
             primary_pharmacist_id: 'pharmacist_1',
             patient: {
               name: '山田 太郎',
@@ -1549,10 +1552,12 @@ describe('checkPrescriptionOriginalRetention', () => {
       data: expect.arrayContaining([
         expect.objectContaining({
           user_id: 'admin_1',
+          link: encodedPrescriptionHref,
           dedupe_key: 'fax-original-followup:intake_fax_1:admin_1:high',
         }),
         expect.objectContaining({
           user_id: 'pharmacist_1',
+          link: encodedPrescriptionHref,
           dedupe_key: 'fax-original-followup:intake_fax_1:pharmacist_1:high',
         }),
       ]),
@@ -1567,9 +1572,9 @@ describe('checkPrescriptionOriginalRetention', () => {
         relatedEntityId: 'intake_fax_1',
         dedupeKey: 'fax-original-followup:intake_fax_1',
         metadata: expect.objectContaining({
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           patient_name: '山田 太郎',
-          action_href: '/patients/patient_1/prescriptions',
+          action_href: encodedPrescriptionHref,
         }),
       }),
     );

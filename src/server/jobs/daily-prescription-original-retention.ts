@@ -1,6 +1,7 @@
 import { addDays, addYears } from 'date-fns';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   buildFaxOriginalFollowupTaskKey,
   buildPrescriptionOriginalRetentionTaskKey,
@@ -175,6 +176,7 @@ export async function checkPrescriptionOriginalRetention() {
       const priority = overdueDays >= 5 ? ('urgent' as const) : ('high' as const);
       const dueDate = startOfDay(addDays(intake.created_at, 3));
       const patientId = intake.cycle?.case_?.patient_id ?? intake.cycle?.patient_id ?? null;
+      const patientHref = patientId ? buildPatientHref(patientId, '/prescriptions') : '/workflow';
 
       for (const userId of notificationTargets) {
         notifications.push({
@@ -183,7 +185,7 @@ export async function checkPrescriptionOriginalRetention() {
           type: priority === 'urgent' ? 'urgent' : 'business',
           title: 'FAX処方箋の原本未回収',
           message: `${patientName} さんの FAX 処方箋は受付から${overdueDays}日経過しています。訪問時の原本回収を確認してください。`,
-          link: patientId ? `/patients/${patientId}/prescriptions` : '/workflow',
+          link: patientHref,
           dedupe_key: `fax-original-followup:${intake.id}:${userId}:${priority}`,
         });
       }
@@ -203,7 +205,7 @@ export async function checkPrescriptionOriginalRetention() {
         metadata: {
           patient_id: patientId,
           patient_name: patientName,
-          action_href: patientId ? `/patients/${patientId}/prescriptions` : '/workflow',
+          action_href: patientHref,
           action_label: '原本回収を記録',
           fax_received_at: intake.created_at.toISOString(),
           overdue_days: overdueDays,
