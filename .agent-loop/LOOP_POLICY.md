@@ -50,7 +50,8 @@ the numbered entries that follow.
 - **C. Compliance, PHI & security** — §7 UI/UX SSOT + State Color tokens · §8 Compliance-by-Design + RLS
   · §9 PHI redaction symmetry on mutations · §10 fail-closed client API reads.
 - **D. Continuous operation & idle productivity** — §12 idle-capacity useful work · §13 loop-engineering
-  PDCA track · §14 idle-time productivity playbook · §15 no passive-wait per-turn trigger · §16
+  PDCA track · §14 idle-time productivity playbook · §15 no passive-wait per-turn trigger · §22 idle
+  delegate + auto-discover pipeline · §16
   continuous loop (repeat on drain).
 
 > Provenance: §1–6 are the proven seed (lane/LOCK/drain/verify). §7–16 are applied/peer-approved general
@@ -270,6 +271,30 @@ the numbered entries that follow.
     - **Unchanged:** subagents never post to agmsg or touch shared ledgers (the Supervisor serializes
       their outputs into envelopes); maker/checker holds across every concurrent subagent (an
       implementing subagent is never the approver); all hard-stops stay human-gated.
+22. **Idle time = delegate + auto-discover the pipeline (standing rule, both Supervisors).** User-directed
+    (2026-06-23). Consolidates §11/§14/§16 into two always-on idle obligations; whenever there is free
+    capacity (blocked/waiting with no higher-priority inbound), do BOTH, not just consume the queue:
+    - **a. Delegate / hand off work.** Don't hold a queued or in-flight item that the peer or a subagent
+      could advance. Push it out: dispatch disjoint slices to concurrent subagents (§20/§21), or hand a
+      non-conflicting subtask to the peer via the §11 HANDOFF / `REQUEST_DELEGATE` envelope (ACK,
+      idempotency_key, owner/reviewer set, declared LOCKs). If the peer is silent/stalled with approved-
+      but-unstarted or pending work, proactively nudge them (`claude→codex`, idempotent) to pick it up —
+      do not wait passively (see also the proactive-nudge feedback memory).
+    - **b. Auto-discover NEW development candidates (feed the pipeline, don't just drain it).** Beyond §16's
+      "pick the next queued item," proactively SOURCE new work: read-only sweep of recent diffs, specs
+      (`docs/*spec*`, roadmap), `UI_AUDIT_MATRIX`, TODO/FIXME, untested contracts, a11y/state-display gaps,
+      duplicate/DuplicateMap candidates, and follow-ups flagged in landed reviews. File each as a
+      `FEATURE_QUEUE` intake entry (via `prompts/feature-intake.md` classification) with a one-line scope +
+      owner-lane guess, so the next cycle always has graded candidates. Discovery is read-only; new
+      candidates still go through normal PLAN_REVIEW + LOCK before implementation.
+    - **Symmetric for Codex.** Codex follows the same two idle obligations on its side (delegate/handoff +
+      auto-discover into FEATURE_QUEUE), within its backend/refactor/test lane.
+    - **Safety envelope (unchanged):** discovery/recon read-only; writes only to own lane / gbrain /
+      jointly-owned ledgers (incl. FEATURE_QUEUE intake) under explicit LOCK; never edit peer-locked paths
+      or start implementation without plan approval; yield immediately to inbound review/LOCK/URGENT/user-
+      priority; all hard-stops (auth/billing/payments/security/destructive migration/prod deploy) stay
+      human-gated; no new external sends/deploys. Auto-discovery surfaces candidates only — it never
+      auto-implements a hard-stop or unreviewed slice.
 
 ## Consider
 
@@ -327,4 +352,5 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §19 (Codex drains Claude-origin first)    | codex-lead  | claude-lead | peer-approved (this-run; human gate for permanent AGENTS/CLAUDE.md promotion) |
 | ApplyNow §20 (main loop free; work in subagents)   | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent) |
 | ApplyNow §21 (max subagent concurrency; main=orch) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent) |
+| ApplyNow §22 (idle delegate + auto-discover pipeline) | human     | _pending_   | proposed (user-directed 2026-06-23; awaiting codex peer ACK; human gate for permanent) |
 | _next candidate_                                   | _name_      | _name_      | proposed                                                                      |
