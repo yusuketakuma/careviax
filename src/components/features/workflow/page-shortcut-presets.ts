@@ -65,11 +65,12 @@ export function getPatientShareShortcutLinks(patientId: string): PageShortcutLin
 }
 
 export function getPatientMcsShortcutLinks(patientId: string): PageShortcutLink[] {
+  const patientPathId = encodeURIComponent(patientId);
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
-    { href: `/patients/${patientId}/medications`, label: '服薬管理' },
-    { href: `/patients/${patientId}/prescriptions`, label: '処方履歴' },
-    { href: `/patients/${patientId}/share`, label: '外部共有' },
+    { href: `/patients/${patientPathId}`, label: '患者詳細' },
+    { href: `/patients/${patientPathId}/medications`, label: '服薬管理' },
+    { href: `/patients/${patientPathId}/prescriptions`, label: '処方履歴' },
+    { href: `/patients/${patientPathId}/share`, label: '外部共有' },
   ];
 }
 

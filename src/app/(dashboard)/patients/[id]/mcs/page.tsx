@@ -10,11 +10,12 @@ export const metadata: Metadata = {
 
 export default async function PatientMcsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const patientPathId = encodeURIComponent(id);
 
   return (
     <PageScaffold>
       <WorkflowPageIntro
-        backHref={`/patients/${id}`}
+        backHref={`/patients/${patientPathId}`}
         backLabel="患者詳細へ戻る"
         eyebrow="MCS Integration"
         title="MCS連携"

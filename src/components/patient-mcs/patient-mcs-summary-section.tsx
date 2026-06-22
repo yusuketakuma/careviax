@@ -27,6 +27,7 @@ export function PatientMcsSummarySection({
   compact?: boolean;
 }) {
   const orgId = useOrgId();
+  const patientPathId = encodeURIComponent(patientId);
   const shell = (body: ReactNode) => (
     <Card>
       <CardHeader className="pb-3">
@@ -85,7 +86,7 @@ export function PatientMcsSummarySection({
           連携ページで同期するとここに表示されます。
         </p>
         <Link
-          href={`/patients/${patientId}/mcs`}
+          href={`/patients/${patientPathId}/mcs`}
           className={buttonVariants({ variant: 'outline', size: 'sm' })}
         >
           <Link2 className="mr-1.5 size-4" aria-hidden="true" />

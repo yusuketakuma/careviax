@@ -32,6 +32,9 @@ vi.mock('next/link', () => ({
 
 describe('PatientMcsLinkCard', () => {
   it('renders MCS linkage status with a semantic section heading', () => {
+    const patientId = '../settings?x=1#frag';
+    const encodedPatientId = encodeURIComponent(patientId);
+
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({
       data: {
@@ -42,9 +45,12 @@ describe('PatientMcsLinkCard', () => {
       isError: false,
     });
 
-    render(<PatientMcsLinkCard patientId="patient_1" />);
+    render(<PatientMcsLinkCard patientId={patientId} />);
 
     expect(screen.getByRole('heading', { level: 2, name: 'MCS 連携' }).tagName).toBe('H2');
     expect(screen.getByText('患者別タイムラインを保存済みデータとして利用')).toBeTruthy();
+    const link = screen.getByRole('link', { name: 'MCS 連携ページを開く' });
+    expect(link.getAttribute('href')).toBe(`/patients/${encodedPatientId}/mcs`);
+    expect(link.getAttribute('href')).not.toContain(patientId);
   });
 });

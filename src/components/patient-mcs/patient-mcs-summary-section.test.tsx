@@ -61,7 +61,7 @@ describe('PatientMcsSummarySection', () => {
         title="MCS共有要点"
         description="test"
         compact
-      />
+      />,
     );
 
     expect(screen.getByText('看護師から共有があります。')).not.toBeNull();
@@ -104,13 +104,18 @@ describe('PatientMcsSummarySection', () => {
         title="MCS共有要点"
         description="test"
         compact
-      />
+      />,
     );
 
-    expect(screen.getByText('同期エラー中のため、以下は前回成功時点の MCS 要約です。')).not.toBeNull();
+    expect(
+      screen.getByText('同期エラー中のため、以下は前回成功時点の MCS 要約です。'),
+    ).not.toBeNull();
   });
 
   it('renders an explanatory state when summary data is missing', () => {
+    const patientId = '../settings?x=1#frag';
+    const encodedPatientId = encodeURIComponent(patientId);
+
     useQueryMock.mockReturnValue({
       data: {
         link: null,
@@ -122,14 +127,21 @@ describe('PatientMcsSummarySection', () => {
 
     render(
       <PatientMcsSummarySection
-        patientId="patient_1"
+        patientId={patientId}
         title="MCS共有要点"
         description="test"
         compact
-      />
+      />,
     );
 
-    expect(screen.getByText('MCS の要点サマリーはまだありません。患者詳細の MCS 連携ページで同期するとここに表示されます。')).not.toBeNull();
+    expect(
+      screen.getByText(
+        'MCS の要点サマリーはまだありません。患者詳細の MCS 連携ページで同期するとここに表示されます。',
+      ),
+    ).not.toBeNull();
+    const link = screen.getByRole('link', { name: 'MCS 連携ページ' });
+    expect(link.getAttribute('href')).toBe(`/patients/${encodedPatientId}/mcs`);
+    expect(link.getAttribute('href')).not.toContain(patientId);
   });
 
   it('renders a restricted-role explanation instead of disappearing', () => {
@@ -145,9 +157,13 @@ describe('PatientMcsSummarySection', () => {
         title="MCS共有要点"
         description="test"
         compact
-      />
+      />,
     );
 
-    expect(screen.getByText('このロールでは MCS 要点を表示しません。必要時は権限のある担当者から確認してください。')).not.toBeNull();
+    expect(
+      screen.getByText(
+        'このロールでは MCS 要点を表示しません。必要時は権限のある担当者から確認してください。',
+      ),
+    ).not.toBeNull();
   });
 });

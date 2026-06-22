@@ -54,7 +54,8 @@ function isOtherProfessionalRole(role: string | null) {
 }
 
 async function syncPatientMcs(patientId: string, orgId: string, sourceUrl?: string) {
-  const response = await fetch(`/api/patients/${patientId}/mcs-sync`, {
+  const patientPathId = encodeURIComponent(patientId);
+  const response = await fetch(`/api/patients/${patientPathId}/mcs-sync`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -80,7 +81,8 @@ async function createPatientMcsCheckLog(
     nextAction: string;
   },
 ) {
-  const response = await fetch(`/api/patients/${patientId}/mcs/logs`, {
+  const patientPathId = encodeURIComponent(patientId);
+  const response = await fetch(`/api/patients/${patientPathId}/mcs/logs`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -113,7 +115,8 @@ async function updatePatientMcsProfile(
     note: string | null;
   },
 ) {
-  const response = await fetch(`/api/patients/${patientId}/mcs`, {
+  const patientPathId = encodeURIComponent(patientId);
+  const response = await fetch(`/api/patients/${patientPathId}/mcs`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',

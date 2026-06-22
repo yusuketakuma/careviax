@@ -24,6 +24,7 @@ import { PatientMcsSummaryCard } from '@/components/patient-mcs/patient-mcs-summ
 
 export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
+  const patientPathId = encodeURIComponent(patientId);
   const statusQuery = useQuery<PatientMcsCardViewData>({
     queryKey: createPatientMcsQueryKey(patientId, orgId, 0),
     enabled: Boolean(orgId),
@@ -105,7 +106,7 @@ export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
         ) : null}
         {canOpenPatientMcsPage(statusQuery.data) ? (
           <Link
-            href={`/patients/${patientId}/mcs`}
+            href={`/patients/${patientPathId}/mcs`}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             <Link2 className="mr-1.5 size-4" aria-hidden="true" />

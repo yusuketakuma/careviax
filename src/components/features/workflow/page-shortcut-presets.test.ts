@@ -83,6 +83,23 @@ describe('page shortcut presets', () => {
     ]);
   });
 
+  it('encodes patient path segments for MCS page shortcuts', () => {
+    const patientId = '../settings?x=1#frag';
+    const encodedPatientId = encodeURIComponent(patientId);
+
+    const shortcuts = getPatientMcsShortcutLinks(patientId);
+
+    expect(shortcuts).toEqual([
+      { href: `/patients/${encodedPatientId}`, label: '患者詳細' },
+      { href: `/patients/${encodedPatientId}/medications`, label: '服薬管理' },
+      { href: `/patients/${encodedPatientId}/prescriptions`, label: '処方履歴' },
+      { href: `/patients/${encodedPatientId}/share`, label: '外部共有' },
+    ]);
+    for (const shortcut of shortcuts) {
+      expect(shortcut.href).not.toContain(patientId);
+    }
+  });
+
   it('builds visit and referral shortcuts with stable targets', () => {
     expect(getVisitDetailShortcutLinks('visit-1')).toEqual([
       { href: '/reports', label: '報告書' },

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PatientMcsContent } from './mcs-content';
 
@@ -11,6 +11,15 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
+
+type MutationOptions = {
+  mutationFn?: (input?: unknown) => unknown;
+};
+
+type QueryOptions = {
+  queryKey: unknown;
+  queryFn?: () => unknown;
+};
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -42,6 +51,109 @@ vi.mock('sonner', () => ({
 }));
 
 describe('PatientMcsContent', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('encodes direct MCS mutation fetch path segments while keeping patient identity raw', async () => {
+    const patientId = '../settings?x=1#frag';
+    const encodedPatientId = encodeURIComponent(patientId);
+    const mutationOptions: MutationOptions[] = [];
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        data: {
+          patient: { id: patientId, name: '田中 一郎' },
+          importedCount: 0,
+          latestMessageAt: null,
+          link: null,
+          profile: null,
+          summary: null,
+          messages: [],
+          checkLogs: [],
+        },
+      }),
+    });
+    let queryKey: unknown;
+    let queryFn: (() => unknown) | undefined;
+
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockImplementation((options: MutationOptions) => {
+      mutationOptions.push(options);
+      return { isPending: false, mutate: vi.fn() };
+    });
+    useQueryMock.mockImplementation(
+      ({ queryKey: nextQueryKey, queryFn: nextQueryFn }: QueryOptions) => {
+        queryKey = nextQueryKey;
+        queryFn = nextQueryFn;
+        return {
+          data: {
+            link: null,
+            profile: null,
+            summary: null,
+            messages: [],
+            checkLogs: [],
+          },
+          isLoading: false,
+          isError: false,
+          error: null,
+          refetch: vi.fn(),
+        };
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientMcsContent patientId={patientId} />);
+
+      expect(queryKey).toEqual(['patient-mcs', patientId, 'org_1', 30]);
+      await queryFn?.();
+      expect(mutationOptions).toHaveLength(3);
+
+      await mutationOptions[0].mutationFn?.('https://www.medical-care.net/patients/2463520');
+      await mutationOptions[1].mutationFn?.({
+        contentType: 'report',
+        summary: 'MCS投稿を確認',
+        nextAction: '次回訪問で確認',
+      });
+      await mutationOptions[2].mutationFn?.({
+        linkedStatus: 'linked',
+        participationStatus: 'joined',
+        pharmacyParticipants: ['薬剤師 佐藤'],
+        counterpartRoles: ['visiting_nurse'],
+        lastCheckedAt: null,
+        note: null,
+      });
+
+      expect(fetchMock.mock.calls[0][0]).toBe(`/api/patients/${encodedPatientId}/mcs?limit=30`);
+      expect(fetchMock.mock.calls[1][0]).toBe(`/api/patients/${encodedPatientId}/mcs-sync`);
+      expect(fetchMock.mock.calls[2][0]).toBe(`/api/patients/${encodedPatientId}/mcs/logs`);
+      expect(fetchMock.mock.calls[3][0]).toBe(`/api/patients/${encodedPatientId}/mcs`);
+      for (const [url] of fetchMock.mock.calls) {
+        expect(String(url)).not.toContain(patientId);
+      }
+      expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({
+        source_url: 'https://www.medical-care.net/patients/2463520',
+      });
+      expect(JSON.parse(fetchMock.mock.calls[2][1].body as string)).toEqual({
+        content_type: 'report',
+        summary: 'MCS投稿を確認',
+        next_action: '次回訪問で確認',
+      });
+      expect(JSON.parse(fetchMock.mock.calls[3][1].body as string)).toEqual({
+        linked_status: 'linked',
+        participation_status: 'joined',
+        pharmacy_participants: ['薬剤師 佐藤'],
+        counterpart_roles: ['visiting_nurse'],
+        last_checked_at: null,
+        note: null,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows an inline validation error and keeps actions disabled for invalid draft urls', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
