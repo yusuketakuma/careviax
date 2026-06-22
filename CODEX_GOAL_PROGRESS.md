@@ -33,7 +33,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Implemented: `createPrescriptionIntakeInTx()` now resolves a target as either an existing cycle or a case-only context first, runs source/refill/duplicate/structuring/outpatient-injection/prescriber-institution guards before creating a new cycle, and creates the cycle only on the valid success path. Existing-cycle blocked paths still preserve workflow-exception side effects; case-only blocked paths return the same 400 contract without creating an orphan cycle.
 - Tests added: service unit coverage for blocked outpatient-injection case targets creating no cycle/intake/exception, plus valid case targets creating a cycle only after guards pass. The billing/PCA/prescription guardrail E2E now asserts blocked POST elapsed under 5s after route warm-up and confirms the target case's `MedicationCycle` count does not increase.
 - Validation passed: service unit `20/20`; prescription-intakes route unit `31/31`; focused prescription guardrail E2E `1/1`; full billing/PCA/prescription guardrail E2E `4/4`; medical-ui preflight; changed-file Prettier/ESLint/diff-check; full `pnpm typecheck`.
-- Review status: Claude approved the high-risk prescription endpoint change and cleared the reviewed tree to land; commit pending.
+- Review status: Claude approved the high-risk prescription endpoint change and cleared the reviewed tree to land. Landed as `97ece552` (`fix(ui): stabilize medical gate and intake guardrail`). A separately running `pnpm medical-ui:e2e:targeted` process later ended with Playwright status `interrupted` and no detailed failure artifact, so it is tracked as environment/runner evidence rather than a product regression signal.
 
 ### Loop 0 - Baseline Start
 

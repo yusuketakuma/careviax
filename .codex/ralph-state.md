@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260622-1332 JST
+
+- current task: record landing of the approved medical-ui stabilization plus prescription-intake guardrail slice.
+- files inspected: agmsg inbox, Claude `PATCH_REVIEW_RESULT`, `git status`, commit `97ece552`, external Playwright targeted runner state, and `.last-run.json` for that runner.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no new product bug was found after commit. The externally running `pnpm medical-ui:e2e:targeted` process ended with Playwright `.last-run.json` status `interrupted` and no detailed failure artifacts, so it is not usable as a pass/fail product signal.
+- security risks found: no source code, auth, RLS, DB schema, PHI projection, billing/PCA behavior, prescription API behavior, or test code changed in this ledger-only update.
+- performance issues found: no runtime path changed in this ledger-only update.
+- validation commands: `pnpm exec prettier --check CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`; `git diff --check -- CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`.
+- validation results: ledger-only Prettier and diff-check passed. The landed code commit `97ece552` was approved by Claude and had the validation evidence recorded in `20260622-1313 JST`.
+- remaining work: commit this ledger-only correction, then notify Claude. Do not push.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for a ledger follow-up commit.
+
 ### 20260622-1313 JST
 
 - current task: implement the human-approved prescription-intake guardrail-before-cycle-create fix, then consolidate it with the medical UI gate stabilization slice for Claude review.
