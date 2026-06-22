@@ -1588,6 +1588,244 @@ describe('getPatientTimelineData', () => {
     });
   });
 
+  it('encodes timeline patient hrefs while preserving raw patient identity queries', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientId = encodeURIComponent(rawPatientId);
+    const encodedPatientQuery = `patient_id=${encodedPatientId}`;
+    const patientFindFirstMock = vi.fn().mockResolvedValue({
+      id: rawPatientId,
+      cases: [{ id: 'case_1' }],
+    });
+    const externalAccessGrantFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'grant_1',
+        granted_to_name: '田中ケアマネ',
+        expires_at: new Date('2026-04-30T00:00:00.000Z'),
+        accessed_at: null,
+        created_at: new Date('2026-04-08T00:00:00.000Z'),
+      },
+    ]);
+    const auditLogFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_billing_1',
+        action: 'billing_payment_profile_updated',
+        target_type: 'Patient',
+        target_id: rawPatientId,
+        actor_id: 'user_1',
+        changes: { payer_name: '山田花子', payment_method: 'cash' },
+        created_at: new Date('2026-04-10T10:00:00.000Z'),
+      },
+      {
+        id: 'audit_mcs_1',
+        action: 'patient_mcs_profile_updated',
+        target_type: 'Patient',
+        target_id: rawPatientId,
+        actor_id: 'user_1',
+        changes: { mcs_enabled: true },
+        created_at: new Date('2026-04-10T09:00:00.000Z'),
+      },
+      {
+        id: 'audit_patient_export_1',
+        action: 'export',
+        target_type: 'medication_history',
+        target_id: rawPatientId,
+        actor_id: 'user_1',
+        changes: { format: 'csv' },
+        created_at: new Date('2026-04-10T08:00:00.000Z'),
+      },
+      {
+        id: 'audit_conference_1',
+        action: 'conference_note.created',
+        target_type: 'conference_note',
+        target_id: 'conference_1',
+        actor_id: 'user_1',
+        changes: { title: '退院前カンファレンス' },
+        created_at: new Date('2026-04-10T07:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: patientFindFirstMock,
+      },
+      managementPlan: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'plan_1',
+            status: 'approved',
+            title: '訪問薬剤管理指導計画書',
+            effective_from: new Date('2026-04-01T00:00:00.000Z'),
+            next_review_date: null,
+            created_by: 'user_1',
+            approved_by: null,
+            approved_at: null,
+            reviewed_by: null,
+            reviewed_at: null,
+            created_at: new Date('2026-04-09T00:00:00.000Z'),
+          },
+        ]),
+      },
+      firstVisitDocument: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'doc_1',
+            document_url: null,
+            delivered_at: null,
+            delivered_to: null,
+            created_at: new Date('2026-04-08T10:00:00.000Z'),
+          },
+        ]),
+      },
+      conferenceNote: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'conference_1',
+            note_type: 'discharge_conference',
+            title: '退院前カンファレンス',
+            conference_date: new Date('2026-04-08T09:00:00.000Z'),
+            follow_up_date: null,
+            follow_up_completed: false,
+            generated_report_id: null,
+            action_items: [],
+          },
+        ]),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_1',
+            status: 'candidate',
+            billing_month: new Date('2026-04-01T00:00:00.000Z'),
+            billing_code: 'HOME_VISIT_MANAGEMENT',
+            billing_name: '居宅療養管理指導',
+            points: 518,
+            exclusion_reason: null,
+            updated_at: new Date('2026-04-08T08:00:00.000Z'),
+          },
+        ]),
+      },
+      medicationCycle: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'cycle_1' }]),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      communicationEvent: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'communication_1',
+            event_type: 'family_call',
+            channel: 'phone',
+            direction: 'inbound',
+            subject: '服薬時間を相談',
+            counterpart_name: '長女',
+            occurred_at: new Date('2026-04-07T10:00:00.000Z'),
+          },
+        ]),
+      },
+      patientSelfReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'self_report_1',
+            subject: '夕方にふらつきあり',
+            category: '副作用・体調変化',
+            content: '夕方にふらつきます。',
+            relation: '本人',
+            status: 'submitted',
+            reported_by_name: '山田花子',
+            requested_callback: true,
+            preferred_contact_time: '18:00以降',
+            created_at: new Date('2026-04-07T09:00:00.000Z'),
+          },
+        ]),
+      },
+      externalAccessGrant: { findMany: externalAccessGrantFindManyMock },
+      auditLog: { findMany: auditLogFindManyMock },
+      user: { findMany: vi.fn().mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]) },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: rawPatientId,
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    const eventsById = new Map(result?.timeline_events.map((event) => [event.id, event]));
+    expect(eventsById.get('management_plan:plan_1')?.href).toBe(
+      `/patients/${encodedPatientId}/management-plan`,
+    );
+    expect(eventsById.get('first_visit_document:doc_1')?.href).toBe(
+      `/patients/${encodedPatientId}#patient-documents`,
+    );
+    expect(eventsById.get('operation_history:audit_mcs_1')?.href).toBe(
+      `/patients/${encodedPatientId}/mcs`,
+    );
+    expect(eventsById.get('operation_history:audit_patient_export_1')?.href).toBe(
+      `/patients/${encodedPatientId}`,
+    );
+    expect(eventsById.get('self_report:self_report_1')?.href).toBe(
+      `/patients/${encodedPatientId}/collaboration`,
+    );
+    expect(eventsById.get('external_share:grant_1')?.href).toBe(
+      `/patients/${encodedPatientId}/share`,
+    );
+    expect(eventsById.get('conference_note:conference_1')?.href).toBe(
+      `/conferences?${encodedPatientQuery}`,
+    );
+    expect(eventsById.get('operation_history:audit_billing_1')?.href).toBe(
+      `/billing/candidates?${encodedPatientQuery}`,
+    );
+    expect(eventsById.get('operation_history:audit_conference_1')?.href).toBe(
+      `/conferences?${encodedPatientQuery}`,
+    );
+    expect(eventsById.get('communication:communication_1')?.href).toBe(
+      `/conferences?${encodedPatientQuery}`,
+    );
+    expect(eventsById.get('billing_candidate:candidate_1')?.href).toBe(
+      `/billing/candidates?billing_month=2026-04-01&${encodedPatientQuery}`,
+    );
+    expect(eventsById.get('operation_history:audit_patient_export_1')?.metadata).toEqual([
+      'medication_history',
+      rawPatientId,
+    ]);
+    expect(patientFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: rawPatientId,
+          org_id: 'org_1',
+        }),
+      }),
+    );
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: rawPatientId,
+        }),
+      }),
+    );
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: 'Patient',
+              target_id: rawPatientId,
+            }),
+            expect.objectContaining({
+              target_type: {
+                in: [
+                  'medication_history',
+                  'medication_calendar',
+                  'visit_record_list',
+                  'prescription_history',
+                ],
+              },
+              target_id: rawPatientId,
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('summarizes billing collection history with bill, payment, receipt, invoice, and unpaid evidence', async () => {
     const db = buildDb({
       patient: {

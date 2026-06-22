@@ -11,6 +11,7 @@ import {
   getInquiryPresentationBadges,
   getInquiryPrimaryDetail,
 } from '@/lib/inquiries/presentation';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
 
@@ -664,6 +665,15 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
     operationHistory,
   } = input;
   const firstVisitDocumentActions = latestFirstVisitDocumentActionByDocumentId(operationHistory);
+  const patientDetailHref = buildPatientHref(patientId);
+  const patientDocumentsHref = buildPatientHref(patientId, '#patient-documents');
+  const patientManagementPlanHref = buildPatientHref(patientId, '/management-plan');
+  const patientMcsHref = buildPatientHref(patientId, '/mcs');
+  const patientCollaborationHref = buildPatientHref(patientId, '/collaboration');
+  const patientShareHref = buildPatientHref(patientId, '/share');
+  const patientQuery = new URLSearchParams({ patient_id: patientId }).toString();
+  const patientBillingCandidatesHref = `/billing/candidates?${patientQuery}`;
+  const patientConferencesHref = `/conferences?${patientQuery}`;
 
   return [
     ...visitSchedules.map((item) => ({
@@ -850,7 +860,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
               ? `次回見直し ${formatTimelineDate(item.next_review_date)}`
               : null,
           ]).join(' / ') || null,
-        href: `/patients/${patientId}/management-plan`,
+        href: patientManagementPlanHref,
         action_label: '計画書を開く',
         status: item.status,
         status_label: MANAGEMENT_PLAN_STATUS_LABELS[item.status] ?? item.status,
@@ -883,7 +893,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
             latestAction?.reason,
             latestAction?.note,
           ]).join(' / ') || null,
-        href: item.document_url ?? `/patients/${patientId}#patient-documents`,
+        href: item.document_url ?? patientDocumentsHref,
         action_label: item.document_url ? 'PDFを見る' : '文書状態を開く',
         status: latestAction?.action ?? (isDelivered ? 'delivered' : 'created'),
         status_label: latestAction
@@ -909,7 +919,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
             actionItemCount > 0 ? `合意事項 ${actionItemCount}件` : null,
             item.generated_report_id ? '報告ドラフトあり' : null,
           ]).join(' / ') || null,
-        href: `/conferences?patient_id=${patientId}`,
+        href: patientConferencesHref,
         action_label: '会議を開く',
         status: item.follow_up_completed ? 'completed' : 'open',
         status_label: item.follow_up_completed ? 'フォロー完了' : 'フォロー中',
@@ -972,14 +982,14 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
         title: meta.title,
         summary: buildOperationHistorySummary(item),
         href: isBilling
-          ? `/billing/candidates?patient_id=${patientId}`
+          ? patientBillingCandidatesHref
           : isPrescription
             ? `/prescriptions/${item.target_id}`
             : isMcs
-              ? `/patients/${patientId}/mcs`
+              ? patientMcsHref
               : isConference
-                ? `/conferences?patient_id=${patientId}`
-                : `/patients/${patientId}`,
+                ? patientConferencesHref
+                : patientDetailHref,
         action_label: isBilling
           ? '請求を開く'
           : isPrescription
@@ -1007,7 +1017,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
           item.category,
           previewTimelineText(item.content),
         ]).join(' / ') || null,
-      href: `/patients/${patientId}/collaboration`,
+      href: patientCollaborationHref,
       action_label: '連携を確認',
       status: item.status,
       status_label: SELF_REPORT_STATUS_LABELS[item.status] ?? item.status,
@@ -1035,7 +1045,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
               item.counterpart_name,
               item.subject ?? item.event_type,
             ]).join(' / ') || null,
-          href: `/conferences?patient_id=${patientId}`,
+          href: patientConferencesHref,
           action_label: '連絡履歴を開く',
           status: item.direction,
           status_label: directionLabel,
@@ -1054,7 +1064,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
           item.granted_to_name,
           item.accessed_at ? '閲覧済み' : '未閲覧',
         ]).join(' / ') || null,
-      href: `/patients/${patientId}/share`,
+      href: patientShareHref,
       action_label: '共有設定を開く',
       status: item.accessed_at ? 'accessed' : 'issued',
       status_label: item.accessed_at ? '閲覧済み' : '共有中',
