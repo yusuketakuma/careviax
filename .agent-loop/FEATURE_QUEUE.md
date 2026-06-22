@@ -504,3 +504,35 @@ old tasks unless they are actively being edited for another reason.
 並行 housekeeping（joint）: matrix §3 stale 訂正（DataTable は既に skeleton/empty 内蔵、consent は isLoading 済）;
 gbrain promotion review: `projects/careviax/lessons/candidates/api-response-validation-and-consolidation`
 (times_confirmed=2) を §13 gate で VerifiedLesson 昇格検討。
+
+## RUN-20260622-001 Cycle 6 — admin a11y / 情報設計スライス（claude=owner, codex=reviewer）
+
+レーン: 全て Claude UI lane・自ファイル LOCK・maker/checker・objective gate・codex peer review。
+
+### F-20260622-001 — admin UI/UX 連続スライス（全 DONE）
+
+| slice  | 内容                                                                                                                | 状態                                                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| slice1 | admin service-areas + alert-rules: native `<select>`(36px) → 共有 `@/components/ui/select`、44px 全 breakpoint trigger、空保存ブロッカー維持 | **done** e73ff383（codex rev2 APPROVED; vitest 11/11 + 全 gate green） |
+| slice2 | admin capacity: 「今すぐ見るべきこと」を chart 上へ昇格（SSOT §2/L117 情報順）、loading skeleton 追従、DOM順序テスト                  | **done** 91d47e84（codex rev3 APPROVED; vitest 3/3 + 全 gate green） |
+| slice3 | admin document-templates: PageSection(h2) + CardTitle asChild h3 階層、TemplateBodyEditor 内側 h2→h3 + aria-labelledby | **done** f40a77f5（codex 4-round plan + patch rev1 APPROVED; vitest 8/8 + 全 gate green） |
+
+### F-20260622-002 — drug-masters native-select a11y 移行（8 selects、3 sub-slice 分割）
+
+origin: slice1 verify subagent が検出した範囲外残渣（drug-master-content.tsx の 8 native select、mixed label/aria パターン）。1メガ diff を避け 4a/4b/4c に分割（codex 承認）。
+
+| sub-slice | 対象 selects                                              | 状態                                                                                                                              |
+| --------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 4a        | #1 対象拠点 / #2 コピー元拠点 / #3 テンプレート              | **in review (rev2)**: plan rev5 APPROVED（5-round; clear sentinel + 完全 target reset + 44px trigger/item + 強化 mock）。実装(frontend-implementer)→ codex patch rev1 changes_requested（P1 stale-async-preview guard + test 契約3件）→ rev2 実装中 |
+| 4b        | #4 CSV用途 / #5 取込ソース / #6 取込状態 / #7 薬効分類    | queued（filter selects、空 option なし）                                                                                          |
+| 4c        | #8 採用後発薬（accessible name 欠落も補修）               | queued                                                                                                                          |
+
+deferred（判断要・別タスク）: M9 business-holidays（カレンダー↔一括登録結合）/ M3 billing-rules（§15 billing hard-stop 近接=human-gate）。
+
+### native-select a11y バックログ（read-only インベントリ 2026-06-22、将来 Discover 候補）
+
+slice1/4a と同種の sub-44px native `<select>` 残債。admin lane を優先、患者・臨床画面は医療/PHI ハザードのため要慎重・別 PLAN。
+
+- **admin（低〜中リスク、優先）**: drug-masters 残り5（=4b/4c）/ admin/pharmacy-cooperation-setup-content（1）。
+- **clinical/患者（高リスク・要慎重、各別 PLAN）**: patients/[id]/card-workspace（23）/ prescriptions/new/prescription-intake-form（9）/ patients/[id]/patient-insurance-card（5）/ patient-documents-panel（4）/ patients/[id]/mcs（3）/ prescription-history（2）/ patient-labs-card（1）/ patients-board（1）/ referrals/new（2）/ schedules/schedule-team-board（1）/ workflow/pharmacy-cooperation（1）/ billing/partner-cooperation（1=billing hard-stop 近接）。
+- 方針: slice1 で確立した shared `@/components/ui/select` + 44px trigger/item + MockSelect パターンを踏襲。label-wrap は aria-labelledby へ翻訳、空 option が action を gate する場合は明示 clear sentinel + 完全 state reset（slice4a で確立）。

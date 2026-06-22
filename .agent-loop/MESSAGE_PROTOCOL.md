@@ -187,6 +187,14 @@ team `phos`.
   `CHANGES_REQUESTED`, `LOCK_REQUEST`, `HANDOFF`, `PAUSE_REQUEST`, and `URGENT`
   messages require immediate triage/ACK before lower-priority Codex tasks resume.
 - Drain the inbox before committing; stage only your own lane's files.
+- **Supervisor main-loop availability (both leads; LOOP_POLICY §20).** Each Supervisor's main loop
+  must stay free to receive and triage the peer's messages. A busy main loop only processes pushed
+  agmsg events at a turn boundary, so sustained/blocking work (multi-file edits, builds, test/verify
+  runs, long investigations) is delegated to **subagents** (or `run_in_background`), not run inline in
+  the main loop. The main loop reserves itself for inbox drain/triage, coordination (LOCK/ACK/review/
+  owner decisions), spawning/steering subagents, and committing reviewed work. Subagents still never
+  post to agmsg — the Supervisor summarizes their output into one envelope. This applies symmetrically
+  to `claude-lead` and `codex-lead` and reinforces the Claude-origin priority rule above.
 - `<body>` is the full §8.1 envelope (the fenced `AGLOOP v5 ...` block).
 
 ### §8.5 — Idempotency & ACK

@@ -24,23 +24,36 @@ end. It is the first file consulted on resume and the last file written on a har
 
 ```yaml
 current_run_id: RUN-20260622-001
-current_cycle: 4 # HARD STOP: codex medical-ui gate stabilization exceeded loop/file budget; Claude contact priority policy patch proposed by user direction.
+current_cycle: 6 # resident loop: F-002 slice1-4a ALL DONE/committed; codex F-003/F-004 landed + F-006 in review; LOOP_POLICY §20/§21 (subagent-orchestration) peer-approved.
 cycle_start_time: 2026-06-22T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: RUN-20260622-001-medical-ui-gate-stabilization
-current_cycle_note: 'Claude approved PI-005, but the final medical-ui gate is still not green. A full `pnpm medical-ui:e2e:gate` run failed on set-audit final approval navigation/persistence, and a focused rerun was interrupted by the user before completion. User then directed that Claude-origin agmsg items must be prioritized. Codex proposed a this-run §19 policy/protocol rule requiring every pending claude/claude-lead message to preempt local Codex implementation, verification, commit, or idle-ladder work; Claude reviewed and approved the supervisor-doc patch.'
-files_changed_count: 21 # git status --short --untracked-files=all, including three gbrain write-through pages; over §14 >20-file hard-stop threshold, so no new implementation should start before narrowing/landing/handing off.
-claude_status: reviewer_standby # PI-005 approved; slice1 admin a11y still held behind gate-pause until Codex medical-ui gate lands/releases.
-codex_status: policy_patch_peer_approved_gate_not_green # Claude-origin priority §19 peer-approved for this run; final medical-ui gate still failing/interrupted, so do not release medical-ui lock.
+active_task_id: - # slice4a landed; next Discover = slice4b/4c (drug-masters #4-#8) + F-20260622-005 (preview-invalidation follow-up). Not started.
+current_cycle_note: 'Cycle 6 resident loop. F-20260622-001 admin UI: slice1 e73ff383 (select a11y), slice2 91d47e84 (capacity info-order), slice3 f40a77f5 (document-templates h2/h3) ALL DONE. F-20260622-002 slice4a 780dcff2 DONE: drug-masters formulary selects #1対象拠点/#2コピー元拠点/#3テンプレート → shared Select (44px, label-wrap→aria-labelledby, explicit clear sentinels) + medical-safety stale-preview hardening (drift-proof ref-SSOT apply*-setters, request-context-stamped dry-run guards, target-change + import/auto-refresh preview invalidation cleared-before-await). codex review: 5 plan + 6 patch rounds (concurrency/medical-safety checker split surfaced + closed real stale-async-preview races); implemented via frontend-implementer subagent in worktree, claude-lead verified each diff + gates in main. Parallel codex backend (claude reviewed+approved): F-003 540d503e (presign fail-closed), F-004 d5dc1efa (offline lastError §9 sanitize), F-006 in review (patient-mcs URL-encode). LOOP_POLICY §20 (main loop free / work in subagents) + §21 (max subagent concurrency / main=orchestrator) added + ApplyNow §1-21 grouped index; codex peer-approved. Loop FixPatterns: serial build/no-unused (TS6053); no backticks in agmsg bodies; heredoc-to-file for agmsg envelopes.'
+files_changed_count: 0 # all source committed (F-002 slice1-4a by claude: e73ff383/91d47e84/f40a77f5/780dcff2; F-003/F-004 by codex). Dirty = .agent-loop ledgers + .codex/ralph-state + codex F-006 in-flight (patient-mcs, codex lock) + untracked projects/ gbrain pages.
+claude_status: idle_orchestrator # F-002 slice1-4a all DONE/committed; all my LOCKs released. Per §20/§21 main loop free for codex; reviewing codex F-006; next Discover = slice4b/4c + F-005.
+codex_status: active_backend # landed F-003/F-004; F-006 (patient-mcs URL-encode) in review (claude approved patch, codex landing). Recording slice4a rev6 review ledgers.
 last_memory_bootstrap: 2026-06-22 # gbrain filesystem store(/Users/yusuke/brain/projects/careviax)直読。NOTE: `gbrain list --type` は空=構造化 memory は slug-path file、federated semantic index 非掲載。
 zero_actionable_count: 0
-last_gate_result: fail # full `pnpm medical-ui:e2e:gate` failed after PI-005 approval; focused rerun was interrupted by user before completion.
+last_gate_result: pass # slice4a committed 780dcff2 (rev6 approved; vitest 49/49, eslint 0, prettier, typecheck exit0, build exit0, no-unused exit0 serial, diff-check). slice1/2/3 + codex F-003/F-004 also green/landed.
 next_action: >
-  Honor the user-directed Claude-origin priority override as peer-approved for RUN-20260622-001: drain agmsg and handle any claude/claude-lead message before any further Codex gate work. Because the medical-ui gate is not green and the file-count hard-stop is exceeded, do not release the medical-ui lock or unblock Claude's admin slice yet. Commit/release the independent policy-doc slice, then either narrow/land after a green gate or hand off/review the remaining set-audit final approval stabilization.
-  Warm slice queue (§14b read-only scope, admin lane=Claude owner, disjoint from codex locks; all HELD until gate-pause release):
-  - slice1 [APPROVED + LOCK held, edits held for gate-pause] admin a11y: 生 `<select className="h-9">`(36px<44px) → 既存 @base-ui/react/select (admin 10+画面使用=§18 reuse-first)。service-areas(2)+alert-rules(2)+ tests。44px: 各 trigger `min-h-[44px] w-full sm:min-h-[44px]`。empty-state: service-area-site は form 空文字 + SelectValue placeholder(reuse settings-content.tsx:449)、empty SelectItem 追加せず。test: pca-pumps MockSelect パターン再利用 + 44px class 契約 assert。
-  - slice2 [scoped, ready-to-PLAN — §18 stale-scope CORRECTED] M8 capacity 即時判断昇格: `今すぐ見るべきこと`<section>(capacity-content.tsx L244-259)は xl:grid-cols-3 グリッド(L211)の第3列で、行程ごとの残り(L212)+スタッフ別の負荷(L226)と同列。⇒ mechanical な単純移動ではなく **layout 判断**: 推奨=Option A(今すぐ見るべきことを KPI grid(L180-209)直下の独立フル幅 section へ昇格し、2 BarChart を xl:grid-cols-2 に集約)。SSOT L70-76/L117 即時判断上位。単一ファイル・admin lane・testId=capacity-page 維持・capacity test 無し(任意で DOM 順序 test 追加可)・空状態は真の empty(§17 OK)。PLAN_REVIEW で A/B を codex に確認。
+  F-002 slice1-4a all landed (e73ff383 / 91d47e84 / f40a77f5 / 780dcff2). Next per §16 Discover,
+  run under §20/§21 (work in subagents, main loop free, fan out disjoint partitions):
+  - slice4b: drug-masters filter selects #4 CSV用途 / #5 取込ソース / #6 取込状態 / #7 薬効分類
+    (no empty options) → shared Select; same MockSelect/44px pattern. Claude UI lane, single file
+    (drug-master-content.tsx) + test — NOTE same file as 4a, so 4b and 4c must be SERIAL (one LOCK
+    holder at a time), not concurrent with each other.
+  - slice4c: #8 採用後発薬 (adds the missing accessible name) + any remainder.
+  - F-20260622-005 (follow-up safety, agreed with codex): broader generation/onError preview
+    invalidation + preview-required final apply for copy/template. Codex or Claude lane TBD.
+  - mcs-content.tsx direct MCS fetch URL-encode (Claude UI follow-up to codex F-006) if filed.
+  Also pending: GateResult/LoopRun gbrain writeback for this run's landed slices (file-plane; DB blocked).
+  Deferred (judgment): M9 business-holidays (calendar↔bulk-register) / M3 billing-rules (§15
+  billing hard-stop adjacency — human-gate care).
+  BlockedContext (BLOCKED.md): gbrain DB/index writeback fails on embedding dim mismatch
+  (expected 768, got 1024); file-plane writes succeed, semantic-index put fails → DB recall stays
+  stale until human realigns the index. Loop continues on file-plane recall meanwhile.
+  Warm slice queue (§14b read-only scope, admin lane=Claude owner, disjoint from codex locks):
   - slice3 [scoped] M5 document-templates: 大機能直列を PageSection(h2)化(PageSection 実在=reuse)。中規模。
-  - deferred(判断要): M9 business-holidays(カレンダー↔一括登録結合)/ M3 billing-rules(§15 hard-stop 近接)/ drug-masters select(M6 連動)。
+  - deferred(判断要): M9 business-holidays(カレンダー↔一括登録結合)/ M3 billing-rules(§15 hard-stop 近接)/ drug-masters select(M6 連動: slice1 で確認した範囲外 native h-9 select 残渣)。
 ```
 
 ## gbrain memory (this run)
@@ -70,6 +83,13 @@ next_action: >
 - BlockedContext: projects/careviax/blocked/2026-06-22/set-audit-fixed-fixture-e2e-timeout (RUN-20260622-001 medical-ui hard-stop; focused set-audit e2e repeated timeout)
 - FixPattern: projects/careviax/fix-patterns/2026-06-22/set-audit-spa-nav-preserves-workbench-state (RUN-20260622-001 medical-ui gate; test-side blocker resolved)
 - GateResult: projects/careviax/gates/2026-06-22/medical-ui-gate-focused-green (RUN-20260622-001 medical-ui gate; focused static/E2E validation green)
+- ReviewFinding: projects/careviax/reviews/2026-06-22/ssot-token-fork-caught-in-review (RUN-20260622-001 medical-ui review; claude-lead caught a per-screen READABLE_STATUS_BADGE_CLASSES fork of the State Color SSOT, resolved by promoting into status-tokens.ts not plain-revert; §18/§7 + review-method)
+- GateResult: projects/careviax/gates/2026-06-22/medical-ui-gate-prescription-intake-timeout-fail (RUN-20260622-001 medical-ui gate; full gate failed on prescription-intakes 500 / Prisma transaction timeout)
+- BlockedContext: projects/careviax/blocked/2026-06-22/prescription-intake-transaction-timeout (RUN-20260622-001 medical-ui gate; owner/lock decision needed before product fix)
+- PerformanceFinding: projects/careviax/performance-findings/2026-06-22/prescription-intake-guardrail-before-cycle-create (RUN-20260622-001 read-only root cause; blocked POST creates cycles before guardrail failure)
+- ReviewFinding: projects/careviax/reviews/2026-06-22/admin-select-test-contract-payload-and-hit-target (F-20260622-001-slice1; Base UI Select migration tests must assert responsive hit target classes and submitted payload serialization. Written to gbrain file-plane after `gbrain put` failed with embedding dimension mismatch.)
+- FixPattern: projects/careviax/fix-patterns/2026-06-22/serial-no-unused-after-next-build (RUN-20260622-001 loop validation; run `typecheck:no-unused` serially after Next.js build to avoid transient `.next/types` TS6053 false negatives.)
+- FixPattern: projects/careviax/fix-patterns/2026-06-22/agloop-shell-backticks-strip-tokens (RUN-20260622-001 agmsg transport hygiene; avoid shell backticks in AGLOOP bodies built through shell variables because command substitution can strip tokens.)
 
 ## Resume point
 
@@ -125,5 +145,9 @@ next_action: >
 **Current update 2026-06-22T11:40:00+09:00 (codex-lead)**: User-directed policy change proposed as ApplyNow §19: Claude-origin agmsg items preempt local Codex work at every drain/cycle boundary. Updated `.agent-loop/LOOP_POLICY.md` §19 + Peer-approval row and `.agent-loop/MESSAGE_PROTOCOL.md` transport rules. Claude granted the supervisor-doc lock and requested a PATCH_REVIEW_REQUEST; until approval, Codex honors the user directive operationally but does not mark the policy peer-approved. Before this policy patch, Claude had approved PI-005, but final full `pnpm medical-ui:e2e:gate` was not green: one run failed on set-audit final approval returning to `/set`, then a focused `--grep 'set-audit final approval'` rerun was interrupted by the user after the persistence case hung at the approval POST wait. Do not commit/release locks until the remaining final gate blocker is resolved and re-validated; process any new Claude message first.
 
 **Current update 2026-06-22T11:55:00+09:00 (codex-lead)**: Claude returned `PATCH_REVIEW_RESULT approved` for `agent-loop-claude-priority-policy-20260622`. §19 is now marked peer-approved for this run, with permanent promotion to AGENTS.md / CLAUDE.md still human-gated. The policy-doc slice is independent of the medical-ui gate; Codex may commit the policy/protocol/ledger docs and release only that policy lock. The medical-ui lock remains held until final gate/review completion.
+
+**Current update 2026-06-22T12:52:14+09:00 (codex-lead)**: final medical-ui gate remains blocked. Controlled `pnpm medical-ui:e2e:gate` passed preflight/DB checks, then failed in `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts` expecting 400 but receiving 500 for the blocked-injection `/api/prescription-intakes` POST. Next dev log root cause: Prisma interactive transaction expired at `workflowException.findFirst` after 5s in `src/server/services/prescription-intake-service.ts`. Minimal authenticated direct fetch to the same blocked payload returned the expected 400 with `blocked_lines`, but took 33.7s. A single Playwright grep attempt became orphan/SIGTERM and is not pass evidence. Codex sent AGLOOP v5 `VERIFY_BLOCKED` `codex-20260622T125214-jst-medical-ui-gate-blocked` requesting Claude owner/lock decision; current Codex lock forbids `src/server/**` and `src/app/api/**`, so no product-code fix should start until ACK/decision.
+
+**Current update 2026-06-22T12:59:51+09:00 (codex-lead)**: Claude ACKed with `OWNER_DECISION_RESULT`: Codex owns backend perf/stability, but only read-only root-cause is allowed now; implementation is held by §14 >20-file hard-stop and possible migration human-gate. Read-only findings: `WorkflowException` lacks a composite `(org_id, cycle_id, exception_type, status)` index, but current e2e DB has only 95 rows and the exact `findFirst` equivalent is a 0.086ms seq scan, so the immediate gate failure is not proven to be an index-only problem. More important: the `case_id/patient_id` path creates a new `MedicationCycle` before structuring/outpatient-injection guardrails. The e2e DB now has 185 cycles for the target case and 93 target cycles without any `PrescriptionIntake`, matching repeated blocked POST side effects. Fix classification: code-level first, migration optional/future. Recommended code fix is to make invalid prescription guardrails fail fast before creating a new cycle / before the 5s interactive transaction does avoidable writes, while preserving the 400 + `blocked_lines` contract. Do not implement until human/Claude decision.
 
 > Note: a hard-stop writes the **Resume point** here before exiting so the next session can resume without re-deriving context.

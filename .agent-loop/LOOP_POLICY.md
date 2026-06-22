@@ -19,6 +19,7 @@ discipline that the two sessions have already proven in practice. Only `ApplyNow
 
 - **Run:** RUN-20260622-001 (resident quality loop restart; gbrain Memory Bootstrap re-run for the placement-optimization workstream)
 - **Cycle:** 1 (Bootstrap — read all .agent-loop ledgers + gbrain recall; this-run ApplyNow patch §17–18 proposed below, pending codex peer approval)
+- **Bootstrap re-run (session restart 2026-06-22, claude-lead):** re-read all 11 .agent-loop ledgers + gbrain filesystem SSOT recall (semantic index returns none — structured memory is slug-path files per STATE note). Classification: all relevant ApplyNow memories (`false-empty-and-stale-wipe`, `verify-component-capability-before-extension`, `mutation-raw-row-phi-leak`/`mutation-reuse-get-safe-projection`, `readapijson-schema-fail-closed`) are **already encoded** in §7/§9/§10/§17/§18; `pharmacy-cooperation-api-contracts` stays Consider; `state-color-token-unification` stays Ignore. **No NEW ApplyNow line emerges** → §17–19 patch (already PEER-APPROVED, in-effect) continues to govern this continued run. Sent to codex-lead as LOOP_POLICY_PATCH_PROPOSED (continuity confirmation, no new line). Live repo/tests/lint/typecheck/build/LOCKS/STATE take priority over recall.
 - **Date:** 2026-06-22
 - **Supervisors:** claude-lead (UI/UX + main impl), codex-lead (backend/perf/refactor/test review)
 - **Prior runs:** RUN-20260620-001 (Cycle 4), RUN-20260621-001 (Cycle 2) — §1–16 stand unchanged.
@@ -34,6 +35,27 @@ discipline that the two sessions have already proven in practice. Only `ApplyNow
 ## ApplyNow
 
 Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
+
+### ApplyNow index (§1–21 grouped — the numbered rules below remain the SSOT/full text)
+
+Organized for navigation; each rule's authoritative wording, evidence, and peer-approval status stay in
+the numbered entries that follow.
+
+- **A. Lane, LOCK & coordination discipline** — §1 lane split · §2 LOCK before edit · §3 drain inbox
+  before commit · §4 stage only own files · §5 Supervisors-only on agmsg · §11 workload-balancing handoff
+  · §19 Codex drains Claude-origin first · §20 main loop free / work in subagents · §21 maximize subagent
+  concurrency / main = orchestrator.
+- **B. Verification & quality gates** — §6 verify-before-done (real gate cmds) · §17 state-display
+  correctness on placement slices · §18 verify-capability + reuse-first before extending a component.
+- **C. Compliance, PHI & security** — §7 UI/UX SSOT + State Color tokens · §8 Compliance-by-Design + RLS
+  · §9 PHI redaction symmetry on mutations · §10 fail-closed client API reads.
+- **D. Continuous operation & idle productivity** — §12 idle-capacity useful work · §13 loop-engineering
+  PDCA track · §14 idle-time productivity playbook · §15 no passive-wait per-turn trigger · §16
+  continuous loop (repeat on drain).
+
+> Provenance: §1–6 are the proven seed (lane/LOCK/drain/verify). §7–16 are applied/peer-approved general
+> rules. §17–21 are this-run (RUN-20260622-001) user/peer-directed patches; permanent promotion to
+> AGENTS.md/CLAUDE.md stays human-gated via PROMOTION_QUEUE §13. See the Peer-approval table for status.
 
 1. **Lane discipline.** Claude owns `src/app/(dashboard)/**` and `src/components/**` (UI/UX + main
    implementation). Codex owns backend / perf / refactor / test-review. Do not edit across lanes
@@ -206,6 +228,48 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
     safe, ACKs/triages the Claude item, and only then resumes. This rule does not weaken §3 inbox
     drain, §14/§15 yield-first, maker/checker separation, user-priority directives, hard-stops, or
     human-approval gates; it only makes Codex's handling order explicit.
+20. **Supervisor main loop stays free; do the work in subagents (both Supervisors).** User-directed
+    policy (2026-06-22). Each Supervisor's MAIN loop (`claude-lead`, `codex-lead`) must stay available
+    to receive and triage the peer's agmsg messages at all times. A busy main loop only processes
+    pushed agmsg events at a turn boundary, so the main loop must NOT be occupied by sustained or
+    blocking work. Therefore:
+    - **Delegate the actual work to subagents.** Multi-file implementation, refactors, test authoring,
+      verification runs, builds, and long investigations are run in subagents (e.g. Claude's
+      `frontend-implementer`/`Explore`/worktree agents; Codex's equivalent task subagents). The
+      Supervisor main loop reserves itself for: draining/triaging the inbox, coordination (LOCK
+      grant/deny, ACK, plan/patch reviews, owner/handoff decisions), spawning/steering subagents, and
+      committing already-reviewed owned work.
+    - **Keep the main loop short-turn.** Prefer subagents or `run_in_background` for anything that would
+      block the loop more than briefly, so the Supervisor returns to a turn boundary quickly and can act
+      on a peer message (review request, LOCK, URGENT, PAUSE/HANDOFF) without delay.
+    - **Symmetric for Codex.** Codex follows the same rule: its main loop stays free for claude-origin
+      messages (reinforces §19), with implementation/verification pushed to its own subagents.
+    - **Unchanged constraints.** Subagents still NEVER post to agmsg or touch shared ledgers directly —
+      the Supervisor summarizes a subagent's result into a single envelope before it goes on the wire
+      (MESSAGE_PROTOCOL transport rule). Maker/checker separation holds: a subagent that implements is
+      not the approver; the peer Supervisor reviews. Brief inline ops (quick reads, small edits,
+      sending messages, granting locks, staging a reviewed commit) are fine — the rule targets
+      sustained/blocking work that would make the main loop unresponsive to the peer.
+21. **Maximize subagent concurrency; the main loop is the orchestrator (both Supervisors).** User-directed
+    (2026-06-22); extends §20. Run MULTIPLE subagents in parallel for independent work instead of
+    serializing it, so throughput is maximized while the main loop devotes its capacity to orchestration
+    and stays free for peer comms.
+    - **Fan out, don't serialize.** When work items have disjoint file scopes/lanes (e.g. implement
+      slice A, recon slice B, verify slice C), dispatch them to concurrent subagents rather than doing
+      them one-by-one inline. Prefer parallel subagents + `run_in_background` gates over blocking the loop.
+    - **Disjoint partitions only (mechanical-conflict prevention).** Before fanning out, the Supervisor
+      ensures each concurrent subagent edits a disjoint `locked_paths` set — never two subagents writing
+      the same file. Overlapping scope is serialized or merged into one subagent. LOCK discipline (§2)
+      holds across all concurrent subagents.
+    - **The main loop's primary job is orchestration:** spawn / steer / resume subagents, keep their
+      partitions disjoint, route each subagent's summarized result onto agmsg, drain/triage the peer
+      inbox, run/await objective gates, and review/commit. Heavy work itself lives in the subagents (§20).
+    - **Peer-responsiveness first.** If orchestrating many subagents would delay peer triage, cap
+      concurrency so the main loop still returns to drain the inbox promptly — receiving the peer's
+      messages (§19/§20) outranks raw fan-out.
+    - **Unchanged:** subagents never post to agmsg or touch shared ledgers (the Supervisor serializes
+      their outputs into envelopes); maker/checker holds across every concurrent subagent (an
+      implementing subagent is never the approver); all hard-stops stay human-gated.
 
 ## Consider
 
@@ -261,4 +325,6 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §17 (state-display correctness, this-run) | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)          |
 | ApplyNow §18 (verify-capability + reuse-first)     | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)          |
 | ApplyNow §19 (Codex drains Claude-origin first)    | codex-lead  | claude-lead | peer-approved (this-run; human gate for permanent AGENTS/CLAUDE.md promotion) |
+| ApplyNow §20 (main loop free; work in subagents)   | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent) |
+| ApplyNow §21 (max subagent concurrency; main=orch) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent) |
 | _next candidate_                                   | _name_      | _name_      | proposed                                                                      |
