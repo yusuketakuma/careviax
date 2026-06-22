@@ -178,8 +178,8 @@ export function DocumentDeliveryRuleManager() {
     <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
-            {form.id ? '送達ルールを編集' : '送達ルールを登録'}
+          <CardTitle asChild className="text-base">
+            <h3>{form.id ? '送達ルールを編集' : '送達ルールを登録'}</h3>
           </CardTitle>
           <CardDescription>
             文書種別と相手ロールごとに、既定チャネルとフォールバック順を定義します。
@@ -298,7 +298,9 @@ export function DocumentDeliveryRuleManager() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">送達ルール一覧</CardTitle>
+          <CardTitle asChild className="text-base">
+            <h3>送達ルール一覧</h3>
+          </CardTitle>
           <CardDescription>
             報告書詳細画面では、この設定を優先して送達チャネル候補を並べます。
           </CardDescription>

@@ -29,6 +29,7 @@ import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { PageSection } from '@/components/layout/page-section';
 import { TemplateBodyEditor } from './template-body-editor';
 
 type TemplateType =
@@ -322,12 +323,18 @@ export function DocumentTemplateContent() {
         shortcuts={getAdminDocumentTemplatesShortcutLinks()}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+      <PageSection
+        title="テンプレート版管理"
+        description="文書テンプレートの登録・編集と、登録済みテンプレートの版・更新状況を管理します。"
+        contentClassName="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]"
+      >
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FileText className="h-4 w-4 text-primary" aria-hidden="true" />
-              {editingTemplateId ? 'テンプレートを編集' : 'テンプレートを登録'}
+            <CardTitle asChild className="flex items-center gap-2 text-base">
+              <h3>
+                <FileText className="h-4 w-4 text-primary" aria-hidden="true" />
+                {editingTemplateId ? 'テンプレートを編集' : 'テンプレートを登録'}
+              </h3>
             </CardTitle>
             <CardDescription>JSON 形式でブロック構成や固定文言を管理します。</CardDescription>
           </CardHeader>
@@ -487,7 +494,9 @@ export function DocumentTemplateContent() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">登録済みテンプレート</CardTitle>
+            <CardTitle asChild className="text-base">
+              <h3>登録済みテンプレート</h3>
+            </CardTitle>
             <CardDescription>
               主要文書ごとの既定テンプレートと更新状況を確認できます。
             </CardDescription>
@@ -521,9 +530,10 @@ export function DocumentTemplateContent() {
             />
           </CardContent>
         </Card>
-      </div>
+      </PageSection>
 
-      {/* p1_10: 文面の3カラムエディタ(テンプレート/文面を編集/差し込み項目) */}
+      {/* p1_10: 文面の3カラムエディタ(テンプレート/文面を編集/差し込み項目)。
+          自前で section + 見出しを持つ独立ブロックのため PageSection で二重ラップしない。 */}
       <TemplateBodyEditor
         templates={(data?.data ?? []).map((template) => ({
           id: template.id,
@@ -532,7 +542,12 @@ export function DocumentTemplateContent() {
         }))}
       />
 
-      <DocumentDeliveryRuleManager />
+      <PageSection
+        title="送達ルール"
+        description="文書種別と相手ロールごとに、既定の送達チャネルとフォールバック順を管理します。"
+      >
+        <DocumentDeliveryRuleManager />
+      </PageSection>
 
       <ConfirmDialog
         open={deleteTarget !== null}
