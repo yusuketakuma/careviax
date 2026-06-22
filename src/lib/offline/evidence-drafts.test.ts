@@ -254,6 +254,154 @@ describe('offline evidence draft sync', () => {
     expect(evidenceDraftsMock.delete).toHaveBeenCalledWith(1);
   });
 
+  it('encodes hostile schedule and visit-record IDs only when constructing sync URL paths', async () => {
+    const hostileScheduleId = 'schedule/../tenant?date=2026-06-22#frag';
+    const hostileVisitRecordId = 'visit-record/../tenant?record=1#frag';
+    const encodedScheduleId = encodeURIComponent(hostileScheduleId);
+    const encodedVisitRecordId = encodeURIComponent(hostileVisitRecordId);
+    const expectedScheduleUrl = `/api/visit-schedules/${encodedScheduleId}`;
+    const expectedVisitRecordUrl = `/api/visit-records/${encodedVisitRecordId}`;
+    const presignedBodies: Record<string, unknown>[] = [];
+    evidenceDraftsMock.toArray.mockResolvedValue([createDraft({ scheduleId: hostileScheduleId })]);
+    decryptOfflinePayloadMock.mockResolvedValue('data:image/png;base64,AAAA');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === expectedScheduleUrl) {
+        return jsonResponse({ visit_record: { id: hostileVisitRecordId } });
+      }
+      if (url === 'data:image/png;base64,AAAA') {
+        return new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { 'Content-Type': 'image/png' },
+        });
+      }
+      if (url === '/api/files/presigned-upload') {
+        presignedBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return jsonResponse({
+          data: {
+            id: 'file_new',
+            uploadUrl: 'https://upload.example/file_new',
+            headers: { 'x-upload': '1' },
+          },
+        });
+      }
+      if (url === 'https://upload.example/file_new' && init?.method === 'PUT') {
+        return new Response(null, { status: 200, headers: { etag: 'etag_1' } });
+      }
+      if (url === '/api/files/complete') {
+        return jsonResponse({ data: { id: 'file_new' } });
+      }
+      if (url === expectedVisitRecordUrl && !init?.method) {
+        return jsonResponse({ version: 2, attachments: [] });
+      }
+      if (url === expectedVisitRecordUrl && init?.method === 'PATCH') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          version: 2,
+          attachments: [{ file_id: 'file_new' }],
+        });
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    await expect(syncEvidenceDrafts({ orgId: 'org_1' })).resolves.toEqual({
+      synced: 1,
+      skipped: 0,
+      failed: 0,
+    });
+
+    const fetchedUrls = fetchMock.mock.calls.map(([input, init]) => ({
+      method: init?.method ?? 'GET',
+      url: String(input),
+    }));
+    expect(fetchedUrls).toEqual(
+      expect.arrayContaining([
+        { method: 'GET', url: expectedScheduleUrl },
+        { method: 'GET', url: expectedVisitRecordUrl },
+        { method: 'PATCH', url: expectedVisitRecordUrl },
+      ]),
+    );
+    expect(fetchedUrls.map(({ url }) => url)).not.toContain(
+      `/api/visit-schedules/${hostileScheduleId}`,
+    );
+    expect(fetchedUrls.map(({ url }) => url)).not.toContain(
+      `/api/visit-records/${hostileVisitRecordId}`,
+    );
+    expect(presignedBodies).toHaveLength(1);
+    const [presignedBody] = presignedBodies;
+    expect(presignedBody).toMatchObject({
+      purpose: 'visit-photo',
+      visit_record_id: hostileVisitRecordId,
+    });
+    expect(presignedBody.visit_record_id).not.toBe(encodedVisitRecordId);
+    expect(evidenceDraftsMock.update).toHaveBeenCalledWith(1, {
+      uploadedFileAssetId: 'file_new',
+      uploadedVisitRecordId: hostileVisitRecordId,
+      lastError: undefined,
+    });
+    expect(evidenceDraftsMock.delete).toHaveBeenCalledWith(1);
+  });
+
+  it('encodes hostile schedule ID for visit-record fallback while preserving raw record identity', async () => {
+    const hostileScheduleId = 'schedule/../fallback?date=2026-06-22#frag';
+    const encodedScheduleId = encodeURIComponent(hostileScheduleId);
+    const expectedScheduleUrl = `/api/visit-schedules/${encodedScheduleId}`;
+    const expectedFallbackRecordUrl = `/api/visit-records/${encodedScheduleId}`;
+    evidenceDraftsMock.toArray.mockResolvedValue([
+      createDraft({
+        scheduleId: hostileScheduleId,
+        uploadedFileAssetId: 'file_existing',
+        uploadedVisitRecordId: hostileScheduleId,
+      }),
+    ]);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === expectedScheduleUrl) {
+        return jsonResponse({ message: 'not found' }, 404);
+      }
+      if (url === expectedFallbackRecordUrl && !init?.method) {
+        if (fetchMock.mock.calls.length === 2) return jsonResponse({ ok: true });
+        return jsonResponse({ version: 4, attachments: [{ file_id: 'file_old' }] });
+      }
+      if (url === expectedFallbackRecordUrl && init?.method === 'PATCH') {
+        expect(JSON.parse(String(init.body))).toEqual({
+          version: 4,
+          attachments: [{ file_id: 'file_old' }, { file_id: 'file_existing' }],
+        });
+        return jsonResponse({ ok: true });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+
+    await expect(syncEvidenceDrafts({ orgId: 'org_1' })).resolves.toEqual({
+      synced: 1,
+      skipped: 0,
+      failed: 0,
+    });
+
+    const fetchedUrls = fetchMock.mock.calls.map(([input, init]) => ({
+      method: init?.method ?? 'GET',
+      url: String(input),
+    }));
+    expect(fetchedUrls).toEqual(
+      expect.arrayContaining([
+        { method: 'GET', url: expectedScheduleUrl },
+        { method: 'GET', url: expectedFallbackRecordUrl },
+        { method: 'PATCH', url: expectedFallbackRecordUrl },
+      ]),
+    );
+    expect(fetchedUrls.map(({ url }) => url)).not.toContain(
+      `/api/visit-schedules/${hostileScheduleId}`,
+    );
+    expect(fetchedUrls.map(({ url }) => url)).not.toContain(
+      `/api/visit-records/${hostileScheduleId}`,
+    );
+    expect(decryptOfflinePayloadMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/files/presigned-upload', expect.anything());
+    expect(evidenceDraftsMock.update).not.toHaveBeenCalled();
+    expect(evidenceDraftsMock.delete).toHaveBeenCalledWith(1);
+  });
+
   it('persists completed file metadata before retrying a failed attachment patch', async () => {
     evidenceDraftsMock.toArray.mockResolvedValue([createDraft()]);
     decryptOfflinePayloadMock.mockResolvedValue('data:image/png;base64,AAAA');

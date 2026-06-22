@@ -185,11 +185,14 @@ async function resolveVisitRecordIdForDraft(
   scheduleId: string,
   headers: Record<string, string>,
 ): Promise<string | null> {
-  const scheduleRes = await fetchEvidenceSync(`/api/visit-schedules/${scheduleId}`, { headers });
+  const schedulePathId = encodeURIComponent(scheduleId);
+  const scheduleRes = await fetchEvidenceSync(`/api/visit-schedules/${schedulePathId}`, {
+    headers,
+  });
   if (scheduleRes.ok) {
     return resolveScheduleVisitRecordId(await scheduleRes.json().catch(() => null));
   }
-  const recordRes = await fetchEvidenceSync(`/api/visit-records/${scheduleId}`, { headers });
+  const recordRes = await fetchEvidenceSync(`/api/visit-records/${schedulePathId}`, { headers });
   return recordRes.ok ? scheduleId : null;
 }
 
@@ -200,6 +203,7 @@ async function uploadEvidenceDraft(
   orgId: string,
 ): Promise<void> {
   const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
+  const visitRecordPathId = encodeURIComponent(visitRecordId);
   let fileAssetId =
     draft.uploadedVisitRecordId === visitRecordId ? (draft.uploadedFileAssetId ?? null) : null;
 
@@ -261,7 +265,7 @@ async function uploadEvidenceDraft(
   if (!fileAssetId) throw new Error('写真のアップロード結果が不正です');
 
   // 4. 訪問記録 attachments へ紐づけ(既存添付とマージ、楽観ロック version 必須)
-  const detailRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordId}`, {
+  const detailRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordPathId}`, {
     headers: { 'x-org-id': orgId },
   });
   const detail = await detailRes.json().catch(() => null);
@@ -269,7 +273,7 @@ async function uploadEvidenceDraft(
     throw new Error('訪問記録の取得に失敗しました');
   }
 
-  const patchRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordId}`, {
+  const patchRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordPathId}`, {
     method: 'PATCH',
     headers: jsonHeaders,
     body: JSON.stringify({
