@@ -33,15 +33,17 @@ export function resolveCommunicationEntityLink(input: {
     return null;
   }
 
+  const entityPathId = encodeURIComponent(input.entityId);
+
   switch (input.entityType) {
     case 'patient':
       return {
-        href: `/patients/${input.entityId}`,
+        href: `/patients/${entityPathId}`,
         label: '患者詳細',
       };
     case 'care_report':
       return {
-        href: `/reports/${input.entityId}`,
+        href: `/reports/${entityPathId}`,
         label: '報告書詳細',
       };
     case 'tracing_report':
@@ -51,7 +53,7 @@ export function resolveCommunicationEntityLink(input: {
       };
     case 'visit_record':
       return {
-        href: `/visits/${input.entityId}`,
+        href: `/visits/${entityPathId}`,
         label: '訪問詳細',
       };
     case 'visit_schedule':
