@@ -96,6 +96,72 @@ describe('POST /api/referrals', () => {
     );
   });
 
+  it('passes duplicate acknowledgements through and keeps the acknowledged success payload minimal', async () => {
+    createReferralIntakeMock.mockResolvedValueOnce({
+      status: 'created',
+      patient: { id: 'patient_new' },
+      case: { id: 'case_new' },
+      warnings: [
+        {
+          code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+          severity: 'warning',
+          message: '重複候補を確認済みとして紹介受付を登録しました。',
+        },
+      ],
+      metadata: { duplicate_count: 1 },
+    });
+
+    const response = await POST(
+      createRequest({
+        ...sensitivePayload,
+        duplicate_acknowledged: true,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body).toEqual({
+      patient: { id: 'patient_new' },
+      case: { id: 'case_new' },
+      warnings: [
+        {
+          code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+          severity: 'warning',
+          message: '重複候補を確認済みとして紹介受付を登録しました。',
+        },
+      ],
+      metadata: { duplicate_count: 1 },
+    });
+    expect(Object.keys(body).sort()).toEqual(['case', 'metadata', 'patient', 'warnings']);
+    expect(Object.keys(body.patient).sort()).toEqual(['id']);
+    expect(Object.keys(body.case).sort()).toEqual(['id']);
+    expect(createReferralIntakeMock).toHaveBeenCalledOnce();
+    expect(createReferralIntakeMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.objectContaining({
+        duplicate_acknowledged: true,
+        name: sensitivePayload.name,
+        referral_type: 'physician',
+      }),
+    );
+
+    const bodyText = JSON.stringify(body);
+    for (const sensitiveValue of [
+      sensitivePayload.name,
+      sensitivePayload.name_kana,
+      sensitivePayload.birth_date,
+      sensitivePayload.phone,
+      sensitivePayload.address,
+      sensitivePayload.medical_insurance_number,
+      sensitivePayload.care_insurance_number,
+      sensitivePayload.referral_source,
+      sensitivePayload.referral_notes,
+    ]) {
+      expect(bodyText).not.toContain(sensitiveValue);
+    }
+  });
+
   it('rejects invalid input before calling the service', async () => {
     const response = await POST(createRequest({}));
 

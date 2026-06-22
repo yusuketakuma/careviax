@@ -2791,3 +2791,16 @@ Backup directory:
 - validation results: scoped Prettier passed after a scoped Prettier write reflowed only the touched docs; scoped `git diff --check` passed. Claude PATCH_REVIEW_RESULT approved F-20260623-002 rev1 with no findings and confirmed the role-vs-transport constraint is respected. F-20260623-001 rev2 PLAN_REVIEW_RESULT approved and LOCK_GRANT sent for Claude's two referral-form files; Codex will only patch-review those files.
 - remaining work: commit the three approved identity-doc paths, send DONE/release to Claude, and continue with read-only backend URL-hardening discovery while waiting for Claude's referral-form PATCH_REVIEW_REQUEST.
 - next action: stage only `.agent-loop/MESSAGE_PROTOCOL.md`, `.agent-loop/LOOP_POLICY.md`, and `.codex/ralph-state.md`; commit F-20260623-002; notify Claude.
+
+### 20260623-0311 JST
+
+- current task: codex-owned F-20260623-009 referral route duplicate-acknowledgement response contract test.
+- files inspected: agmsg inbox output, `src/app/api/referrals/route.test.ts`, and this Ralph state file.
+- files changed: `src/app/api/referrals/route.test.ts` and this Ralph state entry.
+- bugs found: the route already had duplicate-acknowledged behavior, but there was no route-level regression test proving `duplicate_acknowledged: true` is passed to `createReferralIntake` while the acknowledged 201 response remains minimal and PHI-free.
+- security risks found: reduced PHI regression risk by locking the route response to id-only `patient`/`case` objects plus warning/metadata fields, and by asserting sensitive submitted values are absent from the response body. No auth, billing, payments, RLS, DB schema, migration, production deploy, secret, cookie, unsafe HTML, or destructive behavior was changed.
+- performance issues found: no runtime performance change; this is a focused test-only contract hardening.
+- validation commands: `pnpm exec vitest run src/app/api/referrals/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 src/app/api/referrals/route.test.ts`; `pnpm exec prettier --check src/app/api/referrals/route.test.ts`; `git diff --check -- src/app/api/referrals/route.test.ts`; earlier `pnpm typecheck`.
+- validation results: focused Vitest passed 5/5; scoped ESLint passed; scoped Prettier passed; scoped diff-check passed; earlier `pnpm typecheck` passed. Claude PATCH_REVIEW_RESULT approved rev1 with no findings and confirmed `route.ts` source is unchanged.
+- remaining work: stage only `src/app/api/referrals/route.test.ts` plus this Ralph entry, commit F-20260623-009, send DONE/release for the route-test and Ralph locks, then review Claude's pending F-20260623-007 referral-form atomic UI PATCH_REVIEW_REQUEST.
+- next action: drain agmsg, inspect staged paths, commit F-20260623-009, notify Claude, then start the F-007 patch-review checker pass.
