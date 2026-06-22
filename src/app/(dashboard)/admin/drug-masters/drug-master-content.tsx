@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import {
@@ -35,6 +35,13 @@ import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Sheet,
   SheetContent,
@@ -896,6 +903,39 @@ function DrugMasterOperationalContent({
 
   const effectiveSelectedSiteId = selectedSiteId || sitesData?.data?.[0]?.id || '';
 
+  // P1 医療安全: in-flight な dry-run/プレビュー応答が解決する前に対象拠点（やコピー元/
+  // テンプレート/上書き/CSV）が変わると、古いコンテキストのプレビューを現在の UI に描画して
+  // しまい誤った拠点へ適用しうる。リクエスト発行時のコンテキストを各 mutationFn で確定し、
+  // onSuccess で「最新値」を保持する ref と一致しない場合はプレビュー反映を破棄する。
+  //
+  // ref はレースを防ぐため、コンテキストを変更する各イベントハンドラ内で**同期的に**更新する
+  // （react-hooks/refs はハンドラ内の ref 書き込みを許容、render 中の書き込みのみ禁止）。
+  // 受動的 effect だけだと、コンテキスト変更後・effect flush 前に解決した stale な onSuccess が
+  // 旧 ref 値と比較して古いプレビューを復元してしまう。effect は backstop として残す。
+  const effectiveSelectedSiteIdRef = useRef(effectiveSelectedSiteId);
+  const copySourceSiteIdRef = useRef(copySourceSiteId);
+  const selectedTemplateIdRef = useRef(selectedTemplateId);
+  const bulkCsvRef = useRef(bulkCsv);
+  const overwriteRef = useRef(copyOverwrite);
+  useEffect(() => {
+    effectiveSelectedSiteIdRef.current = effectiveSelectedSiteId;
+    copySourceSiteIdRef.current = copySourceSiteId;
+    selectedTemplateIdRef.current = selectedTemplateId;
+    bulkCsvRef.current = bulkCsv;
+    overwriteRef.current = copyOverwrite;
+  }, [effectiveSelectedSiteId, copySourceSiteId, selectedTemplateId, bulkCsv, copyOverwrite]);
+
+  // drift-proof setter helpers: state と stale-guard 用 ref を**原子的に**同期する。これらを
+  // 経由しない setSelectedTemplateId/setBulkCsv 直呼びは禁止（reset 経路でも ref を取り残さない）。
+  const applySelectedTemplateId = (value: string) => {
+    setSelectedTemplateId(value);
+    selectedTemplateIdRef.current = value;
+  };
+  const applyBulkCsv = (value: string) => {
+    setBulkCsv(value);
+    bulkCsvRef.current = value;
+  };
+
   const params = useMemo(() => {
     const p = new URLSearchParams({ limit: '50' });
     if (debouncedSearchQuery) p.set('q', debouncedSearchQuery);
@@ -1227,6 +1267,14 @@ function DrugMasterOperationalContent({
       toast.success(
         `${result.definition.label}が完了しました（${result.response.data.importedCount.toLocaleString()}件）`,
       );
+      // P1 医療安全: マスタ取込でプレビュー計算の前提（薬剤本体）が変わるため、取込前に算出した
+      // コピー/テンプレート/CSV プレビューを破棄する（古い行・件数で操作させない）。invalidate の
+      // await より**前**に同期クリアする — 再フェッチが遅い間に古いプレビューが操作可能なまま
+      // 残らないようにする（canApplyBulkPreview はローカル算出）。
+      setCopyPreview(null);
+      setTemplatePreview(null);
+      setBulkPreview(null);
+      setBulkPreviewExpanded(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
         queryClient.invalidateQueries({ queryKey: ['drug-master-import-logs'] }),
@@ -1257,6 +1305,12 @@ function DrugMasterOperationalContent({
           ? `フリーマスター一括更新が完了しました（${processedCount.toLocaleString()}件）`
           : 'フリーマスター一括更新が完了しました',
       );
+      // P1 医療安全: 一括更新でマスタが変わるため、更新前に算出したプレビューを破棄する。
+      // invalidate の await より**前**に同期クリアする（再フェッチ待ちの間も操作させない）。
+      setCopyPreview(null);
+      setTemplatePreview(null);
+      setBulkPreview(null);
+      setBulkPreviewExpanded(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['drug-masters'] }),
         queryClient.invalidateQueries({ queryKey: ['drug-master-import-logs'] }),
@@ -1445,8 +1499,21 @@ function DrugMasterOperationalContent({
   };
 
   const bulkPreviewMutation = useMutation({
-    mutationFn: async () => runBulkCsvMutation(true),
+    mutationFn: async () => {
+      // リクエスト発行時点の対象拠点・CSV を確定（onSuccess の stale 判定に使用）。
+      const requestTargetSiteId = effectiveSelectedSiteId;
+      const requestCsv = bulkCsv;
+      const result = await runBulkCsvMutation(true);
+      return { ...result, requestTargetSiteId, requestCsv };
+    },
     onSuccess: (result) => {
+      // 対象拠点や CSV が応答中に変わっていたら、古い拠点のプレビューを描画しない。
+      if (
+        result.requestTargetSiteId !== effectiveSelectedSiteIdRef.current ||
+        result.requestCsv !== bulkCsvRef.current
+      ) {
+        return;
+      }
       if (!result.preview) {
         setBulkPreview(null);
         setBulkPreviewExpanded(false);
@@ -1488,7 +1555,7 @@ function DrugMasterOperationalContent({
       if (result.invalidRows.length > 0) {
         toast.warning(`無効な行があります（${result.invalidRows.length.toLocaleString()}件）`);
       }
-      setBulkCsv('');
+      applyBulkCsv('');
       setBulkPreview(null);
       setBulkPreviewExpanded(false);
       await Promise.all([
@@ -1506,6 +1573,9 @@ function DrugMasterOperationalContent({
     mutationFn: async ({ dryRun }: { dryRun: boolean }) => {
       if (!copySourceSiteId) throw new Error('コピー元拠点を選択してください');
       if (!effectiveSelectedSiteId) throw new Error('コピー先拠点を選択してください');
+      const requestTargetSiteId = effectiveSelectedSiteId;
+      const requestSourceSiteId = copySourceSiteId;
+      const requestOverwrite = copyOverwrite;
       const res = await fetch('/api/pharmacy-drug-stocks/copy', {
         method: 'POST',
         headers: {
@@ -1523,10 +1593,23 @@ function DrugMasterOperationalContent({
       if (!res.ok) {
         throw new Error(json?.message ?? '採用薬リストのコピーに失敗しました');
       }
-      return json as FormularyCopyPreviewResponse;
+      return {
+        ...(json as FormularyCopyPreviewResponse),
+        requestTargetSiteId,
+        requestSourceSiteId,
+        requestOverwrite,
+      };
     },
     onSuccess: async (result) => {
       if (result.dryRun) {
+        // コピー先/コピー元/上書き設定が応答中に変わっていたら、古いプレビューを描画しない。
+        if (
+          result.requestTargetSiteId !== effectiveSelectedSiteIdRef.current ||
+          result.requestSourceSiteId !== copySourceSiteIdRef.current ||
+          result.requestOverwrite !== overwriteRef.current
+        ) {
+          return;
+        }
         setCopyPreview(result);
         toast.success(
           `コピー差分を確認しました（反映予定 ${result.preview.summary.apply_count.toLocaleString()}件）`,
@@ -1587,6 +1670,9 @@ function DrugMasterOperationalContent({
     mutationFn: async ({ dryRun }: { dryRun: boolean }) => {
       if (!selectedTemplateId) throw new Error('テンプレートを選択してください');
       if (!effectiveSelectedSiteId) throw new Error('対象拠点を選択してください');
+      const requestTargetSiteId = effectiveSelectedSiteId;
+      const requestTemplateId = selectedTemplateId;
+      const requestOverwrite = copyOverwrite;
       const res = await fetch(`/api/pharmacy-drug-stock-templates/${selectedTemplateId}/apply`, {
         method: 'POST',
         headers: {
@@ -1601,10 +1687,23 @@ function DrugMasterOperationalContent({
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(json?.message ?? '採用品テンプレートの適用に失敗しました');
-      return json as FormularyTemplatePreviewResponse;
+      return {
+        ...(json as FormularyTemplatePreviewResponse),
+        requestTargetSiteId,
+        requestTemplateId,
+        requestOverwrite,
+      };
     },
     onSuccess: async (result) => {
       if (result.dryRun) {
+        // 対象拠点/選択テンプレート/上書き設定が応答中に変わっていたら、古いプレビューを描画しない。
+        if (
+          result.requestTargetSiteId !== effectiveSelectedSiteIdRef.current ||
+          result.requestTemplateId !== selectedTemplateIdRef.current ||
+          result.requestOverwrite !== overwriteRef.current
+        ) {
+          return;
+        }
         setTemplatePreview(result);
         toast.success(
           `テンプレート差分を確認しました（反映予定 ${result.preview.summary.apply_count.toLocaleString()}件）`,
@@ -1642,7 +1741,7 @@ function DrugMasterOperationalContent({
     },
     onSuccess: async () => {
       toast.success('採用品テンプレートを削除しました');
-      setSelectedTemplateId('');
+      applySelectedTemplateId('');
       setDeleteTemplateConfirmOpen(false);
       setTemplatePreview(null);
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
@@ -2005,26 +2104,45 @@ function DrugMasterOperationalContent({
               </details>
             </div>
           </div>
-          <label className="space-y-1">
-            <span className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+          <div className="space-y-1">
+            <span
+              id="drug-master-target-site-label"
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground"
+            >
               <Building2 className="size-3.5" aria-hidden="true" />
               採用品設定の対象拠点
             </span>
-            <select
+            <Select
               value={effectiveSelectedSiteId}
-              onChange={(event) => {
-                setSelectedSiteId(event.target.value);
+              onValueChange={(value) => {
+                const next = value ?? '';
+                // P1 race guard: 同期的に最新コンテキストを ref へ反映（effect flush を待たない）。
+                effectiveSelectedSiteIdRef.current = next || sitesData?.data?.[0]?.id || '';
+                copySourceSiteIdRef.current = '';
+                setSelectedSiteId(next);
                 setPreferredGenericId(null);
+                setCopySourceSiteId('');
+                setCopyPreview(null);
+                setTemplatePreview(null);
+                setBulkPreview(null);
+                setBulkPreviewExpanded(false);
               }}
-              className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm sm:h-9"
             >
-              <option value="">拠点を選択</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                id="drug-master-target-site"
+                aria-labelledby="drug-master-target-site-label"
+                className="min-h-[44px] w-full sm:min-h-[44px]"
+              >
+                <SelectValue placeholder="拠点を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                {sites.map((site) => (
+                  <SelectItem key={site.id} value={site.id} className="min-h-[44px]">
+                    {site.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <label className="mt-2 flex min-h-[44px] items-center gap-1.5 text-xs text-muted-foreground sm:min-h-0">
               <input
                 type="checkbox"
@@ -2034,7 +2152,7 @@ function DrugMasterOperationalContent({
               />
               採用品のみ表示
             </label>
-          </label>
+          </div>
         </div>
       </PageSection>
 
@@ -2637,29 +2755,49 @@ function DrugMasterOperationalContent({
                 </Badge>
               </div>
               <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,260px)_auto_auto] lg:items-end">
-                <label className="space-y-1">
-                  <span className="text-xs font-medium text-muted-foreground">コピー元拠点</span>
-                  <select
+                <div className="space-y-1">
+                  <span
+                    id="drug-master-copy-source-label"
+                    className="text-xs font-medium text-muted-foreground"
+                  >
+                    コピー元拠点
+                  </span>
+                  <Select
                     value={copySourceSiteId}
-                    onChange={(event) => {
-                      setCopySourceSiteId(event.target.value);
+                    onValueChange={(value) => {
+                      const next = value === '__none__' || !value ? '' : value;
+                      // P1 race guard: 同期的に ref を更新（effect flush を待たない）。
+                      copySourceSiteIdRef.current = next;
+                      setCopySourceSiteId(next);
                       setCopyPreview(null);
                     }}
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                   >
-                    <option value="">選択してください</option>
-                    {copySourceSites.map((site) => (
-                      <option key={site.id} value={site.id}>
-                        {site.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    <SelectTrigger
+                      id="drug-master-copy-source"
+                      aria-labelledby="drug-master-copy-source-label"
+                      className="min-h-[44px] w-full sm:min-h-[44px]"
+                    >
+                      <SelectValue placeholder="選択してください" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__" className="min-h-[44px]">
+                        コピー元拠点を未選択に戻す
+                      </SelectItem>
+                      {copySourceSites.map((site) => (
+                        <SelectItem key={site.id} value={site.id} className="min-h-[44px]">
+                          {site.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <label className="flex min-h-9 items-center gap-2 text-xs text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={copyOverwrite}
                     onChange={(event) => {
+                      // P1 race guard: 同期的に ref を更新（effect flush を待たない）。
+                      overwriteRef.current = event.target.checked;
                       setCopyOverwrite(event.target.checked);
                       setCopyPreview(null);
                       setTemplatePreview(null);
@@ -2768,7 +2906,7 @@ function DrugMasterOperationalContent({
                     value={templateSearchQuery}
                     onChange={(event) => {
                       setTemplateSearchQuery(event.target.value);
-                      setSelectedTemplateId('');
+                      applySelectedTemplateId('');
                       setTemplatePreview(null);
                     }}
                     placeholder="テンプレート名・説明で検索"
@@ -2795,23 +2933,33 @@ function DrugMasterOperationalContent({
                   </LoadingButton>
                 </div>
                 <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(160px,1fr)_auto_auto_auto]">
-                  <select
+                  <Select
                     value={selectedTemplateId}
-                    onChange={(event) => {
-                      setSelectedTemplateId(event.target.value);
+                    onValueChange={(value) => {
+                      const next = value === '__none__' || !value ? '' : value;
+                      // applySelectedTemplateId が state と ref を原子的に同期（race guard）。
+                      applySelectedTemplateId(next);
                       setDeleteTemplateConfirmOpen(false);
                       setTemplatePreview(null);
                     }}
-                    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                    aria-label="適用する採用品テンプレート"
                   >
-                    <option value="">テンプレートを選択</option>
-                    {formularyTemplates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}（{template.item_count.toLocaleString()}件）
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      aria-label="適用する採用品テンプレート"
+                      className="min-h-[44px] w-full sm:min-h-[44px]"
+                    >
+                      <SelectValue placeholder="テンプレートを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__" className="min-h-[44px]">
+                        テンプレートを未選択に戻す
+                      </SelectItem>
+                      {formularyTemplates.map((template) => (
+                        <SelectItem key={template.id} value={template.id} className="min-h-[44px]">
+                          {template.name}（{template.item_count.toLocaleString()}件）
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <LoadingButton
                     type="button"
                     size="sm"
@@ -2909,7 +3057,8 @@ function DrugMasterOperationalContent({
                 <textarea
                   value={bulkCsv}
                   onChange={(event) => {
-                    setBulkCsv(event.target.value);
+                    // applyBulkCsv が state と ref を原子的に同期（race guard）。
+                    applyBulkCsv(event.target.value);
                     setBulkPreview(null);
                   }}
                   placeholder="YJコード,医薬品名,採用,発注点,優先後発品YJコード,メモ"
