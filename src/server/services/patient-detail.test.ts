@@ -2963,6 +2963,82 @@ describe('getPatientDocumentsData', () => {
     );
   });
 
+  it('encodes patient id only in document readiness href path segments and keeps DB identity raw', async () => {
+    const patientId = 'patient/1?tab=x#frag';
+    const encodedPatientId = encodeURIComponent(patientId);
+    const patientFindFirstMock = vi.fn().mockResolvedValue({
+      id: patientId,
+      name: '山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+      birth_date: null,
+      phone: null,
+      medical_insurance_number: null,
+      care_insurance_number: null,
+      residences: [],
+      contacts: [],
+      insurances: [],
+      cases: [
+        {
+          id: 'case_1',
+          status: 'active',
+          start_date: null,
+          primary_pharmacist_id: null,
+        },
+      ],
+    });
+    const firstVisitDocumentFindManyMock = vi.fn().mockResolvedValue([]);
+    const db = buildDb({
+      patient: {
+        findFirst: patientFindFirstMock,
+      },
+      firstVisitDocument: {
+        findMany: firstVisitDocumentFindManyMock,
+      },
+    });
+
+    const result = await getPatientDocumentsData(
+      db as unknown as Parameters<typeof getPatientDocumentsData>[0],
+      {
+        orgId: 'org_1',
+        patientId,
+        role: 'pharmacist',
+        userId: 'user_1',
+      },
+    );
+
+    const hrefByKey = Object.fromEntries(
+      result?.print_readiness.checks.map((check) => [check.key, check.action_href]) ?? [],
+    );
+    expect(hrefByKey).toMatchObject({
+      patient_profile: `/patients/${encodedPatientId}/edit`,
+      primary_residence: `/patients/${encodedPatientId}/edit`,
+      contact_channel: `/patients/${encodedPatientId}/edit`,
+      care_insurance: `/patients/${encodedPatientId}#patient-profile-summary`,
+      key_person: `/patients/${encodedPatientId}#patient-profile-summary`,
+      service_start: `/patients/${encodedPatientId}#patient-profile-summary`,
+      explainer: `/patients/${encodedPatientId}#patient-profile-summary`,
+      default_templates: '/admin/document-templates',
+    });
+    expect(JSON.stringify(result?.print_readiness.checks)).not.toContain(`/patients/${patientId}`);
+    expect(patientFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: patientId,
+          org_id: 'org_1',
+        }),
+      }),
+    );
+    expect(firstVisitDocumentFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: patientId,
+          case_id: { in: ['case_1'] },
+        }),
+      }),
+    );
+  });
+
   it('masks first-visit emergency contact channels for external viewers', async () => {
     const db = buildDb({
       patient: {
