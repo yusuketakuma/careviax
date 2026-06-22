@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260622-2337 JST
+
+- current task: complete Codex-owned F-019 runtime/API `maybeUnrefTimeout` duplicate cleanup after Claude peer approval.
+- files inspected: agmsg inbox/plan/lock/patch-review messages for F-019; `git status --short --untracked-files=all`; `git log`; `git show` for commit `56df2093`; `src/lib/utils/abort-timeout.ts`; `src/lib/utils/abort-timeout.test.ts`; `src/lib/api/rate-limit.ts`; `src/lib/api/rate-limit.test.ts`; `src/phos/backend/lambda-handler.ts`; `src/phos/backend/lambda-handler.test.ts`; `src/phos/backend/lambda-observability.ts`; `src/phos/backend/lambda-observability.test.ts`; `src/phos/backend/lambda-observability-aws-client.test.ts`; `tsconfig.json`; `vitest.config.ts`; `package.json`; `tools/scripts/build-phos-lambda-artifact.ts`; and this Ralph state file.
+- files changed: `src/lib/api/rate-limit.ts`, `src/phos/backend/lambda-handler.ts`, `src/phos/backend/lambda-observability.ts`, and this Ralph state entry. The source slice was committed as `1326ee58 refactor(timeout): reuse unref timeout helper`.
+- bugs found: F-019 found three remaining runtime/API local copies of the same `maybeUnrefTimeout` guard after the earlier `56df2093` SSOT extraction. The duplicate copies were behavior-identical to `src/lib/utils/abort-timeout.ts` and are now collapsed to the shared helper. A read-only scan also found eight tool-side unref helper duplicates, intentionally deferred as F-020 because tools/scripts and tools/infra have different execution and bundling boundaries.
+- security risks found: no auth, authorization, RLS, DB schema, migration, audit logging, PHI/PII projection, secret/token/env value, external send, billing/payment, production deploy, or destructive operation was touched. This was import-only dedupe of non-exported timeout helper functions.
+- performance issues found: no runtime behavior changed. The existing Node timeout `unref` behavior is preserved through the shared helper, avoiding event-loop pinning exactly as before.
+- validation commands: focused Vitest for `src/lib/utils/abort-timeout.test.ts`, `src/lib/api/rate-limit.test.ts`, `src/phos/backend/lambda-handler.test.ts`, `src/phos/backend/lambda-observability.test.ts`, and `src/phos/backend/lambda-observability-aws-client.test.ts`; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `rg -n "function maybeUnrefTimeout" src/lib src/phos`; `pnpm exec tsc --noEmit --pretty false --incremental false`; `pnpm phos:lambda-artifact:build`; `pnpm typecheck`; `pnpm build`; and `pnpm typecheck:no-unused` serially after build.
+- validation results: all gates passed. Focused Vitest passed 5 files / 62 tests; scoped ESLint, Prettier, and diff-check passed; source scan showed only `src/lib/utils/abort-timeout.ts` defines `maybeUnrefTimeout` under `src/lib` and `src/phos`; strict no-incremental TypeScript passed; PH-OS Lambda artifact build passed for 9 backend entrypoints; full typecheck, Next build, and serial no-unused passed. Claude approved the patch and the source slice was committed as `1326ee58`.
+- remaining work: commit this ledger-only Ralph state update. F-020 remains queued as a separate DuplicateMap follow-up for the eight tool-side unref helper duplicates, with per-boundary validation for `tools/scripts`, `tools/infra`, and `tools/infra/websocket/lambdas/shared`.
+- next action: commit this `.codex/ralph-state.md` entry, notify Claude that the ledger lock is released, then start F-020 with a separate plan review instead of expanding F-019.
+
 ### 20260622-1913 JST
 
 - current task: land the approved Codex-owned F-004 offline evidence `lastError` sanitization slice while continuing Claude slice4a drug-masters patch review.
