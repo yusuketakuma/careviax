@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
+const HOSTILE_EXISTING_REPORT_ID = 'report/existing?tab=x#frag';
+const HOSTILE_WAITING_REPORT_ID = 'report/waiting?tab=x#frag';
+const HOSTILE_SENT_REPORT_ID = 'report/sent?tab=x#frag';
+const HOSTILE_DRAFT_REPORT_ID = 'report/draft?tab=x#frag';
+const HOSTILE_FAILED_REPORT_ID = 'report/failed?tab=x#frag';
+
 const { authMock, membershipFindFirstMock, withOrgContextMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -295,7 +301,9 @@ describe('/api/care-reports/today-workspace', () => {
           visit_record: { id: 'visit_record_1' },
         },
       ],
-      draftReports: [{ id: 'report_sent', visit_record_id: 'visit_record_1', status: 'sent' }],
+      draftReports: [
+        { id: HOSTILE_EXISTING_REPORT_ID, visit_record_id: 'visit_record_1', status: 'sent' },
+      ],
     });
 
     const req = createRequest('http://localhost/api/care-reports/today-workspace');
@@ -305,8 +313,12 @@ describe('/api/care-reports/today-workspace', () => {
     expect(json.data.draft_rows[0]).toMatchObject({
       status: 'report_existing',
       visit_record_id: 'visit_record_1',
-      action: { label: '→ 詳細へ', href: '/reports/report_sent' },
+      action: {
+        label: '→ 詳細へ',
+        href: `/reports/${encodeURIComponent(HOSTILE_EXISTING_REPORT_ID)}`,
+      },
     });
+    expect(json.data.draft_rows[0].action.href).not.toBe(`/reports/${HOSTILE_EXISTING_REPORT_ID}`);
   });
 
   it('aggregates waiting replies (delivery + inquiry) and resolved-today entries', async () => {
@@ -321,7 +333,7 @@ describe('/api/care-reports/today-workspace', () => {
           id: 'del_1',
           sent_at: threeDaysAgo,
           report: {
-            id: 'rep_1',
+            id: HOSTILE_WAITING_REPORT_ID,
             patient_id: 'p_kato',
             report_type: 'care_manager_report',
             content: { title: 'ケアマネへの服薬状況報告' },
@@ -361,7 +373,14 @@ describe('/api/care-reports/today-workspace', () => {
     const [oldest, second] = json.data.waiting_replies;
     expect(oldest.title).toBe('加藤 ミサ 様 — ケアマネへの服薬状況報告');
     expect(oldest.waiting_days).toBe(3);
-    expect(oldest.actions).toEqual([{ label: '再送する', href: '/reports/rep_1', kind: 'button' }]);
+    expect(oldest.actions).toEqual([
+      {
+        label: '再送する',
+        href: `/reports/${encodeURIComponent(HOSTILE_WAITING_REPORT_ID)}`,
+        kind: 'button',
+      },
+    ]);
+    expect(JSON.stringify(oldest.actions)).not.toContain(`/reports/${HOSTILE_WAITING_REPORT_ID}`);
     expect(second.title).toBe('高橋 茂 様 — みどり医院への疑義照会');
     expect(second.waiting_days).toBe(2);
     expect(second.actions).toEqual([
@@ -390,7 +409,7 @@ describe('/api/care-reports/today-workspace', () => {
     mockTx({
       recentReports: [
         {
-          id: 'report_sent',
+          id: HOSTILE_SENT_REPORT_ID,
           patient_id: 'p_tanaka',
           report_type: 'physician_report',
           status: 'sent',
@@ -415,7 +434,7 @@ describe('/api/care-reports/today-workspace', () => {
           ],
         },
         {
-          id: 'report_draft',
+          id: HOSTILE_DRAFT_REPORT_ID,
           patient_id: 'p_kato',
           report_type: 'care_manager_report',
           status: 'draft',
@@ -425,7 +444,7 @@ describe('/api/care-reports/today-workspace', () => {
           delivery_records: [],
         },
         {
-          id: 'report_failed',
+          id: HOSTILE_FAILED_REPORT_ID,
           patient_id: 'p_takahashi',
           report_type: 'physician_report',
           status: 'failed',
@@ -468,7 +487,7 @@ describe('/api/care-reports/today-workspace', () => {
 
     expect(json.data.created_reports).toHaveLength(3);
     expect(json.data.created_reports[0]).toMatchObject({
-      id: 'report_sent',
+      id: HOSTILE_SENT_REPORT_ID,
       patient_id: 'p_tanaka',
       patient_label: '田中 一郎 様',
       report_type_label: '医師への報告',
@@ -477,16 +496,21 @@ describe('/api/care-reports/today-workspace', () => {
       last_sent_at: '2026-06-11T02:10:00.000Z',
       last_recipient_label: '山田 太郎',
       last_channel: 'fax',
+      action: { label: '→ 詳細へ', href: `/reports/${encodeURIComponent(HOSTILE_SENT_REPORT_ID)}` },
     });
     expect(json.data.created_reports[1]).toMatchObject({
-      id: 'report_draft',
+      id: HOSTILE_DRAFT_REPORT_ID,
       patient_id: 'p_kato',
       patient_label: '加藤 ミサ 様',
       reported_to_professional: false,
       last_sent_at: null,
+      action: {
+        label: '→ 詳細へ',
+        href: `/reports/${encodeURIComponent(HOSTILE_DRAFT_REPORT_ID)}`,
+      },
     });
     expect(json.data.created_reports[2]).toMatchObject({
-      id: 'report_failed',
+      id: HOSTILE_FAILED_REPORT_ID,
       patient_id: 'p_takahashi',
       patient_label: '高橋 茂 様',
       reported_to_professional: false,
@@ -498,28 +522,46 @@ describe('/api/care-reports/today-workspace', () => {
         failure_reason: '送付に失敗しました',
         retry_count: 1,
         failed_at: '2026-06-11T04:40:00.000Z',
-        action: { label: '宛先確認・再送', href: '/reports/report_failed' },
+        action: {
+          label: '宛先確認・再送',
+          href: `/reports/${encodeURIComponent(HOSTILE_FAILED_REPORT_ID)}`,
+        },
+      },
+      action: {
+        label: '→ 詳細へ',
+        href: `/reports/${encodeURIComponent(HOSTILE_FAILED_REPORT_ID)}`,
       },
     });
     expect(json.data.open_issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: 'report_draft-draft-confirmation',
+          id: `${HOSTILE_DRAFT_REPORT_ID}-draft-confirmation`,
+          report_id: HOSTILE_DRAFT_REPORT_ID,
           severity: 'critical',
           title: '加藤 ミサ 様 — 薬剤師確認待ち',
+          action: {
+            label: '確認する',
+            href: `/reports/${encodeURIComponent(HOSTILE_DRAFT_REPORT_ID)}`,
+          },
         }),
         expect.objectContaining({
-          id: 'report_draft-prescription-link',
+          id: `${HOSTILE_DRAFT_REPORT_ID}-prescription-link`,
+          report_id: HOSTILE_DRAFT_REPORT_ID,
           severity: 'warning',
         }),
         expect.objectContaining({
-          id: 'report_draft-billing-context',
+          id: `${HOSTILE_DRAFT_REPORT_ID}-billing-context`,
+          report_id: HOSTILE_DRAFT_REPORT_ID,
           severity: 'warning',
         }),
         expect.objectContaining({
-          id: 'report_failed-delivery-failed',
+          id: `${HOSTILE_FAILED_REPORT_ID}-delivery-failed`,
+          report_id: HOSTILE_FAILED_REPORT_ID,
           severity: 'critical',
-          action: { label: '宛先確認・再送', href: '/reports/report_failed' },
+          action: {
+            label: '宛先確認・再送',
+            href: `/reports/${encodeURIComponent(HOSTILE_FAILED_REPORT_ID)}`,
+          },
           description:
             'メール / やまもと内科 / 再送1回 / 理由: 送付に失敗しました。宛先とチャネルを確認して再送してください。',
           failed_delivery: expect.objectContaining({
@@ -528,6 +570,21 @@ describe('/api/care-reports/today-workspace', () => {
           }),
         }),
       ]),
+    );
+    expect(JSON.stringify(json.data.created_reports)).not.toContain(
+      `/reports/${HOSTILE_SENT_REPORT_ID}`,
+    );
+    expect(JSON.stringify(json.data.created_reports)).not.toContain(
+      `/reports/${HOSTILE_DRAFT_REPORT_ID}`,
+    );
+    expect(JSON.stringify(json.data.created_reports)).not.toContain(
+      `/reports/${HOSTILE_FAILED_REPORT_ID}`,
+    );
+    expect(JSON.stringify(json.data.open_issues)).not.toContain(
+      `/reports/${HOSTILE_DRAFT_REPORT_ID}`,
+    );
+    expect(JSON.stringify(json.data.open_issues)).not.toContain(
+      `/reports/${HOSTILE_FAILED_REPORT_ID}`,
     );
     const responseText = JSON.stringify(json.data);
     expect(responseText).not.toContain('doctor@example.com');

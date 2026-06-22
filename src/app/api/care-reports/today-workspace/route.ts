@@ -7,6 +7,7 @@ import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { familyNameOf } from '@/lib/utils/person-name';
 import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
@@ -187,7 +188,7 @@ function buildFailedDeliverySummary(
     failure_reason: sanitizeDeliveryFailureReason(delivery.failure_reason),
     retry_count: delivery.retry_count,
     failed_at: delivery.updated_at.toISOString(),
-    action: { label: '宛先確認・再送', href: `/reports/${reportId}` },
+    action: { label: '宛先確認・再送', href: buildReportHref(reportId) },
   };
 }
 
@@ -214,7 +215,7 @@ function buildReportOpenIssues(args: {
   const sourceProvenance = readJsonObject(content.source_provenance);
   const billingContext = readJsonObject(content.billing_context);
   const issues: ReportOpenIssue[] = [];
-  const href = `/reports/${args.report.id}`;
+  const href = buildReportHref(args.report.id);
 
   if (args.report.status === 'draft') {
     issues.push({
@@ -642,7 +643,7 @@ export const GET = withAuthContext(
             action: existingReport
               ? {
                   label: existingReport.status === 'draft' ? '→ 下書きへ' : '→ 詳細へ',
-                  href: `/reports/${existingReport.id}`,
+                  href: buildReportHref(existingReport.id),
                 }
               : canGenerateDraft
                 ? null
@@ -734,7 +735,7 @@ export const GET = withAuthContext(
               actions: [
                 {
                   label: '再送する',
-                  href: `/reports/${delivery.report.id}`,
+                  href: buildReportHref(delivery.report.id),
                   kind: 'button',
                 },
               ],
@@ -807,7 +808,7 @@ export const GET = withAuthContext(
             last_recipient_label: lastDelivery?.recipient_name ?? null,
             last_channel: lastDelivery?.channel ?? null,
             failed_delivery: failedDeliverySummary,
-            action: { label: '→ 詳細へ', href: `/reports/${report.id}` },
+            action: { label: '→ 詳細へ', href: buildReportHref(report.id) },
           };
         });
 
