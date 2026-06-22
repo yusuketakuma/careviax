@@ -3,10 +3,12 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import type { Prisma } from '@prisma/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 import {
   canAccessCollaborationEntity,
+  type CollaborationEntityType,
   collaborationEntityRefSchema,
   collaborationEntityTypeSchema,
 } from '@/server/services/collaboration-access';
@@ -21,15 +23,38 @@ const createCommentSchema = z.object({
   mentions: z.array(z.string()).default([]),
 });
 
-const ENTITY_TYPE_LINK_PREFIX: Record<string, string> = {
-  dispense_task: '/dispense',
-  medication_cycle: '/patients',
-  set_plan: '/set',
-  visit_record: '/visits',
-  care_report: '/reports',
-};
-
 const COMMENT_THREAD_LIMIT = 100;
+
+type CommentMentionLinkTx = Pick<Prisma.TransactionClient, 'medicationCycle'>;
+
+async function buildCommentMentionLink(
+  tx: CommentMentionLinkTx,
+  args: { orgId: string; entityType: CollaborationEntityType; entityId: string },
+) {
+  if (args.entityType === 'medication_cycle') {
+    const cycle = await tx.medicationCycle.findFirst({
+      where: { id: args.entityId, org_id: args.orgId },
+      select: { patient_id: true },
+    });
+    return cycle ? `/patients/${encodeURIComponent(cycle.patient_id)}` : null;
+  }
+
+  const entityId = encodeURIComponent(args.entityId);
+  switch (args.entityType) {
+    case 'patient':
+      return `/patients/${entityId}`;
+    case 'dispense_task':
+      return `/dispense?taskId=${entityId}`;
+    case 'set_plan':
+      return `/set?planId=${entityId}`;
+    case 'visit_record':
+      return `/visits/${entityId}`;
+    case 'care_report':
+      return `/reports/${entityId}`;
+    default:
+      return null;
+  }
+}
 
 export const GET = withAuthContext(
   async (req, ctx) => {
@@ -119,8 +144,11 @@ export const POST = withAuthContext(
           select: { name: true },
         });
         const authorName = author?.name ?? '不明';
-        const linkPrefix = ENTITY_TYPE_LINK_PREFIX[parsed.data.entity_type] ?? '';
-        const link = linkPrefix ? `${linkPrefix}/${parsed.data.entity_id}` : null;
+        const link = await buildCommentMentionLink(tx, {
+          orgId: ctx.orgId,
+          entityType: parsed.data.entity_type,
+          entityId: parsed.data.entity_id,
+        });
 
         await dispatchNotificationEvent(tx, {
           orgId: ctx.orgId,
