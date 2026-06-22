@@ -553,3 +553,14 @@ gstack `/health`（read-only コード品質ダッシュボード）の結果。
 
 - **eslint-ignore-stale-harness-worktrees**（owner: codex-lead = build/gate/tooling, reviewer: claude-lead, est S, **CI-hygiene 高価値**）: `pnpm lint`（`eslint .`）が exit 1。原因は git-ignore 済み `.harness-worktrees/*`（古い base d607ffd9 から fork した stale worktree 2件: F-UX-REPORTS-RAIL-DRAWER + harness/worker）内のコピーに setState-in-effect error + unused-vars。eslint flat-config は `eslint.config.mjs:9` の `globalIgnores([...])` を持つが `.harness-worktrees/**` を含まない → eslint が物理ディレクトリを走査。**fix: `globalIgnores` に `.harness-worktrees/**` を追加**（1行、低リスク）。代替: stale worktree を `git worktree remove` で prune（使用中なら不可なので ignore 追加が安全）。evidence: /health lint exit 1（5 problems 全て .harness-worktrees 配下、実 src 0）。why: 毎パッチで caveat 化してきた lint gate の red を解消し `pnpm lint` を clean な objective gate に戻す。
   - note: これは私(claude)が全パッチ検証で繰り返し flag してきた環境ノイズの恒久 fix。owner は build/tooling なので codex レーンへ surfacing（§22b クロスレーン探索）。
+
+### §22b 自律探索 F-003 deferred href-hardening candidates（2026-06-23、codex read-only Discover）
+
+F-20260623-003 は `patient-detail-foundation` の 8 patient action href のみを source patch 対象にしたため、
+同じ raw patient id route-construction pattern を持つ sibling surfaces を follow-up として intake。いずれも
+owner-lane: **codex**（backend/service/job href construction）、要 PLAN_REVIEW + LOCK、未着手。
+
+- **patient-home-operations-href-hardening**（owner: codex, est S）: `src/server/services/patient-home-operations.ts` の patient action href を shared patient href helper へ寄せる。scope: home-care operation summary/action hrefs only; DB where identity は raw 維持。evidence: F-003 read-only Discover で raw `/patients/${...}` pattern 3件。
+- **patient-detail-documents-href-hardening**（owner: codex, est S）: `src/server/services/patient-detail-documents.ts` の document-related patient hrefs を path-segment encoded route builder へ寄せる。scope: documents service action hrefs only; document URL/presigned URL は非対象。evidence: F-003 read-only Discover で raw `/patients/${...}` pattern 7件。
+- **patient-detail-timeline-events-href-hardening**（owner: codex, est M）: `src/server/services/patient-detail-timeline-events.ts` の timeline hrefs を route/path segment と query param で分けて harden する。scope: patient path segment encoding + query values via URLSearchParams where applicable; timeline semantics 不変。evidence: F-003 read-only Discover で raw path/query mixed patterns 複数件。
+- **daily-preparation-patient-href-hardening**（owner: codex, est S）: `src/server/jobs/daily/preparation.ts` の generated patient href を shared route helper へ寄せる。scope: daily preparation job output link only; job query/data selection 不変。evidence: F-003 read-only Discover で raw `/patients/${...}` pattern 1件。
