@@ -180,18 +180,27 @@ describe('POST /api/referrals', () => {
 
     expect(response.status).toBe(409);
     const body = await response.json();
-    expect(body).toMatchObject({
+    expect(body).toEqual({
       code: 'WORKFLOW_CONFLICT',
+      message: '重複している可能性がある患者が存在します',
       details: {
         duplicate_type: 'patient_identity',
         duplicate_count: 1,
-        duplicates: [{ id: 'patient_existing' }],
       },
     });
+    expect(Object.keys(body.details).sort()).toEqual(['duplicate_count', 'duplicate_type']);
     const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('duplicates');
+    expect(bodyText).not.toContain('patient_existing');
     expect(bodyText).not.toContain('Sensitive Patient');
     expect(bodyText).not.toContain('Sensitive Kana');
     expect(bodyText).not.toContain('1950-01-01');
+    expect(bodyText).not.toContain('090-0000-0000');
+    expect(bodyText).not.toContain('Sensitive Address 1-2-3');
+    expect(bodyText).not.toContain('medical-secret-123');
+    expect(bodyText).not.toContain('care-secret-456');
+    expect(bodyText).not.toContain('Sensitive Clinic');
+    expect(bodyText).not.toContain('Sensitive referral note');
     expect(createReferralIntakeMock).toHaveBeenCalledOnce();
   });
 

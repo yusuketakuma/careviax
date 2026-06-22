@@ -33,15 +33,10 @@ export class ReferralIntakeTransactionError extends Error {
   }
 }
 
-export type ReferralDuplicateSummary = {
-  id: string;
-};
-
 export type CreateReferralIntakeResult =
   | {
       status: 'duplicate';
       duplicate_count: number;
-      duplicates: ReferralDuplicateSummary[];
     }
   | {
       status: 'created';
@@ -112,12 +107,6 @@ export function buildReferralAuditChanges(
     has_medical_insurance_number: optionalString(input.medical_insurance_number) != null,
     has_care_insurance_number: optionalString(input.care_insurance_number) != null,
   } satisfies Prisma.InputJsonObject;
-}
-
-function summarizeDuplicates(
-  duplicates: Awaited<ReturnType<typeof findPatientDuplicateCandidates>>,
-): ReferralDuplicateSummary[] {
-  return duplicates.map((duplicate) => ({ id: duplicate.id }));
 }
 
 async function createReferralIntakeInTransaction(ctx: AuthContext, input: CreateReferralInput) {
@@ -226,7 +215,6 @@ export async function createReferralIntake(
     return {
       status: 'duplicate',
       duplicate_count: duplicates.length,
-      duplicates: summarizeDuplicates(duplicates),
     };
   }
 

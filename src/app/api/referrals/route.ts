@@ -23,7 +23,6 @@ export const POST = withAuthContext(
         return conflict('重複している可能性がある患者が存在します', {
           duplicate_type: 'patient_identity',
           duplicate_count: result.duplicate_count,
-          duplicates: result.duplicates,
         });
       }
 

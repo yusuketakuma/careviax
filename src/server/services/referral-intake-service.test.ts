@@ -175,7 +175,7 @@ describe('createReferralIntake', () => {
     });
   });
 
-  it('does not write when an unacknowledged duplicate exists and returns a PHI-free duplicate summary', async () => {
+  it('does not write when an unacknowledged duplicate exists and returns a count-only PHI-free duplicate summary', async () => {
     patientFindManyMock.mockResolvedValueOnce([
       {
         id: 'patient_existing',
@@ -191,13 +191,16 @@ describe('createReferralIntake', () => {
     expect(result).toEqual({
       status: 'duplicate',
       duplicate_count: 1,
-      duplicates: [{ id: 'patient_existing' }],
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientCreateMock).not.toHaveBeenCalled();
     expect(careCaseCreateMock).not.toHaveBeenCalled();
-    expect(JSON.stringify(result)).not.toContain('Sensitive Patient');
-    expect(JSON.stringify(result)).not.toContain('Sensitive Kana');
+    const resultText = JSON.stringify(result);
+    expect(resultText).not.toContain('duplicates');
+    expect(resultText).not.toContain('patient_existing');
+    expect(resultText).not.toContain('Sensitive Patient');
+    expect(resultText).not.toContain('Sensitive Kana');
+    expect(resultText).not.toContain('1950-01-01');
   });
 
   it('creates once when a duplicate is explicitly acknowledged', async () => {
