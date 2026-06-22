@@ -180,6 +180,12 @@ team `phos`.
   **never** post directly; their supervisor summarizes a subagent's result
   into a single envelope (`IMPL_COMPLETE`, `CODE_REVIEW_RESULT`, etc.) before
   it goes on the wire.
+- **Claude-origin priority.** On each Codex drain, messages from the live
+  `claude` identity / `claude-lead` role are handled before Codex continues
+  local implementation, verification, commits, or idle-ladder work. Inbound
+  `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`,
+  `CHANGES_REQUESTED`, `LOCK_REQUEST`, `HANDOFF`, `PAUSE_REQUEST`, and `URGENT`
+  messages require immediate triage/ACK before lower-priority Codex tasks resume.
 - Drain the inbox before committing; stage only your own lane's files.
 - `<body>` is the full §8.1 envelope (the fenced `AGLOOP v5 ...` block).
 

@@ -17,10 +17,11 @@ discipline that the two sessions have already proven in practice. Only `ApplyNow
 - `## Peer approval` tracks the proposed_by / reviewed_by / status of each policy line so no single
   Supervisor can unilaterally promote a rule.
 
-- **Run:** RUN-20260620-001
-- **Cycle:** 4 (Discover sweep; bootstrap re-run — no new ApplyNow, gbrain memory set unchanged since Cycle 2; §1–10 stand)
-- **Date:** 2026-06-20
+- **Run:** RUN-20260622-001 (resident quality loop restart; gbrain Memory Bootstrap re-run for the placement-optimization workstream)
+- **Cycle:** 1 (Bootstrap — read all .agent-loop ledgers + gbrain recall; this-run ApplyNow patch §17–18 proposed below, pending codex peer approval)
+- **Date:** 2026-06-22
 - **Supervisors:** claude-lead (UI/UX + main impl), codex-lead (backend/perf/refactor/test review)
+- **Prior runs:** RUN-20260620-001 (Cycle 4), RUN-20260621-001 (Cycle 2) — §1–16 stand unchanged.
 
 > **STATUS: gbrain connected 2026-06-20** — careviax indexed (read-write, local postgres).
 > ApplyNow below is seeded from already-proven lane/LOCK/drain discipline; from the next cycle,
@@ -155,6 +156,57 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
     writes, hard-stops human-gated). This makes the loop self-perpetuating: milestone → Discover → plan →
     implement → verify → land → Discover…, until the human ends the goal/run.
 
+### ApplyNow — RUN-20260622-001 this-run patch (gbrain Memory Bootstrap → placement-optimization workstream)
+
+> Status: **PEER-APPROVED** 2026-06-22 — codex-lead `LOOP_POLICY_PATCH_APPROVED` (re: policy-patch-20260622-001;
+> notes: §17 closes the placement-slice state-display gap without duplicating §7/§9/§10; §18 enforces
+> current-capability recon + reuse-first). **In-effect for RUN-20260622-001.** Permanent promotion to
+> AGENTS.md/CLAUDE.md remains human-gated (PROMOTION_QUEUE §13). Scoped to this run's active work
+> (PLACEMENT_AUDIT SYS/HIGH/MED placement slices, which touch
+> data-views and shared components). Derived only from `ApplyNow`-classified gbrain memories; the generic
+> §1–16 above are unchanged. Does not duplicate §7 (state-color SSOT) / §9 (PHI symmetry) / §10 (fail-closed
+> reads) — it adds the two disciplines those leave under-specified for placement work.
+
+17. **State-display correctness on any data-view placement slice.** Source: gbrain FailurePattern
+    `projects/careviax/failures/false-empty-and-stale-wipe-on-fetch-failure` (high, peer_reviewed). Any
+    SYS-3/SYS-4/MED slice that moves, wraps, or re-scaffolds a screen rendering query data MUST preserve
+    (and where missing, apply) the verified state-display contract — never regress it during a placement
+    move:
+    - Blocking `ErrorState` **only** on first-load failure (`isError && !data`).
+    - Refetch failure **with** data (`isError && data`, TanStack v5 isRefetchError): keep the last good
+      data + a **non-blocking** inline `ErrorState` (size=inline, live=polite) + retry; never wipe stale data.
+    - Gate empty/"…ありません" copy on `!isLoading` (skeleton while loading) — no false-empty.
+    - Suppress derived threshold alerts **and** warning color on a tagged placeholder/no-data path
+      (e.g. 404 → `{ placeholder: true }`, neutral color), not just the alert text.
+    - Reuse the existing `ErrorState`/`EmptyState` components (no new error/empty component); wire each
+      query's retry to **its own** `refetch` (no cross-wiring concurrent queries).
+    - If the slice adds/relocates a data view, add/keep tests for the 5 paths: success / first-load-error
+      (no cards/alerts) / refetch-keeps-data+warning / placeholder no-alert+neutral / loading no-false-empty.
+18. **Verify-capability + reuse-first before extending or relocating a shared component.** Source: gbrain
+    CandidateLesson `projects/careviax/lessons/candidates/verify-component-capability-before-extension`
+    (medium, peer_reviewed). Before any placement slice extends, wraps, or relocates a shared/core
+    component:
+    - Read the component's **current** props/render/tests first; confirm the capability is actually missing.
+      Audit ledgers (`PLACEMENT_AUDIT`/`UI_AUDIT_MATRIX`) can predate the component and over-state the gap —
+      note stale rows for correction instead of building to the stale framing.
+    - Prefer **caller wiring of an existing capability** and existing shared scaffolds
+      (`PageScaffold`/`AdminPageHeader`/`WorkflowPageIntro`/`WorkspaceActionRail`/`StateBadge`/`StatusDot`/
+      `DataTable`/`CardTitle asChild`) over a new duplicate layout/state/header component (reuse-first,
+      smaller blast radius). Do not introduce a similarly-named parallel component.
+    - Reserve core-component changes for genuinely-missing capability, with a backward-compatible
+      default-off and a regression test covering existing callers.
+19. **Codex drains Claude-origin messages before local work.** User-directed this-run policy patch
+    (2026-06-22) for Codex's own supervisor loop. At every Codex inbox drain, before continuing any
+    Codex-owned implementation, verification, commit, or idle-ladder task, Codex first handles every
+    pending message from the live `claude` identity / `claude-lead` role. This includes
+    `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`, `CHANGES_REQUESTED`,
+    `LOCK_REQUEST`, `HANDOFF`, `PAUSE_REQUEST`, `URGENT`, and equivalent `REQUEST CHANGES`
+    coordination. If a long-running local gate or investigation is in progress and a Claude-origin
+    item arrives at the next safe boundary, Codex pauses or aborts lower-priority local work when
+    safe, ACKs/triages the Claude item, and only then resumes. This rule does not weaken §3 inbox
+    drain, §14/§15 yield-first, maker/checker separation, user-priority directives, hard-stops, or
+    human-approval gates; it only makes Codex's handling order explicit.
+
 ## Consider
 
 Weigh against the current objective; log the decision in the run log. (Seed list — extend from
@@ -193,17 +245,20 @@ External dependencies gating otherwise-ready work. Mark blocked items `cc:blocke
 Each policy line needs proposed_by + reviewed_by + status before it graduates to ApplyNow.
 Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 
-| Policy line                                       | proposed_by | reviewed_by | status                                 |
-| ------------------------------------------------- | ----------- | ----------- | -------------------------------------- |
-| ApplyNow §1–6 (lane/LOCK/drain/verify discipline) | claude-lead | codex-lead  | applied (proven seed)                  |
-| ApplyNow §7 (UI/UX SSOT + State Color tokens)     | claude-lead | _pending_   | proposed                               |
-| ApplyNow §8 (Compliance by Design + RLS)          | codex-lead  | _pending_   | proposed                               |
-| ApplyNow §9 (PHI redaction symmetry on mutations) | claude-lead | codex-lead  | applied                                |
-| ApplyNow §10 (fail-closed client reads)           | claude-lead | codex-lead  | applied                                |
-| ApplyNow §11 (workload-balancing handoff)         | codex-lead  | claude-lead | applied                                |
-| ApplyNow §12 (idle-capacity useful work)          | human       | claude-lead | applied                                |
-| ApplyNow §13 (loop-engineering PDCA track)        | human       | codex-lead  | applied                                |
-| ApplyNow §14 (idle-time productivity playbook)    | claude-lead | codex-lead  | applied                                |
-| ApplyNow §15 (no passive-wait per-turn trigger)   | human       | codex-lead  | peer-approved (human gate for applied) |
-| ApplyNow §16 (continuous loop — repeat on drain)  | human       | codex-lead  | peer-approved (human gate for applied) |
-| _next candidate_                                  | _name_      | _name_      | proposed                               |
+| Policy line                                        | proposed_by | reviewed_by | status                                                                        |
+| -------------------------------------------------- | ----------- | ----------- | ----------------------------------------------------------------------------- |
+| ApplyNow §1–6 (lane/LOCK/drain/verify discipline)  | claude-lead | codex-lead  | applied (proven seed)                                                         |
+| ApplyNow §7 (UI/UX SSOT + State Color tokens)      | claude-lead | _pending_   | proposed                                                                      |
+| ApplyNow §8 (Compliance by Design + RLS)           | codex-lead  | _pending_   | proposed                                                                      |
+| ApplyNow §9 (PHI redaction symmetry on mutations)  | claude-lead | codex-lead  | applied                                                                       |
+| ApplyNow §10 (fail-closed client reads)            | claude-lead | codex-lead  | applied                                                                       |
+| ApplyNow §11 (workload-balancing handoff)          | codex-lead  | claude-lead | applied                                                                       |
+| ApplyNow §12 (idle-capacity useful work)           | human       | claude-lead | applied                                                                       |
+| ApplyNow §13 (loop-engineering PDCA track)         | human       | codex-lead  | applied                                                                       |
+| ApplyNow §14 (idle-time productivity playbook)     | claude-lead | codex-lead  | applied                                                                       |
+| ApplyNow §15 (no passive-wait per-turn trigger)    | human       | codex-lead  | peer-approved (human gate for applied)                                        |
+| ApplyNow §16 (continuous loop — repeat on drain)   | human       | codex-lead  | peer-approved (human gate for applied)                                        |
+| ApplyNow §17 (state-display correctness, this-run) | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)          |
+| ApplyNow §18 (verify-capability + reuse-first)     | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)          |
+| ApplyNow §19 (Codex drains Claude-origin first)    | codex-lead  | claude-lead | peer-approved (this-run; human gate for permanent AGENTS/CLAUDE.md promotion) |
+| _next candidate_                                   | _name_      | _name_      | proposed                                                                      |
