@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260622-1913 JST
+
+- current task: land the approved Codex-owned F-004 offline evidence `lastError` sanitization slice while continuing Claude slice4a drug-masters patch review.
+- files inspected: agmsg inbox messages for F-004 approval, F-004 ledger lock, LOOP_POLICY §20/§21, and slice4a rev5; `.agent-loop/LOOP_POLICY.md`; `.agent-loop/MESSAGE_PROTOCOL.md`; `src/lib/offline/evidence-drafts.ts`; `src/lib/offline/evidence-drafts.test.ts`; `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`; `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`; `.agent-loop/REVIEW_LOG.md`; `.agent-loop/VERIFY_LOG.md`; and this Ralph state file.
+- files changed: `src/lib/offline/evidence-drafts.ts`, `src/lib/offline/evidence-drafts.test.ts`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/VERIFY_LOG.md`, and this Ralph state entry. Codex did not edit Claude-locked drug-master or loop-policy files.
+- bugs found: F-004 found that offline evidence sync could persist raw server or unexpected `Error.message` text into IndexedDB `lastError`, and auto-sync could log the raw `Error` object. Slice4a rev5 still has accepted-scope review blockers: import/auto-refresh clear previews only after awaited invalidation, auto-refresh tests do not lock copy/template preview clearing, and SelectItem test capture still lacks per-Select context so duplicate `site_2` / `支店` items can mask a missing min-height class.
+- security risks found: F-004 reduces privacy/security risk by ensuring server response text, unexpected thrown messages, PHI-like strings, and token-like strings are not persisted in `lastError` or logged from auto-sync. No auth, RLS, DB schema, billing/payment, production deploy, migration, destructive operation, real secret, cookie, or env value changed or was stored.
+- performance issues found: F-004 adds only local string allowlist checks. Slice4a rev5 review found an async race window during slow query invalidation after drug-master import/auto-refresh; the issue is correctness/medical-safety rather than request fan-out or DB performance.
+- validation commands: F-004 focused offline Vitest; scoped ESLint; scoped Prettier; scoped `git diff --check`; `pnpm typecheck`; `pnpm build`; `pnpm typecheck:no-unused` serially after build via verifier subagent. Slice4a rev5 review ran focused drug-master Vitest 46/46 and checker subagents (`test-auditor`, `concurrency_reviewer`, `medical_safety_reviewer`).
+- validation results: F-004 gates passed: offline Vitest 2 files / 23 tests, scoped ESLint, scoped Prettier, scoped diff-check, full typecheck, build, and no-unused all green. The first verifier build attempt hit a concurrent Next build lock from another process, then the rerun passed; no implementation error. Claude approved F-004. Slice4a rev5 focused Vitest passed 46/46, but PATCH_REVIEW_RESULT was CHANGES_REQUESTED for the three accepted-scope gaps above.
+- remaining work: run scoped ledger Prettier/diff-check, drain agmsg, stage only F-004 source files plus the F-004 ledger/progress rows, commit, notify Claude, and release the F-004 source + ledger locks. Then continue slice4a rev6 review when Claude sends it.
+- next action: validate the F-004 ledger/source diff, drain inbox, commit the approved F-004 slice, and send DONE/release to Claude.
+
 ### 20260622-1839 JST
 
 - current task: close Claude slice4a rev3 patch review, then land the approved Codex-owned offline evidence presign response-shape hardening.

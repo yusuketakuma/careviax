@@ -100,6 +100,18 @@ type PresignedUploadPayload = {
   headers?: Record<string, string>;
 };
 
+const GENERIC_EVIDENCE_SYNC_ERROR_MESSAGE = '証跡写真の同期に失敗しました';
+const SAFE_EVIDENCE_SYNC_ERROR_MESSAGES = new Set([
+  '写真データを復号できませんでした',
+  'アップロードURLの取得に失敗しました',
+  '写真のアップロードに失敗しました',
+  '写真のアップロード確定に失敗しました',
+  '写真のアップロード結果が不正です',
+  '訪問記録の取得に失敗しました',
+  '訪問記録への添付紐づけに失敗しました',
+  '証跡写真の同期がタイムアウトしました',
+]);
+
 export type EvidenceSyncResult = {
   synced: number;
   /** 訪問記録が未作成などで保留(未同期のまま端末に残る) */
@@ -138,6 +150,13 @@ function parsePresignedUploadPayload(payload: unknown): PresignedUploadPayload |
     uploadUrl: normalizedUploadUrl,
     headers: headers as Record<string, string> | undefined,
   };
+}
+
+function safeEvidenceSyncErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return GENERIC_EVIDENCE_SYNC_ERROR_MESSAGE;
+  return SAFE_EVIDENCE_SYNC_ERROR_MESSAGES.has(error.message)
+    ? error.message
+    : GENERIC_EVIDENCE_SYNC_ERROR_MESSAGE;
 }
 
 async function fetchEvidenceSync(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -203,7 +222,7 @@ async function uploadEvidenceDraft(
     });
     const presignJson = await presignRes.json().catch(() => null);
     if (!presignRes.ok) {
-      throw new Error(presignJson?.message ?? 'アップロードURLの取得に失敗しました');
+      throw new Error('アップロードURLの取得に失敗しました');
     }
     const presignedUpload = parsePresignedUploadPayload(presignJson);
     if (!presignedUpload) {
@@ -259,8 +278,7 @@ async function uploadEvidenceDraft(
     }),
   });
   if (!patchRes.ok) {
-    const patchJson = await patchRes.json().catch(() => null);
-    throw new Error(patchJson?.message ?? '訪問記録への添付紐づけに失敗しました');
+    throw new Error('訪問記録への添付紐づけに失敗しました');
   }
 }
 
@@ -303,7 +321,7 @@ async function syncEvidenceDraftsOnce(config: EvidenceSyncConfig): Promise<Evide
     } catch (error) {
       await offlineDb.evidenceDrafts.update(draft.id!, {
         retryCount: draft.retryCount + 1,
-        lastError: error instanceof Error ? error.message : 'Unknown error',
+        lastError: safeEvidenceSyncErrorMessage(error),
       });
       result.failed += 1;
     }
@@ -326,7 +344,7 @@ export async function syncEvidenceDrafts(config: EvidenceSyncConfig): Promise<Ev
 export function setupEvidenceAutoSync(config: EvidenceSyncConfig): () => void {
   const handler = () => {
     syncEvidenceDrafts(config).catch((error) => {
-      console.warn('[offline-evidence] automatic sync failed', error);
+      console.warn('[offline-evidence] automatic sync failed', safeEvidenceSyncErrorMessage(error));
     });
   };
 
