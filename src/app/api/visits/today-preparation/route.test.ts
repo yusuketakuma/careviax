@@ -166,12 +166,15 @@ describe('/api/visits/today-preparation', () => {
   });
 
   it('adds a departure warning when a home visit has patient foundation gaps', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
     visitScheduleFindManyMock.mockResolvedValue([
       buildSchedule({
         case_: {
           care_team_links: [],
           patient: {
-            id: 'patient_1',
+            id: rawPatientId,
             name: '患者A',
             allergy_info: null,
             contacts: [],
@@ -200,8 +203,69 @@ describe('/api/visits/today-preparation', () => {
       }),
     );
     expect(json.data.cards[0].actions).toEqual(
-      expect.arrayContaining([{ label: 'カードへ', href: '/patients/patient_1' }]),
+      expect.arrayContaining([{ label: 'カードへ', href: encodedPatientHref }]),
     );
+  });
+
+  it('encodes the audit-branch patient card action while keeping the audit action', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
+    visitScheduleFindManyMock.mockResolvedValue([
+      buildSchedule({
+        case_: {
+          patient: {
+            id: rawPatientId,
+            name: '患者A',
+            allergy_info: null,
+            contacts: [
+              {
+                is_primary: true,
+                is_emergency_contact: true,
+                phone: '090-0000-0001',
+                email: null,
+                fax: null,
+              },
+            ],
+            scheduling_preference: {
+              swallowing_route: null,
+              preferred_contact_name: null,
+              preferred_contact_phone: null,
+              visit_before_contact_required: true,
+              parking_available: true,
+              care_level: '要介護2',
+            },
+          },
+        },
+        cycle: {
+          overall_status: 'audit_pending',
+          prescription_intakes: [
+            {
+              lines: [{ packaging_instruction_tags: ['narcotic'], dispensing_method: null }],
+            },
+          ],
+          dispense_tasks: [{ due_date: null, audits: [] }],
+        },
+      }),
+    ]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.data.cards).toHaveLength(1);
+    expect(json.data.cards[0].checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'carry-narcotic',
+          state: 'alert',
+        }),
+      ]),
+    );
+    expect(json.data.cards[0].actions).toEqual([
+      { label: '監査へ', href: '/audit' },
+      { label: 'カードへ', href: encodedPatientHref },
+    ]);
   });
 
   it('adds a facility packet warning when one batched patient has foundation gaps', async () => {

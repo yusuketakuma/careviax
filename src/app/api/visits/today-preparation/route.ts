@@ -11,6 +11,7 @@ import {
   buildCareTeamReliabilitySummary,
   buildPatientContactReadiness,
 } from '@/lib/patient/care-team-contact';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
   VisitPrepBlockedReason,
@@ -268,6 +269,7 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
 
   const patient = schedule.case_.patient;
   const stayMinutes = minutesBetween(schedule.time_window_start, schedule.time_window_end);
+  const patientHref = buildPatientHref(patient.id);
 
   return {
     schedule_id: schedule.id,
@@ -286,10 +288,10 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
     actions: audit
       ? [
           { label: '監査へ', href: '/audit' },
-          { label: 'カードへ', href: `/patients/${patient.id}` },
+          { label: 'カードへ', href: patientHref },
         ]
       : [
-          { label: 'カードへ', href: `/patients/${patient.id}` },
+          { label: 'カードへ', href: patientHref },
           { label: 'ルート詳細', href: '/schedules' },
         ],
   };
