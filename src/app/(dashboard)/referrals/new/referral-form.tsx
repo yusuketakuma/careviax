@@ -2,17 +2,26 @@
 
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { PageSection } from '@/components/layout/page-section';
@@ -56,6 +65,12 @@ const referralTypeLabel: Record<string, string> = {
   family: '家族相談',
 };
 
+const genderLabel: Record<string, string> = {
+  male: '男性',
+  female: '女性',
+  other: 'その他',
+};
+
 const documentChecklistItems = [
   { field: 'doc_physician_order', label: '指示書' },
   { field: 'doc_consent', label: '同意書' },
@@ -67,6 +82,7 @@ export function ReferralForm() {
   const router = useRouter();
   const orgId = useOrgId();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const errorSummaryId = 'referral-form-error-summary';
 
   const form = useForm<ReferralFormValues, unknown, ReferralFormSubmit>({
@@ -82,8 +98,12 @@ export function ReferralForm() {
     register,
     handleSubmit,
     setValue,
-    formState: { errors },
+    control,
+    formState: { errors, isDirty },
   } = form;
+  const allowNavigation = useUnsavedChangesGuard({
+    enabled: isDirty,
+  });
   const documentChecklistValues = useWatch({
     control: form.control,
     name: documentChecklistItems.map((item) => item.field),
@@ -152,6 +172,7 @@ export function ReferralForm() {
       }
 
       toast.success('紹介受付が完了しました');
+      allowNavigation();
       router.push(`/patients/${patient.id}`);
     } finally {
       setIsSubmitting(false);
@@ -160,6 +181,20 @@ export function ReferralForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit, scrollToErrorSummary)} noValidate className="space-y-6">
+      <ConfirmDialog
+        open={showDiscardConfirm}
+        onOpenChange={setShowDiscardConfirm}
+        title="入力内容を破棄しますか？"
+        description="未保存の入力内容は破棄されます。よろしいですか？"
+        variant="destructive"
+        confirmLabel="破棄して戻る"
+        cancelLabel="編集を続ける"
+        onConfirm={() => {
+          allowNavigation();
+          router.back();
+        }}
+      />
+
       <FormErrorSummary id={errorSummaryId} items={errorSummaryItems} />
 
       <PageSection
@@ -174,20 +209,34 @@ export function ReferralForm() {
               *
             </span>
           </Label>
-          <select
-            id="referral_type"
-            {...register('referral_type')}
-            aria-invalid={!!errors.referral_type}
-            aria-describedby={errors.referral_type ? 'referral-type-error' : undefined}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive"
-          >
-            <option value="">選択してください</option>
-            {Object.entries(referralTypeLabel).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <Controller
+            control={control}
+            name="referral_type"
+            render={({ field }) => (
+              <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                <SelectTrigger
+                  id="referral_type"
+                  aria-invalid={!!errors.referral_type}
+                  aria-describedby={errors.referral_type ? 'referral-type-error' : undefined}
+                  className="min-h-[44px] w-full sm:min-h-[44px]"
+                >
+                  <SelectValue>
+                    {field.value ? referralTypeLabel[field.value] : '選択してください'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="" className="min-h-[44px]">
+                    選択してください
+                  </SelectItem>
+                  {Object.entries(referralTypeLabel).map(([value, label]) => (
+                    <SelectItem key={value} value={value} className="min-h-[44px]">
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
           {errors.referral_type && (
             <p id="referral-type-error" className="text-xs text-destructive" role="alert">
               {errors.referral_type.message}
@@ -231,7 +280,9 @@ export function ReferralForm() {
               <Checkbox
                 id={field}
                 checked={documentChecklistValues[index] === true}
-                onCheckedChange={(checked) => setValue(field, checked === true)}
+                onCheckedChange={(checked) =>
+                  setValue(field, checked === true, { shouldDirty: true, shouldTouch: true })
+                }
                 aria-label={`${label}を受領済み`}
               />
               <Label htmlFor={field} className="cursor-pointer font-normal">
@@ -318,18 +369,34 @@ export function ReferralForm() {
                 *
               </span>
             </Label>
-            <select
-              id="ref-gender"
-              {...register('gender')}
-              aria-invalid={!!errors.gender}
-              aria-describedby={errors.gender ? 'ref-gender-error' : undefined}
-              className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive"
-            >
-              <option value="">選択してください</option>
-              <option value="male">男性</option>
-              <option value="female">女性</option>
-              <option value="other">その他</option>
-            </select>
+            <Controller
+              control={control}
+              name="gender"
+              render={({ field }) => (
+                <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                  <SelectTrigger
+                    id="ref-gender"
+                    aria-invalid={!!errors.gender}
+                    aria-describedby={errors.gender ? 'ref-gender-error' : undefined}
+                    className="min-h-[44px] w-full sm:min-h-[44px]"
+                  >
+                    <SelectValue>
+                      {field.value ? genderLabel[field.value] : '選択してください'}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="" className="min-h-[44px]">
+                      選択してください
+                    </SelectItem>
+                    {Object.entries(genderLabel).map(([value, label]) => (
+                      <SelectItem key={value} value={value} className="min-h-[44px]">
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {errors.gender && (
               <p id="ref-gender-error" className="text-xs text-destructive" role="alert">
                 {errors.gender.message}
@@ -377,7 +444,13 @@ export function ReferralForm() {
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.back()}
+          onClick={() => {
+            if (isDirty) {
+              setShowDiscardConfirm(true);
+            } else {
+              router.back();
+            }
+          }}
           disabled={isSubmitting}
         >
           キャンセル
