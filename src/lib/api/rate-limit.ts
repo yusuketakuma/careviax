@@ -1,5 +1,6 @@
 import { signAwsJsonRequest, type AwsCredentials } from '@/lib/aws/sigv4';
 import { readJsonObject } from '@/lib/db/json';
+import { maybeUnrefTimeout } from '@/lib/utils/abort-timeout';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import { readJsonResponseBody } from './response-body';
 /**
@@ -242,12 +243,6 @@ function parseDynamoRateLimitResponse(payload: unknown): { count: number; resetA
   if (count === null || resetAt === null) return null;
 
   return { count, resetAt };
-}
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
 }
 
 function createDynamoAbortController() {

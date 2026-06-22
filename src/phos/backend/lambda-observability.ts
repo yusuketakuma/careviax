@@ -1,5 +1,6 @@
 import type { DynamoDBClient as AwsDynamoDBClient } from '@aws-sdk/client-dynamodb';
 import * as xray from 'aws-xray-sdk-core';
+import { maybeUnrefTimeout } from '@/lib/utils/abort-timeout';
 import {
   createConsoleObservabilitySink,
   hashTenantId,
@@ -23,12 +24,6 @@ export type PhosLambdaRuntimeDependencies = {
 };
 
 const DEFAULT_SECURITY_EVENT_FLUSH_TIMEOUT_MS = 250;
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
-}
 
 function shouldPersistSecurityEvents(): boolean {
   return process.env.PHOS_SECURITY_EVENTS_DYNAMO === '1';
