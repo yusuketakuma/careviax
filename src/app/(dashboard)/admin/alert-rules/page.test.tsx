@@ -24,6 +24,81 @@ vi.mock('./signal-tuning-panel', () => ({
   SignalTuningPanel: () => <div data-testid="signal-tuning-panel" />,
 }));
 
+// Base UI Select renders a portaled listbox that jsdom can't drive; mock it to a native
+// <select> (carrying the trigger's id + className) so existing label/value assertions keep
+// working and the >=44px touch-target class contract can be asserted.
+vi.mock('@/components/ui/select', async () => {
+  const React = await import('react');
+
+  function collectItems(children: ReactNode): Array<{ value: string; label: string }> {
+    const items: Array<{ value: string; label: string }> = [];
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as { value?: string; children?: ReactNode };
+      if (props.value) {
+        items.push({ value: props.value, label: React.Children.toArray(props.children).join('') });
+      }
+      items.push(...collectItems(props.children));
+    });
+    return items;
+  }
+
+  type TriggerProps = {
+    id?: string;
+    className?: string;
+    'aria-describedby'?: string;
+    'aria-invalid'?: boolean;
+    children?: ReactNode;
+  };
+
+  function findTriggerProps(children: ReactNode): TriggerProps | undefined {
+    let triggerProps: TriggerProps | undefined;
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as TriggerProps;
+      if (props.id) triggerProps = props;
+      if (!triggerProps) triggerProps = findTriggerProps(props.children);
+    });
+    return triggerProps;
+  }
+
+  function MockSelect({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (value: string) => void;
+    children: ReactNode;
+  }) {
+    const triggerProps = findTriggerProps(children);
+    return (
+      <select
+        id={triggerProps?.id}
+        className={triggerProps?.className}
+        aria-describedby={triggerProps?.['aria-describedby']}
+        aria-invalid={triggerProps?.['aria-invalid']}
+        value={value}
+        onChange={(event) => onValueChange?.(event.target.value)}
+      >
+        {collectItems(children).map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  return {
+    Select: MockSelect,
+    SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectItem: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectValue: ({ placeholder }: { placeholder?: string }) => <>{placeholder ?? null}</>,
+  };
+});
+
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -72,6 +147,10 @@ describe('AlertRulesPage', () => {
           return new Response(JSON.stringify({ message: '処方安全アラートルールを削除しました' }), {
             status: 200,
           });
+        }
+
+        if (url === '/api/drug-alert-rules' && init?.method === 'POST') {
+          return new Response(JSON.stringify({ data: { id: 'rule_new' } }), { status: 200 });
         }
 
         return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
@@ -163,5 +242,70 @@ describe('AlertRulesPage', () => {
 
     expect(await screen.findByText('まだ処方安全アラートルールはありません。')).toBeTruthy();
     expect(screen.queryByText('サーバーエラーが発生しました')).toBeNull();
+  });
+
+  it('persists the chosen alert type and severity into the save payload', async () => {
+    renderPage();
+
+    await screen.findByRole('button', { name: '相互作用 の処方安全アラートルールを削除' });
+
+    const alertType = screen.getByLabelText('アラート種別') as HTMLSelectElement;
+    const severity = screen.getByLabelText('重要度') as HTMLSelectElement;
+
+    // 既定（種別=相互作用 / 重要度=warning）から別の医薬安全値へ変更できる。
+    fireEvent.change(alertType, { target: { value: 'narcotic' } });
+    fireEvent.change(severity, { target: { value: 'critical' } });
+
+    expect((screen.getByLabelText('アラート種別') as HTMLSelectElement).value).toBe('narcotic');
+    expect((screen.getByLabelText('重要度') as HTMLSelectElement).value).toBe('critical');
+
+    // DOM 値だけでなく、実際に保存される POST payload まで反映されることを確認する。
+    // 処方安全ルールの種別・重要度は臨床的に重要なため、UI 変更が既定値で保存される退行を防ぐ。
+    fireEvent.change(screen.getByLabelText('表示メッセージ'), {
+      target: { value: '麻薬の重複投与を確認してください' },
+    });
+    fireEvent.change(screen.getByLabelText('条件(JSON)'), {
+      target: { value: '{"threshold":"high"}' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    const fetchMock = vi.mocked(global.fetch);
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input) === '/api/drug-alert-rules' &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      );
+      expect(postCall).toBeTruthy();
+    });
+
+    const postCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/drug-alert-rules' &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    );
+    const body = JSON.parse((postCall![1] as RequestInit).body as string);
+    expect(body).toMatchObject({
+      alert_type: 'narcotic',
+      severity: 'critical',
+      is_active: true,
+      message: '麻薬の重複投与を確認してください',
+      condition: { threshold: 'high' },
+    });
+  });
+
+  it('gives the alert-type and severity selects a >=44px touch target at all breakpoints (WCAG)', async () => {
+    renderPage();
+
+    await screen.findByRole('button', { name: '相互作用 の処方安全アラートルールを削除' });
+
+    // 共有 SelectTrigger の既定は sm で min-h-0/h-8 へ縮むため、ページ側の sm:min-h-[44px]
+    // 上書きまで assert し、将来このデスクトップ 44px 契約が落ちる退行を捕捉する。
+    for (const label of ['アラート種別', '重要度']) {
+      const className = screen.getByLabelText(label).className;
+      expect(className).toContain('min-h-[44px]');
+      expect(className).toContain('sm:min-h-[44px]');
+    }
   });
 });

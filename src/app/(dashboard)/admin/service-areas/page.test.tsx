@@ -20,6 +20,81 @@ vi.mock('sonner', () => ({
   },
 }));
 
+// Base UI Select renders a portaled listbox that jsdom can't drive; mock it to a native
+// <select> (carrying the trigger's id + className) so existing label/value assertions keep
+// working and the >=44px touch-target class contract can be asserted.
+vi.mock('@/components/ui/select', async () => {
+  const React = await import('react');
+
+  function collectItems(children: ReactNode): Array<{ value: string; label: string }> {
+    const items: Array<{ value: string; label: string }> = [];
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as { value?: string; children?: ReactNode };
+      if (props.value) {
+        items.push({ value: props.value, label: React.Children.toArray(props.children).join('') });
+      }
+      items.push(...collectItems(props.children));
+    });
+    return items;
+  }
+
+  type TriggerProps = {
+    id?: string;
+    className?: string;
+    'aria-describedby'?: string;
+    'aria-invalid'?: boolean;
+    children?: ReactNode;
+  };
+
+  function findTriggerProps(children: ReactNode): TriggerProps | undefined {
+    let triggerProps: TriggerProps | undefined;
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as TriggerProps;
+      if (props.id) triggerProps = props;
+      if (!triggerProps) triggerProps = findTriggerProps(props.children);
+    });
+    return triggerProps;
+  }
+
+  function MockSelect({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (value: string) => void;
+    children: ReactNode;
+  }) {
+    const triggerProps = findTriggerProps(children);
+    return (
+      <select
+        id={triggerProps?.id}
+        className={triggerProps?.className}
+        aria-describedby={triggerProps?.['aria-describedby']}
+        aria-invalid={triggerProps?.['aria-invalid']}
+        value={value}
+        onChange={(event) => onValueChange?.(event.target.value)}
+      >
+        {collectItems(children).map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  return {
+    Select: MockSelect,
+    SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectItem: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectValue: ({ placeholder }: { placeholder?: string }) => <>{placeholder ?? null}</>,
+  };
+});
+
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -151,5 +226,19 @@ describe('ServiceAreasPage', () => {
     expect((screen.getByLabelText('エリア名') as HTMLInputElement).value).toBe('北多摩エリア');
     expect((screen.getByLabelText('エリア種別') as HTMLSelectElement).value).toBe('radius');
     expect((screen.getByLabelText('備考') as HTMLTextAreaElement).value).toBe('16km 圏確認済み');
+  });
+
+  it('gives the site and area-type selects a >=44px touch target at all breakpoints (WCAG)', async () => {
+    renderPage();
+
+    await screen.findByRole('option', { name: '本店' });
+
+    // 共有 SelectTrigger の既定は sm で min-h-0/h-8 へ縮むため、ページ側の sm:min-h-[44px]
+    // 上書きまで assert し、将来このデスクトップ 44px 契約が落ちる退行を捕捉する。
+    for (const label of ['拠点', 'エリア種別']) {
+      const className = screen.getByLabelText(label).className;
+      expect(className).toContain('min-h-[44px]');
+      expect(className).toContain('sm:min-h-[44px]');
+    }
   });
 });

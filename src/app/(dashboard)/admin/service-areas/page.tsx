@@ -7,6 +7,13 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminServiceAreasShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -181,21 +188,26 @@ export default function ServiceAreasPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="service-area-site">拠点</Label>
-              <select
-                id="service-area-site"
+              <Select
                 value={form.site_id}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, site_id: event.target.value }))
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, site_id: value ?? '' }))
                 }
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
-                <option value="">拠点を選択</option>
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  id="service-area-site"
+                  className="min-h-[44px] w-full sm:min-h-[44px]"
+                >
+                  <SelectValue placeholder="拠点を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sites.map((site) => (
+                    <SelectItem key={site.id} value={site.id}>
+                      {site.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -212,20 +224,26 @@ export default function ServiceAreasPage() {
 
             <div className="space-y-2">
               <Label htmlFor="service-area-type">エリア種別</Label>
-              <select
-                id="service-area-type"
+              <Select
                 value={form.area_type}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   setForm((current) => ({
                     ...current,
-                    area_type: event.target.value as 'radius' | 'polygon',
+                    area_type: (value ?? 'radius') as 'radius' | 'polygon',
                   }))
                 }
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
-                <option value="radius">radius</option>
-                <option value="polygon">polygon</option>
-              </select>
+                <SelectTrigger
+                  id="service-area-type"
+                  className="min-h-[44px] w-full sm:min-h-[44px]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="radius">radius</SelectItem>
+                  <SelectItem value="polygon">polygon</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

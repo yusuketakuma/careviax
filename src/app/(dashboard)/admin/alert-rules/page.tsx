@@ -6,6 +6,13 @@ import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminAlertRulesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
@@ -190,39 +197,45 @@ export default function AlertRulesPage() {
         >
           <div className="space-y-2">
             <Label htmlFor="alert_type">アラート種別</Label>
-            <select
-              id="alert_type"
+            <Select
               value={form.alert_type}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, alert_type: event.target.value }))
+              onValueChange={(value) =>
+                setForm((current) => ({ ...current, alert_type: value ?? 'interaction' }))
               }
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
             >
-              {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="alert_type" className="min-h-[44px] w-full sm:min-h-[44px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="severity">重要度</Label>
-            <select
-              id="severity"
+            <Select
               value={form.severity}
-              onChange={(event) =>
+              onValueChange={(value) =>
                 setForm((current) => ({
                   ...current,
-                  severity: event.target.value as 'critical' | 'warning' | 'info',
+                  severity: (value ?? 'warning') as 'critical' | 'warning' | 'info',
                 }))
               }
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
             >
-              <option value="critical">critical</option>
-              <option value="warning">warning</option>
-              <option value="info">info</option>
-            </select>
+              <SelectTrigger id="severity" className="min-h-[44px] w-full sm:min-h-[44px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="critical">critical</SelectItem>
+                <SelectItem value="warning">warning</SelectItem>
+                <SelectItem value="info">info</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border px-3 py-2">
