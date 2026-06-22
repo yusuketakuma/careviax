@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260623-0706 JST
+
+- current task: complete Codex-owned F-20260623-026 today-preparation visit-mode href hardening after Claude plan and patch approval.
+- files inspected: agmsg inbox/plan approval/lock grant/patch review approval messages for F-026; `git status --short --untracked-files=all`; `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`; `src/app/api/visits/today-preparation/route.ts`; `src/app/api/visits/today-preparation/route.test.ts`; and this Ralph state file.
+- files changed: `src/app/api/visits/today-preparation/route.ts`, `src/app/api/visits/today-preparation/route.test.ts`, and this Ralph state entry. The source slice was committed as `8671a6e9 fix(api): encode visit prep record hrefs`.
+- bugs found: the today-preparation API interpolated home and facility schedule ids directly into browser-facing `/visits/{id}/record` `visit_mode_href` values, so a hostile schedule id containing `/`, `?`, or `#` could change the route path/query/fragment.
+- security risks found: F-026 reduces schedule-id path/query/hash injection risk for the two visit-mode record links while preserving raw `schedule_id`, raw DB query/grouping/facility-lead identity, F-022 encoded patient card hrefs, audit action, schedules action, and set action. No auth, RLS, DB schema, migration, PHI projection, logging, secret, cookie, env value, billing/payment, deploy, or destructive operation changed.
+- performance issues found: no runtime performance path changed. The patch applies `encodeURIComponent` at two response-shaping href call sites and otherwise preserves query shape, grouping, and response semantics.
+- validation commands: baseline/read-only route inspection; focused `pnpm exec vitest run src/app/api/visits/today-preparation/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the two changed files; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; api-contract, security, and test read-only checker reviews; Claude PATCH_REVIEW.
+- validation results: final focused route Vitest passed `5/5`; scoped ESLint, Prettier, diff-check, and full typecheck passed. api-contract checker approved raw identity and route contract preservation. security checker approved no auth/privacy regression and noted only a future non-blocking helper consolidation if schedule ids ever become external/imported. test checker approved with mutation proof that reverting either home or facility encode fails; its low action-exactness note was fixed before final validation. Claude independently approved the patch with reviewer-audit gates green, and source commit `8671a6e9` landed.
+- remaining work: commit this ledger-only Ralph entry and release the `.codex/ralph-state.md` lock. Untracked `projects/careviax/**` file-plane artifacts remain unrelated and should stay unstaged unless explicitly locked.
+- next action: run scoped ledger Prettier and `git diff --check`, drain agmsg, commit only `.codex/ralph-state.md`, send DONE for the ledger lock, then continue read-only selection for the next Codex-owned href-hardening candidate such as partner visit-record links, evening job visit-schedule links, or patient-detail timeline links after a fresh plan/lock cycle.
+
 ### 20260623-0521 JST
 
 - current task: complete Codex-owned F-20260623-018 daily compliance-expiry notification href hardening after Claude plan and patch approval.
