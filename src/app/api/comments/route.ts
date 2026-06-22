@@ -3,7 +3,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
-import type { Prisma } from '@prisma/client';
+import type { MemberRole, Prisma } from '@prisma/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 import {
@@ -14,18 +14,49 @@ import {
 } from '@/server/services/collaboration-access';
 import { z } from 'zod';
 
+const COMMENT_THREAD_LIMIT = 100;
+const COMMENT_MENTION_LIMIT = 20;
+const COMMENT_MENTION_ID_LIMIT = 100;
+const COMMENT_MENTION_RECIPIENT_ROLES = [
+  'owner',
+  'admin',
+  'pharmacist',
+  'pharmacist_trainee',
+] as const satisfies readonly MemberRole[];
+
 const createCommentSchema = z.object({
   // 担当外の臨床エンティティ(care_report/visit_record 等)への越境コメントを防ぐため、
   // entity_type は collaboration の許可 enum に限定し、後段で per-entity 認可を行う。
   entity_type: collaborationEntityTypeSchema,
   entity_id: z.string().trim().min(1, 'entity_idは必須です').max(100),
   content: z.string().trim().min(1, 'コメント内容は必須です').max(4000),
-  mentions: z.array(z.string()).default([]),
+  mentions: z
+    .array(z.string().trim().min(1, 'メンション先が不正です').max(COMMENT_MENTION_ID_LIMIT))
+    .max(COMMENT_MENTION_LIMIT, `メンション先は${COMMENT_MENTION_LIMIT}件までです`)
+    .default([]),
 });
 
-const COMMENT_THREAD_LIMIT = 100;
-
 type CommentMentionLinkTx = Pick<Prisma.TransactionClient, 'medicationCycle'>;
+
+function normalizeCommentMentions(mentions: string[]) {
+  return Array.from(new Set(mentions));
+}
+
+async function areCommentMentionRecipientsValid(orgId: string, mentions: string[]) {
+  if (mentions.length === 0) return true;
+
+  const memberships = await prisma.membership.findMany({
+    where: {
+      org_id: orgId,
+      is_active: true,
+      role: { in: [...COMMENT_MENTION_RECIPIENT_ROLES] },
+      user_id: { in: mentions },
+    },
+    select: { user_id: true },
+  });
+  const validUserIds = new Set(memberships.map((membership) => membership.user_id));
+  return mentions.every((mention) => validUserIds.has(mention));
+}
 
 async function buildCommentMentionLink(
   tx: CommentMentionLinkTx,
@@ -117,6 +148,7 @@ export const POST = withAuthContext(
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
+    const mentions = normalizeCommentMentions(parsed.data.mentions);
 
     // 担当外エンティティへの越境コメント投稿を防ぐ per-entity 認可。
     const canAccess = await canAccessCollaborationEntity(
@@ -126,6 +158,9 @@ export const POST = withAuthContext(
     );
     if (!canAccess) return notFound('コメント対象が見つかりません');
 
+    const canMentionRecipients = await areCommentMentionRecipientsValid(ctx.orgId, mentions);
+    if (!canMentionRecipients) return validationError('メンション先が不正です');
+
     const created = await withOrgContext(ctx.orgId, async (tx) => {
       const comment = await tx.taskComment.create({
         data: {
@@ -134,11 +169,11 @@ export const POST = withAuthContext(
           entity_id: parsed.data.entity_id,
           author_id: ctx.userId,
           content: parsed.data.content,
-          mentions: parsed.data.mentions,
+          mentions,
         },
       });
 
-      if (parsed.data.mentions.length > 0) {
+      if (mentions.length > 0) {
         const author = await tx.user.findFirst({
           where: { id: ctx.userId, org_id: ctx.orgId },
           select: { name: true },
@@ -157,7 +192,7 @@ export const POST = withAuthContext(
           title: `${authorName}があなたをメンションしました`,
           message: parsed.data.content.slice(0, 100),
           link,
-          explicitUserIds: parsed.data.mentions,
+          explicitUserIds: mentions,
         });
       }
 
