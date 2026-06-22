@@ -7,6 +7,7 @@ import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { familyNameOf } from '@/lib/utils/person-name';
 import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
   readBillingValidationLayers,
@@ -751,7 +752,7 @@ export const GET = withAuthContext(
                 { label: '電話で確認', href: '/communications', kind: 'button' },
                 {
                   label: '→ カードへ',
-                  href: request.patient_id ? `/patients/${request.patient_id}` : '/patients',
+                  href: request.patient_id ? buildPatientHref(request.patient_id) : '/patients',
                   kind: 'link',
                 },
               ],

@@ -313,6 +313,8 @@ describe('/api/care-reports/today-workspace', () => {
     const now = Date.now();
     const threeDaysAgo = new Date(now - 3 * 86_400_000);
     const twoDaysAgo = new Date(now - 2 * 86_400_000);
+    const inquiryPatientId = 'patient/1?tab=x#frag';
+    const inquiryPatientHref = `/patients/${encodeURIComponent(inquiryPatientId)}`;
     mockTx({
       deliveries: [
         {
@@ -330,7 +332,7 @@ describe('/api/care-reports/today-workspace', () => {
         {
           id: 'req_1',
           subject: 'みどり医院への疑義照会',
-          patient_id: 'p_takahashi',
+          patient_id: inquiryPatientId,
           requested_at: twoDaysAgo,
         },
       ],
@@ -343,7 +345,7 @@ describe('/api/care-reports/today-workspace', () => {
       ],
       patients: [
         { id: 'p_kato', name: '加藤 ミサ' },
-        { id: 'p_takahashi', name: '高橋 茂' },
+        { id: inquiryPatientId, name: '高橋 茂' },
         { id: 'p_sasaki', name: '佐々木 ハル' },
       ],
       templateCount: 3,
@@ -364,8 +366,11 @@ describe('/api/care-reports/today-workspace', () => {
     expect(second.waiting_days).toBe(2);
     expect(second.actions).toEqual([
       { label: '電話で確認', href: '/communications', kind: 'button' },
-      { label: '→ カードへ', href: '/patients/p_takahashi', kind: 'link' },
+      { label: '→ カードへ', href: inquiryPatientHref, kind: 'link' },
     ]);
+    expect(JSON.stringify(json.data.waiting_replies)).not.toContain(
+      `/patients/${inquiryPatientId}`,
+    );
 
     expect(json.data.resolved_today).toHaveLength(1);
     expect(json.data.resolved_today[0].title).toBe('佐々木 ハル 様 — 残薬照会(やまもと内科)');
