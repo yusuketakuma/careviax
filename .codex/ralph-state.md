@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260623-0244 JST
+
+- current task: complete Codex-owned F-20260623-006 patient-detail documents href hardening after Claude plan and patch approval.
+- files inspected: agmsg inbox/plan/lock/patch-review messages for F-006; `git status --short --untracked-files=all`; `src/lib/patient/navigation.ts`; `src/lib/patient/navigation.test.ts`; `src/server/services/patient-detail-documents.ts`; `src/server/services/patient-detail.test.ts`; `src/server/services/patient-detail-readiness.ts`; `src/server/services/patient-detail-readiness.test.ts`; `src/lib/auth/visit-schedule-access.ts`; `.agent-loop/FEATURE_QUEUE.md`; and this Ralph state file.
+- files changed: `src/server/services/patient-detail-documents.ts`, `src/server/services/patient-detail.test.ts`, and this Ralph state entry. The source slice was committed as `efc7b6e5 fix(patients): encode document readiness hrefs`.
+- bugs found: document print-readiness action hrefs interpolated `args.patient.id` directly into seven `/patients/{id}` links, so a hostile patient id containing `/`, `?`, or `#` could change the route path/query/fragment. The fix reuses the shared `buildPatientHref` SSOT and keeps the static `/admin/document-templates` href unchanged.
+- security risks found: F-006 reduces patient-id path/query/hash injection risk in the documents readiness links while preserving raw patient id for DB identity and assignment checks. No auth, RLS, DB schema, migration, PHI projection, logging, external request, secret, cookie, env value, billing/payment, deploy, or destructive operation changed.
+- performance issues found: no runtime performance issue changed. The patch precomputes the two encoded href variants once per readiness build and otherwise preserves query shape and readiness semantics.
+- validation commands: `pnpm exec vitest run src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm build`; `pnpm typecheck:no-unused` serially after build; security-auditor and test-auditor read-only checker reviews.
+- validation results: focused patient-detail Vitest passed `36/36`; scoped ESLint/Prettier/diff-check passed; full typecheck, build, and serial no-unused passed. test-auditor approved the 7-href coverage, static href preservation, revert-fail teeth, raw DB identity assertions, and mock strength. security-auditor approved no security/privacy regression and confirmed helper dot-segment behavior and raw identity boundaries. Claude approved the patch and source commit `efc7b6e5` landed.
+- remaining work: commit this ledger-only Ralph entry and release the `.codex/ralph-state.md` lock. Untracked `projects/careviax/**` file-plane artifacts remain unrelated and should stay unstaged unless explicitly locked.
+- next action: run scoped ledger Prettier and `git diff --check`, drain agmsg, commit only `.codex/ralph-state.md`, send DONE for the ledger lock, then continue read-only selection for the next Codex-owned §22b href-hardening candidate.
+
 ### 20260623-0230 JST
 
 - current task: land Codex-owned F-20260623-004 atomic referral intake backend endpoint, review Claude-owned F-20260623-005 FormErrorSummary focus fix, and open the next Codex-owned href-hardening plan.
