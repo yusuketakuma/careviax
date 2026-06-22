@@ -94,6 +94,12 @@ const DEFAULT_EVIDENCE_SYNC_FETCH_TIMEOUT_MS = 15_000;
 const MAX_EVIDENCE_SYNC_FETCH_TIMEOUT_MS = 60_000;
 const activeEvidenceSyncRuns = new Map<string, Promise<EvidenceSyncResult>>();
 
+type PresignedUploadPayload = {
+  id: string;
+  uploadUrl: string;
+  headers?: Record<string, string>;
+};
+
 export type EvidenceSyncResult = {
   synced: number;
   /** 訪問記録が未作成などで保留(未同期のまま端末に残る) */
@@ -106,6 +112,32 @@ function evidenceSyncFetchTimeoutMs() {
     fallbackMs: DEFAULT_EVIDENCE_SYNC_FETCH_TIMEOUT_MS,
     maxMs: MAX_EVIDENCE_SYNC_FETCH_TIMEOUT_MS,
   });
+}
+
+function parsePresignedUploadPayload(payload: unknown): PresignedUploadPayload | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const data = (payload as { data?: unknown }).data;
+  if (typeof data !== 'object' || data === null) return null;
+  const { id, uploadUrl, headers } = data as {
+    id?: unknown;
+    uploadUrl?: unknown;
+    headers?: unknown;
+  };
+  if (typeof id !== 'string') return null;
+  if (typeof uploadUrl !== 'string') return null;
+  const normalizedId = id.trim();
+  const normalizedUploadUrl = uploadUrl.trim();
+  if (normalizedId.length === 0) return null;
+  if (normalizedUploadUrl.length === 0) return null;
+  if (headers !== undefined) {
+    if (typeof headers !== 'object' || headers === null || Array.isArray(headers)) return null;
+    if (!Object.values(headers).every((value) => typeof value === 'string')) return null;
+  }
+  return {
+    id: normalizedId,
+    uploadUrl: normalizedUploadUrl,
+    headers: headers as Record<string, string> | undefined,
+  };
 }
 
 async function fetchEvidenceSync(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -173,10 +205,14 @@ async function uploadEvidenceDraft(
     if (!presignRes.ok) {
       throw new Error(presignJson?.message ?? 'アップロードURLの取得に失敗しました');
     }
+    const presignedUpload = parsePresignedUploadPayload(presignJson);
+    if (!presignedUpload) {
+      throw new Error('アップロードURLの取得に失敗しました');
+    }
 
-    const uploadRes = await fetchEvidenceSync(presignJson.data.uploadUrl, {
+    const uploadRes = await fetchEvidenceSync(presignedUpload.uploadUrl, {
       method: 'PUT',
-      headers: presignJson.data.headers,
+      headers: presignedUpload.headers,
       body: blob,
     });
     if (!uploadRes.ok) throw new Error('写真のアップロードに失敗しました');
@@ -185,13 +221,13 @@ async function uploadEvidenceDraft(
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({
-        file_id: presignJson.data.id,
+        file_id: presignedUpload.id,
         etag: uploadRes.headers.get('etag') ?? undefined,
       }),
     });
     if (!completeRes.ok) throw new Error('写真のアップロード確定に失敗しました');
 
-    const completedFileAssetId = presignJson?.data?.id;
+    const completedFileAssetId = presignedUpload.id;
     if (typeof completedFileAssetId !== 'string' || !completedFileAssetId) {
       throw new Error('写真のアップロード結果が不正です');
     }

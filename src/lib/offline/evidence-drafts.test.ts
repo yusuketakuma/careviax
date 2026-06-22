@@ -300,4 +300,51 @@ describe('offline evidence draft sync', () => {
     });
     expect(evidenceDraftsMock.delete).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['missing id', { data: { uploadUrl: 'https://upload.example/file_new', headers: {} } }],
+    ['missing uploadUrl', { data: { id: 'file_malformed', headers: {} } }],
+    ['blank id', { data: { id: '   ', uploadUrl: 'https://upload.example/file_new' } }],
+    ['blank uploadUrl', { data: { id: 'file_malformed', uploadUrl: '   ' } }],
+  ])(
+    'fails closed before PUT when the presigned upload response is malformed: %s',
+    async (_, body) => {
+      evidenceDraftsMock.toArray.mockResolvedValue([createDraft()]);
+      decryptOfflinePayloadMock.mockResolvedValue('data:image/png;base64,AAAA');
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === '/api/visit-schedules/schedule_1') {
+          return jsonResponse({ visit_record: { id: 'visit_record_1' } });
+        }
+        if (url === 'data:image/png;base64,AAAA') {
+          return new Response(new Uint8Array([1, 2, 3]), {
+            status: 200,
+            headers: { 'Content-Type': 'image/png' },
+          });
+        }
+        if (url === '/api/files/presigned-upload') {
+          return jsonResponse(body, 201);
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+
+      await expect(syncEvidenceDrafts({ orgId: 'org_1' })).resolves.toEqual({
+        synced: 0,
+        skipped: 0,
+        failed: 1,
+      });
+
+      expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false);
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) => String(input) === '/api/files/complete' && init?.method === 'POST',
+        ),
+      ).toBe(false);
+      expect(evidenceDraftsMock.update).toHaveBeenCalledWith(1, {
+        retryCount: 1,
+        lastError: 'アップロードURLの取得に失敗しました',
+      });
+      expect(evidenceDraftsMock.delete).not.toHaveBeenCalled();
+    },
+  );
 });
