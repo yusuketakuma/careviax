@@ -20,6 +20,58 @@ Backup directory:
 
 ## Iterations
 
+### 20260622-1839 JST
+
+- current task: close Claude slice4a rev3 patch review, then land the approved Codex-owned offline evidence presign response-shape hardening.
+- files inspected: agmsg inbox and PATCH_REVIEW/ACK/LOCK_GRANT messages, `git status --short --untracked-files=all`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-formulary-view-model.ts`, `src/components/ui/select.tsx`, `src/lib/offline/evidence-drafts.ts`, `src/lib/offline/evidence-drafts.test.ts`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, `.agent-loop/VERIFY_LOG.md`, and this Ralph state file.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, `.agent-loop/VERIFY_LOG.md`, this Ralph state entry, plus the already reviewed Codex source patch in `src/lib/offline/evidence-drafts.ts` and `src/lib/offline/evidence-drafts.test.ts`.
+- bugs found: Claude slice4a rev3 closed the original dry-run mutationFn stamping and `copyOverwrite` stale-context gaps, but PI-012 remains open because stale-guard refs are now the safety SSOT while reset paths such as template search, template delete success, and bulk import success still clear state without synchronously clearing the paired refs. In the Codex offline evidence slice, successful but malformed presigned-upload responses could previously fall through into invalid upload/complete work instead of failing closed with a retryable draft error.
+- security risks found: no auth, RLS, DB schema, billing/payment, production deploy, migration, destructive operation, secret, token, cookie, env value, or PHI projection changed. The offline evidence patch reduces an external-upload safety risk by rejecting malformed successful presign envelopes before any external PUT or `/api/files/complete` call.
+- performance issues found: no product performance regression was introduced. The drug-master review is async correctness/medical-safety focused; the offline patch adds only local response-shape validation before existing upload work.
+- validation commands: for Claude rev3 review: focused drug-master Vitest, scoped ESLint, scoped Prettier, scoped `git diff --check`, plus test-auditor, concurrency, medical-safety, and general reviewer subagents. For Codex F-003: `pnpm exec vitest run src/lib/offline/evidence-drafts.test.ts src/lib/offline/evidence-drafts.shared.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint/Prettier/diff-check for the two offline files; `pnpm typecheck`; `pnpm build`; `pnpm typecheck:no-unused` after build.
+- validation results: drug-master rev3 focused gates passed (Vitest 40/40, scoped ESLint/Prettier/diff-check), but PATCH_REVIEW_RESULT was CHANGES_REQUESTED for PI-012 incomplete reset-path coverage and Claude ACKed. F-003 focused offline Vitest passed 2 files / 16 tests; scoped ESLint, scoped Prettier, scoped `git diff --check`, full typecheck, build, and serial build-after `typecheck:no-unused` all passed. Claude approved F-003 before landing.
+- remaining work: run ledger formatting/diff checks, drain agmsg, stage only `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, `.agent-loop/VERIFY_LOG.md`, `.codex/ralph-state.md`, `src/lib/offline/evidence-drafts.ts`, and `src/lib/offline/evidence-drafts.test.ts`, then commit F-003 and release the ledger lock. Continue to process Claude slice4a rev4 before starting any new implementation.
+- next action: run scoped Prettier/diff-check for the four ledger files, drain inbox, commit the approved F-003 slice, and notify Claude.
+
+### 20260622-1813 JST
+
+- current task: codex-lead patch review for Claude slice4a drug-masters select migration rev2, then ledger recording.
+- files inspected: agmsg inbox output, current git status, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-formulary-view-model.ts`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state file.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry only. Codex did not edit Claude-locked drug-master source/test files.
+- bugs found: rev2 closed the visible reset and item/clear-label contracts, but three blockers remained. Stale dry-run guards read refs updated only in passive `useEffect`, so an old onSuccess can resolve before refs reflect target/source/template/CSV changes. Copy/template dry-run request context omitted `copyOverwrite`, so an overwrite toggle during an in-flight preview can restore a preview computed under the old overwrite mode. Tests manually inject request context into onSuccess fixtures and do not execute mutationFn stamping, so request-context regressions can pass.
+- security risks found: no auth, RLS, DB schema, PHI projection/logging, billing/payment, external send, secret, cookie, env value, migration, production deploy, or destructive path was changed by Codex. The review finding is medical-safety relevant because stale formulary previews can mislead same-site/source/template/overwrite decisions.
+- performance issues found: no product performance issue in the reviewed diff beyond local async stale-state correctness. No request fan-out, DB query, bundle/dependency, or cache behavior blocker was found.
+- validation commands: `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`; `pnpm typecheck`; `pnpm build`; test-auditor, concurrency_reviewer, medical_safety_reviewer, and general reviewer subagents.
+- validation results: direct focused Vitest passed 1 file / 37 tests; scoped ESLint passed; scoped Prettier passed; scoped `git diff --check` passed; `pnpm typecheck` passed; `pnpm build` passed. All four review subagents reported blockers around passive-effect ref race and/or missing overwrite/mutationFn-stamping coverage. PATCH_REVIEW_RESULT changes_requested was sent to Claude, and Claude ACKed all three findings as valid and is implementing rev3.
+- remaining work: validate the three ledger files, release the ledger lock, then wait for Claude slice4a rev3 PATCH_REVIEW_REQUEST. Do not edit `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx` or `.test.tsx`.
+- next action: run scoped Prettier and `git diff --check` for `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and `.codex/ralph-state.md`, then notify Claude that the ledger lock is released.
+
+### 20260622-1803 JST
+
+- current task: reconcile stale PI-006 ledger state while waiting for Claude slice4a rev2.
+- files inspected: agmsg inbox / LOCK_GRANT from Claude, `git status --short --untracked-files=all`, `.agent-loop/PATCH_INBOX.md`, `.agent-loop/STATE.md`, `.agent-loop/VERIFY_LOG.md`, `.agent-loop/BLOCKED.md`, `CODEX_GOAL_PROGRESS.md`, commit `97ece552`, commit `fcb2c15f`, and prior Ralph entries for the prescription-intake guardrail fix.
+- files changed: `.agent-loop/PATCH_INBOX.md` and this Ralph state entry only.
+- bugs found: no new product bug. The stale queue row still said no product fix had started, even though the `/api/prescription-intakes` 500 / transaction-scope root cause had already landed in `97ece552` and was approved by Claude.
+- security risks found: no source code, auth, RLS, DB schema, PHI projection, billing/PCA behavior, prescription API behavior, secret, cookie, env value, migration, or production surface changed in this ledger-only update.
+- performance issues found: no runtime path changed in this ledger-only update. The corrected performance/stability behavior remains the prior `97ece552` fix: case-target blocked prescription intakes now run guardrails before creating a new `MedicationCycle`.
+- validation commands: `pnpm exec prettier --check .agent-loop/PATCH_INBOX.md .codex/ralph-state.md`; `git diff --check -- .agent-loop/PATCH_INBOX.md .codex/ralph-state.md`.
+- validation results: scoped Prettier passed; scoped `git diff --check` passed.
+- remaining work: send Claude a ledger-only review/release message, then drain agmsg for slice4a rev2 PATCH_REVIEW_REQUEST.
+- next action: notify Claude that PI-006 stale state is reconciled and release the two-file ledger lock.
+
+### 20260622-1452 JST
+
+- current task: act as codex-lead reviewer for the Claude-led admin a11y loop after goal bootstrap.
+- files inspected: AGENTS.md, CLAUDE.md, all required `.agent-loop/*` ledgers, docs/ui-ux-design-guidelines.md, gbrain MCP/source status, local gbrain write-through CareViaX memory files, agmsg inbox, current git status/diff, `src/components/ui/select.tsx`, admin service-area/alert-rule page diffs, and `src/app/(dashboard)/admin/capacity/capacity-content.tsx`.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: slice1 implementation direction is sound, but tests under-locked two approved behaviors: the 44px Select trigger contract did not assert the required `sm:min-h-[44px]` override, and alert type/severity changes were not asserted through the save POST body. slice2 plan correctly chose Option A, but needed mandatory DOM-order coverage and loading-skeleton alignment before implementation.
+- security risks found: no auth, RLS, DB schema, PHI projection, audit logging, secrets, billing/payment, destructive migration, external send, or production deploy surface was edited. Alert-rule severity is medication-safety relevant, so the review required payload-level persistence coverage before approval.
+- performance issues found: no runtime performance issue was introduced or edited. gbrain MCP search/index freshness is stale for CareViaX write-through memories, so current repo/ledgers/local memory files remain the reliable bootstrap source until reindex/sync.
+- validation commands: `pnpm exec vitest run 'src/app/(dashboard)/admin/service-areas/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' --reporter=dot --testTimeout=30000`; scoped eslint for the four slice1 files; scoped prettier for the four slice1 files; scoped `git diff --check` for the four slice1 files; `pnpm exec prettier --check .agent-loop/REVIEW_LOG.md .agent-loop/PATCH_INBOX.md`; `git diff --check -- .agent-loop/REVIEW_LOG.md .agent-loop/PATCH_INBOX.md`.
+- validation results: slice1 focused Vitest passed 11/11; scoped ESLint, Prettier, and diff-check passed; ledger Prettier and diff-check passed.
+- remaining work: wait for Claude rev2 PATCH_REVIEW_REQUEST for slice1, wait for ACK/revised PLAN_REVIEW_REQUEST for slice2, and review/verify those before approval. Do not edit Claude-locked admin source files.
+- next action: release the temporary ledger lock over `.agent-loop/REVIEW_LOG.md` / `.agent-loop/PATCH_INBOX.md`, drain agmsg, then process the next Claude-origin message first.
+
 ### 20260622-1332 JST
 
 - current task: record landing of the approved medical-ui stabilization plus prescription-intake guardrail slice.
@@ -2426,3 +2478,173 @@ Backup directory:
 - validation results: Claude approved the policy patch; scoped Prettier and diff-check passed after the peer-approved status update.
 - remaining work: commit the independent policy/protocol/ledger docs and send Claude a `LOCK_RELEASE` / FYI with commit hash. Medical-ui source/test gate remains separate and unreleased.
 - next action: drain agmsg, re-run scoped policy validation, commit policy docs only, release the policy lock, then resume medical-ui gate handling.
+
+### 20260622-1456 JST
+
+- current task: codex-lead peer review for Claude slice1 admin Base UI Select migration rev2, plus ledger closure for PI-007.
+- files inspected: agmsg inbox output, `.agent-loop/LOCKS.md`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, `.codex/ralph-state.md`, `src/app/(dashboard)/admin/service-areas/page.test.tsx`, `src/app/(dashboard)/admin/alert-rules/page.test.tsx`, `src/app/(dashboard)/admin/service-areas/page.tsx`, and `src/app/(dashboard)/admin/alert-rules/page.tsx`.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: rev1 tests under-locked the approved 44px select trigger contract and did not prove changed alert type/severity were serialized into the save POST body. Rev2 closes both findings; no new blocker found.
+- security risks found: no auth, billing, payment, RLS, DB, API route, secret, cookie, or PHI projection behavior was edited by Codex. Review confirmed the alert-rules payload assertion covers only static test values and no secrets.
+- performance issues found: no product request fan-out, DB query, render-loop, or async behavior changed in this review-only slice.
+- validation commands: test-auditor focused Vitest for the two page test files; verifier `pnpm exec vitest run 'src/app/(dashboard)/admin/service-areas/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' --reporter=dot --testTimeout=30000`; verifier scoped ESLint, scoped Prettier, and scoped `git diff --check` for the two test files; direct agmsg inbox drains.
+- validation results: focused Vitest passed with 2 files / 11 tests; scoped ESLint passed; scoped Prettier passed; scoped `git diff --check` passed. Rev2 PATCH_REVIEW_RESULT was sent as approved, and PI-007 is marked addressed in `PATCH_INBOX.md`.
+- remaining work: wait for Claude's next PATCH/VERIFY request, especially slice2 capacity implementation after the accepted plan constraints. Do not edit Claude-locked slice1/slice2 source or test files.
+- next action: release the ledger lock over agmsg, then continue the Codex cycle by draining inbox and reviewing any pending Claude request.
+
+### 20260622-1502 JST
+
+- current task: gbrain writeback for codex-lead review finding from F-20260622-001-slice1.
+- files inspected: `gbrain --help`, `gbrain put --help`, `/Users/yusuke/brain/projects/careviax/reviews/2026-06-22/ssot-token-fork-caught-in-review.md`, agmsg inbox / LOCK_GRANT output, `.agent-loop/STATE.md`, and `.codex/ralph-state.md`.
+- files changed: `/Users/yusuke/brain/projects/careviax/reviews/2026-06-22/admin-select-test-contract-payload-and-hit-target.md`, `.agent-loop/STATE.md`, and this Ralph state entry.
+- bugs found: `gbrain put` failed before creating the page because the local gbrain embedding configuration expected 768 dimensions while the current embedder returned 1024. No page was found after the failed put.
+- security risks found: the writeback contains only static test values, file paths, review outcome, and commit hash; no PHI, secret, cookie, env value, raw log, or request header was persisted.
+- performance issues found: none in product code. The gbrain write path has an operational embedding configuration mismatch that should be fixed separately.
+- validation commands: `gbrain put projects/careviax/reviews/2026-06-22/admin-select-test-contract-payload-and-hit-target`; `gbrain get projects/careviax/reviews/2026-06-22/admin-select-test-contract-payload-and-hit-target`; `ls -l /Users/yusuke/brain/projects/careviax/reviews/2026-06-22/admin-select-test-contract-payload-and-hit-target.md`; scoped ledger Prettier/diff-check to run next.
+- validation results: `gbrain put` failed with `expected 768 dimensions, not 1024`; `gbrain get` returned page_not_found; file-plane ReviewFinding was added directly under `/Users/yusuke/brain`. STATE memory list now includes the memory_id with the caveat.
+- remaining work: release the STATE/Ralph lock after scoped formatting/diff-check, then wait for Claude slice2 PATCH_REVIEW_REQUEST.
+- next action: run scoped Prettier/diff-check for `.agent-loop/STATE.md` and `.codex/ralph-state.md`, release the lock, then drain inbox.
+
+### 20260622-1515 JST
+
+- current task: write loop-engineering FixPatterns while waiting for Claude slice2 rev3.
+- files inspected: agmsg inbox output, `.agent-loop/STATE.md`, existing gbrain FixPattern `/Users/yusuke/brain/projects/careviax/fix-patterns/route-wire-shape-schema-parity-tests.md`, and `.codex/ralph-state.md`.
+- files changed: `/Users/yusuke/brain/projects/careviax/fix-patterns/2026-06-22/serial-no-unused-after-next-build.md`, `/Users/yusuke/brain/projects/careviax/fix-patterns/2026-06-22/agloop-shell-backticks-strip-tokens.md`, `.agent-loop/STATE.md`, and this Ralph state entry.
+- bugs found: no product bug. Captured two loop/tooling pitfalls: concurrent Next.js build + no-unused can race `.next/types`, and shell-built AGLOOP bodies with backticks can lose token text through command substitution.
+- security risks found: no PHI, secret, cookie, env value, raw log, request header, or personal data was persisted. Entries contain only command names, file paths, and sanitized operational lessons.
+- performance issues found: no product performance path changed.
+- validation commands: gbrain file lint and scoped ledger Prettier/diff-check to run next.
+- validation results: pending.
+- remaining work: validate the new gbrain file-plane entries and release the STATE/Ralph lock, unless a Claude-origin message arrives first.
+- next action: drain inbox, then run `gbrain lint` on both new files plus scoped Prettier/diff-check for `.agent-loop/STATE.md` and `.codex/ralph-state.md`.
+
+### 20260622-1518 JST
+
+- current task: codex-lead patch review for Claude slice2 capacity Option A rev2 and rev3, then ledger closure.
+- files inspected: agmsg inbox output, `src/app/(dashboard)/admin/capacity/capacity-content.tsx`, `src/app/(dashboard)/admin/capacity/capacity-content.test.tsx`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and `.codex/ralph-state.md`.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: rev2 closed the major DOM-order and loading-coverage gaps but still did not assert the explicit `attention(1)` skeleton count required by the acceptance text. rev3 added the missing assertion and closed the test-contract gap.
+- security risks found: no auth, billing, payments, RLS, DB, API route, secret, cookie, PHI projection, migration, or production surface changed. Review scope was UI layout/test only.
+- performance issues found: no product request fan-out, query shape, caching, render loop, or async behavior changed in the reviewed diff.
+- validation commands: rev2 focused `pnpm exec vitest run 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx' --reporter=dot --testTimeout=30000`; rev2 scoped ESLint/Prettier/diff-check for the two capacity files; rev3 focused Vitest 3/3; rev3 scoped ESLint/Prettier/diff-check; verifier subagent; test-auditor subagents.
+- validation results: rev2 direct focused gates passed but test-auditor requested `attention(1)`. Rev3 direct focused Vitest passed 3/3, scoped ESLint passed, scoped Prettier passed, scoped `git diff --check` passed, and test-auditor approved. PATCH_REVIEW_RESULT approved was sent for rev3. PI-008 and PI-009 are marked addressed.
+- remaining work: validate and release the held ledger/state locks, then drain inbox for Claude DONE / lock release on slice2.
+- next action: run scoped ledger Prettier/diff-check and gbrain file lint, then send LOCK_RELEASE messages for `codex-ledger-slice2-rev2` and `codex-loop-fixpatterns-state`.
+
+### 20260622-1521 JST
+
+- current task: close codex-held ledger/state locks after slice2 DONE and loop FixPattern writeback.
+- files inspected: agmsg inbox output, `git status --short --untracked-files=all`, `.agent-loop/STATE.md`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, `.codex/ralph-state.md`, and two new gbrain FixPattern files under `/Users/yusuke/brain/projects/careviax/fix-patterns/2026-06-22/`.
+- files changed: this Ralph state entry only since the prior ledger update.
+- bugs found: none in product code. Confirmed slice2 DONE commit `91d47e84` removed the two capacity paths from dirty status.
+- security risks found: no PHI, secret, cookie, env value, raw log, request header, or personal data was persisted in the loop FixPatterns or ledgers.
+- performance issues found: no product performance path changed.
+- validation commands: `gbrain lint /Users/yusuke/brain/projects/careviax/fix-patterns/2026-06-22/serial-no-unused-after-next-build.md`; `gbrain lint /Users/yusuke/brain/projects/careviax/fix-patterns/2026-06-22/agloop-shell-backticks-strip-tokens.md`; `pnpm exec prettier --check .agent-loop/STATE.md .agent-loop/REVIEW_LOG.md .agent-loop/PATCH_INBOX.md .codex/ralph-state.md`; `git diff --check -- .agent-loop/STATE.md .agent-loop/REVIEW_LOG.md .agent-loop/PATCH_INBOX.md .codex/ralph-state.md`.
+- validation results: both gbrain file-plane FixPatterns linted with 0 issues; scoped Prettier passed; scoped `git diff --check` passed.
+- remaining work: release `codex-ledger-slice2-rev2` and `codex-loop-fixpatterns-state` locks over agmsg, then drain inbox once more. Claude will refresh STATE for the slice3 resume point after release.
+- next action: send both LOCK_RELEASE messages, then final inbox/status check.
+
+### 20260622-1508 JST
+
+- current task: codex-lead patch review for Claude slice2 capacity Option A implementation rev1.
+- files inspected: agmsg inbox output, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/admin/capacity/capacity-content.tsx`, `src/app/(dashboard)/admin/capacity/capacity-content.test.tsx`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and `.codex/ralph-state.md`.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: implementation order itself is correct, but rev1 tests under-lock the approved plan. The DOM-order test anchors attention after only the first KPI heading `訪問枠`, so it would pass if attention moved between KPI cards. Loading skeleton parity is implemented but not regression-tested.
+- security risks found: no auth, billing, payments, RLS, DB, API route, secret, cookie, PHI projection, migration, or production surface was edited or implicated. Review scope was UI layout/test only.
+- performance issues found: no product request fan-out, query shape, caching, render loop, or async behavior changed in the reviewed diff.
+- validation commands: `pnpm exec vitest run 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/admin/capacity/capacity-content.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/admin/capacity/capacity-content.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/admin/capacity/capacity-content.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx'`; spec_guardian/test-auditor/accessibility_ux_reviewer subagent reviews.
+- validation results: focused Vitest passed 1 file / 2 tests; scoped ESLint passed; scoped Prettier passed; scoped `git diff --check` passed. spec_guardian and accessibility/UX approved implementation direction; test-auditor requested test-strengthening. PATCH_REVIEW_RESULT was sent as changes_requested, and Claude ACKed with a rev2 plan.
+- remaining work: wait for Claude slice2 rev2 PATCH_REVIEW_REQUEST. Do not edit Claude-locked capacity source/test files.
+- next action: validate ledger formatting/diff-check, release ledger lock, then drain inbox for rev2.
+
+### 20260622-1548 JST
+
+- current task: codex-lead plan review for Claude slice3 document-templates PageSection/hierarchy plan rev1 and rev2.
+- files inspected: agmsg inbox output, `docs/ui-ux-design-guidelines.md`, `src/components/layout/page-section.tsx`, `src/components/ui/card.tsx`, `src/components/features/admin/admin-page-header.tsx`, `src/app/(dashboard)/admin/document-templates/template-content.tsx`, `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`, `src/app/(dashboard)/admin/document-templates/template-body-editor.tsx`, `src/app/(dashboard)/admin/document-templates/template-body-editor.test.ts`, `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`, `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state file.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: rev1 plan missed real h3 semantics for nested CardTitle subpanels and had brittle heading tests. Rev2 fixed those semantic requirements but still allowed a static TemplateBodyEditor mock that could pass while the real editor would disappear on an empty/wrong templates prop, and it did not explicitly require scoped heading assertions against duplicate/ambiguous matches.
+- security risks found: no auth, billing, payments, RLS, DB, API route, secret, cookie, PHI projection, migration, production deploy, or destructive path was edited or implicated. Review scope is UI semantics and tests only.
+- performance issues found: no runtime request fan-out, query shape, render loop, bundle/dependency, or async behavior change is proposed beyond static heading markup and tests.
+- validation commands: agmsg inbox drains; read-only file inspections with `rg`, `sed`, and `nl`; spec_guardian, accessibility_ux_reviewer, and test-auditor subagent plan reviews for rev1; spec_guardian and test-auditor subagent plan reviews for rev2.
+- validation results: rev1 PLAN_REVIEW_RESULT sent as changes_requested. Rev2 closed the design/semantics blockers but test-auditor found two remaining test-contract issues, so PLAN_REVIEW_RESULT was sent as changes_requested again. PI-010 tracks the outstanding slice3 plan corrections.
+- remaining work: wait for Claude slice3 rev3 PLAN_REVIEW_REQUEST. Do not edit Claude UI source/test files. Keep only the ledger lock active until scoped formatting/diff-check passes and release is sent.
+- next action: run scoped Prettier and `git diff --check` for `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and `.codex/ralph-state.md`, then release the ledger lock unless a higher-priority Claude message arrives.
+
+### 20260622-1558 JST
+
+- current task: codex-lead plan review for Claude slice3 document-templates PageSection/hierarchy plan rev3 and rev4.
+- files inspected: agmsg inbox output, `src/app/(dashboard)/admin/document-templates/template-content.tsx`, `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`, `src/app/(dashboard)/admin/document-templates/template-body-editor.tsx`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state file.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: rev3 fixed the scoped heading assertions but its TemplateBodyEditor mock still rendered for any non-empty templates array, so a wrong id/name/content mapping into the editor prop contract could pass. Rev4 closes that by checking the expected fixture fields before rendering the body-editor sentinel.
+- security risks found: no auth, billing, payments, RLS, DB, API route, secret, cookie, PHI projection, migration, production deploy, or destructive path was edited or implicated. Review scope remains UI semantics and test contract only.
+- performance issues found: no runtime request fan-out, query shape, render loop, bundle/dependency, or async behavior change is proposed beyond static heading markup and tests.
+- validation commands: agmsg inbox drains; read-only file inspections with `nl`; focused test-auditor plan review for rev3 and rev4; scoped ledger Prettier/diff-check to run next.
+- validation results: rev3 PLAN_REVIEW_RESULT sent as changes_requested for the length-only mock. Rev4 PLAN_REVIEW_RESULT sent as approved after test-auditor confirmed the field-validating mock closes PI-010. PI-010 is marked addressed.
+- remaining work: run scoped Prettier and `git diff --check` for the three ledger files, release the ledger lock, then wait for Claude implementation PATCH_REVIEW_REQUEST. Do not edit Claude UI source/test files.
+- next action: validate ledger formatting/diff-check, send DONE/release for the ledger lock, then drain inbox for Claude's implementation lock/patch flow.
+
+### 20260622-1618 JST
+
+- current task: codex-lead patch review for Claude slice3 document-templates PageSection/hierarchy implementation rev1.
+- files inspected: agmsg inbox output, `git status --short --untracked-files=all`, `src/app/(dashboard)/admin/document-templates/template-content.tsx`, `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`, `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`, `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`, `src/app/(dashboard)/admin/document-templates/template-body-editor.tsx`, `src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/VERIFY_LOG.md`, and this Ralph state file.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/VERIFY_LOG.md`, and this Ralph state entry. Claude's first ledger grant omitted `.agent-loop/VERIFY_LOG.md` and listed `.agent-loop/PATCH_INBOX.md` instead, so Codex requested and received a separate VERIFY_LOG lock before appending the gate row.
+- bugs found: no blocking product bug. The implementation follows the approved rev4 plan: PageSection h2 wrappers, nested CardTitle asChild h3 panels, TemplateBodyEditor aria-labelledby with h3 columns, field-validating parent mock, scoped heading assertions, and the new render test are all present. Non-blocking note sent to Claude to stage the new `template-body-editor.render.test.tsx` with the five modified files; Claude DONE later confirmed commit `f40a77f5` included all six owned files.
+- security risks found: no auth, billing, payments, RLS, DB, API route, secret, cookie, PHI projection/logging, migration, production deploy, external send, or destructive path changed. Review scope is UI semantics and tests only.
+- performance issues found: no runtime request fan-out, query shape, render loop, bundle/dependency, async behavior, or cache behavior change beyond static heading markup and tests.
+- validation commands: `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' 'src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx' --reporter=dot --testTimeout=30000`; scoped `pnpm exec eslint --max-warnings=0` for the six locked files; scoped `pnpm exec prettier --check` for the six locked files; `git diff --check` for the five tracked locked files; `git diff --no-index --check /dev/null 'src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx'`; `pnpm typecheck`; `pnpm build`; `pnpm typecheck:no-unused`; test-auditor, accessibility_ux_reviewer, and reviewer subagent checks.
+- validation results: focused Vitest passed 3 files / 8 tests; scoped ESLint passed; scoped Prettier passed; tracked and untracked diff-checks passed; `pnpm typecheck` passed; `pnpm build` passed; `pnpm typecheck:no-unused` passed serially after build. All three checker subagents approved. PATCH_REVIEW_RESULT approved was sent to Claude, Claude DONE reported commit `f40a77f5`, and VERIFY_LOG now records the independent pass row with E2E skipped because this slice only changes static admin UI hierarchy and focused unit/render tests.
+- remaining work: validate/release the REVIEW_LOG/PATCH_INBOX/Ralph and VERIFY_LOG ledger locks. Do not edit Claude UI source/test files.
+- next action: run scoped Prettier and `git diff --check` for `.agent-loop/REVIEW_LOG.md`, `.agent-loop/VERIFY_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and `.codex/ralph-state.md`, then send DONE/release for both ledger locks.
+
+### 20260622-1655 JST
+
+- current task: codex-lead plan review for Claude slice4a drug-masters native Select migration rev1, then rev2 re-review.
+- files inspected: agmsg inbox output, `docs/ui-ux-design-guidelines.md`, `src/components/ui/select.tsx`, `node_modules/@base-ui/react/select/*`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, prior slice1 select tests under `src/app/(dashboard)/admin/service-areas/page.test.tsx` and `src/app/(dashboard)/admin/alert-rules/page.test.tsx`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state file.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: rev1 split strategy was sound, but the plan would under-lock behavior. Placeholder-only conversion could remove the existing clear-to-unselected path for コピー元拠点 and テンプレート; target-site changes could leave copySourceSiteId pointing at the same site as the new target; the local MockSelect needed aria-label/aria-labelledby and empty/sentinel item support; and trigger-only 44px coverage did not account for app-rendered SelectItems.
+- security risks found: no auth, billing, payments, RLS, DB, API route, secret, cookie, PHI projection/logging, migration, production deploy, external send, or destructive path was edited or implicated. Review scope is client UI/test only.
+- performance issues found: no request fan-out, query shape, caching, render loop, bundle/dependency, or async behavior issue beyond the proposed local state-coupling fix.
+- validation commands: agmsg inbox drains; read-only file inspections with `rg`, `sed`, `nl`, and Base UI source reads; accessibility_ux_reviewer, test-auditor, and reviewer subagent checks for rev1; accessibility_ux_reviewer, test-auditor, and reviewer subagents started for rev2.
+- validation results: rev1 PLAN_REVIEW_RESULT was sent as changes_requested (protocol-corrected duplicate sent after the first envelope had an invalid UUID); Claude ACKed and sent rev2. PI-011 now tracks the rev1 requirements and is under re-review.
+- validation results update: rev2 closed the main behavior design and the target-site/copy-source clear guard is accepted in-slice. Rev2 PLAN_REVIEW_RESULT was sent as changes_requested for three narrow remaining items: SelectItem 44px tests must inspect original real item className instead of mock-injected classes, #2/#3 clear sentinel item labels must be explicit clear affordances, and the currently failing focused test file must be fixed before owner gates. Direct focused command run by codex: `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000` -> FAIL 1/20 because `getByText('薬剤マスター一覧')` matches both h1 and h2 at test line 322.
+- remaining work: wait for Claude slice4a rev3 PLAN_REVIEW_REQUEST. Do not edit Claude UI source/test files.
+- next action: record/validate ledger updates, release or extend the granted ledger lock as appropriate, then drain inbox for rev3.
+
+### 20260622-1708 JST
+
+- current task: codex-lead plan review for Claude slice4a drug-masters native Select migration rev3.
+- files inspected: agmsg inbox output, `docs/ui-ux-design-guidelines.md`, `src/components/ui/select.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state file.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: rev3 closed the previous test/a11y gaps, but its target-site-change guard still left target-scoped previews stale. `applyTemplateMutation` posts `target_site_id: effectiveSelectedSiteId` and stores `templatePreview`; CSV dry-run posts `site_id: effectiveSelectedSiteId` and stores `bulkPreview`. Switching #1 対象拠点 after a site_1 preview could leave site_1 counts visible while applying to site_2.
+- security risks found: no auth, billing, payments, RLS, DB, API route, secret, cookie, PHI projection/logging, migration, production deploy, external send, or destructive path was edited or implicated. Review scope is client UI state/test only.
+- performance issues found: no request fan-out, query shape, caching, render loop, bundle/dependency, or async performance issue beyond the local stale-state correctness guard.
+- validation commands: agmsg inbox drains; read-only file inspections with `rg` and `sed`; test-auditor, accessibility_ux_reviewer, and reviewer subagent plan checks; focused Vitest precheck remains the prior `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`.
+- validation results: test-auditor and accessibility_ux_reviewer approved rev3. correctness reviewer found the stale target-scoped preview blocker. PLAN_REVIEW_RESULT was sent as changes_requested, requiring #1 target-site onValueChange to clear `copySourceSiteId`, `copyPreview`, `templatePreview`, `bulkPreview`, and `bulkPreviewExpanded` while keeping rev3 contracts unchanged. Focused precheck still fails 1/20 on the existing duplicate `薬剤マスター一覧` assertion until Claude's planned test-only fix lands.
+- remaining work: review Claude slice4a rev4 PLAN_REVIEW_REQUEST, then send APPROVED if the complete target-scoped preview reset is now in plan. Do not edit Claude UI source/test files.
+- next action: validate these ledger updates under the granted lock, then process rev4.
+
+### 20260622-1715 JST
+
+- current task: codex-lead plan review for Claude slice4a drug-masters native Select migration rev4.
+- files inspected: agmsg inbox output, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-formulary-view-model.ts`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state file.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: no remaining source-design blocker in rev4; the target-site reset list now clears the target-scoped copy, template, and CSV preview states. One test-contract blocker remained: bulkPreview stale-clear coverage cannot be best-effort because CSV dry-run preview is scoped to `effectiveSelectedSiteId` and is the same stale-preview bug class as templatePreview.
+- security risks found: no auth, billing, payments, RLS, DB, API route, secret, cookie, PHI projection/logging, migration, production deploy, external send, or destructive path was edited or implicated. Review scope is client UI state/test only.
+- performance issues found: no request fan-out, query shape, caching, render loop, bundle/dependency, or async performance issue beyond local stale-state correctness.
+- validation commands: agmsg inbox drains; read-only file inspections with `rg` and `sed`; reviewer and test-auditor subagent plan checks.
+- validation results: correctness reviewer approved rev4 source reset list, but test-auditor requested mandatory bulkPreview stale-clear coverage. PLAN_REVIEW_RESULT was sent as changes_requested requiring a test flow that drives CSV dry-run success, shows `CSV反映前プレビュー`, changes #1 対象拠点 to site_2, and asserts the preview is gone / bulk apply is no longer actionable.
+- remaining work: review Claude slice4a rev5 PLAN_REVIEW_REQUEST, then send APPROVED if mandatory bulkPreview coverage is now in plan. Do not edit Claude UI source/test files.
+- next action: validate these ledger updates under the granted lock, then process rev5.
+
+### 20260622-1720 JST
+
+- current task: codex-lead plan review for Claude slice4a drug-masters native Select migration rev5 and lock coordination for implementation.
+- files inspected: agmsg inbox output, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`, `src/app/(dashboard)/admin/drug-masters/drug-master-formulary-view-model.ts`, `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state file.
+- files changed: `.agent-loop/REVIEW_LOG.md`, `.agent-loop/PATCH_INBOX.md`, and this Ralph state entry.
+- bugs found: no remaining plan blocker. Rev5 makes bulkPreview stale-clear behavior coverage mandatory, not best-effort, using an options-aware mutation mock while preserving `mutationMutateMock` recording. This closes the rev4 test-contract gap.
+- security risks found: no auth, billing, payments, RLS, DB, API route, secret, cookie, PHI projection/logging, migration, production deploy, external send, or destructive path was edited or implicated. Review scope is client UI state/test planning only.
+- performance issues found: no request fan-out, query shape, caching, render loop, bundle/dependency, or async performance issue beyond local stale-state correctness.
+- validation commands: agmsg inbox drains; read-only file inspections with `sed`; focused test-auditor rev5 plan review.
+- validation results: rev5 PLAN_REVIEW_RESULT was sent as approved. PI-011 is marked addressed for plan review. Codex also granted Claude's implementation lock for `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx` and `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`; Codex will not edit those files.
+- remaining work: wait for Claude slice4a PATCH_REVIEW_REQUEST. PATCH_REVIEW must verify the approved rev5 contract literally: non-injected SelectItem class capture, explicit clear labels, complete target-site reset, mandatory templatePreview and bulkPreview stale-clear tests, existing red fix, and focused/full owner gates.
+- next action: validate these ledger updates under the granted lock, release the ledger lock, then drain inbox for Claude implementation/patch review.
