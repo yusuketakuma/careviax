@@ -287,6 +287,13 @@ the numbered entries that follow.
       `FEATURE_QUEUE` intake entry (via `prompts/feature-intake.md` classification) with a one-line scope +
       owner-lane guess, so the next cycle always has graded candidates. Discovery is read-only; new
       candidates still go through normal PLAN_REVIEW + LOCK before implementation.
+      **Tooling — prefer gstack skills for discovery/audit over a bespoke general-purpose subagent**
+      (per CLAUDE.md gstack directive; they are purpose-built and higher-signal). Route by domain:
+      `/health` (code-quality / all-checks candidates), `/design-review` or `/design-consultation`
+      (UI/UX / a11y / state-display gaps), `/cso` (security / threat-model — advisory only; security is a
+      hard-stop lane), `/investigate` (root-cause for a specific regression). Use a general-purpose
+      subagent only when no gstack skill fits. gstack runs in the main loop, so keep discovery passes
+      bounded and yield immediately to inbound peer messages. Codex uses the equivalent on its side.
     - **Symmetric for Codex.** Codex follows the same two idle obligations on its side (delegate/handoff +
       auto-discover into FEATURE_QUEUE), within its backend/refactor/test lane.
     - **Safety envelope (unchanged):** discovery/recon read-only; writes only to own lane / gbrain /
