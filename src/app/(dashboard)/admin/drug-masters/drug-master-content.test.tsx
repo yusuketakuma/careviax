@@ -21,6 +21,7 @@ const {
   mutationMutateMock,
   lastMutationOptions,
   invalidateQueriesMock,
+  capturedQueryKeys,
 } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
   pendingRequestsMock: vi.fn(),
@@ -29,6 +30,9 @@ const {
   // Controllable so a test can hold invalidation pending and assert previews are already cleared
   // synchronously (before the await resolves). Defaults to immediate resolve.
   invalidateQueriesMock: vi.fn((): Promise<void> => Promise.resolve()),
+  // slice4b: every useQuery call records its FULL queryKey here so filter tests can assert the
+  // key shape reacts to the migrated Select state (state+queryKey, not DOM-only).
+  capturedQueryKeys: [] as ReadonlyArray<unknown>[],
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -45,6 +49,7 @@ vi.mock('@tanstack/react-query', () => ({
     variables: null,
   }),
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+    capturedQueryKeys.push(queryKey as ReadonlyArray<unknown>);
     const key = queryKey[0];
     if (key === 'drug-masters') {
       return { data: { data: [], totalCount: 0, hasMore: false }, isLoading: false };
@@ -342,7 +347,13 @@ vi.mock('@/components/ui/select', async () => {
   const SelectContent = ({ children }: { children: ReactNode }) => <>{children}</>;
   const SelectItem = ({ children }: ItemProps) => <>{children}</>;
   const SelectTrigger = ({ children }: TriggerProps) => <>{children}</>;
-  const SelectValue = ({ placeholder }: { placeholder?: string }) => <>{placeholder ?? null}</>;
+  const SelectValue = ({
+    placeholder,
+    children,
+  }: {
+    placeholder?: string;
+    children?: ReactNode;
+  }) => <>{children ?? placeholder ?? null}</>;
 
   function collectItems(children: ReactNode, selectKey: string): ItemProps[] {
     const items: ItemProps[] = [];
@@ -397,6 +408,25 @@ vi.mock('@/components/ui/select', async () => {
     return placeholder;
   }
 
+  // Mirror findPlaceholder, but return the SelectValue element's own props so we can faithfully
+  // model Base UI's closed-trigger label contract: children (the production label) win over
+  // placeholder, and a BARE SelectValue (neither) must fall back to the raw value — the
+  // regression a bare `<SelectValue />` would ship.
+  function findSelectValue(
+    children: ReactNode,
+  ): { children?: ReactNode; placeholder?: string } | undefined {
+    let found: { children?: ReactNode; placeholder?: string } | undefined;
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as { placeholder?: string; children?: ReactNode };
+      if (child.type === SelectValue && found === undefined) {
+        found = { children: props.children, placeholder: props.placeholder };
+      }
+      if (found === undefined) found = findSelectValue(props.children);
+    });
+    return found;
+  }
+
   function MockSelect({
     value,
     onValueChange,
@@ -408,6 +438,7 @@ vi.mock('@/components/ui/select', async () => {
   }) {
     const triggerProps = findTriggerProps(children);
     const placeholder = findPlaceholder(children);
+    const selectValueProps = findSelectValue(children);
     // Per-Select identity for capture/dedupe: prefer the trigger id, then aria-label, then
     // aria-labelledby (all already forwarded by the mock). These are unique per migrated Select.
     const selectKey =
@@ -415,34 +446,46 @@ vi.mock('@/components/ui/select', async () => {
       triggerProps?.['aria-label'] ??
       triggerProps?.['aria-labelledby'] ??
       'unknown-select';
+    // Reproduce Base UI's CLOSED-trigger label contract on SelectPrimitive.Value:
+    //   children (production-supplied label) > placeholder > bare fallback.
+    // The bare fallback is the regression: a non-empty value renders raw (e.g. "operations"),
+    // an empty-string value renders blank — which is exactly what these assertions must catch.
+    const selectValueChildrenText = flattenLabel(selectValueProps?.children);
+    const displayLabel =
+      selectValueChildrenText !== ''
+        ? selectValueChildrenText
+        : (selectValueProps?.placeholder ?? (value === '' ? '' : String(value ?? '')));
     const items = collectItems(children, selectKey);
     return (
-      <select
-        id={triggerProps?.id}
-        className={triggerProps?.className}
-        aria-label={triggerProps?.['aria-label']}
-        aria-labelledby={triggerProps?.['aria-labelledby']}
-        aria-describedby={triggerProps?.['aria-describedby']}
-        aria-invalid={triggerProps?.['aria-invalid']}
-        value={value}
-        onChange={(event) => {
-          onValueChange?.(event.target.value);
-          // R1 teeth: run the one-shot stale-onSuccess hook in the SAME synchronous turn, before
-          // RTL flushes passive effects, so the synchronous ref write is what must reject it.
-          const hook = afterSelectChangeHook.current;
-          if (hook) {
-            afterSelectChangeHook.current = null;
-            hook();
-          }
-        }}
-      >
-        <option value="">{placeholder ?? ''}</option>
-        {items.map((item) => (
-          <option key={String(item.value)} value={String(item.value)}>
-            {React.Children.toArray(item.children).join('')}
-          </option>
-        ))}
-      </select>
+      <>
+        <span data-testid={`${selectKey}-display`}>{displayLabel}</span>
+        <select
+          id={triggerProps?.id}
+          className={triggerProps?.className}
+          aria-label={triggerProps?.['aria-label']}
+          aria-labelledby={triggerProps?.['aria-labelledby']}
+          aria-describedby={triggerProps?.['aria-describedby']}
+          aria-invalid={triggerProps?.['aria-invalid']}
+          value={value}
+          onChange={(event) => {
+            onValueChange?.(event.target.value);
+            // R1 teeth: run the one-shot stale-onSuccess hook in the SAME synchronous turn, before
+            // RTL flushes passive effects, so the synchronous ref write is what must reject it.
+            const hook = afterSelectChangeHook.current;
+            if (hook) {
+              afterSelectChangeHook.current = null;
+              hook();
+            }
+          }}
+        >
+          <option value="">{placeholder ?? ''}</option>
+          {items.map((item) => (
+            <option key={String(item.value)} value={String(item.value)}>
+              {React.Children.toArray(item.children).join('')}
+            </option>
+          ))}
+        </select>
+      </>
     );
   }
 
@@ -1528,6 +1571,208 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     expect(capturedSelectItems.every((item) => item.className?.includes('min-h-[44px]'))).toBe(
       true,
     );
+  });
+});
+
+describe('DrugMasterContent filter select migration (slice4b)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useOrgIdMock.mockReturnValue('org_1');
+    pendingRequestsMock.mockReturnValue([]);
+    mutationMutateMock.mockClear();
+    lastMutationOptions.current = null;
+    capturedSelectItems.length = 0;
+    capturedQueryKeys.length = 0;
+    afterSelectChangeHook.current = null;
+    invalidateQueriesMock.mockReset();
+    invalidateQueriesMock.mockImplementation(async () => undefined);
+  });
+
+  // The import-logs queryKey is ['drug-master-import-logs', <source>, <status>]. We assert the
+  // LATEST captured key (the render after the Select change) reflects the new filter state —
+  // state+queryKey, not DOM-only.
+  function latestImportLogsKey(): ReadonlyArray<unknown> {
+    const matches = capturedQueryKeys.filter((key) => key[0] === 'drug-master-import-logs');
+    return matches[matches.length - 1] ?? [];
+  }
+
+  // The drug-masters queryKey is ['drug-masters', orgId, params] where params is the encoded
+  // URLSearchParams string (category lives there).
+  function latestDrugMastersParams(): string {
+    const matches = capturedQueryKeys.filter((key) => key[0] === 'drug-masters');
+    return (matches[matches.length - 1]?.[2] as string) ?? '';
+  }
+
+  it('reflects the new source on the import-logs queryKey when ソース changes (#5)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(latestImportLogsKey()).toEqual(['drug-master-import-logs', 'all', 'all']);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '取込履歴ソース' }), {
+      target: { value: 'pmda' },
+    });
+
+    expect(latestImportLogsKey()).toEqual(['drug-master-import-logs', 'pmda', 'all']);
+  });
+
+  it('reflects the new status on the import-logs queryKey when 状態 changes (#6)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '取込履歴状態' }), {
+      target: { value: 'failed' },
+    });
+
+    expect(latestImportLogsKey()).toEqual(['drug-master-import-logs', 'all', 'failed']);
+  });
+
+  it('adds then removes the category param on the drug-masters queryKey via 薬効分類フィルタ (#7)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    // Default '' (全薬効分類) → no category param.
+    expect(new URLSearchParams(latestDrugMastersParams()).get('category')).toBeNull();
+
+    const categoryCombobox = screen.getByRole('combobox', { name: '薬効分類フィルタ' });
+    fireEvent.change(categoryCombobox, { target: { value: '3' } });
+    expect(new URLSearchParams(latestDrugMastersParams()).get('category')).toBe('3');
+
+    // Back to '' (全薬効分類) must be reselectable and must drop the param (Base UI keeps value=''
+    // selectable under a controlled '' value; it is NOT collapsed to a placeholder).
+    fireEvent.change(categoryCombobox, { target: { value: '' } });
+    expect(new URLSearchParams(latestDrugMastersParams()).get('category')).toBeNull();
+  });
+
+  it('carries purpose=audit on the export request when CSV出力用途=監査 (#4)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'CSV出力用途' }), {
+      target: { value: 'audit' },
+    });
+
+    // Click CSV出力 to capture the export mutation options, then execute the REAL mutationFn
+    // against a stubbed fetch so the production purpose stamping runs (not DOM-only).
+    fireEvent.click(screen.getByRole('button', { name: /CSV出力/ }));
+
+    const options = lastMutationOptions.current;
+    expect(options?.mutationFn).toBeTruthy();
+
+    let requestedUrl = '';
+    const fetchMock = vi.fn(async (url: string) => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        blob: async () => new Blob(['csv']),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+    try {
+      await options!.mutationFn!();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(requestedUrl).toContain('/api/pharmacy-drug-stocks/export');
+    expect(new URL(requestedUrl, 'http://localhost').searchParams.get('purpose')).toBe('audit');
+  });
+
+  it('keeps >=44px on all slice4b filter triggers (#4/#5/#6/#7)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    for (const name of ['CSV出力用途', '取込履歴ソース', '取込履歴状態', '薬効分類フィルタ']) {
+      const trigger = screen.getByRole('combobox', { name });
+      expect(trigger.className).toContain('min-h-[44px]');
+      expect(trigger.className).toContain('sm:min-h-[44px]');
+    }
+  });
+
+  it('exposes the migrated filter comboboxes by accessible name (#4/#5/#6/#7)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(screen.getByRole('combobox', { name: 'CSV出力用途' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '取込履歴ソース' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '取込履歴状態' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '薬効分類フィルタ' })).toBeTruthy();
+  });
+
+  // PER-Select empty/clear contract via capturedSelectItems keyed by selectKey (the trigger
+  // aria-label). #4/#5/#6 render their real options only — no '' value, no __none__ sentinel.
+  // #7 MUST keep the '' 全薬効分類 item, with no __none__ sentinel.
+  it('enforces the per-Select empty-option contract (#4/#5/#6 no empty, #7 keeps empty) ', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const itemsFor = (selectKey: string) =>
+      capturedSelectItems.filter((item) => item.selectKey === selectKey);
+
+    // #4 CSV出力用途: exactly the four purposes, no '' / no __none__.
+    const exportValues = itemsFor('CSV出力用途')
+      .map((item) => String(item.value))
+      .sort();
+    expect(exportValues).toEqual(['audit', 'operations', 'pharmacist_review', 'posting']);
+    expect(exportValues).not.toContain('');
+    expect(exportValues).not.toContain('__none__');
+
+    // #5 取込履歴ソース: IMPORT_LOG_SOURCE_OPTIONS values (incl. non-empty 'all'), no '' / no __none__.
+    const sourceValues = itemsFor('取込履歴ソース').map((item) => String(item.value));
+    expect(sourceValues).toContain('all');
+    expect(sourceValues).toContain('pmda');
+    expect(sourceValues).not.toContain('');
+    expect(sourceValues).not.toContain('__none__');
+
+    // #6 取込履歴状態: IMPORT_LOG_STATUS_OPTIONS values (incl. non-empty 'all'), no '' / no __none__.
+    const statusValues = itemsFor('取込履歴状態').map((item) => String(item.value));
+    expect(statusValues).toContain('all');
+    expect(statusValues).toContain('failed');
+    expect(statusValues).not.toContain('');
+    expect(statusValues).not.toContain('__none__');
+
+    // #7 薬効分類フィルタ: MUST contain the '' 全薬効分類 item, no __none__ sentinel.
+    const categoryItems = itemsFor('薬効分類フィルタ');
+    const emptyCategory = categoryItems.find((item) => item.value === '');
+    expect(emptyCategory, 'category Select must keep the value="" 全薬効分類 item').toBeTruthy();
+    expect(flattenLabel(emptyCategory?.children)).toBe('全薬効分類');
+    expect(emptyCategory?.className).toContain('min-h-[44px]');
+    expect(categoryItems.map((item) => String(item.value))).not.toContain('__none__');
+  });
+
+  // CLOSED-TRIGGER LABEL CONTRACT (the bug codex found): the four migrated filter Selects must
+  // pass an explicit SelectValue child so the closed trigger renders the Japanese label, never a
+  // raw machine value (#4/#5/#6) or a blank (#7's value=""). The mock's `${selectKey}-display`
+  // span reproduces Base UI's bare-SelectValue fallback, so a regression to `<SelectValue />`
+  // would make these assertions fail.
+  it('renders the human-readable label on the closed trigger for the four filter Selects', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const displayText = (selectKey: string) =>
+      screen.getByTestId(`${selectKey}-display`).textContent;
+
+    // #4 CSV出力用途: default 'operations' → 運用台帳, after change to 'audit' → 監査.
+    expect(displayText('CSV出力用途')).toBe('運用台帳');
+    fireEvent.change(screen.getByRole('combobox', { name: 'CSV出力用途' }), {
+      target: { value: 'audit' },
+    });
+    expect(displayText('CSV出力用途')).toBe('監査');
+
+    // #5 取込履歴ソース: default 'all' → すべてのソース, after change to 'pmda' → PMDA.
+    expect(displayText('取込履歴ソース')).toBe('すべてのソース');
+    fireEvent.change(screen.getByRole('combobox', { name: '取込履歴ソース' }), {
+      target: { value: 'pmda' },
+    });
+    expect(displayText('取込履歴ソース')).toBe('PMDA');
+
+    // #6 取込履歴状態: default 'all' → すべての状態, after change to 'failed' → 失敗のみ.
+    expect(displayText('取込履歴状態')).toBe('すべての状態');
+    fireEvent.change(screen.getByRole('combobox', { name: '取込履歴状態' }), {
+      target: { value: 'failed' },
+    });
+    expect(displayText('取込履歴状態')).toBe('失敗のみ');
+
+    // #7 薬効分類フィルタ: default '' → 全薬効分類, change to '3' → 3: 代謝性医薬品,
+    // then back to '' → 全薬効分類 (the empty-string regression must not blank the trigger).
+    const categoryCombobox = () => screen.getByRole('combobox', { name: '薬効分類フィルタ' });
+    expect(displayText('薬効分類フィルタ')).toBe('全薬効分類');
+    fireEvent.change(categoryCombobox(), { target: { value: '3' } });
+    expect(displayText('薬効分類フィルタ')).toBe('3: 代謝性医薬品');
+    fireEvent.change(categoryCombobox(), { target: { value: '' } });
+    expect(displayText('薬効分類フィルタ')).toBe('全薬効分類');
   });
 });
 

@@ -108,6 +108,13 @@ type DrugMasterImportLog = {
 type ImportAction = 'ssk' | 'mhlw-price' | 'mhlw-generic' | 'hot' | 'pmda';
 type FormularyExportPurpose = 'operations' | 'audit' | 'posting' | 'pharmacist_review';
 
+const EXPORT_PURPOSE_LABELS: Record<FormularyExportPurpose, string> = {
+  operations: '運用台帳',
+  audit: '監査',
+  posting: '掲示用',
+  pharmacist_review: '薬剤師レビュー',
+};
+
 type DrugMasterDetail = DrugMasterRow & {
   hot_code: string | null;
   transitional_expiry_date: string | null;
@@ -2027,6 +2034,7 @@ function DrugMasterOperationalContent({
     category,
     safetyFilters: [genericOnly, narcoticOnly, highRiskOnly, lasaOnly, stockedOnly],
   });
+  const selectedExportPurposeLabel = EXPORT_PURPOSE_LABELS[exportPurpose];
   return (
     <PageScaffold>
       <div className="space-y-4">
@@ -3103,22 +3111,36 @@ function DrugMasterOperationalContent({
                   <Download className="size-3.5" aria-hidden="true" />
                   CSVテンプレート
                 </LoadingButton>
-                <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                   CSV出力用途
-                  <select
-                    aria-label="CSV出力用途"
+                  <Select
                     value={exportPurpose}
-                    onChange={(event) =>
-                      setExportPurpose(event.target.value as FormularyExportPurpose)
+                    onValueChange={(value) =>
+                      setExportPurpose((value ?? exportPurpose) as FormularyExportPurpose)
                     }
-                    className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <option value="operations">運用台帳</option>
-                    <option value="audit">監査</option>
-                    <option value="posting">掲示用</option>
-                    <option value="pharmacist_review">薬剤師レビュー</option>
-                  </select>
-                </label>
+                    <SelectTrigger
+                      aria-label="CSV出力用途"
+                      className="min-h-[44px] min-w-[160px] sm:min-h-[44px]"
+                    >
+                      <SelectValue>{selectedExportPurposeLabel}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="operations" className="min-h-[44px]">
+                        運用台帳
+                      </SelectItem>
+                      <SelectItem value="audit" className="min-h-[44px]">
+                        監査
+                      </SelectItem>
+                      <SelectItem value="posting" className="min-h-[44px]">
+                        掲示用
+                      </SelectItem>
+                      <SelectItem value="pharmacist_review" className="min-h-[44px]">
+                        薬剤師レビュー
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <LoadingButton
                   type="button"
                   size="sm"
@@ -3420,44 +3442,56 @@ function DrugMasterOperationalContent({
             ]}
           />
           <div className="grid gap-2 sm:grid-cols-2">
-            <label className="space-y-1">
+            <div className="space-y-1">
               <span className="text-xs font-medium text-muted-foreground">ソース</span>
-              <select
-                aria-label="取込履歴ソース"
+              <Select
                 value={importLogSourceFilter}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   setImportLogSourceFilter(
-                    event.target.value as 'all' | DrugMasterImportLog['source'],
+                    (value ?? importLogSourceFilter) as 'all' | DrugMasterImportLog['source'],
                   )
                 }
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
-                {IMPORT_LOG_SOURCE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1">
+                <SelectTrigger
+                  aria-label="取込履歴ソース"
+                  className="min-h-[44px] w-full sm:min-h-[44px]"
+                >
+                  <SelectValue>{selectedImportLogSourceLabel}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {IMPORT_LOG_SOURCE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="min-h-[44px]">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <span className="text-xs font-medium text-muted-foreground">状態</span>
-              <select
-                aria-label="取込履歴状態"
+              <Select
                 value={importLogStatusFilter}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   setImportLogStatusFilter(
-                    event.target.value as 'all' | DrugMasterImportLog['status'],
+                    (value ?? importLogStatusFilter) as 'all' | DrugMasterImportLog['status'],
                   )
                 }
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
-                {IMPORT_LOG_STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <SelectTrigger
+                  aria-label="取込履歴状態"
+                  className="min-h-[44px] w-full sm:min-h-[44px]"
+                >
+                  <SelectValue>{selectedImportLogStatusLabel}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {IMPORT_LOG_STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="min-h-[44px]">
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           {isLoadingLogs ? (
             <p className="text-sm text-muted-foreground">履歴を読み込み中です…</p>
@@ -3524,18 +3558,21 @@ function DrugMasterOperationalContent({
                 aria-label="医薬品検索"
               />
             </div>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-              aria-label="薬効分類フィルタ"
-            >
-              {CATEGORY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <Select value={category} onValueChange={(value) => setCategory(value ?? category)}>
+              <SelectTrigger
+                aria-label="薬効分類フィルタ"
+                className="min-h-[44px] min-w-[160px] sm:min-h-[44px]"
+              >
+                <SelectValue>{selectedCategoryLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORY_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="min-h-[44px]">
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <label className="flex items-center gap-1.5 text-sm">
               <input
                 type="checkbox"
