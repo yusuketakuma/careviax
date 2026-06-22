@@ -1,3 +1,5 @@
+import { buildReportHref } from '@/lib/reports/navigation';
+
 export type VisitWorkflowConferenceNoteType = 'pre_discharge' | 'service_manager';
 
 export type VisitWorkflowConferenceContext = {
@@ -101,10 +103,6 @@ function buildVisitBillingCandidatesHref(args: {
     visit_record_id: args.recordId,
     ...(args.scheduleId ? { schedule_id: args.scheduleId } : {}),
   }).toString()}`;
-}
-
-function buildReportHref(reportId: string) {
-  return `/reports/${encodeURIComponent(reportId)}`;
 }
 
 function buildVisitRecordHref(scheduleId: string) {

@@ -211,6 +211,29 @@ describe('visit-workflow-projection', () => {
     expect(new URLSearchParams(conferenceHref?.split('?')[1]).get('patient_id')).toBe(patientId);
   });
 
+  it.each(['.', '..'])('rejects exact dot-segment report id %s', (reportId) => {
+    expect(() =>
+      buildPostVisitWorkflowActions({
+        recordId: 'record_1',
+        scheduleId: 'schedule_1',
+        patientId: 'patient_1',
+        soapComplete: true,
+        collaborationMentioned: true,
+        medicationManagementComplete: true,
+        billingBlockerCount: 0,
+        careTeamContactCount: 1,
+        hasNextVisitSuggestion: false,
+        reports: [
+          {
+            id: reportId,
+            report_type: 'physician_report',
+            status: 'draft',
+          },
+        ],
+      }),
+    ).toThrow(RangeError);
+  });
+
   it('does not prompt candidate generation while billing candidates are still loading', () => {
     const actions = buildPostVisitWorkflowActions({
       recordId: 'record_1',
