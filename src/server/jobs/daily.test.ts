@@ -1690,6 +1690,8 @@ describe('checkPrescriptionOriginalRetention', () => {
   });
 
   it('creates pre-visit initial assessment tasks and notifications for first-claim schedules', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
     vi.mocked(evaluateInitialHomeVisitAssessmentRequirement).mockResolvedValue({
       required: true,
       satisfied: false,
@@ -1703,7 +1705,7 @@ describe('checkPrescriptionOriginalRetention', () => {
         scheduled_date: new Date('2026-03-29T00:00:00.000Z'),
         pharmacist_id: 'pharmacist_1',
         case_: {
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           patient: {
             name: '山田 太郎',
           },
@@ -1723,12 +1725,20 @@ describe('checkPrescriptionOriginalRetention', () => {
         relatedEntityId: 'schedule_1',
         dedupeKey: 'initial-home-visit-assessment:schedule_1',
         metadata: {
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           patient_name: '山田 太郎',
           schedule_id: 'schedule_1',
-          action_href: '/patients/patient_1',
+          action_href: encodedPatientHref,
           action_label: '患者記録を確認',
         },
+      }),
+    );
+    expect(evaluateInitialHomeVisitAssessmentRequirement).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        patientId: rawPatientId,
+        targetDate: new Date('2026-03-29T00:00:00.000Z'),
       }),
     );
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
@@ -1736,9 +1746,11 @@ describe('checkPrescriptionOriginalRetention', () => {
       expect.objectContaining({
         orgId: 'org_1',
         eventType: 'billing_initial_assessment_due',
+        link: encodedPatientHref,
         explicitUserIds: ['pharmacist_1'],
+        dedupeKey: 'initial-home-visit-assessment:schedule_1',
         metadata: {
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           schedule_id: 'schedule_1',
         },
       }),
