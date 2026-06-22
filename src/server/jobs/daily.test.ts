@@ -1826,9 +1826,11 @@ describe('checkVisitRecordRetention', () => {
     const originalTimezone = process.env.TZ;
     process.env.TZ = 'Asia/Tokyo';
     vi.setSystemTime(new Date('2026-03-28T00:00:00+09:00'));
+    const visitRecordId = 'visit/record?x=1#frag';
+    const visitRecordHref = `/visits/${encodeURIComponent(visitRecordId)}`;
     visitRecordFindManyMock.mockResolvedValue([
       {
-        id: 'visit_record_1',
+        id: visitRecordId,
         org_id: 'org_1',
         patient_id: 'patient_1',
         visit_date: new Date('2021-04-25T15:30:00.000Z'),
@@ -1847,12 +1849,15 @@ describe('checkVisitRecordRetention', () => {
             user_id: 'admin_1',
             type: 'business',
             title: '薬歴の保存期限',
-            link: '/visits/visit_record_1',
-            dedupe_key: 'visit-record-retention:visit_record_1:admin_1:high',
+            link: visitRecordHref,
+            dedupe_key: `visit-record-retention:${visitRecordId}:admin_1:high`,
           }),
         ],
         skipDuplicates: true,
       });
+      expect(JSON.stringify(notificationCreateManyMock.mock.calls[0][0].data)).not.toContain(
+        `/visits/${visitRecordId}`,
+      );
       expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
@@ -1862,8 +1867,8 @@ describe('checkVisitRecordRetention', () => {
           description:
             '訪問記録が 2026-04-26 に5年保存期限を迎えます。PDF出力・保全状況を確認してください。',
           relatedEntityType: 'visit_record',
-          relatedEntityId: 'visit_record_1',
-          dedupeKey: 'visit-record-retention:visit_record_1',
+          relatedEntityId: visitRecordId,
+          dedupeKey: `visit-record-retention:${visitRecordId}`,
           metadata: expect.objectContaining({
             patient_id: 'patient_1',
           }),
