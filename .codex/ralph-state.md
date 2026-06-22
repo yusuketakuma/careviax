@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260623-0505 JST
+
+- current task: complete Codex-owned F-20260623-017 next-day unsent-report notification href hardening after Claude plan and patch approval.
+- files inspected: agmsg inbox/plan/lock/patch-review/approval messages for F-017; `git status --short --untracked-files=all`; `git log --oneline`; `src/lib/patient/navigation.ts`; `src/lib/patient/navigation.test.ts`; `src/server/jobs/next-day.ts`; `src/server/jobs/next-day.test.ts`; adjacent raw patient href inventory in `src/server/jobs/daily/compliance-expiry.ts`; and this Ralph state file.
+- files changed: `src/server/jobs/next-day.ts`, `src/server/jobs/next-day.test.ts`, and this Ralph state entry. The source slice was committed as `4229bbd8 fix(jobs): encode next-day report links`.
+- bugs found: the next-day unsent-report reminder notification interpolated `vr.patient_id` directly into `/patients/{id}/reports`, so a hostile patient id containing `/`, `?`, or `#` could change the route path/query/fragment of the browser-facing notification link.
+- security risks found: F-017 reduces patient-id path/query/hash injection risk for the unsent-report notification link while preserving raw visit-record identity for `visitRecordIds`, CareReport lookup, `dueUnreported`, `dedupe_key`, and `overdueVisitRecordIds`. No auth, RLS, DB schema, migration, API route, UI, PHI logging, secret, cookie, env value, billing/payment, deploy, or destructive operation changed.
+- performance issues found: no runtime performance issue changed. The patch uses the existing `buildPatientHref` helper at one notification-link call site and otherwise preserves query shape, batching, and duplicate-safe notification behavior.
+- validation commands: baseline `pnpm exec vitest run src/server/jobs/next-day.test.ts --reporter=dot --testTimeout=30000`; post-change focused next-day Vitest; scoped ESLint for the two changed source/test files; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; test-auditor and security-auditor read-only checker reviews; Claude PATCH_REVIEW. After Claude reported its auditor had clobbered and reconstructed the unstaged patch during empirical teeth testing, Codex re-ran `git diff`, focused next-day Vitest, scoped ESLint, scoped Prettier, scoped `git diff --check`, and `pnpm typecheck` on the final working tree before commit.
+- validation results: baseline next-day Vitest passed `3/3`; final next-day Vitest passed `3/3`; scoped ESLint, Prettier, diff-check, and full typecheck passed. test-auditor approved the hostile-id strict link assertion, raw visit-record identity assertions, and low flake risk. security-auditor approved no security/privacy regression and confirmed only the browser-facing notification link is encoded. Claude independently approved the patch, reported reviewer-audit gates green, and source commit `4229bbd8` landed after the final local re-verify.
+- remaining work: commit this ledger-only Ralph entry and release the `.codex/ralph-state.md` lock. Untracked `projects/careviax/**` file-plane artifacts remain unrelated and should stay unstaged unless explicitly locked.
+- next action: run scoped ledger Prettier and `git diff --check`, drain agmsg, commit only `.codex/ralph-state.md`, send DONE for the ledger lock, then continue with the next small raw patient href candidate such as `src/server/jobs/daily/compliance-expiry.ts` after a fresh plan/lock cycle.
+
 ### 20260623-0452 JST
 
 - current task: complete Codex-owned F-20260623-016 daily visit-support patient foundation href hardening after Claude plan and patch approval.
