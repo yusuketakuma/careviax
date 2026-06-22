@@ -2,8 +2,9 @@
 
 **Purpose.** This is the wire format for cross-supervisor coordination in the
 CareViaX (PH-OS Pharmacy) agent loop. It defines the exact message envelope,
-the legal message types, and the transport. Only the two supervisors —
-`claude-lead` and `codex-lead` — exchange these messages. Everything a
+the legal message types, and the transport. The live agmsg transport identities
+are only `claude` and `codex`; role descriptors such as `claude-lead` and
+`codex-lead` may still describe the two supervisor lanes in prose. Everything a
 subagent produces is summarized by its supervisor before it goes on the wire.
 
 **How it's used in the loop.** Each cycle, a supervisor drains its inbox,
@@ -28,11 +29,11 @@ idempotency_key: <stable dedup key, e.g. hash of type+task_id+intent>
 task_id: <TASK-id or ->
 subtask_id: <SUBTASK-id or ->
 feature_id: <F-... | ->
-from: <claude-lead | codex-lead>
-to: <claude-lead | codex-lead>
+from: <claude | codex>
+to: <claude | codex>
 origin_agent: <agent/subagent that produced the underlying work>
-owner: <who is accountable for the work>
-reviewer: <who performs the approval pass>
+owner_agent: <claude | codex>
+reviewer_agent: <claude | codex>
 status: <queued | in_progress | blocked | review | approved | rejected | done>
 branch: <git branch the work lives on>
 state_version: <int — STATE.md / ledger version this envelope was built against>
@@ -52,12 +53,13 @@ details: |
 - `task_id` / `subtask_id` / `feature_id`: stable ids; use `-` when not
   applicable. `feature_id` ties the envelope to a `.agent-loop/FEATURE_QUEUE.md`
   `F-...` entry.
-- `origin_agent` ≠ `owner`: `origin_agent` is the agent/subagent that produced
-  the underlying work, while `owner` is the supervisor accountable for it on the
-  wire. In the gbrain schema, `owner` maps to `owner_agent` and `reviewer` maps
-  to `reviewer_agent`.
-- `owner` ≠ `reviewer` always (no self-approval; authoring and review are
-  separate passes per project policy).
+- `from` / `to` are transport addresses and must be the live agmsg identities
+  `claude` or `codex` only. Do not send to `claude-lead` or `codex-lead`.
+- `origin_agent` ≠ `owner_agent`: `origin_agent` is the agent/subagent that
+  produced the underlying work, while `owner_agent` is the live supervisor
+  identity accountable for it on the wire.
+- `owner_agent` ≠ `reviewer_agent` always (no self-approval; authoring and
+  review are separate passes per project policy).
 - `state_version`: the STATE.md / ledger version the envelope was built against;
   lets the receiver detect stale envelopes.
 - `timestamp`: ISO8601 (JST) emission time.
@@ -116,7 +118,8 @@ details: |
 
 ## §8.3 — Worked Example: `PLAN_REVIEW_REQUEST`
 
-`claude-lead` (UI/UX lane) asks `codex-lead` (backend/review lane) to review a
+`claude` (the Claude supervisor, UI/UX lane) asks `codex` (the Codex supervisor,
+backend/review lane) to review a
 plan to unify state colors across the prescriptions list.
 
 ```
@@ -127,11 +130,11 @@ idempotency_key: plan-review:TASK-state-color-unification:SUB-prescriptions-list
 task_id: TASK-state-color-unification
 subtask_id: SUB-prescriptions-list
 feature_id: -
-from: claude-lead
-to: codex-lead
-origin_agent: claude-lead
-owner: claude-lead
-reviewer: codex-lead
+from: claude
+to: codex
+origin_agent: claude
+owner_agent: claude
+reviewer_agent: codex
 status: review
 branch: refactor/state-color-unification
 state_version: 42
@@ -152,7 +155,7 @@ details: |
 ```
 
 A reply would come back as `type: PLAN_REVIEW_RESULT` with
-`status: approved | rejected`, `from: codex-lead`, `to: claude-lead`, and
+`status: approved | rejected`, `from: codex`, `to: claude`, and
 `details` carrying the findings.
 
 ---
@@ -176,7 +179,8 @@ team `phos`.
 
 **Rules.**
 
-- Only `claude-lead` and `codex-lead` write to agmsg. Subagents/workers
+- Only the live transport identities `claude` and `codex` write to agmsg. They
+  act as the `claude-lead` and `codex-lead` supervisor roles. Subagents/workers
   **never** post directly; their supervisor summarizes a subagent's result
   into a single envelope (`IMPL_COMPLETE`, `CODE_REVIEW_RESULT`, etc.) before
   it goes on the wire.
@@ -194,7 +198,7 @@ team `phos`.
   the main loop. The main loop reserves itself for inbox drain/triage, coordination (LOCK/ACK/review/
   owner decisions), spawning/steering subagents, and committing reviewed work. Subagents still never
   post to agmsg — the Supervisor summarizes their output into one envelope. This applies symmetrically
-  to `claude-lead` and `codex-lead` and reinforces the Claude-origin priority rule above.
+  to the live `claude` and `codex` sessions and reinforces the Claude-origin priority rule above.
 - `<body>` is the full §8.1 envelope (the fenced `AGLOOP v5 ...` block).
 
 ### §8.5 — Idempotency & ACK
@@ -224,5 +228,6 @@ The live agmsg identities map to the AGLOOP supervisor roles:
 | `codex` (the Codex session)         | `codex-lead`  | backend / perf / refactor / test review — `prisma/**`, `src/server/**`, `src/lib/db/**` |
 
 When sending, use the live identity as `<from>`/`<to>` on the CLI
-(`send.sh phos claude codex "..."`) and the AGLOOP role inside the envelope's
-`from:` / `to:` fields (`from: claude-lead`).
+(`send.sh phos claude codex "..."`) and in the envelope's `from:` / `to:`
+fields (`from: claude`, `to: codex`). Keep `claude-lead` / `codex-lead` only as
+supervisor-role descriptors in prose or historical ledgers.

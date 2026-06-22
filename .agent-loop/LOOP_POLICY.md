@@ -57,6 +57,8 @@ the numbered entries that follow.
 > Provenance: §1–6 are the proven seed (lane/LOCK/drain/verify). §7–16 are applied/peer-approved general
 > rules. §17–21 are this-run (RUN-20260622-001) user/peer-directed patches; permanent promotion to
 > AGENTS.md/CLAUDE.md stays human-gated via PROMOTION_QUEUE §13. See the Peer-approval table for status.
+> Transport identity note (2026-06-23): live agmsg addressing uses only `claude` and `codex`.
+> `claude-lead` / `codex-lead` remain role descriptors for the supervisor lanes and historical records.
 
 1. **Lane discipline.** Claude owns `src/app/(dashboard)/**` and `src/components/**` (UI/UX + main
    implementation). Codex owns backend / perf / refactor / test-review. Do not edit across lanes
@@ -66,8 +68,9 @@ the numbered entries that follow.
 3. **Drain inbox before commit.** Run `inbox.sh phos <name>` and resolve every pending message
    before staging or committing. Never commit over an unread LOCK or objection.
 4. **Stage only your own files.** `git add` only paths in your lane. Never blanket `git add -A`.
-5. **Supervisors-only on agmsg.** Only claude-lead and codex-lead write to agmsg. Subagents and
-   workers never message directly — they report up to their Supervisor.
+5. **Supervisors-only on agmsg.** Only the live `claude` and `codex` transport identities write to
+   agmsg, acting as the `claude-lead` / `codex-lead` supervisor roles. Subagents and workers never
+   message directly — they report up to their Supervisor.
 6. **Verify before claiming done.** Use the real commands: `pnpm lint`, `pnpm typecheck`,
    `pnpm typecheck:no-unused`, `pnpm format:check`, `pnpm test`, `pnpm build`,
    `pnpm test:e2e` / `pnpm test:e2e:audit`. No "done" without passing evidence.
@@ -351,23 +354,23 @@ External dependencies gating otherwise-ready work. Mark blocked items `cc:blocke
 Each policy line needs proposed_by + reviewed_by + status before it graduates to ApplyNow.
 Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 
-| Policy line                                        | proposed_by | reviewed_by | status                                                                        |
-| -------------------------------------------------- | ----------- | ----------- | ----------------------------------------------------------------------------- |
-| ApplyNow §1–6 (lane/LOCK/drain/verify discipline)  | claude-lead | codex-lead  | applied (proven seed)                                                         |
-| ApplyNow §7 (UI/UX SSOT + State Color tokens)      | claude-lead | _pending_   | proposed                                                                      |
-| ApplyNow §8 (Compliance by Design + RLS)           | codex-lead  | _pending_   | proposed                                                                      |
-| ApplyNow §9 (PHI redaction symmetry on mutations)  | claude-lead | codex-lead  | applied                                                                       |
-| ApplyNow §10 (fail-closed client reads)            | claude-lead | codex-lead  | applied                                                                       |
-| ApplyNow §11 (workload-balancing handoff)          | codex-lead  | claude-lead | applied                                                                       |
-| ApplyNow §12 (idle-capacity useful work)           | human       | claude-lead | applied                                                                       |
-| ApplyNow §13 (loop-engineering PDCA track)         | human       | codex-lead  | applied                                                                       |
-| ApplyNow §14 (idle-time productivity playbook)     | claude-lead | codex-lead  | applied                                                                       |
-| ApplyNow §15 (no passive-wait per-turn trigger)    | human       | codex-lead  | peer-approved (human gate for applied)                                        |
-| ApplyNow §16 (continuous loop — repeat on drain)   | human       | codex-lead  | peer-approved (human gate for applied)                                        |
-| ApplyNow §17 (state-display correctness, this-run) | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)          |
-| ApplyNow §18 (verify-capability + reuse-first)     | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)          |
-| ApplyNow §19 (Codex drains Claude-origin first)    | codex-lead  | claude-lead | peer-approved (this-run; human gate for permanent AGENTS/CLAUDE.md promotion) |
-| ApplyNow §20 (main loop free; work in subagents)   | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent) |
-| ApplyNow §21 (max subagent concurrency; main=orch) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent) |
-| ApplyNow §22 (idle delegate + whole-codebase auto-discover, gstack-first) | human | codex-lead | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; whole-codebase/all-category scope user-directed; human gate for permanent) |
-| _next candidate_                                   | _name_      | _name_      | proposed                                                                      |
+| Policy line                                                               | proposed_by | reviewed_by | status                                                                                                                                 |
+| ------------------------------------------------------------------------- | ----------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| ApplyNow §1–6 (lane/LOCK/drain/verify discipline)                         | claude-lead | codex-lead  | applied (proven seed)                                                                                                                  |
+| ApplyNow §7 (UI/UX SSOT + State Color tokens)                             | claude-lead | _pending_   | proposed                                                                                                                               |
+| ApplyNow §8 (Compliance by Design + RLS)                                  | codex-lead  | _pending_   | proposed                                                                                                                               |
+| ApplyNow §9 (PHI redaction symmetry on mutations)                         | claude-lead | codex-lead  | applied                                                                                                                                |
+| ApplyNow §10 (fail-closed client reads)                                   | claude-lead | codex-lead  | applied                                                                                                                                |
+| ApplyNow §11 (workload-balancing handoff)                                 | codex-lead  | claude-lead | applied                                                                                                                                |
+| ApplyNow §12 (idle-capacity useful work)                                  | human       | claude-lead | applied                                                                                                                                |
+| ApplyNow §13 (loop-engineering PDCA track)                                | human       | codex-lead  | applied                                                                                                                                |
+| ApplyNow §14 (idle-time productivity playbook)                            | claude-lead | codex-lead  | applied                                                                                                                                |
+| ApplyNow §15 (no passive-wait per-turn trigger)                           | human       | codex-lead  | peer-approved (human gate for applied)                                                                                                 |
+| ApplyNow §16 (continuous loop — repeat on drain)                          | human       | codex-lead  | peer-approved (human gate for applied)                                                                                                 |
+| ApplyNow §17 (state-display correctness, this-run)                        | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)                                                                   |
+| ApplyNow §18 (verify-capability + reuse-first)                            | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)                                                                   |
+| ApplyNow §19 (Codex drains Claude-origin first)                           | codex-lead  | claude-lead | peer-approved (this-run; human gate for permanent AGENTS/CLAUDE.md promotion)                                                          |
+| ApplyNow §20 (main loop free; work in subagents)                          | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                  |
+| ApplyNow §21 (max subagent concurrency; main=orch)                        | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                  |
+| ApplyNow §22 (idle delegate + whole-codebase auto-discover, gstack-first) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; whole-codebase/all-category scope user-directed; human gate for permanent) |
+| _next candidate_                                                          | _name_      | _name_      | proposed                                                                                                                               |
