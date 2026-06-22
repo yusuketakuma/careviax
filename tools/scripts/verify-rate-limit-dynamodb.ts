@@ -1,6 +1,7 @@
 import { signAwsJsonRequest, type AwsCredentials } from '@/lib/aws/sigv4';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
+import { maybeUnrefTimeout } from '../shared/abort-timeout';
 
 type DynamoAttributeValue = { S?: string; N?: string; BOOL?: boolean };
 
@@ -49,12 +50,6 @@ function normalizePositiveInteger(
   const parsed = Number.parseInt(value ?? '', 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return options.fallback;
   return Math.min(parsed, options.max);
-}
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
 }
 
 function resolveDynamoVerifyTimeoutMs(env: Env) {

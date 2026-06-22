@@ -1,6 +1,7 @@
 import process from 'node:process';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { maybeUnrefTimeout } from '../shared/abort-timeout';
 
 type Args = {
   baseUrl: string;
@@ -145,12 +146,6 @@ function percentile(values: number[], ratio: number) {
   const sorted = [...values].sort((left, right) => left - right);
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
   return sorted[index] ?? 0;
-}
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
 }
 
 export function createRequestAbort(timeoutMs: number): {

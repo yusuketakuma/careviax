@@ -4,6 +4,7 @@ import { UserRole } from '../../src/phos/contracts/phos_contracts';
 import { buildPhosApiGatewayLambdaTemplate } from '../../src/phos/infra/api-gateway-lambda-template';
 import { PHOS_API_ROUTES } from '../../src/phos/infra/api-gateway-routes';
 import { normalizePositiveTimeoutMs } from '../../src/lib/utils/timeout';
+import { maybeUnrefTimeout } from '../shared/abort-timeout';
 import { verifyCognitoPreTokenGenerationLiveProof } from './verify-phos-cognito-token-trigger';
 import { getScriptCognitoClient } from './cognito-client';
 
@@ -51,12 +52,6 @@ function readApiSmokeTimeoutMs(env: Env): number {
     fallbackMs: DEFAULT_API_SMOKE_TIMEOUT_MS,
     maxMs: MAX_API_SMOKE_TIMEOUT_MS,
   });
-}
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
 }
 
 export function createApiSmokeAbort(timeoutMs: number) {

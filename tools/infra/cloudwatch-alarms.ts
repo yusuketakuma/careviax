@@ -20,6 +20,7 @@ import {
   PutMetricAlarmCommand,
   type PutMetricAlarmCommandInput,
 } from '@aws-sdk/client-cloudwatch';
+import { maybeUnrefTimeout } from '../shared/abort-timeout';
 
 type SnsModule = {
   SNSClient: new (args: { region: string; maxAttempts?: number }) => {
@@ -81,12 +82,6 @@ function normalizePositiveInteger(
   const parsed = Number.parseInt(value ?? '', 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return options.fallback;
   return Math.min(parsed, options.max);
-}
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
 }
 
 function createTimeoutController(timeoutMs: number): { signal: AbortSignal; clear: () => void } {
