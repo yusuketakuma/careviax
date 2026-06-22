@@ -137,14 +137,21 @@ export function CapacityContent() {
   if (!orgId || capacityQuery.isLoading) {
     return (
       <div className="space-y-4" role="status" aria-label="キャパシティ読み込み中">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          data-testid="capacity-loading-kpis"
+        >
           <Skeleton className="h-24 w-full rounded-lg" />
           <Skeleton className="h-24 w-full rounded-lg" />
           <Skeleton className="h-24 w-full rounded-lg" />
           <Skeleton className="h-24 w-full rounded-lg" />
         </div>
-        <div className="grid gap-4 xl:grid-cols-3">
-          <Skeleton className="h-80 w-full rounded-lg" />
+        {/* loaded レイアウト(KPI → 今すぐ見るべきこと → 2 チャート)に合わせ、
+            load 時の section 順・幅ジャンプを防ぐ。 */}
+        <div data-testid="capacity-loading-attention">
+          <Skeleton className="h-28 w-full rounded-lg" />
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2" data-testid="capacity-loading-charts">
           <Skeleton className="h-80 w-full rounded-lg" />
           <Skeleton className="h-80 w-full rounded-lg" />
         </div>
@@ -208,7 +215,25 @@ export function CapacityContent() {
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      {/* 即時判断情報を主要データ(チャート)より上へ昇格。UI/UX SSOT §2 の情報順
+          (1 目的/即時アクション → 2 今すぐ対応が必要な情報 → 3 主要データ) と L117
+          (即時判断情報は本文側に目立たせる) に合わせ、KPI 直下のフル幅 section にする。 */}
+      <section className="rounded-lg border border-border/70 bg-card p-4">
+        <h2 className="text-sm font-bold text-foreground">今すぐ見るべきこと</h2>
+        {attention_items.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">いま注意が必要な詰まりはありません。</p>
+        ) : (
+          <ul className="mt-3 space-y-2.5" role="list">
+            {attention_items.map((item) => (
+              <li key={item} className="text-sm leading-6 text-foreground">
+                ・{item}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded-lg border border-border/70 bg-card p-4">
           <h2 className="text-sm font-bold text-foreground">行程ごとの残り</h2>
           <div className="mt-4">
@@ -238,23 +263,6 @@ export function CapacityContent() {
                 }))}
               />
             </div>
-          )}
-        </section>
-
-        <section className="rounded-lg border border-border/70 bg-card p-4">
-          <h2 className="text-sm font-bold text-foreground">今すぐ見るべきこと</h2>
-          {attention_items.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              いま注意が必要な詰まりはありません。
-            </p>
-          ) : (
-            <ul className="mt-3 space-y-2.5" role="list">
-              {attention_items.map((item) => (
-                <li key={item} className="text-sm leading-6 text-foreground">
-                  ・{item}
-                </li>
-              ))}
-            </ul>
           )}
         </section>
       </div>
