@@ -1588,6 +1588,88 @@ describe('getPatientTimelineData', () => {
     });
   });
 
+  it('encodes timeline care report hrefs while preserving raw report identities', async () => {
+    const rawReportId = 'report/../x?download=1#frag';
+    const rawDeliveryId = 'delivery/1?channel=fax#frag';
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: rawReportId,
+            report_type: 'home_visit_report',
+            status: 'draft',
+            created_by: 'pharmacist_1',
+            created_at: new Date('2026-04-02T10:00:00.000Z'),
+            delivery_records: [
+              {
+                id: rawDeliveryId,
+                channel: 'fax',
+                recipient_name: '主治医',
+                status: 'sent',
+                confirmed_at: null,
+                sent_at: new Date('2026-04-03T10:00:00.000Z'),
+                created_at: new Date('2026-04-03T09:00:00.000Z'),
+              },
+            ],
+          },
+        ]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    const eventsById = new Map(result?.timeline_events.map((event) => [event.id, event]));
+    const encodedReportHref = `/reports/${encodeURIComponent(rawReportId)}`;
+    expect(eventsById.get(`care_report:${rawReportId}`)?.href).toBe(encodedReportHref);
+    expect(eventsById.get(`delivery_record:${rawDeliveryId}`)?.href).toBe(encodedReportHref);
+    expect(eventsById.has(`care_report:${rawReportId}`)).toBe(true);
+    expect(eventsById.has(`delivery_record:${rawDeliveryId}`)).toBe(true);
+    expect(JSON.stringify(result?.timeline_events)).not.toContain(`/reports/${rawReportId}`);
+  });
+
+  it.each(['.', '..'])('rejects exact dot-segment timeline report id %s', async (reportId) => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: reportId,
+            report_type: 'home_visit_report',
+            status: 'draft',
+            created_by: 'pharmacist_1',
+            created_at: new Date('2026-04-02T10:00:00.000Z'),
+            delivery_records: [],
+          },
+        ]),
+      },
+    });
+
+    await expect(
+      getPatientTimelineData(db, {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      }),
+    ).rejects.toThrow(RangeError);
+  });
+
   it('encodes timeline patient hrefs while preserving raw patient identity queries', async () => {
     const rawPatientId = 'patient/1?tab=x#frag';
     const encodedPatientId = encodeURIComponent(rawPatientId);

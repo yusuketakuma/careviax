@@ -13,6 +13,7 @@ import {
 } from '@/lib/inquiries/presentation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
 
 const PRESCRIPTION_SOURCE_LABELS: Record<string, string> = {
@@ -815,7 +816,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
             REPORT_TYPE_LABELS[item.report_type] ?? item.report_type,
             REPORT_STATUS_CONFIG[item.status]?.label ?? item.status,
           ]).join(' / ') || null,
-        href: `/reports/${item.id}`,
+        href: buildReportHref(item.id),
         action_label: '報告書を開く',
         status: item.status,
         status_label: REPORT_STATUS_CONFIG[item.status]?.label ?? item.status,
@@ -834,7 +835,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
             CHANNEL_LABELS[delivery.channel] ?? delivery.channel,
             REPORT_TYPE_LABELS[item.report_type] ?? item.report_type,
           ]).join(' / ') || null,
-        href: `/reports/${item.id}`,
+        href: buildReportHref(item.id),
         action_label: '送付元報告書を開く',
         status: delivery.status,
         status_label: REPORT_STATUS_CONFIG[delivery.status]?.label ?? delivery.status,
