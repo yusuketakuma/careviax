@@ -6,6 +6,7 @@ import { success, validationError, notFound, forbidden, conflict } from '@/lib/a
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { buildTracingReportPdfPath } from '@/lib/reports/tracing-report-pdf-path';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {
@@ -514,7 +515,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             data: {
               status: tracingStatus,
               sent_to_physician: updated.recipient_name,
-              pdf_url: `/api/tracing-reports/${linkedTracingReport.id}/pdf`,
+              pdf_url: buildTracingReportPdfPath(linkedTracingReport.id),
               ...(tracingStatus === 'sent' && !linkedTracingReport.sent_at
                 ? { sent_at: new Date() }
                 : {}),

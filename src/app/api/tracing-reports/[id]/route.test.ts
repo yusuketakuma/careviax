@@ -68,6 +68,10 @@ function createMalformedPatchRequest(headers?: Record<string, string>) {
   });
 }
 
+const HOSTILE_TRACING_REPORT_ID = 'tracing/with space%2F?x=#';
+const HOSTILE_TRACING_REPORT_PDF_URL =
+  '/api/tracing-reports/tracing%2Fwith%20space%252F%3Fx%3D%23/pdf';
+
 describe('/api/tracing-reports/[id] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -227,6 +231,70 @@ describe('/api/tracing-reports/[id] PATCH', () => {
           linked_request_id: 'request_1',
           actor_id: 'user_1',
         }),
+      }),
+    });
+  });
+
+  it('encodes only the pdf_url path segment and keeps tracing report identity raw', async () => {
+    tracingReportUpdateMock.mockResolvedValue({
+      id: HOSTILE_TRACING_REPORT_ID,
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      issue_id: 'issue_1',
+      content: {},
+      status: 'sent',
+      sent_to_physician: '在宅主治医',
+      sent_at: new Date('2026-03-28T05:00:00.000Z'),
+      acknowledged_at: null,
+      pdf_url: HOSTILE_TRACING_REPORT_PDF_URL,
+      created_at: new Date('2026-03-28T04:00:00.000Z'),
+      updated_at: new Date('2026-03-28T05:00:00.000Z'),
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          status: 'sent',
+          sent_to_physician: '在宅主治医',
+          status_change_reason: '医師へ服薬情報提供書を送付',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: HOSTILE_TRACING_REPORT_ID }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(tracingReportFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: HOSTILE_TRACING_REPORT_ID, org_id: 'org_1' },
+      }),
+    );
+    expect(tracingReportUpdateMock).toHaveBeenCalledWith({
+      where: { id: HOSTILE_TRACING_REPORT_ID },
+      data: expect.objectContaining({
+        status: 'sent',
+        pdf_url: HOSTILE_TRACING_REPORT_PDF_URL,
+      }),
+      select: expect.any(Object),
+    });
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          related_entity_id: HOSTILE_TRACING_REPORT_ID,
+        }),
+      }),
+    );
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        related_entity_type: 'tracing_report',
+        related_entity_id: HOSTILE_TRACING_REPORT_ID,
+      }),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'tracing_report_status_changed',
+        target_id: HOSTILE_TRACING_REPORT_ID,
       }),
     });
   });
