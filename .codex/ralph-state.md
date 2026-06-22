@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260623-0754 JST
+
+- current task: complete Codex-owned F-20260623-029 clerk-support schedule-proposal detail href query-value hardening after Claude plan and patch approval.
+- files inspected: agmsg inbox/plan approval/lock grant/patch review approval messages for F-029; `git status --short --untracked-files=all`; `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`; `src/app/api/dashboard/clerk-support/route.ts`; `src/app/api/dashboard/clerk-support/route.test.ts`; same-destination encoded sibling `src/lib/search/result-builders.ts`; raw href scan output; low-relevance gbrain search results for this specific clerk-support href; and this Ralph state file.
+- files changed: `src/app/api/dashboard/clerk-support/route.ts`, `src/app/api/dashboard/clerk-support/route.test.ts`, and this Ralph state entry. The source slice was committed as `7e4b627a fix(api): encode clerk support proposal detail href`.
+- bugs found: the clerk-support dashboard BFF interpolated `proposal.id` directly into `/schedules/proposals?detail={id}`, so a hostile proposal id containing `/`, `?`, or `#` could change the browser-facing href query/fragment structure.
+- security risks found: F-029 reduces schedule-proposal detail query injection/path-confusion risk by encoding only the `detail` query value. The `/schedules/proposals` path remains literal, and raw proposal id is preserved for `proposal-${proposal.id}` task identity, Prisma count/findMany where/order/take/select behavior, KPI counts, labels, response envelope, `withAuthContext`, `canViewDashboard`, and tenant `ctx.orgId` filters. No auth, RLS, DB schema, migration, route method, dashboard response shape, PHI projection, logging, secret, cookie, env value, billing/payment, deploy, or destructive operation changed.
+- performance issues found: no runtime performance path changed. The patch adds a single `encodeURIComponent` call while preserving the existing Promise.all query shape and response aggregation.
+- validation commands: baseline focused `pnpm exec vitest run src/app/api/dashboard/clerk-support/route.test.ts --reporter=dot --testTimeout=30000`; final focused Vitest; scoped ESLint for the two changed files; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; API contract, security, and test read-only checker reviews; Claude PATCH_REVIEW.
+- validation results: baseline and final focused clerk-support Vitest passed `2/2`; scoped ESLint, Prettier, diff-check, and full typecheck passed. API contract checker approved response shape/envelope/auth permission preservation and raw task/DB identity preservation, with only a non-blocking optional Prisma call-args assertion note. security checker approved no auth/RLS/tenant/PHI/route/envelope regression. test checker approved hostile-id teeth that catch raw interpolation, double-encoding, and task-id encoding regressions. Claude independently approved the patch with reviewer-audit gates green, and source commit `7e4b627a` landed with exactly the two locked paths.
+- remaining work: commit this ledger-only Ralph entry and release the `.codex/ralph-state.md` lock. Untracked `projects/careviax/**` file-plane artifacts remain unrelated and should stay unstaged unless explicitly locked.
+- next action: run scoped ledger Prettier and `git diff --check`, drain agmsg, commit only `.codex/ralph-state.md`, send DONE for the ledger lock, then continue read-only selection for the next Codex-owned hardening candidate such as report-detail hrefs in `care-reports/today-workspace` or a sub-sliced patient-detail timeline href sweep after a fresh plan/lock cycle.
+
 ### 20260623-0738 JST
 
 - current task: complete Codex-owned F-20260623-028 partner visit-record notification link hardening after Claude plan and patch approval.
