@@ -201,6 +201,54 @@ describe('/api/patients/board', () => {
     expect(JSON.stringify(json.data.cards[0])).not.toContain('090-1111-2222');
   });
 
+  it('encodes patient card hrefs while preserving raw patient ids and static workflow links', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    const fallbackPatientId = 'patient/1?tab=x#frag';
+    const staticLinkPatientId = 'patient/2?tab=x#frag';
+    const fallbackPatientHref = `/patients/${encodeURIComponent(fallbackPatientId)}`;
+    const staticLinkPatientHref = `/patients/${encodeURIComponent(staticLinkPatientId)}`;
+    patientFindManyMock.mockResolvedValue([
+      {
+        ...buildPatientRow(new Date('2026-06-20T00:00:00.000Z')),
+        id: fallbackPatientId,
+        name: 'カード 遷移',
+        cases: [],
+      },
+      {
+        ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+        id: staticLinkPatientId,
+        name: '訪問 リンク',
+      },
+    ]);
+    patientCountMock.mockResolvedValue(2);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    const cardsByPatientId = new Map(
+      json.data.cards.map((card: { patient_id: string }) => [card.patient_id, card]),
+    );
+    const fallbackCard = cardsByPatientId.get(fallbackPatientId);
+    const staticLinkCard = cardsByPatientId.get(staticLinkPatientId);
+
+    expect(fallbackCard).toMatchObject({
+      patient_id: fallbackPatientId,
+      link_label: 'カードへ',
+      link_href: fallbackPatientHref,
+      foundation_href: `${fallbackPatientHref}#patient-foundation`,
+    });
+    expect(staticLinkCard).toMatchObject({
+      patient_id: staticLinkPatientId,
+      link_label: '訪問へ',
+      link_href: '/visits',
+      foundation_href: `${staticLinkPatientHref}#patient-foundation`,
+    });
+    expect(JSON.stringify(json.data.cards)).not.toContain(`/patients/${fallbackPatientId}`);
+    expect(JSON.stringify(json.data.cards)).not.toContain(`/patients/${staticLinkPatientId}`);
+  });
+
   it('does not return primary residence full address in the board card payload', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));

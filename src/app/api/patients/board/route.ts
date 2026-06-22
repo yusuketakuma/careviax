@@ -20,6 +20,7 @@ import {
   canBypassVisitScheduleAssignmentAccess,
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { isVisitCarryItemsStatusBlockingReady } from '@/server/services/visit-preparation-readiness';
 import type {
   PatientAttentionKey,
@@ -384,7 +385,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     tone = 'neutral';
   }
 
-  const patientHref = `/patients/${patient.id}`;
+  const patientHref = buildPatientHref(patient.id);
   const resolvedLink = link ?? { label: 'カードへ', href: patientHref };
   const linkHref = resolvedLink.href.length > 0 ? resolvedLink.href : patientHref;
 
