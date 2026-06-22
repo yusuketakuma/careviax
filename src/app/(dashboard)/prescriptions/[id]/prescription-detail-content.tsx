@@ -152,7 +152,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['prescription-intake-detail', orgId, intakeId],
     queryFn: async () => {
-      const res = await fetch(`/api/prescription-intakes/${intakeId}`, {
+      const res = await fetch(`/api/prescription-intakes/${encodeURIComponent(intakeId)}`, {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('処方受付の取得に失敗しました');

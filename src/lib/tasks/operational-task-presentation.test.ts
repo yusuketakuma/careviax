@@ -35,4 +35,21 @@ describe('describeOperationalTask', () => {
       queueLabel: '連携返信待ち',
     });
   });
+
+  it.each(['intake_1', '../settings?x=1#frag'])(
+    'encodes prescription intake id %s when linking fax original follow-up tasks',
+    (intakeId) => {
+      expect(
+        describeOperationalTask({
+          task_type: 'fax_original_followup',
+          related_entity_type: 'prescription_intake',
+          related_entity_id: intakeId,
+        }),
+      ).toMatchObject({
+        actionHref: `/prescriptions/${encodeURIComponent(intakeId)}`,
+        actionLabel: '原本回収を記録',
+        queueLabel: 'FAX原本',
+      });
+    },
+  );
 });

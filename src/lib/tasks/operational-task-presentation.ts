@@ -147,7 +147,7 @@ export function describeOperationalTask(
       return {
         actionHref:
           task.related_entity_type === 'prescription_intake' && task.related_entity_id
-            ? `/prescriptions/${task.related_entity_id}`
+            ? `/prescriptions/${encodeURIComponent(task.related_entity_id)}`
             : '/patients',
         actionLabel: '原本回収を記録',
         queueLabel: 'FAX原本',

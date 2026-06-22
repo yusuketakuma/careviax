@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PrescriptionInlineDetail } from './prescription-inline-detail';
 
@@ -9,6 +9,7 @@ setupDomTestEnv();
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
+const fetchMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -34,12 +35,25 @@ vi.mock('@/components/features/patients/patient-history-summary', () => ({
   PatientHistorySummary: () => <div>直近過去歴サマリー</div>,
 }));
 
+type QueryConfig = {
+  queryKey: unknown[];
+  queryFn: () => Promise<unknown>;
+};
+
 describe('PrescriptionInlineDetail', () => {
-  it('shows patient history links from the prescription management detail pane', () => {
+  beforeEach(() => {
+    useOrgIdMock.mockReset();
+    useQueryMock.mockReset();
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  it('shows patient history links and encodes prescription detail links from the detail pane', () => {
+    const hostileId = '../settings?x=1#frag';
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({
       data: {
-        id: 'intake_1',
+        id: hostileId,
         cycle_id: 'cycle_1',
         source_type: 'paper',
         prescribed_date: '2026-04-20T00:00:00.000Z',
@@ -94,9 +108,16 @@ describe('PrescriptionInlineDetail', () => {
       error: null,
     });
 
-    render(<PrescriptionInlineDetail intakeId="intake_1" />);
+    render(<PrescriptionInlineDetail intakeId={hostileId} />);
 
     expect(screen.getByRole('heading', { name: '患者の過去歴' })).toBeTruthy();
+    const encodedPrescriptionHref = `/prescriptions/${encodeURIComponent(hostileId)}`;
+    expect(screen.getByRole('link', { name: /詳細/ }).getAttribute('href')).toBe(
+      encodedPrescriptionHref,
+    );
+    expect(screen.getByRole('link', { name: '全画面表示' }).getAttribute('href')).toBe(
+      encodedPrescriptionHref,
+    );
     expect(screen.getByRole('link', { name: /処方歴/ }).getAttribute('href')).toBe(
       '/patients/patient_1/prescriptions',
     );
@@ -105,6 +126,38 @@ describe('PrescriptionInlineDetail', () => {
     );
     expect(screen.getByRole('link', { name: /統合履歴/ }).getAttribute('href')).toBe(
       '/patients/patient_1#card-recent-activities',
+    );
+  });
+
+  it('encodes decoded route ids before fetching prescription intake details', async () => {
+    const hostileId = '../settings?x=1#frag';
+    let queryConfig: QueryConfig | undefined;
+
+    useOrgIdMock.mockReturnValue('org_1');
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      queryConfig = config;
+      return {
+        data: null,
+        isLoading: true,
+        error: null,
+      };
+    });
+
+    render(<PrescriptionInlineDetail intakeId={hostileId} />);
+
+    if (!queryConfig) throw new Error('query config was not captured');
+    expect(queryConfig.queryKey).toEqual(['prescription-intake-detail', 'org_1', hostileId]);
+    await queryConfig.queryFn();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/prescription-intakes/${encodeURIComponent(hostileId)}`,
+      {
+        headers: { 'x-org-id': 'org_1' },
+      },
     );
   });
 });
