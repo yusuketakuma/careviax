@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260623-0719 JST
+
+- current task: complete Codex-owned F-20260623-027 evening unrecorded-visit schedule link hardening after Claude plan and patch approval.
+- files inspected: agmsg inbox/plan approval/lock grant/patch review approval messages for F-027; `git status --short --untracked-files=all`; `src/server/jobs/evening.ts`; `src/server/jobs/evening.test.ts`; raw href scan results; low-relevance gbrain search results for evening schedule link hardening; and this Ralph state file.
+- files changed: `src/server/jobs/evening.ts`, `src/server/jobs/evening.test.ts`, and this Ralph state entry. The source slice was committed as `f4c261cc fix(jobs): encode unrecorded visit links`.
+- bugs found: the evening unrecorded-visit reminder notification interpolated `schedule.id` directly into `/visit-schedules/{id}`, so a hostile schedule id containing `/`, `?`, or `#` could change the browser-facing notification link path/query/fragment.
+- security risks found: F-027 reduces schedule-id path/query/hash injection risk for the unrecorded-visit reminder notification link while preserving raw schedule id for completed-schedule query identity, `visitRecord.findMany` `where.schedule_id.in`, `recordedIds` Set/comparison, notification dedupe key, org/user/type/title/message, `skipDuplicates`, and processed count. No auth, RLS, DB schema, migration, PHI projection, logging, secret, cookie, env value, billing/payment, deploy, or destructive operation changed.
+- performance issues found: no runtime performance path changed. The patch applies `encodeURIComponent` at one notification-link call site and otherwise preserves query shape, batching, duplicate-safe notification behavior, and no-write paths.
+- validation commands: baseline `pnpm exec vitest run src/server/jobs/evening.test.ts --reporter=dot --testTimeout=30000`; post-change focused evening Vitest; scoped ESLint for the two changed files; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; backend, security, and test read-only checker reviews; Claude PATCH_REVIEW.
+- validation results: baseline and final focused evening Vitest passed `3/3`; scoped ESLint, Prettier, diff-check, and full typecheck passed. backend checker approved raw query/dedupe identity and batching/count preservation. security checker approved no auth/privacy regression and confirmed persisted notification link is the correct write-side boundary. test checker approved with mutation proof that reverting the link encode fails while raw query input, raw dedupe key, `skipDuplicates`, and recorded/empty no-write paths stay locked. Claude independently approved the patch with reviewer-audit gates green, and source commit `f4c261cc` landed.
+- remaining work: commit this ledger-only Ralph entry and release the `.codex/ralph-state.md` lock. Untracked `projects/careviax/**` file-plane artifacts remain unrelated and should stay unstaged unless explicitly locked.
+- next action: run scoped ledger Prettier and `git diff --check`, drain agmsg, commit only `.codex/ralph-state.md`, send DONE for the ledger lock, then continue read-only selection for the next Codex-owned hardening candidate such as partner visit-record links or patient-detail timeline links after a fresh plan/lock cycle.
+
 ### 20260623-0706 JST
 
 - current task: complete Codex-owned F-20260623-026 today-preparation visit-mode href hardening after Claude plan and patch approval.
