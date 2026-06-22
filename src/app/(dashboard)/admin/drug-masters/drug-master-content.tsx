@@ -2009,6 +2009,16 @@ function DrugMasterOperationalContent({
       detail: detailQuery.data,
     });
   const preferredGenericCandidates = preferredGenericCandidatesQuery.data?.data ?? [];
+  const selectedPreferredGenericLabel = (() => {
+    if (effectivePreferredGenericId === '') {
+      return '指定しない';
+    }
+    const match = preferredGenericCandidates.find((c) => c.id === effectivePreferredGenericId);
+    if (match) {
+      return `${match.drug_name} (${match.yj_code})`;
+    }
+    return stockConfig?.preferred_generic?.drug_name ?? '保存済みの採用後発薬を確認してください';
+  })();
   const genericRecommendations = genericRecommendationsQuery.data?.recommendations ?? [];
   const ingredientGroup = ingredientGroupQuery.data ?? null;
   const drugSafetyDisplay = detailQuery.data
@@ -3823,18 +3833,31 @@ function DrugMasterOperationalContent({
                               に対する採用後発薬を設定します。
                             </p>
                           </div>
-                          <select
+                          <Select
                             value={effectivePreferredGenericId}
-                            onChange={(event) => setPreferredGenericId(event.target.value)}
-                            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                            onValueChange={(value) => setPreferredGenericId(value ?? '')}
                           >
-                            <option value="">指定しない</option>
-                            {preferredGenericCandidates.map((candidate) => (
-                              <option key={candidate.id} value={candidate.id}>
-                                {candidate.drug_name} ({candidate.yj_code})
-                              </option>
-                            ))}
-                          </select>
+                            <SelectTrigger
+                              aria-label="採用後発薬"
+                              className="w-full min-h-[44px] sm:min-h-[44px]"
+                            >
+                              <SelectValue>{selectedPreferredGenericLabel}</SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="" className="min-h-[44px]">
+                                指定しない
+                              </SelectItem>
+                              {preferredGenericCandidates.map((candidate) => (
+                                <SelectItem
+                                  key={candidate.id}
+                                  value={candidate.id}
+                                  className="min-h-[44px]"
+                                >
+                                  {candidate.drug_name} ({candidate.yj_code})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           {genericRecommendations.length > 0 && (
                             <div className="space-y-2">
                               <p className="text-xs font-medium text-muted-foreground">

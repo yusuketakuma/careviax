@@ -22,6 +22,9 @@ const {
   lastMutationOptions,
   invalidateQueriesMock,
   capturedQueryKeys,
+  detailDataMock,
+  stockConfigDataMock,
+  candidatesDataMock,
 } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
   pendingRequestsMock: vi.fn(),
@@ -33,6 +36,12 @@ const {
   // slice4b: every useQuery call records its FULL queryKey here so filter tests can assert the
   // key shape reacts to the migrated Select state (state+queryKey, not DOM-only).
   capturedQueryKeys: [] as ReadonlyArray<unknown>[],
+  // slice4c: controllable payloads for the drug-detail panel queries so a test can render the
+  // 採用後発薬 (preferred generic) Select. Default null/empty preserves the prior behavior
+  // (the fallback `{ data: null }` branch) so every existing test is unaffected.
+  detailDataMock: { current: null as unknown },
+  stockConfigDataMock: { current: null as unknown },
+  candidatesDataMock: { current: [] as unknown[] },
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -285,6 +294,17 @@ vi.mock('@tanstack/react-query', () => ({
     if (key === 'drug-master-import-logs') {
       return { data: { data: [] }, isLoading: false };
     }
+    // slice4c: drug-detail panel queries that back the 採用後発薬 (preferred generic) Select.
+    // Controllable via the hoisted refs; default values keep the prior null/empty behavior.
+    if (key === 'drug-master-detail') {
+      return { data: detailDataMock.current, isLoading: false, isError: false };
+    }
+    if (key === 'pharmacy-drug-stock') {
+      return { data: { data: stockConfigDataMock.current }, isLoading: false };
+    }
+    if (key === 'preferred-generic-candidates') {
+      return { data: { data: candidatesDataMock.current }, isLoading: false };
+    }
     return { data: null, isLoading: false, isError: false };
   },
   useQueryClient: () => ({
@@ -498,6 +518,21 @@ vi.mock('@/components/ui/select', async () => {
   };
 });
 
+// slice4c: the drug-detail panel (which hosts the 採用後発薬 Select) lives inside a Base UI Dialog
+// (Sheet) that portals + gates on `open` — the same class of primitive jsdom can't drive that we
+// already mock for Select/DataTable. Mock it to render children inline so the panel is testable;
+// the panel's own `detailQuery.data` guard (controlled via detailDataMock) decides what shows.
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetDescription: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetTrigger: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetClose: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+
 vi.mock('next/link', () => ({
   default: ({
     href,
@@ -518,6 +553,9 @@ describe('DrugMasterContent', () => {
     mutationMutateMock.mockClear();
     lastMutationOptions.current = null;
     capturedSelectItems.length = 0;
+    detailDataMock.current = null;
+    stockConfigDataMock.current = null;
+    candidatesDataMock.current = [];
   });
 
   it('shows PMDA and other externally configured sources in master status', () => {
@@ -729,6 +767,9 @@ describe('DrugMasterContent formulary select migration (slice4a)', () => {
     afterSelectChangeHook.current = null;
     invalidateQueriesMock.mockReset();
     invalidateQueriesMock.mockImplementation(async () => undefined);
+    detailDataMock.current = null;
+    stockConfigDataMock.current = null;
+    candidatesDataMock.current = [];
   });
 
   // These builders produce the RAW server JSON for a dry-run (no request-context fields). The
@@ -1586,6 +1627,9 @@ describe('DrugMasterContent filter select migration (slice4b)', () => {
     afterSelectChangeHook.current = null;
     invalidateQueriesMock.mockReset();
     invalidateQueriesMock.mockImplementation(async () => undefined);
+    detailDataMock.current = null;
+    stockConfigDataMock.current = null;
+    candidatesDataMock.current = [];
   });
 
   // The import-logs queryKey is ['drug-master-import-logs', <source>, <status>]. We assert the
@@ -1773,6 +1817,164 @@ describe('DrugMasterContent filter select migration (slice4b)', () => {
     expect(displayText('薬効分類フィルタ')).toBe('3: 代謝性医薬品');
     fireEvent.change(categoryCombobox(), { target: { value: '' } });
     expect(displayText('薬効分類フィルタ')).toBe('全薬効分類');
+  });
+});
+
+describe('DrugMasterContent preferred-generic select migration (slice4c)', () => {
+  // A complete-enough DrugMasterDetail so the drug-detail panel (which hosts the 採用後発薬
+  // Select) renders. generic_name is set so the panel's `generic_name || candidates>0` guard
+  // passes and the candidate query is exercised.
+  function buildDetail(): unknown {
+    return {
+      id: 'drug_1',
+      yj_code: '9999999999',
+      receipt_code: null,
+      jan_code: null,
+      drug_name: '先発薬A',
+      drug_name_kana: null,
+      generic_name: 'イブプロフェン',
+      drug_price: 50,
+      unit: '錠',
+      dosage_form: null,
+      therapeutic_category: null,
+      manufacturer: null,
+      is_generic: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      is_high_risk: false,
+      outpatient_injection_eligible: false,
+      outpatient_injection_note: null,
+      is_lasa_risk: false,
+      tall_man_name: null,
+      lasa_group_key: null,
+      max_administration_days: null,
+      stock_config: null,
+      hot_code: null,
+      transitional_expiry_date: null,
+      package_inserts: [],
+      interactions_as_a: [],
+      interactions_as_b: [],
+    };
+  }
+
+  // A stocked config whose preferred_generic display name covers the "saved id with no matching
+  // candidate" fallback branch of selectedPreferredGenericLabel.
+  function buildStockConfig(): unknown {
+    return {
+      id: 'stock_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      is_stocked: true,
+      stock_qty: 10,
+      reorder_point: 5,
+      preferred_generic_id: null,
+      adoption_source: null,
+      adoption_note: null,
+      last_reviewed_at: null,
+      reviewed_by_id: null,
+      follow_up_status: null,
+      follow_up_reason: null,
+      follow_up_due_date: null,
+      follow_up_resolved_at: null,
+      updated_at: '2026-05-27T00:00:00.000Z',
+      preferred_generic: {
+        id: 'gen_saved',
+        drug_name: '保存済みジェネリック',
+        yj_code: '0000000000',
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useOrgIdMock.mockReturnValue('org_1');
+    pendingRequestsMock.mockReturnValue([]);
+    mutationMutateMock.mockClear();
+    lastMutationOptions.current = null;
+    capturedSelectItems.length = 0;
+    capturedQueryKeys.length = 0;
+    afterSelectChangeHook.current = null;
+    invalidateQueriesMock.mockReset();
+    invalidateQueriesMock.mockImplementation(async () => undefined);
+    // Drive the detail panel open with a generic-name drug, a stocked config, and one candidate.
+    detailDataMock.current = buildDetail();
+    stockConfigDataMock.current = buildStockConfig();
+    candidatesDataMock.current = [
+      { id: 'gen_1', drug_name: 'ジェネリックA', yj_code: '1234567890' },
+    ];
+  });
+
+  const display = () => screen.getByTestId('採用後発薬-display').textContent;
+  const combobox = () => screen.getByRole('combobox', { name: '採用後発薬' });
+
+  // (a) default closed-trigger label (effectivePreferredGenericId === '' → 指定しない) and
+  // (e) the trigger carries aria-label 採用後発薬.
+  it('renders 指定しない on the closed trigger by default and exposes the aria-label', () => {
+    render(<DrugMasterContent />);
+
+    expect(display()).toBe('指定しない');
+    // aria-label resolves the combobox by accessible name, proving the trigger forwards it.
+    expect(combobox()).toBeTruthy();
+  });
+
+  // (b) the value="" 指定しない SelectItem is present AND every item carries the >=44px
+  // touch-target className on its SOURCE value (same assertion style as slice4b).
+  it('keeps the value="" 指定しない item and min-h-[44px] on all 採用後発薬 items', () => {
+    render(<DrugMasterContent />);
+
+    const items = capturedSelectItems.filter((item) => item.selectKey === '採用後発薬');
+    const noneItem = items.find((item) => item.value === '');
+    expect(
+      noneItem,
+      'preferred-generic Select must keep the value="" 指定しない item',
+    ).toBeTruthy();
+    expect(flattenLabel(noneItem?.children)).toBe('指定しない');
+    // No __none__ sentinel — '' is the real "指定しない" value (medical value-semantics contract).
+    expect(items.map((item) => String(item.value))).not.toContain('__none__');
+
+    const candidateItem = items.find((item) => item.value === 'gen_1');
+    expect(candidateItem).toBeTruthy();
+    expect(flattenLabel(candidateItem?.children)).toBe('ジェネリックA (1234567890)');
+
+    for (const item of items) {
+      expect(item.className).toContain('min-h-[44px]');
+    }
+  });
+
+  // (c) selecting candidate gen_1 → closed trigger shows `drug_name (yj_code)`, and
+  // (d) selecting back to '' → 指定しない again (empty-string must not blank the trigger).
+  it('reflects the selected candidate label on the closed trigger and clears back to 指定しない', () => {
+    render(<DrugMasterContent />);
+
+    expect(display()).toBe('指定しない');
+
+    fireEvent.change(combobox(), { target: { value: 'gen_1' } });
+    expect(display()).toBe('ジェネリックA (1234567890)');
+
+    fireEvent.change(combobox(), { target: { value: '' } });
+    expect(display()).toBe('指定しない');
+  });
+
+  // (f) medical-safety regression (slice4c rev2): a saved preferred_generic_id that is non-empty,
+  // not in the candidate list, AND has no saved preferred_generic.drug_name must NOT leak the raw
+  // machine id onto the closed trigger — it must show the pharmacist-safe unresolved label instead.
+  it('shows the unresolved label (not the raw id) when the saved 採用後発薬 id has no candidate or saved name', () => {
+    // Stocked config: saved id 'gen_missing' with no embedded preferred_generic display name.
+    stockConfigDataMock.current = {
+      ...(buildStockConfig() as Record<string, unknown>),
+      preferred_generic_id: 'gen_missing',
+      preferred_generic: null,
+    };
+    // Candidates do NOT contain 'gen_missing' (only the resolvable gen_1), so no candidate match.
+    candidatesDataMock.current = [
+      { id: 'gen_1', drug_name: 'ジェネリックA', yj_code: '1234567890' },
+    ];
+
+    render(<DrugMasterContent />);
+
+    // effectivePreferredGenericId resolves to 'gen_missing' from the stock config (no user pick).
+    expect(display()).not.toBe('gen_missing');
+    expect(display()).toBe('保存済みの採用後発薬を確認してください');
   });
 });
 
