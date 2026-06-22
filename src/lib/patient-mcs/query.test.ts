@@ -24,6 +24,34 @@ describe('patient-mcs query', () => {
     ]);
   });
 
+  it('encodes only the patient id path segment when fetching overview data', async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        data: {
+          patient: { id: '../settings?x=1#y', name: '青葉 花子' },
+          link: null,
+          profile: null,
+          summary: null,
+          messages: [],
+          checkLogs: [],
+        },
+      }),
+    } as Response);
+    global.fetch = fetchMock;
+
+    await fetchPatientMcsOverview('../settings?x=1#y', 'org_1', 0);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/patients/..%2Fsettings%3Fx%3D1%23y/mcs?limit=0', {
+      headers: { 'x-org-id': 'org_1' },
+      cache: 'no-store',
+    });
+
+    global.fetch = originalFetch;
+  });
+
   it('maps forbidden responses to a typed query error', async () => {
     const originalFetch = global.fetch;
     global.fetch = vi.fn().mockResolvedValue({
