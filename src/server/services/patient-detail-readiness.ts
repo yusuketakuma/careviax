@@ -30,6 +30,14 @@ function hasJsonArrayItems(value: Prisma.JsonValue | null | undefined) {
   return Array.isArray(value) && value.length > 0;
 }
 
+function buildPatientReadinessHref(patientId: string, suffix = '') {
+  if (patientId === '.' || patientId === '..') {
+    throw new RangeError('Patient id cannot be a dot segment');
+  }
+
+  return `/patients/${encodeURIComponent(patientId)}${suffix}`;
+}
+
 export async function getPatientReadinessData(db: PatientReadinessDb, args: DetailArgs) {
   const patient = await db.patient.findFirst({
     where: buildPatientDetailWhere(args),
@@ -169,6 +177,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
     patient.scheduling_preference?.preferred_contact_phone ||
     patient.scheduling_preference?.visit_before_contact_required != null,
   );
+  const patientHref = buildPatientReadinessHref(args.patientId);
 
   const items = [
     {
@@ -179,7 +188,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
         patient.name && patient.name_kana && patient.birth_date && patient.gender
           ? '氏名、カナ、生年月日、性別が登録されています。'
           : '氏名、カナ、生年月日、性別を登録してください。',
-      action_href: `/patients/${args.patientId}/edit`,
+      action_href: `${patientHref}/edit`,
       action_label: '患者基本を編集',
       severity: 'high' as const,
     },
@@ -190,7 +199,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: hasPrimaryResidence
         ? '訪問先住所、施設、または個人宅グループが登録されています。'
         : '訪問先住所、施設、または個人宅グループを登録してください。',
-      action_href: `/patients/${args.patientId}/edit`,
+      action_href: `${patientHref}/edit`,
       action_label: '訪問先を編集',
       severity: 'high' as const,
     },
@@ -201,7 +210,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: hasInsurance
         ? '医療保険または介護保険情報が登録されています。'
         : '医療保険または介護保険情報を登録してください。',
-      action_href: `/patients/${args.patientId}#patient-profile-summary`,
+      action_href: `${patientHref}#patient-profile-summary`,
       action_label: '保険を確認',
       severity: 'high' as const,
     },
@@ -212,7 +221,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: hasVisitPreferences
         ? '訪問希望曜日・時間帯・連絡条件のいずれかが登録されています。'
         : '訪問希望曜日、時間帯、連絡条件を登録してください。',
-      action_href: `/patients/${args.patientId}/edit`,
+      action_href: `${patientHref}/edit`,
       action_label: '訪問条件を編集',
       severity: 'normal' as const,
     },
@@ -224,7 +233,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
         hasPrimaryPhysician && hasNurse && hasCareManager
           ? 'クリニック・訪問看護・ケアマネジャーが患者情報に登録されています。'
           : 'クリニック・訪問看護・ケアマネジャーを患者情報のケアチームに登録してください。',
-      action_href: `/patients/${args.patientId}/collaboration`,
+      action_href: `${patientHref}/collaboration`,
       action_label: '連携先を編集',
       severity: 'normal' as const,
     },
@@ -235,7 +244,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: visitConsent
         ? '有効な訪問薬剤管理同意があります。'
         : '訪問薬剤管理の有効同意を取得してください。',
-      action_href: `/patients/${args.patientId}/consent`,
+      action_href: `${patientHref}/consent`,
       action_label: '同意を確認',
       severity: 'high' as const,
     },
@@ -246,7 +255,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: hasEmergencyContact
         ? '緊急連絡先が登録されています。'
         : '少なくとも1件の緊急連絡先が必要です。',
-      action_href: `/patients/${args.patientId}`,
+      action_href: patientHref,
       action_label: '連絡先を編集',
       severity: 'high' as const,
     },
@@ -257,7 +266,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: hasPrimaryPhysician
         ? '主治医がケアチームに紐付いています。'
         : '現在のケースに主治医を紐付けてください。',
-      action_href: `/patients/${args.patientId}`,
+      action_href: patientHref,
       action_label: 'ケアチームを編集',
       severity: 'high' as const,
     },
@@ -270,7 +279,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
           ? '承認済みですが見直し期限を超過しています。'
           : '承認済みの管理計画書があります。'
         : '承認済みの管理計画書が必要です。',
-      action_href: `/patients/${args.patientId}/management-plan`,
+      action_href: `${patientHref}/management-plan`,
       action_label: '計画書を確認',
       severity: 'high' as const,
     },
@@ -281,7 +290,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: prescriptionIntake
         ? 'このケースに紐づく処方受付があります。'
         : '初回訪問までに処方インテークを登録してください。',
-      action_href: `/patients/${args.patientId}/prescriptions`,
+      action_href: `${patientHref}/prescriptions`,
       action_label: '処方履歴を確認',
       severity: 'normal' as const,
     },
@@ -292,7 +301,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
       description: deliveredDocument
         ? '初回訪問文書の交付記録があります。'
         : '初回訪問文書の交付記録がまだありません。',
-      action_href: `/patients/${args.patientId}`,
+      action_href: patientHref,
       action_label: '交付記録を確認',
       severity: 'normal' as const,
     },
