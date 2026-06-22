@@ -58,11 +58,14 @@ describe('checkUnsentReports', () => {
   });
 
   it('flags reports whose next business day is today', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientReportsHref = `/patients/${encodeURIComponent(rawPatientId)}/reports`;
+
     visitRecordFindManyMock.mockResolvedValue([
       {
         id: 'vr_friday',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         pharmacist_id: 'pharmacist_1',
         schedule_id: 'schedule_1',
         visit_date: new Date('2026-03-27T03:00:00.000Z'),
@@ -85,11 +88,25 @@ describe('checkUnsentReports', () => {
     });
     expect(notificationCreateMock).not.toHaveBeenCalled();
     expect(notificationCreateManyMock).toHaveBeenCalledTimes(1);
+    const [{ data: notifications }] = notificationCreateManyMock.mock.calls[0] as [
+      {
+        data: Array<{
+          dedupe_key: string;
+          link: string;
+        }>;
+      },
+    ];
+    expect(notifications.find((item) => item.dedupe_key === 'unsent-report:vr_friday')?.link).toBe(
+      encodedPatientReportsHref,
+    );
+    expect(
+      notifications.find((item) => item.dedupe_key === 'unsent-report:vr_saturday')?.link,
+    ).toBe('/patients/patient_2/reports');
     expect(notificationCreateManyMock).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
           user_id: 'pharmacist_1',
-          link: '/patients/patient_1/reports',
+          link: encodedPatientReportsHref,
           dedupe_key: 'unsent-report:vr_friday',
         }),
         expect.objectContaining({
