@@ -564,3 +564,11 @@ owner-lane: **codex**（backend/service/job href construction）、要 PLAN_REVI
 - **patient-detail-documents-href-hardening**（owner: codex, est S）: `src/server/services/patient-detail-documents.ts` の document-related patient hrefs を path-segment encoded route builder へ寄せる。scope: documents service action hrefs only; document URL/presigned URL は非対象。evidence: F-003 read-only Discover で raw `/patients/${...}` pattern 7件。
 - **patient-detail-timeline-events-href-hardening**（owner: codex, est M）: `src/server/services/patient-detail-timeline-events.ts` の timeline hrefs を route/path segment と query param で分けて harden する。scope: patient path segment encoding + query values via URLSearchParams where applicable; timeline semantics 不変。evidence: F-003 read-only Discover で raw path/query mixed patterns 複数件。
 - **daily-preparation-patient-href-hardening**（owner: codex, est S）: `src/server/jobs/daily/preparation.ts` の generated patient href を shared route helper へ寄せる。scope: daily preparation job output link only; job query/data selection 不変。evidence: F-003 read-only Discover で raw `/patients/${...}` pattern 1件。
+
+### F-001 review follow-ups（2026-06-23、codex の referral-form patch review が surfacing）
+
+F-20260623-001（referral-form select 移行＋unsaved-guard）のレビューで codex が指摘した、この UI スライス範囲外の項目。いずれも別 PLAN_REVIEW + LOCK 必須、未着手。
+
+- **referral-intake-persist-type-and-checklist**（owner: codex = API/domain, reviewer: claude, **P1 data-capture gap**）: 新規紹介フォームは `referral_type` と書類チェックリストを収集・dirty 追跡するが、`/api/cases` の `createCaseSchema` は `patient_id/referral_source/referral_date/notes` のみ受理し**これらを永続化しない**。収集データが保存されないギャップ。要 schema/API 拡張＋PLAN（DB/契約変更のため hard-stop 近接の判断要）。evidence: codex confirmed createCaseSchema fields。
+- **referral-create-transactional-or-safe-retry**（owner: codex = API/domain, reviewer: claude, **P1 data-integrity / 高リスク**）: 紹介作成は patient POST 成功後に case POST する2段階。case POST 失敗後のリトライで**重複/孤児 patient** が発生しうる。要 transactional referral-create endpoint もしくは安全な reuse/retry 戦略＋PLAN。pre-existing だが在宅紹介 intake で高リスク。evidence: codex review (2段階 POST フロー)。
+- **referral-form-error-summary-focus-target**（owner: claude = UI/a11y, est S）: `FormErrorSummary` の focus 対象 id が focusable wrapper でなく内側 Alert に付いている疑い（バリデーション失敗時にフォーカスが当たらない）。WCAG focus 管理の a11y 修正。evidence: codex review (F-001 a11y note)。
