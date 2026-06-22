@@ -2,6 +2,7 @@ import { addDays } from 'date-fns';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { prisma } from '@/lib/db/client';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { runJob } from '../runner';
 import {
   buildDosageSupportTaskKey,
@@ -249,7 +250,7 @@ export async function syncVisitSupportFeatureTasks() {
           patient_id: careCase.patient_id,
           patient_name: careCase.patient.name,
           missing_items: missingItems,
-          action_href: `/patients/${careCase.patient_id}#patient-foundation`,
+          action_href: buildPatientHref(careCase.patient_id, '#patient-foundation'),
           action_label: '患者基盤を整備',
         },
       });

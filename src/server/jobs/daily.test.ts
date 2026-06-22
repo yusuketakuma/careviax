@@ -836,11 +836,14 @@ describe('daily job local date keys', () => {
   });
 
   it('creates deduplicated patient foundation review tasks for active cases with foundation gaps', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}#patient-foundation`;
+
     careCaseFindManyMock.mockResolvedValue([
       {
         id: 'case_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         status: 'active',
         primary_pharmacist_id: 'pharmacist_1',
         patient: {
@@ -891,12 +894,12 @@ describe('daily job local date keys', () => {
         priority: 'high',
         assignedTo: 'pharmacist_1',
         relatedEntityType: 'patient',
-        relatedEntityId: 'patient_1',
-        dedupeKey: 'patient-foundation-review:patient_1',
+        relatedEntityId: rawPatientId,
+        dedupeKey: `patient-foundation-review:${rawPatientId}`,
         metadata: expect.objectContaining({
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           case_id: 'case_1',
-          action_href: '/patients/patient_1#patient-foundation',
+          action_href: encodedPatientHref,
           missing_items: expect.arrayContaining([
             '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
             '駐車可否が未確認です。',
