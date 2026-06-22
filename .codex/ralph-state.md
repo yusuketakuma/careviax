@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260623-0521 JST
+
+- current task: complete Codex-owned F-20260623-018 daily compliance-expiry notification href hardening after Claude plan and patch approval.
+- files inspected: agmsg inbox/plan/lock/patch-review/approval messages for F-018; `git status --short --untracked-files=all`; `git log --oneline`; `src/lib/patient/navigation.ts`; `src/lib/patient/navigation.test.ts`; `src/server/jobs/daily/compliance-expiry.ts`; `src/server/jobs/daily/shared.ts`; `src/server/jobs/daily-helpers.ts`; `src/server/jobs/daily.test.ts`; adjacent raw patient href inventory; and this Ralph state file.
+- files changed: `src/server/jobs/daily/compliance-expiry.ts`, `src/server/jobs/daily.test.ts`, and this Ralph state entry. The source slice was committed as `cd917790 fix(jobs): encode compliance expiry patient links`.
+- bugs found: the daily consent-expiry and public-subsidy-expiry notification links interpolated `patient_id` directly into `/patients/{id}`, so a hostile patient id containing `/`, `?`, or `#` could change the route path/query/fragment of the browser-facing notification link.
+- security risks found: F-018 reduces patient-id path/query/hash injection risk for the two compliance-expiry notification links while preserving raw patient id for `findPrimaryPharmacistIdsForActiveCases` org-patient inputs and `orgPatientKey` cache lookups, and preserving consent/insurance id based notification dedupe keys, task dedupe keys, and related entity ids. No auth, RLS, DB schema, migration, API route, UI, PHI logging, secret, cookie, env value, billing/payment, deploy, or destructive operation changed.
+- performance issues found: no runtime performance issue changed. The patch uses the existing `buildPatientHref` helper at two notification-link call sites and otherwise preserves query shape, active-case lookup/cache-key symmetry, batching, and duplicate-safe notification behavior.
+- validation commands: baseline `pnpm exec vitest run src/server/jobs/daily.test.ts -t "consent expiry|public subsidy" --reporter=dot --testTimeout=30000`; post-change focused consent/public-subsidy Vitest; full daily job Vitest; scoped ESLint for the two changed source/test files; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; test-auditor and security-auditor read-only checker reviews; Claude PATCH_REVIEW.
+- validation results: baseline focused Vitest passed `4/4`; final focused Vitest passed `4/4`; full daily job Vitest passed `32/32`; scoped ESLint, Prettier, diff-check, and full typecheck passed. test-auditor approved the hostile-id link assertions, raw active-case query assertions, and consent/insurance identity assertions. security-auditor approved no security/privacy regression and confirmed raw `orgPatientKey` cache-key symmetry is preserved. Claude independently approved the patch, reported reviewer-audit gates green, and source commit `cd917790` landed.
+- remaining work: commit this ledger-only Ralph entry and release the `.codex/ralph-state.md` lock. Untracked `projects/careviax/**` file-plane artifacts remain unrelated and should stay unstaged unless explicitly locked.
+- next action: run scoped ledger Prettier and `git diff --check`, drain agmsg, commit only `.codex/ralph-state.md`, send DONE for the ledger lock, then continue with the remaining adjacent raw href candidates such as prescriptions detail or communications/navigation after a fresh plan/lock cycle.
+
 ### 20260623-0505 JST
 
 - current task: complete Codex-owned F-20260623-017 next-day unsent-report notification href hardening after Claude plan and patch approval.
