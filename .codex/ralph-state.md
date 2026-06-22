@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260623-0828 JST
+
+- current task: complete Codex-owned F-20260623-031 visit-workflow report href helper convergence after Claude plan and patch approval.
+- files inspected: agmsg inbox/plan approval/lock grant/patch review approval messages for F-031; `git status --short --untracked-files=all`; `src/lib/reports/navigation.ts`; `src/lib/reports/navigation.test.ts`; `src/lib/visits/visit-workflow-projection.ts`; `src/lib/visits/visit-workflow-projection.test.ts`; gbrain code graph precheck output for `buildPatientTimelineEvents` while preparing the next slice; checker split outputs; and this Ralph state file.
+- files changed: `src/lib/visits/visit-workflow-projection.ts`, `src/lib/visits/visit-workflow-projection.test.ts`, and this Ralph state entry. The source slice was committed as `4359079f refactor(visits): reuse guarded report href helper`.
+- bugs found: `visit-workflow-projection.ts` kept a duplicate local `buildReportHref` helper that encoded report ids but did not inherit the shared exact `.` / `..` dot-segment guard added in `src/lib/reports/navigation.ts`. A guard-less local helper could continue producing `/reports/.` or `/reports/..` in workflow actions.
+- security risks found: F-031 reduces report route ambiguity/path-confusion risk by converging visit workflow report href construction onto the shared guarded `buildReportHref` helper. Raw report id remains unchanged for report identity, preferred report selection, workflow action shape outside the href value, visit record hrefs, collaboration hrefs, billing/conference query hrefs, and all non-href identity surfaces. No auth, RLS, DB schema, migration, API route, UI, PHI projection, logging, secret, cookie, env value, billing/payment, deploy, or destructive operation changed.
+- performance issues found: no runtime performance path changed. The patch removes a duplicate local helper and adds one import; helper behavior remains a single path-segment encode for non-dot ids.
+- validation commands: focused `pnpm exec vitest run src/lib/visits/visit-workflow-projection.test.ts src/lib/reports/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the visit workflow files plus shared report navigation helper; scoped Prettier check; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; API contract, security, and test read-only checker reviews; Claude PATCH_REVIEW.
+- validation results: focused helper plus visit workflow Vitest passed `12/12`; scoped ESLint, Prettier, diff-check, full typecheck, and no-unused passed. API contract checker approved duplicate removal, single shared-helper call path, and unchanged action/query identity behavior. Security checker approved guard inheritance, static RangeError message, no auth/RLS/PHI/logging regression, and no double encoding. Test checker approved the integration-level `.` / `..` RangeError teeth through `buildPostVisitWorkflowActions` plus existing hostile non-dot encoding coverage. Claude independently approved the patch and source commit `4359079f` landed with exactly the two locked paths.
+- remaining work: commit this ledger-only Ralph entry and release the `.codex/ralph-state.md` lock. F-032 is already plan-approved and source-locked on the separate patient-detail timeline report href files.
+- next action: run scoped ledger diff check, drain agmsg, commit only `.codex/ralph-state.md`, send DONE for the F-031 ledger lock, then implement F-032 under its granted source lock.
+
 ### 20260623-0811 JST
 
 - current task: complete Codex-owned F-20260623-030 care-reports today-workspace report href hardening after Claude plan and patch approval.
