@@ -24,6 +24,26 @@ describe('facility visit context helpers', () => {
     expect(url.search).toBe('');
   });
 
+  it('encodes the schedule id path segment in record URLs', () => {
+    const hostileScheduleId = '../settings?x=1#frag';
+    const href = createFacilityVisitRecordHref(hostileScheduleId, {
+      label: '青空ホーム',
+      siteName: '中央薬局',
+      placeKind: 'facility',
+      patients: [
+        {
+          scheduleId: hostileScheduleId,
+          patientName: '田中太郎',
+          unitName: '201',
+          routeOrder: 1,
+        },
+      ],
+    });
+
+    expect(href).toBe(`/visits/${encodeURIComponent(hostileScheduleId)}/record`);
+    expect(href).not.toContain(hostileScheduleId);
+  });
+
   it('keeps legacy facility visit context decoding for existing shared URLs only', () => {
     const legacyContext = encodeURIComponent(
       JSON.stringify({

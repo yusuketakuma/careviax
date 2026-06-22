@@ -103,6 +103,18 @@ function buildVisitBillingCandidatesHref(args: {
   }).toString()}`;
 }
 
+function buildReportHref(reportId: string) {
+  return `/reports/${encodeURIComponent(reportId)}`;
+}
+
+function buildVisitRecordHref(scheduleId: string) {
+  return `/visits/${encodeURIComponent(scheduleId)}/record`;
+}
+
+function buildPatientCollaborationHref(patientId: string) {
+  return `/patients/${encodeURIComponent(patientId)}/collaboration`;
+}
+
 export function getConferenceTypeLabel(type: string | null | undefined) {
   if (type === 'pre_discharge') return '退院前カンファ';
   if (type === 'service_manager') return '担当者会議';
@@ -171,6 +183,9 @@ export function buildPostVisitWorkflowActions(args: {
   const conferenceEvidence = conferenceNotes
     .slice(0, 2)
     .map((note) => `${getConferenceTypeLabel(note.note_type)}: ${note.title}`);
+  const preferredReportHref = preferredReport ? buildReportHref(preferredReport.id) : undefined;
+  const visitRecordHref = args.scheduleId ? buildVisitRecordHref(args.scheduleId) : undefined;
+  const patientCollaborationHref = buildPatientCollaborationHref(args.patientId);
   const visitBillingCandidatesHref = buildVisitBillingCandidatesHref({
     billingMonth: args.billingMonth,
     patientId: args.patientId,
@@ -195,14 +210,14 @@ export function buildPostVisitWorkflowActions(args: {
         ? {
             operation: 'open_report',
             label: '報告書を確認',
-            href: `/reports/${preferredReport.id}`,
+            href: preferredReportHref,
           }
         : args.soapComplete
           ? { operation: 'generate_report', label: '報告書を作成' }
           : {
               operation: 'edit_visit_record',
               label: '記録を追記',
-              href: args.scheduleId ? `/visits/${args.scheduleId}/record` : undefined,
+              href: visitRecordHref,
             },
       secondary_action:
         preferredReport && args.soapComplete
@@ -226,7 +241,7 @@ export function buildPostVisitWorkflowActions(args: {
             }
           : null,
       ]),
-      href: preferredReport ? `/reports/${preferredReport.id}` : undefined,
+      href: preferredReportHref,
       action_label: preferredReport
         ? '報告書を確認'
         : args.soapComplete
@@ -254,9 +269,9 @@ export function buildPostVisitWorkflowActions(args: {
       primary_action: {
         operation: 'review_share',
         label: '共有先を確認',
-        href: `/patients/${args.patientId}/collaboration`,
+        href: patientCollaborationHref,
       },
-      href: `/patients/${args.patientId}/collaboration`,
+      href: patientCollaborationHref,
       action_label: '連携を確認',
       evidence: [
         args.careTeamContactCount > 0 ? `共有先 ${args.careTeamContactCount}件` : '共有先未登録',
@@ -283,9 +298,7 @@ export function buildPostVisitWorkflowActions(args: {
           ? {
               operation: 'review_billing_blockers',
               label: firstBillingBlocker?.action_label ?? '止まっている理由を確認',
-              href:
-                firstBillingBlocker?.action_href ??
-                (args.scheduleId ? `/visits/${args.scheduleId}/record` : undefined),
+              href: firstBillingBlocker?.action_href ?? visitRecordHref,
             }
           : billingCandidatesLoading
             ? {
@@ -322,8 +335,7 @@ export function buildPostVisitWorkflowActions(args: {
       ]),
       href:
         args.billingBlockerCount > 0
-          ? (firstBillingBlocker?.action_href ??
-            (args.scheduleId ? `/visits/${args.scheduleId}/record` : undefined))
+          ? (firstBillingBlocker?.action_href ?? visitRecordHref)
           : visitBillingCandidatesHref,
       action_label:
         args.billingBlockerCount > 0
@@ -354,12 +366,12 @@ export function buildPostVisitWorkflowActions(args: {
         : {
             operation: 'edit_next_visit_suggestion',
             label: '提案日を入力',
-            href: args.scheduleId ? `/visits/${args.scheduleId}/record` : '/schedules',
+            href: visitRecordHref ?? '/schedules',
           },
       details: args.nextVisitSuggestionDate
         ? [{ label: '提案日', value: args.nextVisitSuggestionDate.slice(0, 10), tone: 'info' }]
         : [],
-      href: args.scheduleId ? `/visits/${args.scheduleId}/record` : '/schedules',
+      href: visitRecordHref ?? '/schedules',
       action_label: args.hasNextVisitSuggestion ? '次回予定を作成' : '提案日を入力',
       evidence: args.hasNextVisitSuggestion
         ? [

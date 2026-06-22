@@ -100,7 +100,7 @@ function decodeFacilityVisitContextRaw(
 
 export function createFacilityVisitRecordHref(scheduleId: string, context: FacilityVisitContext) {
   void context;
-  return `/visits/${scheduleId}/record`;
+  return `/visits/${encodeURIComponent(scheduleId)}/record`;
 }
 
 export function getNextGroupedVisitScheduleId(
