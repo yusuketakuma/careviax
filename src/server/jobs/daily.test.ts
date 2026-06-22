@@ -1061,22 +1061,25 @@ describe('daily job local date keys', () => {
   });
 
   it('uses local-calendar dates in consent expiry notifications and tasks', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
     consentRecordFindManyMock.mockResolvedValue([
       {
         id: 'consent_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         case_id: 'case_1',
         consent_type: '居宅療養管理指導',
         expiry_date: new Date('2026-06-14T15:30:00.000Z'),
-        patient: { id: 'patient_1', name: '山田 太郎' },
+        patient: { id: rawPatientId, name: '山田 太郎' },
       },
     ]);
     careCaseFindManyMock.mockResolvedValue([
       {
         id: 'case_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         primary_pharmacist_id: 'pharmacist_1',
       },
     ]);
@@ -1090,6 +1093,8 @@ describe('daily job local date keys', () => {
       data: [
         expect.objectContaining({
           user_id: 'pharmacist_1',
+          link: encodedPatientHref,
+          dedupe_key: 'consent-expiry:consent_1:7',
           message:
             '山田 太郎 さんの 居宅療養管理指導 同意が 2026-06-15 に期限切れ。再取得が必要です。',
         }),
@@ -1103,6 +1108,14 @@ describe('daily job local date keys', () => {
         taskType: 'consent_expiry',
         description: '居宅療養管理指導 の同意が 2026-06-15 に期限切れ',
         dedupeKey: 'consent-expiry:consent_1',
+        relatedEntityId: 'consent_1',
+      }),
+    );
+    expect(careCaseFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ id: { in: ['case_1'] } }, { org_id: 'org_1', patient_id: { in: [rawPatientId] } }],
+        }),
       }),
     );
   });
@@ -1180,21 +1193,24 @@ describe('daily job local date keys', () => {
   });
 
   it('notifies and creates a task for public subsidy insurance nearing expiry', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
     patientInsuranceFindManyMock.mockResolvedValue([
       {
         id: 'insurance_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         insurance_type: 'public_subsidy',
         valid_until: new Date('2026-06-14T15:30:00.000Z'),
-        patient: { id: 'patient_1', name: '山田 太郎' },
+        patient: { id: rawPatientId, name: '山田 太郎' },
       },
     ]);
     careCaseFindManyMock.mockResolvedValue([
       {
         id: 'case_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         primary_pharmacist_id: 'pharmacist_1',
       },
     ]);
@@ -1209,7 +1225,8 @@ describe('daily job local date keys', () => {
         expect.objectContaining({
           user_id: 'pharmacist_1',
           title: '公費の有効期限',
-          link: '/patients/patient_1',
+          link: encodedPatientHref,
+          dedupe_key: 'public-subsidy-expiry:insurance_1:7',
         }),
       ],
       skipDuplicates: true,
@@ -1222,6 +1239,13 @@ describe('daily job local date keys', () => {
         dedupeKey: 'public-subsidy-expiry:insurance_1',
         relatedEntityType: 'patient_insurance',
         relatedEntityId: 'insurance_1',
+      }),
+    );
+    expect(careCaseFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ org_id: 'org_1', patient_id: { in: [rawPatientId] } }],
+        }),
       }),
     );
   });
