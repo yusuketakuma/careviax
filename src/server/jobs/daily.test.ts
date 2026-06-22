@@ -666,14 +666,17 @@ describe('daily job local date keys', () => {
   });
 
   it('uses local-calendar expiry dates in prescription expiry notifications', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
     prescriptionIntakeFindManyMock.mockResolvedValue([
       {
-        id: 'intake_1',
+        id: 'intake/1',
         prescription_expiry_date: new Date('2026-06-09T15:30:00.000Z'),
         cycle: {
           case_: {
             org_id: 'org_1',
-            patient_id: 'patient_1',
+            patient_id: rawPatientId,
             primary_pharmacist_id: 'pharmacist_1',
           },
         },
@@ -690,7 +693,8 @@ describe('daily job local date keys', () => {
           org_id: 'org_1',
           user_id: 'pharmacist_1',
           message: '処方箋の有効期限が 2026-06-10 です。早急に対応してください。',
-          dedupe_key: 'prescription-expiry:intake_1',
+          link: encodedPatientHref,
+          dedupe_key: 'prescription-expiry:intake/1',
         }),
       ],
       skipDuplicates: true,

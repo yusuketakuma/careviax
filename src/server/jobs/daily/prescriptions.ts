@@ -2,6 +2,7 @@ import { addDays } from 'date-fns';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { runJob } from '../runner';
 import { buildIntakeLinkageTaskKey, formatDateKey } from '../daily-helpers';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
@@ -264,7 +265,7 @@ export async function checkPrescriptionExpiry() {
           type: 'urgent',
           title: '処方箋有効期限切れ間近',
           message: `処方箋の有効期限が ${intake.prescription_expiry_date ? formatDateKey(intake.prescription_expiry_date) : '不明'} です。早急に対応してください。`,
-          link: `/patients/${caseRecord.patient_id}`,
+          link: buildPatientHref(caseRecord.patient_id),
           dedupe_key: `prescription-expiry:${intake.id}`,
         });
       }
