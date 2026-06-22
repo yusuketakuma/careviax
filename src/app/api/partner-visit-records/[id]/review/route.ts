@@ -7,6 +7,7 @@ import { conflict, notFound, success, validationError } from '@/lib/api/response
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { formatUtcDateKey } from '@/lib/date-key';
+import { buildPartnerVisitRecordHref } from '@/lib/pharmacy-cooperation/navigation';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import {
@@ -277,7 +278,7 @@ export const POST = withAuthContext<{ id: string }>(
           type: 'business',
           title: notification.title,
           message: notification.message,
-          link: `/partner-visit-records/${record.id}`,
+          link: buildPartnerVisitRecordHref(record.id),
           explicitUserIds,
           metadata: {
             partner_visit_record_id: record.id,

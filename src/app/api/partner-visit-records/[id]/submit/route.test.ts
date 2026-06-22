@@ -48,11 +48,15 @@ vi.mock('@/server/services/notifications', () => ({
 
 import { POST as rawPOST } from './route';
 
-const routeContext = { params: Promise.resolve({ id: 'partner_visit_record_1' }) };
+function createRouteContext(recordId = 'partner_visit_record_1') {
+  return { params: Promise.resolve({ id: recordId }) };
+}
 
-function createRequest() {
+const routeContext = createRouteContext();
+
+function createRequest(recordId = 'partner_visit_record_1') {
   return new NextRequest(
-    'http://localhost/api/partner-visit-records/partner_visit_record_1/submit',
+    `http://localhost/api/partner-visit-records/${encodeURIComponent(recordId)}/submit`,
     {
       method: 'POST',
     },
@@ -115,12 +119,47 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
   });
 
   it('submits a draft record and notifies the base pharmacy without completing or billing it yet', async () => {
-    const response = await rawPOST(createRequest(), routeContext);
+    const rawRecordId = 'partner_visit_record/1?tab=x#frag';
+    const encodedRecordHref = `/partner-visit-records/${encodeURIComponent(rawRecordId)}`;
+    partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
+      id: rawRecordId,
+      status: 'draft',
+      visit_request_id: 'visit_request_1',
+      share_case_id: 'share_case_1',
+      revision_no: 1,
+      visit_at: new Date('2026-06-20T01:30:00.000Z'),
+      attachments: [{ file_id: 'file_1' }],
+      owner_partner_pharmacy_id: 'partner_pharmacy_1',
+      owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
+      share_case: { status: 'active' },
+      visit_request: {
+        status: 'recording',
+        requested_by: 'base_user_1',
+        partnership_id: 'partnership_1',
+        partnership: {
+          status: 'active',
+          partner_pharmacy: { status: 'active' },
+        },
+      },
+    });
+    partnerVisitRecordFindUniqueOrThrowMock.mockResolvedValueOnce({
+      id: rawRecordId,
+      status: 'submitted',
+      visit_request_id: 'visit_request_1',
+      share_case_id: 'share_case_1',
+      revision_no: 1,
+      visit_at: new Date('2026-06-20T01:30:00.000Z'),
+      owner_partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
+      visit_request: { id: 'visit_request_1', status: 'submitted', urgency: 'normal' },
+      claim_note: null,
+    });
+
+    const response = await rawPOST(createRequest(rawRecordId), createRouteContext(rawRecordId));
 
     expect(response.status).toBe(200);
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalledWith({
       where: {
-        id: 'partner_visit_record_1',
+        id: rawRecordId,
         org_id: 'org_1',
         status: { in: ['draft', 'returned'] },
         share_case: { status: 'active' },
@@ -157,20 +196,31 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
         type: 'business',
         title: '協力訪問記録が提出されました',
         message: 'アプリで協力訪問記録を確認してください',
+        link: encodedRecordHref,
         explicitUserIds: ['base_user_1'],
         metadata: {
-          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_id: rawRecordId,
           visit_request_id: 'visit_request_1',
           share_case_id: 'share_case_1',
         },
+        dedupeKey: `pharmacy_partner_visit_record_submitted:${rawRecordId}:2026-06-19T00:00:00.000Z`,
+      }),
+    );
+    expect(partnerVisitRecordFindUniqueOrThrowMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id_org_id: { id: rawRecordId, org_id: 'org_1' } },
       }),
     );
     expect(JSON.stringify(dispatchNotificationEventMock.mock.calls)).not.toContain('山田');
+    expect(JSON.stringify(dispatchNotificationEventMock.mock.calls)).not.toContain(
+      `/partner-visit-records/${rawRecordId}`,
+    );
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
       expect.objectContaining({
         action: 'partner_visit_record_submitted',
+        targetId: rawRecordId,
         changes: expect.objectContaining({
           previous_status: 'draft',
           status: 'submitted',
