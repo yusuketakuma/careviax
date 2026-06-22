@@ -890,6 +890,129 @@ describe('getPatientOverview', () => {
       ]),
     );
   });
+
+  it('encodes patient id only in foundation action href path segments and keeps DB identity raw', async () => {
+    const patientId = 'patient/1?tab=x#frag';
+    const encodedPatientId = encodeURIComponent(patientId);
+    const patientFindFirstMock = vi.fn().mockResolvedValue({
+      ...buildOverviewPatient(),
+      scheduling_preference: {
+        preferred_contact_name: '長女',
+        preferred_contact_phone: '090-0000-0000',
+        parking_available: true,
+        care_level: '要介護2',
+      },
+      contacts: [
+        {
+          is_primary: false,
+          is_emergency_contact: true,
+          phone: '090-9999-0000',
+          email: null,
+          fax: null,
+        },
+      ],
+      cases: [
+        {
+          id: 'case_1',
+          status: 'active',
+          care_team_links: [
+            { role: 'physician', phone: '03-1111-2222', email: null, fax: '03-1111-2223' },
+            { role: 'visiting_nurse', phone: '03-2222-3333', email: null, fax: '03-2222-3334' },
+            { role: 'care_manager', phone: '03-3333-4444', email: null, fax: null },
+          ],
+        },
+      ],
+    });
+    const patientInsuranceFindManyMock = vi.fn().mockResolvedValue([]);
+    const patientFieldRevisionFindManyMock = vi.fn().mockResolvedValue([]);
+    const visitRecordFindManyMock = vi.fn().mockResolvedValue([]);
+    const visitScheduleFindFirstMock = vi.fn().mockResolvedValue(null);
+    const db = buildDb({
+      patient: {
+        findFirst: patientFindFirstMock,
+      },
+      patientInsurance: {
+        findMany: patientInsuranceFindManyMock,
+      },
+      patientFieldRevision: {
+        findMany: patientFieldRevisionFindManyMock,
+      },
+      visitRecord: {
+        findMany: visitRecordFindManyMock,
+      },
+      visitSchedule: {
+        count: vi.fn().mockResolvedValue(0),
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: visitScheduleFindFirstMock,
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId,
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(patientFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: patientId,
+          org_id: 'org_1',
+        }),
+      }),
+    );
+    expect(patientInsuranceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: patientId,
+        }),
+      }),
+    );
+    expect(patientFieldRevisionFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: patientId,
+        }),
+      }),
+    );
+    expect(visitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: patientId,
+        }),
+      }),
+    );
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          case_: { patient_id: patientId },
+        }),
+      }),
+    );
+
+    expect(result?.foundation.items.map((item) => [item.key, item.action_href])).toEqual([
+      ['contact', `/patients/${encodedPatientId}/edit?section=visit#intake.contact_phone`],
+      ['parking', `/patients/${encodedPatientId}/edit?section=visit#intake.parking_available`],
+      ['care_level', `/patients/${encodedPatientId}/edit?section=care#intake.care_level`],
+      [
+        'care_team_reliability',
+        `/patients/${encodedPatientId}/edit?section=team#intake.care_manager.name`,
+      ],
+      ['insurance', `/patients/${encodedPatientId}/edit?section=contact#medical_insurance_number`],
+      ['medication_risk', `/patients/${encodedPatientId}/safety-check`],
+      ['visit_preparation', `/patients/${encodedPatientId}`],
+      ['labs', `/patients/${encodedPatientId}/safety-check`],
+    ]);
+    expect(JSON.stringify(result?.foundation.items)).not.toContain(`/patients/${patientId}`);
+  });
 });
 
 describe('getPatientVisitsData', () => {

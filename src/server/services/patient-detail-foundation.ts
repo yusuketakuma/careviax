@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   buildCareTeamReliabilitySummary,
   buildPatientContactReadiness,
@@ -261,7 +262,7 @@ function buildPreVisitPreparationItem(args: {
       label: '訪問前準備',
       status: 'ready',
       detail: '今後の訪問予定はありません。',
-      action_href: `/patients/${args.patientId}`,
+      action_href: buildPatientHref(args.patientId),
       action_label: '患者詳細を確認',
     };
   }
@@ -369,7 +370,7 @@ function buildContactItem(args: {
     label: '主連絡先',
     status: contactReadiness.ready ? 'ready' : 'needs_confirmation',
     detail: contactReadiness.detail,
-    action_href: `/patients/${args.patientId}/edit?section=visit#intake.contact_phone`,
+    action_href: buildPatientHref(args.patientId, '/edit?section=visit#intake.contact_phone'),
     action_label: '連絡先を編集',
   };
 }
@@ -389,7 +390,7 @@ function buildCareTeamReliabilityItem(args: {
     label: '連絡先・連携先',
     status: reliability.needs_confirmation ? 'needs_confirmation' : 'ready',
     detail: reliability.detail,
-    action_href: `/patients/${args.patientId}/edit?section=team#intake.care_manager.name`,
+    action_href: buildPatientHref(args.patientId, '/edit?section=team#intake.care_manager.name'),
     action_label: reliability.needs_confirmation ? '連携先を整備' : '連携先を確認',
   };
 }
@@ -529,7 +530,7 @@ export async function buildPatientFoundationData(
           : preference?.parking_available === false
             ? '駐車場なし'
             : '駐車可否が未確認です。',
-      action_href: `/patients/${args.patientId}/edit?section=visit#intake.parking_available`,
+      action_href: buildPatientHref(args.patientId, '/edit?section=visit#intake.parking_available'),
       action_label: '訪問条件を編集',
     },
     {
@@ -537,7 +538,7 @@ export async function buildPatientFoundationData(
       label: '介護度',
       status: preference?.care_level ? 'ready' : 'needs_confirmation',
       detail: preference?.care_level ?? '介護度が未確認です。',
-      action_href: `/patients/${args.patientId}/edit?section=care#intake.care_level`,
+      action_href: buildPatientHref(args.patientId, '/edit?section=care#intake.care_level'),
       action_label: '介護度を編集',
     },
     careTeamReliabilityItem,
@@ -548,7 +549,10 @@ export async function buildPatientFoundationData(
       detail: hasAnyInsurance
         ? `${insuranceItems.length}件 / ${insuranceAlertCount}件確認`
         : '有効な保険・公費が未登録です。',
-      action_href: `/patients/${args.patientId}/edit?section=contact#medical_insurance_number`,
+      action_href: buildPatientHref(
+        args.patientId,
+        '/edit?section=contact#medical_insurance_number',
+      ),
       action_label: '保険を確認',
     },
     {
@@ -556,7 +560,7 @@ export async function buildPatientFoundationData(
       label: '薬学リスク',
       status: medicationRiskAlertCount > 0 ? 'needs_confirmation' : 'ready',
       detail: medicationRiskDetail,
-      action_href: `/patients/${args.patientId}/safety-check`,
+      action_href: buildPatientHref(args.patientId, '/safety-check'),
       action_label: '薬学課題を確認',
     },
     {
@@ -570,7 +574,7 @@ export async function buildPatientFoundationData(
         args.labSummary.length > 0
           ? `${args.labSummary.length}項目 / 要確認${staleLabCount}件`
           : '薬学判断に使う検査値が未登録です。',
-      action_href: `/patients/${args.patientId}/safety-check`,
+      action_href: buildPatientHref(args.patientId, '/safety-check'),
       action_label: '検査値を確認',
     },
   ];

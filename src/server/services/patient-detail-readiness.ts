@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   findActiveVisitConsent,
   findCurrentManagementPlan,
@@ -28,14 +29,6 @@ function normalizeCareTeamRole(role: string) {
 
 function hasJsonArrayItems(value: Prisma.JsonValue | null | undefined) {
   return Array.isArray(value) && value.length > 0;
-}
-
-function buildPatientReadinessHref(patientId: string, suffix = '') {
-  if (patientId === '.' || patientId === '..') {
-    throw new RangeError('Patient id cannot be a dot segment');
-  }
-
-  return `/patients/${encodeURIComponent(patientId)}${suffix}`;
 }
 
 export async function getPatientReadinessData(db: PatientReadinessDb, args: DetailArgs) {
@@ -177,7 +170,7 @@ export async function getPatientReadinessData(db: PatientReadinessDb, args: Deta
     patient.scheduling_preference?.preferred_contact_phone ||
     patient.scheduling_preference?.visit_before_contact_required != null,
   );
-  const patientHref = buildPatientReadinessHref(args.patientId);
+  const patientHref = buildPatientHref(args.patientId);
 
   const items = [
     {
