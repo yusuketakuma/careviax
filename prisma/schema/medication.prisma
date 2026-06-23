@@ -55,6 +55,7 @@ model MedicationProfile {
 
   @@index([org_id])
   @@index([patient_id])
+  @@index([org_id, patient_id, created_at(sort: Desc)], map: "FirstVisitDocument_org_patient_created_idx")
 }
 
 model ResidualMedication {

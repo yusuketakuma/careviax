@@ -1,4 +1,3 @@
-import { format } from 'date-fns';
 import {
   CHANNEL_LABELS,
   PRIORITY_LABELS,
@@ -242,8 +241,33 @@ export type BuildPatientTimelineEventsInput = {
   operationHistory: readonly OperationHistoryTimelineSource[];
 };
 
+const TOKYO_DATE_FORMATTER = new Intl.DateTimeFormat('ja-JP-u-ca-gregory', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+function formatTokyoDateParts(value: Date) {
+  const parts = Object.fromEntries(
+    TOKYO_DATE_FORMATTER.formatToParts(value).map((part) => [part.type, part.value]),
+  );
+  return {
+    year: parts.year ?? '0000',
+    month: parts.month ?? '00',
+    day: parts.day ?? '00',
+  };
+}
+
 function formatTimelineDate(value: Date | null | undefined) {
-  return value ? format(value, 'yyyy/MM/dd') : null;
+  if (!value) return null;
+  const { year, month, day } = formatTokyoDateParts(value);
+  return `${year}/${month}/${day}`;
+}
+
+function formatTokyoMonthStart(value: Date) {
+  const { year, month } = formatTokyoDateParts(value);
+  return `${year}-${month}-01`;
 }
 
 function compactTimelineValues(values: Array<string | null | undefined | false>) {
@@ -947,7 +971,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
           item.exclusion_reason,
         ]).join(' / ') || null,
       href: `/billing/candidates?${new URLSearchParams({
-        billing_month: format(item.billing_month, 'yyyy-MM-01'),
+        billing_month: formatTokyoMonthStart(item.billing_month),
         patient_id: patientId,
       }).toString()}`,
       action_label: '算定候補を開く',
@@ -1077,6 +1101,9 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
       metadata: compactTimelineValues([`期限 ${formatTimelineDate(item.expires_at)}`]),
     })),
   ]
-    .sort((left, right) => right.occurred_at.getTime() - left.occurred_at.getTime())
+    .sort(
+      (left, right) =>
+        right.occurred_at.getTime() - left.occurred_at.getTime() || right.id.localeCompare(left.id),
+    )
     .slice(0, 40);
 }

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { runPatientDetailTasks } from './patient-detail-tasks';
+import { describe, expect, it, vi } from 'vitest';
+import { runPatientDetailTasks, runPatientDetailTasksSettled } from './patient-detail-tasks';
 
 describe('runPatientDetailTasks', () => {
   it('limits active task concurrency and preserves named results', async () => {
@@ -58,5 +58,49 @@ describe('runPatientDetailTasks', () => {
       first: 'first-result',
       second: 'second-result',
     });
+  });
+
+  it('keeps the default helper fail-fast on task errors', async () => {
+    await expect(
+      runPatientDetailTasks({
+        first: async () => 'first-result',
+        second: async (): Promise<string> => {
+          throw new Error('source failed');
+        },
+      }),
+    ).rejects.toThrow('source failed');
+  });
+
+  it('can collect task errors with fallbacks for timeline-style callers', async () => {
+    const onTaskError = vi.fn();
+
+    const result = await runPatientDetailTasksSettled(
+      {
+        first: async () => 'first-result',
+        second: async (): Promise<string> => {
+          throw new Error('source failed');
+        },
+        third: async () => 'third-result',
+      },
+      {
+        first: 'fallback-first',
+        second: 'fallback-second',
+        third: 'fallback-third',
+      },
+      {
+        concurrency: 2,
+        onTaskError,
+      },
+    );
+
+    expect(result.results).toEqual({
+      first: 'first-result',
+      second: 'fallback-second',
+      third: 'third-result',
+    });
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toMatchObject({ key: 'second' });
+    expect(result.failures[0]?.error).toBeInstanceOf(Error);
+    expect(onTaskError).toHaveBeenCalledWith(result.failures[0]);
   });
 });

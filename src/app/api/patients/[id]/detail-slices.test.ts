@@ -334,6 +334,12 @@ describe('patient detail slice routes', () => {
     getPatientTimelineDataMock.mockResolvedValue({
       timeline_events: [],
       self_reports: [],
+      partial_failures: [
+        {
+          source: 'communicationEvents',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+      ],
     });
 
     const response = await timelineGet(
@@ -346,6 +352,12 @@ describe('patient detail slice routes', () => {
     await expect(response.json()).resolves.toMatchObject({
       timeline_events: [],
       self_reports: [],
+      partial_failures: [
+        {
+          source: 'communicationEvents',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+      ],
     });
   });
 

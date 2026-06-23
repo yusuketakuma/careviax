@@ -3326,6 +3326,251 @@ describe('getPatientTimelineData', () => {
       'communication:comm_self_report',
     );
   });
+
+  it('bounds first-visit document timeline reads and keeps legacy audit filters visible', async () => {
+    const firstVisitDocumentFindManyMock = vi.fn().mockResolvedValue([]);
+    const auditLogFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_legacy_export',
+        action: 'export',
+        target_type: 'medication_history',
+        target_id: 'patient_1',
+        actor_id: 'user_1',
+        changes: {
+          export: { target_type: 'medication_history' },
+        },
+        created_at: new Date('2026-04-05T11:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      firstVisitDocument: { findMany: firstVisitDocumentFindManyMock },
+      auditLog: { findMany: auditLogFindManyMock },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(firstVisitDocumentFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          case_id: { in: ['case_1'] },
+        }),
+        orderBy: [{ created_at: 'desc' }],
+        take: 8,
+      }),
+    );
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            {
+              target_type: {
+                in: [
+                  'medication_history',
+                  'medication_calendar',
+                  'visit_record_list',
+                  'prescription_history',
+                ],
+              },
+              target_id: 'patient_1',
+              action: 'export',
+            },
+          ]),
+        }),
+      }),
+    );
+    expect(JSON.stringify(auditLogFindManyMock.mock.calls[0]?.[0])).not.toContain('patient_id');
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'operation_history:audit_legacy_export',
+          metadata: ['medication_history', 'patient_1'],
+        }),
+      ]),
+    );
+  });
+
+  it('renders available timeline sources when one source query fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      visitSchedule: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'schedule_1',
+            visit_type: 'regular',
+            scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
+            schedule_status: 'confirmed',
+            priority: 'normal',
+            pharmacist_id: null,
+            confirmed_at: new Date('2026-04-03T09:00:00.000Z'),
+            route_order: null,
+            created_at: new Date('2026-04-02T08:00:00.000Z'),
+            updated_at: new Date('2026-04-02T09:00:00.000Z'),
+            visit_record: null,
+          },
+        ]),
+      },
+      communicationEvent: {
+        findMany: vi.fn().mockRejectedValue(new Error('communication source unavailable')),
+      },
+    });
+
+    try {
+      const result = await getPatientTimelineData(db, {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      });
+
+      expect(result?.timeline_events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'visit_schedule:schedule_1',
+          }),
+        ]),
+      );
+      expect(result?.partial_failures).toEqual([
+        {
+          source: 'communicationEvents',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+      ]);
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[patient-timeline] source query failed', {
+        orgId: 'org_1',
+        source: 'communicationEvents',
+        error: 'Error',
+      });
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('formats timeline dates in Asia/Tokyo instead of the server timezone', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      visitSchedule: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'schedule_1',
+            visit_type: 'regular',
+            scheduled_date: new Date('2026-04-10T15:30:00.000Z'),
+            schedule_status: 'confirmed',
+            priority: 'normal',
+            pharmacist_id: null,
+            confirmed_at: new Date('2026-04-03T09:00:00.000Z'),
+            route_order: null,
+            created_at: new Date('2026-04-02T08:00:00.000Z'),
+            updated_at: new Date('2026-04-02T09:00:00.000Z'),
+            visit_record: null,
+          },
+        ]),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_1',
+            status: 'candidate',
+            billing_month: new Date('2026-03-31T15:00:00.000Z'),
+            billing_code: 'HOME_VISIT_MANAGEMENT',
+            billing_name: '居宅療養管理指導',
+            points: 518,
+            exclusion_reason: null,
+            updated_at: new Date('2026-04-08T08:00:00.000Z'),
+          },
+        ]),
+      },
+      medicationCycle: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'cycle_1' }]),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+    const eventsById = new Map(result?.timeline_events.map((event) => [event.id, event]));
+
+    expect(eventsById.get('visit_schedule:schedule_1')?.summary).toContain('訪問日 2026/04/11');
+    expect(eventsById.get('billing_candidate:candidate_1')?.metadata).toContain(
+      '算定月 2026/04/01',
+    );
+    expect(eventsById.get('billing_candidate:candidate_1')?.href).toBe(
+      '/billing/candidates?billing_month=2026-04-01&patient_id=patient_1',
+    );
+  });
+
+  it('uses a deterministic id tiebreaker for same-timestamp events', async () => {
+    const occurredAt = new Date('2026-04-03T10:00:00.000Z');
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      communicationEvent: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'comm_a',
+            event_type: 'family_call',
+            channel: 'phone',
+            direction: 'inbound',
+            subject: 'A',
+            counterpart_name: '長女',
+            occurred_at: occurredAt,
+          },
+          {
+            id: 'comm_b',
+            event_type: 'family_call',
+            channel: 'phone',
+            direction: 'inbound',
+            subject: 'B',
+            counterpart_name: '長女',
+            occurred_at: occurredAt,
+          },
+        ]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events.map((item) => item.id)).toEqual([
+      'communication:comm_b',
+      'communication:comm_a',
+    ]);
+  });
 });
 
 describe('getPatientDocumentsData', () => {

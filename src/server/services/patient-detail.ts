@@ -21,7 +21,11 @@ import {
 } from '@/server/services/patient-detail-foundation';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
 import { listPatientLabSummary } from '@/server/services/patient-detail-labs';
-import { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
+import {
+  type PatientDetailTaskFailure,
+  runPatientDetailTasks,
+  runPatientDetailTasksSettled,
+} from '@/server/services/patient-detail-tasks';
 import { buildPatientTimelineEvents } from '@/server/services/patient-detail-timeline-events';
 import {
   buildPatientTimelineConferenceNoteWhere,
@@ -112,6 +116,36 @@ type PatientTimelineDb = {
 type DetailArgs = PatientDetailScopeArgs;
 
 const PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT = 8;
+const PATIENT_TIMELINE_QUERY_CONCURRENCY = 8;
+
+type PatientTimelinePartialFailure = {
+  source: string;
+  message: string;
+};
+
+function describePatientTimelineTaskError(error: unknown) {
+  if (error instanceof Error) {
+    return error.name;
+  }
+  return 'Unknown error';
+}
+
+function logPatientTimelineTaskFailure(orgId: string, failure: PatientDetailTaskFailure) {
+  console.error('[patient-timeline] source query failed', {
+    orgId,
+    source: failure.key,
+    error: describePatientTimelineTaskError(failure.error),
+  });
+}
+
+function toPatientTimelinePartialFailure(
+  failure: PatientDetailTaskFailure,
+): PatientTimelinePartialFailure {
+  return {
+    source: failure.key,
+    message: '一部のタイムライン情報を取得できませんでした',
+  };
+}
 
 async function listVisibleTimelineExternalShares(
   db: PatientTimelineDb,
@@ -431,21 +465,7 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     ? await listPatientBillingCaseRefs(db, args, caseIds)
     : { visitRecordIds: [] as string[], cycleIds: [] as string[] };
 
-  const {
-    visitSchedules,
-    visitRecords,
-    careReports,
-    communicationEvents,
-    selfReports,
-    externalShares,
-    inquiryRecords,
-    prescriptionIntakes,
-    dispenseResults,
-    managementPlans,
-    firstVisitDocuments,
-    conferenceNotes,
-    billingCandidates,
-  } = await runPatientDetailTasks({
+  const timelineTasks = {
     visitSchedules: () =>
       caseIds.length === 0
         ? Promise.resolve([])
@@ -722,6 +742,7 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
               case_id: { in: caseIds },
             },
             orderBy: [{ created_at: 'desc' }],
+            take: 8,
             select: {
               id: true,
               document_url: true,
@@ -776,7 +797,53 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
             },
           })
         : Promise.resolve([]),
-  });
+  };
+
+  const timelineFallbacks = {
+    visitSchedules: [],
+    visitRecords: [],
+    careReports: [],
+    communicationEvents: [],
+    selfReports: [],
+    externalShares: [],
+    inquiryRecords: [],
+    prescriptionIntakes: [],
+    dispenseResults: [],
+    managementPlans: [],
+    firstVisitDocuments: [],
+    conferenceNotes: [],
+    billingCandidates: [],
+  } satisfies {
+    [K in keyof typeof timelineTasks]: Awaited<ReturnType<(typeof timelineTasks)[K]>>;
+  };
+
+  const { results: timelineSources, failures: sourceFailures } = await runPatientDetailTasksSettled(
+    timelineTasks,
+    timelineFallbacks,
+    {
+      concurrency: PATIENT_TIMELINE_QUERY_CONCURRENCY,
+      onTaskError: (failure) => logPatientTimelineTaskFailure(args.orgId, failure),
+    },
+  );
+
+  const {
+    visitSchedules,
+    visitRecords,
+    careReports,
+    communicationEvents,
+    selfReports,
+    externalShares,
+    inquiryRecords,
+    prescriptionIntakes,
+    dispenseResults,
+    managementPlans,
+    firstVisitDocuments,
+    conferenceNotes,
+    billingCandidates,
+  } = timelineSources;
+  const partialFailures = [...sourceFailures]
+    .sort((left, right) => left.key.localeCompare(right.key))
+    .map(toPatientTimelinePartialFailure);
 
   const prescriptionIntakeIds = prescriptionIntakes.map((item) => item.id);
   const firstVisitDocumentIds = firstVisitDocuments.map((item) => item.id);
@@ -790,6 +857,26 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     conferenceNoteIds,
     canManageBilling,
   });
+
+  const sourceActorNameMapPromise = batchResolveNames(
+    db,
+    args.orgId,
+    Array.from(
+      new Set(
+        compactPreviewValues([
+          ...visitSchedules.map((item) => item.pharmacist_id),
+          ...visitRecords.map((item) => item.pharmacist_id),
+          ...careReports.map((item) => item.created_by),
+          ...dispenseResults.map((item) => item.dispensed_by),
+          ...managementPlans.flatMap((item) => [
+            item.created_by,
+            item.approved_by,
+            item.reviewed_by,
+          ]),
+        ]),
+      ),
+    ),
+  );
 
   const operationHistory = await db.auditLog.findMany({
     where: {
@@ -809,26 +896,15 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     },
   });
 
-  const actorNameMap = await batchResolveNames(
-    db,
-    args.orgId,
-    Array.from(
-      new Set(
-        compactPreviewValues([
-          ...visitSchedules.map((item) => item.pharmacist_id),
-          ...visitRecords.map((item) => item.pharmacist_id),
-          ...careReports.map((item) => item.created_by),
-          ...dispenseResults.map((item) => item.dispensed_by),
-          ...managementPlans.flatMap((item) => [
-            item.created_by,
-            item.approved_by,
-            item.reviewed_by,
-          ]),
-          ...operationHistory.map((item) => item.actor_id),
-        ]),
-      ),
+  const [sourceActorNameMap, operationActorNameMap] = await Promise.all([
+    sourceActorNameMapPromise,
+    batchResolveNames(
+      db,
+      args.orgId,
+      Array.from(new Set(compactPreviewValues(operationHistory.map((item) => item.actor_id)))),
     ),
-  );
+  ]);
+  const actorNameMap = new Map([...sourceActorNameMap, ...operationActorNameMap]);
 
   const timelineEvents = buildPatientTimelineEvents({
     patientId: args.patientId,
@@ -852,5 +928,6 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
   return {
     timeline_events: timelineEvents,
     self_reports: selfReports,
+    ...(partialFailures.length > 0 ? { partial_failures: partialFailures } : {}),
   };
 }
