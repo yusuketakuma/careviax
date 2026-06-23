@@ -4,7 +4,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { InterprofessionalShareContent } from './interprofessional-share-content';
 
 setupDomTestEnv();
@@ -20,11 +22,25 @@ vi.mock('sonner', () => ({
   },
 }));
 
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
+
 // Actual-backed spy: real encode/guard output for the hostile-id test, plus
 // return-value delegation teeth for both patient Link hrefs.
 vi.mock('@/lib/patient/navigation', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/patient/navigation')>();
   return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+
+vi.mock('@/lib/reports/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/reports/navigation')>();
+  return { ...actual, buildReportHref: vi.fn(actual.buildReportHref) };
 });
 
 const REPORT = {
@@ -122,11 +138,17 @@ const REQUEST_DETAIL = {
 };
 
 function stubFetch(
-  options: { failCareTeam?: boolean; failRequests?: boolean; report?: typeof REPORT } = {},
+  options: {
+    failCareTeam?: boolean;
+    failRequests?: boolean;
+    report?: typeof REPORT;
+    requests?: typeof REQUESTS;
+    requestDetail?: typeof REQUEST_DETAIL;
+  } = {},
 ) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
-    if (url.includes('/api/care-reports/rep_1')) {
+    if (url.startsWith('/api/care-reports/')) {
       return new Response(JSON.stringify({ data: options.report ?? REPORT }), { status: 200 });
     }
     // match by suffix so a hostile report.patient_id API path still stubs ok
@@ -140,14 +162,16 @@ function stubFetch(
     if (url.includes('/contacts')) {
       return new Response(JSON.stringify({ data: CONTACTS }), { status: 200 });
     }
-    if (url.includes('/api/communication-requests/req_1')) {
-      return new Response(JSON.stringify({ data: REQUEST_DETAIL }), { status: 200 });
-    }
     if (url.includes('/api/communication-requests?')) {
       if (options.failRequests) {
         return new Response('server error', { status: 500 });
       }
-      return new Response(JSON.stringify({ data: REQUESTS }), { status: 200 });
+      return new Response(JSON.stringify({ data: options.requests ?? REQUESTS }), { status: 200 });
+    }
+    if (url.startsWith('/api/communication-requests/')) {
+      return new Response(JSON.stringify({ data: options.requestDetail ?? REQUEST_DETAIL }), {
+        status: 200,
+      });
     }
     if (url.includes('/api/tasks') && init?.method === 'POST') {
       return new Response(JSON.stringify({ data: { id: 'task_1' } }), { status: 201 });
@@ -158,19 +182,47 @@ function stubFetch(
   return fetchMock;
 }
 
-function renderShare() {
+function renderShare(reportId = 'rep_1') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <InterprofessionalShareContent reportId="rep_1" />
+      <InterprofessionalShareContent reportId={reportId} />
     </QueryClientProvider>,
   );
 }
 
+function expectFetchHeaders(
+  fetchMock: ReturnType<typeof stubFetch>,
+  matcher: (url: string) => boolean,
+  expectedHeaders: Record<string, string>,
+) {
+  const call = fetchMock.mock.calls.find(([input]) => matcher(String(input)));
+  expect(call?.[1]?.headers).toEqual(expectedHeaders);
+}
+
+function readTaskPostBody(fetchMock: ReturnType<typeof stubFetch>) {
+  const taskCall = fetchMock.mock.calls.find(
+    ([input, init]) => String(input) === '/api/tasks' && init?.method === 'POST',
+  );
+  expect(taskCall).toBeTruthy();
+  return JSON.parse(String(taskCall?.[1]?.body)) as {
+    task_type: string;
+    title: string;
+    related_entity_type: string;
+    related_entity_id: string;
+    dedupe_key: string;
+    metadata: {
+      report_id: string;
+      communication_request_id: string;
+    };
+  };
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.clearAllMocks();
 });
 
 describe('InterprofessionalShareContent', () => {
@@ -216,6 +268,30 @@ describe('InterprofessionalShareContent', () => {
         'ヘルパーへ声かけ依頼済み',
       );
     });
+  });
+
+  it('uses the org header on every share GET request', async () => {
+    const fetchMock = stubFetch();
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-reply-card')).toBeTruthy();
+    });
+
+    const orgHeader = buildOrgHeaders('org_1');
+    expectFetchHeaders(fetchMock, (url) => url.startsWith('/api/care-reports/'), orgHeader);
+    expectFetchHeaders(fetchMock, (url) => url.includes('/care-team'), orgHeader);
+    expectFetchHeaders(fetchMock, (url) => url.includes('/contacts'), orgHeader);
+    expectFetchHeaders(
+      fetchMock,
+      (url) => url.startsWith('/api/communication-requests?'),
+      orgHeader,
+    );
+    expectFetchHeaders(
+      fetchMock,
+      (url) => url.startsWith('/api/communication-requests/'),
+      orgHeader,
+    );
   });
 
   it('相手を切り替えると返信パネルが空状態になる(主治医宛て返信なし)', async () => {
@@ -284,7 +360,12 @@ describe('InterprofessionalShareContent', () => {
       ([input, init]) => String(input) === '/api/tasks' && init?.method === 'POST',
     );
     expect(taskCall).toBeTruthy();
-    const body = JSON.parse(String(taskCall?.[1]?.body));
+    expect(taskCall?.[1]?.headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    const body = readTaskPostBody(fetchMock);
     expect(body.task_type).toBe('report_response_followup');
     expect(body.dedupe_key).toBe('share-reply-task:res_1');
     expect(body.related_entity_type).toBe('patient');
@@ -293,6 +374,54 @@ describe('InterprofessionalShareContent', () => {
 
     // 起票済みの返信では再実行できない
     expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('keeps hostile report, patient, and request identities raw in the follow-up task body', async () => {
+    const hostileReportId = 'rep/1?mode=x#frag';
+    const hostilePatientId = 'pt/1?tab=x#frag';
+    const hostileRequestId = 'req/1?x=y#z';
+    const fetchMock = stubFetch({
+      report: {
+        ...REPORT,
+        id: hostileReportId,
+        patient_id: hostilePatientId,
+        patient_summary: { ...REPORT.patient_summary, id: hostilePatientId },
+      },
+      requests: [{ ...REQUESTS[0], id: hostileRequestId }],
+      requestDetail: { ...REQUEST_DETAIL, id: hostileRequestId },
+    });
+    renderShare(hostileReportId);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-reply-card')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId('share-next-task-button'));
+
+    await waitFor(() => {
+      expect(screen.getByText('次回タスク作成済み')).toBeTruthy();
+    });
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => String(input) === `/api/care-reports/${encodeURIComponent(hostileReportId)}`,
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes(`/api/patients/${encodeURIComponent(hostilePatientId)}/care-team`),
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) =>
+          String(input) === `/api/communication-requests/${encodeURIComponent(hostileRequestId)}`,
+      ),
+    ).toBe(true);
+    const body = readTaskPostBody(fetchMock);
+    expect(body.related_entity_id).toBe(hostilePatientId);
+    expect(body.metadata.report_id).toBe(hostileReportId);
+    expect(body.metadata.communication_request_id).toBe(hostileRequestId);
+    expect(body.dedupe_key).toBe('share-reply-task:res_1');
   });
 
   it('allows preview and replies but blocks follow-up task creation without task permission', async () => {
@@ -419,12 +548,11 @@ describe('InterprofessionalShareContent', () => {
       expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith('pt_1');
       expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith('pt_1', '/share');
 
-      // raw identity preserved: API support fetch still uses the raw patient id,
-      // the helper sentinel must NOT leak into fetch/task paths.
+      // Browser href helper sentinel must NOT leak into API/task paths.
       await waitFor(() => {
         expect(
           fetchMock.mock.calls.some(([input]) =>
-            String(input).includes('/api/patients/pt_1/care-team'),
+            String(input).includes(`/api/patients/${encodeURIComponent('pt_1')}/care-team`),
           ),
         ).toBe(true);
       });
@@ -440,7 +568,7 @@ describe('InterprofessionalShareContent', () => {
 
   it('encodes a hostile patient id as a single path segment in both share links', async () => {
     const hostilePatientId = 'pt/1?tab=x#frag';
-    stubFetch({
+    const fetchMock = stubFetch({
       report: {
         ...REPORT,
         patient_id: hostilePatientId,
@@ -464,5 +592,167 @@ describe('InterprofessionalShareContent', () => {
       expect(href).not.toContain('?tab=');
       expect(href).not.toContain('#frag');
     }
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).includes(
+            `/api/patients/${encodeURIComponent(hostilePatientId)}/care-team?case_id=case_1`,
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        fetchMock.mock.calls.some(
+          ([input]) =>
+            String(input) === `/api/patients/${encodeURIComponent(hostilePatientId)}/contacts`,
+        ),
+      ).toBe(true);
+    });
+    const patientFetchUrls = fetchMock.mock.calls
+      .map(([input]) => String(input))
+      .filter((url) => url.startsWith('/api/patients/'));
+    for (const url of patientFetchUrls) {
+      expect(url).not.toContain('pt/1');
+      expect(url).not.toContain('?tab=');
+      expect(url).not.toContain('#frag');
+      expect(url).not.toContain('%25');
+    }
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
   });
+
+  it('encodes a hostile report id in the report API path and back link while keeping list query identity raw', async () => {
+    const hostileReportId = 'rep/1?mode=x#frag';
+    const fetchMock = stubFetch({
+      report: {
+        ...REPORT,
+        id: hostileReportId,
+      },
+    });
+    renderShare(hostileReportId);
+
+    const backLink = await screen.findByRole('link', { name: '報告書詳細へ戻る' });
+    expect(backLink.getAttribute('href')).toBe(`/reports/${encodeURIComponent(hostileReportId)}`);
+    expect(vi.mocked(buildReportHref)).toHaveBeenCalledWith(hostileReportId);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input]) => String(input) === `/api/care-reports/${encodeURIComponent(hostileReportId)}`,
+        ),
+      ).toBe(true);
+    });
+    const requestListUrl = fetchMock.mock.calls
+      .map(([input]) => String(input))
+      .find((url) => url.startsWith('/api/communication-requests?'));
+    expect(requestListUrl).toBeTruthy();
+    const requestParams = new URLSearchParams(requestListUrl?.split('?')[1]);
+    expect(requestParams.get('related_entity_id')).toBe(hostileReportId);
+    expect(requestListUrl).toContain(`related_entity_id=${encodeURIComponent(hostileReportId)}`);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes('/api/care-reports/rep/1?mode=x#frag'),
+      ),
+    ).toBe(false);
+  });
+
+  it('encodes a hostile reply request id for detail fetch while the task body keeps raw identities', async () => {
+    const hostileRequestId = 'req/1?x=y#z';
+    const fetchMock = stubFetch({
+      requests: [{ ...REQUESTS[0], id: hostileRequestId }],
+      requestDetail: { ...REQUEST_DETAIL, id: hostileRequestId },
+    });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-reply-card')).toBeTruthy();
+    });
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) =>
+          String(input) === `/api/communication-requests/${encodeURIComponent(hostileRequestId)}`,
+      ),
+    ).toBe(true);
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).includes('/api/communication-requests/req/1?x=y#z'),
+      ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByTestId('share-next-task-button'));
+    await waitFor(() => {
+      expect(screen.getByText('次回タスク作成済み')).toBeTruthy();
+    });
+    const body = readTaskPostBody(fetchMock);
+    expect(body.related_entity_id).toBe('pt_1');
+    expect(body.metadata.report_id).toBe('rep_1');
+    expect(body.metadata.communication_request_id).toBe(hostileRequestId);
+    expect(body.dedupe_key).toBe('share-reply-task:res_1');
+  });
+
+  it.each(['.', '..'])(
+    'fails closed before fetching when report id is an exact dot segment: %s',
+    async (dotReportId) => {
+      const fetchMock = stubFetch();
+      renderShare(dotReportId);
+
+      await waitFor(() => {
+        expect(screen.getByText('報告書を取得できませんでした')).toBeTruthy();
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['.', '..'])(
+    'fails closed before fetching reply detail when request id is an exact dot segment: %s',
+    async (dotRequestId) => {
+      const fetchMock = stubFetch({
+        requests: [{ ...REQUESTS[0], id: dotRequestId }],
+      });
+      renderShare();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('share-supporting-data-warning')).toBeTruthy();
+      });
+      expect(
+        fetchMock.mock.calls.some(
+          ([input]) => String(input) === `/api/communication-requests/${dotRequestId}`,
+        ),
+      ).toBe(false);
+      expect(screen.queryByTestId('share-reply-card')).toBeNull();
+      expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each(['.', '..'])(
+    'fails closed before patient support fetches when patient id is an exact dot segment: %s',
+    async (dotPatientId) => {
+      const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+      vi.mocked(buildPatientHref).mockImplementation(
+        (id: string, suffix = '') => `/patients/__sentinel_${id}__${suffix}`,
+      );
+      try {
+        const fetchMock = stubFetch({
+          report: {
+            ...REPORT,
+            patient_id: dotPatientId,
+            patient_summary: { ...REPORT.patient_summary, id: dotPatientId },
+          },
+        });
+        renderShare();
+
+        await waitFor(() => {
+          expect(screen.getByTestId('share-supporting-data-warning')).toBeTruthy();
+        });
+        expect(
+          fetchMock.mock.calls.some(([input]) => String(input).startsWith('/api/patients/')),
+        ).toBe(false);
+      } finally {
+        if (realImpl) {
+          vi.mocked(buildPatientHref).mockImplementation(realImpl);
+        }
+      }
+    },
+  );
 });
