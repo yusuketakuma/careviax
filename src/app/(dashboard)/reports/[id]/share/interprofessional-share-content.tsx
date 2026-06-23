@@ -13,6 +13,7 @@ import { Loading } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import {
   buildAudienceShareSections,
@@ -245,13 +246,15 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const patientName = report.patient_summary?.name ?? null;
   const introShortcuts = [
     { href: '/reports', label: '報告書一覧' },
-    ...(patientId && canViewPatient ? [{ href: `/patients/${patientId}`, label: '患者詳細' }] : []),
+    ...(patientId && canViewPatient
+      ? [{ href: buildPatientHref(patientId), label: '患者詳細' }]
+      : []),
     { href: '/external', label: '外部連携' },
   ];
   const externalShareAction =
     patientId && canViewPatient && canUseShareOutput ? (
       <Link
-        href={`/patients/${patientId}/share`}
+        href={buildPatientHref(patientId, '/share')}
         className={cn(
           buttonVariants({ variant: 'outline', size: 'sm' }),
           'min-h-[44px] sm:min-h-0',

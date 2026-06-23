@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { InterprofessionalShareContent } from './interprofessional-share-content';
 
 setupDomTestEnv();
@@ -18,6 +19,13 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+// Actual-backed spy: real encode/guard output for the hostile-id test, plus
+// return-value delegation teeth for both patient Link hrefs.
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
 
 const REPORT = {
   id: 'rep_1',
@@ -121,13 +129,15 @@ function stubFetch(
     if (url.includes('/api/care-reports/rep_1')) {
       return new Response(JSON.stringify({ data: options.report ?? REPORT }), { status: 200 });
     }
-    if (url.includes('/api/patients/pt_1/care-team')) {
+    // match by suffix so a hostile report.patient_id API path still stubs ok
+    // (the href behavior, not fetch plumbing, is what these tests exercise).
+    if (url.includes('/care-team')) {
       if (options.failCareTeam) {
         return new Response('server error', { status: 500 });
       }
       return new Response(JSON.stringify({ data: CARE_TEAM }), { status: 200 });
     }
-    if (url.includes('/api/patients/pt_1/contacts')) {
+    if (url.includes('/contacts')) {
       return new Response(JSON.stringify({ data: CONTACTS }), { status: 200 });
     }
     if (url.includes('/api/communication-requests/req_1')) {
@@ -390,5 +400,69 @@ describe('InterprofessionalShareContent', () => {
       false,
     );
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/contacts'))).toBe(false);
+  });
+
+  it('both patient share links consume the shared buildPatientHref return value (not raw interpolation)', async () => {
+    const fetchMock = stubFetch();
+    const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockImplementation(
+      (id: string, suffix = '') => `/patients/__sentinel_${id}__${suffix}`,
+    );
+    try {
+      renderShare();
+
+      const patientLink = await screen.findByRole('link', { name: '患者詳細' });
+      expect(patientLink.getAttribute('href')).toBe('/patients/__sentinel_pt_1__');
+      const shareLink = await screen.findByRole('link', { name: /外部共有リンクの発行/ });
+      expect(shareLink.getAttribute('href')).toBe('/patients/__sentinel_pt_1__/share');
+
+      expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith('pt_1');
+      expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith('pt_1', '/share');
+
+      // raw identity preserved: API support fetch still uses the raw patient id,
+      // the helper sentinel must NOT leak into fetch/task paths.
+      await waitFor(() => {
+        expect(
+          fetchMock.mock.calls.some(([input]) =>
+            String(input).includes('/api/patients/pt_1/care-team'),
+          ),
+        ).toBe(true);
+      });
+      expect(fetchMock.mock.calls.some(([input]) => String(input).includes('__sentinel_'))).toBe(
+        false,
+      );
+    } finally {
+      if (realImpl) {
+        vi.mocked(buildPatientHref).mockImplementation(realImpl);
+      }
+    }
+  });
+
+  it('encodes a hostile patient id as a single path segment in both share links', async () => {
+    const hostilePatientId = 'pt/1?tab=x#frag';
+    stubFetch({
+      report: {
+        ...REPORT,
+        patient_id: hostilePatientId,
+        patient_summary: { ...REPORT.patient_summary, id: hostilePatientId },
+      },
+    });
+    renderShare();
+
+    const patientLink = await screen.findByRole('link', { name: '患者詳細' });
+    expect(patientLink.getAttribute('href')).toBe(
+      `/patients/${encodeURIComponent(hostilePatientId)}`,
+    );
+    const shareLink = await screen.findByRole('link', { name: /外部共有リンクの発行/ });
+    expect(shareLink.getAttribute('href')).toBe(
+      `/patients/${encodeURIComponent(hostilePatientId)}/share`,
+    );
+
+    for (const link of [patientLink, shareLink]) {
+      const href = link.getAttribute('href') ?? '';
+      expect(href).not.toContain('pt/1');
+      expect(href).not.toContain('?tab=');
+      expect(href).not.toContain('#frag');
+    }
   });
 });
