@@ -59,7 +59,7 @@ import {
   getProcessStepKeyForStatus,
 } from '@/lib/prescription/cycle-workspace';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
-import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
@@ -4004,26 +4004,26 @@ export function CardWorkspace({
 
   const recordBillingPaymentProfileMutation = useMutation({
     mutationFn: async (input: BillingPaymentProfileFormInput) => {
-      const response = await fetch(`/api/patients/${input.patientId}/billing-profile`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+      const response = await fetch(
+        `/api/patients/${encodePathSegment(input.patientId)}/billing-profile`,
+        {
+          method: 'PATCH',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify({
+            payer_type: input.payerType,
+            payer_name: input.payerName,
+            payer_relation: input.payerRelation,
+            billing_address_mode: input.billingAddressMode,
+            billing_address: input.billingAddress,
+            payment_method: input.paymentMethod,
+            collection_timing: input.collectionTiming,
+            receipt_issue: input.receiptIssue,
+            invoice_issue: input.invoiceIssue,
+            unpaid_tolerance: input.unpaidTolerance,
+            note: input.note,
+          }),
         },
-        body: JSON.stringify({
-          payer_type: input.payerType,
-          payer_name: input.payerName,
-          payer_relation: input.payerRelation,
-          billing_address_mode: input.billingAddressMode,
-          billing_address: input.billingAddress,
-          payment_method: input.paymentMethod,
-          collection_timing: input.collectionTiming,
-          receipt_issue: input.receiptIssue,
-          invoice_issue: input.invoiceIssue,
-          unpaid_tolerance: input.unpaidTolerance,
-          note: input.note,
-        }),
-      });
+      );
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.message ?? '支払設定の保存に失敗しました');
@@ -4110,12 +4110,9 @@ export function CardWorkspace({
 
   const recordMcsCheckLogMutation = useMutation({
     mutationFn: async (input: McsCheckLogFormInput) => {
-      const response = await fetch(`/api/patients/${input.patientId}/mcs/logs`, {
+      const response = await fetch(`/api/patients/${encodePathSegment(input.patientId)}/mcs/logs`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           content_type: input.contentType,
           summary: input.summary,

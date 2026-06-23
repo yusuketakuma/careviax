@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import type {
   PatientDocumentsSnapshot,
   PatientOverview,
@@ -38,6 +38,13 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
 }));
+
+// Actual-backed spy: buildOrgJsonHeaders keeps real behavior by default (so F-081/F-082 header assertions stay
+// valid) but can be given a sentinel return in the F-083 test to prove helper adoption (not just equal shape).
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders) };
+});
 
 import {
   CardWorkspace,
@@ -2612,6 +2619,183 @@ describe('CardWorkspace', () => {
         const config = getConfig();
         await expect(config?.queryFn?.()).rejects.toThrow(RangeError);
         expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
+
+  // F-083 (card-workspace sub-slice 3/5): billing-profile PATCH + mcs/logs POST URL/header hardening.
+  // The two target mutationFns are not individually named in the mock, so we capture every useMutation config and
+  // locate them by the request each emits. A merged representative input drives BOTH (each reads its own fields).
+  function captureAllMutationConfigs(patientId: string) {
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { id: patientId } });
+    const baseImpl = useMutationMock.getMockImplementation();
+    const mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }> = [];
+    useMutationMock.mockImplementation(
+      (config: { mutationFn?: (input: unknown) => Promise<unknown> }) => {
+        mutationConfigs.push(config);
+        return baseImpl?.(config);
+      },
+    );
+    return mutationConfigs;
+  }
+
+  const F083_INPUT = {
+    patientId: 'PLACEHOLDER',
+    // billing fields
+    payerType: 'self',
+    payerName: '山田太郎',
+    payerRelation: 'self',
+    billingAddressMode: 'same_as_residence',
+    billingAddress: '東京都千代田区1-1-1',
+    paymentMethod: 'bank_transfer',
+    collectionTiming: 'month_end',
+    receiptIssue: 'issue',
+    invoiceIssue: 'issue',
+    unpaidTolerance: 'normal',
+    note: '請求メモ',
+    // mcs fields
+    contentType: 'medication_adherence',
+    summary: '服薬確認OK',
+    nextAction: '次回訪問で再確認',
+  };
+
+  // Execute each captured mutationFn one at a time so we can attribute each emitted request to a config index.
+  async function probeMutationUrls(
+    mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }>,
+    fetchMock: ReturnType<typeof vi.fn>,
+    input: unknown,
+  ) {
+    const urlByIndex: Array<string | undefined> = [];
+    for (let i = 0; i < mutationConfigs.length; i += 1) {
+      fetchMock.mockClear();
+      try {
+        await mutationConfigs[i].mutationFn?.(input);
+      } catch {
+        // unrelated input contracts throw before fetch; ignored.
+      }
+      urlByIndex[i] = fetchMock.mock.calls[0] ? String(fetchMock.mock.calls[0][0]) : undefined;
+    }
+    return urlByIndex;
+  }
+
+  it('encodes billing-profile and mcs-logs paths, sends helper-built JSON headers, and preserves exact raw bodies', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    const enc = encodeURIComponent(hostileId);
+    // sentinel that a manual { 'Content-Type', 'x-org-id' } literal can NEVER produce -> proves helper adoption.
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
+
+    const mutationConfigs = captureAllMutationConfigs(hostileId);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId={hostileId} />);
+
+      const input = { ...F083_INPUT, patientId: hostileId };
+      const urlByIndex = await probeMutationUrls(mutationConfigs, fetchMock, input);
+      const billingIndex = urlByIndex.findIndex((u) => u?.includes('/billing-profile'));
+      const mcsIndex = urlByIndex.findIndex((u) => u?.includes('/mcs/logs'));
+      expect(billingIndex).toBeGreaterThanOrEqual(0);
+      expect(mcsIndex).toBeGreaterThanOrEqual(0);
+
+      // Re-run the two target mutations cleanly so we can inspect their exact request.
+      fetchMock.mockClear();
+      await mutationConfigs[billingIndex].mutationFn?.(input);
+      const [billingUrl, billingInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      fetchMock.mockClear();
+      await mutationConfigs[mcsIndex].mutationFn?.(input);
+      const [mcsUrl, mcsInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+      // encoded URLs, helper-built headers (identity proves the helper, not an equal-shaped literal).
+      expect(billingUrl).toBe(`/api/patients/${enc}/billing-profile`);
+      expect(billingInit.method).toBe('PATCH');
+      expect(billingInit.headers).toBe(sentinelHeaders);
+      expect(mcsUrl).toBe(`/api/patients/${enc}/mcs/logs`);
+      expect(mcsInit.method).toBe('POST');
+      expect(mcsInit.headers).toBe(sentinelHeaders);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+      for (const url of [billingUrl, mcsUrl]) {
+        expect(url).not.toContain('?x=y');
+        expect(url).not.toContain('#z');
+        expect(url).not.toContain('%25');
+        expect(url).not.toContain(`/${hostileId}/`);
+      }
+
+      // exact billing body (all fields preserved; patient id NOT serialized).
+      const billingBody = JSON.parse(billingInit.body as string);
+      expect(billingBody).toEqual({
+        payer_type: 'self',
+        payer_name: '山田太郎',
+        payer_relation: 'self',
+        billing_address_mode: 'same_as_residence',
+        billing_address: '東京都千代田区1-1-1',
+        payment_method: 'bank_transfer',
+        collection_timing: 'month_end',
+        receipt_issue: 'issue',
+        invoice_issue: 'issue',
+        unpaid_tolerance: 'normal',
+        note: '請求メモ',
+      });
+      expect(billingInit.body as string).not.toContain(hostileId);
+
+      // mcs body: exact key set + values; occurred_at is a generated ISO timestamp (deterministic shape).
+      const mcsBody = JSON.parse(mcsInit.body as string);
+      expect(Object.keys(mcsBody).sort()).toEqual([
+        'content_type',
+        'next_action',
+        'occurred_at',
+        'summary',
+      ]);
+      expect(mcsBody).toMatchObject({
+        content_type: 'medication_adherence',
+        summary: '服薬確認OK',
+        next_action: '次回訪問で再確認',
+      });
+      expect(mcsBody.occurred_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      expect(mcsInit.body as string).not.toContain(hostileId);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed: billing-profile and mcs-logs mutationFns reject RangeError before fetch for dot id %p',
+    async (dotId) => {
+      // 1) probe with a safe id to locate the two target config indices (useMutation order is deterministic).
+      const probeConfigs = captureAllMutationConfigs('patient_probe');
+      const probeFetch = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+      vi.stubGlobal('fetch', probeFetch);
+      render(<CardWorkspace patientId="patient_probe" />);
+      const probeUrls = await probeMutationUrls(probeConfigs, probeFetch, {
+        ...F083_INPUT,
+        patientId: 'patient_probe',
+      });
+      const billingIndex = probeUrls.findIndex((u) => u?.includes('/billing-profile'));
+      const mcsIndex = probeUrls.findIndex((u) => u?.includes('/mcs/logs'));
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+      expect(billingIndex).toBeGreaterThanOrEqual(0);
+      expect(mcsIndex).toBeGreaterThanOrEqual(0);
+
+      // 2) dot render (same deterministic order) -> the two target mutationFns must fail closed before fetch.
+      const dotConfigs = captureAllMutationConfigs(dotId);
+      const dotFetch = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', dotFetch);
+      try {
+        render(<CardWorkspace patientId={dotId} />);
+        const dotInput = { ...F083_INPUT, patientId: dotId };
+        await expect(dotConfigs[billingIndex].mutationFn?.(dotInput)).rejects.toThrow(RangeError);
+        await expect(dotConfigs[mcsIndex].mutationFn?.(dotInput)).rejects.toThrow(RangeError);
+        expect(dotFetch).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
         vi.clearAllMocks();
