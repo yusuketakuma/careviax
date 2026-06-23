@@ -1,4 +1,5 @@
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 export const VISIT_RECORD_PAGE_LIMIT = 100;
 
@@ -21,7 +22,7 @@ export async function fetchPatientVisitRecordsWindow<T>(args: {
     path: '/api/visit-records',
     params: query,
     init: {
-      headers: { 'x-org-id': args.orgId },
+      headers: buildOrgHeaders(args.orgId),
       cache: 'no-store',
     },
     fetchImpl: args.fetchImpl,
