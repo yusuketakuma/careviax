@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   canOpenPatientMcsPage,
   describePatientMcsCardStatus,
@@ -24,7 +25,6 @@ import { PatientMcsSummaryCard } from '@/components/patient-mcs/patient-mcs-summ
 
 export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
-  const patientPathId = encodeURIComponent(patientId);
   const statusQuery = useQuery<PatientMcsCardViewData>({
     queryKey: createPatientMcsQueryKey(patientId, orgId, 0),
     enabled: Boolean(orgId),
@@ -106,7 +106,7 @@ export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
         ) : null}
         {canOpenPatientMcsPage(statusQuery.data) ? (
           <Link
-            href={`/patients/${patientPathId}/mcs`}
+            href={buildPatientHref(patientId, '/mcs')}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             <Link2 className="mr-1.5 size-4" aria-hidden="true" />
