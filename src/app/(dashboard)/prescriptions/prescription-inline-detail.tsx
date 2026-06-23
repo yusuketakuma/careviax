@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
 import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -115,8 +117,8 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['prescription-intake-detail', orgId, intakeId],
     queryFn: async () => {
-      const res = await fetch(`/api/prescription-intakes/${encodeURIComponent(intakeId)}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('取得失敗');
       return res.json() as Promise<IntakeDetail>;

@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { PrescriptionInlineDetail } from './prescription-inline-detail';
@@ -37,6 +38,14 @@ vi.mock('@/components/features/patients/patient-history-summary', () => ({
   PatientHistorySummary: () => <div>直近過去歴サマリー</div>,
 }));
 
+// Actual-backed spy: real behavior stays in place by default, while the
+// queryFn test can use a sentinel return to prove the shared header helper is
+// consumed instead of a manually equal-shaped literal.
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
+
 // Actual-backed spies: real encode/guard output for the existing hostile
 // prescription id assertions and the hostile patient id test, plus return-value
 // delegation teeth for the 詳細 / 全画面表示 / 患者 browser links.
@@ -59,6 +68,7 @@ describe('PrescriptionInlineDetail', () => {
     useOrgIdMock.mockReset();
     useQueryMock.mockReset();
     fetchMock.mockReset();
+    vi.mocked(buildOrgHeaders).mockClear();
     vi.stubGlobal('fetch', fetchMock);
   });
 
@@ -145,9 +155,11 @@ describe('PrescriptionInlineDetail', () => {
 
   it('encodes decoded route ids before fetching prescription intake details', async () => {
     const hostileId = '../settings?x=1#frag';
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     let queryConfig: QueryConfig | undefined;
 
     useOrgIdMock.mockReturnValue('org_1');
+    vi.mocked(buildOrgHeaders).mockReturnValueOnce(sentinelHeaders);
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({}),
@@ -170,10 +182,35 @@ describe('PrescriptionInlineDetail', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/prescription-intakes/${encodeURIComponent(hostileId)}`,
       {
-        headers: { 'x-org-id': 'org_1' },
+        headers: sentinelHeaders,
       },
     );
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+    expect(fetchMock.mock.calls[0]?.[0]).not.toContain('%25');
   });
+
+  it.each(['.', '..'])(
+    'rejects exact dot intake ids before fetching prescription intake details (%s)',
+    async (intakeId) => {
+      let queryConfig: QueryConfig | undefined;
+
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryMock.mockImplementation((config: QueryConfig) => {
+        queryConfig = config;
+        return {
+          data: null,
+          isLoading: true,
+          error: null,
+        };
+      });
+
+      render(<PrescriptionInlineDetail intakeId={intakeId} />);
+
+      if (!queryConfig) throw new Error('query config was not captured');
+      await expect(queryConfig.queryFn()).rejects.toThrow(RangeError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   function buildDetailData(prescriptionId: string, patientId: string) {
     return {
