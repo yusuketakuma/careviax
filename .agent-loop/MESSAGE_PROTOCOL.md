@@ -88,6 +88,12 @@ details: |
 | `CODE_REVIEW_RESULT`         | reviewer → owner | Pass/fail gate with findings.                                                                                |
 | `VERIFY_REQUEST`             | owner → reviewer | Ask reviewer to run verification (typecheck/test/build).                                                     |
 | `VERIFY_RESULT`              | reviewer → owner | Verification evidence + verdict.                                                                             |
+| `BATCH_REVIEW_REQUEST`       | owner → reviewer | Ask for one checker pass over multiple same-risk, same-pattern slices; verdicts remain per slice.            |
+| `BATCH_REVIEW_RESULT`        | reviewer → owner | Per-slice verdicts for a batch review; any rejected slice returns to owner independently.                    |
+| `ACK`                        | either           | Receipt/liveness ACK for an ACK-required message; not an approval or lock grant unless explicitly stated.    |
+| `STATE_SUMMARY`              | either           | Compact current-state digest: active lock, pending review, running gate, blocked item, and next action.      |
+| `LONG_GATE_LOCK`             | either           | Lease a serialized Next.js long gate (`pnpm build`, `pnpm typecheck`, `pnpm typecheck:no-unused`).           |
+| `LONG_GATE_RELEASE`          | either           | Release a long-gate lease and report the validation result or skip reason.                                   |
 | `BLOCKED`                    | either           | Work blocked on external dependency (`cc:blocked`).                                                          |
 | `UNBLOCK`                    | either           | Dependency resolved; resume.                                                                                 |
 | `HANDOFF`                    | lead → lead      | Transfer ownership of a task/subtask to the other lead with ACK, stable idempotency, and explicit locks.     |
@@ -187,13 +193,15 @@ team `phos`.
 - **Claude-origin priority.** On each Codex drain, messages from the live
   `claude` identity / `claude-lead` role are handled before Codex continues
   local implementation, verification, commits, or idle-ladder work. Inbound
-  `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`,
-  `CHANGES_REQUESTED`, `LOCK_REQUEST`, `HANDOFF`, `PAUSE_REQUEST`, and `URGENT`
-  messages require immediate triage/ACK before lower-priority Codex tasks resume.
+  `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`, `CODE_REVIEW_REQUEST`,
+  `BATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`, `CHANGES_REQUESTED`, `LOCK_REQUEST`,
+  `LONG_GATE_LOCK`, `HANDOFF`, `PAUSE_REQUEST`, and `URGENT` messages require
+  immediate triage/ACK before lower-priority Codex tasks resume.
 - **ACK-first review handoff.** For `PLAN_REVIEW_REQUEST`,
-  `PATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`, `LOCK_REQUEST`, `HANDOFF`,
+  `PATCH_REVIEW_REQUEST`, `CODE_REVIEW_REQUEST`, `BATCH_REVIEW_REQUEST`,
+  `VERIFY_REQUEST`, `LOCK_REQUEST`, `LONG_GATE_LOCK`, `HANDOFF`,
   `PAUSE_REQUEST`, `URGENT`, and `CHANGES_REQUESTED`, the receiver sends a short
-  ACK/STATUS/grant/deny within one drain before starting sustained review,
+  `ACK`/STATUS/grant/deny within one drain before starting sustained review,
   implementation, or gate work. The ACK can say "in review" and is separate from
   the final verdict.
 - **Sender-side receipt discipline.** A sender does not assume agmsg delivery was
@@ -212,7 +220,13 @@ team `phos`.
   to the live `claude` and `codex` sessions and reinforces the Claude-origin priority rule above.
 - **Long gate serialization.** `pnpm build` must not run concurrently with
   `pnpm typecheck` or `pnpm typecheck:no-unused`; Next.js `.next/types` generation
-  can race. Run those gates serially, preferably outside the main loop.
+  can race. Run those gates serially, preferably outside the main loop. Before
+  starting one, acquire the local lease with
+  `.agent-loop/scripts/long-gate-lock.sh acquire <owner> "<command>" [ttl_minutes]`
+  and send `LONG_GATE_LOCK`; if the helper reports `status=locked`, do not start
+  the gate. Always release with
+  `.agent-loop/scripts/long-gate-lock.sh release <owner> "<result>"` and send
+  `LONG_GATE_RELEASE`.
 - `<body>` is the full §8.1 envelope (the fenced `AGLOOP v5 ...` block).
 
 ### §8.5 — Idempotency & ACK
@@ -221,9 +235,14 @@ team `phos`.
   `idempotency_key` is **not reprocessed**: the receiver returns a
   duplicate-ACK referencing the original `message_id` and takes no further
   action. Retries/resends therefore reuse the same `idempotency_key`.
-- **ACK-gated blocking types.** `LOCK_REQUEST`, `HANDOFF`, and `CHANGES_REQUESTED`
-  require an explicit ACK/grant/deny before the sender proceeds:
+- **ACK-gated blocking types.** `LOCK_REQUEST`, `LONG_GATE_LOCK`, `HANDOFF`, and
+  `CHANGES_REQUESTED` require an explicit ACK/grant/deny before the sender
+  proceeds:
   - `LOCK_REQUEST` → wait for `LOCK_GRANT` / `LOCK_DENY` before editing.
+  - `LONG_GATE_LOCK` → wait for `ACK` / conflict notice before starting the long
+    gate unless the peer is unreachable after two drains and no conflicting gate
+    is visible in the local lease; release afterward with
+    `long-gate-lock.sh release` and `LONG_GATE_RELEASE`.
   - `HANDOFF` → wait for the receiver's ACK before releasing ownership. A resent
     handoff reuses the same stable `idempotency_key` and must not double-flip ownership.
     The receiver edits only the granted `locked_paths`; load handoff does not widen scope
@@ -233,6 +252,58 @@ team `phos`.
     Other review-request types are not edit-permission gates, but still require a
     receipt ACK/STATUS per the transport rules above so the sender can avoid blind
     stacking and drain-lag stalls.
+
+### §8.6 — Communication Efficiency Rules
+
+These rules are user-directed as of 2026-06-24 and are designed to keep both
+supervisors responsive without weakening maker/checker separation.
+
+**ACK taxonomy.**
+
+- Must receive ACK/grant/deny before proceeding: `URGENT`, `LOCK_REQUEST`,
+  `LONG_GATE_LOCK`, `HANDOFF`, `PAUSE_REQUEST`, and `CHANGES_REQUESTED`.
+- Must receive quick receipt ACK before sustained work, but not before unrelated
+  non-conflicting work: `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`,
+  `CODE_REVIEW_REQUEST`, `BATCH_REVIEW_REQUEST`, and `VERIFY_REQUEST`.
+- No ACK expected by default: `FYI:`/`IMPL_PROGRESS`, `DONE`,
+  `STATE_SUMMARY`, `LONG_GATE_RELEASE`, `MEMORY_WRITEBACK_DONE`, and
+  `STATUS_PING`, unless the message explicitly asks for a reply.
+
+**STATE_SUMMARY.** Send a `STATE_SUMMARY` at cycle start, after a commit, before
+starting a long gate, or after resolving a conflict. Keep it compact:
+
+```
+active_lock: <paths or ->
+pending_review: <task/message_id or ->
+running_gate: <command/owner/expires_at or ->
+blocked_on: <thing or ->
+next_action: <one line>
+```
+
+**Compact review envelopes.** A review request should carry only:
+
+- what changed since the last ACK/review;
+- exact owned paths;
+- validation already run;
+- known risks or explicit "none";
+- requested reviewer verdict.
+
+Do not paste unchanged plan history or full gate logs into agmsg. Put long
+evidence in repo files, commits, or validation logs and link the path/command.
+
+**Batch review.** Use `BATCH_REVIEW_REQUEST` only when slices are homogeneous,
+low risk, and same-pattern, for example repeated shared-header adoption with the
+same helper and same test shape. The envelope must list each slice with paths,
+validation, risk, and intended commit grouping. Any slice touching auth, RLS,
+patient/medical data semantics, audit logs, DB migrations, permissions, offline
+sync, realtime, billing, or destructive operations is excluded from batching and
+gets its own review.
+
+**Ledger contention.** Shared ledgers (`.agent-loop/STATE.md`,
+`.codex/ralph-state.md`, `CODEX_GOAL_PROGRESS.md`) are updated at coherent
+boundaries under explicit lock, not for every small agmsg packet. If the ledger
+lock is unavailable, send `STATE_SUMMARY` and keep the source/test slice moving
+inside its existing lock; reconcile the ledger at the next safe boundary.
 
 ### Identity mapping
 

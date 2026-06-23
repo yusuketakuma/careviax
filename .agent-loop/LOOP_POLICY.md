@@ -417,6 +417,39 @@ the numbered entries that follow.
     - **Two live agents by default.** The active loop has only `claude` and `codex` transport identities.
       A relay/third agent requires explicit current-run human approval.
 
+26. **Communication compression and always-on delivery discipline (both Supervisors).** User-directed
+    2026-06-24; makes the Claude/Codex loop faster while preserving ACK gates, locks, and checker separation.
+
+    - **Codex delivery mode stays `monitor`.** Codex should keep agmsg monitor delivery enabled for this
+      worktree and verify it with
+      `~/.agents/skills/agmsg/scripts/delivery.sh status codex "$(pwd)"` at bootstrap. If it drifts, run
+      `~/.agents/skills/agmsg/scripts/delivery.sh set monitor codex "$(pwd)"`. Already-running Codex
+      sessions still require a restart/first turn before the bridge fully engages, so manual inbox drains
+      remain mandatory.
+    - **Use `STATE_SUMMARY` instead of narrative catch-up.** At cycle start, after commits, before long
+      gates, and after conflicts, send one compact state digest: active lock, pending review, running gate,
+      blocked item, and next action. Do not use long prose status packets when a summary is enough.
+    - **Use a real long-gate lease.** Before `pnpm build`, `pnpm typecheck`, or
+      `pnpm typecheck:no-unused`, acquire `.agent-loop/scripts/long-gate-lock.sh`, send `LONG_GATE_LOCK`,
+      wait for ACK/no-conflict, run only one long Next.js gate at a time, then release with
+      `.agent-loop/scripts/long-gate-lock.sh release <owner> "<result>"` and always emit
+      `LONG_GATE_RELEASE` with result or skip reason.
+    - **Batch only homogeneous low-risk reviews.** `BATCH_REVIEW_REQUEST` may group same-pattern,
+      low-risk slices with identical validation expectations. Exclude auth, RLS, permissions, DB,
+      medical/patient semantics, audit logs, offline sync, realtime, billing, destructive operations,
+      and any slice with unique risk; those still get one request each.
+    - **Keep review envelopes short.** A review request names changed paths, what changed since the last
+      ACK/review, validation already run, known risk, and the requested verdict. Long logs and unchanged
+      plan history stay in repo artifacts, not agmsg.
+    - **Reduce ACK noise.** `URGENT`, `LOCK_REQUEST`, `LONG_GATE_LOCK`, `HANDOFF`, `PAUSE_REQUEST`, and
+      `CHANGES_REQUESTED` remain blocking ACK-gated messages. Review/verify requests need quick receipt
+      ACK before sustained work. `FYI`, `DONE`, `STATE_SUMMARY`, and `LONG_GATE_RELEASE` do not expect ACK
+      unless the sender explicitly asks.
+    - **Group shared-ledger updates.** `.agent-loop/STATE.md`, `.codex/ralph-state.md`, and
+      `CODEX_GOAL_PROGRESS.md` should be updated at coherent boundaries under explicit lock. If that lock
+      is unavailable, send `STATE_SUMMARY` and continue the already-owned source/test slice rather than
+      blocking on ledger churn; reconcile the ledger at the next safe boundary.
+
 ## Consider
 
 Weigh against the current objective; log the decision in the run log. (Seed list — extend from
@@ -477,4 +510,5 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §23 (role-agnostic load balancing: maker/checker rotate by load) | claude-lead | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; user-directed; §1 lanes → soft default; cross-check invariant held; human gate for permanent) |
 | ApplyNow §24 (component-vertical-slice batching + dual-maker parallel)    | claude-lead | _pending_   | proposed (user-directed 2026-06-23; FOUNDATION F-060 + F-061/062/063 landed as evidence; human gate for permanent)                                        |
 | ApplyNow §25 (ACK-first handoff + sender-side WIP discipline)             | human       | claude-lead | peer-approved (user-directed 2026-06-23; human gate satisfied this run; pending permanent promotion)                                                      |
+| ApplyNow §26 (communication compression + long-gate lease discipline)     | human       | _pending_   | proposed (user-directed 2026-06-24; pending peer review and human-gate promotion)                                                                         |
 | _next candidate_                                                          | _name_      | _name_      | proposed                                                                                                                                                  |
