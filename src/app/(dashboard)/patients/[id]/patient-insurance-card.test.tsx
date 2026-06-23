@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { PatientInsuranceCard } from './patient-insurance-card';
 
 setupDomTestEnv();
@@ -202,4 +203,201 @@ describe('PatientInsuranceCard', () => {
       }),
     });
   });
+
+  const sampleForm = {
+    insurance_type: 'medical' as const,
+    application_status: 'confirmed' as const,
+    application_submitted_at: '',
+    decision_at: '',
+    public_program_code: '',
+    previous_care_level: '',
+    provisional_care_level: '',
+    confirmed_care_level: '',
+    insurer_number: '',
+    symbol: '',
+    number: '1234567',
+    branch_number: '',
+    copay_ratio: '30',
+    valid_from: '',
+    valid_until: '',
+    is_active: true,
+    notes: '',
+  };
+
+  type CapturedConfig = {
+    queryKey?: unknown[];
+    queryFn?: () => Promise<unknown>;
+    mutationFn?: (args: unknown) => Promise<unknown>;
+  };
+
+  function captureConfigs() {
+    const queryConfigs: CapturedConfig[] = [];
+    const mutationConfigs: CapturedConfig[] = [];
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockImplementation((config: CapturedConfig) => {
+      queryConfigs.push(config);
+      return { data: undefined, isLoading: true, error: null };
+    });
+    useMutationMock.mockImplementation((config: CapturedConfig) => {
+      mutationConfigs.push(config);
+      return { isPending: false, mutate: mutateMock };
+    });
+    return { queryConfigs, mutationConfigs };
+  }
+
+  function okFetch() {
+    return vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+  }
+
+  it('fetches the insurance list from an encoded patient path with org headers', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientInsuranceCard patientId={hostileId} orgId="org_1" />);
+
+      expect(queryConfigs[0]?.queryKey).toEqual(['patient-insurance', 'org_1', hostileId]);
+      await queryConfigs[0]?.queryFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/insurance`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('encodes both patient and insurance id segments for an update (PUT) without leaking ids into the body', async () => {
+    const hostilePatientId = 'pt/1?x=y#z';
+    const hostileInsuranceId = 'ins/9?a=b#c';
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientInsuranceCard patientId={hostilePatientId} orgId="org_1" />);
+
+      await mutationConfigs[0]?.mutationFn?.({
+        insuranceId: hostileInsuranceId,
+        form: sampleForm,
+      });
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(
+        `/api/patients/${encodeURIComponent(hostilePatientId)}/insurance/${encodeURIComponent(hostileInsuranceId)}`,
+      );
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#c');
+      expect(url).not.toContain('%25');
+      expect(init.method).toBe('PUT');
+      expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+      const body = init.body as string;
+      // ids live only in the URL path - never in the payload.
+      expect(body).not.toContain(hostilePatientId);
+      expect(body).not.toContain(hostileInsuranceId);
+      expect(JSON.parse(body)).toMatchObject({ insurance_type: 'medical', number: '1234567' });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('posts a create (no insuranceId) to the encoded collection path with JSON org headers', async () => {
+    const hostilePatientId = 'pt/1?x=y#z';
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientInsuranceCard patientId={hostilePatientId} orgId="org_1" />);
+
+      await mutationConfigs[0]?.mutationFn?.({ form: sampleForm });
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostilePatientId)}/insurance`);
+      expect(init.method).toBe('POST');
+      expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('deletes via an encoded nested path with org headers', async () => {
+    const hostilePatientId = 'pt/1?x=y#z';
+    const hostileInsuranceId = 'ins/9?a=b#c';
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientInsuranceCard patientId={hostilePatientId} orgId="org_1" />);
+
+      await mutationConfigs[1]?.mutationFn?.(hostileInsuranceId);
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(
+        `/api/patients/${encodeURIComponent(hostilePatientId)}/insurance/${encodeURIComponent(hostileInsuranceId)}`,
+      );
+      expect(url).not.toContain('%25');
+      expect(init.method).toBe('DELETE');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed without fetching for exact dot-segment patientId %p across list/save/delete',
+    async (dotId) => {
+      const { queryConfigs, mutationConfigs } = captureConfigs();
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(<PatientInsuranceCard patientId={dotId} orgId="org_1" />);
+
+        await expect(queryConfigs[0]?.queryFn?.()).rejects.toThrow(RangeError);
+        await expect(
+          mutationConfigs[0]?.mutationFn?.({ insuranceId: 'ins_1', form: sampleForm }),
+        ).rejects.toThrow(RangeError);
+        await expect(mutationConfigs[1]?.mutationFn?.('ins_1')).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
+
+  it.each(['.', '..'])(
+    'fails closed without fetching for exact dot-segment insuranceId %p on update/delete',
+    async (dotId) => {
+      const { mutationConfigs } = captureConfigs();
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(<PatientInsuranceCard patientId="patient_1" orgId="org_1" />);
+
+        await expect(
+          mutationConfigs[0]?.mutationFn?.({ insuranceId: dotId, form: sampleForm }),
+        ).rejects.toThrow(RangeError);
+        await expect(mutationConfigs[1]?.mutationFn?.(dotId)).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
 });

@@ -20,6 +20,8 @@ import {
   formatCareLevel,
   formatCopayRatio,
 } from '@/lib/patient/insurance-summary';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
@@ -573,8 +575,8 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
   const insuranceQuery = useQuery<InsuranceResponse>({
     queryKey: ['patient-insurance', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/insurance`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/insurance`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('患者保険情報の取得に失敗しました');
       return response.json() as Promise<InsuranceResponse>;
@@ -584,17 +586,14 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
 
   const saveMutation = useMutation({
     mutationFn: async (args: { insuranceId?: string; form: InsuranceFormState }) => {
-      const isUpdate = Boolean(args.insuranceId);
+      const { insuranceId } = args;
       const response = await fetch(
-        isUpdate
-          ? `/api/patients/${patientId}/insurance/${args.insuranceId}`
-          : `/api/patients/${patientId}/insurance`,
+        insuranceId
+          ? `/api/patients/${encodePathSegment(patientId)}/insurance/${encodePathSegment(insuranceId)}`
+          : `/api/patients/${encodePathSegment(patientId)}/insurance`,
         {
-          method: isUpdate ? 'PUT' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          method: insuranceId ? 'PUT' : 'POST',
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify(buildInsurancePayload(args.form)),
         },
       );
@@ -604,7 +603,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
           (payload as { message?: string }).message ?? '患者保険情報の保存に失敗しました',
         );
       }
-      return { payload, isUpdate };
+      return { payload, isUpdate: Boolean(insuranceId) };
     },
     onSuccess: async ({ isUpdate }) => {
       toast.success(isUpdate ? '保険情報を更新しました' : '保険情報を追加しました');
@@ -626,12 +625,13 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
 
   const deleteMutation = useMutation({
     mutationFn: async (insuranceId: string) => {
-      const response = await fetch(`/api/patients/${patientId}/insurance/${insuranceId}`, {
-        method: 'DELETE',
-        headers: {
-          'x-org-id': orgId,
+      const response = await fetch(
+        `/api/patients/${encodePathSegment(patientId)}/insurance/${encodePathSegment(insuranceId)}`,
+        {
+          method: 'DELETE',
+          headers: buildOrgHeaders(orgId),
         },
-      });
+      );
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(
