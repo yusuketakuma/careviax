@@ -11,6 +11,7 @@ import type {
   IntakeTriageRow,
   IntakeTriageStatusKey,
 } from '@/lib/prescriptions/intake-triage-contract';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 export type {
   IntakeTriageActionKey,
@@ -100,7 +101,7 @@ export const INTAKE_ACTION_PRESENTATIONS: Record<
   to_audit: { label: '→ 監査へ', href: () => '/audit' },
   to_dispensing: { label: '→ 調剤へ', href: () => '/dispense' },
   to_set: { label: '→ セットへ', href: () => '/set' },
-  to_card: { label: '→ カードへ', href: (row) => `/patients/${row.patient_id}` },
+  to_card: { label: '→ カードへ', href: (row) => buildPatientHref(row.patient_id) },
 };
 
 /**
