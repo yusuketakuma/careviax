@@ -234,6 +234,22 @@ describe('visit-workflow-projection', () => {
     ).toThrow(RangeError);
   });
 
+  it.each(['.', '..'])('rejects exact dot-segment schedule id %s', (scheduleId) => {
+    expect(() =>
+      buildPostVisitWorkflowActions({
+        recordId: 'record_1',
+        scheduleId,
+        patientId: 'patient_1',
+        soapComplete: false,
+        collaborationMentioned: true,
+        medicationManagementComplete: true,
+        billingBlockerCount: 0,
+        careTeamContactCount: 1,
+        hasNextVisitSuggestion: false,
+      }),
+    ).toThrow(RangeError);
+  });
+
   it('does not prompt candidate generation while billing candidates are still loading', () => {
     const actions = buildPostVisitWorkflowActions({
       recordId: 'record_1',

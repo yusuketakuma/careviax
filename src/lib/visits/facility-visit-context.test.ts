@@ -44,6 +44,24 @@ describe('facility visit context helpers', () => {
     expect(href).not.toContain(hostileScheduleId);
   });
 
+  it.each(['.', '..'])('rejects exact dot-segment schedule id %s', (scheduleId) => {
+    expect(() =>
+      createFacilityVisitRecordHref(scheduleId, {
+        label: '青空ホーム',
+        siteName: '中央薬局',
+        placeKind: 'facility',
+        patients: [
+          {
+            scheduleId,
+            patientName: '田中太郎',
+            unitName: '201',
+            routeOrder: 1,
+          },
+        ],
+      }),
+    ).toThrow(RangeError);
+  });
+
   it('keeps legacy facility visit context decoding for existing shared URLs only', () => {
     const legacyContext = encodeURIComponent(
       JSON.stringify({
