@@ -2976,4 +2976,154 @@ describe('CardWorkspace', () => {
       }
     },
   );
+
+  // F-085 (card-workspace sub-slice 5/6): prescription upload helper - presigned-upload + complete POST headers via
+  // buildOrgJsonHeaders (external S3 PUT untouched) + download URL fileId via encodePathSegment.
+  function mockUploadWorkspace() {
+    return mockPatientQuery(buildWorkspace(), {
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 1,
+      top_alerts: [],
+      items: [
+        {
+          key: 'prescription',
+          label: '処方せん',
+          status: '受付あり',
+          description: 'FAX先行',
+          href: '/patients/patient_1/prescriptions',
+          action_label: '処方履歴へ',
+          tone: 'attention',
+          updated_at: '2026-06-09T00:00:00.000Z',
+          metrics: [{ label: '原本', value: '未着/未記録' }],
+          alerts: ['処方せん画像/PDFが未保存です'],
+          quick_actions: [
+            {
+              key: 'save_prescription_document',
+              label: '画像/PDFを保存',
+              resource_id: 'intake_0500',
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  function triggerPrescriptionUpload() {
+    const file = new File(['pdf'], 'prescription.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByLabelText('ファイル'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: /画像\/PDFを保存/ }));
+    return file;
+  }
+
+  it('uploads via encoded download URL + helper JSON headers, keeps external PUT headers, preserves exact bodies', async () => {
+    const presignId = 'file_raw_42';
+    const completeId = 'file/1?x=y#z';
+    const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
+
+    const { prescriptionDocumentMutate } = mockUploadWorkspace();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            id: presignId,
+            uploadUrl: 'https://uploads.example.com/prescription.pdf',
+            headers: { 'x-amz-server-side-encryption': 'AES256' },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, headers: new Headers({ etag: 'etag-1' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { id: completeId } }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId="patient_1" />);
+      const file = triggerPrescriptionUpload();
+
+      await waitFor(() => {
+        expect(prescriptionDocumentMutate).toHaveBeenCalledWith({
+          intakeId: 'intake_0500',
+          documentUrl: `http://localhost:3000/api/files/${encodeURIComponent(completeId)}/download`,
+        });
+      });
+      const docUrl = prescriptionDocumentMutate.mock.calls[0][0].documentUrl as string;
+      expect(docUrl).not.toContain('?x=y');
+      expect(docUrl).not.toContain('#z');
+      expect(docUrl).not.toContain('%25');
+
+      // presigned-upload: helper headers + exact body.
+      const [presignUrl, presignInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(presignUrl).toBe('/api/files/presigned-upload');
+      expect(presignInit.headers).toBe(sentinel);
+      expect(JSON.parse(String(presignInit.body))).toEqual({
+        purpose: 'prescription',
+        patient_id: 'patient_1',
+        file_name: 'prescription.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: file.size,
+      });
+
+      // external S3 PUT: headers come from the presign response, NOT the org helper.
+      const [putUrl, putInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(putUrl).toBe('https://uploads.example.com/prescription.pdf');
+      expect(putInit.headers).toEqual({ 'x-amz-server-side-encryption': 'AES256' });
+      expect(putInit.headers).not.toBe(sentinel);
+
+      // complete: helper headers + exact body (file_id is the presign id, not the completed id).
+      const [completeUrl, completeInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+      expect(completeUrl).toBe('/api/files/complete');
+      expect(completeInit.headers).toBe(sentinel);
+      expect(JSON.parse(String(completeInit.body))).toEqual({ file_id: presignId, etag: 'etag-1' });
+
+      // exactly 3 requests (presign + S3 PUT + complete) and the helper invoked exactly twice with the real org.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed: dot-segment completed file id never builds a malformed download URL or mutates (%p)',
+    async (dotId) => {
+      const { prescriptionDocumentMutate } = mockUploadWorkspace();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: {
+              id: 'file_raw_42',
+              uploadUrl: 'https://uploads.example.com/prescription.pdf',
+              headers: { 'x-amz-server-side-encryption': 'AES256' },
+            },
+          }),
+        })
+        .mockResolvedValueOnce({ ok: true, headers: new Headers({ etag: 'etag-1' }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { id: dotId } }) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(<CardWorkspace patientId="patient_1" />);
+        triggerPrescriptionUpload();
+
+        // the helper completes all 3 fetches, then encodePathSegment(dotId) throws building the download URL;
+        // PrescriptionDocumentQuickForm catches it and surfaces the exact RangeError message (fail-closed proof).
+        expect(await screen.findByText('Path segment cannot be a dot segment')).toBeTruthy();
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(prescriptionDocumentMutate).not.toHaveBeenCalled();
+        for (const call of fetchMock.mock.calls) {
+          expect(String(call[0])).not.toContain(`/api/files/${dotId}/download`);
+        }
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
 });

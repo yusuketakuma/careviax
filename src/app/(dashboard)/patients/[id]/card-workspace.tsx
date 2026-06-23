@@ -3862,10 +3862,7 @@ export function CardWorkspace({
   const uploadPrescriptionDocument = async (file: File) => {
     const presignResponse = await fetch('/api/files/presigned-upload', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         purpose: 'prescription',
         patient_id: patientId,
@@ -3893,10 +3890,7 @@ export function CardWorkspace({
 
     const completeResponse = await fetch('/api/files/complete', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         file_id: presignJson.data.id,
         etag: uploadResponse.headers.get('etag') ?? undefined,
@@ -3909,7 +3903,7 @@ export function CardWorkspace({
     }
 
     return new URL(
-      `/api/files/${completeJson.data.id}/download`,
+      `/api/files/${encodePathSegment(completeJson.data.id)}/download`,
       window.location.origin,
     ).toString();
   };
