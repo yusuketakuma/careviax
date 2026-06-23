@@ -12,6 +12,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   CHANNEL_LABELS,
   REPORT_STATUS_CONFIG,
@@ -97,7 +98,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
       const response = await fetch(
         `/api/care-reports/analytics?overdue_days=${normalizedOverdueDays}`,
         {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
       );
       if (!response.ok) throw new Error('報告書分析の取得に失敗しました');
@@ -110,10 +111,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
     mutationFn: async () => {
       const response = await fetch('/api/care-reports/reminders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ overdue_days: normalizedOverdueDays }),
       });
       const payload = await response.json().catch(() => ({}));

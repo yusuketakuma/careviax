@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { ReportDeliveryDashboard } from './report-delivery-dashboard';
@@ -30,6 +31,15 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
 
 // Actual-backed spies: real encode/guard output for hostile test, plus
 // return-value delegation teeth for the overdue card patient/report links.
@@ -105,6 +115,10 @@ function primeDashboard(overrides: { patientId?: string; reportId?: string } = {
 }
 
 describe('ReportDeliveryDashboard', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('keeps analytics as a secondary section instead of a primary page-level link', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
@@ -243,6 +257,68 @@ describe('ReportDeliveryDashboard', () => {
     expect(reminderButton).toHaveProperty('disabled', true);
     expect(reminderButton.getAttribute('aria-describedby')).toBe(reminderReason.id);
     expect(reminderReason.textContent).not.toMatch(/patient_|report_|山田|田中|患者A/);
+  });
+
+  it('fetches delivery analytics with the org-header helper and stable query key', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ data: {} }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    primeDashboard();
+
+    render(<ReportDeliveryDashboard />);
+
+    const queryOptions = useQueryMock.mock.calls[0]?.[0] as {
+      queryKey: unknown[];
+      queryFn: () => Promise<unknown>;
+    };
+    expect(queryOptions.queryKey).toEqual(['care-report-analytics', 'org_1', 7]);
+
+    await queryOptions.queryFn();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/care-reports/analytics?overdue_days=7');
+    expect(init.headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+  });
+
+  it('queues delivery reminders with json org headers and the exact payload', async () => {
+    const sentinelHeaders = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ data: { queued_count: 2 } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    primeDashboard();
+
+    render(<ReportDeliveryDashboard />);
+
+    const mutationOptions = useMutationMock.mock.calls[0]?.[0] as {
+      mutationFn: () => Promise<{ data: { queued_count: number } }>;
+    };
+
+    await expect(mutationOptions.mutationFn()).resolves.toEqual({ data: { queued_count: 2 } });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/care-reports/reminders');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    expect(init.body).toBe(JSON.stringify({ overdue_days: 7 }));
   });
 
   describe('shared href helper convergence (F-044)', () => {
