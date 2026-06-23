@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
 import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { cn } from '@/lib/utils';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { SOURCE_LABELS } from './new/prescription-form.shared';
@@ -144,7 +146,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
     variant: 'outline' as const,
   };
   const inquiries = data.cycle.inquiries;
-  const prescriptionDetailHref = `/prescriptions/${encodeURIComponent(data.id)}`;
+  const prescriptionDetailHref = buildPrescriptionHref(data.id);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -184,7 +186,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
             className="min-h-11 min-w-11 px-2 text-[10px] sm:h-6 sm:min-h-0 sm:min-w-0"
             asChild
           >
-            <Link href={`/patients/${patient.id}`}>患者</Link>
+            <Link href={buildPatientHref(patient.id)}>患者</Link>
           </Button>
         </div>
       </div>

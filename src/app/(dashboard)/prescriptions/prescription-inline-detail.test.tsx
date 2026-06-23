@@ -3,6 +3,8 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { PrescriptionInlineDetail } from './prescription-inline-detail';
 
 setupDomTestEnv();
@@ -34,6 +36,18 @@ vi.mock('next/link', () => ({
 vi.mock('@/components/features/patients/patient-history-summary', () => ({
   PatientHistorySummary: () => <div>直近過去歴サマリー</div>,
 }));
+
+// Actual-backed spies: real encode/guard output for the existing hostile
+// prescription id assertions and the hostile patient id test, plus return-value
+// delegation teeth for the 詳細 / 全画面表示 / 患者 browser links.
+vi.mock('@/lib/prescriptions/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/prescriptions/navigation')>();
+  return { ...actual, buildPrescriptionHref: vi.fn(actual.buildPrescriptionHref) };
+});
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
 
 type QueryConfig = {
   queryKey: unknown[];
@@ -159,5 +173,120 @@ describe('PrescriptionInlineDetail', () => {
         headers: { 'x-org-id': 'org_1' },
       },
     );
+  });
+
+  function buildDetailData(prescriptionId: string, patientId: string) {
+    return {
+      id: prescriptionId,
+      cycle_id: 'cycle_1',
+      source_type: 'paper',
+      prescribed_date: '2026-04-20T00:00:00.000Z',
+      prescriber_name: '佐藤医師',
+      prescriber_institution: '佐藤医院',
+      prescriber_institution_id: null,
+      prescriber_institution_ref: null,
+      prescription_expiry_date: null,
+      original_document_url: null,
+      refill_remaining_count: null,
+      refill_next_dispense_date: null,
+      split_dispense_total: null,
+      split_dispense_current: null,
+      split_next_dispense_date: null,
+      created_at: '2026-04-20T09:00:00.000Z',
+      lines: [
+        {
+          id: 'line_1',
+          line_number: 1,
+          drug_name: 'アムロジピン錠5mg',
+          drug_code: '2149001',
+          dosage_form: '錠',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+          days: 14,
+          route: 'internal',
+          dispensing_method: null,
+          is_generic: false,
+          is_generic_name_prescription: false,
+          packaging_instructions: null,
+          notes: null,
+        },
+      ],
+      cycle: {
+        id: 'cycle_1',
+        overall_status: 'intake_received',
+        patient_id: patientId,
+        case_id: 'case_1',
+        case_: {
+          patient: {
+            id: patientId,
+            name: '山田太郎',
+            name_kana: 'ヤマダタロウ',
+            birth_date: '1940-01-01T00:00:00.000Z',
+            gender: 'male',
+          },
+        },
+        inquiries: [],
+      },
+    };
+  }
+
+  it('delegates 詳細/全画面表示 to buildPrescriptionHref and 患者 to buildPatientHref (return-value)', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: buildDetailData('rx_1', 'patient_1'),
+      isLoading: false,
+      error: null,
+    });
+
+    const realRx = vi.mocked(buildPrescriptionHref).getMockImplementation();
+    const realPt = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPrescriptionHref).mockImplementation(
+      (id: string) => `/prescriptions/__s_${id}__`,
+    );
+    vi.mocked(buildPatientHref).mockImplementation(
+      (id: string, suffix = '') => `/patients/__s_${id}__${suffix}`,
+    );
+    vi.mocked(buildPrescriptionHref).mockClear();
+    vi.mocked(buildPatientHref).mockClear();
+    try {
+      render(<PrescriptionInlineDetail intakeId="rx_1" />);
+
+      expect(screen.getByRole('link', { name: /詳細/ }).getAttribute('href')).toBe(
+        '/prescriptions/__s_rx_1__',
+      );
+      expect(screen.getByRole('link', { name: '全画面表示' }).getAttribute('href')).toBe(
+        '/prescriptions/__s_rx_1__',
+      );
+      // 患者 button passes the raw id with no suffix (distinct from the
+      // QuickLinks suffixed calls), and renders the helper's return value.
+      expect(screen.getByRole('link', { name: '患者' }).getAttribute('href')).toBe(
+        '/patients/__s_patient_1__',
+      );
+      // shared const -> buildPrescriptionHref invoked exactly once for data.id.
+      expect(vi.mocked(buildPrescriptionHref).mock.calls).toEqual([['rx_1']]);
+      expect(vi.mocked(buildPatientHref).mock.calls).toContainEqual(['patient_1']);
+    } finally {
+      if (realRx) vi.mocked(buildPrescriptionHref).mockImplementation(realRx);
+      if (realPt) vi.mocked(buildPatientHref).mockImplementation(realPt);
+    }
+  });
+
+  it('encodes a hostile patient id in the 患者 detail link as a single path segment', () => {
+    const hostilePatientId = 'pt/1?x=y#z';
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: buildDetailData('rx_1', hostilePatientId),
+      isLoading: false,
+      error: null,
+    });
+
+    render(<PrescriptionInlineDetail intakeId="rx_1" />);
+
+    const patientHref = screen.getByRole('link', { name: '患者' }).getAttribute('href') ?? '';
+    expect(patientHref).toBe(`/patients/${encodeURIComponent(hostilePatientId)}`);
+    expect(patientHref).not.toContain('?x=y');
+    expect(patientHref).not.toContain('#z');
+    // raw id passed to the helper (not pre-encoded) -> no double-encode.
+    expect(patientHref).not.toContain('%25');
   });
 });
