@@ -9,6 +9,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import {
   careReportPrintAuditResponseSchema,
   type CareReportPrintAuditResponse,
@@ -82,10 +84,7 @@ async function recordFirstVisitPrintHistory({
   if (!patientId) throw new Error('患者IDがないため初回文書の印刷履歴を記録できません');
   const res = await fetch('/api/first-visit-documents/print-batch', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({
       patient_id: patientId,
       document_ids: documents.map((document) => document.id),
@@ -122,7 +121,7 @@ function usePrintHubData(
   const setPlansQuery = useQuery({
     queryKey: ['print-hub-set-plans', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/set-plans', { headers: { 'x-org-id': orgId } });
+      const res = await fetch('/api/set-plans', { headers: buildOrgHeaders(orgId) });
       if (!res.ok) throw new Error('セットプランの取得に失敗しました');
       return res.json() as Promise<SetPlansResponse>;
     },
@@ -139,9 +138,13 @@ function usePrintHubData(
   const prescriptionsQuery = useQuery({
     queryKey: ['print-hub-prescriptions', orgId, patientId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/prescriptions?limit=20`, {
-        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
-      });
+      if (!patientId) throw new Error('患者IDがないため処方明細を取得できません');
+      const res = await fetch(
+        `/api/patients/${encodePathSegment(patientId)}/prescriptions?limit=20`,
+        {
+          headers: buildOrgHeaders(orgId),
+        },
+      );
       if (!res.ok) throw new Error('処方明細の取得に失敗しました');
       return res.json() as Promise<PatientPrescriptionsResponse>;
     },
@@ -153,7 +156,7 @@ function usePrintHubData(
     queryKey: ['print-hub-care-reports', orgId],
     queryFn: async () => {
       const res = await fetch('/api/care-reports?limit=50&status=confirmed', {
-        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('報告書の取得に失敗しました');
       return res.json() as Promise<CareReportsResponse>;
@@ -165,8 +168,9 @@ function usePrintHubData(
   const patientDocumentsQuery = useQuery({
     queryKey: ['print-hub-patient-documents', orgId, explicitPatientId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${explicitPatientId}/documents`, {
-        headers: { 'x-org-id': orgId },
+      if (!explicitPatientId) throw new Error('患者IDがないため患者文書を取得できません');
+      const res = await fetch(`/api/patients/${encodePathSegment(explicitPatientId)}/documents`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者文書の取得に失敗しました');
       return res.json() as Promise<PatientDocumentsForPrintResponse>;
@@ -720,11 +724,14 @@ export function PrintHubContent() {
     ],
     queryFn: async () => {
       if (!visitReportSource) throw new Error('印刷対象の報告書がありません');
-      const res = await fetch(`/api/care-reports/${visitReportSource.id}/print-audit`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify({ intent: 'preview_rendered' }),
-      });
+      const res = await fetch(
+        `/api/care-reports/${encodePathSegment(visitReportSource.id)}/print-audit`,
+        {
+          method: 'POST',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify({ intent: 'preview_rendered' }),
+        },
+      );
       return readApiJson<CareReportPrintAuditResponse>(res, {
         fallbackMessage: '報告書の印刷監査に失敗しました',
         schema: careReportPrintAuditResponseSchema,
@@ -832,11 +839,14 @@ export function PrintHubContent() {
       return;
     }
     if (documentType === 'visit_report' && visitReportSource) {
-      const res = await fetch(`/api/care-reports/${visitReportSource.id}/print-audit`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify({ intent: 'print_requested' }),
-      });
+      const res = await fetch(
+        `/api/care-reports/${encodePathSegment(visitReportSource.id)}/print-audit`,
+        {
+          method: 'POST',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify({ intent: 'print_requested' }),
+        },
+      );
       try {
         const audit = await readApiJson<CareReportPrintAuditResponse>(res, {
           fallbackMessage: '報告書の印刷監査を記録できませんでした。再読み込みしてください。',

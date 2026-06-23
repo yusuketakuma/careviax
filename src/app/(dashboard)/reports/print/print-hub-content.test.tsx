@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PrintHubContent } from './print-hub-content';
 
@@ -83,6 +84,118 @@ function physicianPrintAuditContent(assessment: string, reportDate = '2026-06-18
     plan: '次回も残薬確認',
     physician_communication: '処方継続で問題ありません',
     warnings: [],
+  };
+}
+
+function setPrintSearchParams(params: Record<string, string>) {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    searchParams.set(key, value);
+  }
+  useSearchParamsMock.mockReturnValue(searchParams);
+}
+
+function firstVisitDocumentsResponse(patientId: string) {
+  return {
+    patient: { id: patientId, name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+    print_readiness: {
+      overall_status: 'ready',
+      missing_required_count: 0,
+      warning_count: 0,
+      template_versions: [],
+      checks: [
+        {
+          key: 'patient_profile',
+          label: '患者基本情報',
+          completed: true,
+          severity: 'required',
+          description: '差し込みできます。',
+          action_href: `/patients/${patientId}/edit`,
+          action_label: '基本情報を編集',
+        },
+      ],
+    },
+    first_visit_documents: [
+      {
+        id: 'doc_1',
+        case_id: 'case_1',
+        document_url: '/reports/print?copy=1',
+        delivered_at: '2026-06-16T00:00:00.000Z',
+        delivered_to: '山田 花子',
+        created_at: '2026-06-16T00:00:00.000Z',
+        updated_at: '2026-06-16T00:00:00.000Z',
+        emergency_contacts: [],
+        history: [],
+      },
+    ],
+  };
+}
+
+function setPlansResponse(patientId: string) {
+  return {
+    data: [
+      {
+        id: 'plan_1',
+        cycle_id: 'cycle_1',
+        target_period_start: '2026-06-01T00:00:00.000Z',
+        target_period_end: '2026-06-28T00:00:00.000Z',
+        set_method: 'calendar',
+        packaging_summary_snapshot: null,
+        notes: null,
+        created_at: '2026-06-01T00:00:00.000Z',
+        packaging_method_ref: null,
+        cycle: {
+          id: 'cycle_1',
+          patient_id: patientId,
+          case_: { patient: { id: patientId, name: '山田 太郎', name_kana: 'ヤマダ タロウ' } },
+        },
+        audits: [],
+      },
+    ],
+  };
+}
+
+function prescriptionsResponse(patientId: string) {
+  return {
+    patient: { id: patientId, name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+    data: [
+      {
+        id: 'intake_1',
+        cycle_id: 'cycle_1',
+        prescribed_date: '2026-06-01',
+        prescriber_name: '主治医 一郎',
+        prescriber_institution: '在宅診療所',
+        lines: [
+          {
+            id: 'line_1',
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 28,
+            quantity: 28,
+            unit: '錠',
+            notes: null,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function careReportsResponse(reportId: string) {
+  return {
+    data: [
+      {
+        id: reportId,
+        patient_id: 'patient_1',
+        patient_name: '山田 太郎',
+        report_type: 'physician_report',
+        status: 'confirmed',
+        created_at: '2026-06-18T00:00:00.000Z',
+        delivery_records: [],
+      },
+    ],
   };
 }
 
@@ -182,6 +295,209 @@ describe('PrintHubContent', () => {
       ),
     );
   });
+
+  it('encodes the first-visit document patient path while preserving the raw print body', async () => {
+    const patientId = 'patient/1?x=y#z';
+    const encodedPatientId = encodeURIComponent(patientId);
+    setPrintSearchParams({ type: 'first_visit_documents', patient_id: patientId });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === `/api/patients/${encodedPatientId}/documents`) {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(firstVisitDocumentsResponse(patientId)), {
+          status: 200,
+        });
+      }
+      if (url === '/api/first-visit-documents/print-batch') {
+        expect(init?.method).toBe('POST');
+        expect(init?.headers).toEqual(buildOrgJsonHeaders('org_1'));
+        expect(JSON.parse(String(init?.body))).toEqual({
+          patient_id: patientId,
+          document_ids: ['doc_1'],
+          save_copy: true,
+        });
+        return new Response(JSON.stringify({ data: { print_batch_id: 'print_batch_1' } }), {
+          status: 200,
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { queryClient } = renderPrintHubContent();
+
+    await screen.findByTestId('print-target-first_visit_documents');
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .some((query) => {
+          const key = query.queryKey;
+          return (
+            key[0] === 'print-hub-patient-documents' && key[1] === 'org_1' && key[2] === patientId
+          );
+        }),
+    ).toBe(true);
+    const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(calledUrls).toContain(`/api/patients/${encodedPatientId}/documents`);
+    expect(calledUrls).not.toContain(`/api/patients/${patientId}/documents`);
+    expect(calledUrls.join('\n')).not.toContain('%25');
+    expect(calledUrls.join('\n')).not.toContain('?x=y#z');
+
+    fireEvent.click(await screen.findByTestId('print-submit-button'));
+    fireEvent.click(await screen.findByTestId('first-visit-print-confirm-button'));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/first-visit-documents/print-batch',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+
+  it('encodes the set-instruction prescriptions patient path while keeping the raw query key', async () => {
+    const patientId = 'patient/1?x=y#z';
+    const encodedPatientId = encodeURIComponent(patientId);
+    setPrintSearchParams({ type: 'set_instruction' });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/set-plans') {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(setPlansResponse(patientId)), { status: 200 });
+      }
+      if (url === `/api/patients/${encodedPatientId}/prescriptions?limit=20`) {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(prescriptionsResponse(patientId)), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { queryClient } = renderPrintHubContent();
+
+    await screen.findByTestId('print-target-set_instruction');
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/patients/${encodedPatientId}/prescriptions?limit=20`,
+        { headers: buildOrgHeaders('org_1') },
+      ),
+    );
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .some((query) => {
+          const key = query.queryKey;
+          return key[0] === 'print-hub-prescriptions' && key[1] === 'org_1' && key[2] === patientId;
+        }),
+    ).toBe(true);
+    const calledUrls = fetchMock.mock.calls.map(([input]) => String(input)).join('\n');
+    expect(calledUrls).not.toContain(`/api/patients/${patientId}/prescriptions`);
+    expect(calledUrls).not.toContain('%25');
+  });
+
+  it('encodes visit-report print-audit paths for preview and print-requested writes', async () => {
+    const reportId = 'report/1?x=y#z';
+    const encodedReportId = encodeURIComponent(reportId);
+    setPrintSearchParams({ type: 'visit_report' });
+    const seenIntents: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(careReportsResponse(reportId)), { status: 200 });
+      }
+      if (url === `/api/care-reports/${encodedReportId}/print-audit`) {
+        expect(init?.method).toBe('POST');
+        expect(init?.headers).toEqual(buildOrgJsonHeaders('org_1'));
+        const body = JSON.parse(String(init?.body ?? '{}')) as { intent?: string };
+        seenIntents.push(body.intent ?? '');
+        return new Response(
+          JSON.stringify({
+            data: {
+              audited: true,
+              report: {
+                id: reportId,
+                report_type: 'physician_report',
+                content: physicianPrintAuditContent('訪問報告書の監査済み本文'),
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { queryClient } = renderPrintHubContent();
+
+    expect(await screen.findByText('訪問報告書の監査済み本文')).toBeTruthy();
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .some((query) => {
+          const key = query.queryKey;
+          return (
+            key[0] === 'print-hub-care-report-print-audit' &&
+            key[1] === 'org_1' &&
+            key[2] === reportId
+          );
+        }),
+    ).toBe(true);
+
+    fireEvent.click(await screen.findByTestId('print-submit-button'));
+
+    await waitFor(() => expect(seenIntents).toEqual(['preview_rendered', 'print_requested']));
+    expect(window.print).toHaveBeenCalledTimes(1);
+    const calledUrls = fetchMock.mock.calls.map(([input]) => String(input)).join('\n');
+    expect(calledUrls).toContain(`/api/care-reports/${encodedReportId}/print-audit`);
+    expect(calledUrls).not.toContain(`/api/care-reports/${reportId}/print-audit`);
+    expect(calledUrls).not.toContain('%25');
+  });
+
+  it.each(['.', '..'])(
+    'rejects dot-segment patient document ids before first-visit fetch: %s',
+    async (patientId) => {
+      setPrintSearchParams({ type: 'first_visit_documents', patient_id: patientId });
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderPrintHubContent();
+
+      expect(
+        await screen.findByText('帳票データの読み込みに失敗しました。再読み込みしてください。'),
+      ).toBeTruthy();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['.', '..'])(
+    'rejects dot-segment visit report ids before print-audit fetch: %s',
+    async (reportId) => {
+      setPrintSearchParams({ type: 'visit_report' });
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/care-reports?limit=50&status=confirmed') {
+          expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+          return new Response(JSON.stringify(careReportsResponse(reportId)), { status: 200 });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      renderPrintHubContent();
+
+      expect(
+        await screen.findByText('帳票データの読み込みに失敗しました。再読み込みしてください。'),
+      ).toBeTruthy();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith('/api/care-reports?limit=50&status=confirmed', {
+        headers: buildOrgHeaders('org_1'),
+      });
+    },
+  );
 
   it('describes blocked first-visit printing without leaking patient values', async () => {
     vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
@@ -283,7 +599,7 @@ describe('PrintHubContent', () => {
     await screen.findByText('訪問報告書の監査済み本文');
     expect(fetch).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
+      headers: buildOrgJsonHeaders('org_1'),
       body: JSON.stringify({ intent: 'preview_rendered' }),
     });
     expect(fetch).not.toHaveBeenCalledWith(
@@ -296,7 +612,7 @@ describe('PrintHubContent', () => {
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
+        headers: buildOrgJsonHeaders('org_1'),
         body: JSON.stringify({ intent: 'print_requested' }),
       }),
     );
