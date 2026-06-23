@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 type AnalyticsResponse = {
   summary: {
@@ -152,7 +153,7 @@ export function AnalyticsContent() {
     queryKey: ['billing-analytics', orgId],
     queryFn: async () => {
       const res = await fetch('/api/billing-evidence/analytics', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('請求分析の取得に失敗しました');
       return res.json() as Promise<{ data: AnalyticsResponse }>;
@@ -169,7 +170,7 @@ export function AnalyticsContent() {
     queryKey: ['pharmacy-sites', orgId, 'resource-map'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacy-sites?view=resource_map', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('地域資源マップの取得に失敗しました');
       return res.json() as Promise<{
