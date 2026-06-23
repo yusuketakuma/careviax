@@ -9,6 +9,8 @@ import { Loading } from '@/components/ui/loading';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import type { PatientWorkflowPreviewSnapshot } from './patient-detail.types';
 
@@ -22,16 +24,11 @@ function timeValue(value: string | null) {
   return value ? value.slice(11, 16) : '—';
 }
 
-// API path helper for this card. Mirrors the fail-closed dot-segment contract of
-// buildPatientHref: encodeURIComponent('.')/('..') are no-ops, so an exact dot id
-// would let URL normalization rewrite the API path
-// (/api/patients/./workflow-preview -> /api/patients/workflow-preview). Reject it
-// before any fetch. Not buildPatientHref because this is an API URL, not a UI href.
+// API path helper for this card. encodePathSegment fail-closes on exact '.'/'..'
+// (encodeURIComponent is a no-op there) before any fetch. Not buildPatientHref
+// because this is an API URL, not a UI href.
 function buildWorkflowPreviewApiHref(patientId: string) {
-  if (patientId === '.' || patientId === '..') {
-    throw new RangeError('Patient id cannot be a dot segment');
-  }
-  return `/api/patients/${encodeURIComponent(patientId)}/workflow-preview`;
+  return `/api/patients/${encodePathSegment(patientId)}/workflow-preview`;
 }
 
 const reportTargetSourceLabels: Record<
@@ -52,7 +49,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
     enabled: Boolean(orgId),
     queryFn: async () => {
       const response = await fetch(buildWorkflowPreviewApiHref(patientId), {
-        headers: { 'x-org-id': orgId ?? '' },
+        headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
         throw new Error('ワークフロープレビューの取得に失敗しました');

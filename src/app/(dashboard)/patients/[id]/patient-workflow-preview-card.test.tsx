@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { PatientWorkflowPreviewCard } from './patient-workflow-preview-card';
 
 setupDomTestEnv();
@@ -36,6 +37,12 @@ vi.mock('next/link', () => ({
 vi.mock('@/lib/patient/navigation', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/patient/navigation')>();
   return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+
+// Actual-backed spy for the org-header helper so the fetch test can prove helper adoption (not equal shape).
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
 });
 
 describe('PatientWorkflowPreviewCard', () => {
@@ -279,8 +286,10 @@ describe('PatientWorkflowPreviewCard', () => {
     }
   });
 
-  it('encodes a hostile patientId in the workflow-preview fetch URL while keeping raw queryKey identity', async () => {
+  it('encodes a hostile patientId in the workflow-preview fetch URL with helper org headers and raw queryKey', async () => {
     const hostileId = 'pt/1?x=y#z';
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => buildPreviewData() });
     vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
@@ -300,15 +309,19 @@ describe('PatientWorkflowPreviewCard', () => {
       expect(captured.queryKey).toEqual(['patient-workflow-preview', hostileId, 'org_1']);
       await captured.queryFn();
 
-      expect(fetchMock).toHaveBeenCalledWith(
-        `/api/patients/${encodeURIComponent(hostileId)}/workflow-preview`,
-        { headers: { 'x-org-id': 'org_1' } },
-      );
-      const fetchedUrl = String(fetchMock.mock.calls[0]?.[0] ?? '');
+      // exactly one fetch; inspect the single call for URL + header REFERENCE identity (toBe), not structural match -
+      // a `{ ...buildOrgHeaders(orgId) }` spread regression would fail this.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [fetchedUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(fetchedUrl).toBe(`/api/patients/${encodeURIComponent(hostileId)}/workflow-preview`);
+      expect(init.headers).toBe(sentinelHeaders);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
       expect(fetchedUrl).not.toContain('?x=y');
       expect(fetchedUrl).not.toContain('#z');
+      expect(fetchedUrl).not.toContain('%25');
     } finally {
       vi.unstubAllGlobals();
+      vi.mocked(buildOrgHeaders).mockReset();
     }
   });
 
