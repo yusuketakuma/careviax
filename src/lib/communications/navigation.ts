@@ -1,4 +1,7 @@
 import type { HomeLinkContext } from '@/lib/dashboard/home-link-builders';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
+import { buildVisitHref } from '@/lib/visits/navigation';
 
 export type CommunicationEntityLink = {
   href: string;
@@ -33,45 +36,54 @@ export function resolveCommunicationEntityLink(input: {
     return null;
   }
 
-  const entityPathId = encodeURIComponent(input.entityId);
-
-  switch (input.entityType) {
-    case 'patient':
-      return {
-        href: `/patients/${entityPathId}`,
-        label: '患者詳細',
-      };
-    case 'care_report':
-      return {
-        href: `/reports/${entityPathId}`,
-        label: '報告書詳細',
-      };
-    case 'tracing_report':
-      return {
-        href: '/reports#tracing-reports',
-        label: 'トレーシング一覧',
-      };
-    case 'visit_record':
-      return {
-        href: `/visits/${entityPathId}`,
-        label: '訪問詳細',
-      };
-    case 'visit_schedule':
-      return {
-        href: '/schedules',
-        label: 'スケジュール',
-      };
-    case 'conference_note':
-      return {
-        href: '/conferences',
-        label: 'カンファレンス',
-      };
-    case 'patient_self_report':
-      return {
-        href: '/external',
-        label: '外部共有',
-      };
-    default:
+  // この関数は UI のクエリ境界(requests-content.tsx)。entityId はクエリ由来で
+  // '.'/'..' 等の不正値があり得るため、共有ヘルパーの dot-segment RangeError は
+  // ここで握って null(リンク非表示)に縮退させる。RangeError 以外は再 throw。
+  // static 宛先(tracing_report 等)は throw しないので switch 全体を囲んでも等価。
+  try {
+    switch (input.entityType) {
+      case 'patient':
+        return {
+          href: buildPatientHref(input.entityId),
+          label: '患者詳細',
+        };
+      case 'care_report':
+        return {
+          href: buildReportHref(input.entityId),
+          label: '報告書詳細',
+        };
+      case 'tracing_report':
+        return {
+          href: '/reports#tracing-reports',
+          label: 'トレーシング一覧',
+        };
+      case 'visit_record':
+        return {
+          href: buildVisitHref(input.entityId),
+          label: '訪問詳細',
+        };
+      case 'visit_schedule':
+        return {
+          href: '/schedules',
+          label: 'スケジュール',
+        };
+      case 'conference_note':
+        return {
+          href: '/conferences',
+          label: 'カンファレンス',
+        };
+      case 'patient_self_report':
+        return {
+          href: '/external',
+          label: '外部共有',
+        };
+      default:
+        return null;
+    }
+  } catch (error) {
+    if (error instanceof RangeError) {
       return null;
+    }
+    throw error;
   }
 }
