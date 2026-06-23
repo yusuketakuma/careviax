@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/
 import { EmptyState } from '@/components/ui/empty-state';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import type { PatientReadinessSnapshot } from './patient-detail.types';
 
 function ReadinessHeading() {
@@ -25,8 +27,8 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
     queryKey: ['patient-readiness', patientId, orgId],
     enabled: Boolean(orgId),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/readiness`, {
-        headers: { 'x-org-id': orgId ?? '' },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/readiness`, {
+        headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
         throw new Error('オンボーディング状況の取得に失敗しました');
