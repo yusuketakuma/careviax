@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeInvalidation } from '@/lib/hooks/use-realtime-invalidation';
 import { CYCLE_STATUS_SHORT_LABELS } from '@/lib/prescription/cycle-workspace';
@@ -156,7 +157,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
       if (sourceFilter !== 'all') params.set('source_type', sourceFilter);
 
       const res = await fetch(`/api/prescription-intakes?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('処方受付一覧の取得に失敗しました');
       return res.json() as Promise<PrescriptionIntakesPage>;
