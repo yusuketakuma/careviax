@@ -32,7 +32,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Loading } from '@/components/ui/loading';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import {
@@ -233,6 +235,10 @@ function hasStringFields(value: unknown, fields: string[]) {
 
 function hasReportWarnings(value: Record<string, unknown>) {
   return Array.isArray(value.warnings) && value.warnings.every((item) => typeof item === 'string');
+}
+
+function buildCareReportApiPath(reportId: string, suffix = '') {
+  return `/api/care-reports/${encodePathSegment(reportId)}${suffix}`;
 }
 
 function isPhysicianReportContent(content: unknown): content is PhysicianReportContent {
@@ -450,8 +456,8 @@ export default function ReportDetailPage() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['care-report', id, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/care-reports/${id}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildCareReportApiPath(id), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('報告書の取得に失敗しました');
       return res.json() as Promise<{ data: CareReport }>;
@@ -478,7 +484,7 @@ export default function ReportDetailPage() {
         params.set('case_id', report.case_id);
       }
       const res = await fetch(`/api/external-professionals/suggestions?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('他職種候補の取得に失敗しました');
       return res.json() as Promise<{ data: ExternalProfessionalSuggestion[] }>;
@@ -492,9 +498,9 @@ export default function ReportDetailPage() {
       if (!report?.updated_at) {
         throw new Error('報告書の版情報を取得できませんでした。再読み込みしてください');
       }
-      const res = await fetch(`/api/care-reports/${id}`, {
+      const res = await fetch(buildCareReportApiPath(id), {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ expected_updated_at: report.updated_at, status: 'confirmed' }),
       });
       if (!res.ok) {
@@ -515,13 +521,11 @@ export default function ReportDetailPage() {
 
   const sendMutation = useMutation({
     mutationFn: async (formData: SendRequestData) => {
-      const res = await fetch(`/api/care-reports/${id}/send`, {
+      const res = await fetch(buildCareReportApiPath(id, '/send'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+        headers: buildOrgJsonHeaders(orgId, {
           'Idempotency-Key': createClientIdempotencyKey('care-report-send'),
-        },
+        }),
         body: JSON.stringify(formData),
       });
       if (!res.ok) {
@@ -550,13 +554,11 @@ export default function ReportDetailPage() {
   // p0_28: 一括送付。選択した共有先すべてに送付する。
   const bulkSendMutation = useMutation({
     mutationFn: async (requestData: BulkSendRequestData) => {
-      const res = await fetch(`/api/care-reports/${id}/send`, {
+      const res = await fetch(buildCareReportApiPath(id, '/send'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+        headers: buildOrgJsonHeaders(orgId, {
           'Idempotency-Key': createClientIdempotencyKey('care-report-send'),
-        },
+        }),
         body: JSON.stringify(requestData),
       });
       if (!res.ok) {
@@ -968,7 +970,7 @@ export default function ReportDetailPage() {
               )}
               {isConfirmedReport && canOutputReport ? (
                 <a
-                  href={`/api/care-reports/${id}/pdf`}
+                  href={buildCareReportApiPath(id, '/pdf')}
                   target="_blank"
                   rel="noreferrer"
                   className={cn(
@@ -981,7 +983,7 @@ export default function ReportDetailPage() {
                 </a>
               ) : null}
               {isConfirmedReport && canOutputReport ? (
-                <Link href={`/reports/${id}/print`}>
+                <Link href={`/reports/${encodePathSegment(id)}/print`}>
                   <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
                     <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
                     印刷ビュー
@@ -990,7 +992,7 @@ export default function ReportDetailPage() {
               ) : null}
               {/* p1_05: 他職種向け共有ページ(相手別プレビュー + 返信確認) */}
               {canUseExternalShare ? (
-                <Link href={`/reports/${id}/share`}>
+                <Link href={`/reports/${encodePathSegment(id)}/share`}>
                   <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
                     <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
                     他職種共有
