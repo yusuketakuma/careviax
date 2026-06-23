@@ -12,7 +12,17 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildVisitHref } from '@/lib/visits/navigation';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type LabRecord = {
@@ -176,18 +186,26 @@ function LabEditor({
         {'analyte_code' in form ? (
           <div className="space-y-1.5">
             <Label htmlFor={`${title}-analyte`}>項目</Label>
-            <select
-              id={`${title}-analyte`}
+            <Select
               value={form.analyte_code}
-              onChange={(event) => onChange({ analyte_code: event.target.value })}
-              className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+              onValueChange={(value) => {
+                if (value !== null) onChange({ analyte_code: value });
+              }}
             >
-              {LAB_ANALYTE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                id={`${title}-analyte`}
+                className="min-h-[44px] w-full sm:min-h-[44px]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LAB_ANALYTE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value} className="min-h-[44px]">
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         ) : null}
 
@@ -298,8 +316,8 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
   const labsQuery = useQuery<LabsResponse>({
     queryKey: ['patient-labs', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/labs?limit=30`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/labs?limit=30`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('検査値一覧の取得に失敗しました');
       return response.json() as Promise<LabsResponse>;
@@ -309,12 +327,9 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/labs`, {
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/labs`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildCreatePayload(createForm)),
       });
       const payload = await response.json().catch(() => ({}));
@@ -339,14 +354,14 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
 
   const updateMutation = useMutation({
     mutationFn: async (labId: string) => {
-      const response = await fetch(`/api/patients/${patientId}/labs/${labId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+      const response = await fetch(
+        `/api/patients/${encodePathSegment(patientId)}/labs/${encodePathSegment(labId)}`,
+        {
+          method: 'PATCH',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify(buildEditPayload(editDrafts[labId])),
         },
-        body: JSON.stringify(buildEditPayload(editDrafts[labId])),
-      });
+      );
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error((payload as { message?: string }).message ?? '検査値の更新に失敗しました');
@@ -502,7 +517,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
                           <dd className="mt-1 text-foreground">
                             {lab.source_type === 'visit_record' && lab.source_visit_record_id ? (
                               <Link
-                                href={`/visits/${lab.source_visit_record_id}`}
+                                href={buildVisitHref(lab.source_visit_record_id)}
                                 className="text-primary hover:underline"
                               >
                                 訪問記録由来
