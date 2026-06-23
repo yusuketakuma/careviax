@@ -23,6 +23,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { CASE_STATUS_LABELS as caseStatusLabel } from '@/lib/constants/status-labels';
 import {
@@ -375,8 +378,9 @@ export function ManagementPlanPanel({
   const { data, isLoading, error } = useQuery<ManagementPlanListResponse>({
     queryKey: ['management-plans', resolvedSelectedCaseId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/management-plans?case_id=${resolvedSelectedCaseId}`, {
-        headers: { 'x-org-id': orgId },
+      const query = new URLSearchParams({ case_id: resolvedSelectedCaseId });
+      const res = await fetch(`/api/management-plans?${query.toString()}`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('管理計画書の取得に失敗しました');
       return res.json();
@@ -387,17 +391,16 @@ export function ManagementPlanPanel({
   const saveMutation = useMutation({
     mutationFn: async (form: ManagementPlanFormState) => {
       const payload = buildPlanPayload(form);
-      const isEditing = Boolean(editor.plan);
+      const editingPlan = editor.plan;
       const res = await fetch(
-        isEditing ? `/api/management-plans/${editor.plan?.id}` : '/api/management-plans',
+        editingPlan
+          ? `/api/management-plans/${encodePathSegment(editingPlan.id)}`
+          : '/api/management-plans',
         {
-          method: isEditing ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          method: editingPlan ? 'PATCH' : 'POST',
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify(
-            isEditing
+            editingPlan
               ? {
                   action: 'update',
                   ...payload,
@@ -434,12 +437,9 @@ export function ManagementPlanPanel({
 
   const actionMutation = useMutation({
     mutationFn: async ({ planId, action }: { planId: string; action: 'approve' | 'archive' }) => {
-      const res = await fetch(`/api/management-plans/${planId}`, {
+      const res = await fetch(`/api/management-plans/${encodePathSegment(planId)}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ action }),
       });
 
@@ -591,7 +591,7 @@ export function ManagementPlanPanel({
 
                     <div className="flex flex-wrap gap-2">
                       <Link
-                        href={`/api/management-plans/${plan.id}/pdf`}
+                        href={`/api/management-plans/${encodePathSegment(plan.id)}/pdf`}
                         target="_blank"
                         rel="noreferrer"
                         className={buttonVariants({ variant: 'outline', size: 'sm' })}
@@ -600,7 +600,12 @@ export function ManagementPlanPanel({
                         PDF
                       </Link>
                       <Link
-                        href={`/patients/${patientId}/management-plan/print?planId=${plan.id}`}
+                        href={buildPatientHref(
+                          patientId,
+                          `/management-plan/print?${new URLSearchParams({
+                            planId: plan.id,
+                          }).toString()}`,
+                        )}
                         className={buttonVariants({ variant: 'outline', size: 'sm' })}
                       >
                         <Printer className="size-4" aria-hidden="true" />
