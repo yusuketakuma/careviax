@@ -4,6 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type { BillingCheckResponse } from '@/types/billing-check';
 
 setupDomTestEnv();
@@ -19,7 +20,12 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
 
-import { BillingCheckContent, formatAgeLabel } from './billing-check-content';
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
+
+import { BillingCheckContent, fetchBillingCheck, formatAgeLabel } from './billing-check-content';
 
 function buildFixture(): BillingCheckResponse {
   return {
@@ -114,8 +120,34 @@ describe('BillingCheckContent', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
+    vi.mocked(buildOrgHeaders).mockImplementation((orgId, extra) => ({
+      'x-org-id': orgId,
+      ...extra,
+    }));
     window.history.replaceState({}, '', '/');
+  });
+
+  it('fetches the billing check contract with helper org headers', async () => {
+    const fixture = buildFixture();
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: fixture }),
+    } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchBillingCheck('org_1', 'current');
+
+    expect(result).toBe(fixture);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/billing-evidence/check?month=current');
+    expect(init.headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
   });
 
   it('renders the header row with month summary and the month toggle', () => {
