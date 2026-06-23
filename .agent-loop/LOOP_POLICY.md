@@ -36,7 +36,7 @@ discipline that the two sessions have already proven in practice. Only `ApplyNow
 
 Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
 
-### ApplyNow index (§1–21 grouped — the numbered rules below remain the SSOT/full text)
+### ApplyNow index (§1–25 grouped — the numbered rules below remain the SSOT/full text)
 
 Organized for navigation; each rule's authoritative wording, evidence, and peer-approval status stay in
 the numbered entries that follow.
@@ -45,7 +45,8 @@ the numbered entries that follow.
   before commit · §4 stage only own files · §5 Supervisors-only on agmsg · §11 workload-balancing handoff
   · §19 Codex drains Claude-origin first · §20 main loop free / work in subagents · §21 maximize subagent
   concurrency / main = orchestrator · §23 role-agnostic load balancing (maker/checker rotate by load; cross-check invariant)
-  · §24 component-vertical-slice batching + dual-maker parallel (compartment = one component's FE+API+server+lib+test).
+  · §24 component-vertical-slice batching + dual-maker parallel (compartment = one component's FE+API+server+lib+test)
+  · §25 ACK-first handoff + sender-side WIP discipline.
 - **B. Verification & quality gates** — §6 verify-before-done (real gate cmds) · §17 state-display
   correctness on placement slices · §18 verify-capability + reuse-first before extending a component.
 - **C. Compliance, PHI & security** — §7 UI/UX SSOT + State Color tokens · §8 Compliance-by-Design + RLS
@@ -395,6 +396,27 @@ the numbered entries that follow.
     (e95e53f4); claude F-062 Patient Visit Records (6aad8ed8). Status: proposed by claude, pending codex
     concurrence + human gate for permanent.
 
+25. **ACK-first handoff, sender-side WIP discipline, and serial long gates (both Supervisors).** User-directed
+    2026-06-23; codifies the improvement after observed Codex drain lag on Claude PATCHes. Extends §20/§21
+    without weakening LOCK, maker/checker separation, or objective gates.
+
+    - **ACK before heavy work.** On receiving `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`,
+      `VERIFY_REQUEST`, `LOCK_REQUEST`, `HANDOFF`, `PAUSE_REQUEST`, `URGENT`, or `CHANGES_REQUESTED`,
+      the Supervisor sends a short ACK/STATUS/grant/deny within one drain before starting sustained
+      review, implementation, or validation. The ACK is only receipt/liveness; final verdict still
+      requires checker-audit and gates.
+    - **Sender does not assume receipt.** After sending a lock/review/handoff request, the sender waits
+      for ACK/STATUS/verdict before treating it as received. Do not stack multiple unacked
+      `PATCH_REVIEW_REQUEST`s for the same maker/checker pair; send an idempotent nudge instead.
+      Disjoint maker work may continue only if locks and WIP limits are respected.
+    - **Main loop stays dispatcher-only.** Main Supervisors keep doing coordination, ACKs, lock routing,
+      subagent steering, and reviewed commits. Sustained implementation, review analysis, and long gates
+      run in subagents/background and are summarized back by the Supervisor.
+    - **Serialize Next.js long gates.** Do not run `pnpm build` concurrently with `pnpm typecheck` or
+      `pnpm typecheck:no-unused`; `.next/types` generation can race. Run those gates serially.
+    - **Two live agents by default.** The active loop has only `claude` and `codex` transport identities.
+      A relay/third agent requires explicit current-run human approval.
+
 ## Consider
 
 Weigh against the current objective; log the decision in the run log. (Seed list — extend from
@@ -454,4 +476,5 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §22 (idle delegate + whole-codebase auto-discover, gstack-first) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; whole-codebase/all-category scope user-directed; human gate for permanent)                    |
 | ApplyNow §23 (role-agnostic load balancing: maker/checker rotate by load) | claude-lead | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; user-directed; §1 lanes → soft default; cross-check invariant held; human gate for permanent) |
 | ApplyNow §24 (component-vertical-slice batching + dual-maker parallel)    | claude-lead | _pending_   | proposed (user-directed 2026-06-23; FOUNDATION F-060 + F-061/062/063 landed as evidence; human gate for permanent)                                        |
+| ApplyNow §25 (ACK-first handoff + sender-side WIP discipline)             | human       | claude-lead | peer-approved (user-directed 2026-06-23; human gate satisfied this run; pending permanent promotion)                                                      |
 | _next candidate_                                                          | _name_      | _name_      | proposed                                                                                                                                                  |

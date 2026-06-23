@@ -190,6 +190,17 @@ team `phos`.
   `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`,
   `CHANGES_REQUESTED`, `LOCK_REQUEST`, `HANDOFF`, `PAUSE_REQUEST`, and `URGENT`
   messages require immediate triage/ACK before lower-priority Codex tasks resume.
+- **ACK-first review handoff.** For `PLAN_REVIEW_REQUEST`,
+  `PATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`, `LOCK_REQUEST`, `HANDOFF`,
+  `PAUSE_REQUEST`, `URGENT`, and `CHANGES_REQUESTED`, the receiver sends a short
+  ACK/STATUS/grant/deny within one drain before starting sustained review,
+  implementation, or gate work. The ACK can say "in review" and is separate from
+  the final verdict.
+- **Sender-side receipt discipline.** A sender does not assume agmsg delivery was
+  acted on until an ACK/STATUS/verdict arrives. Do not stack multiple unacked
+  `PATCH_REVIEW_REQUEST`s for the same maker/checker pair; nudge idempotently
+  instead. Disjoint maker work may continue only if it does not violate locks or
+  WIP limits.
 - Drain the inbox before committing; stage only your own lane's files.
 - **Supervisor main-loop availability (both leads; LOOP_POLICY §20).** Each Supervisor's main loop
   must stay free to receive and triage the peer's messages. A busy main loop only processes pushed
@@ -199,6 +210,9 @@ team `phos`.
   owner decisions), spawning/steering subagents, and committing reviewed work. Subagents still never
   post to agmsg — the Supervisor summarizes their output into one envelope. This applies symmetrically
   to the live `claude` and `codex` sessions and reinforces the Claude-origin priority rule above.
+- **Long gate serialization.** `pnpm build` must not run concurrently with
+  `pnpm typecheck` or `pnpm typecheck:no-unused`; Next.js `.next/types` generation
+  can race. Run those gates serially, preferably outside the main loop.
 - `<body>` is the full §8.1 envelope (the fenced `AGLOOP v5 ...` block).
 
 ### §8.5 — Idempotency & ACK
@@ -207,7 +221,7 @@ team `phos`.
   `idempotency_key` is **not reprocessed**: the receiver returns a
   duplicate-ACK referencing the original `message_id` and takes no further
   action. Retries/resends therefore reuse the same `idempotency_key`.
-- **ACK-gated types.** `LOCK_REQUEST`, `HANDOFF`, and `CHANGES_REQUESTED`
+- **ACK-gated blocking types.** `LOCK_REQUEST`, `HANDOFF`, and `CHANGES_REQUESTED`
   require an explicit ACK/grant/deny before the sender proceeds:
   - `LOCK_REQUEST` → wait for `LOCK_GRANT` / `LOCK_DENY` before editing.
   - `HANDOFF` → wait for the receiver's ACK before releasing ownership. A resent
@@ -216,7 +230,9 @@ team `phos`.
     or bypass the same objective gate before `PATCH_REVIEW_REQUEST`.
   - `CHANGES_REQUESTED` → the owner must ACK and address the changes before
     re-requesting review.
-    All other types are fire-and-forward (no blocking ACK required).
+    Other review-request types are not edit-permission gates, but still require a
+    receipt ACK/STATUS per the transport rules above so the sender can avoid blind
+    stacking and drain-lag stalls.
 
 ### Identity mapping
 
