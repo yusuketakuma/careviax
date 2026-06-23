@@ -1,5 +1,7 @@
 import { format, parseISO } from 'date-fns';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import type { PatientContactStatus, Proposal } from './day-view.shared';
 
 type FetchLike = typeof fetch;
@@ -145,12 +147,9 @@ export async function updateScheduleDayProposalAction({
   request: ScheduleDayProposalActionRequest;
   fetchImpl?: FetchLike;
 }) {
-  const res = await fetchImpl(`/api/visit-schedule-proposals/${request.id}`, {
+  const res = await fetchImpl(`/api/visit-schedule-proposals/${encodePathSegment(request.id)}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(request.payload),
   });
 

@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildScheduleDayFacilityVisitDayPayload,
   handleScheduleDayFacilityVisitDaySuccess,
@@ -6,6 +7,11 @@ import {
   type ScheduleDayFacilityVisitDayForm,
   type ScheduleDayFacilityVisitDayTarget,
 } from './schedule-day-facility-visit-day';
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders) };
+});
 
 const target: ScheduleDayFacilityVisitDayTarget = {
   label: '東京ホーム 2階',
@@ -23,6 +29,10 @@ const filledForm: ScheduleDayFacilityVisitDayForm = {
 };
 
 describe('schedule day facility visit day helpers', () => {
+  beforeEach(() => {
+    vi.mocked(buildOrgJsonHeaders).mockClear();
+  });
+
   it('builds the visit-day payload and normalizes optional blank fields', () => {
     expect(
       buildScheduleDayFacilityVisitDayPayload({
@@ -63,7 +73,11 @@ describe('schedule day facility visit day helpers', () => {
   });
 
   it('posts the visit-day payload with org scope', async () => {
-    const fetchImpl = vi.fn(async () => Response.json({ data: { id: 'visit_day_1' } }));
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValueOnce(sentinelHeaders);
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      Response.json({ data: { id: 'visit_day_1' } }),
+    );
 
     await expect(
       saveScheduleDayFacilityVisitDay({
@@ -74,13 +88,14 @@ describe('schedule day facility visit day helpers', () => {
       }),
     ).resolves.toEqual({ data: { id: 'visit_day_1' } });
 
-    expect(fetchImpl).toHaveBeenCalledWith('/api/facility-visit-batches/visit-days', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': 'org_1',
-      },
-      body: JSON.stringify({
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('/api/facility-visit-batches/visit-days');
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    expect(init?.body).toBe(
+      JSON.stringify({
         facility_label: '東京ホーム 2階',
         schedule_ids: ['schedule_a', 'schedule_b'],
         preferred_weekdays: [1, 3],
@@ -91,6 +106,17 @@ describe('schedule day facility visit day helpers', () => {
         visit_buffer_minutes: 15,
         notes: '施設受付に声かけ',
       }),
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      facility_label: '東京ホーム 2階',
+      schedule_ids: ['schedule_a', 'schedule_b'],
+      preferred_weekdays: [1, 3],
+      preferred_time_from: '09:00',
+      preferred_time_to: '11:00',
+      facility_time_from: '10:00',
+      facility_time_to: '12:00',
+      visit_buffer_minutes: 15,
+      notes: '施設受付に声かけ',
     });
   });
 

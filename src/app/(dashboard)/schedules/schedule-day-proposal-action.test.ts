@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildScheduleDayContactAttemptRequest,
   buildScheduleDayContactLogForm,
@@ -12,7 +13,16 @@ import {
 } from './schedule-day-proposal-action';
 import type { Proposal } from './day-view.shared';
 
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders) };
+});
+
 describe('schedule day proposal action helpers', () => {
+  beforeEach(() => {
+    vi.mocked(buildOrgJsonHeaders).mockClear();
+  });
+
   it('builds the default contact log form', () => {
     expect(getDefaultScheduleDayContactLogForm()).toEqual({
       outcome: 'attempted',
@@ -130,28 +140,51 @@ describe('schedule day proposal action helpers', () => {
   });
 
   it('patches proposal actions with org scope and JSON payload', async () => {
+    const proposalId = 'proposal/1?x=y#frag';
     const payload: ScheduleDayProposalActionPayload = { action: 'approve' };
-    const fetchImpl = vi.fn(async () => Response.json({ data: { id: 'proposal_1' } }));
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValueOnce(sentinelHeaders);
+    const fetchImpl = vi.fn<typeof fetch>(async () =>
+      Response.json({ data: { id: 'proposal_1' } }),
+    );
 
     await expect(
       updateScheduleDayProposalAction({
         orgId: 'org_1',
         request: {
-          id: 'proposal_1',
+          id: proposalId,
           payload,
         },
         fetchImpl,
       }),
     ).resolves.toEqual({ data: { id: 'proposal_1' } });
 
-    expect(fetchImpl).toHaveBeenCalledWith('/api/visit-schedule-proposals/proposal_1', {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': 'org_1',
-      },
-      body: JSON.stringify(payload),
-    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe(`/api/visit-schedule-proposals/${encodeURIComponent(proposalId)}`);
+    expect(String(url)).not.toContain(proposalId);
+    expect(String(url)).not.toContain('%25');
+    expect(init?.method).toBe('PATCH');
+    expect(init?.headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    expect(init?.body).toBe(JSON.stringify(payload));
+    expect(JSON.parse(String(init?.body))).toEqual(payload);
+  });
+
+  it.each(['.', '..'])('rejects dot-segment proposal id %s before fetch', async (proposalId) => {
+    const fetchImpl = vi.fn<typeof fetch>();
+
+    await expect(
+      updateScheduleDayProposalAction({
+        orgId: 'org_1',
+        request: {
+          id: proposalId,
+          payload: { action: 'approve' },
+        },
+        fetchImpl,
+      }),
+    ).rejects.toThrow(RangeError);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('throws the server error message when proposal actions fail', async () => {

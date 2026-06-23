@@ -1,3 +1,5 @@
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+
 type FetchLike = typeof fetch;
 
 type QueryInvalidator = (filters: { queryKey: readonly unknown[] }) => Promise<unknown> | unknown;
@@ -66,10 +68,7 @@ export async function saveScheduleDayFacilityVisitDay({
 
   const res = await fetchImpl('/api/facility-visit-batches/visit-days', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(
       buildScheduleDayFacilityVisitDayPayload({
         target,

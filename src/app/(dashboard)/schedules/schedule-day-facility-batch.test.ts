@@ -1,10 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildScheduleDayFacilityBatchPayload,
   handleScheduleDayFacilityBatchSuccess,
   saveScheduleDayFacilityBatch,
 } from './schedule-day-facility-batch';
 import type { FacilityTrackerGroup } from './schedule-day-view.helpers';
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders) };
+});
 
 const facilityGroup: FacilityTrackerGroup = {
   key: 'facility:tokyo:unit-a',
@@ -46,6 +52,10 @@ const facilityGroup: FacilityTrackerGroup = {
 };
 
 describe('schedule day facility batch helpers', () => {
+  beforeEach(() => {
+    vi.mocked(buildOrgJsonHeaders).mockClear();
+  });
+
   it('builds the facility batch payload using route overrides before defaults', () => {
     expect(
       buildScheduleDayFacilityBatchPayload({
@@ -74,7 +84,9 @@ describe('schedule day facility batch helpers', () => {
   });
 
   it('posts the facility batch payload with org scope', async () => {
-    const fetchImpl = vi.fn(async () => Response.json({ data: { id: 'batch_1' } }));
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValueOnce(sentinelHeaders);
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ data: { id: 'batch_1' } }));
 
     await expect(
       saveScheduleDayFacilityBatch({
@@ -94,18 +106,25 @@ describe('schedule day facility batch helpers', () => {
       }),
     ).resolves.toEqual({ data: { id: 'batch_1' } });
 
-    expect(fetchImpl).toHaveBeenCalledWith('/api/facility-visit-batches', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': 'org_1',
-      },
-      body: JSON.stringify({
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(url).toBe('/api/facility-visit-batches');
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    expect(init?.body).toBe(
+      JSON.stringify({
         schedule_ids: ['schedule_a', 'schedule_b', 'schedule_c'],
         ordered_schedule_ids: ['schedule_b', 'schedule_a', 'schedule_c'],
         carry_items_confirmed: false,
         allow_mixed_unit: true,
       }),
+    );
+    expect(JSON.parse(String(init?.body))).toEqual({
+      schedule_ids: ['schedule_a', 'schedule_b', 'schedule_c'],
+      ordered_schedule_ids: ['schedule_b', 'schedule_a', 'schedule_c'],
+      carry_items_confirmed: false,
+      allow_mixed_unit: true,
     });
   });
 

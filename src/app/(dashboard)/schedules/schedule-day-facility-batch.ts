@@ -1,3 +1,4 @@
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildOrderedFacilityScheduleIds } from './calendar-view.helpers';
 import {
   getUnsafeFacilityCarryPatients,
@@ -68,10 +69,7 @@ export async function saveScheduleDayFacilityBatch({
 
   const res = await fetchImpl('/api/facility-visit-batches', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(
       buildScheduleDayFacilityBatchPayload({
         group,

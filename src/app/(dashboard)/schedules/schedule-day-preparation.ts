@@ -2,6 +2,8 @@ import {
   buildHomeVisit2026ReadinessItems,
   type HomeVisit2026EvidenceItem,
 } from '@/lib/visits/home-visit-2026-evidence';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import {
   PREPARATION_ITEMS,
   VISIT_TYPE_LABELS,
@@ -263,8 +265,8 @@ export async function fetchScheduleDayPreparationDetails({
   scheduleId: string;
   fetchImpl?: FetchLike;
 }) {
-  const res = await fetchImpl(`/api/visit-preparations/${scheduleId}`, {
-    headers: { 'x-org-id': orgId },
+  const res = await fetchImpl(`/api/visit-preparations/${encodePathSegment(scheduleId)}`, {
+    headers: buildOrgHeaders(orgId),
   });
 
   if (!res.ok) {
@@ -286,18 +288,18 @@ export async function saveScheduleDayPreparation({
   request: SaveScheduleDayPreparationRequest;
   fetchImpl?: FetchLike;
 }) {
-  const preparationRes = await fetchImpl(`/api/visit-preparations/${request.scheduleId}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
+  const preparationRes = await fetchImpl(
+    `/api/visit-preparations/${encodePathSegment(request.scheduleId)}`,
+    {
+      method: 'PUT',
+      headers: buildOrgJsonHeaders(orgId),
+      body: JSON.stringify({
+        checklist: request.form,
+        ...request.form,
+        mark_ready: request.markReady,
+      }),
     },
-    body: JSON.stringify({
-      checklist: request.form,
-      ...request.form,
-      mark_ready: request.markReady,
-    }),
-  });
+  );
 
   if (!preparationRes.ok) {
     const error = (await preparationRes.json().catch(() => ({}))) as { message?: string };
