@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
@@ -193,4 +194,123 @@ describe('PatientContactsPanel', () => {
       '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
     );
   });
+
+  type CapturedConfig = {
+    mutationFn?: () => Promise<unknown>;
+    onSuccess?: (payload: { warnings?: unknown[] }) => Promise<void> | void;
+  };
+
+  const sampleContacts = [
+    {
+      id: 'contact_1',
+      relation: 'child' as const,
+      // surrounding whitespace verifies the source trims the submitted name.
+      name: '  山田太郎  ',
+      phone: '090-0000-0000',
+      email: 'taro@example.com',
+      fax: '03-1111-2222',
+      organization_name: '山田商店',
+      department: '営業部',
+      address: '東京都千代田区1-1-1',
+      is_primary: true,
+      is_emergency_contact: true,
+      notes: '緊急時は長男へ',
+    },
+  ];
+
+  it('saves contacts to an encoded patient path with JSON headers and an exact raw body', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    const invalidateQueries = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries });
+
+    let savedConfig: CapturedConfig | undefined;
+    useMutationMock.mockImplementation((config: CapturedConfig) => {
+      savedConfig = config;
+      return { mutate: vi.fn(), isPending: false };
+    });
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <PatientContactsPanel
+          patientId={hostileId}
+          orgId="org_1"
+          initialContacts={sampleContacts}
+        />,
+      );
+
+      await savedConfig?.mutationFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/contacts`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.method).toBe('PUT');
+      expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+      const body = init.body as string;
+      // patient id lives only in the URL path; every contact field is preserved verbatim and name is trimmed.
+      expect(body).not.toContain(hostileId);
+      expect(JSON.parse(body)).toEqual({
+        contacts: [
+          {
+            relation: 'child',
+            name: '山田太郎',
+            phone: '090-0000-0000',
+            email: 'taro@example.com',
+            fax: '03-1111-2222',
+            organization_name: '山田商店',
+            department: '営業部',
+            address: '東京都千代田区1-1-1',
+            is_primary: true,
+            is_emergency_contact: true,
+            notes: '緊急時は長男へ',
+          },
+        ],
+      });
+
+      // onSuccess invalidation keeps the RAW patientId; no encoded id leaks into any invalidation key.
+      await savedConfig?.onSuccess?.({});
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['patient-contacts', hostileId, 'org_1'],
+      });
+      for (const call of invalidateQueries.mock.calls) {
+        expect(JSON.stringify(call[0])).not.toContain(encodeURIComponent(hostileId));
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed without fetching for exact dot-segment patientId %p on contacts save',
+    async (dotId) => {
+      useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+
+      let savedConfig: CapturedConfig | undefined;
+      useMutationMock.mockImplementation((config: CapturedConfig) => {
+        savedConfig = config;
+        return { mutate: vi.fn(), isPending: false };
+      });
+
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(
+          <PatientContactsPanel patientId={dotId} orgId="org_1" initialContacts={sampleContacts} />,
+        );
+        await expect(savedConfig?.mutationFn?.()).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
 });
