@@ -939,7 +939,7 @@ function PatientShareCaseCreatePanel({
     queryKey: ['pharmacy-partnerships', 'active', orgId],
     queryFn: async () => {
       const response = await fetch('/api/pharmacy-partnerships?status=active&limit=20', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       return readPatientShareApiJson<PharmacyPartnershipListResponse>(
         response,
@@ -964,7 +964,7 @@ function PatientShareCaseCreatePanel({
     queryFn: async () => {
       const params = new URLSearchParams({ case_id: effectiveCaseId });
       const response = await fetch(`/api/management-plans?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       return readPatientShareApiJson<ManagementPlanListResponse>(
         response,
@@ -987,10 +987,7 @@ function PatientShareCaseCreatePanel({
     mutationFn: async (input: PatientShareCaseCreateInput) => {
       const response = await fetch('/api/patient-share-cases', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
       return readPatientShareApiJson<PatientShareCaseCreateResponse>(
@@ -4042,10 +4039,7 @@ export function CardWorkspace({
       const pharmacyParticipants = parseConferenceNameList(input.pharmacyParticipantsRaw);
       const response = await fetch('/api/conference-notes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           note_type: input.noteType,
           conference_type: input.noteType,

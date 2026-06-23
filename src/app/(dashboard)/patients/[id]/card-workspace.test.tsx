@@ -43,7 +43,11 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 // valid) but can be given a sentinel return in the F-083 test to prove helper adoption (not just equal shape).
 vi.mock('@/lib/api/org-headers', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/api/org-headers')>();
-  return { ...actual, buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders) };
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
 });
 
 import {
@@ -3126,4 +3130,141 @@ describe('CardWorkspace', () => {
       }
     },
   );
+
+  // F-089 (card-workspace sub-slice 6/6 FINAL): converge the 4 static-collection callsites onto org header helpers.
+  // (The /api/tasks foundation POST exclusion is already locked by the existing foundation-task test, which asserts its
+  //  headers === { 'content-type': 'application/json' } with NO x-org-id.)
+  it('converges static-collection GET/POST callsites onto buildOrgHeaders/buildOrgJsonHeaders', async () => {
+    const getSentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    const jsonSentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(getSentinel);
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(jsonSentinel);
+
+    mockPatientQuery(buildWorkspace());
+    const baseQuery = useQueryMock.getMockImplementation();
+    const baseMutation = useMutationMock.getMockImplementation();
+    const queryConfigs: Array<{ queryKey?: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+    const mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }> = [];
+    useQueryMock.mockImplementation(
+      (config: { queryKey?: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        queryConfigs.push(config);
+        return baseQuery?.(config);
+      },
+    );
+    useMutationMock.mockImplementation(
+      (config: { mutationFn?: (input: unknown) => Promise<unknown> }) => {
+        mutationConfigs.push(config);
+        return baseMutation?.(config);
+      },
+    );
+
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: {} }),
+    } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId="patient_1" />);
+
+      // --- 2 static GETs use buildOrgHeaders (exact URLs) ---
+      const pharmacyCfg = queryConfigs.find((c) => c.queryKey?.[0] === 'pharmacy-partnerships');
+      fetchMock.mockClear();
+      await pharmacyCfg?.queryFn?.();
+      {
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toBe('/api/pharmacy-partnerships?status=active&limit=20');
+        expect(init.headers).toBe(getSentinel);
+      }
+
+      const mgmtCfg = queryConfigs.find((c) => c.queryKey?.[0] === 'management-plans');
+      const effectiveCaseId = mgmtCfg?.queryKey?.[1] as string;
+      fetchMock.mockClear();
+      await mgmtCfg?.queryFn?.();
+      {
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toBe(`/api/management-plans?case_id=${encodeURIComponent(effectiveCaseId)}`);
+        expect(init.headers).toBe(getSentinel);
+      }
+      // exactly the two executed GET queryFns called buildOrgHeaders, each with the real org.
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
+
+      // --- 2 static JSON POSTs use buildOrgJsonHeaders (locate by URL) ---
+      const shareInput = {
+        caseId: 'case_1',
+        baseSiteId: 'site_1',
+        partnerPharmacyId: 'partner_1',
+        effectiveFrom: null,
+        effectiveTo: null,
+      };
+      const conferenceInput = {
+        patientId: 'patient_1',
+        caseId: 'case_1',
+        noteType: 'service_manager',
+        title: '担当者会議',
+        conferenceDate: '2026-06-01',
+        conferenceFormat: 'in_person',
+        location: '',
+        organizer: 'care_manager',
+        reportType: 'care_manager_report',
+        followUpDate: '',
+        followUpCompleted: false,
+        agenda: '',
+        content: '会議メモ',
+        participantsRaw: '佐藤CM:care_manager',
+        pharmacyParticipantsRaw: '鈴木薬剤師',
+        visitScheduleChange: '',
+        targetDischargeDate: '',
+        actionItemsRaw: '',
+      };
+      const probe = async (input: unknown, urlPart: string) => {
+        for (const config of mutationConfigs) {
+          fetchMock.mockClear();
+          try {
+            await config.mutationFn?.(input);
+          } catch {
+            // unrelated mutation input contracts throw before fetch; ignored.
+          }
+          const call = fetchMock.mock.calls[0];
+          if (call && String(call[0]).includes(urlPart)) {
+            return fetchMock.mock.calls[0] as [string, RequestInit];
+          }
+        }
+        return undefined;
+      };
+
+      const shareCall = await probe(shareInput, '/api/patient-share-cases');
+      expect(shareCall?.[0]).toBe('/api/patient-share-cases');
+      expect(shareCall?.[1]?.method).toBe('POST');
+      expect(shareCall?.[1]?.headers).toBe(jsonSentinel);
+      // patient-share-cases body is the raw input, unchanged.
+      expect(JSON.parse(String(shareCall?.[1]?.body))).toEqual(shareInput);
+
+      const conferenceCall = await probe(conferenceInput, '/api/conference-notes');
+      expect(conferenceCall?.[0]).toBe('/api/conference-notes');
+      expect(conferenceCall?.[1]?.method).toBe('POST');
+      expect(conferenceCall?.[1]?.headers).toBe(jsonSentinel);
+      // body still flows through unchanged (header-only slice): the transformed fields are all preserved.
+      const conferenceBody = JSON.parse(String(conferenceCall?.[1]?.body));
+      expect(conferenceBody).toMatchObject({
+        note_type: 'service_manager',
+        conference_type: 'service_manager',
+        title: '担当者会議',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        content: '会議メモ',
+        follow_up_completed: false,
+      });
+      expect(conferenceBody.conference_date).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(Array.isArray(conferenceBody.participants)).toBe(true);
+      expect(conferenceBody.metadata).toBeTruthy();
+
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
 });
