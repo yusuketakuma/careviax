@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -16,6 +17,15 @@ const fetchAllCursorPagesMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api/cursor-pagination-client', () => ({
   fetchAllCursorPages: fetchAllCursorPagesMock,
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -60,6 +70,10 @@ describe('CommunicationRequestsContent', () => {
       refetch: vi.fn(),
     });
     fetchAllCursorPagesMock.mockResolvedValue({ data: [], hasMore: false });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('shows the home context banner for sent communications focus', () => {
@@ -192,7 +206,14 @@ describe('CommunicationRequestsContent', () => {
     expect(screen.queryByRole('button', { name: '対応済みにする' })).toBeNull();
   });
 
-  it('sends reply, follow-up, and the OCC token through one resolve action', async () => {
+  it('sends reply, follow-up, and the OCC token through one encoded resolve action', async () => {
+    const hostileRequestId = 'request/1?x=y#z';
+    const sentinelJsonHeaders = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelJsonHeaders);
     const fetchMock = vi.fn().mockResolvedValueOnce(
       new Response(JSON.stringify({ data: { request: { id: 'request_1', status: 'closed' } } }), {
         status: 200,
@@ -228,7 +249,7 @@ describe('CommunicationRequestsContent', () => {
 
     await mutationOptions.mutationFn({
       item: {
-        id: 'request_1',
+        id: hostileRequestId,
         request_type: 'tracing_report',
         subject: '服薬情報提供書の確認',
         status: 'sent',
@@ -247,15 +268,19 @@ describe('CommunicationRequestsContent', () => {
       followup: '夕食後薬の飲み忘れを確認',
     });
 
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      '/api/communication-requests/request_1/resolve-followup',
-      expect.objectContaining({
-        method: 'POST',
-      }),
-    );
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      `/api/communication-requests/${encodeURIComponent(hostileRequestId)}/resolve-followup`,
+    );
+    expect(url).not.toContain('request/1');
+    expect(url).not.toContain('?x=y');
+    expect(url).not.toContain('#z');
+    expect(url).not.toContain('%25');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toBe(sentinelJsonHeaders);
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    expect(JSON.parse(String(init.body))).toEqual({
       expected_updated_at: '2026-06-18T00:00:00.000Z',
       response: {
         responder_name: '在宅主治医',
@@ -264,7 +289,65 @@ describe('CommunicationRequestsContent', () => {
       },
       followup: '夕食後薬の飲み忘れを確認',
     });
+    expect(String(init.body)).not.toContain(hostileRequestId);
   });
+
+  it.each(['.', '..'])(
+    'fails closed before fetch when resolving a dot-segment request id (%s)',
+    async (dotRequestId) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<CommunicationRequestsContent />);
+
+      const mutationOptions = useMutationMock.mock.calls[0]?.[0] as {
+        mutationFn: (input: {
+          item: {
+            id: string;
+            request_type: string;
+            subject: string;
+            status: string;
+            requested_at: string;
+            updated_at: string;
+            due_date: string | null;
+            patient_id: string | null;
+            related_entity_type: string | null;
+            related_entity_id: string | null;
+            recipient_name: string | null;
+            recipient_role: string | null;
+            responses: [];
+          };
+          responderName: string;
+          content: string;
+          followup: string;
+        }) => Promise<void>;
+      };
+
+      await expect(
+        mutationOptions.mutationFn({
+          item: {
+            id: dotRequestId,
+            request_type: 'tracing_report',
+            subject: '服薬情報提供書の確認',
+            status: 'sent',
+            requested_at: '2026-05-12T00:00:00.000Z',
+            updated_at: '2026-06-18T00:00:00.000Z',
+            due_date: null,
+            patient_id: 'patient_1',
+            related_entity_type: 'tracing_report',
+            related_entity_id: 'tracing_1',
+            recipient_name: '在宅主治医',
+            recipient_role: 'physician',
+            responses: [],
+          },
+          responderName: '',
+          content: '服薬状況の確認が取れました',
+          followup: '夕食後薬の飲み忘れを確認',
+        }),
+      ).rejects.toThrow(RangeError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('renders the patient filter detail link through the shared boundary resolver', () => {
     render(<CommunicationRequestsContent initialPatientId="patient_1" />);
@@ -272,9 +355,19 @@ describe('CommunicationRequestsContent', () => {
     expect(link.getAttribute('href')).toBe('/patients/patient_1');
   });
 
-  it('encodes a hostile patient filter id in the detail href while keeping the query identity raw', async () => {
+  it('encodes hostile href filters while keeping API query identity and headers raw', async () => {
     const hostilePatientId = '../settings?x=1#y';
-    render(<CommunicationRequestsContent initialPatientId={hostilePatientId} />);
+    const hostileRelatedId = 'report/1?x=y#z';
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    render(
+      <CommunicationRequestsContent
+        initialStatus="sent"
+        initialPatientId={hostilePatientId}
+        initialRelatedEntityType="care_report"
+        initialRelatedEntityId={hostileRelatedId}
+      />,
+    );
 
     const link = screen.getByRole('link', { name: '詳細' });
     expect(link.getAttribute('href')).toBe(`/patients/${encodeURIComponent(hostilePatientId)}`);
@@ -287,13 +380,30 @@ describe('CommunicationRequestsContent', () => {
       queryKey: unknown[];
       queryFn: () => Promise<unknown>;
     };
-    expect(queryArg.queryKey).toContain(hostilePatientId);
+    expect(queryArg.queryKey).toEqual([
+      'communication-requests',
+      'org_1',
+      'sent',
+      hostilePatientId,
+      'care_report',
+      hostileRelatedId,
+    ]);
 
     // queryFn を実行し、API へ渡る patient_id が生の hostile id のまま(encode/正規化されない)ことを locking。
     // (queryKey だけでなく queryFn 内の URLSearchParams も生 identity であることを保証。)
     await queryArg.queryFn();
-    const fetchArg = fetchAllCursorPagesMock.mock.calls.at(-1)?.[0] as { params: URLSearchParams };
+    const fetchArg = fetchAllCursorPagesMock.mock.calls.at(-1)?.[0] as {
+      path: string;
+      params: URLSearchParams;
+      init: RequestInit;
+    };
+    expect(fetchArg.path).toBe('/api/communication-requests');
+    expect(fetchArg.init.headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+    expect(fetchArg.params.get('status')).toBe('sent');
     expect(fetchArg.params.get('patient_id')).toBe(hostilePatientId);
+    expect(fetchArg.params.get('related_entity_type')).toBe('care_report');
+    expect(fetchArg.params.get('related_entity_id')).toBe(hostileRelatedId);
   });
 
   it.each(['.', '..'])(

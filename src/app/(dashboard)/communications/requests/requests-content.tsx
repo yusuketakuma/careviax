@@ -14,7 +14,9 @@ import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import {
   buildCommunicationRequestsHref,
@@ -170,25 +172,28 @@ export function CommunicationRequestsContent({
       content: string;
       followup: string;
     }) => {
-      const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
+      const jsonHeaders = buildOrgJsonHeaders(orgId);
 
-      const res = await fetch(`/api/communication-requests/${item.id}/resolve-followup`, {
-        method: 'POST',
-        headers: jsonHeaders,
-        body: JSON.stringify({
-          expected_updated_at: item.updated_at,
-          ...(content
-            ? {
-                response: {
-                  responder_name: responderName || item.recipient_name || '担当者',
-                  content,
-                  responded_at: new Date().toISOString(),
-                },
-              }
-            : {}),
-          ...(followup ? { followup } : {}),
-        }),
-      });
+      const res = await fetch(
+        `/api/communication-requests/${encodePathSegment(item.id)}/resolve-followup`,
+        {
+          method: 'POST',
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            expected_updated_at: item.updated_at,
+            ...(content
+              ? {
+                  response: {
+                    responder_name: responderName || item.recipient_name || '担当者',
+                    content,
+                    responded_at: new Date().toISOString(),
+                  },
+                }
+              : {}),
+            ...(followup ? { followup } : {}),
+          }),
+        },
+      );
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message ?? '対応の記録に失敗しました');
@@ -230,7 +235,7 @@ export function CommunicationRequestsContent({
       >({
         path: '/api/communication-requests',
         params,
-        init: { headers: { 'x-org-id': orgId } },
+        init: { headers: buildOrgHeaders(orgId) },
         errorMessage: '依頼一覧の取得に失敗しました',
       });
     },
