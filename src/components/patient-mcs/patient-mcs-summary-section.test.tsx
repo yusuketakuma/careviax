@@ -16,6 +16,14 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
 
+// Actual-backed spy: real encode/guard output for the hostile test, plus
+// return-value delegation teeth for the MCS fallback link.
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { PatientMcsSummarySection } from './patient-mcs-summary-section';
 
 setupDomTestEnv();
@@ -142,6 +150,38 @@ describe('PatientMcsSummarySection', () => {
     const link = screen.getByRole('link', { name: 'MCS 連携ページ' });
     expect(link.getAttribute('href')).toBe(`/patients/${encodedPatientId}/mcs`);
     expect(link.getAttribute('href')).not.toContain(patientId);
+    // raw id passed to the helper (not pre-encoded) -> no double-encode
+    expect(link.getAttribute('href')).not.toContain('%25');
+  });
+
+  it('the MCS fallback link consumes the shared buildPatientHref return value (raw id, no double-encode)', () => {
+    useQueryMock.mockReturnValue({
+      data: { link: null, summary: null },
+      isLoading: false,
+      error: null,
+    });
+    const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockImplementation(
+      (id: string, suffix = '') => `/patients/__sentinel_${id}__${suffix}`,
+    );
+    try {
+      render(
+        <PatientMcsSummarySection
+          patientId="patient_1"
+          title="MCS共有要点"
+          description="test"
+          compact
+        />,
+      );
+      expect(screen.getByRole('link', { name: 'MCS 連携ページ' }).getAttribute('href')).toBe(
+        '/patients/__sentinel_patient_1__/mcs',
+      );
+      expect(vi.mocked(buildPatientHref).mock.calls).toEqual([['patient_1', '/mcs']]);
+    } finally {
+      if (realImpl) {
+        vi.mocked(buildPatientHref).mockImplementation(realImpl);
+      }
+    }
   });
 
   it('renders a restricted-role explanation instead of disappearing', () => {
