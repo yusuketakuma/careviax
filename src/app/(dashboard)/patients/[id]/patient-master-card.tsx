@@ -29,6 +29,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { buildIntakeBadges, getHomeVisitIntake } from '@/lib/patient/intake-display';
 import { GENDER_LABELS } from '@/lib/constants/status-labels';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type FacilityOption = {
@@ -86,7 +88,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
     queryKey: ['patient-master-facilities', orgId],
     queryFn: async () => {
       const response = await fetch('/api/facilities', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('施設マスターの取得に失敗しました');
       return response.json() as Promise<{ data: FacilityOption[] }>;
@@ -115,9 +117,12 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
   const facilityUnitsQuery = useQuery({
     queryKey: ['patient-master-facility-units', orgId, selectedFacilityId],
     queryFn: async () => {
-      const response = await fetch(`/api/admin/facilities/${selectedFacilityId}/units`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        `/api/admin/facilities/${encodePathSegment(selectedFacilityId)}/units`,
+        {
+          headers: buildOrgHeaders(orgId),
+        },
+      );
       if (!response.ok) throw new Error('ユニット一覧の取得に失敗しました');
       return response.json() as Promise<{ data: FacilityUnitOption[] }>;
     },
@@ -126,10 +131,13 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
   const qualificationCheckMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/patients/${patient.id}/qualification-check`, {
-        method: 'POST',
-        headers: { 'x-org-id': orgId },
-      });
+      const res = await fetch(
+        `/api/patients/${encodePathSegment(patient.id)}/qualification-check`,
+        {
+          method: 'POST',
+          headers: buildOrgHeaders(orgId),
+        },
+      );
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 501) {
@@ -162,12 +170,9 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/patients/${patient.id}`, {
+      const res = await fetch(`/api/patients/${encodePathSegment(patient.id)}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           name: form.name,
           name_kana: form.name_kana,
