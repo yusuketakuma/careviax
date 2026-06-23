@@ -13,7 +13,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 
 type VisitConstraintsResponse = {
@@ -142,8 +144,8 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
   const { data, isLoading, isError, refetch } = useQuery<VisitConstraintsResponse>({
     queryKey: ['visit-constraints', orgId, patientId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/visit-constraints`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/visit-constraints`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問条件の取得に失敗しました');
       return res.json() as Promise<VisitConstraintsResponse>;
@@ -156,12 +158,9 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/visit-constraints`, {
+      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/visit-constraints`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           preferred_weekdays: form.preferred_weekdays,
           preferred_time_from: form.preferred_time_from || undefined,
