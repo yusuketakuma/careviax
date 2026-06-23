@@ -13,7 +13,9 @@ import {
 } from '@/lib/inquiries/presentation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
+import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
 
 const PRESCRIPTION_SOURCE_LABELS: Record<string, string> = {
@@ -691,7 +693,9 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
             : null,
           item.visit_record ? '訪問記録あり' : null,
         ]).join(' / ') || null,
-      href: item.visit_record ? `/visits/${item.visit_record.id}` : `/visits/${item.id}/record`,
+      href: item.visit_record
+        ? buildVisitHref(item.visit_record.id)
+        : buildVisitRecordHref(item.id),
       action_label: item.visit_record ? '訪問記録を開く' : '訪問記録を入力',
       status: item.schedule_status,
       status_label: SCHEDULE_STATUS_LABELS[item.schedule_status] ?? item.schedule_status,
@@ -713,7 +717,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
           item.postpone_reason,
           item.cancellation_reason,
         ]).join(' / ') || null,
-      href: `/visits/${item.id}`,
+      href: buildVisitHref(item.id),
       action_label: '訪問記録を開く',
       status: item.outcome_status,
       status_label: VISIT_OUTCOME_LABELS[item.outcome_status] ?? item.outcome_status,
@@ -738,7 +742,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
             ? `処方日 ${formatTimelineDate(item.prescribed_date)}`
             : null,
         ]).join(' / ') || null,
-      href: `/prescriptions/${item.id}`,
+      href: buildPrescriptionHref(item.id),
       action_label: '処方受付を開く',
       status: item.cycle.overall_status,
       status_label: CYCLE_STATUS_LABELS[item.cycle.overall_status] ?? item.cycle.overall_status,
@@ -759,7 +763,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
           `${item.actual_quantity}${item.actual_unit ?? ''}`,
           CARRY_TYPE_LABELS[item.carry_type] ?? item.carry_type,
         ]).join(' / ') || null,
-      href: `/prescriptions/${item.line.intake.id}`,
+      href: buildPrescriptionHref(item.line.intake.id),
       action_label: '処方記録を開く',
       status: item.task.cycle?.overall_status ?? 'dispensed',
       status_label: CYCLE_STATUS_LABELS[item.task.cycle?.overall_status ?? 'dispensed'] ?? '調剤済',
@@ -789,7 +793,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
               changeDetail: item.change_detail,
             }),
           ]).join(' / ') || null,
-        href: item.line?.intake?.id ? `/prescriptions/${item.line.intake.id}` : '/workflow',
+        href: item.line?.intake?.id ? buildPrescriptionHref(item.line.intake.id) : '/workflow',
         action_label: item.line?.intake?.id ? '処方受付を開く' : 'ワークフローを開く',
         status: item.result ?? 'pending',
         status_label: inquiryStatus,
@@ -985,7 +989,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
         href: isBilling
           ? patientBillingCandidatesHref
           : isPrescription
-            ? `/prescriptions/${item.target_id}`
+            ? buildPrescriptionHref(item.target_id)
             : isMcs
               ? patientMcsHref
               : isConference

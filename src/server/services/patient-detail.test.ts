@@ -1638,6 +1638,204 @@ describe('getPatientTimelineData', () => {
     expect(JSON.stringify(result?.timeline_events)).not.toContain(`/reports/${rawReportId}`);
   });
 
+  it('encodes timeline visit and prescription hrefs while preserving raw identities', async () => {
+    const rawScheduleWithRecordId = 'schedule/with-record?mode=x#frag';
+    const rawScheduleRecordId = 'visit-record/from-schedule?mode=x#frag';
+    const rawScheduleWithoutRecordId = 'schedule/no-record?mode=entry#frag';
+    const rawVisitRecordId = 'visit-record/direct?mode=x#frag';
+    const rawPrescriptionIntakeId = 'intake/direct?tab=x#frag';
+    const rawDispenseResultId = 'dispense/1?tab=x#frag';
+    const rawDispenseIntakeId = 'intake/dispense?tab=x#frag';
+    const rawInquiryId = 'inquiry/1?tab=x#frag';
+    const rawInquiryIntakeId = 'intake/inquiry?tab=x#frag';
+    const rawInquiryWithoutIntakeId = 'inquiry/no-intake?tab=x#frag';
+    const rawAuditId = 'audit/prescription?tab=x#frag';
+    const rawAuditPrescriptionId = 'intake/audit?tab=x#frag';
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      visitSchedule: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: rawScheduleWithRecordId,
+            visit_type: 'regular',
+            scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
+            schedule_status: 'confirmed',
+            priority: null,
+            pharmacist_id: 'user_1',
+            confirmed_at: new Date('2026-04-09T09:00:00.000Z'),
+            route_order: null,
+            created_at: new Date('2026-04-08T09:00:00.000Z'),
+            updated_at: null,
+            visit_record: { id: rawScheduleRecordId, outcome_status: 'completed' },
+          },
+          {
+            id: rawScheduleWithoutRecordId,
+            visit_type: 'temporary',
+            scheduled_date: new Date('2026-04-11T00:00:00.000Z'),
+            schedule_status: 'planned',
+            priority: null,
+            pharmacist_id: 'user_1',
+            confirmed_at: null,
+            route_order: null,
+            created_at: new Date('2026-04-08T10:00:00.000Z'),
+            updated_at: null,
+            visit_record: null,
+          },
+        ]),
+      },
+      visitRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: rawVisitRecordId,
+            pharmacist_id: 'user_1',
+            visit_date: new Date('2026-04-12T00:00:00.000Z'),
+            outcome_status: 'completed',
+            next_visit_suggestion_date: null,
+            cancellation_reason: null,
+            postpone_reason: null,
+            revisit_reason: null,
+            created_at: new Date('2026-04-12T09:00:00.000Z'),
+          },
+        ]),
+      },
+      prescriptionIntake: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: rawPrescriptionIntakeId,
+            source_type: 'fax',
+            prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+            prescriber_name: '山田医師',
+            prescriber_institution: '山田内科',
+            original_collected_by: null,
+            created_at: new Date('2026-04-01T09:00:00.000Z'),
+            cycle: { overall_status: 'intake_received' },
+            lines: [],
+          },
+        ]),
+      },
+      dispenseResult: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: rawDispenseResultId,
+            actual_drug_name: 'テスト薬',
+            actual_quantity: 14,
+            actual_unit: '錠',
+            carry_type: 'carry',
+            dispensed_by: 'user_1',
+            dispensed_at: new Date('2026-04-02T09:00:00.000Z'),
+            task: { cycle: { overall_status: 'dispensed' } },
+            line: { intake: { id: rawDispenseIntakeId } },
+          },
+        ]),
+      },
+      inquiryRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: rawInquiryId,
+            reason: '用量確認',
+            inquiry_to_physician: '山田医師',
+            inquiry_content: '用量を確認しました。',
+            result: 'unchanged',
+            proposal_origin: 'post_inquiry',
+            residual_adjustment: false,
+            change_detail: null,
+            inquired_at: new Date('2026-04-03T09:00:00.000Z'),
+            resolved_at: null,
+            created_at: new Date('2026-04-03T08:00:00.000Z'),
+            line: { intake: { id: rawInquiryIntakeId } },
+          },
+          {
+            id: rawInquiryWithoutIntakeId,
+            reason: '受付未連携',
+            inquiry_to_physician: null,
+            inquiry_content: null,
+            result: null,
+            proposal_origin: null,
+            residual_adjustment: null,
+            change_detail: null,
+            inquired_at: null,
+            resolved_at: null,
+            created_at: new Date('2026-04-03T07:00:00.000Z'),
+            line: null,
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: rawAuditId,
+            action: 'prescription_original_management_updated',
+            target_type: 'prescription_intake',
+            target_id: rawAuditPrescriptionId,
+            actor_id: 'user_1',
+            changes: { storage_location: 'paper' },
+            created_at: new Date('2026-04-05T11:00:00.000Z'),
+          },
+        ]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    const eventsById = new Map(result?.timeline_events.map((event) => [event.id, event]));
+    expect(eventsById.get(`visit_schedule:${rawScheduleWithRecordId}`)?.href).toBe(
+      `/visits/${encodeURIComponent(rawScheduleRecordId)}`,
+    );
+    expect(eventsById.get(`visit_schedule:${rawScheduleWithoutRecordId}`)?.href).toBe(
+      `/visits/${encodeURIComponent(rawScheduleWithoutRecordId)}/record`,
+    );
+    expect(eventsById.get(`visit_record:${rawVisitRecordId}`)?.href).toBe(
+      `/visits/${encodeURIComponent(rawVisitRecordId)}`,
+    );
+    expect(eventsById.get(`prescription_intake:${rawPrescriptionIntakeId}`)?.href).toBe(
+      `/prescriptions/${encodeURIComponent(rawPrescriptionIntakeId)}`,
+    );
+    expect(eventsById.get(`dispense_result:${rawDispenseResultId}`)?.href).toBe(
+      `/prescriptions/${encodeURIComponent(rawDispenseIntakeId)}`,
+    );
+    expect(eventsById.get(`inquiry:${rawInquiryId}`)?.href).toBe(
+      `/prescriptions/${encodeURIComponent(rawInquiryIntakeId)}`,
+    );
+    expect(eventsById.get(`inquiry:${rawInquiryWithoutIntakeId}`)?.href).toBe('/workflow');
+    expect(eventsById.get(`operation_history:${rawAuditId}`)?.href).toBe(
+      `/prescriptions/${encodeURIComponent(rawAuditPrescriptionId)}`,
+    );
+    for (const eventId of [
+      `visit_schedule:${rawScheduleWithRecordId}`,
+      `visit_schedule:${rawScheduleWithoutRecordId}`,
+      `visit_record:${rawVisitRecordId}`,
+      `prescription_intake:${rawPrescriptionIntakeId}`,
+      `dispense_result:${rawDispenseResultId}`,
+      `inquiry:${rawInquiryId}`,
+      `inquiry:${rawInquiryWithoutIntakeId}`,
+      `operation_history:${rawAuditId}`,
+    ]) {
+      expect(eventsById.has(eventId)).toBe(true);
+    }
+    const serializedEvents = JSON.stringify(result?.timeline_events);
+    for (const rawVisitId of [rawScheduleRecordId, rawScheduleWithoutRecordId, rawVisitRecordId]) {
+      expect(serializedEvents).not.toContain(`/visits/${rawVisitId}`);
+    }
+    for (const rawPrescriptionId of [
+      rawPrescriptionIntakeId,
+      rawDispenseIntakeId,
+      rawInquiryIntakeId,
+      rawAuditPrescriptionId,
+    ]) {
+      expect(serializedEvents).not.toContain(`/prescriptions/${rawPrescriptionId}`);
+    }
+  });
+
   it.each(['.', '..'])('rejects exact dot-segment timeline report id %s', async (reportId) => {
     const db = buildDb({
       patient: {
@@ -1669,6 +1867,218 @@ describe('getPatientTimelineData', () => {
       }),
     ).rejects.toThrow(RangeError);
   });
+
+  const dotSegmentTimelineHrefCases: Array<
+    [string, (dotSegment: string) => Record<string, unknown>]
+  > = [
+    [
+      'visit schedule linked visit record',
+      (dotSegment) => ({
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            cases: [{ id: 'case_1' }],
+          }),
+        },
+        visitSchedule: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'schedule_1',
+              visit_type: 'regular',
+              scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
+              schedule_status: 'confirmed',
+              priority: null,
+              pharmacist_id: 'user_1',
+              confirmed_at: new Date('2026-04-09T09:00:00.000Z'),
+              route_order: null,
+              created_at: new Date('2026-04-08T09:00:00.000Z'),
+              updated_at: null,
+              visit_record: { id: dotSegment, outcome_status: 'completed' },
+            },
+          ]),
+        },
+      }),
+    ],
+    [
+      'visit schedule record entry',
+      (dotSegment) => ({
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            cases: [{ id: 'case_1' }],
+          }),
+        },
+        visitSchedule: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: dotSegment,
+              visit_type: 'regular',
+              scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
+              schedule_status: 'planned',
+              priority: null,
+              pharmacist_id: 'user_1',
+              confirmed_at: null,
+              route_order: null,
+              created_at: new Date('2026-04-08T09:00:00.000Z'),
+              updated_at: null,
+              visit_record: null,
+            },
+          ]),
+        },
+      }),
+    ],
+    [
+      'visit record',
+      (dotSegment) => ({
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            cases: [{ id: 'case_1' }],
+          }),
+        },
+        visitRecord: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: dotSegment,
+              pharmacist_id: 'user_1',
+              visit_date: new Date('2026-04-12T00:00:00.000Z'),
+              outcome_status: 'completed',
+              next_visit_suggestion_date: null,
+              cancellation_reason: null,
+              postpone_reason: null,
+              revisit_reason: null,
+              created_at: new Date('2026-04-12T09:00:00.000Z'),
+            },
+          ]),
+        },
+      }),
+    ],
+    [
+      'prescription intake',
+      (dotSegment) => ({
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            cases: [{ id: 'case_1' }],
+          }),
+        },
+        prescriptionIntake: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: dotSegment,
+              source_type: 'fax',
+              prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+              prescriber_name: '山田医師',
+              prescriber_institution: '山田内科',
+              original_collected_by: null,
+              created_at: new Date('2026-04-01T09:00:00.000Z'),
+              cycle: { overall_status: 'intake_received' },
+              lines: [],
+            },
+          ]),
+        },
+      }),
+    ],
+    [
+      'dispense result intake',
+      (dotSegment) => ({
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            cases: [{ id: 'case_1' }],
+          }),
+        },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'dispense_1',
+              actual_drug_name: 'テスト薬',
+              actual_quantity: 14,
+              actual_unit: '錠',
+              carry_type: 'carry',
+              dispensed_by: 'user_1',
+              dispensed_at: new Date('2026-04-02T09:00:00.000Z'),
+              task: { cycle: { overall_status: 'dispensed' } },
+              line: { intake: { id: dotSegment } },
+            },
+          ]),
+        },
+      }),
+    ],
+    [
+      'inquiry intake',
+      (dotSegment) => ({
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            cases: [{ id: 'case_1' }],
+          }),
+        },
+        inquiryRecord: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'inquiry_1',
+              reason: '用量確認',
+              inquiry_to_physician: '山田医師',
+              inquiry_content: '用量を確認しました。',
+              result: 'unchanged',
+              proposal_origin: 'post_inquiry',
+              residual_adjustment: false,
+              change_detail: null,
+              inquired_at: new Date('2026-04-03T09:00:00.000Z'),
+              resolved_at: null,
+              created_at: new Date('2026-04-03T08:00:00.000Z'),
+              line: { intake: { id: dotSegment } },
+            },
+          ]),
+        },
+      }),
+    ],
+    [
+      'prescription operation history target',
+      (dotSegment) => ({
+        patient: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'patient_1',
+            cases: [{ id: 'case_1' }],
+          }),
+        },
+        auditLog: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'audit_prescription_1',
+              action: 'prescription_original_management_updated',
+              target_type: 'prescription_intake',
+              target_id: dotSegment,
+              actor_id: 'user_1',
+              changes: { storage_location: 'paper' },
+              created_at: new Date('2026-04-05T11:00:00.000Z'),
+            },
+          ]),
+        },
+      }),
+    ],
+  ];
+
+  it.each(
+    dotSegmentTimelineHrefCases.flatMap(([sourceName, buildOverrides]) =>
+      ['.', '..'].map((dotSegment) => [sourceName, dotSegment, buildOverrides] as const),
+    ),
+  )(
+    'rejects exact dot-segment timeline href id from %s: %s',
+    async (_sourceName, dotSegment, buildOverrides) => {
+      const db = buildDb(buildOverrides(dotSegment));
+
+      await expect(
+        getPatientTimelineData(db, {
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          role: 'pharmacist',
+          userId: 'user_1',
+        }),
+      ).rejects.toThrow(RangeError);
+    },
+  );
 
   it('encodes timeline patient hrefs while preserving raw patient identity queries', async () => {
     const rawPatientId = 'patient/1?tab=x#frag';
