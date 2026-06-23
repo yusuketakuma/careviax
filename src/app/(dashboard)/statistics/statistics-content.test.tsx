@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { StatisticsContent } from './statistics-content';
@@ -12,6 +13,11 @@ import { STATISTICS_CATEGORIES, STATISTICS_SURFACES } from './statistics-surface
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: vi.fn(() => 'org_1'),
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
 
 const useOrgIdMock = vi.mocked(useOrgId);
 
@@ -63,6 +69,10 @@ describe('StatisticsContent', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    vi.mocked(buildOrgHeaders).mockImplementation((orgId, extra) => ({
+      'x-org-id': orgId,
+      ...extra,
+    }));
     useOrgIdMock.mockReturnValue('org_1');
   });
 
@@ -223,6 +233,8 @@ describe('StatisticsContent', () => {
 
   it('starts exactly one fetch once the org id hydrates from empty to a real value', async () => {
     useOrgIdMock.mockReturnValue('');
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
     const fetchMock = vi.fn(async () => dispensingSuccess());
     vi.stubGlobal('fetch', fetchMock);
 
@@ -246,8 +258,10 @@ describe('StatisticsContent', () => {
 
     expect(await screen.findByText('調剤 未着手')).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, init] = fetchMock.mock.calls[0] as unknown as [unknown, RequestInit];
-    expect((init.headers as Record<string, string>)['x-org-id']).toBe('org_1');
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [unknown, RequestInit];
+    expect(url).toBe(DISPENSING_STATS_URL);
+    expect(init.headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
   });
 
   it('does not leak raw error-body / PHI-like text into the rendered error', async () => {
