@@ -1,6 +1,26 @@
 // @vitest-environment node
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Actual-backed spies on the shared helpers: keep real encode/guard behavior for
+// the hostile-id integration tests AND assert the builders DELEGATE to the shared
+// helpers (regression teeth against a reintroduced local encodeURIComponent builder).
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+vi.mock('@/lib/prescriptions/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/prescriptions/navigation')>();
+  return { ...actual, buildPrescriptionHref: vi.fn(actual.buildPrescriptionHref) };
+});
+vi.mock('@/lib/reports/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/reports/navigation')>();
+  return { ...actual, buildReportHref: vi.fn(actual.buildReportHref) };
+});
+
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 import {
   buildPatientResult,
   buildPrescriptionResult,
@@ -291,4 +311,71 @@ describe('buildMedicationDeadlineResult', () => {
     expect(row.subtitle).toContain('訪問予定 6/18');
     expect(row.href).toBe('/schedules?date=2026-06-18');
   });
+});
+
+describe('search result href helper convergence (F-037)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // 各 builder の href が共有 helper の「戻り値」をそのまま使うことを sentinel で証明
+  // (helper を validation/副作用だけ呼んで href をローカル再構築する退行を弾く)。
+  it('uses each shared helper RETURN VALUE for the row href (not a local reconstruction)', () => {
+    vi.mocked(buildPatientHref).mockReturnValueOnce('/patients/__sentinel_patient__');
+    expect(buildPatientResult({ id: 'p_42', name: '田中' }).href).toBe(
+      '/patients/__sentinel_patient__',
+    );
+    expect(vi.mocked(buildPatientHref)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith('p_42');
+
+    vi.mocked(buildPrescriptionHref).mockReturnValueOnce('/prescriptions/__sentinel_rx__');
+    expect(buildPrescriptionResult({ id: 'rx_42' }).href).toBe('/prescriptions/__sentinel_rx__');
+    expect(vi.mocked(buildPrescriptionHref)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(buildPrescriptionHref)).toHaveBeenCalledWith('rx_42');
+
+    vi.mocked(buildReportHref).mockReturnValueOnce('/reports/__sentinel_report__');
+    expect(
+      buildReportResult({
+        id: 'r_42',
+        report_type: 'physician_report',
+        status: 'draft',
+        created_at: '2026-06-01T00:00:00.000Z',
+      }).href,
+    ).toBe('/reports/__sentinel_report__');
+    expect(vi.mocked(buildReportHref)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(buildReportHref)).toHaveBeenCalledWith('r_42');
+  });
+
+  // 検索結果は API 由来。不正な dot-segment id は null 縮退せず fail-fast(RangeError)。
+  // throw が共有 helper 経由であることも spy 呼び出しで証明(local if-throw 退行を弾く)。
+  it.each(['.', '..'])(
+    'fails fast via the shared patient helper for a dot-segment id (%s)',
+    (dotEntityId) => {
+      expect(() => buildPatientResult({ id: dotEntityId, name: '田中' })).toThrow(RangeError);
+      expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith(dotEntityId);
+    },
+  );
+
+  it.each(['.', '..'])(
+    'fails fast via the shared prescription helper for a dot-segment id (%s)',
+    (dotEntityId) => {
+      expect(() => buildPrescriptionResult({ id: dotEntityId })).toThrow(RangeError);
+      expect(vi.mocked(buildPrescriptionHref)).toHaveBeenCalledWith(dotEntityId);
+    },
+  );
+
+  it.each(['.', '..'])(
+    'fails fast via the shared report helper for a dot-segment id (%s)',
+    (dotEntityId) => {
+      expect(() =>
+        buildReportResult({
+          id: dotEntityId,
+          report_type: 'physician_report',
+          status: 'draft',
+          created_at: '2026-06-01T00:00:00.000Z',
+        }),
+      ).toThrow(RangeError);
+      expect(vi.mocked(buildReportHref)).toHaveBeenCalledWith(dotEntityId);
+    },
+  );
 });
