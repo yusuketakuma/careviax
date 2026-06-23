@@ -1,4 +1,6 @@
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { readJsonObjectResponseBody } from '@/lib/api/response-body';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { parsePatientMcsViewData } from './dto';
 
 export class PatientMcsOverviewQueryError extends Error {
@@ -23,9 +25,9 @@ export async function fetchPatientMcsOverview(patientId: string, orgId: string, 
   const normalizedLimit = Number.isInteger(limit) && limit >= 0 ? limit : 0;
   const params = new URLSearchParams({ limit: String(normalizedLimit) });
   const response = await fetch(
-    `/api/patients/${encodeURIComponent(patientId)}/mcs?${params.toString()}`,
+    `/api/patients/${encodePathSegment(patientId)}/mcs?${params.toString()}`,
     {
-      headers: { 'x-org-id': orgId },
+      headers: buildOrgHeaders(orgId),
       cache: 'no-store',
     },
   );

@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { PatientMcsContent } from './mcs-content';
 
 setupDomTestEnv();
@@ -12,8 +13,20 @@ const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 
+// Actual-backed spies so URL/header teeth can prove helper adoption via return-value identity.
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
+
 type MutationOptions = {
   mutationFn?: (input?: unknown) => unknown;
+  onSuccess?: (result?: unknown) => unknown;
+  onError?: (error: Error) => unknown;
 };
 
 type QueryOptions = {
@@ -58,6 +71,14 @@ describe('PatientMcsContent', () => {
   it('encodes direct MCS mutation fetch path segments while keeping patient identity raw', async () => {
     const patientId = '../settings?x=1#frag';
     const encodedPatientId = encodeURIComponent(patientId);
+    const sentinelGetHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    const sentinelJsonHeaders = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelGetHeaders);
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelJsonHeaders);
     const mutationOptions: MutationOptions[] = [];
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -132,7 +153,15 @@ describe('PatientMcsContent', () => {
       expect(fetchMock.mock.calls[3][0]).toBe(`/api/patients/${encodedPatientId}/mcs`);
       for (const [url] of fetchMock.mock.calls) {
         expect(String(url)).not.toContain(patientId);
+        expect(String(url)).not.toContain('%25'); // single-encode, never double-encode
       }
+      // helper-return identity (toBe): GET adopts buildOrgHeaders, the 3 mutations adopt buildOrgJsonHeaders
+      expect((fetchMock.mock.calls[0][1] as RequestInit).headers).toBe(sentinelGetHeaders);
+      expect((fetchMock.mock.calls[1][1] as RequestInit).headers).toBe(sentinelJsonHeaders);
+      expect((fetchMock.mock.calls[2][1] as RequestInit).headers).toBe(sentinelJsonHeaders);
+      expect((fetchMock.mock.calls[3][1] as RequestInit).headers).toBe(sentinelJsonHeaders);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
       expect(JSON.parse(fetchMock.mock.calls[1][1].body as string)).toEqual({
         source_url: 'https://www.medical-care.net/patients/2463520',
       });
@@ -151,6 +180,99 @@ describe('PatientMcsContent', () => {
       });
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'rejects the exact dot patient id %p with a RangeError before any MCS fetch',
+    async (hostileId) => {
+      const mutationOptions: MutationOptions[] = [];
+      const fetchMock = vi.fn();
+      let queryFn: (() => unknown) | undefined;
+
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+      useMutationMock.mockImplementation((options: MutationOptions) => {
+        mutationOptions.push(options);
+        return { isPending: false, mutate: vi.fn() };
+      });
+      useQueryMock.mockImplementation(({ queryFn: nextQueryFn }: QueryOptions) => {
+        queryFn = nextQueryFn;
+        return {
+          data: { link: null, profile: null, summary: null, messages: [], checkLogs: [] },
+          isLoading: false,
+          isError: false,
+          error: null,
+          refetch: vi.fn(),
+        };
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(<PatientMcsContent patientId={hostileId} />);
+
+        await expect(queryFn?.()).rejects.toBeInstanceOf(RangeError);
+        await expect(
+          mutationOptions[0].mutationFn?.('https://www.medical-care.net/patients/1'),
+        ).rejects.toBeInstanceOf(RangeError);
+        await expect(
+          mutationOptions[1].mutationFn?.({
+            contentType: 'report',
+            summary: 's',
+            nextAction: '',
+          }),
+        ).rejects.toBeInstanceOf(RangeError);
+        await expect(
+          mutationOptions[2].mutationFn?.({
+            linkedStatus: 'linked',
+            participationStatus: 'joined',
+            pharmacyParticipants: [],
+            counterpartRoles: [],
+            lastCheckedAt: null,
+            note: null,
+          }),
+        ).rejects.toBeInstanceOf(RangeError);
+
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it('invalidates the raw patient query-key prefix from mutation callbacks', async () => {
+    const patientId = 'pt/1?x=y#z';
+    const mutationOptions: MutationOptions[] = [];
+    const invalidateQueries = vi.fn();
+
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries });
+    useMutationMock.mockImplementation((options: MutationOptions) => {
+      mutationOptions.push(options);
+      return { isPending: false, mutate: vi.fn() };
+    });
+    useQueryMock.mockReturnValue({
+      data: { link: null, profile: null, summary: null, messages: [], checkLogs: [] },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+
+    render(<PatientMcsContent patientId={patientId} />);
+    expect(mutationOptions).toHaveLength(3);
+    const [sync, checkLog, profile] = mutationOptions;
+    const rawPrefix = { queryKey: ['patient-mcs', patientId, 'org_1'] };
+
+    // sync success + error both invalidate; checkLog + profile success invalidate. All use the RAW patient id.
+    await sync.onSuccess?.({ importedCount: 0, projectTitle: null, summary: null });
+    await sync.onError?.(new Error('sync failed'));
+    await checkLog.onSuccess?.();
+    await profile.onSuccess?.();
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(4);
+    for (const call of invalidateQueries.mock.calls) {
+      expect(call[0]).toEqual(rawPrefix);
     }
   });
 

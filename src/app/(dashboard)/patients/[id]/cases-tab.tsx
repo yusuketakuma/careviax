@@ -20,6 +20,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { caseStatusTransitions, type CaseStatus } from '@/lib/validations/case';
 import { buildIntakeFieldRows, getHomeVisitIntake } from '@/lib/patient/intake-display';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
@@ -104,7 +106,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     queryKey: ['pharmacists', orgId, 'case-assignment'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacists', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('薬剤師一覧の取得に失敗しました');
       return res.json() as Promise<{
@@ -122,12 +124,9 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
 
   async function handleTransition() {
     if (!transition) return;
-    const res = await fetch(`/api/cases/${transition.caseId}/transition`, {
+    const res = await fetch(`/api/cases/${encodePathSegment(transition.caseId)}/transition`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({ from: transition.from, to: transition.to }),
     });
 
@@ -148,10 +147,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
     setIsCreating(true);
     const res = await fetch('/api/cases', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({ patient_id: patient.id }),
     });
 
@@ -172,12 +168,9 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
 
   async function handleSaveCase(caseId: string, draft: CaseEditDraft) {
     setSavingCaseId(caseId);
-    const res = await fetch(`/api/cases/${caseId}`, {
+    const res = await fetch(`/api/cases/${encodePathSegment(caseId)}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({
         primary_pharmacist_id:
           draft.primary_pharmacist_id === '__unassigned__' ? '' : draft.primary_pharmacist_id,
