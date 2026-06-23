@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { PatientWorkflowPreviewCard } from './patient-workflow-preview-card';
 
 setupDomTestEnv();
@@ -29,6 +30,13 @@ vi.mock('next/link', () => ({
     </a>
   ),
 }));
+
+// Actual-backed spy: real encode/guard output for the hostile patient id test,
+// plus return-value delegation teeth for the five patient browser links.
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
 
 describe('PatientWorkflowPreviewCard', () => {
   it('renders visit, report, and communication preview sections', () => {
@@ -127,4 +135,212 @@ describe('PatientWorkflowPreviewCard', () => {
     expect(screen.getByText(/佐藤医院/)).toBeTruthy();
     expect(screen.getByText('患者・家族への事前連絡を優先します。')).toBeTruthy();
   });
+
+  function buildPreviewData() {
+    return {
+      visit_preparation: {
+        onboarding_readiness: {
+          consent_obtained: true,
+          emergency_contact_set: true,
+          primary_physician_set: true,
+          management_plan_approved: false,
+        },
+        scheduling_preview: {
+          preferred_weekdays: [1, 3],
+          preferred_time_from: '1970-01-01T09:00:00.000Z',
+          preferred_time_to: '1970-01-01T12:00:00.000Z',
+          phone_contact_from: null,
+          phone_contact_to: null,
+          facility_time_from: null,
+          facility_time_to: null,
+          family_presence_required: false,
+          visit_buffer_minutes: 30,
+          preferred_contact_name: '長男 山田',
+          preferred_contact_phone: '090-1111-2222',
+          visit_before_contact_required: true,
+          first_visit_preferred_date: null,
+          first_visit_time_slot: null,
+          first_visit_time_note: null,
+          parking_available: true,
+          primary_contact_preference: 'phone',
+          mcs_linked: true,
+        },
+        baseline_context: {
+          primary_disease: '心不全',
+          care_level: 'care_3',
+          adl_level: 'b',
+          dementia_level: 'ii',
+          money_management: 'family',
+          family_key_person: '長男 山田',
+          medication_support_methods: ['unit_dose'],
+          special_medical_procedures: ['narcotics'],
+          infection_isolation: null,
+          narcotics_base: true,
+          narcotics_rescue: false,
+          residual_medication_status: '調整中',
+        },
+        latest_labs: [],
+        blockers: ['承認済み管理計画書がありません。'],
+      },
+      report_targets: [
+        {
+          key: 'physician_report',
+          label: '医師向け報告',
+          available: true,
+          source: 'care_team',
+          recipient_name: '主治医 佐藤',
+          recipient_organization: '佐藤医院',
+          contact: 'TEL 03-0000-1111',
+        },
+      ],
+      communication_priority: {
+        preferred_contact_method: 'phone',
+        effective_channel: 'phone',
+        visit_before_contact_required: true,
+        pharmacy_decision_due_date: null,
+        targets: [
+          {
+            key: 'family',
+            recipientRole: 'family_share',
+            recipientName: '長男 山田',
+            contact: '090-1111-2222',
+            priority_order: 1,
+          },
+        ],
+        warnings: ['患者・家族への事前連絡を優先します。'],
+      },
+    };
+  }
+
+  it('routes the five patient links through buildPatientHref (return-value delegation)', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: buildPreviewData(), isLoading: false, error: null });
+
+    const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockImplementation(
+      (id: string, suffix = '') => `/patients/__s_${id}__${suffix}`,
+    );
+    vi.mocked(buildPatientHref).mockClear();
+    try {
+      render(<PatientWorkflowPreviewCard patientId="patient_1" />);
+
+      expect(screen.getByRole('link', { name: '患者編集' }).getAttribute('href')).toBe(
+        '/patients/__s_patient_1__/edit',
+      );
+      expect(screen.getByRole('link', { name: '同意記録' }).getAttribute('href')).toBe(
+        '/patients/__s_patient_1__/consent',
+      );
+      expect(screen.getByRole('link', { name: 'MCS連携' }).getAttribute('href')).toBe(
+        '/patients/__s_patient_1__/mcs',
+      );
+      expect(screen.getByRole('link', { name: '共有設定' }).getAttribute('href')).toBe(
+        '/patients/__s_patient_1__/share',
+      );
+      expect(screen.getByRole('link', { name: '連携先確認' }).getAttribute('href')).toBe(
+        '/patients/__s_patient_1__/mcs',
+      );
+      // render order, with the duplicate /mcs locked as two explicit calls.
+      expect(vi.mocked(buildPatientHref).mock.calls).toEqual([
+        ['patient_1', '/edit'],
+        ['patient_1', '/consent'],
+        ['patient_1', '/mcs'],
+        ['patient_1', '/share'],
+        ['patient_1', '/mcs'],
+      ]);
+    } finally {
+      if (realImpl) {
+        vi.mocked(buildPatientHref).mockImplementation(realImpl);
+      }
+    }
+  });
+
+  it('encodes a hostile patientId in every patient link as a single path segment', () => {
+    const hostileId = 'pt/1?x=y#z';
+    const encoded = encodeURIComponent(hostileId);
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: buildPreviewData(), isLoading: false, error: null });
+
+    render(<PatientWorkflowPreviewCard patientId={hostileId} />);
+
+    const cases: Array<[string, string]> = [
+      ['患者編集', '/edit'],
+      ['同意記録', '/consent'],
+      ['MCS連携', '/mcs'],
+      ['共有設定', '/share'],
+      ['連携先確認', '/mcs'],
+    ];
+    for (const [name, suffix] of cases) {
+      const href = screen.getByRole('link', { name }).getAttribute('href') ?? '';
+      expect(href).toBe(`/patients/${encoded}${suffix}`);
+      expect(href).not.toContain('?x=y');
+      expect(href).not.toContain('#z');
+      // raw id passed to the helper (not pre-encoded) -> no double-encode.
+      expect(href).not.toContain('%25');
+    }
+  });
+
+  it('encodes a hostile patientId in the workflow-preview fetch URL while keeping raw queryKey identity', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => buildPreviewData() });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured = config;
+        return { data: undefined, isLoading: true, error: null };
+      },
+    );
+
+    try {
+      render(<PatientWorkflowPreviewCard patientId={hostileId} />);
+
+      if (!captured) throw new Error('query config was not captured');
+      expect(captured.queryKey).toEqual(['patient-workflow-preview', hostileId, 'org_1']);
+      await captured.queryFn();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/patients/${encodeURIComponent(hostileId)}/workflow-preview`,
+        { headers: { 'x-org-id': 'org_1' } },
+      );
+      const fetchedUrl = String(fetchMock.mock.calls[0]?.[0] ?? '');
+      expect(fetchedUrl).not.toContain('?x=y');
+      expect(fetchedUrl).not.toContain('#z');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed for exact dot-segment patientId %p instead of normalizing the API path',
+    async (dotId) => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue({ ok: true, json: async () => buildPreviewData() });
+      vi.stubGlobal('fetch', fetchMock);
+      useOrgIdMock.mockReturnValue('org_1');
+
+      let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+      useQueryMock.mockImplementation(
+        (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+          captured = config;
+          return { data: undefined, isLoading: true, error: null };
+        },
+      );
+
+      try {
+        render(<PatientWorkflowPreviewCard patientId={dotId} />);
+
+        if (!captured) throw new Error('query config was not captured');
+        // raw identity preserved in the query key.
+        expect(captured.queryKey).toEqual(['patient-workflow-preview', dotId, 'org_1']);
+        // RangeError before fetch: no normalized /api/patients/workflow-preview request.
+        await expect(captured.queryFn()).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 });

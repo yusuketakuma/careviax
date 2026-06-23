@@ -9,6 +9,7 @@ import { Loading } from '@/components/ui/loading';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import type { PatientWorkflowPreviewSnapshot } from './patient-detail.types';
 
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
@@ -19,6 +20,18 @@ function labelList(values: string[]) {
 
 function timeValue(value: string | null) {
   return value ? value.slice(11, 16) : '—';
+}
+
+// API path helper for this card. Mirrors the fail-closed dot-segment contract of
+// buildPatientHref: encodeURIComponent('.')/('..') are no-ops, so an exact dot id
+// would let URL normalization rewrite the API path
+// (/api/patients/./workflow-preview -> /api/patients/workflow-preview). Reject it
+// before any fetch. Not buildPatientHref because this is an API URL, not a UI href.
+function buildWorkflowPreviewApiHref(patientId: string) {
+  if (patientId === '.' || patientId === '..') {
+    throw new RangeError('Patient id cannot be a dot segment');
+  }
+  return `/api/patients/${encodeURIComponent(patientId)}/workflow-preview`;
 }
 
 const reportTargetSourceLabels: Record<
@@ -38,7 +51,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
     queryKey: ['patient-workflow-preview', patientId, orgId],
     enabled: Boolean(orgId),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/workflow-preview`, {
+      const response = await fetch(buildWorkflowPreviewApiHref(patientId), {
         headers: { 'x-org-id': orgId ?? '' },
       });
       if (!response.ok) {
@@ -93,19 +106,19 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
           </h2>
           <ActionRail>
             <Link
-              href={`/patients/${patientId}/edit`}
+              href={buildPatientHref(patientId, '/edit')}
               className={buttonVariants({ size: 'sm', variant: 'outline' })}
             >
               患者編集
             </Link>
             <Link
-              href={`/patients/${patientId}/consent`}
+              href={buildPatientHref(patientId, '/consent')}
               className={buttonVariants({ size: 'sm', variant: 'outline' })}
             >
               同意記録
             </Link>
             <Link
-              href={`/patients/${patientId}/mcs`}
+              href={buildPatientHref(patientId, '/mcs')}
               className={buttonVariants({ size: 'sm', variant: 'outline' })}
             >
               MCS連携
@@ -208,7 +221,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
           contentClassName="space-y-3"
           actions={
             <Link
-              href={`/patients/${patientId}/share`}
+              href={buildPatientHref(patientId, '/share')}
               className={buttonVariants({ size: 'sm', variant: 'outline' })}
             >
               共有設定
@@ -252,7 +265,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
           contentClassName="space-y-3"
           actions={
             <Link
-              href={`/patients/${patientId}/mcs`}
+              href={buildPatientHref(patientId, '/mcs')}
               className={buttonVariants({ size: 'sm', variant: 'outline' })}
             >
               連携先確認
