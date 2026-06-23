@@ -41,10 +41,10 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
 Organized for navigation; each rule's authoritative wording, evidence, and peer-approval status stay in
 the numbered entries that follow.
 
-- **A. Lane, LOCK & coordination discipline** — §1 lane split · §2 LOCK before edit · §3 drain inbox
+- **A. Lane, LOCK & coordination discipline** — §1 lane split (SOFT DEFAULT, see §23) · §2 LOCK before edit · §3 drain inbox
   before commit · §4 stage only own files · §5 Supervisors-only on agmsg · §11 workload-balancing handoff
   · §19 Codex drains Claude-origin first · §20 main loop free / work in subagents · §21 maximize subagent
-  concurrency / main = orchestrator.
+  concurrency / main = orchestrator · §23 role-agnostic load balancing (maker/checker rotate by load; cross-check invariant).
 - **B. Verification & quality gates** — §6 verify-before-done (real gate cmds) · §17 state-display
   correctness on placement slices · §18 verify-capability + reuse-first before extending a component.
 - **C. Compliance, PHI & security** — §7 UI/UX SSOT + State Color tokens · §8 Compliance-by-Design + RLS
@@ -60,9 +60,11 @@ the numbered entries that follow.
 > Transport identity note (2026-06-23): live agmsg addressing uses only `claude` and `codex`.
 > `claude-lead` / `codex-lead` remain role descriptors for the supervisor lanes and historical records.
 
-1. **Lane discipline.** Claude owns `src/app/(dashboard)/**` and `src/components/**` (UI/UX + main
-   implementation). Codex owns backend / perf / refactor / test-review. Do not edit across lanes
-   without an explicit handoff.
+1. **Lane discipline.** _(SOFT DEFAULT — superseded by §23 role-agnostic load balancing.)_ As a
+   capability tiebreaker, Claude leans `src/app/(dashboard)/**` and `src/components/**` (UI/UX + main
+   implementation); Codex leans backend / perf / refactor / test-review. But per §23 either Supervisor
+   may MAKER or CHECKER any task by load — lanes no longer hard-gate assignment; the maker ≠ checker
+   cross-check invariant is what holds. Still: don't edit peer-locked paths without a §11 handoff.
 2. **LOCK before edit.** Announce a path LOCK over agmsg (team `phos`, supervisor-to-supervisor
    only) before editing any shared file. Release the LOCK when the edit lands.
 3. **Drain inbox before commit.** Run `inbox.sh phos <name>` and resolve every pending message
@@ -316,6 +318,42 @@ the numbered entries that follow.
       human-gated; no new external sends/deploys. Auto-discovery surfaces candidates only — it never
       auto-implements a hard-stop or unreviewed slice.
 
+- **§23 Role-agnostic load balancing (maker/checker rotate by load; cross-check is the only invariant).**
+  User-directed 2026-06-23. Either Supervisor may be MAKER (implementer) OR CHECKER (auditor/approver)
+  for ANY task. The fixed owner-lane split of §1 (Claude=FE/UX, Codex=backend) is **downgraded to a soft
+  capability-preference default** — a tiebreaker when loads are equal, NOT a hard gate. The single
+  **non-negotiable invariant**: maker ≠ checker for the same change — the implementer never self-approves;
+  every change still gets independent cross-review + the objective gate. Hard-stops
+  (auth/billing/payments/security-policy/destructive migration/prod deploy) stay human-gated regardless of
+  who is maker. Why this exists: with hard lanes, a one-sided work stream (e.g. the F-013..F-034 entity-href
+  sweep was entirely backend) pins one Supervisor as maker and the other as pure-checker — a 100% imbalance.
+  Role-agnosticism + the two axes below remove that structurally.
+
+  - **Load metric.** Per Supervisor, a rolling count of (in-flight + queued) tasks where it is MAKER, plus
+    its consecutive-maker streak. **Imbalance trigger** = one side has been MAKER on ≥3 consecutive features
+    while the other was pure-CHECKER, OR its actionable-maker queue is ≥3 deeper than the peer's.
+
+  - **Axis 1 — hand off from busy → light (redistribute).** On imbalance, the NEXT eligible task's MAKER
+    role goes to the LIGHTER Supervisor; the busier one becomes its CHECKER. Use the §11 HANDOFF /
+    owner-decision envelope (stable idempotency_key, ACK before work, updated owner_agent/reviewer_agent,
+    declared locked_paths/forbidden_paths) — now WITHOUT the lane restriction. The busier Supervisor's
+    Discover (§22b) must also surface ≥1 candidate the lighter side can MAKE, so the light queue refills.
+    Never disrupt an in-flight assignment; rebalance at the next task boundary.
+
+  - **Axis 2 — make the light side generate + take work (no pure-reviewer steady state).** The lighter
+    Supervisor must, each idle cycle, run gstack-first whole-codebase Discover (§22b) and PULL a candidate
+    to implement AS MAKER (capability-matched first, but any lane is allowed), rather than only waiting for
+    review work. Sitting in pure-reviewer mode while makeable work exists is not an acceptable steady state.
+
+  - **Blocked-light exception.** If the light side's only candidates are human-gated (e.g. a design-gated UI
+    decision), it (a) escalates the blocker to the human, and (b) runs NON-gated Discover (a11y / FE perf /
+    FE refactor / test hardening / docs) to find makeable work — it does NOT fall back to pure-review.
+
+  - **Symmetric + self-correcting.** Applies to whichever side is heavier, in both directions. Capability
+    soft-default only breaks ties. All other discipline (§1–6 LOCK/drain/stage-own-files/verify, §19
+    drain-order, §20 main-loop-free, §21 subagent fan-out, maker/checker separation, hard-stops) is
+    unchanged. Status: proposed by claude, pending codex concurrence + human gate for permanent.
+
 ## Consider
 
 Weigh against the current objective; log the decision in the run log. (Seed list — extend from
@@ -373,4 +411,5 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §20 (main loop free; work in subagents)                          | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                  |
 | ApplyNow §21 (max subagent concurrency; main=orch)                        | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                  |
 | ApplyNow §22 (idle delegate + whole-codebase auto-discover, gstack-first) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; whole-codebase/all-category scope user-directed; human gate for permanent) |
+| ApplyNow §23 (role-agnostic load balancing: maker/checker rotate by load) | claude-lead | _pending_   | proposed (user-directed 2026-06-23; §1 lanes → soft default; cross-check invariant held; awaiting codex concurrence + human gate)      |
 | _next candidate_                                                          | _name_      | _name_      | proposed                                                                                                                               |
