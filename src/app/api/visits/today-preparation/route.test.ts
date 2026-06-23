@@ -343,4 +343,38 @@ describe('/api/visits/today-preparation', () => {
     ]);
     expect(JSON.stringify(json)).not.toContain(`/visits/${rawLeadScheduleId}/record`);
   });
+
+  it.each(['.', '..'])(
+    'rejects a home visit_mode_href built from a dot-segment schedule id (%s) via the shared guard',
+    async (dotScheduleId) => {
+      visitScheduleFindManyMock.mockResolvedValue([buildSchedule({ id: dotScheduleId })]);
+
+      await expect(GET(createRequest(), { params: Promise.resolve({}) })).rejects.toThrow(
+        RangeError,
+      );
+    },
+  );
+
+  it.each(['.', '..'])(
+    'rejects a facility visit_mode_href built from a dot-segment lead schedule id (%s) via the shared guard',
+    async (dotScheduleId) => {
+      visitScheduleFindManyMock.mockResolvedValue([
+        buildSchedule({
+          id: dotScheduleId,
+          facility_batch_id: 'batch_1',
+          facility_batch: {
+            id: 'batch_1',
+            facility_id: 'facility_1',
+            patient_ids: ['patient_1', 'patient_2'],
+            estimated_duration: 90,
+          },
+        }),
+      ]);
+      facilityFindManyMock.mockResolvedValue([{ id: 'facility_1', name: 'グリーンヒル' }]);
+
+      await expect(GET(createRequest(), { params: Promise.resolve({}) })).rejects.toThrow(
+        RangeError,
+      );
+    },
+  );
 });

@@ -12,6 +12,7 @@ import {
   buildPatientContactReadiness,
 } from '@/lib/patient/care-team-contact';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildVisitRecordHref } from '@/lib/visits/navigation';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
   VisitPrepBlockedReason,
@@ -273,7 +274,7 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
 
   return {
     schedule_id: schedule.id,
-    visit_mode_href: `/visits/${encodeURIComponent(schedule.id)}/record`,
+    visit_mode_href: buildVisitRecordHref(schedule.id),
     time_label: schedule.time_window_start ? formatTimeOfDay(schedule.time_window_start) : null,
     title: patient.name,
     is_facility: false,
@@ -350,7 +351,7 @@ function deriveFacilityVisitCard(
 
   return {
     schedule_id: lead.id,
-    visit_mode_href: `/visits/${encodeURIComponent(lead.id)}/record`,
+    visit_mode_href: buildVisitRecordHref(lead.id),
     time_label: lead.time_window_start ? formatTimeOfDay(lead.time_window_start) : null,
     title: name.startsWith('施設') ? name : `施設${name}`,
     is_facility: true,
