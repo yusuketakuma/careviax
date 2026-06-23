@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type {
   PatientDocumentsSnapshot,
   PatientOverview,
@@ -2481,4 +2482,69 @@ describe('CardWorkspace', () => {
       },
     ]);
   });
+
+  // F-081 (card-workspace sub-slice 1/5): PatientCardDocumentsPanel documents GET URL/header hardening.
+  function captureDocumentsQueryConfig(hostilePatientId: string) {
+    // mockPatientQuery sets up every CardWorkspace query/mutation; we then wrap useQuery to also
+    // record the patient-documents config (incl queryFn) without weakening the baseline behavior.
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { id: hostilePatientId } });
+    const baseImpl = useQueryMock.getMockImplementation();
+    let documentsConfig: { queryKey: unknown[]; queryFn?: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        if (config?.queryKey?.[0] === 'patient-documents') {
+          documentsConfig = config;
+        }
+        return baseImpl?.(config);
+      },
+    );
+    return () => documentsConfig;
+  }
+
+  it('fetches patient documents from an encoded patient path with org headers (raw query key)', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    const getDocumentsConfig = captureDocumentsQueryConfig(hostileId);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId={hostileId} />);
+
+      const config = getDocumentsConfig();
+      expect(config?.queryKey).toEqual(['patient-documents', hostileId, 'org_1']);
+      await config?.queryFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/documents`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed without fetching for exact dot-segment patient id %p on the documents GET',
+    async (dotId) => {
+      const getDocumentsConfig = captureDocumentsQueryConfig(dotId);
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(<CardWorkspace patientId={dotId} />);
+
+        const config = getDocumentsConfig();
+        await expect(config?.queryFn?.()).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
 });

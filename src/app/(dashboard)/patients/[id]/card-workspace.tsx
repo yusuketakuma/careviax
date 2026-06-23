@@ -59,6 +59,8 @@ import {
   getProcessStepKeyForStatus,
 } from '@/lib/prescription/cycle-workspace';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { cn } from '@/lib/utils';
@@ -1256,8 +1258,8 @@ function PatientCardDocumentsPanel({
   const documentsQuery = useQuery<PatientDocumentsSnapshot>({
     queryKey: ['patient-documents', patient.id, orgId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patient.id}/documents`, {
-        headers: { 'x-org-id': orgId ?? '' },
+      const response = await fetch(`/api/patients/${encodePathSegment(patient.id)}/documents`, {
+        headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
         throw new Error('文書情報の取得に失敗しました');
