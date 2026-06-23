@@ -18,6 +18,8 @@ import {
   REPORT_TYPE_LABELS,
 } from '@/lib/constants/status-labels';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { cn } from '@/lib/utils';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
@@ -327,7 +329,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Link
-                          href={`/patients/${item.patient_id}`}
+                          href={buildPatientHref(item.patient_id)}
                           className={cn(buttonVariants({ variant: 'ghost' }))}
                         >
                           患者詳細
@@ -343,7 +345,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                           関連依頼
                         </Link>
                         <Link
-                          href={`/reports/${item.report_id}`}
+                          href={buildReportHref(item.report_id)}
                           className={cn(buttonVariants({ variant: 'outline' }))}
                         >
                           報告書を開く

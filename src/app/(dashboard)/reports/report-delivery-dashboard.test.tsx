@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { ReportDeliveryDashboard } from './report-delivery-dashboard';
 
 setupDomTestEnv();
@@ -28,6 +30,79 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+// Actual-backed spies: real encode/guard output for hostile test, plus
+// return-value delegation teeth for the overdue card patient/report links.
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+vi.mock('@/lib/reports/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/reports/navigation')>();
+  return { ...actual, buildReportHref: vi.fn(actual.buildReportHref) };
+});
+
+function primeDashboard(overrides: { patientId?: string; reportId?: string } = {}) {
+  const patientId = overrides.patientId ?? 'patient_1';
+  const reportId = overrides.reportId ?? 'report_1';
+  useOrgIdMock.mockReturnValue('org_1');
+  useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+  useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+  useQueryMock.mockReturnValue({
+    data: {
+      data: {
+        summary: {
+          current_month: '2026-04',
+          current_month_attempted_count: 3,
+          current_month_success_rate: 67,
+          current_month_failed_count: 1,
+          current_month_confirmed_rate: 33,
+          overdue_waiting_count: 1,
+          overdue_threshold_days: 7,
+        },
+        monthly_trend: [
+          {
+            month: '2026-04',
+            attempted_count: 3,
+            success_count: 2,
+            failed_count: 1,
+            confirmed_count: 1,
+            response_waiting_count: 1,
+            success_rate: 67,
+            confirmed_rate: 33,
+          },
+        ],
+        physician_breakdown: [
+          {
+            recipient_name: '田中医師',
+            total_count: 3,
+            success_count: 2,
+            confirmed_count: 1,
+            success_rate: 67,
+          },
+        ],
+        channel_breakdown: [
+          { channel: 'fax', total_count: 3, success_count: 2, failed_count: 1, success_rate: 67 },
+        ],
+        overdue_waiting: [
+          {
+            id: 'delivery_1',
+            report_id: reportId,
+            patient_id: patientId,
+            patient_name: '患者A',
+            report_type: 'visit_report',
+            recipient_name: '田中医師',
+            recipient_contact: '03-0000-0000',
+            channel: 'fax',
+            sent_at: '2026-04-08T10:00:00.000Z',
+            days_waiting: 8,
+          },
+        ],
+      },
+    },
+    isLoading: false,
+  });
+}
 
 describe('ReportDeliveryDashboard', () => {
   it('keeps analytics as a secondary section instead of a primary page-level link', () => {
@@ -168,5 +243,51 @@ describe('ReportDeliveryDashboard', () => {
     expect(reminderButton).toHaveProperty('disabled', true);
     expect(reminderButton.getAttribute('aria-describedby')).toBe(reminderReason.id);
     expect(reminderReason.textContent).not.toMatch(/patient_|report_|山田|田中|患者A/);
+  });
+
+  describe('shared href helper convergence (F-044)', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('overdue card patient/report links consume the shared helper return values', () => {
+      primeDashboard();
+      const realPatient = vi.mocked(buildPatientHref).getMockImplementation();
+      const realReport = vi.mocked(buildReportHref).getMockImplementation();
+      vi.mocked(buildPatientHref).mockImplementation((id: string) => `/patients/__s_${id}__`);
+      vi.mocked(buildReportHref).mockImplementation((id: string) => `/reports/__s_${id}__`);
+      try {
+        render(<ReportDeliveryDashboard />);
+
+        expect(screen.getByRole('link', { name: '患者詳細' }).getAttribute('href')).toBe(
+          '/patients/__s_patient_1__',
+        );
+        expect(screen.getByRole('link', { name: '報告書を開く' }).getAttribute('href')).toBe(
+          '/reports/__s_report_1__',
+        );
+        expect(vi.mocked(buildPatientHref).mock.calls).toEqual([['patient_1']]);
+        expect(vi.mocked(buildReportHref).mock.calls).toEqual([['report_1']]);
+      } finally {
+        if (realPatient) vi.mocked(buildPatientHref).mockImplementation(realPatient);
+        if (realReport) vi.mocked(buildReportHref).mockImplementation(realReport);
+      }
+    });
+
+    it('encodes hostile patient/report ids as single path segments', () => {
+      primeDashboard({ patientId: 'pt/1?x=y#z', reportId: 'report/1?x=y#z' });
+      render(<ReportDeliveryDashboard />);
+
+      expect(screen.getByRole('link', { name: '患者詳細' }).getAttribute('href')).toBe(
+        `/patients/${encodeURIComponent('pt/1?x=y#z')}`,
+      );
+      expect(screen.getByRole('link', { name: '報告書を開く' }).getAttribute('href')).toBe(
+        `/reports/${encodeURIComponent('report/1?x=y#z')}`,
+      );
+      for (const name of ['患者詳細', '報告書を開く']) {
+        const href = screen.getByRole('link', { name }).getAttribute('href') ?? '';
+        expect(href).not.toContain('?x=y');
+        expect(href).not.toContain('#z');
+      }
+    });
   });
 });
