@@ -5,6 +5,7 @@ import { Building2, CalendarDays, CheckCircle2, CircleAlert, UsersRound } from '
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { cn } from '@/lib/utils';
 import type { PatientOverview } from './patient-detail.types';
 
@@ -202,7 +203,7 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
             訪問条件を編集
           </a>
           <Link
-            href={`/patients/${patient.id}/collaboration`}
+            href={buildPatientHref(patient.id, '/collaboration')}
             className={buttonVariants({ size: 'sm', variant: 'outline' })}
           >
             連携で編集
