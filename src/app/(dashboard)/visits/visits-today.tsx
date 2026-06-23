@@ -17,6 +17,7 @@ import {
   getHandlingTagBadgeClass,
   getHandlingTagLabel,
 } from '@/components/features/workspace/safety-board';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
@@ -40,7 +41,7 @@ export async function fetchVisitPreparationBoard(
   orgId: string,
 ): Promise<VisitPreparationBoardResponse> {
   const res = await fetch('/api/visits/today-preparation', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('本日の訪問準備の取得に失敗しました');
   const json = await res.json();
