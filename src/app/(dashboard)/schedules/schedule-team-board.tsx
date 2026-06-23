@@ -18,6 +18,8 @@ import {
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
@@ -63,7 +65,7 @@ async function fetchScheduleDayBoard(
   date: string,
 ): Promise<ScheduleDayBoardResponse> {
   const res = await fetch(`/api/visit-schedules/day-board?date=${date}`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const json = await readApiJson<{ data: ScheduleDayBoardResponse }>(
     res,
@@ -74,7 +76,7 @@ async function fetchScheduleDayBoard(
 
 async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitResponse> {
   const res = await fetch('/api/dashboard/cockpit', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const json = await readApiJson<{ data: DashboardCockpitResponse }>(
     res,
@@ -101,7 +103,7 @@ async function fetchScheduleOperationalTasks(orgId: string): Promise<ScheduleTas
     task_types: SCHEDULE_BOARD_TASK_TYPES.join(','),
   });
   const res = await fetch(`/api/tasks?${params.toString()}`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const json = await readApiJson<{ data: ScheduleTask[] }>(
     res,
@@ -119,12 +121,9 @@ async function updateScheduleOperationalTaskStatus({
   taskId: string;
   status: ScheduleTaskStatusUpdate;
 }) {
-  const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+  const res = await fetch(`/api/tasks/${encodePathSegment(taskId)}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({ status }),
   });
   if (!res.ok) {
@@ -150,12 +149,9 @@ async function patchVisitSchedule({
   scheduleId: string;
   payload: Record<string, unknown>;
 }) {
-  const res = await fetch(`/api/visit-schedules/${scheduleId}`, {
+  const res = await fetch(`/api/visit-schedules/${encodePathSegment(scheduleId)}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
