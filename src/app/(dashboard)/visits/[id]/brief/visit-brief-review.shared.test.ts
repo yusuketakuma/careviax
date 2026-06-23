@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { VisitBriefAiSummary, VisitBriefRuleSummary } from '@/types/visit-brief';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   buildNeedsEditFeedbackInput,
   composeBriefParagraph,
@@ -12,6 +13,13 @@ import {
   selectBriefSummary,
   validateCorrectedSummary,
 } from './visit-brief-review.shared';
+
+// Actual-backed spy: real encode/guard output for the existing exact-href and
+// hostile-id assertions, plus return-value delegation teeth for the evidence links.
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
 
 function buildAiSummary(overrides: Partial<VisitBriefAiSummary> = {}): VisitBriefAiSummary {
   return {
@@ -208,6 +216,64 @@ describe('resolveEvidenceLinks', () => {
     expect(links).toHaveLength(5);
     expect(links.every((link) => link.href === null)).toBe(true);
   });
+
+  it('non-null の各 evidence link は buildPatientHref の戻り値を消費する', () => {
+    const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockImplementation(
+      (id: string, suffix = '') => `/patients/__s_${id}__${suffix}`,
+    );
+    vi.mocked(buildPatientHref).mockClear();
+    try {
+      const links = resolveEvidenceLinks('patient_1');
+      expect(links.map((link) => link.href)).toEqual([
+        '/patients/__s_patient_1__#card-prescription-section',
+        '/patients/__s_patient_1__#card-recent-activities',
+        '/patients/__s_patient_1__/collaboration',
+        '/patients/__s_patient_1__#patient-profile-summary',
+        '/patients/__s_patient_1__#patient-profile-summary',
+      ]);
+      expect(vi.mocked(buildPatientHref).mock.calls).toEqual([
+        ['patient_1', '#card-prescription-section'],
+        ['patient_1', '#card-recent-activities'],
+        ['patient_1', '/collaboration'],
+        ['patient_1', '#patient-profile-summary'],
+        ['patient_1', '#patient-profile-summary'],
+      ]);
+    } finally {
+      if (realImpl) {
+        vi.mocked(buildPatientHref).mockImplementation(realImpl);
+      }
+      vi.clearAllMocks();
+    }
+  });
+
+  it('hostile patientId を各 link で単一 path segment に encode する', () => {
+    const hostileId = 'pt/1?x=y#z';
+    const encoded = encodeURIComponent(hostileId);
+    const links = resolveEvidenceLinks(hostileId);
+    const suffixes = [
+      '#card-prescription-section',
+      '#card-recent-activities',
+      '/collaboration',
+      '#patient-profile-summary',
+      '#patient-profile-summary',
+    ];
+    links.forEach((link, index) => {
+      const href = link.href ?? '';
+      expect(href).toBe(`/patients/${encoded}${suffixes[index]}`);
+      expect(href).not.toContain('?x=y');
+      expect(href).not.toContain('#z');
+      // raw id passed to the helper (not pre-encoded) -> no double-encode.
+      expect(href).not.toContain('%25');
+    });
+  });
+
+  it.each(['.', '..'])(
+    'exact dot-segment patientId %p では RangeError で fail-fast する',
+    (dotId) => {
+      expect(() => resolveEvidenceLinks(dotId)).toThrow(RangeError);
+    },
+  );
 });
 
 describe('pickVisitPatientId', () => {

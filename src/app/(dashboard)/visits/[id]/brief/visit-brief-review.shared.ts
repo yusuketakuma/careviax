@@ -1,3 +1,4 @@
+import { buildPatientHref } from '@/lib/patient/navigation';
 import type { VisitBrief } from '@/types/visit-brief';
 
 /**
@@ -149,7 +150,7 @@ export type EvidenceLink = {
  * 現行の患者カード作業台または専用 route へ解決し、患者未解決時はリンク無しにする。
  */
 export function resolveEvidenceLinks(patientId: string | null): EvidenceLink[] {
-  const patientHref = (anchor = '') => (patientId ? `/patients/${patientId}${anchor}` : null);
+  const patientHref = (anchor = '') => (patientId ? buildPatientHref(patientId, anchor) : null);
   return [
     {
       key: 'prescription',
@@ -167,7 +168,7 @@ export function resolveEvidenceLinks(patientId: string | null): EvidenceLink[] {
       key: 'nursing_note',
       label: '訪看メモ',
       description: '多職種共有を開く',
-      href: patientId ? `/patients/${patientId}/collaboration` : null,
+      href: patientId ? buildPatientHref(patientId, '/collaboration') : null,
     },
     {
       key: 'labs',
