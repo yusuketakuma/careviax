@@ -154,6 +154,36 @@ describe('PatientActivityTimeline', () => {
     ).toBeTruthy();
   });
 
+  it('styles categories and event types with chart series tokens, not bespoke palette colors', () => {
+    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+
+    // Category filter chip resolves to a --chart-* series utility once active.
+    const visitButton = screen.getByRole('button', { name: /訪問/ });
+    fireEvent.click(visitButton);
+    expect(visitButton.className).toContain('chart-1');
+    expect(visitButton.className).not.toMatch(/sky-|emerald-|violet-|amber-|slate-|rose-|cyan-/);
+
+    // Event-type badge uses the same chart series idiom (kind-of-event series).
+    const eventBadge = screen.getByText('訪問記録');
+    expect(eventBadge.className).toContain('chart-1');
+    expect(eventBadge.className).not.toMatch(/sky-|emerald-|violet-|amber-|slate-|rose-|cyan-/);
+  });
+
+  it('styles home-operation focus badges with chart series tokens', () => {
+    render(<PatientActivityTimeline timelineEvents={[mcsTimelineEvent]} selfReports={[]} />);
+
+    const focusBadge = screen.getByText('MCS');
+    expect(focusBadge.className).toContain('chart-4');
+    expect(focusBadge.className).not.toMatch(/sky-|emerald-|violet-|amber-|slate-|rose-|cyan-/);
+  });
+
+  it('shows a recent-activity (not full history) completeness note', () => {
+    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+
+    const note = screen.getByTestId('timeline-completeness-note');
+    expect(note.textContent).toContain('全履歴ではありません');
+  });
+
   it('filters the timeline by category', () => {
     render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
 

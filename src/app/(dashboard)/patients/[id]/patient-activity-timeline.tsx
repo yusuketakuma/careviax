@@ -11,6 +11,7 @@ import {
   CircleDollarSign,
   ClipboardList,
   FileText,
+  Info,
   MessageSquareWarning,
   Package,
   Phone,
@@ -77,6 +78,28 @@ type TimelineGroup = {
   items: TimelineEvent[];
 };
 
+// 種別・系列軸の色は状態色ではない（design-language L180）。
+// 系列には globals.css の --chart-1..5（Tailwind の bg-/text-/border-chart-N）を使い、
+// 個別の bg-sky-50 等の state 色ベタ書きは使わない（L170）。色は単独の signal にせず
+// アイコン + ラベルと併用する。tint は STATUS_TOKENS と同じ /15・/25 の不透明度修飾で揃える。
+type ChartSeries = 1 | 2 | 3 | 4 | 5;
+
+const CHART_SERIES_CHIP: Record<ChartSeries, string> = {
+  1: 'border-chart-1/25 bg-chart-1/15 text-foreground',
+  2: 'border-chart-2/25 bg-chart-2/15 text-foreground',
+  3: 'border-chart-3/25 bg-chart-3/15 text-foreground',
+  4: 'border-chart-4/25 bg-chart-4/15 text-foreground',
+  5: 'border-chart-5/25 bg-chart-5/15 text-foreground',
+};
+
+const CHART_SERIES_COUNT: Record<ChartSeries, string> = {
+  1: 'bg-chart-1/25 text-foreground',
+  2: 'bg-chart-2/25 text-foreground',
+  3: 'bg-chart-3/25 text-foreground',
+  4: 'bg-chart-4/25 text-foreground',
+  5: 'bg-chart-5/25 text-foreground',
+};
+
 const CATEGORY_META: Record<
   TimelineCategory,
   { label: string; className: string; countClassName: string }
@@ -88,28 +111,28 @@ const CATEGORY_META: Record<
   },
   visit: {
     label: '訪問',
-    className: 'border-sky-200 bg-sky-50 text-sky-900',
-    countClassName: 'bg-sky-100 text-sky-700',
+    className: CHART_SERIES_CHIP[1],
+    countClassName: CHART_SERIES_COUNT[1],
   },
   prescription: {
     label: '処方・調剤',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-    countClassName: 'bg-emerald-100 text-emerald-700',
+    className: CHART_SERIES_CHIP[2],
+    countClassName: CHART_SERIES_COUNT[2],
   },
   billing: {
     label: '請求・集金',
-    className: 'border-violet-200 bg-violet-50 text-violet-900',
-    countClassName: 'bg-violet-100 text-violet-700',
+    className: CHART_SERIES_CHIP[5],
+    countClassName: CHART_SERIES_COUNT[5],
   },
   document: {
     label: '文書',
-    className: 'border-amber-200 bg-amber-50 text-amber-900',
-    countClassName: 'bg-amber-100 text-amber-700',
+    className: CHART_SERIES_CHIP[3],
+    countClassName: CHART_SERIES_COUNT[3],
   },
   communication: {
     label: '共有・連絡',
-    className: 'border-slate-200 bg-slate-50 text-slate-900',
-    countClassName: 'bg-slate-100 text-slate-700',
+    className: CHART_SERIES_CHIP[4],
+    countClassName: CHART_SERIES_COUNT[4],
   },
 };
 
@@ -119,27 +142,27 @@ const HOME_OPERATION_FOCUS_META: Record<
 > = {
   documents: {
     label: '契約・同意',
-    className: 'border-amber-200 bg-amber-50 text-amber-900',
+    className: CHART_SERIES_CHIP[3],
     summaryLabel: '契約・同意・書類',
   },
   mcs: {
     label: 'MCS',
-    className: 'border-cyan-200 bg-cyan-50 text-cyan-900',
+    className: CHART_SERIES_CHIP[4],
     summaryLabel: 'MCS・外部連携',
   },
   prescription: {
     label: '処方せん',
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    className: CHART_SERIES_CHIP[2],
     summaryLabel: '処方せん管理',
   },
   billing: {
     label: '請求・集金',
-    className: 'border-violet-200 bg-violet-50 text-violet-900',
+    className: CHART_SERIES_CHIP[5],
     summaryLabel: '請求・集金管理',
   },
   conference: {
     label: 'カンファレンス',
-    className: 'border-sky-200 bg-sky-50 text-sky-900',
+    className: CHART_SERIES_CHIP[1],
     summaryLabel: 'カンファレンス',
   },
 };
@@ -151,77 +174,77 @@ const EVENT_META: Record<
   visit_schedule: {
     label: '訪問予定',
     icon: CalendarDays,
-    className: 'border-sky-200 bg-sky-50 text-sky-700',
+    className: CHART_SERIES_CHIP[1],
   },
   visit_record: {
     label: '訪問記録',
     icon: ClipboardList,
-    className: 'border-sky-200 bg-sky-50 text-sky-700',
+    className: CHART_SERIES_CHIP[1],
   },
   prescription_intake: {
     label: '処方受付',
     icon: Pill,
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    className: CHART_SERIES_CHIP[2],
   },
   dispense_result: {
     label: '調剤',
     icon: Package,
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    className: CHART_SERIES_CHIP[2],
   },
   inquiry: {
     label: '疑義照会',
     icon: MessageSquareWarning,
-    className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    className: CHART_SERIES_CHIP[2],
   },
   care_report: {
     label: '報告書',
     icon: FileText,
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: CHART_SERIES_CHIP[3],
   },
   delivery_record: {
     label: '送付',
     icon: ArrowUpRight,
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: CHART_SERIES_CHIP[3],
   },
   management_plan: {
     label: '計画書',
     icon: FileText,
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: CHART_SERIES_CHIP[3],
   },
   first_visit_document: {
     label: '初回文書',
     icon: FileText,
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: CHART_SERIES_CHIP[3],
   },
   conference_note: {
     label: '会議',
     icon: MessageSquareWarning,
-    className: 'border-sky-200 bg-sky-50 text-sky-700',
+    className: CHART_SERIES_CHIP[1],
   },
   billing_candidate: {
     label: '算定',
     icon: CircleDollarSign,
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: CHART_SERIES_CHIP[3],
   },
   operation_history: {
     label: '変更履歴',
     icon: Activity,
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: CHART_SERIES_CHIP[3],
   },
   self_report: {
     label: '自己申告',
     icon: MessageSquareWarning,
-    className: 'border-rose-200 bg-rose-50 text-rose-700',
+    className: CHART_SERIES_CHIP[4],
   },
   communication: {
     label: '連絡',
     icon: Phone,
-    className: 'border-slate-200 bg-slate-50 text-slate-700',
+    className: CHART_SERIES_CHIP[5],
   },
   external_share: {
     label: '外部共有',
     icon: Share2,
-    className: 'border-slate-200 bg-slate-50 text-slate-700',
+    className: CHART_SERIES_CHIP[5],
   },
 };
 
@@ -507,6 +530,15 @@ export function PatientActivityTimeline({
         </CardHeader>
 
         <CardContent className="space-y-4 pt-4">
+          <p
+            data-testid="timeline-completeness-note"
+            className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-xs leading-5 text-muted-foreground"
+          >
+            <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+            <span>
+              直近のアクティビティを表示しています（全履歴ではありません）。各情報源の最近の記録をまとめた抜粋です。
+            </span>
+          </p>
           {timelineGroups.length === 0 ? (
             <EmptyState
               icon={Activity}
