@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 setupDomTestEnv();
@@ -19,6 +20,11 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders) };
+});
 
 vi.mock('@/lib/stores/ui-store', () => ({
   useUIStore: (selector: (state: { setWorkMode: typeof setWorkModeMock }) => unknown) =>
@@ -40,6 +46,11 @@ function renderPage() {
 describe('SelectModeContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(buildOrgJsonHeaders).mockImplementation((orgId, extra) => ({
+      'Content-Type': 'application/json',
+      'x-org-id': orgId,
+      ...extra,
+    }));
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
   });
@@ -59,6 +70,13 @@ describe('SelectModeContent', () => {
   });
 
   it('persists clerk mode then lands on the clerk support dashboard', async () => {
+    const sentinelHeaders = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
+
     renderPage();
 
     fireEvent.click(screen.getByRole('button', { name: '事務として入る' }));
@@ -68,10 +86,15 @@ describe('SelectModeContent', () => {
         '/api/me/preferences',
         expect.objectContaining({
           method: 'PATCH',
+          headers: sentinelHeaders,
           body: JSON.stringify({ work_mode: 'clerk_support' }),
         }),
       );
     });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect((init as RequestInit | undefined)?.headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
     await waitFor(() => {
       expect(setWorkModeMock).toHaveBeenCalledWith('clerk_support');
       expect(pushMock).toHaveBeenCalledWith('/clerk-support');

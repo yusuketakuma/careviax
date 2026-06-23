@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useUIStore } from '@/lib/stores/ui-store';
 import { cn } from '@/lib/utils';
@@ -67,7 +68,7 @@ export function SelectModeContent() {
     mutationFn: async (option: WorkModeOption) => {
       const res = await fetch('/api/me/preferences', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ work_mode: option.mode }),
       });
       if (!res.ok) {
