@@ -20,6 +20,7 @@ import {
   getHandlingTagLabel,
 } from '@/components/features/workspace/safety-board';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
@@ -62,7 +63,7 @@ export async function fetchDashboardCockpit(
 ): Promise<DashboardCockpitResponse> {
   const params = new URLSearchParams({ scope });
   const res = await fetch(`/api/dashboard/cockpit?${params.toString()}`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('ダッシュボード集計の取得に失敗しました');
   const json = await res.json();
