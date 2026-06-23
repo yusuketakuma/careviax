@@ -32,6 +32,8 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ResidualMedicationChart } from '@/components/features/patients/residual-medication-chart';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { buildJahisQRText, type JahisPatient } from '@/lib/pharmacy/jahis-qr';
@@ -288,7 +290,7 @@ function AddMedicationDialog({ patientId, onClose }: { patientId: string; onClos
     mutationFn: async (data: AddMedicationFormData) => {
       const res = await fetch('/api/medication-profiles', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: patientId,
           drug_name: data.drug_name,
@@ -304,7 +306,7 @@ function AddMedicationDialog({ patientId, onClose }: { patientId: string; onClos
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['medication-profiles', patientId] }),
+        queryClient.invalidateQueries({ queryKey: ['medication-profiles', orgId, patientId] }),
         invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
       ]);
       onClose();
@@ -662,11 +664,11 @@ export function MedicationsContent({
   const [qrState, setQrState] = useState<QrExportState | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['medication-profiles', patientId],
+    queryKey: ['medication-profiles', orgId, patientId],
     queryFn: async () => {
       const response = await fetch(
-        `/api/medication-profiles?patient_id=${patientId}&is_current=true`,
-        { headers: { 'x-org-id': orgId } },
+        `/api/medication-profiles?${new URLSearchParams({ patient_id: patientId, is_current: 'true' })}`,
+        { headers: buildOrgHeaders(orgId) },
       );
       if (!response.ok) throw new Error('取得に失敗しました');
       return response.json() as Promise<{ data: MedicationProfile[] }>;
@@ -677,8 +679,8 @@ export function MedicationsContent({
   const patientSummaryQuery = useQuery({
     queryKey: ['patient-medication-summary', patientId, orgId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('患者情報の取得に失敗しました');
       return response.json() as Promise<{
@@ -693,11 +695,12 @@ export function MedicationsContent({
   });
 
   const issuesQuery = useQuery({
-    queryKey: ['medication-issues', patientId],
+    queryKey: ['medication-issues', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(`/api/medication-issues?patient_id=${patientId}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        `/api/medication-issues?${new URLSearchParams({ patient_id: patientId })}`,
+        { headers: buildOrgHeaders(orgId) },
+      );
       if (!response.ok) throw new Error('課題の取得に失敗しました');
       return response.json() as Promise<{ data: MedicationIssue[] }>;
     },
@@ -705,11 +708,12 @@ export function MedicationsContent({
   });
 
   const inquiryQuery = useQuery({
-    queryKey: ['inquiry-records', patientId],
+    queryKey: ['inquiry-records', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(`/api/inquiry-records?patient_id=${patientId}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        `/api/inquiry-records?${new URLSearchParams({ patient_id: patientId })}`,
+        { headers: buildOrgHeaders(orgId) },
+      );
       if (!response.ok) throw new Error('疑義照会の取得に失敗しました');
       return response.json() as Promise<{ data: InquiryRecord[] }>;
     },
@@ -717,11 +721,12 @@ export function MedicationsContent({
   });
 
   const residualQuery = useQuery({
-    queryKey: ['residual-medications', patientId],
+    queryKey: ['residual-medications', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(`/api/residual-medications?patient_id=${patientId}&limit=100`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        `/api/residual-medications?${new URLSearchParams({ patient_id: patientId, limit: '100' })}`,
+        { headers: buildOrgHeaders(orgId) },
+      );
       if (!response.ok) throw new Error('残薬データの取得に失敗しました');
       return response.json() as Promise<{ data: ResidualMedication[] }>;
     },
@@ -732,13 +737,12 @@ export function MedicationsContent({
     mutationFn: async (form: IssueFormData) => {
       const isUpdate = Boolean(editingIssue);
       const response = await fetch(
-        isUpdate ? `/api/medication-issues/${editingIssue?.id}` : '/api/medication-issues',
+        editingIssue
+          ? `/api/medication-issues/${encodePathSegment(editingIssue.id)}`
+          : '/api/medication-issues',
         {
           method: isUpdate ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify(
             isUpdate
               ? form
@@ -757,7 +761,7 @@ export function MedicationsContent({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['medication-issues', patientId] }),
+        queryClient.invalidateQueries({ queryKey: ['medication-issues', orgId, patientId] }),
         invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
       ]);
       toast.success(editingIssue ? '課題を更新しました' : '課題を登録しました');
@@ -777,12 +781,9 @@ export function MedicationsContent({
       issueId: string;
       status: MedicationIssue['status'];
     }) => {
-      const response = await fetch(`/api/medication-issues/${issueId}`, {
+      const response = await fetch(`/api/medication-issues/${encodePathSegment(issueId)}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ status }),
       });
       const payload = await response.json().catch(() => null);
@@ -793,7 +794,7 @@ export function MedicationsContent({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['medication-issues', patientId] }),
+        queryClient.invalidateQueries({ queryKey: ['medication-issues', orgId, patientId] }),
         invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
       ]);
     },

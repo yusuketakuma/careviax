@@ -1,14 +1,25 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useParamsMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
+
+// Actual-backed spies so URL/header teeth prove helper adoption via return-value identity.
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
 
 vi.mock('next/navigation', () => ({
   useParams: useParamsMock,
@@ -413,4 +424,196 @@ describe('PrescriptionHistoryContent', () => {
     expect(badge.className).not.toMatch(/text-blue-600|border-blue-300/);
     expect(badge.className).toContain('text-muted-foreground');
   });
+});
+
+describe('PrescriptionHistoryContent url/header convergence', () => {
+  const HOSTILE = 'pt/1?x=y#z';
+  const ENCODED = 'pt%2F1%3Fx%3Dy%23z';
+
+  function buildLine(drugCode: string | null) {
+    return {
+      id: 'line_1',
+      line_number: 1,
+      drug_name: 'アムロジピン錠5mg',
+      drug_code: drugCode,
+      dosage_form: '錠',
+      dose: '1錠',
+      frequency: '1日1回朝食後',
+      days: 28,
+      quantity: 28,
+      unit: '錠',
+      is_generic: false,
+      packaging_instructions: null,
+      notes: null,
+      route: null,
+      dispensing_method: null,
+      start_date: null,
+      end_date: null,
+    };
+  }
+
+  function renderHistory({
+    patientId = HOSTILE,
+    lines = [] as ReturnType<typeof buildLine>[],
+  } = {}) {
+    const queryConfigs = new Map<string, { queryKey: unknown[]; queryFn: () => unknown }>();
+    const mutationConfigs: Array<{ mutationFn: (input?: unknown) => unknown }> = [];
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: patientId });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockImplementation((cfg: { mutationFn: (input?: unknown) => unknown }) => {
+      mutationConfigs.push(cfg);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    useQueryMock.mockImplementation((cfg: { queryKey: unknown[]; queryFn: () => unknown }) => {
+      queryConfigs.set(String((cfg.queryKey as unknown[])[0]), cfg);
+      if (String((cfg.queryKey as unknown[])[0]) === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: patientId, name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_1',
+              cycle_id: 'cycle_1',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines,
+            },
+          ],
+          diff_review: null,
+          diff_meta: null,
+        },
+        isLoading: false,
+      };
+    });
+    render(<PrescriptionHistoryContent />);
+    return { queryConfigs, mutationConfigs };
+  }
+
+  function stubFetch(json: unknown = { data: [] }) {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => json } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('single-encodes the patient path on the prescriptions GET and adopts buildOrgHeaders', async () => {
+    const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinel);
+    const { queryConfigs } = renderHistory();
+    const fetchMock = stubFetch({ patient: {}, data: [], diff_review: null, diff_meta: null });
+    try {
+      await queryConfigs.get('patient-prescriptions')!.queryFn();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${ENCODED}/prescriptions?limit=100`);
+      expect(url).not.toContain('%25');
+      expect(init.headers).toBe(sentinel);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+      // raw id stays in the cache key
+      expect(queryConfigs.get('patient-prescriptions')!.queryKey).toEqual([
+        'patient-prescriptions',
+        'org_1',
+        HOSTILE,
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'prescriptions GET fails closed before fetch for the exact dot patient id %p',
+    async (dotId) => {
+      const { queryConfigs } = renderHistory({ patientId: dotId });
+      const fetchMock = stubFetch();
+      try {
+        await expect(queryConfigs.get('patient-prescriptions')!.queryFn()).rejects.toThrow(
+          RangeError,
+        );
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it('drug-masters batch POST adopts json helper with the exact yj_codes body (static path)', async () => {
+    const sentinel = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
+    // a drug_code line makes allDrugCodes non-empty so the batch queryFn actually fetches
+    const { queryConfigs } = renderHistory({ lines: [buildLine('YJ1234567890')] });
+    const fetchMock = stubFetch({});
+    try {
+      await queryConfigs.get('drug-masters-batch')!.queryFn();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/drug-masters/batch');
+      expect(init.method).toBe('POST');
+      expect(init.headers).toBe(sentinel);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+      expect(JSON.parse(init.body as string)).toEqual({ yj_codes: ['YJ1234567890'] });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('mark-original-collected PATCH single-encodes the intakeId, adopts json helper, keeps id out of body', async () => {
+    const sentinel = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
+    const { mutationConfigs } = renderHistory();
+    const fetchMock = stubFetch({});
+    try {
+      await mutationConfigs[0].mutationFn(HOSTILE);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/prescription-intakes/${ENCODED}`);
+      expect(url).not.toContain('%25');
+      expect(init.method).toBe('PATCH');
+      expect(init.headers).toBe(sentinel);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+      const body = JSON.parse(init.body as string);
+      expect(Object.keys(body)).toEqual(['original_collected_at']);
+      expect(body.original_collected_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(init.body as string).not.toContain(HOSTILE);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'mark-original-collected PATCH fails closed before fetch for the exact dot intakeId %p',
+    async (dotId) => {
+      const { mutationConfigs } = renderHistory();
+      const fetchMock = stubFetch();
+      try {
+        await expect(mutationConfigs[0].mutationFn(dotId)).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 });
