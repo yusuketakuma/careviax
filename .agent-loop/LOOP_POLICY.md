@@ -44,7 +44,8 @@ the numbered entries that follow.
 - **A. Lane, LOCK & coordination discipline** — §1 lane split (SOFT DEFAULT, see §23) · §2 LOCK before edit · §3 drain inbox
   before commit · §4 stage only own files · §5 Supervisors-only on agmsg · §11 workload-balancing handoff
   · §19 Codex drains Claude-origin first · §20 main loop free / work in subagents · §21 maximize subagent
-  concurrency / main = orchestrator · §23 role-agnostic load balancing (maker/checker rotate by load; cross-check invariant).
+  concurrency / main = orchestrator · §23 role-agnostic load balancing (maker/checker rotate by load; cross-check invariant)
+  · §24 component-vertical-slice batching + dual-maker parallel (compartment = one component's FE+API+server+lib+test).
 - **B. Verification & quality gates** — §6 verify-before-done (real gate cmds) · §17 state-display
   correctness on placement slices · §18 verify-capability + reuse-first before extending a component.
 - **C. Compliance, PHI & security** — §7 UI/UX SSOT + State Color tokens · §8 Compliance-by-Design + RLS
@@ -354,6 +355,46 @@ the numbered entries that follow.
     drain-order, §20 main-loop-free, §21 subagent fan-out, maker/checker separation, hard-stops) is
     unchanged. Status: proposed by claude, pending codex concurrence + human gate for permanent.
 
+- **§24 Component-vertical-slice batching + dual-maker parallel (compartment = one component's full code range).**
+  User-directed 2026-06-23. Supersedes the short-lived horizontal "near-dup batch" framing. A **compartment =
+  one feature/component's vertical code range**: its FE component(s) + the API route(s) it calls + the server
+  service(s) behind them + lib + types + all tests. One feature = one such slice, taken through a single
+  PLAN → LOCK → implement → gate → PATCH → DONE cycle.
+
+  - **Work scope per slice = broad component refactor**, not a narrow one-line patch: (a) href/URL/id
+    `encode + dot-guard` convergence, (b) shared-primitive adoption (see FOUNDATION below), (c) duplicate
+    removal / type tidy / boilerplate unification (headers, queryKeys, error handlers) **for the files the
+    slice touches**, (d) in-component a11y/UX debt (e.g. 44px touch targets per docs/ui-ux-design-guidelines.md).
+    Keep the diff slice-bounded; if a touched file mixes risk, split BEFORE implementation rather than
+    weakening scope or mix-deferring within a touched file.
+
+  - **Dual-maker parallel.** Claude and codex each own a DISJOINT slice as MAKER simultaneously and act as
+    the other's CHECKER. LOCK scopes are disjoint by directory/file so there is no edit conflict.
+    `maker ≠ checker` (§23) remains the only non-negotiable invariant. Throughput ~2× while §23 load-balancing
+    is achieved in parallel.
+
+  - **LOCK lists every touched file** (no broad wildcard-only locks). BE route handlers that already call
+    `normalizeRequiredRouteParam` are **verify-only** in the slice (no source edit unless recon finds a gap);
+    pure data-fetch API URLs unrelated to a converted browser href may be uniformly deferred to a **tracked**
+    follow-up candidate (named in FEATURE_QUEUE / a FEATURE_INTAKE), never silently. Browser-facing download/PDF
+    anchors with raw ids must NOT be left raw in a touched file.
+
+  - **FOUNDATION primitives (F-060, landed 98b7b3cc):** `encodePathSegment` (src/lib/http/path-segment.ts —
+    fail-closed exact `.`/`..`, else encodeURIComponent) for API/download URL id path segments;
+    `buildOrgHeaders`/`buildOrgJsonHeaders` (src/lib/api/org-headers.ts — fail-closed, reject case-insensitive
+    `x-org-id`/`content-type` collisions) for tenant headers. Existing nav helpers
+    (buildPatientHref/buildVisitHref/buildReportHref/buildPrescriptionHref/buildVisitRecordHref) stay the
+    **browser-route public contract**; encodePathSegment does not replace them (future DuplicateMap may converge).
+
+  - **Per-site teeth (unchanged bar):** actual-backed helper spies + sentinel return-value delegation per
+    callsite; hostile slash/query/hash encode with no raw leak + no `%25` double-encode; exact-dot fail-fast
+    (`RangeError` before fetch / during render as appropriate); raw id preserved in queryKey/cache/mutation
+    payload; API URL teeth execute the captured queryFn/mutationFn. hard-stops human-gated regardless of maker.
+
+  - **Evidence:** FOUNDATION-A F-060 (98b7b3cc); codex F-061 Patient Labs (7ee44b18), F-063 Management Plan
+    (e95e53f4); claude F-062 Patient Visit Records (6aad8ed8). Status: proposed by claude, pending codex
+    concurrence + human gate for permanent.
+
 ## Consider
 
 Weigh against the current objective; log the decision in the run log. (Seed list — extend from
@@ -392,24 +433,25 @@ External dependencies gating otherwise-ready work. Mark blocked items `cc:blocke
 Each policy line needs proposed_by + reviewed_by + status before it graduates to ApplyNow.
 Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 
-| Policy line                                                               | proposed_by | reviewed_by | status                                                                                                                                 |
-| ------------------------------------------------------------------------- | ----------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| ApplyNow §1–6 (lane/LOCK/drain/verify discipline)                         | claude-lead | codex-lead  | applied (proven seed)                                                                                                                  |
-| ApplyNow §7 (UI/UX SSOT + State Color tokens)                             | claude-lead | _pending_   | proposed                                                                                                                               |
-| ApplyNow §8 (Compliance by Design + RLS)                                  | codex-lead  | _pending_   | proposed                                                                                                                               |
-| ApplyNow §9 (PHI redaction symmetry on mutations)                         | claude-lead | codex-lead  | applied                                                                                                                                |
-| ApplyNow §10 (fail-closed client reads)                                   | claude-lead | codex-lead  | applied                                                                                                                                |
-| ApplyNow §11 (workload-balancing handoff)                                 | codex-lead  | claude-lead | applied                                                                                                                                |
-| ApplyNow §12 (idle-capacity useful work)                                  | human       | claude-lead | applied                                                                                                                                |
-| ApplyNow §13 (loop-engineering PDCA track)                                | human       | codex-lead  | applied                                                                                                                                |
-| ApplyNow §14 (idle-time productivity playbook)                            | claude-lead | codex-lead  | applied                                                                                                                                |
-| ApplyNow §15 (no passive-wait per-turn trigger)                           | human       | codex-lead  | peer-approved (human gate for applied)                                                                                                 |
-| ApplyNow §16 (continuous loop — repeat on drain)                          | human       | codex-lead  | peer-approved (human gate for applied)                                                                                                 |
-| ApplyNow §17 (state-display correctness, this-run)                        | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)                                                                   |
-| ApplyNow §18 (verify-capability + reuse-first)                            | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)                                                                   |
-| ApplyNow §19 (Codex drains Claude-origin first)                           | codex-lead  | claude-lead | peer-approved (this-run; human gate for permanent AGENTS/CLAUDE.md promotion)                                                          |
-| ApplyNow §20 (main loop free; work in subagents)                          | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                  |
-| ApplyNow §21 (max subagent concurrency; main=orch)                        | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                  |
-| ApplyNow §22 (idle delegate + whole-codebase auto-discover, gstack-first) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; whole-codebase/all-category scope user-directed; human gate for permanent) |
+| Policy line                                                               | proposed_by | reviewed_by | status                                                                                                                                                    |
+| ------------------------------------------------------------------------- | ----------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ApplyNow §1–6 (lane/LOCK/drain/verify discipline)                         | claude-lead | codex-lead  | applied (proven seed)                                                                                                                                     |
+| ApplyNow §7 (UI/UX SSOT + State Color tokens)                             | claude-lead | _pending_   | proposed                                                                                                                                                  |
+| ApplyNow §8 (Compliance by Design + RLS)                                  | codex-lead  | _pending_   | proposed                                                                                                                                                  |
+| ApplyNow §9 (PHI redaction symmetry on mutations)                         | claude-lead | codex-lead  | applied                                                                                                                                                   |
+| ApplyNow §10 (fail-closed client reads)                                   | claude-lead | codex-lead  | applied                                                                                                                                                   |
+| ApplyNow §11 (workload-balancing handoff)                                 | codex-lead  | claude-lead | applied                                                                                                                                                   |
+| ApplyNow §12 (idle-capacity useful work)                                  | human       | claude-lead | applied                                                                                                                                                   |
+| ApplyNow §13 (loop-engineering PDCA track)                                | human       | codex-lead  | applied                                                                                                                                                   |
+| ApplyNow §14 (idle-time productivity playbook)                            | claude-lead | codex-lead  | applied                                                                                                                                                   |
+| ApplyNow §15 (no passive-wait per-turn trigger)                           | human       | codex-lead  | peer-approved (human gate for applied)                                                                                                                    |
+| ApplyNow §16 (continuous loop — repeat on drain)                          | human       | codex-lead  | peer-approved (human gate for applied)                                                                                                                    |
+| ApplyNow §17 (state-display correctness, this-run)                        | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)                                                                                      |
+| ApplyNow §18 (verify-capability + reuse-first)                            | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)                                                                                      |
+| ApplyNow §19 (Codex drains Claude-origin first)                           | codex-lead  | claude-lead | peer-approved (this-run; human gate for permanent AGENTS/CLAUDE.md promotion)                                                                             |
+| ApplyNow §20 (main loop free; work in subagents)                          | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                                     |
+| ApplyNow §21 (max subagent concurrency; main=orch)                        | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                                     |
+| ApplyNow §22 (idle delegate + whole-codebase auto-discover, gstack-first) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; whole-codebase/all-category scope user-directed; human gate for permanent)                    |
 | ApplyNow §23 (role-agnostic load balancing: maker/checker rotate by load) | claude-lead | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; user-directed; §1 lanes → soft default; cross-check invariant held; human gate for permanent) |
-| _next candidate_                                                          | _name_      | _name_      | proposed                                                                                                                               |
+| ApplyNow §24 (component-vertical-slice batching + dual-maker parallel)    | claude-lead | _pending_   | proposed (user-directed 2026-06-23; FOUNDATION F-060 + F-061/062/063 landed as evidence; human gate for permanent)                                        |
+| _next candidate_                                                          | _name_      | _name_      | proposed                                                                                                                                                  |
