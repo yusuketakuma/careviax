@@ -2802,4 +2802,178 @@ describe('CardWorkspace', () => {
       }
     },
   );
+
+  // F-084 (card-workspace sub-slice 4/6): prescription-intakes PATCH x3 (fax string-arg + 2 object-arg) +
+  // billing-candidates/collection PATCH (object-arg, must preserve Idempotency-Key). Mixed input contracts:
+  // drive each config with the fax string AND the two object fixtures so every target fires with a valid contract.
+  const F084_INTAKE_INPUT = {
+    intakeId: 'PLACEHOLDER',
+    documentUrl: 'https://files.example.com/rx.pdf',
+    originalCollectedAt: '2026-06-02T00:00:00.000Z',
+    reconciliationResult: 'matched' as const,
+    discrepancyNote: null,
+    storageLocation: 'store' as const,
+    ePrescriptionExchangeNumber: null,
+    ePrescriptionAcquiredStatus: 'pending' as const,
+    dispensingResultRegistration: 'pending' as const,
+    note: '原本確認メモ',
+  };
+  const F084_BILLING_INPUT = {
+    candidateId: 'PLACEHOLDER',
+    idempotencyKey: 'idem-key-abc',
+    status: 'collected',
+    expectedUpdatedAt: '2026-06-01T00:00:00.000Z',
+    billedAmount: 1000,
+    collectedAmount: 1000,
+    paymentMethod: 'cash',
+    payerName: '山田太郎',
+    scheduledCollectionAt: null,
+  };
+
+  async function runEachWith(
+    mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }>,
+    args: unknown[],
+  ) {
+    for (const config of mutationConfigs) {
+      for (const arg of args) {
+        try {
+          await config.mutationFn?.(arg);
+        } catch {
+          // wrong-contract executions throw or build noise URLs; filtered out by exact-URL match below.
+        }
+      }
+    }
+  }
+
+  it('encodes intake/billing PATCH paths, sends helper JSON headers (billing keeps Idempotency-Key), preserves bodies', async () => {
+    const hostileIntake = 'in/1?x=y#z';
+    const encIntake = encodeURIComponent(hostileIntake);
+    const hostileCand = 'cand/9?a=b#c';
+    const encCand = encodeURIComponent(hostileCand);
+    const idemKey = F084_BILLING_INPUT.idempotencyKey;
+    // merging impl proves both helper adoption AND extra-header propagation.
+    vi.mocked(buildOrgJsonHeaders).mockImplementation(
+      (org: string, extra?: Record<string, string>) => ({
+        'x-org-id': org,
+        'x-test-helper': 'buildOrgJsonHeaders',
+        ...extra,
+      }),
+    );
+
+    const mutationConfigs = captureAllMutationConfigs('patient_1');
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId="patient_1" />);
+
+      await runEachWith(mutationConfigs, [
+        hostileIntake, // fax (string contract)
+        { ...F084_INTAKE_INPUT, intakeId: hostileIntake }, // document + original-management (object contract)
+        { ...F084_BILLING_INPUT, candidateId: hostileCand }, // billing (object contract)
+      ]);
+
+      const calls = fetchMock.mock.calls.map(
+        ([url, init]) => [String(url), init] as [string, RequestInit],
+      );
+      const intakeCalls = calls.filter(([u]) => u === `/api/prescription-intakes/${encIntake}`);
+      const billingCalls = calls.filter(
+        ([u]) => u === `/api/billing-candidates/${encCand}/collection`,
+      );
+
+      // all three prescription-intakes PATCHes hit the encoded path with helper headers and no Idempotency-Key.
+      expect(intakeCalls.length).toBeGreaterThanOrEqual(3);
+      const intakeBodies = intakeCalls.map(([, init]) => {
+        expect(init.method).toBe('PATCH');
+        expect(init.headers).toEqual({
+          'x-org-id': 'org_1',
+          'x-test-helper': 'buildOrgJsonHeaders',
+        });
+        expect(String(init.body)).not.toContain(hostileIntake);
+        return JSON.parse(String(init.body));
+      });
+      // exact bodies discriminated by their distinctive keys.
+      const faxBody = intakeBodies.find(
+        (b) => Object.keys(b).length === 1 && 'original_collected_at' in b,
+      );
+      const documentBody = intakeBodies.find((b) => 'original_document_url' in b);
+      const mgmtBody = intakeBodies.find((b) => 'original_management' in b);
+      expect(faxBody.original_collected_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(documentBody).toEqual({ original_document_url: 'https://files.example.com/rx.pdf' });
+      expect(mgmtBody).toMatchObject({
+        original_collected_at: '2026-06-02T00:00:00.000Z',
+        original_management: { reconciliation_result: 'matched', discrepancy_note: null },
+      });
+
+      // billing keeps Idempotency-Key in headers (helper extra) and never serializes ids into the body.
+      expect(billingCalls.length).toBeGreaterThanOrEqual(1);
+      const [, billingInit] = billingCalls[0];
+      expect(billingInit.method).toBe('PATCH');
+      expect(billingInit.headers).toEqual({
+        'x-org-id': 'org_1',
+        'x-test-helper': 'buildOrgJsonHeaders',
+        'Idempotency-Key': idemKey,
+      });
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1', {
+        'Idempotency-Key': idemKey,
+      });
+      expect(String(billingInit.body)).not.toContain(hostileCand);
+      expect(String(billingInit.body)).not.toContain(idemKey);
+      const billingBody = JSON.parse(String(billingInit.body));
+      expect(billingBody).toMatchObject({
+        status: 'collected',
+        billed_amount: 1000,
+        collected_amount: 1000,
+        payment_method: 'cash',
+        payer_name: '山田太郎',
+      });
+
+      for (const [u] of [...intakeCalls, ...billingCalls]) {
+        expect(u).not.toContain('%25');
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed: intake/billing mutationFns reject RangeError before fetch for dot id %p',
+    async (dotId) => {
+      const mutationConfigs = captureAllMutationConfigs('patient_1');
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      try {
+        render(<CardWorkspace patientId="patient_1" />);
+
+        // run every config with the dot id in all three contracts; collect rejections.
+        const rejections: unknown[] = [];
+        for (const config of mutationConfigs) {
+          for (const arg of [
+            dotId,
+            { ...F084_INTAKE_INPUT, intakeId: dotId },
+            { ...F084_BILLING_INPUT, candidateId: dotId },
+          ]) {
+            await config.mutationFn?.(arg).catch((e: unknown) => rejections.push(e));
+          }
+        }
+
+        // the encoded dot path would be a no-op for encodeURIComponent, so encodePathSegment must fail closed:
+        // at least the 4 target mutations (fax + document + original-management + billing) reject RangeError.
+        const rangeErrors = rejections.filter((e) => e instanceof RangeError);
+        expect(rangeErrors.length).toBeGreaterThanOrEqual(4);
+        // and no malformed dot request reached fetch for the guarded endpoints.
+        for (const call of fetchMock.mock.calls) {
+          const url = String(call[0]);
+          expect(url).not.toContain(`/api/prescription-intakes/${dotId}`);
+          expect(url).not.toContain(`/api/billing-candidates/${dotId}/`);
+        }
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
 });

@@ -3800,12 +3800,9 @@ export function CardWorkspace({
 
   const markFaxOriginalCollectedMutation = useMutation({
     mutationFn: async (intakeId: string) => {
-      const response = await fetch(`/api/prescription-intakes/${intakeId}`, {
+      const response = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           original_collected_at: new Date().toISOString(),
         }),
@@ -3833,16 +3830,16 @@ export function CardWorkspace({
       if (!input.documentUrl) {
         throw new Error('処方せん画像/PDF URLを入力してください');
       }
-      const response = await fetch(`/api/prescription-intakes/${input.intakeId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+      const response = await fetch(
+        `/api/prescription-intakes/${encodePathSegment(input.intakeId)}`,
+        {
+          method: 'PATCH',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify({
+            original_document_url: input.documentUrl,
+          }),
         },
-        body: JSON.stringify({
-          original_document_url: input.documentUrl,
-        }),
-      });
+      );
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.message ?? '処方せん画像/PDFの保存に失敗しました');
@@ -3919,25 +3916,25 @@ export function CardWorkspace({
 
   const recordPrescriptionOriginalManagementMutation = useMutation({
     mutationFn: async (input: PrescriptionOriginalManagementFormInput) => {
-      const response = await fetch(`/api/prescription-intakes/${input.intakeId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+      const response = await fetch(
+        `/api/prescription-intakes/${encodePathSegment(input.intakeId)}`,
+        {
+          method: 'PATCH',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify({
+            original_collected_at: input.originalCollectedAt,
+            original_management: {
+              reconciliation_result: input.reconciliationResult,
+              discrepancy_note: input.discrepancyNote,
+              storage_location: input.storageLocation,
+              e_prescription_exchange_number: input.ePrescriptionExchangeNumber,
+              e_prescription_acquired_status: input.ePrescriptionAcquiredStatus,
+              dispensing_result_registration: input.dispensingResultRegistration,
+              note: input.note,
+            },
+          }),
         },
-        body: JSON.stringify({
-          original_collected_at: input.originalCollectedAt,
-          original_management: {
-            reconciliation_result: input.reconciliationResult,
-            discrepancy_note: input.discrepancyNote,
-            storage_location: input.storageLocation,
-            e_prescription_exchange_number: input.ePrescriptionExchangeNumber,
-            e_prescription_acquired_status: input.ePrescriptionAcquiredStatus,
-            dispensing_result_registration: input.dispensingResultRegistration,
-            note: input.note,
-          },
-        }),
-      });
+      );
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.message ?? '処方せん原本管理の保存に失敗しました');
@@ -3959,31 +3956,30 @@ export function CardWorkspace({
 
   const recordBillingCollectionMutation = useMutation({
     mutationFn: async (input: BillingCollectionFormInput) => {
-      const response = await fetch(`/api/billing-candidates/${input.candidateId}/collection`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-          'Idempotency-Key': input.idempotencyKey,
+      const response = await fetch(
+        `/api/billing-candidates/${encodePathSegment(input.candidateId)}/collection`,
+        {
+          method: 'PATCH',
+          headers: buildOrgJsonHeaders(orgId, { 'Idempotency-Key': input.idempotencyKey }),
+          body: JSON.stringify({
+            status: input.status,
+            expected_updated_at: input.expectedUpdatedAt,
+            billed_amount: input.billedAmount,
+            collected_amount: input.collectedAmount,
+            payment_method: input.paymentMethod,
+            payer_name: input.payerName,
+            scheduled_collection_at: input.scheduledCollectionAt,
+            collected_at: ['collected', 'partial'].includes(input.status)
+              ? new Date().toISOString()
+              : null,
+            receipt_number: input.receiptNumber,
+            receipt_issue_status: input.receiptIssueStatus,
+            invoice_issue_status: input.invoiceIssueStatus,
+            save_receipt_copy: input.saveReceiptCopy,
+            save_invoice_copy: input.saveInvoiceCopy,
+          }),
         },
-        body: JSON.stringify({
-          status: input.status,
-          expected_updated_at: input.expectedUpdatedAt,
-          billed_amount: input.billedAmount,
-          collected_amount: input.collectedAmount,
-          payment_method: input.paymentMethod,
-          payer_name: input.payerName,
-          scheduled_collection_at: input.scheduledCollectionAt,
-          collected_at: ['collected', 'partial'].includes(input.status)
-            ? new Date().toISOString()
-            : null,
-          receipt_number: input.receiptNumber,
-          receipt_issue_status: input.receiptIssueStatus,
-          invoice_issue_status: input.invoiceIssueStatus,
-          save_receipt_copy: input.saveReceiptCopy,
-          save_invoice_copy: input.saveInvoiceCopy,
-        }),
-      });
+      );
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.message ?? '集金記録の保存に失敗しました');
