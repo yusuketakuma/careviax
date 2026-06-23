@@ -25,6 +25,7 @@ import {
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { cn } from '@/lib/utils';
@@ -65,7 +66,7 @@ export type OperationalPolicyResponse = {
 
 async function fetchOperationalPolicy(orgId: string): Promise<OperationalPolicyResponse> {
   const res = await fetch('/api/settings/operational-policy', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('運用ポリシーの取得に失敗しました');
   const json = await res.json();
@@ -78,7 +79,7 @@ async function patchOperationalPolicy(
 ): Promise<OperationalPolicyResponse> {
   const res = await fetch('/api/settings/operational-policy', {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(values),
   });
   if (!res.ok) {
@@ -91,7 +92,7 @@ async function patchOperationalPolicy(
 
 async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitResponse> {
   const res = await fetch('/api/dashboard/cockpit', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('当日の優先タスク取得に失敗しました');
   const json = await res.json();
