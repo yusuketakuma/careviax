@@ -11,6 +11,11 @@ const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useSearchParamsMock = vi.hoisted(() => vi.fn());
+const fetchAllCursorPagesMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/api/cursor-pagination-client', () => ({
+  fetchAllCursorPages: fetchAllCursorPagesMock,
+}));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -54,6 +59,7 @@ describe('CommunicationRequestsContent', () => {
       isError: false,
       refetch: vi.fn(),
     });
+    fetchAllCursorPagesMock.mockResolvedValue({ data: [], hasMore: false });
   });
 
   it('shows the home context banner for sent communications focus', () => {
@@ -259,4 +265,47 @@ describe('CommunicationRequestsContent', () => {
       followup: '夕食後薬の飲み忘れを確認',
     });
   });
+
+  it('renders the patient filter detail link through the shared boundary resolver', () => {
+    render(<CommunicationRequestsContent initialPatientId="patient_1" />);
+    const link = screen.getByRole('link', { name: '詳細' });
+    expect(link.getAttribute('href')).toBe('/patients/patient_1');
+  });
+
+  it('encodes a hostile patient filter id in the detail href while keeping the query identity raw', async () => {
+    const hostilePatientId = '../settings?x=1#y';
+    render(<CommunicationRequestsContent initialPatientId={hostilePatientId} />);
+
+    const link = screen.getByRole('link', { name: '詳細' });
+    expect(link.getAttribute('href')).toBe(`/patients/${encodeURIComponent(hostilePatientId)}`);
+    expect(link.getAttribute('href')).not.toContain('/settings');
+    expect(link.getAttribute('href')).not.toContain('?x=1');
+    expect(link.getAttribute('href')).not.toContain('#y');
+
+    // API フィルタ識別子は生のまま query key に残る(ブラウザ href だけ encode/縮退)。
+    const queryArg = useQueryMock.mock.calls.at(-1)?.[0] as {
+      queryKey: unknown[];
+      queryFn: () => Promise<unknown>;
+    };
+    expect(queryArg.queryKey).toContain(hostilePatientId);
+
+    // queryFn を実行し、API へ渡る patient_id が生の hostile id のまま(encode/正規化されない)ことを locking。
+    // (queryKey だけでなく queryFn 内の URLSearchParams も生 identity であることを保証。)
+    await queryArg.queryFn();
+    const fetchArg = fetchAllCursorPagesMock.mock.calls.at(-1)?.[0] as { params: URLSearchParams };
+    expect(fetchArg.params.get('patient_id')).toBe(hostilePatientId);
+  });
+
+  it.each(['.', '..'])(
+    'degrades the patient filter detail link to なし for a dot-segment id (%s) without crashing',
+    (dotPatientId) => {
+      expect(() =>
+        render(<CommunicationRequestsContent initialPatientId={dotPatientId} />),
+      ).not.toThrow();
+      expect(screen.queryByRole('link', { name: '詳細' })).toBeNull();
+      // FilterSummaryBar は `${label} ${value}` を 1 Badge に連結描画するため、患者値の
+      // 縮退は "患者 なし" として現れる(value 'なし' 単独要素は存在しない)。
+      expect(screen.getByText('患者 なし')).toBeTruthy();
+    },
+  );
 });

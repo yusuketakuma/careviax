@@ -143,6 +143,13 @@ export function CommunicationRequestsContent({
     entityType: relatedEntityTypeFilter || null,
     entityId: relatedEntityIdFilter || null,
   });
+  // 患者フィルタの詳細リンクも同じ query/描画境界 resolver を通す。query 由来の
+  // patientFilter が '.'/'..' 等で buildPatientHref が RangeError を投げても、resolver が
+  // null へ縮退し描画を壊さない(リンク非表示=なし)。API フィルタ用の生 patientFilter は別途維持。
+  const patientFilterLink = resolveCommunicationEntityLink({
+    entityType: 'patient',
+    entityId: patientFilter || null,
+  });
   const contextSummary =
     initialContext === 'dashboard_home'
       ? statusFilter === 'sent'
@@ -291,9 +298,9 @@ export function CommunicationRequestsContent({
             items={[
               {
                 label: '患者',
-                value: patientFilter ? (
+                value: patientFilterLink ? (
                   <Link
-                    href={`/patients/${patientFilter}`}
+                    href={patientFilterLink.href}
                     className="inline-flex min-h-11 min-w-11 items-center text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
                   >
                     詳細
