@@ -1,0 +1,423 @@
+// @vitest-environment jsdom
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import type { SafetyIssueRecord } from './safety-check.shared';
+
+const useMutationMock = vi.hoisted(() => vi.fn());
+const useOrgIdMock = vi.hoisted(() => vi.fn());
+const useQueryMock = vi.hoisted(() => vi.fn());
+const useQueryClientMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@tanstack/react-query', () => ({
+  useMutation: useMutationMock,
+  useQuery: useQueryMock,
+  useQueryClient: useQueryClientMock,
+}));
+
+// Actual-backed spies so URL/header teeth prove helper adoption via return-value identity.
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
+
+// encodePathSegment is intentionally NOT mocked so its real fail-closed dot-segment
+// contract (RangeError on '.'/'..') is exercised end-to-end.
+
+vi.mock('@/lib/hooks/use-org-id', () => ({
+  useOrgId: useOrgIdMock,
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+import { SafetyCheckContent } from './safety-check-content';
+
+setupDomTestEnv();
+
+type IssueOverrides = Partial<SafetyIssueRecord> & { id: string };
+
+function buildIssue(overrides: IssueOverrides): SafetyIssueRecord & {
+  patient_id: string;
+  case_id: string | null;
+} {
+  return {
+    id: overrides.id,
+    patient_id: 'patient_1',
+    case_id: 'case_1',
+    title: overrides.title ?? '飲み合わせ注意',
+    description: overrides.description ?? 'NSAIDs 併用の確認',
+    status: overrides.status ?? 'open',
+    priority: overrides.priority ?? 'high',
+    category: overrides.category ?? 'interaction',
+    identified_at: overrides.identified_at ?? '2026-06-10T09:00:00.000Z',
+  };
+}
+
+describe('SafetyCheckContent', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders the safety-check workspace heading and concern card', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((cfg: { queryKey: unknown[] }) => {
+      const key = String((cfg.queryKey as unknown[])[0]);
+      if (key === 'medication-issues') {
+        return {
+          data: { data: [buildIssue({ id: 'issue_1' })] },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      if (key === 'safety-check-cds') return { data: [], isLoading: false };
+      if (key === 'patient-safety-check-summary') {
+        return { data: { name: '山田花子' }, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<SafetyCheckContent patientId="patient_1" />);
+
+    expect(screen.getByRole('heading', { level: 1, name: '薬の安全チェック' }).tagName).toBe('H1');
+    expect(screen.getByTestId('safety-concern-interaction')).toBeTruthy();
+    expect(screen.getByTestId('safety-steps')).toBeTruthy();
+  });
+});
+
+describe('SafetyCheckContent url/header convergence', () => {
+  const HOSTILE = 'pt/1?x=y#z';
+  const ENCODED = encodeURIComponent(HOSTILE);
+
+  // Mutation registration order in SafetyCheckContent: [0] consultation, [1] resolve.
+  const CONSULTATION = 0;
+  const RESOLVE = 1;
+
+  function renderSafetyCheck({
+    patientId = HOSTILE,
+    issues = [] as Array<ReturnType<typeof buildIssue>>,
+  } = {}) {
+    const queryConfigs = new Map<string, { queryKey: unknown[]; queryFn: () => unknown }>();
+    const mutationConfigs: Array<{
+      mutationFn: (input?: unknown) => unknown;
+      onSuccess?: (data?: unknown) => unknown;
+    }> = [];
+    const invalidateQueries = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries });
+    useMutationMock.mockImplementation(
+      (cfg: {
+        mutationFn: (input?: unknown) => unknown;
+        onSuccess?: (data?: unknown) => unknown;
+      }) => {
+        mutationConfigs.push(cfg);
+        return { mutate: vi.fn(), isPending: false };
+      },
+    );
+    useQueryMock.mockImplementation((cfg: { queryKey: unknown[]; queryFn: () => unknown }) => {
+      const key = String((cfg.queryKey as unknown[])[0]);
+      queryConfigs.set(key, cfg);
+      if (key === 'medication-issues') {
+        return { data: { data: issues }, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      if (key === 'safety-check-cds') return { data: [], isLoading: false };
+      if (key === 'patient-safety-check-summary') {
+        return { data: { name: '山田花子' }, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+    render(<SafetyCheckContent patientId={patientId} />);
+    return { queryConfigs, mutationConfigs, invalidateQueries };
+  }
+
+  function stubFetch() {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ data: [] }) } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('medication-issues GET adopts buildOrgHeaders, keeps patient_id raw via URLSearchParams, org-scoped key', async () => {
+    const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinel);
+    const { queryConfigs } = renderSafetyCheck();
+    const fetchMock = stubFetch();
+
+    try {
+      await queryConfigs.get('medication-issues')!.queryFn();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const parsed = new URL(url, 'http://x');
+      expect(parsed.pathname).toBe('/api/medication-issues');
+      expect(parsed.searchParams.get('patient_id')).toBe(HOSTILE);
+      expect(url).not.toContain('%25');
+      expect(init.headers).toBe(sentinel);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+      expect(queryConfigs.get('medication-issues')!.queryKey).toEqual([
+        'medication-issues',
+        'org_1',
+        HOSTILE,
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('patient summary GET single-encodes the patient path segment and adopts buildOrgHeaders', async () => {
+    const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinel);
+    const { queryConfigs } = renderSafetyCheck();
+    const fetchMock = stubFetch();
+
+    try {
+      await queryConfigs.get('patient-safety-check-summary')!.queryFn();
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${ENCODED}`);
+      expect(url).not.toContain('%25');
+      expect(init.headers).toBe(sentinel);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+      // existing orgId-last summary key is preserved (not reordered)
+      expect(queryConfigs.get('patient-safety-check-summary')!.queryKey).toEqual([
+        'patient-safety-check-summary',
+        HOSTILE,
+        'org_1',
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed before any fetch for the exact dot patient id %p (buildPatientHref throws at render)',
+    (dotId) => {
+      // The WorkflowBackLink href now goes through buildPatientHref, which rejects dot
+      // segments. For a dot patient id the component fails closed at render time —
+      // strictly before any patient-summary GET (or other) fetch can occur.
+      const fetchMock = stubFetch();
+      try {
+        expect(() => renderSafetyCheck({ patientId: dotId })).toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it('cds helper issues the medication-cycles GET then cds/check POST via the shared helpers', async () => {
+    const getSentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    const jsonSentinel = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgHeaders).mockReturnValue(getSentinel);
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(jsonSentinel);
+    const { queryConfigs } = renderSafetyCheck();
+
+    const fetchMock = vi.fn();
+    // first call: medication-cycles GET returns a cycle id; second call: cds/check POST
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ id: 'cycle_1' }] }),
+    } as Response);
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ alerts: [] }),
+    } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      await queryConfigs.get('safety-check-cds')!.queryFn();
+
+      const [cyclesUrl, cyclesInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const parsedCycles = new URL(cyclesUrl, 'http://x');
+      expect(parsedCycles.pathname).toBe('/api/medication-cycles');
+      expect(parsedCycles.searchParams.get('patient_id')).toBe(HOSTILE);
+      expect(parsedCycles.searchParams.get('limit')).toBe('1');
+      expect(cyclesUrl).not.toContain('%25');
+      expect(cyclesInit.headers).toBe(getSentinel);
+
+      const [checkUrl, checkInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(checkUrl).toBe('/api/cds/check');
+      expect(checkInit.method).toBe('POST');
+      expect(checkInit.headers).toBe(jsonSentinel);
+      expect(JSON.parse(checkInit.body as string)).toEqual({
+        cycleId: 'cycle_1',
+        patientId: HOSTILE,
+      });
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('consultation POST adopts json helper, carries raw issue_id, then single-encodes the PATCH path', async () => {
+    const sentinel = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
+    const { mutationConfigs, invalidateQueries } = renderSafetyCheck({
+      issues: [buildIssue({ id: HOSTILE, category: 'interaction', status: 'open' })],
+    });
+    const fetchMock = stubFetch();
+
+    try {
+      const consultation = mutationConfigs[CONSULTATION];
+      await consultation.mutationFn('処方医へ電話確認');
+
+      const [postUrl, postInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(postUrl).toBe('/api/interventions');
+      expect(postInit.method).toBe('POST');
+      expect(postInit.headers).toBe(sentinel);
+      expect(JSON.parse(postInit.body as string)).toEqual({
+        patient_id: HOSTILE,
+        issue_id: HOSTILE,
+        type: 'prescriber_consultation',
+        description: '処方医へ電話確認',
+        performed_at: expect.any(String),
+      });
+
+      // open issue → progresses to in_progress via a single-encoded PATCH path
+      const [patchUrl, patchInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(patchUrl).toBe(`/api/medication-issues/${ENCODED}`);
+      expect(patchUrl).not.toContain('%25');
+      expect(patchInit.method).toBe('PATCH');
+      expect(patchInit.headers).toBe(sentinel);
+      expect(JSON.parse(patchInit.body as string)).toEqual({ status: 'in_progress' });
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+
+      await consultation.onSuccess?.();
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['medication-issues', 'org_1', HOSTILE],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('consultation POST omits issue_id when no concern/issue is selected', async () => {
+    const sentinel = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
+    const { mutationConfigs } = renderSafetyCheck({ issues: [] });
+    const fetchMock = stubFetch();
+
+    try {
+      await mutationConfigs[CONSULTATION].mutationFn('相談メモ');
+      // only the interventions POST, no follow-up PATCH without a selected issue
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/interventions');
+      expect(init.headers).toBe(sentinel);
+      const body = JSON.parse(init.body as string);
+      expect(body).not.toHaveProperty('issue_id');
+      expect(body).toEqual({
+        patient_id: HOSTILE,
+        type: 'prescriber_consultation',
+        description: '相談メモ',
+        performed_at: expect.any(String),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('resolve PATCH single-encodes the path issueId, adopts json helper, keeps id out of body', async () => {
+    const sentinel = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
+    const { mutationConfigs, invalidateQueries } = renderSafetyCheck();
+    const fetchMock = stubFetch();
+
+    try {
+      const resolve = mutationConfigs[RESOLVE];
+      await resolve.mutationFn(HOSTILE);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/medication-issues/${ENCODED}`);
+      expect(url).not.toContain('%25');
+      expect(init.method).toBe('PATCH');
+      expect(init.headers).toBe(sentinel);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+      expect(JSON.parse(init.body as string)).toEqual({ status: 'resolved' });
+      expect(init.body as string).not.toContain(HOSTILE);
+
+      await resolve.onSuccess?.();
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['medication-issues', 'org_1', HOSTILE],
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'resolve PATCH fails closed before fetch for the exact dot issueId %p',
+    async (dotId) => {
+      const { mutationConfigs } = renderSafetyCheck();
+      const fetchMock = stubFetch();
+      try {
+        await expect(mutationConfigs[RESOLVE].mutationFn(dotId)).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it('WorkflowBackLink href adopts buildPatientHref so the back route is single-encoded (no raw ?/# or %25)', () => {
+    renderSafetyCheck();
+    const backLink = screen.getByRole('link', { name: /患者詳細へ戻る/ });
+    const href = backLink.getAttribute('href');
+    // buildPatientHref(HOSTILE) === `/patients/${encodeURIComponent(HOSTILE)}`
+    expect(href).toBe(`/patients/${ENCODED}`);
+    expect(href).not.toContain('?');
+    expect(href).not.toContain('#');
+    expect(href).not.toContain('%25');
+  });
+
+  it.each(['.', '..'])(
+    'consultation mutation fails closed before any fetch for an open issue with the exact dot id %p',
+    async (dotId) => {
+      const { mutationConfigs } = renderSafetyCheck({
+        issues: [buildIssue({ id: dotId, category: 'interaction', status: 'open' })],
+      });
+      const fetchMock = stubFetch();
+      try {
+        // encodePathSegment(dotId) is precomputed before the interventions POST,
+        // so the dot id throws RangeError with no network side effect.
+        await expect(mutationConfigs[CONSULTATION].mutationFn('相談メモ')).rejects.toThrow(
+          RangeError,
+        );
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+});

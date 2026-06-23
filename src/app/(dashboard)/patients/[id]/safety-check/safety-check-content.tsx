@@ -20,6 +20,9 @@ import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { cn } from '@/lib/utils';
@@ -56,9 +59,10 @@ type PatientSummaryResponse = {
 async function fetchPatientCdsAlerts(orgId: string, patientId: string): Promise<SafetyCdsAlert[]> {
   // CDS チェックはサイクル単位のため、患者の最新サイクルを引いてから実行する。
   // サイクル無し・権限不足(閲覧は canDispense)・チェック失敗は補強なしとして扱う。
-  const cyclesRes = await fetch(`/api/medication-cycles?patient_id=${patientId}&limit=1`, {
-    headers: { 'x-org-id': orgId },
-  });
+  const cyclesRes = await fetch(
+    `/api/medication-cycles?${new URLSearchParams({ patient_id: patientId, limit: '1' })}`,
+    { headers: buildOrgHeaders(orgId) },
+  );
   if (!cyclesRes.ok) return [];
   const cyclesJson = (await cyclesRes.json()) as { data?: Array<{ id: string }> };
   const cycleId = cyclesJson.data?.[0]?.id;
@@ -66,7 +70,7 @@ async function fetchPatientCdsAlerts(orgId: string, patientId: string): Promise<
 
   const checkRes = await fetch('/api/cds/check', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({ cycleId, patientId }),
   });
   if (!checkRes.ok) return [];
@@ -247,11 +251,12 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
   const [resolveDialogOpen, setResolveDialogOpen] = useState(false);
 
   const issuesQuery = useQuery({
-    queryKey: ['medication-issues', patientId],
+    queryKey: ['medication-issues', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(`/api/medication-issues?patient_id=${patientId}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        `/api/medication-issues?${new URLSearchParams({ patient_id: patientId })}`,
+        { headers: buildOrgHeaders(orgId) },
+      );
       if (!response.ok) throw new Error('服薬課題の取得に失敗しました');
       return response.json() as Promise<MedicationIssueResponse>;
     },
@@ -261,8 +266,8 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
   const patientQuery = useQuery({
     queryKey: ['patient-safety-check-summary', patientId, orgId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('患者情報の取得に失敗しました');
       return response.json() as Promise<PatientSummaryResponse>;
@@ -289,16 +294,23 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
 
   async function invalidatePatientIssueQueries() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['medication-issues', patientId] }),
+      queryClient.invalidateQueries({ queryKey: ['medication-issues', orgId, patientId] }),
       invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId })),
     ]);
   }
 
   const consultationMutation = useMutation({
     mutationFn: async (content: string) => {
+      // open 課題のフォローアップ PATCH パスを fetch 前に検証する。
+      // dot segment id は RangeError を投げ、interventions POST の副作用より前に fail-closed する。
+      const followUpIssuePath =
+        selectedIssue && selectedIssue.status === 'open'
+          ? encodePathSegment(selectedIssue.id)
+          : null;
+
       const response = await fetch('/api/interventions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: patientId,
           ...(selectedIssue ? { issue_id: selectedIssue.id } : {}),
@@ -313,10 +325,10 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
       }
 
       // 相談を記録した課題は「処方医へ相談」進行中(in_progress)へ進める
-      if (selectedIssue && selectedIssue.status === 'open') {
-        const patchResponse = await fetch(`/api/medication-issues/${selectedIssue.id}`, {
+      if (followUpIssuePath) {
+        const patchResponse = await fetch(`/api/medication-issues/${followUpIssuePath}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({ status: 'in_progress' }),
         });
         if (!patchResponse.ok) {
@@ -338,9 +350,9 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
 
   const resolveMutation = useMutation({
     mutationFn: async (issueId: string) => {
-      const response = await fetch(`/api/medication-issues/${issueId}`, {
+      const response = await fetch(`/api/medication-issues/${encodePathSegment(issueId)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ status: 'resolved' }),
       });
       const payload = await response.json().catch(() => null);
@@ -372,7 +384,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
               : '気になる点を処方医への相談から報告書反映まで進めます'}
           </p>
         </div>
-        <WorkflowBackLink href={`/patients/${patientId}`} label="患者詳細へ戻る" />
+        <WorkflowBackLink href={buildPatientHref(patientId)} label="患者詳細へ戻る" />
       </div>
 
       <div className="mt-4">
