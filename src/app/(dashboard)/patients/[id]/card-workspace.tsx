@@ -3774,8 +3774,8 @@ export function CardWorkspace({
   } = useQuery<PatientOverview>({
     queryKey: ['patient-overview', patientId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/overview`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/overview`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者情報の取得に失敗しました');
       return res.json();
@@ -3789,8 +3789,8 @@ export function CardWorkspace({
   const { data: homeOperations } = useQuery<PatientHomeOperationsSnapshot>({
     queryKey: ['patient-home-operations', patientId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/home-operations`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/home-operations`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('在宅運用管理の取得に失敗しました');
       return res.json();
