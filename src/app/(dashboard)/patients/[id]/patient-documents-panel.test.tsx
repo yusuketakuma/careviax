@@ -5,12 +5,19 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { FirstVisitDocumentsPanel } from './patient-documents-panel';
 
 setupDomTestEnv();
 
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders) };
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.mocked(buildOrgJsonHeaders).mockClear();
 });
 
 describe('FirstVisitDocumentsPanel', () => {
@@ -322,6 +329,8 @@ describe('FirstVisitDocumentsPanel', () => {
       .mockResolvedValue(
         new Response(JSON.stringify({ data: { id: 'doc_new' } }), { status: 200 }),
       );
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValueOnce(sentinelHeaders);
     vi.stubGlobal('fetch', fetchMock);
 
     render(
@@ -401,17 +410,130 @@ describe('FirstVisitDocumentsPanel', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith('/api/first-visit-documents', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': 'org_1',
-      },
+      headers: sentinelHeaders,
       body: JSON.stringify({
         patient_id: 'patient_1',
         case_id: 'case_1',
         template_id: 'template_important',
       }),
     });
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
   });
+
+  it('encodes first-visit document ids and preserves the update body when saving history', async () => {
+    const queryClient = new QueryClient();
+    const hostileDocumentId = 'doc/1?x=y#z';
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ data: { id: hostileDocumentId } }), { status: 200 }),
+      );
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValueOnce(sentinelHeaders);
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <FirstVisitDocumentsPanel
+          orgId="org_1"
+          patientId="patient_1"
+          cases={[{ id: 'case_1', status: 'active' } as never]}
+          documentStatuses={[]}
+          documents={[
+            {
+              id: hostileDocumentId,
+              case_id: 'case_1',
+              emergency_contacts: [],
+              document_url: '/api/visit-records/record_1/pdf',
+              delivered_at: '2026-06-17T00:00:00.000Z',
+              delivered_to: null,
+              created_at: '2026-06-16T00:00:00.000Z',
+              updated_at: '2026-06-16T00:00:00.000Z',
+              history: [],
+            },
+          ]}
+        />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.submit(screen.getByRole('button', { name: '保存' }).closest('form')!);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const expectedBody = {
+      delivered_at: '2026-06-17T00:00:00.000Z',
+      delivered_to: null,
+      document_url: '/api/visit-records/record_1/pdf',
+      document_action: {
+        action: 'image_saved',
+        document_type: 'first_visit_document',
+        template_name: null,
+        template_version: null,
+        storage_location: 'store',
+        contract_date: null,
+        explanation_date: null,
+        explanation_staff_name: null,
+        signer_type: 'self',
+        signer_name: null,
+        signer_relationship: null,
+        reason: null,
+        note: null,
+      },
+    };
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/first-visit-documents/${encodeURIComponent(hostileDocumentId)}`,
+      {
+        method: 'PATCH',
+        headers: sentinelHeaders,
+        body: JSON.stringify(expectedBody),
+      },
+    );
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).not.toContain(hostileDocumentId);
+    expect(url).not.toContain('%25');
+    expect(init?.body).not.toContain(hostileDocumentId);
+  });
+
+  it.each(['.', '..'])(
+    'rejects dot first-visit document ids before saving history (%s)',
+    async (documentId) => {
+      const queryClient = new QueryClient();
+      const fetchMock = vi.fn();
+      const errorSpy = vi.spyOn(toast, 'error').mockReturnValue('1' as never);
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(
+        <QueryClientProvider client={queryClient}>
+          <FirstVisitDocumentsPanel
+            orgId="org_1"
+            patientId="patient_1"
+            cases={[{ id: 'case_1', status: 'active' } as never]}
+            documentStatuses={[]}
+            documents={[
+              {
+                id: documentId,
+                case_id: 'case_1',
+                emergency_contacts: [],
+                document_url: '/api/visit-records/record_1/pdf',
+                delivered_at: '2026-06-17T00:00:00.000Z',
+                delivered_to: null,
+                created_at: '2026-06-16T00:00:00.000Z',
+                updated_at: '2026-06-16T00:00:00.000Z',
+                history: [],
+              },
+            ]}
+          />
+        </QueryClientProvider>,
+      );
+
+      fireEvent.submit(screen.getByRole('button', { name: '保存' }).closest('form')!);
+
+      await waitFor(() =>
+        expect(errorSpy).toHaveBeenCalledWith('Path segment cannot be a dot segment'),
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('fails closed when the create mutation returns a malformed 2xx (no success toast, no invalidation)', async () => {
     const queryClient = new QueryClient();
