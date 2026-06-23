@@ -1,0 +1,975 @@
+import type { Prisma } from '@prisma/client';
+import {
+  CHANNEL_LABELS,
+  PRIORITY_LABELS,
+  REPORT_STATUS_CONFIG,
+  REPORT_TYPE_LABELS,
+  SCHEDULE_STATUS_LABELS,
+  VISIT_OUTCOME_LABELS,
+} from '@/lib/constants/status-labels';
+import {
+  getInquiryPresentationBadges,
+  getInquiryPrimaryDetail,
+} from '@/lib/inquiries/presentation';
+import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
+import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
+import { getConferenceTypeLabel } from '@/lib/visits/visit-workflow-projection';
+import { buildVisibleExternalAccessGrantWhere } from '@/server/services/external-access';
+import {
+  buildCareReportCaseScope,
+  buildNullableCaseScope,
+  buildVisitRecordCaseScope,
+} from '@/server/services/patient-detail-scope';
+import { buildPatientTimelineConferenceNoteWhere } from '@/server/services/patient-detail-timeline-query';
+import {
+  CARRY_TYPE_LABELS,
+  MANAGEMENT_PLAN_STATUS_LABELS,
+  PRESCRIPTION_SOURCE_LABELS,
+  SELF_REPORT_STATUS_LABELS,
+  VISIT_TYPE_LABELS,
+  type BillingCandidateTimelineSource,
+  type CareReportTimelineSource,
+  type CommunicationTimelineSource,
+  type ConferenceNoteTimelineSource,
+  type DispenseResultTimelineSource,
+  type ExternalShareTimelineSource,
+  type FirstVisitDocumentAction,
+  type FirstVisitDocumentTimelineSource,
+  type InquiryTimelineSource,
+  type ManagementPlanTimelineSource,
+  type PrescriptionIntakeTimelineSource,
+  type SelfReportTimelineSource,
+  type TimelineEvent,
+  type TimelineHrefBundle,
+  type VisitRecordTimelineSource,
+  type VisitScheduleTimelineSource,
+  compactTimelineValues,
+  formatTimelineDate,
+  formatTokyoMonthStart,
+  previewTimelineText,
+} from '@/server/services/patient-detail-timeline-events';
+
+/** Shared frozen empty array; type-linked to each adapter's Row at the use site. */
+export const EMPTY = Object.freeze([]) as readonly never[];
+
+/** Minimal Prisma surface the timeline source fetchers depend on. */
+export type PatientTimelineRegistryDb = {
+  billingCandidate: Pick<Prisma.TransactionClient['billingCandidate'], 'findMany'>;
+  careReport: Pick<Prisma.TransactionClient['careReport'], 'findMany'>;
+  communicationEvent: Pick<Prisma.TransactionClient['communicationEvent'], 'findMany'>;
+  conferenceNote: Pick<Prisma.TransactionClient['conferenceNote'], 'findMany'>;
+  dispenseResult: Pick<Prisma.TransactionClient['dispenseResult'], 'findMany'>;
+  externalAccessGrant: Pick<Prisma.TransactionClient['externalAccessGrant'], 'findMany'>;
+  firstVisitDocument: Pick<Prisma.TransactionClient['firstVisitDocument'], 'findMany'>;
+  inquiryRecord: Pick<Prisma.TransactionClient['inquiryRecord'], 'findMany'>;
+  managementPlan: Pick<Prisma.TransactionClient['managementPlan'], 'findMany'>;
+  patientSelfReport: Pick<Prisma.TransactionClient['patientSelfReport'], 'findMany'>;
+  prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findMany'>;
+  visitRecord: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
+  visitSchedule: Pick<Prisma.TransactionClient['visitSchedule'], 'findMany'>;
+};
+
+/** Captured-once fetch inputs. No actorNameMap (doesn't exist at fetch time). */
+export interface TimelineFetchCtx {
+  db: PatientTimelineRegistryDb;
+  orgId: string;
+  patientId: string;
+  caseIds: string[];
+  canManageBilling: boolean;
+  billingRefs: { visitRecordIds: string[]; cycleIds: string[] };
+}
+
+/** Projection inputs. Superset of fetch ctx + post-fetch derived artifacts. */
+export interface TimelineProjectCtx {
+  patientId: string;
+  actorNameMap: ReadonlyMap<string, string>;
+  firstVisitDocumentActions: ReadonlyMap<string, FirstVisitDocumentAction>;
+  hrefs: TimelineHrefBundle;
+}
+
+export interface SourceAdapter<Key extends string, Row> {
+  readonly key: Key;
+  fetch(ctx: TimelineFetchCtx): Promise<readonly Row[]>;
+  readonly emptyFallback: readonly Row[];
+  toEvents(rows: readonly Row[], ctx: TimelineProjectCtx): TimelineEvent[];
+  collectActorIds?(row: Row): Array<string | null | undefined>;
+}
+
+export function defineTimelineSource<Key extends string, Row>(
+  adapter: SourceAdapter<Key, Row>,
+): SourceAdapter<Key, Row> {
+  return adapter;
+}
+
+const PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT = 8;
+
+const FIRST_VISIT_DOCUMENT_ACTION_VERBS: Record<string, string> = {
+  generated: '作成',
+  printed: '印刷',
+  recovered: '回収',
+  image_saved: '画像保存',
+  replaced: '差し替え',
+  invalidated: '無効化',
+};
+
+function getCommunicationDirectionLabel(direction: string) {
+  if (direction === 'inbound' || direction === 'incoming') return '受信';
+  if (direction === 'outbound' || direction === 'outgoing') return '発信';
+  return direction;
+}
+
+// --- visitSchedules ---------------------------------------------------------
+export const visitSchedulesSource = defineTimelineSource<
+  'visitSchedules',
+  VisitScheduleTimelineSource
+>({
+  key: 'visitSchedules',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, caseIds }) =>
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.visitSchedule.findMany({
+          where: {
+            org_id: orgId,
+            case_id: { in: caseIds },
+          },
+          orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
+          take: 12,
+          select: {
+            id: true,
+            visit_type: true,
+            scheduled_date: true,
+            schedule_status: true,
+            priority: true,
+            pharmacist_id: true,
+            confirmed_at: true,
+            route_order: true,
+            created_at: true,
+            updated_at: true,
+            visit_record: {
+              select: {
+                id: true,
+                outcome_status: true,
+              },
+            },
+          },
+        }),
+  collectActorIds: (item) => [item.pharmacist_id],
+  toEvents: (rows, { actorNameMap }) =>
+    rows.map((item) => ({
+      id: `visit_schedule:${item.id}`,
+      event_type: 'visit_schedule',
+      category: 'visit',
+      occurred_at: item.confirmed_at ?? item.updated_at ?? item.created_at,
+      title: item.confirmed_at ? '訪問予定を確定' : '訪問予定を登録',
+      summary:
+        compactTimelineValues([
+          VISIT_TYPE_LABELS[item.visit_type] ?? item.visit_type,
+          formatTimelineDate(item.scheduled_date)
+            ? `訪問日 ${formatTimelineDate(item.scheduled_date)}`
+            : null,
+          item.visit_record ? '訪問記録あり' : null,
+        ]).join(' / ') || null,
+      href: item.visit_record
+        ? buildVisitHref(item.visit_record.id)
+        : buildVisitRecordHref(item.id),
+      action_label: item.visit_record ? '訪問記録を開く' : '訪問記録を入力',
+      status: item.schedule_status,
+      status_label: SCHEDULE_STATUS_LABELS[item.schedule_status] ?? item.schedule_status,
+      actor_name: actorNameMap.get(item.pharmacist_id) ?? null,
+      metadata: compactTimelineValues([
+        item.priority ? `優先度 ${PRIORITY_LABELS[item.priority] ?? item.priority}` : null,
+        item.route_order ? `ルート順 ${item.route_order}` : null,
+      ]),
+    })),
+});
+
+// --- visitRecords -----------------------------------------------------------
+export const visitRecordsSource = defineTimelineSource<'visitRecords', VisitRecordTimelineSource>({
+  key: 'visitRecords',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.visitRecord.findMany({
+          where: {
+            org_id: orgId,
+            patient_id: patientId,
+            ...buildVisitRecordCaseScope(caseIds),
+          },
+          orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
+          take: 12,
+          select: {
+            id: true,
+            schedule_id: true,
+            pharmacist_id: true,
+            visit_date: true,
+            outcome_status: true,
+            next_visit_suggestion_date: true,
+            cancellation_reason: true,
+            postpone_reason: true,
+            revisit_reason: true,
+            created_at: true,
+          },
+        }),
+  collectActorIds: (item) => [item.pharmacist_id],
+  toEvents: (rows, { actorNameMap }) =>
+    rows.map((item) => ({
+      id: `visit_record:${item.id}`,
+      event_type: 'visit_record',
+      category: 'visit',
+      occurred_at: item.visit_date ?? item.created_at,
+      title: '訪問記録を登録',
+      summary:
+        compactTimelineValues([
+          item.revisit_reason,
+          item.postpone_reason,
+          item.cancellation_reason,
+        ]).join(' / ') || null,
+      href: buildVisitHref(item.id),
+      action_label: '訪問記録を開く',
+      status: item.outcome_status,
+      status_label: VISIT_OUTCOME_LABELS[item.outcome_status] ?? item.outcome_status,
+      actor_name: actorNameMap.get(item.pharmacist_id) ?? null,
+      metadata: compactTimelineValues([
+        item.next_visit_suggestion_date
+          ? `次回提案 ${formatTimelineDate(item.next_visit_suggestion_date)}`
+          : null,
+      ]),
+    })),
+});
+
+// --- careReports ------------------------------------------------------------
+export const careReportsSource = defineTimelineSource<'careReports', CareReportTimelineSource>({
+  key: 'careReports',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    db.careReport.findMany({
+      where: {
+        org_id: orgId,
+        patient_id: patientId,
+        ...buildCareReportCaseScope(caseIds),
+      },
+      orderBy: [{ created_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        report_type: true,
+        status: true,
+        created_by: true,
+        created_at: true,
+        delivery_records: {
+          orderBy: [{ created_at: 'desc' }],
+          take: 4,
+          select: {
+            id: true,
+            channel: true,
+            recipient_name: true,
+            status: true,
+            sent_at: true,
+            confirmed_at: true,
+            created_at: true,
+          },
+        },
+      },
+    }),
+  collectActorIds: (item) => [item.created_by],
+  toEvents: (rows, { actorNameMap }) =>
+    rows.flatMap((item) => [
+      {
+        id: `care_report:${item.id}`,
+        event_type: 'care_report',
+        category: 'document',
+        occurred_at: item.created_at,
+        title: '報告書を作成',
+        summary:
+          compactTimelineValues([
+            REPORT_TYPE_LABELS[item.report_type] ?? item.report_type,
+            REPORT_STATUS_CONFIG[item.status]?.label ?? item.status,
+          ]).join(' / ') || null,
+        href: buildReportHref(item.id),
+        action_label: '報告書を開く',
+        status: item.status,
+        status_label: REPORT_STATUS_CONFIG[item.status]?.label ?? item.status,
+        actor_name: actorNameMap.get(item.created_by) ?? null,
+        metadata: [],
+      },
+      ...item.delivery_records.map((delivery) => ({
+        id: `delivery_record:${delivery.id}`,
+        event_type: 'delivery_record',
+        category: 'document',
+        occurred_at: delivery.confirmed_at ?? delivery.sent_at ?? delivery.created_at,
+        title: delivery.status === 'confirmed' ? '報告書の受領を確認' : '報告書を送付',
+        summary:
+          compactTimelineValues([
+            delivery.recipient_name,
+            CHANNEL_LABELS[delivery.channel] ?? delivery.channel,
+            REPORT_TYPE_LABELS[item.report_type] ?? item.report_type,
+          ]).join(' / ') || null,
+        href: buildReportHref(item.id),
+        action_label: '送付元報告書を開く',
+        status: delivery.status,
+        status_label: REPORT_STATUS_CONFIG[delivery.status]?.label ?? delivery.status,
+        actor_name: actorNameMap.get(item.created_by) ?? null,
+        metadata: [],
+      })),
+    ]),
+});
+
+// --- communicationEvents ----------------------------------------------------
+export const communicationEventsSource = defineTimelineSource<
+  'communicationEvents',
+  CommunicationTimelineSource
+>({
+  key: 'communicationEvents',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    db.communicationEvent.findMany({
+      where: {
+        org_id: orgId,
+        patient_id: patientId,
+        event_type: { not: 'patient_self_report' },
+        ...buildNullableCaseScope(caseIds),
+      },
+      orderBy: [{ occurred_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        event_type: true,
+        channel: true,
+        direction: true,
+        subject: true,
+        counterpart_name: true,
+        occurred_at: true,
+      },
+    }),
+  toEvents: (rows, { hrefs }) =>
+    rows
+      .filter((item) => item.event_type !== 'patient_self_report')
+      .map((item) => {
+        const directionLabel = getCommunicationDirectionLabel(item.direction);
+
+        return {
+          id: `communication:${item.id}`,
+          event_type: 'communication',
+          category: 'communication',
+          occurred_at: item.occurred_at,
+          title: directionLabel === '受信' ? '連絡を受信' : '連絡を発信',
+          summary:
+            compactTimelineValues([
+              CHANNEL_LABELS[item.channel] ?? item.channel,
+              item.counterpart_name,
+              item.subject ?? item.event_type,
+            ]).join(' / ') || null,
+          href: hrefs.patientConferencesHref,
+          action_label: '連絡履歴を開く',
+          status: item.direction,
+          status_label: directionLabel,
+          actor_name: null,
+          metadata: [],
+        };
+      }),
+});
+
+// --- selfReports ------------------------------------------------------------
+export const selfReportsSource = defineTimelineSource<'selfReports', SelfReportTimelineSource>({
+  key: 'selfReports',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId }) =>
+    db.patientSelfReport.findMany({
+      where: {
+        org_id: orgId,
+        patient_id: patientId,
+      },
+      orderBy: [{ created_at: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        subject: true,
+        category: true,
+        content: true,
+        relation: true,
+        status: true,
+        reported_by_name: true,
+        requested_callback: true,
+        preferred_contact_time: true,
+        created_at: true,
+      },
+    }),
+  toEvents: (rows, { hrefs }) =>
+    rows.map((item) => ({
+      id: `self_report:${item.id}`,
+      event_type: 'self_report',
+      category: 'communication',
+      occurred_at: item.created_at,
+      title: '患者から自己申告を受信',
+      summary:
+        compactTimelineValues([
+          item.subject,
+          item.category,
+          previewTimelineText(item.content),
+        ]).join(' / ') || null,
+      href: hrefs.patientCollaborationHref,
+      action_label: '連携を確認',
+      status: item.status,
+      status_label: SELF_REPORT_STATUS_LABELS[item.status] ?? item.status,
+      actor_name: item.reported_by_name,
+      metadata: compactTimelineValues([
+        item.relation ? `関係 ${item.relation}` : null,
+        item.requested_callback ? '折返し希望' : null,
+        item.preferred_contact_time ? `希望時間 ${item.preferred_contact_time}` : null,
+      ]),
+    })),
+});
+
+// --- externalShares ---------------------------------------------------------
+export const externalSharesSource = defineTimelineSource<
+  'externalShares',
+  ExternalShareTimelineSource
+>({
+  key: 'externalShares',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    db.externalAccessGrant.findMany({
+      where: buildVisibleExternalAccessGrantWhere({
+        orgId,
+        patientId,
+        caseIds,
+      }),
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT,
+      select: {
+        id: true,
+        granted_to_name: true,
+        expires_at: true,
+        accessed_at: true,
+        created_at: true,
+      },
+    }),
+  toEvents: (rows, { hrefs }) =>
+    rows.map((item) => ({
+      id: `external_share:${item.id}`,
+      event_type: 'external_share',
+      category: 'communication',
+      occurred_at: item.created_at,
+      title: '外部共有リンクを発行',
+      summary:
+        compactTimelineValues([
+          item.granted_to_name,
+          item.accessed_at ? '閲覧済み' : '未閲覧',
+        ]).join(' / ') || null,
+      href: hrefs.patientShareHref,
+      action_label: '共有設定を開く',
+      status: item.accessed_at ? 'accessed' : 'issued',
+      status_label: item.accessed_at ? '閲覧済み' : '共有中',
+      actor_name: null,
+      metadata: compactTimelineValues([`期限 ${formatTimelineDate(item.expires_at)}`]),
+    })),
+});
+
+// --- inquiryRecords ---------------------------------------------------------
+export const inquiryRecordsSource = defineTimelineSource<'inquiryRecords', InquiryTimelineSource>({
+  key: 'inquiryRecords',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.inquiryRecord.findMany({
+          where: {
+            org_id: orgId,
+            cycle: {
+              patient_id: patientId,
+              case_id: { in: caseIds },
+            },
+          },
+          orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
+          take: 8,
+          select: {
+            id: true,
+            reason: true,
+            inquiry_to_physician: true,
+            inquiry_content: true,
+            result: true,
+            proposal_origin: true,
+            residual_adjustment: true,
+            change_detail: true,
+            inquired_at: true,
+            resolved_at: true,
+            created_at: true,
+            line: {
+              select: {
+                intake: {
+                  select: {
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+  toEvents: (rows) =>
+    rows.map((item) => {
+      const inquiryStatus =
+        item.result === 'changed'
+          ? '変更あり'
+          : item.result === 'unchanged'
+            ? '変更なし'
+            : '回答待ち';
+
+      return {
+        id: `inquiry:${item.id}`,
+        event_type: 'inquiry',
+        category: 'prescription',
+        occurred_at: item.resolved_at ?? item.inquired_at ?? item.created_at,
+        title: `疑義照会 ${inquiryStatus}`,
+        summary:
+          compactTimelineValues([
+            item.reason,
+            item.inquiry_to_physician,
+            getInquiryPrimaryDetail({
+              inquiryContent: item.inquiry_content,
+              changeDetail: item.change_detail,
+            }),
+          ]).join(' / ') || null,
+        href: item.line?.intake?.id ? buildPrescriptionHref(item.line.intake.id) : '/workflow',
+        action_label: item.line?.intake?.id ? '処方受付を開く' : 'ワークフローを開く',
+        status: item.result ?? 'pending',
+        status_label: inquiryStatus,
+        actor_name: null,
+        metadata: compactTimelineValues([
+          item.inquired_at ? `照会 ${formatTimelineDate(item.inquired_at)}` : null,
+          ...getInquiryPresentationBadges({
+            proposalOrigin:
+              item.proposal_origin === 'pre_issuance' ? 'pre_issuance' : 'post_inquiry',
+            residualAdjustment: item.residual_adjustment,
+          }),
+        ]),
+      };
+    }),
+});
+
+// --- prescriptionIntakes ----------------------------------------------------
+export const prescriptionIntakesSource = defineTimelineSource<
+  'prescriptionIntakes',
+  PrescriptionIntakeTimelineSource
+>({
+  key: 'prescriptionIntakes',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.prescriptionIntake.findMany({
+          where: {
+            org_id: orgId,
+            cycle: {
+              patient_id: patientId,
+              case_id: { in: caseIds },
+            },
+          },
+          orderBy: [{ created_at: 'desc' }],
+          take: 10,
+          select: {
+            id: true,
+            source_type: true,
+            prescribed_date: true,
+            prescriber_name: true,
+            prescriber_institution: true,
+            original_collected_by: true,
+            created_at: true,
+            cycle: {
+              select: {
+                overall_status: true,
+              },
+            },
+            lines: {
+              take: 3,
+              select: {
+                id: true,
+              },
+            },
+          },
+        }),
+  toEvents: (rows) =>
+    rows.map((item) => ({
+      id: `prescription_intake:${item.id}`,
+      event_type: 'prescription_intake',
+      category: 'prescription',
+      occurred_at: item.created_at,
+      title: '処方受付を登録',
+      summary:
+        compactTimelineValues([
+          PRESCRIPTION_SOURCE_LABELS[item.source_type] ?? item.source_type,
+          item.prescriber_name ?? item.prescriber_institution,
+          formatTimelineDate(item.prescribed_date)
+            ? `処方日 ${formatTimelineDate(item.prescribed_date)}`
+            : null,
+        ]).join(' / ') || null,
+      href: buildPrescriptionHref(item.id),
+      action_label: '処方受付を開く',
+      status: item.cycle.overall_status,
+      status_label: CYCLE_STATUS_LABELS[item.cycle.overall_status] ?? item.cycle.overall_status,
+      actor_name: item.original_collected_by ?? null,
+      metadata: compactTimelineValues([
+        item.lines.length > 0 ? `${item.lines.length}剤まで表示` : null,
+      ]),
+    })),
+});
+
+// --- dispenseResults --------------------------------------------------------
+export const dispenseResultsSource = defineTimelineSource<
+  'dispenseResults',
+  DispenseResultTimelineSource
+>({
+  key: 'dispenseResults',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.dispenseResult.findMany({
+          where: {
+            org_id: orgId,
+            line: {
+              intake: {
+                cycle: {
+                  patient_id: patientId,
+                  case_id: { in: caseIds },
+                },
+              },
+            },
+          },
+          orderBy: [{ dispensed_at: 'desc' }],
+          take: 12,
+          select: {
+            id: true,
+            actual_drug_name: true,
+            actual_quantity: true,
+            actual_unit: true,
+            carry_type: true,
+            dispensed_by: true,
+            dispensed_at: true,
+            task: {
+              select: {
+                cycle: {
+                  select: {
+                    overall_status: true,
+                  },
+                },
+              },
+            },
+            line: {
+              select: {
+                intake: {
+                  select: {
+                    id: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+  collectActorIds: (item) => [item.dispensed_by],
+  toEvents: (rows, { actorNameMap }) =>
+    rows.map((item) => ({
+      id: `dispense_result:${item.id}`,
+      event_type: 'dispense_result',
+      category: 'prescription',
+      occurred_at: item.dispensed_at,
+      title: '調剤を記録',
+      summary:
+        compactTimelineValues([
+          item.actual_drug_name,
+          `${item.actual_quantity}${item.actual_unit ?? ''}`,
+          CARRY_TYPE_LABELS[item.carry_type] ?? item.carry_type,
+        ]).join(' / ') || null,
+      href: buildPrescriptionHref(item.line.intake.id),
+      action_label: '処方記録を開く',
+      status: item.task.cycle?.overall_status ?? 'dispensed',
+      status_label: CYCLE_STATUS_LABELS[item.task.cycle?.overall_status ?? 'dispensed'] ?? '調剤済',
+      actor_name: actorNameMap.get(item.dispensed_by) ?? null,
+      metadata: [],
+    })),
+});
+
+// --- managementPlans --------------------------------------------------------
+export const managementPlansSource = defineTimelineSource<
+  'managementPlans',
+  ManagementPlanTimelineSource
+>({
+  key: 'managementPlans',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, caseIds }) =>
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.managementPlan.findMany({
+          where: {
+            org_id: orgId,
+            case_id: {
+              in: caseIds,
+            },
+          },
+          orderBy: [{ updated_at: 'desc' }],
+          take: 6,
+          select: {
+            id: true,
+            status: true,
+            title: true,
+            effective_from: true,
+            next_review_date: true,
+            created_by: true,
+            approved_by: true,
+            approved_at: true,
+            reviewed_by: true,
+            reviewed_at: true,
+            created_at: true,
+          },
+        }),
+  collectActorIds: (item) => [item.created_by, item.approved_by, item.reviewed_by],
+  toEvents: (rows, { actorNameMap, hrefs }) =>
+    rows.map((item) => {
+      const actorId = item.approved_by ?? item.reviewed_by ?? item.created_by;
+      const occurredAt = item.approved_at ?? item.reviewed_at ?? item.created_at;
+
+      return {
+        id: `management_plan:${item.id}`,
+        event_type: 'management_plan',
+        category: 'document',
+        occurred_at: occurredAt,
+        title: item.approved_at ? '管理計画書を承認' : '管理計画書を作成',
+        summary:
+          compactTimelineValues([
+            item.title,
+            item.effective_from ? `適用開始 ${formatTimelineDate(item.effective_from)}` : null,
+            item.next_review_date
+              ? `次回見直し ${formatTimelineDate(item.next_review_date)}`
+              : null,
+          ]).join(' / ') || null,
+        href: hrefs.patientManagementPlanHref,
+        action_label: '計画書を開く',
+        status: item.status,
+        status_label: MANAGEMENT_PLAN_STATUS_LABELS[item.status] ?? item.status,
+        actor_name: actorNameMap.get(actorId) ?? null,
+        metadata: [],
+      };
+    }),
+});
+
+// --- firstVisitDocuments ----------------------------------------------------
+export const firstVisitDocumentsSource = defineTimelineSource<
+  'firstVisitDocuments',
+  FirstVisitDocumentTimelineSource
+>({
+  key: 'firstVisitDocuments',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    caseIds.length === 0
+      ? Promise.resolve([])
+      : db.firstVisitDocument.findMany({
+          where: {
+            org_id: orgId,
+            patient_id: patientId,
+            case_id: { in: caseIds },
+          },
+          orderBy: [{ created_at: 'desc' }],
+          take: 8,
+          select: {
+            id: true,
+            document_url: true,
+            delivered_at: true,
+            delivered_to: true,
+            created_at: true,
+          },
+        }),
+  toEvents: (rows, { firstVisitDocumentActions, actorNameMap, hrefs }) =>
+    rows.map((item) => {
+      const isDelivered = Boolean(item.delivered_at);
+      const latestAction = firstVisitDocumentActions.get(item.id) ?? null;
+      const actionVerb = latestAction
+        ? (FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action] ?? latestAction.action)
+        : isDelivered
+          ? '交付'
+          : '作成';
+      const documentLabel = latestAction?.documentTypeLabel ?? '初回訪問文書';
+      return {
+        id: `first_visit_document:${item.id}`,
+        event_type: 'first_visit_document',
+        category: 'document',
+        occurred_at: latestAction?.occurredAt ?? item.delivered_at ?? item.created_at,
+        title: `${documentLabel}を${actionVerb}`,
+        summary:
+          compactTimelineValues([
+            latestAction?.templateName ?? null,
+            latestAction?.templateVersion ? `版 ${latestAction.templateVersion}` : null,
+            item.delivered_to,
+            isDelivered ? '交付記録あり' : '交付未記録',
+            latestAction?.storageLabel ? `保管 ${latestAction.storageLabel}` : null,
+            latestAction?.reason,
+            latestAction?.note,
+          ]).join(' / ') || null,
+        href: item.document_url ?? hrefs.patientDocumentsHref,
+        action_label: item.document_url ? 'PDFを見る' : '文書状態を開く',
+        status: latestAction?.action ?? (isDelivered ? 'delivered' : 'created'),
+        status_label: latestAction
+          ? (FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action] ?? latestAction.action)
+          : isDelivered
+            ? '交付済み'
+            : '作成済み',
+        actor_name: latestAction ? (actorNameMap.get(latestAction.actorId) ?? null) : null,
+        metadata: compactTimelineValues([latestAction?.documentTypeLabel ?? null]),
+      };
+    }),
+});
+
+// --- conferenceNotes --------------------------------------------------------
+export const conferenceNotesSource = defineTimelineSource<
+  'conferenceNotes',
+  ConferenceNoteTimelineSource
+>({
+  key: 'conferenceNotes',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, caseIds }) =>
+    db.conferenceNote.findMany({
+      where: {
+        ...buildPatientTimelineConferenceNoteWhere({
+          orgId,
+          patientId,
+          caseIds,
+        }),
+      },
+      orderBy: [{ conference_date: 'desc' }],
+      take: 8,
+      select: {
+        id: true,
+        note_type: true,
+        title: true,
+        conference_date: true,
+        follow_up_date: true,
+        follow_up_completed: true,
+        generated_report_id: true,
+        action_items: true,
+      },
+    }),
+  toEvents: (rows, { hrefs }) =>
+    rows.map((item) => {
+      const actionItemCount = Array.isArray(item.action_items) ? item.action_items.length : 0;
+      return {
+        id: `conference_note:${item.id}`,
+        event_type: 'conference_note',
+        category: 'communication',
+        occurred_at: item.conference_date,
+        title: `${getConferenceTypeLabel(item.note_type)}を記録`,
+        summary:
+          compactTimelineValues([
+            item.title,
+            actionItemCount > 0 ? `合意事項 ${actionItemCount}件` : null,
+            item.generated_report_id ? '報告ドラフトあり' : null,
+          ]).join(' / ') || null,
+        href: hrefs.patientConferencesHref,
+        action_label: '会議を開く',
+        status: item.follow_up_completed ? 'completed' : 'open',
+        status_label: item.follow_up_completed ? 'フォロー完了' : 'フォロー中',
+        actor_name: null,
+        metadata: compactTimelineValues([
+          item.follow_up_date ? `フォロー期限 ${formatTimelineDate(item.follow_up_date)}` : null,
+        ]),
+      };
+    }),
+});
+
+// --- billingCandidates ------------------------------------------------------
+export const billingCandidatesSource = defineTimelineSource<
+  'billingCandidates',
+  BillingCandidateTimelineSource
+>({
+  key: 'billingCandidates',
+  emptyFallback: EMPTY,
+  fetch: ({ db, orgId, patientId, canManageBilling, billingRefs }) =>
+    canManageBilling
+      ? db.billingCandidate.findMany({
+          where: {
+            org_id: orgId,
+            patient_id: patientId,
+            ...(billingRefs.cycleIds.length === 0
+              ? { id: { in: [] } }
+              : { cycle_id: { in: billingRefs.cycleIds } }),
+          },
+          orderBy: [{ updated_at: 'desc' }],
+          take: 8,
+          select: {
+            id: true,
+            billing_month: true,
+            billing_code: true,
+            billing_name: true,
+            points: true,
+            status: true,
+            exclusion_reason: true,
+            updated_at: true,
+          },
+        })
+      : Promise.resolve([]),
+  toEvents: (rows, { patientId }) =>
+    rows.map((item) => ({
+      id: `billing_candidate:${item.id}`,
+      event_type: 'billing_candidate',
+      category: 'billing',
+      occurred_at: item.updated_at,
+      title: '算定候補を更新',
+      summary:
+        compactTimelineValues([
+          item.billing_name,
+          item.points != null ? `${item.points}点` : null,
+          item.exclusion_reason,
+        ]).join(' / ') || null,
+      href: `/billing/candidates?${new URLSearchParams({
+        billing_month: formatTokyoMonthStart(item.billing_month),
+        patient_id: patientId,
+      }).toString()}`,
+      action_label: '算定候補を開く',
+      status: item.status,
+      status_label:
+        item.status === 'candidate'
+          ? '候補'
+          : item.status === 'confirmed'
+            ? '確定'
+            : item.status === 'excluded'
+              ? '除外'
+              : item.status === 'exported'
+                ? '締め済み'
+                : item.status,
+      actor_name: null,
+      metadata: compactTimelineValues([
+        item.billing_code,
+        `算定月 ${formatTimelineDate(item.billing_month)}`,
+      ]),
+    })),
+});
+
+export const TIMELINE_SOURCES = [
+  visitSchedulesSource,
+  visitRecordsSource,
+  careReportsSource,
+  communicationEventsSource,
+  selfReportsSource,
+  externalSharesSource,
+  inquiryRecordsSource,
+  prescriptionIntakesSource,
+  dispenseResultsSource,
+  managementPlansSource,
+  firstVisitDocumentsSource,
+  conferenceNotesSource,
+  billingCandidatesSource,
+] as const;
+
+type Entry<R> = R extends SourceAdapter<infer K, infer Row> ? { key: K; row: Row } : never;
+type TimelineSourceEntry = Entry<(typeof TIMELINE_SOURCES)[number]>;
+
+export type TimelineTasks = {
+  [X in TimelineSourceEntry as X['key']]: () => Promise<readonly X['row'][]>;
+};
+export type TimelineFallbacks = {
+  [X in TimelineSourceEntry as X['key']]: readonly X['row'][];
+};
+export type TimelineSourceResults = {
+  [X in TimelineSourceEntry as X['key']]: readonly X['row'][];
+};
