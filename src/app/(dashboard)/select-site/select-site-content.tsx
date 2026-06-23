@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 
@@ -23,7 +24,7 @@ type MySite = {
 };
 
 async function fetchMySites(orgId: string): Promise<MySite[]> {
-  const res = await fetch('/api/me/sites', { headers: { 'x-org-id': orgId } });
+  const res = await fetch('/api/me/sites', { headers: buildOrgHeaders(orgId) });
   if (!res.ok) throw new Error('所属薬局の取得に失敗しました');
   const json = await res.json();
   return json.data;
@@ -44,7 +45,7 @@ export function SelectSiteContent() {
     mutationFn: async (siteId: string) => {
       const res = await fetch('/api/me/site', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ site_id: siteId }),
       });
       if (!res.ok) {
