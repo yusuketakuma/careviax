@@ -84,7 +84,9 @@ const VIEW_SCOPE_OPTIONS: Array<{ value: DashboardViewScope; label: string }> = 
 function ConditionBanner({ data }: { data: DashboardCockpitResponse }) {
   const visitTimes = data.today_visits
     .filter((visit) => visit.time_start != null)
-    .map((visit) => formatTimeOfDay(visit.time_start as string));
+    // time_start は BFF が "HH:MM" 壁時計で返すため、そのまま表示する
+    // (formatTimeOfDay はローカル TZ 解釈で @db.Time が約9hずれるため使わない)。
+    .map((visit) => visit.time_start as string);
   const summary = buildConditionSummary({
     auditPendingCount: data.audit_pending_count,
     narcoticAuditCount: data.narcotic_audit_count,

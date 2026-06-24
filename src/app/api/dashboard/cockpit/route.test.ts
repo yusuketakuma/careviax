@@ -135,8 +135,9 @@ describe('/api/dashboard/cockpit', () => {
         id: 'visit_1',
         visit_type: 'regular',
         schedule_status: 'planned',
-        time_window_start: new Date(2026, 5, 12, 10, 30),
-        time_window_end: new Date(2026, 5, 12, 11, 30),
+        // @db.Time は壁時計を UTC parts に格納する(Date.UTC で表現)。
+        time_window_start: new Date(Date.UTC(2026, 5, 12, 10, 30)),
+        time_window_end: new Date(Date.UTC(2026, 5, 12, 11, 30)),
         facility_batch_id: null,
         case_: { patient: { name: '伊藤' } },
       },
@@ -209,8 +210,9 @@ describe('/api/dashboard/cockpit', () => {
         patient_name: '伊藤',
         visit_type: 'regular',
         schedule_status: 'planned',
-        time_start: new Date(2026, 5, 12, 10, 30).toISOString(),
-        time_end: new Date(2026, 5, 12, 11, 30).toISOString(),
+        // 壁時計 "HH:MM" でシリアライズ(TZ 非依存; client は再パースしない)。
+        time_start: '10:30',
+        time_end: '11:30',
         facility_batch_id: null,
       },
     ]);
