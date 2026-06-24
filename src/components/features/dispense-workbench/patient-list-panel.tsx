@@ -11,6 +11,10 @@
  * use-workbench-view 側で phase 非依存に算出される）。
  */
 
+import { Pill } from 'lucide-react';
+
+import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { useWorkbenchStore } from './dispensing-workbench.store';
 import styles from './dispensing-workbench.module.css';
 import type { Phase, WorkbenchView } from './dispensing-workbench.types';
@@ -32,9 +36,32 @@ const LEGEND: { label: string; color: string }[] = [
   { label: '未着手', color: 'var(--wb-state-readonly)' },
 ];
 
+/** 実データ取得中（hydrate 前）のスケルトン。seed 患者のちらつきを避けるための装飾。 */
+function PatientListSkeleton() {
+  return (
+    <div
+      aria-hidden="true"
+      style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '8px' }}
+    >
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div
+          key={i}
+          style={{
+            height: '44px',
+            borderRadius: '4px',
+            background: 'var(--wb-surface-muted)',
+            border: '1px solid var(--wb-line)',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export function PatientListPanel({ view }: PatientListPanelProps) {
   const setPatient = useWorkbenchStore((s) => s.setPatient);
   const setSort = useWorkbenchStore((s) => s.setSort);
+  const retryLoad = useWorkbenchStore((s) => s.retryLoad);
 
   return (
     <div className={styles.leftPane}>
@@ -83,73 +110,96 @@ export function PatientListPanel({ view }: PatientListPanelProps) {
         ))}
       </div>
 
-      {/* 患者行リスト */}
+      {/* 患者行リスト（実データの取得状態で出し分け） */}
       <div className={styles.patientList}>
-        {view.patients.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            data-testid="dispense-queue-row"
-            onClick={() => setPatient(p.id)}
-            aria-current={p.selected ? 'true' : undefined}
-            className={styles.patientRow}
-            style={{
-              width: '100%',
-              textAlign: 'left',
-              font: 'inherit',
-              borderLeft: `3px solid ${p.barColor}`,
-              background: p.bg,
-            }}
-          >
-            <div className={styles.patientAvatar} style={{ background: p.avatarBg }}>
-              {p.initial}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: '13px',
-                  fontWeight: 700,
-                  color: 'var(--wb-ink)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                {p.name}
+        {view.listState === 'loading' ? (
+          <PatientListSkeleton />
+        ) : view.listState === 'error' ? (
+          <div style={{ padding: '12px' }}>
+            <ErrorState
+              variant="server"
+              size="inline"
+              title="データを取得できませんでした"
+              description="通信状態を確認し、再読み込みしてください。"
+              action={{ label: '再読み込み', onClick: () => retryLoad() }}
+            />
+          </div>
+        ) : view.listState === 'empty' ? (
+          <div style={{ padding: '12px' }}>
+            <EmptyState
+              icon={Pill}
+              title="この工程に対象患者がいません"
+              description="他の工程を確認するか、時間をおいて再読み込みしてください。"
+              action={{ label: '再読み込み', onClick: () => retryLoad() }}
+            />
+          </div>
+        ) : (
+          view.patients.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              data-testid="dispense-queue-row"
+              onClick={() => setPatient(p.id)}
+              aria-current={p.selected ? 'true' : undefined}
+              className={styles.patientRow}
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                font: 'inherit',
+                borderLeft: `3px solid ${p.barColor}`,
+                background: p.bg,
+              }}
+            >
+              <div className={styles.patientAvatar} style={{ background: p.avatarBg }}>
+                {p.initial}
               </div>
-              <div
-                style={{
-                  fontSize: '10px',
-                  color: 'var(--wb-ink-muted)',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                }}
-              >
-                開始 {p.startLabel} ・ 登録 {p.registLabel}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: 'var(--wb-ink)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {p.name}
+                </div>
+                <div
+                  style={{
+                    fontSize: '10px',
+                    color: 'var(--wb-ink-muted)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  開始 {p.startLabel} ・ 登録 {p.registLabel}
+                </div>
               </div>
-            </div>
-            <div style={{ flex: 'none', textAlign: 'right' }}>
-              <div style={{ fontSize: '11px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
-                {p.age}
+              <div style={{ flex: 'none', textAlign: 'right' }}>
+                <div style={{ fontSize: '11px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+                  {p.age}
+                </div>
+                <div
+                  style={{
+                    display: 'inline-block',
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    color: '#fff',
+                    background: p.statusColor,
+                    borderRadius: '3px',
+                    padding: '1px 4px',
+                    marginTop: '1px',
+                  }}
+                >
+                  {p.statusLabel}
+                </div>
               </div>
-              <div
-                style={{
-                  display: 'inline-block',
-                  fontSize: '9px',
-                  fontWeight: 700,
-                  color: '#fff',
-                  background: p.statusColor,
-                  borderRadius: '3px',
-                  padding: '1px 4px',
-                  marginTop: '1px',
-                }}
-              >
-                {p.statusLabel}
-              </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          ))
+        )}
       </div>
 
       {/* フッタ凡例 */}

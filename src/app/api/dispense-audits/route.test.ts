@@ -479,6 +479,8 @@ describe('/api/dispense-audits POST', () => {
         reject_reason: 'wrong_drug',
         reject_reason_code: 'drug_name_mismatch',
         reject_detail: '別規格が混入',
+        // §15 帰属検証: クライアントが監査者 id を偽装しても無視され、ctx.userId に帰属する。
+        audited_by: 'attacker',
       }),
     );
 
@@ -505,7 +507,12 @@ describe('/api/dispense-audits POST', () => {
       data: expect.objectContaining({
         reject_reason: 'wrong_drug',
         reject_reason_code: 'drug_name_mismatch',
+        // 帰属は常にセッションユーザ（ctx.userId='user_1'）。偽装 'attacker' は採用しない。
+        audited_by: 'user_1',
       }),
+    });
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({ audited_by: 'attacker' }),
     });
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),

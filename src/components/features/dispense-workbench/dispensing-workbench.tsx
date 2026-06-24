@@ -6,9 +6,11 @@
  * 役割:
  *  - props { phase }（ルートから注入）。useWorkbenchView(phase) で派生 view を 1 回取得し子へ配分。
  *  - レイアウト: 患者リボン / BODY(左=PatientListPanel・
- *    中央=PhaseTabs + (isGrid:PrescriptionGrid | isCal:MedicationCalendarGrid)・右=RightPane) /
+ *    中央=PhaseHeader + (isGrid:PrescriptionGrid | isCal:MedicationCalendarGrid)・右=RightPane) /
  *    ステータスバー。
- *  - フェーズタブは 4 ルート（/dispense /audit /set /set-audit）へ遷移。
+ *  - 4 工程は分離された独立画面（/dispense /audit /set /set-audit）。工程切替は
+ *    アプリ標準の左メニュー（navigation-config.ts）で行い、workbench 内に独自タブを持たない。
+ *    PhaseHeader は現工程のみを静的表示する（他工程への遷移リンクなし）。
  *    物理 F12「次工程へ」は store.primary(phase) がゲート通過時に返す next phase を処理する。
  *  - HoldReasonDialog / PrescriptionCompareDialog をマウント（開閉は view.holdOpen / view.compareOpen）。
  *
@@ -36,8 +38,9 @@ import {
 } from './dispensing-workbench.adapter';
 import { isCalendarPhase } from './dispensing-workbench.types';
 import type { FKeyAction, Phase } from './dispensing-workbench.types';
+import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 
-import { PhaseTabs } from './phase-tabs';
+import { PhaseHeader } from './phase-header';
 import { PatientListPanel } from './patient-list-panel';
 import { PrescriptionGrid } from './prescription-grid';
 import { MedicationCalendarGrid } from './medication-calendar-grid';
@@ -88,8 +91,14 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   const hydrate = useWorkbenchStore((s) => s.hydrate);
   const setWriteContext = useWorkbenchStore((s) => s.setWriteContext);
   const setCalendarState = useWorkbenchStore((s) => s.setCalendarState);
+  const setOperators = useWorkbenchStore((s) => s.setOperators);
+  const operators = useWorkbenchStore((s) => s.operators);
+  const setLoadError = useWorkbenchStore((s) => s.setLoadError);
+  const retryNonce = useWorkbenchStore((s) => s.retryNonce);
   const selId = useWorkbenchStore((s) => s.selId);
   const planId = useWorkbenchStore((s) => s.writeContext.planId);
+  // 接続状態は HeaderSyncStatus と同一の useNetworkOnline（新規リアルタイム購読を増やさない）。
+  const online = useNetworkOnline();
 
   // ---- 書込結線（計画 §12 / W3b）----
   // mutation 群（実データ時のみ発火・mock は no-op）とフェーズ別ハンドラを生成し、
@@ -113,9 +122,11 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     if (phase !== 'dispense' && phase !== 'audit') return; // set/seta は別 effect
     let cancelled = false;
     void (async () => {
-      const { patients, rows } = await loadWorkbenchPatientRowsAsync();
+      const { patients, rows, ok } = await loadWorkbenchPatientRowsAsync({ phase });
       if (cancelled) return;
       if (patients.length === 0) {
+        // 取得失敗(!ok)はエラー状態、取得成功・0件は空状態として区別する。
+        setLoadError(!ok);
         hydrate({ patients: [] });
         return;
       }
@@ -123,9 +134,12 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       const wb = await loadWorkbenchAsync(phase, targetId, { patientRows: rows });
       if (cancelled) return;
       if (!wb) {
+        // リストは取得できたが選択患者の詳細取得に失敗＝障害。
+        setLoadError(true);
         hydrate({ patients: [] });
         return;
       }
+      setLoadError(false);
       hydrate({
         patients,
         selId: targetId,
@@ -136,12 +150,14 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       });
       // 書込結線の id 束を store へ充填（mutations hook が読む）。
       setWriteContext(wb.writeContext);
+      // status bar 用 operator（実 dispenser 名 / 現操作者名。捏造名は出さない）。
+      setOperators(wb.operators);
     })();
     return () => {
       cancelled = true;
     };
-    // selId 変更時に選択患者の model を再取得する。phase 変更でも再評価。
-  }, [phase, selId, hydrate, setWriteContext]);
+    // selId / retryNonce 変更時に選択患者の model を再取得する。phase 変更でも再評価。
+  }, [phase, selId, retryNonce, hydrate, setWriteContext, setOperators, setLoadError]);
 
   // ---- 実データ結線（カレンダー: set / seta）----
   // 既定（モック）では no-op。opt-in 時は direct /set entry でも cycle_id -> SetPlan -> calendar
@@ -150,6 +166,11 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   useEffect(() => {
     if (!isRealDataEnabled()) return;
     if (!isCalendarPhase(phase)) return;
+    // セット / セット監査はカレンダー由来で operator chrome を持たない。前工程の dispenser/操作者を
+    // 残さないよう null へ倒す（status bar は '—'）。
+    setOperators({ dispenserName: null, operatorName: null });
+    // カレンダー工程では前工程のエラー状態を引き継がない（空/未計画は空状態として扱う）。
+    setLoadError(false);
     let cancelled = false;
     void (async () => {
       if (planId) {
@@ -164,7 +185,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         return;
       }
 
-      const result = await loadSetCalendarForPatientAsync(selId);
+      const result = await loadSetCalendarForPatientAsync(selId, phase);
       if (cancelled) return;
       if (!result) {
         hydrate({ patients: [] });
@@ -181,7 +202,17 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     return () => {
       cancelled = true;
     };
-  }, [phase, selId, planId, hydrate, setCalendarState, setWriteContext]);
+  }, [
+    phase,
+    selId,
+    planId,
+    retryNonce,
+    hydrate,
+    setCalendarState,
+    setWriteContext,
+    setOperators,
+    setLoadError,
+  ]);
 
   // ---- F-key / キーボードアクションの写像 ----
   const runAction = useCallback(
@@ -317,7 +348,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
 
         {/* 中央ペイン */}
         <div className={styles.centerPane}>
-          <PhaseTabs view={view} phase={phase} />
+          <PhaseHeader view={view} phase={phase} />
           {view.isGrid ? (
             <PrescriptionGrid
               view={view}
@@ -347,9 +378,11 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       {/* ===== STATUS BAR ===== */}
       <div className={styles.statusBar}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span>調剤者：山田 花子（薬剤師）</span>
+          {/* 調剤者=実記録（dispense_results.dispensed_by）。未取得/カレンダー工程は '—'（捏造名を出さない）。 */}
+          <span>調剤者：{operators.dispenserName ?? '—'}</span>
           <span style={{ opacity: 0.55 }}>|</span>
-          <span>監査者：佐々木 健（管理薬剤師）</span>
+          {/* 操作者=現在ログイン中の閲覧者（API auditor）。記録済み監査者ではないので「監査者：」では出さない。 */}
+          <span>操作者：{operators.operatorName ?? '—'}</span>
           <span style={{ opacity: 0.55 }}>|</span>
           <span>
             モード：
@@ -359,8 +392,17 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span>
-            接続：<span style={{ color: 'var(--wb-status-online)' }}>オンライン</span>
+          {/* 接続=useNetworkOnline（HeaderSyncStatus と同一）。色だけに依存せずテキスト併用 + aria-label。 */}
+          <span aria-label={`接続状態: ${online ? 'オンライン' : 'オフライン'}`}>
+            接続：
+            <span
+              style={{
+                color: online ? 'var(--wb-status-online)' : 'var(--wb-status-offline)',
+                fontWeight: 700,
+              }}
+            >
+              {online ? 'オンライン' : 'オフライン'}
+            </span>
           </span>
           <span className={styles.mono} style={{ letterSpacing: '.5px' }} suppressHydrationWarning>
             <StatusClock />

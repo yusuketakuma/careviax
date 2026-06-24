@@ -264,6 +264,8 @@ describe('/api/set-audits POST', () => {
           result: 'approved',
           checklist: completeSetAuditChecklist(),
           carry_packet_evidence: completeCarryPacketEvidence(),
+          // §15 帰属検証: クライアントが監査者 id を偽装しても無視され、ctx.userId に帰属する。
+          audited_by: 'attacker',
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -330,7 +332,12 @@ describe('/api/set-audits POST', () => {
           ...completeSetAuditChecklist(),
           carry_packet_evidence: completeCarryPacketEvidence(),
         },
+        // 帰属は常にセッションユーザ（ctx.userId='user_1'）。偽装 'attacker' は採用しない。
+        audited_by: 'user_1',
       }),
+    });
+    expect(setAuditCreateMock).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({ audited_by: 'attacker' }),
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),

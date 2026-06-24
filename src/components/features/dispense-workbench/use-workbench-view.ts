@@ -38,7 +38,7 @@ import {
   startKeyOf,
   totals as calcTotals,
 } from './dispensing-workbench.logic';
-import { loadPatients } from './dispensing-workbench.adapter';
+import { isRealDataEnabled, loadPatients } from './dispensing-workbench.adapter';
 import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
 import {
   areQuantitiesEquivalentForUnit,
@@ -58,6 +58,7 @@ import type {
   NgCode,
   Phase,
   SeedPatient,
+  WorkbenchListState,
   WorkbenchModel,
   WorkbenchView,
 } from './dispensing-workbench.types';
@@ -171,11 +172,16 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
   const compareOpen = useWorkbenchStore((s) => s.compareOpen);
   const model = useWorkbenchStore((s) => s.model);
   const patients = useWorkbenchStore((s) => s.patients);
+  const hydrated = useWorkbenchStore((s) => s.hydrated);
+  const loadError = useWorkbenchStore((s) => s.loadError);
 
   return useMemo(
     () =>
       buildView({
         phase,
+        isRealData: isRealDataEnabled(),
+        hydrated,
+        loadError,
         selId,
         sortMode,
         done,
@@ -219,6 +225,8 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
       compareOpen,
       model,
       patients,
+      hydrated,
+      loadError,
     ],
   );
 }
@@ -246,6 +254,27 @@ interface BuildViewArgs {
   model: WorkbenchModel;
   /** 患者リスト。省略時はモック seed（既定パス / 既存テスト互換）*/
   patients?: SeedPatient[];
+  /** 実データパスが有効か（左ペインの取得状態判定に使う。省略時 false=モック扱いで常に ready）。 */
+  isRealData?: boolean;
+  /** store が hydrate 済みか（false=実データ未取得＝loading）。 */
+  hydrated?: boolean;
+  /** 実データ取得が失敗したか（true=error 状態）。 */
+  loadError?: boolean;
+}
+
+/** 左ペインの取得状態を導出する（loading/error/empty/ready）。 */
+function deriveListState(args: {
+  isRealData: boolean;
+  hydrated: boolean;
+  loadError: boolean;
+  dataUnavailable: boolean;
+}): WorkbenchListState {
+  // モックは常に通常表示（seed）。実データのみ取得状態を反映する。
+  if (!args.isRealData) return 'ready';
+  if (args.loadError) return 'error';
+  // hydrate 前は loading（seed のちらつきを避ける）。
+  if (!args.hydrated) return 'loading';
+  return args.dataUnavailable ? 'empty' : 'ready';
 }
 
 /**
@@ -1072,9 +1101,9 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     ? 'color-mix(in oklch, var(--wb-phase-setp) 8%, var(--wb-surface))'
     : 'color-mix(in oklch, var(--wb-phase-seta) 8%, var(--wb-surface))';
   const calBarTitle = isSet ? 'セット注意' : '監査リスク';
-  const calBarMeta = isSet
-    ? `セット者：山田 花子 ／ 期間 ${periodLabel}`
-    : 'セット完了：6/16 15:10 ／ 監査者：佐々木 健';
+  // セット者 / 監査者 / セット完了時刻の実値は本 view の入力に無いため fail-closed '—'（捏造名・捏造時刻を出さない）。
+  // 期間は実値（periodLabel）なので残す。実 operator 名の結線は後続スライスの follow-up。
+  const calBarMeta = isSet ? `セット者：— ／ 期間 ${periodLabel}` : 'セット完了：— ／ 監査者：—';
   const photoTitle = isSet ? '作業証跡写真（セット前 / セット後）' : '監査証跡写真';
   const photos = isSet ? ['セット前', 'セット後', 'カレンダー全体'] : ['監査完了', '該当セル拡大'];
 
@@ -1098,6 +1127,13 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
           ? 'セット'
           : 'セット監査';
 
+  const listState = deriveListState({
+    isRealData: args.isRealData ?? false,
+    hydrated: args.hydrated ?? false,
+    loadError: args.loadError ?? false,
+    dataUnavailable,
+  });
+
   return {
     phase: ph,
     isGrid,
@@ -1109,6 +1145,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     patients,
     patientCount: pts.length + '',
     sortButtons,
+    listState,
 
     phases,
     flowHint,

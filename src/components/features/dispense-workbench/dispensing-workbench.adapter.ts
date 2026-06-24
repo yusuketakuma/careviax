@@ -1,17 +1,20 @@
 /**
  * 調剤ワークベンチ データ取得境界（計画 §4 / §11-6 / §14）
  *
- * **既定はモック（USE_MOCK=true）で現行 UI を一切変えない。** 実データパスはゲートの裏に
- * 追加し、フラグで opt-in する。コンポーネントはこのアダプタのみを呼ぶ（seed/logic を直接
- * import しない設計上の単一境界）。
+ * **既定は実データ（USE_MOCK=false）。** §15 人間承認（2026-06-24, フル実データ化）に基づき
+ * 4工程（/dispense /audit /set /set-audit）は既定で実 API を読む。`NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA`
+ * に `'mock'` / `'0'` を指定したときだけモック seed へ退避する opt-out seam を残す（障害時の即時
+ * ロールバック用）。コンポーネントはこのアダプタのみを呼ぶ（seed/logic を直接 import しない
+ * 設計上の単一境界）。
  *
  * - 同期 loadPatients/loadWorkbench/loadCalendar: 従来どおり seed を返す（view が module-load
  *   時に loadPatients() を呼ぶ初期化経路を壊さないため温存）。
  * - 非同期 loadPatientsAsync/loadWorkbenchAsync: USE_MOCK=false 時のみ実 API を fetch し、
  *   from-api で公開型へ写像して返す。fetch 失敗 / 未認証 / 該当無しは空状態 / null を返し、
  *   実データ画面で seed/mock 患者を操作可能にしない。
- *
- * 段階1b スコープは dispense / audit の読取のみ。set / seta（カレンダー）はモック継続。
+ * - 工程フィルタ: 患者リスト fetch に `?phase=` を付与し、当該工程の「待ち＋作業中」患者のみを
+ *   左一覧へ返す（BFF 側 SSOT = PHASE_CYCLE_STATUSES）。内部 Phase（setp/seta）→ URL 表記
+ *   （set/set-audit）の写像は PHASE_TO_API_PARAM。set-audit は SetBatch 集計実装まで空ゲート。
  */
 
 import { buildPatients } from './dispensing-workbench.seed';
@@ -33,6 +36,7 @@ import type {
 import type {
   DispenseWorkbenchData,
   DispenseWorkbenchPatientsResponse,
+  DispenseWorkbenchPhase,
 } from '@/lib/dispensing/dispense-workbench-shared';
 import {
   WorkbenchConflictError,
@@ -52,16 +56,42 @@ import {
 import { DISPENSE_SAFETY_CHECKLIST_ACK } from '@/lib/dispensing/safety-checklist';
 
 /**
- * 既定はモック固定。実データを使う場合のみ false にする（環境変数 opt-in）。
- * NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA='1' のときだけ実データパスを有効化し、
- * 未設定・その他の値は従来どおりモック（現行 UI 不変）。
+ * 既定は実データ（§15 人間承認 2026-06-24）。明示的に `'mock'` / `'0'` を指定したときだけ
+ * モック seed へ退避する opt-out seam を残す（実データ障害時の即時ロールバック用）。
+ * 未設定・`'1'`・その他の値は実データパス。process 不在環境（SSR 前など）も実データ既定。
  */
 const USE_MOCK =
-  typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA !== '1' : true;
+  typeof process !== 'undefined' &&
+  (process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA === 'mock' ||
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA === '0');
 
 /** 実データパスが有効か（シェルがゲート判定に使用）。 */
 export function isRealDataEnabled(): boolean {
   return !USE_MOCK;
+}
+
+/**
+ * 内部 Phase（dispense/audit/setp/seta）を API 境界の URL 表記（dispense/audit/set/set-audit）へ
+ * 写像する。患者リスト BFF（/api/dispense-workbench/patients?phase=）の工程フィルタに使用。
+ * set-audit は SetBatch 集計実装まで BFF 側で空集合ゲート（PHASE_CYCLE_STATUSES）。
+ */
+const PHASE_TO_API_PARAM: Record<Phase, DispenseWorkbenchPhase> = {
+  dispense: 'dispense',
+  audit: 'audit',
+  setp: 'set',
+  seta: 'set-audit',
+};
+
+/**
+ * 患者リスト BFF（/api/dispense-workbench/patients）の querystring を組み立てる。
+ * 先頭 `?` 込みで返し、パラメータが無ければ空文字（後方互換: phase 省略時は従来 URL）。
+ */
+function buildPatientsQuery(options: { includeSetPlan?: boolean; phase?: Phase }): string {
+  const params = new URLSearchParams();
+  if (options.includeSetPlan) params.set('include_set_plan', '1');
+  if (options.phase) params.set('phase', PHASE_TO_API_PARAM[options.phase]);
+  const query = params.toString();
+  return query ? `?${query}` : '';
 }
 
 // ── 同期（モック）API: 既存 view 初期化経路を温存 ──
@@ -108,26 +138,28 @@ async function fetchJson<T>(url: string): Promise<T | null> {
  * 患者リスト（実データ）。USE_MOCK 時は seed 全件、実データ fetch 失敗時は空配列。
  * 実データ画面では seed/mock 患者を表示・操作可能にしない。
  */
-export async function loadPatientsAsync(): Promise<SeedPatient[]> {
-  const { patients } = await loadWorkbenchPatientRowsAsync();
+export async function loadPatientsAsync(phase?: Phase): Promise<SeedPatient[]> {
+  const { patients } = await loadWorkbenchPatientRowsAsync({ phase });
   return patients;
 }
 
 export async function loadWorkbenchPatientRowsAsync(
-  options: { includeSetPlan?: boolean } = {},
+  options: { includeSetPlan?: boolean; phase?: Phase } = {},
 ): Promise<{
   patients: SeedPatient[];
   rows: DispenseWorkbenchPatientRow[];
+  /** fetch が成功したか。false=取得失敗（障害と「0件」を区別するための信号。空状態の honest 表示に使う）。 */
+  ok: boolean;
 }> {
-  if (USE_MOCK) return { patients: buildPatients(), rows: [] };
-  const path = options.includeSetPlan
-    ? '/api/dispense-workbench/patients?include_set_plan=1'
-    : '/api/dispense-workbench/patients';
+  if (USE_MOCK) return { patients: buildPatients(), rows: [], ok: true };
+  const path = `/api/dispense-workbench/patients${buildPatientsQuery(options)}`;
   const body = await fetchJson<DispenseWorkbenchPatientsResponse>(path);
-  if (!body || !Array.isArray(body.data) || body.data.length === 0) {
-    return { patients: [], rows: [] };
+  // body=null は非2xx/例外＝取得失敗。配列だが空は「取得成功・0件」で区別する。
+  if (!body) return { patients: [], rows: [], ok: false };
+  if (!Array.isArray(body.data) || body.data.length === 0) {
+    return { patients: [], rows: [], ok: true };
   }
-  return { patients: patientsFromApi(body.data), rows: body.data };
+  return { patients: patientsFromApi(body.data), rows: body.data, ok: true };
 }
 
 /** dispense-tasks リスト API の最小レスポンス（id/status/cycle_id のみ参照）。 */
@@ -162,7 +194,7 @@ async function resolveTaskId(cycleId: string): Promise<string | null> {
  * 解決不能 / fetch 失敗 / 未認証は null（呼び出し側が空状態へ倒して mock 操作を閉じる）。
  */
 export async function loadWorkbenchAsync(
-  _phase: Phase,
+  phase: Phase,
   patientId: string,
   options: { patientRows?: DispenseWorkbenchPatientRow[] } = {},
 ): Promise<{
@@ -172,9 +204,12 @@ export async function loadWorkbenchAsync(
   audit: Record<string, boolean>;
   quantityConfirmedByDid: Record<string, boolean>;
   writeContext: WorkbenchWriteContextPatch;
+  operators: { dispenserName: string | null; operatorName: string | null };
 } | null> {
   if (USE_MOCK) return null;
-  const listRows = options.patientRows ?? (await loadWorkbenchPatientRowsAsync()).rows;
+  // 詳細 fetch は cycle_id 起点（cycle-bound）なので URL に phase は載せない。
+  // リスト未受領時の fallback 取得のみ、当該工程でフィルタした行を解決する。
+  const listRows = options.patientRows ?? (await loadWorkbenchPatientRowsAsync({ phase })).rows;
   const row = listRows.find((r) => r.patient_id === patientId);
   if (!row || !row.cycle_id) return null;
   const taskId = await resolveTaskId(row.cycle_id);
@@ -183,9 +218,10 @@ export async function loadWorkbenchAsync(
     `/api/dispense-tasks/${encodeURIComponent(taskId)}/workbench`,
   );
   if (!data) return null;
-  const { patient, groups, done, audit, quantityConfirmedByDid } = workbenchFromApi(data);
-  // 書込結線の id 束（task_id / cycle_id / cycle.version / グループ割当）を同時に返し、
-  // シェルが setWriteContext で store に充填できるようにする（mutations hook が読む）。
+  const { patient, groups, done, audit, quantityConfirmedByDid, operators } =
+    workbenchFromApi(data);
+  // 書込結線の id 束（task_id / cycle_id / cycle.version / グループ割当）と operator 表示情報を
+  // 同時に返し、シェルが setWriteContext / setOperators で store に充填できるようにする。
   return {
     patient,
     groups,
@@ -193,6 +229,7 @@ export async function loadWorkbenchAsync(
     audit,
     quantityConfirmedByDid,
     writeContext: writeContextFromApi(data),
+    operators,
   };
 }
 
@@ -247,7 +284,10 @@ export async function loadCalendarWriteContextAsync(
  * The dispensing queue's latest cycle is often not the set-plan cycle, so the
  * patients BFF exposes the patient-level latest SetPlan id.
  */
-export async function loadSetCalendarForPatientAsync(patientId: string): Promise<{
+export async function loadSetCalendarForPatientAsync(
+  patientId: string,
+  phase?: Phase,
+): Promise<{
   patients: SeedPatient[];
   selId: string;
   matrix: CalendarMatrixResponse;
@@ -255,8 +295,9 @@ export async function loadSetCalendarForPatientAsync(patientId: string): Promise
   writeContext: WorkbenchWriteContextPatch;
 } | null> {
   if (USE_MOCK) return null;
+  // set/seta の左一覧も工程フィルタ。seta（set-audit）は BFF 側で空ゲート → 取得 0 件で fail-closed。
   const listBody = await fetchJson<DispenseWorkbenchPatientsResponse>(
-    '/api/dispense-workbench/patients?include_set_plan=1',
+    `/api/dispense-workbench/patients${buildPatientsQuery({ includeSetPlan: true, phase })}`,
   );
   const listRows = listBody?.data;
   if (!listRows || listRows.length === 0) return null;

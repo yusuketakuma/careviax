@@ -327,3 +327,31 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 **残 backlog(非§15)**: billing-rules/page.tsx は admin DataTable で唯一 false-empty 残だが **§15 billing 隣接 → defer**(UI error-state のみでも billing は人間判断に寄せる)。pharmacist error 分岐の dangling `htmlFor` label = a11y NIT(reviewer 指摘, role=alert で SR 担保, 機能影響なし)。他: #2b/c/d MasterEditorView スタブ実データ化, #29 44px タッチ, #30 StateBadge enum→token 残(jobs/billing-rules/performance/pca), #12b priority-before-take(design-gated)。
 
 > Note: a hard-stop writes the **Resume point** here before exiting so the next session can resume without re-deriving context.
+
+### ROUND-WORKBENCH (2026-06-24, claude solo + ultracode workflow)
+
+**§15 人間承認**: ユーザーが AskUserQuestion で 4画面ワークベンチの「読取＋書込フル実データ化」を明示承認 → BLOCKED.md `mainui-workbench-real-data-default` / `mainui-workbench-operator-identity` の human-gate を解除（実装は maker/checker + objective gate + 非モック監査証跡検証を通す）。工程キュー=待ち+作業中、4工程=分離画面（切替は左メニュー）も確定。
+
+**ultracode workflow `wf_4c349ea2-c3c`**: design(3レンズ)→synthesize→review(3敵対的, 全 CHANGES_REQUESTED で実バグ捕捉)→implement Slice T→verify。統合プラン=`~/.claude/plans/foamy-wishing-fern.md`（16k字＋レビュー補正20件追記）。後続 Slice 1〜4 はこの補正版で進める。レビュー補正の要点: `useRealtimeEvents().connected` はコンパイル不可→`useNetworkOnline()`; API auditor は現閲覧者であり履歴帰属でない→fail-closed「—」; seta は SetBatch 集計(Slice 2)前に base-status で出さない; phase を全 call site に通す; Slice T E2E は左メニュー(ラベル「監査」)＋href セレクタ。
+
+**LANDED**:
+
+- Slice T 工程タブ撤去→分離画面（PhaseHeader=静的 `<nav aria-label="現在の工程">`, phase-tabs.tsx 削除, .phaseTabBar 枠/トークン据置でレイアウト不変, 工程切替=左メニュー）`531ac1d3`（claude maker / reviewer-audit APPROVED; unit/tsc/no-unused/prettier/eslint/隔離build green; E2E 2スペックを新アンカー+左メニュー href へ移行＝lint/collection clean）。
+
+**未了/follow-up**:
+
+- E2E runtime 検証: 稼働 :3000 が turbopack で全スペック環境エラー → webpack e2e サーバ(:3012)で `pnpm test:e2e:local` 要確認（私の変更とは無関係の環境ブロック）。
+- ローカル main は Slice T 未取込（main...refactor = 3 ahead / 1 behind; 先のマージは時点マージ。再マージは要指示）。
+
+**全 Slice LANDED 完了（2026-06-24, claude maker / reviewer-audit checker, 全 objective gate GREEN + 隔離 build exit0）:**
+
+- Slice 1B BFF per-phase patient queue filter `359823f4`（PHASE_CYCLE_STATUSES SSOT、後方互換、set-audit 空ゲート）。
+- **Slice 1A** adapter 実データ既定化（USE_MOCK flip + `'mock'`/`'0'` opt-out seam）+ 全 call site phase 伝播 + PHASE_TO_API_PARAM `c6381067`。reviewer teeth: 4 mutation。
+- **Slice 2** set/set-audit を SetBatch 集計で排他分割 `17b74b05`（classifySetBatchPhase = set-derivations と同一基準。reviewer P1: NG セル無視を ng 軸追加で修正＝差戻し待ちを set-audit に保持。teeth 6 mutation）。
+- **Slice 3 (§15)** operator-identity 実結線 `d74bf88e`（実 dispenser 保持 / API auditor=viewer は「操作者」表示で監査帰属に非混入 / useNetworkOnline / --wb-status-offline AA / calBarMeta fail-closed '—'。捏造名 山田花子・佐々木健 完全排除。reviewer 10観点 PASS + teeth 3 mutation）。
+- **Slice 4 (§15 teeth)** 書込監査帰属検証 `aa91f085`（dispense-results/dispense-audits/set-audits が ctx.userId のみで帰属、改竄 client id を無視。各 route の create を client 値優先へ脆弱化すると赤転。self-audit 例外不可侵）。
+- **Slice 1 UI/UX** 左ペイン honest loading/error/empty + retry `2a08802d`（adapter `ok` discriminator、store loadError/retryNonce 非永続、buildView listState、seed ちらつき防止、fail-closed 維持。reviewer APPROVED + teeth 3 mutation + 空実データ crash 安全性確認）。
+
+**§15 sign-off**: BLOCKED.md `mainui-workbench-real-data-default` / `mainui-workbench-operator-identity` を **RESOLVED 注記**（人間承認 via AskUserQuestion + maker/checker + objective gate + 非モック監査証跡を Slice 4 teeth で実証）。
+
+**残 follow-up（非ブロッカー、別スライス）**: (1) set/seta 左ペインの取得失敗が empty 表示（calendar 経路の error 判別未配線、Slice 1 UI/UX P2）。(2) calBarMeta の実 set者/監査者名結線（現状 honest '—'、Slice 3 follow-up）。(3) AuditLog actor / CycleTransitionLog.actor_id / セル単位帰属の追加 teeth（Slice 4 P2）。(4) 左ペイン密度 14/12/11px の cosmetic。(5) 委譲事故の教訓: frontend-implementer は stale base の auto-worktree で作業し未完→破棄、精密 §15 作業は claude 直実装が安全（subagent は read-only review 限定）。

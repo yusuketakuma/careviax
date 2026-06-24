@@ -123,7 +123,9 @@ test.describe('prescription intake flow', () => {
       main.getByRole('link', { name: '調剤キュー' }).first().click(),
     );
 
-    await expect(page.locator('main').getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    await expect(
+      page.locator('main').getByRole('navigation', { name: '現在の工程' }),
+    ).toBeVisible();
     expect(errors).toEqual([]);
   });
 });
@@ -138,18 +140,19 @@ test.describe('dispensing queue', () => {
     await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
-    // 新 DispensingWorkbench の安定アンカーは工程タブ nav[aria-label="工程タブ"]。
-    // 旧 dispense-workbench testid は撤去済み。
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    // 新 DispensingWorkbench の安定アンカーは静的工程ヘッダ nav[aria-label="現在の工程"]。
+    // 旧クリック可能な工程タブ（nav[aria-label="工程タブ"]）は撤去済み。工程切替は左メニュー。
+    const phaseHeader = main.getByRole('navigation', { name: '現在の工程' });
+    await expect(phaseHeader).toBeVisible();
     await expectWorkbenchChromeRemoved(main);
-    // 工程タブ（調剤 / 調剤監査 / セット / セット監査）への <Link> が描画される。
-    await expect(main.getByRole('link', { name: '調剤監査', exact: true })).toBeVisible();
-    await expect(main.getByRole('link', { name: 'セット', exact: true })).toBeVisible();
+    // 静的ヘッダは現工程（調剤）のみを aria-current="page" の span で表示する。
+    // 他工程へのクリック可能なタブ <Link> は存在しない（左メニューへ集約）。
+    await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤');
     // ユーザー指定の保持対象ボタン。
     await expect(main.getByRole('button', { name: /前回処方と比較/ })).toBeVisible();
     await expect(main.getByRole('button', { name: /新規グループ/ })).toBeVisible();
     // 要確認: 旧 dispense ページの「調剤キュー」見出し・「監査」「ワークフロー」ショートカットリンクは
-    // 新ワークベンチには存在しない（工程タブへ集約）。旧アサーションは撤去。
+    // 新ワークベンチには存在しない。旧アサーションは撤去。
 
     expect(errors).toEqual([]);
   });
@@ -167,18 +170,21 @@ test.describe('dispensing queue', () => {
     expect(errors).toEqual([]);
   });
 
-  test('phase tab from dispensing to audit works', async ({ context }) => {
+  test('phase navigation from dispensing to audit works via left menu', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
-    // 新ワークベンチは工程タブ（調剤監査 → /audit）の <Link> で遷移する。
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
+    // 工程切替は左メニュー（href ベース。'監査' は critical バッジを持つためラベル一致を避ける）。
     await clickAndWaitForStableRoute(page, /\/audit/, () =>
-      main.getByRole('link', { name: '調剤監査', exact: true }).first().click(),
+      page.locator('a[href="/audit"]').first().click(),
     );
 
-    // 遷移後は調剤監査工程タブが active（aria-current="page"）になる。
-    await expect(main.locator('a[aria-current="page"]')).toBeVisible();
+    // 遷移後は監査画面の静的工程ヘッダが現工程（調剤監査）を表示する。
+    const phaseHeader = main.getByRole('navigation', { name: '現在の工程' });
+    await expect(phaseHeader).toBeVisible();
+    await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤監査');
     expect(errors).toEqual([]);
   });
 });
@@ -188,20 +194,21 @@ test.describe('auditing queue', () => {
     await attachLocalSession(context);
   });
 
-  test('audit queue page loads with workbench shell and phase tabs', async ({ context }) => {
+  test('audit queue page loads with workbench shell and static phase header', async ({
+    context,
+  }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/audit');
 
     const main = page.locator('main');
-    // 新 DispensingWorkbench（phase="audit"）。安定アンカーは工程タブ。
-    // 旧 audit-workbench / main-workflow-compact-nav testid は撤去済み。
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    // 新 DispensingWorkbench（phase="audit"）。安定アンカーは静的工程ヘッダ。
+    // 旧クリック可能な工程タブ（nav[aria-label="工程タブ"]）は撤去済み。工程切替は左メニュー。
+    const phaseHeader = main.getByRole('navigation', { name: '現在の工程' });
+    await expect(phaseHeader).toBeVisible();
     await expectWorkbenchChromeRemoved(main);
-    // 工程タブ（調剤 / セット）への <Link> が描画される。
-    await expect(main.getByRole('link', { name: '調剤', exact: true }).first()).toBeVisible();
-    await expect(main.getByRole('link', { name: 'セット', exact: true }).first()).toBeVisible();
-    // 要確認: 旧 audit ページの「監査」見出し・「ワークフロー」ショートカットリンクは
-    // 新ワークベンチには存在しない（工程タブへ集約）。旧アサーションは撤去。
+    // 静的ヘッダは現工程（調剤監査）のみを aria-current="page" の span で表示する。
+    // 他工程へのクリック可能なタブ <Link> は存在しない（左メニューへ集約）。
+    await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤監査');
 
     expect(errors).toEqual([]);
   });
@@ -235,21 +242,24 @@ test.describe('workflow cross-navigation', () => {
     await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
     );
-    // 新ワークベンチの工程タブが安定アンカー（旧「調剤キュー」見出しは撤去済み）。
+    // 新ワークベンチの静的工程ヘッダが安定アンカー（旧「調剤キュー」見出しは撤去済み）。
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    const phaseHeader = main.getByRole('navigation', { name: '現在の工程' });
+    await expect(phaseHeader).toBeVisible();
 
-    // Navigate to audit via 工程タブ（調剤監査 → /audit）
+    // Navigate to audit via 左メニュー（href ベース。'監査' は critical バッジを持つ）
     await clickAndWaitForStableRoute(page, /\/audit/, () =>
-      main.getByRole('link', { name: '調剤監査', exact: true }).first().click(),
+      page.locator('a[href="/audit"]').first().click(),
     );
-    await expect(main.locator('a[aria-current="page"]')).toBeVisible();
+    await expect(phaseHeader).toBeVisible();
+    await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤監査');
 
-    // Navigate back to dispense via 工程タブ（調剤 → /dispense）
+    // Navigate back to dispense via 左メニュー（調剤 → /dispense）
     await clickAndWaitForStableRoute(page, /\/dispense/, () =>
-      main.getByRole('link', { name: '調剤', exact: true }).first().click(),
+      page.locator('a[href="/dispense"]').first().click(),
     );
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    await expect(phaseHeader).toBeVisible();
+    await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤');
 
     // Full round trip should have no errors
     expect(errors).toEqual([]);

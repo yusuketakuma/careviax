@@ -411,6 +411,8 @@ describe('/api/dispense-results POST', () => {
         task_id: 'task_1',
         expected_version: 5,
         safety_checklist: safetyChecklist,
+        // §15 帰属検証: クライアントが調剤者 id を偽装しても無視され、ctx.userId に帰属する。
+        dispensed_by: 'attacker',
         lines: [
           {
             line_id: 'line_1',
@@ -421,6 +423,7 @@ describe('/api/dispense-results POST', () => {
             actual_quantity_source: 'manual_entry',
             carry_type: 'carry',
             discrepancy_reason: '残薬調整',
+            dispensed_by: 'attacker',
           },
         ],
       }),
@@ -433,7 +436,12 @@ describe('/api/dispense-results POST', () => {
         actual_quantity: 12,
         actual_unit: '錠',
         discrepancy_reason: '残薬調整',
+        // 帰属は常にセッションユーザ（ctx.userId='user_1'）。偽装 'attacker' は採用しない。
+        dispensed_by: 'user_1',
       }),
+    });
+    expect(dispenseResultCreateMock).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({ dispensed_by: 'attacker' }),
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({

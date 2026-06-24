@@ -105,7 +105,7 @@ function recoverActiveQuery(queryClient: QueryClient, queryKey: QueryKey): void 
 
 async function recoverWorkbenchDirect(phase: Phase, patientId: string): Promise<void> {
   if (phase !== 'dispense' && phase !== 'audit') return;
-  const patients = await loadPatientsAsync();
+  const patients = await loadPatientsAsync(phase);
   if (patients.length === 0) {
     useWorkbenchStore.getState().hydrate({ patients: [] });
     return;

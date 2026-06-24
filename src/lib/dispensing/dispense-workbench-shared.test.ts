@@ -11,10 +11,12 @@ import {
   familyName,
   findNextCountTarget,
   formatAgeMinutesLabel,
+  classifySetBatchPhase,
   formatDueTime,
   formatRemainingLabel,
   getDispenseMedicationGroupMethodLabel,
   judgeCountRow,
+  PHASE_CYCLE_STATUSES,
   type WorkbenchCountRow,
   type DispenseWorkbenchData,
 } from './dispense-workbench-shared';
@@ -437,5 +439,69 @@ describe('deriveListBadge', () => {
     ]) {
       expect(deriveListBadge(status)).toBe('not_started');
     }
+  });
+});
+
+describe('PHASE_CYCLE_STATUSES', () => {
+  it('maps each phase to its wait+in-progress status set', () => {
+    expect(PHASE_CYCLE_STATUSES.dispense).toEqual(['ready_to_dispense', 'dispensing']);
+    expect(PHASE_CYCLE_STATUSES.audit).toEqual(['dispensed', 'audit_pending']);
+    expect(PHASE_CYCLE_STATUSES.set).toEqual(['audited', 'setting']);
+  });
+
+  it('shares the same base status set for set and set-audit (split happens via SetBatch state)', () => {
+    // set / set-audit は同一 base（audited/setting）。最終振り分けは classifySetBatchPhase。
+    expect(PHASE_CYCLE_STATUSES['set-audit']).toEqual(['audited', 'setting']);
+    expect(PHASE_CYCLE_STATUSES['set-audit']).toEqual(PHASE_CYCLE_STATUSES.set);
+  });
+
+  it('never includes on_hold/cancelled or upstream intake statuses in any phase', () => {
+    const excluded = [
+      'on_hold',
+      'cancelled',
+      'intake_received',
+      'structuring',
+      'inquiry_pending',
+      'inquiry_resolved',
+    ];
+    for (const statuses of Object.values(PHASE_CYCLE_STATUSES)) {
+      for (const bad of excluded) {
+        expect(statuses).not.toContain(bad);
+      }
+    }
+  });
+});
+
+describe('classifySetBatchPhase', () => {
+  it('classifies a cycle with no batches as still setting (no SetPlan / not started)', () => {
+    expect(classifySetBatchPhase({ total: 0, pending: 0, unaudited: 0, ng: 0 })).toBe('setting');
+  });
+
+  it('classifies a plan with any unset (pending) cell as still setting', () => {
+    expect(classifySetBatchPhase({ total: 10, pending: 3, unaudited: 10, ng: 0 })).toBe('setting');
+  });
+
+  it('treats held cells as not blocking set completion (hold is excluded from pending)', () => {
+    // 全セル set or hold（pending=0）かつ未監査あり → セット完了・監査待ち。
+    expect(classifySetBatchPhase({ total: 10, pending: 0, unaudited: 4, ng: 0 })).toBe(
+      'audit-pending',
+    );
+  });
+
+  it('classifies a fully set + unaudited plan as audit-pending (set-audit queue)', () => {
+    expect(classifySetBatchPhase({ total: 8, pending: 0, unaudited: 8, ng: 0 })).toBe(
+      'audit-pending',
+    );
+  });
+
+  it('keeps a fully set, fully reviewed plan with an NG cell in set-audit (NG = rework pending)', () => {
+    // set-derivations の audit_complete は unaudited===0 && ng===0。NG が残る間は監査未完了。
+    expect(classifySetBatchPhase({ total: 8, pending: 0, unaudited: 0, ng: 2 })).toBe(
+      'audit-pending',
+    );
+  });
+
+  it('classifies a fully set + fully audited plan (no unaudited, no NG) as complete', () => {
+    expect(classifySetBatchPhase({ total: 8, pending: 0, unaudited: 0, ng: 0 })).toBe('complete');
   });
 });

@@ -236,6 +236,13 @@ export function workbenchFromApi(data: DispenseWorkbenchData): {
   done: Record<string, boolean>;
   audit: Record<string, boolean>;
   quantityConfirmedByDid: Record<string, boolean>;
+  /**
+   * status bar 表示用の operator 情報（捏造名を出さないための honest 写像）。
+   * - dispenserName: 実記録された調剤者（dispense_results.dispensed_by 由来）。無ければ null。
+   * - operatorName: 現在の操作者（API auditor = ctx.userId の閲覧者）。記録済み監査者ではないので
+   *   「監査者：」完了ラベルでは表示しない。無ければ null。
+   */
+  operators: { dispenserName: string | null; operatorName: string | null };
 } {
   // comparison: line_id（comparison.key）→ chg / prevText を引くマップ + 中止薬。
   // Legacy fallback by drug_name is used only when the name maps to exactly one comparison row.
@@ -366,7 +373,19 @@ export function workbenchFromApi(data: DispenseWorkbenchData): {
     rows: [],
   };
 
-  return { patient, groups, done, audit: {}, quantityConfirmedByDid };
+  // operator 写像（honest）: 実 dispenser 名と現操作者（viewer）名を保持。null は null のまま（捏造しない）。
+  // audit は記録済み監査帰属の器なので空のまま（viewer = data.auditor を記録済み監査者に混同しない）。
+  return {
+    patient,
+    groups,
+    done,
+    audit: {},
+    quantityConfirmedByDid,
+    operators: {
+      dispenserName: data.dispenser?.name ?? null,
+      operatorName: data.auditor?.name ?? null,
+    },
+  };
 }
 
 // ── 公開: 書込結線の実データ識別子（writeContext の dispense/audit 部分） ──

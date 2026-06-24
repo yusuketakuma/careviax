@@ -33,7 +33,7 @@ const CONSUMER_FILES = [
   'medication-calendar-grid.tsx',
   'dispensing-workbench.tsx',
   'patient-list-panel.tsx',
-  'phase-tabs.tsx',
+  'phase-header.tsx',
   'hold-reason-dialog.tsx',
   'prescription-compare-dialog.tsx',
 ] as const;

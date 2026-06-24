@@ -311,6 +311,35 @@ describe('workbenchFromApi — 朝昼夕眠前 slots の逆算割付', () => {
   });
 });
 
+// ── ワークベンチ写像: operator（honest attribution / 捏造名の排除） ──
+
+describe('workbenchFromApi — operator 写像（honest attribution）', () => {
+  it('preserves the real recorded dispenser and the current operator (viewer) names', () => {
+    const data = workbenchData({
+      dispenser: { id: 'u1', name: '鈴木', time_label: '09:10' },
+      auditor: { id: 'u2', name: '高橋' },
+    });
+    expect(workbenchFromApi(data).operators).toEqual({
+      dispenserName: '鈴木',
+      operatorName: '高橋',
+    });
+  });
+
+  it('fails closed to null when dispenser/auditor are absent (no fabricated names)', () => {
+    const data = workbenchData({ dispenser: null, auditor: null });
+    expect(workbenchFromApi(data).operators).toEqual({
+      dispenserName: null,
+      operatorName: null,
+    });
+  });
+
+  it('never folds the current viewer (auditor) into the recorded audit attribution', () => {
+    // data.auditor は現閲覧者（prospective）。記録済み監査帰属の器（audit）には混入させない。
+    const data = workbenchData({ auditor: { id: 'viewer', name: '閲覧者' } });
+    expect(workbenchFromApi(data).audit).toEqual({});
+  });
+});
+
 // ── ワークベンチ写像: Drug フィールド（tag / funsai / note / 用法） ──
 
 describe('workbenchFromApi — Drug フィールド写像', () => {
