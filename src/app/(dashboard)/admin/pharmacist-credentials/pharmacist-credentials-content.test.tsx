@@ -9,6 +9,7 @@ import { PharmacistCredentialsContent } from './pharmacist-credentials-content';
 setupDomTestEnv();
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+const useQueryMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
@@ -19,46 +20,52 @@ vi.mock('@tanstack/react-query', () => ({
     mutate: mutationMutateMock,
     isPending: false,
   }),
-  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
-    const key = queryKey[0];
-
-    if (key === 'pharmacist-credentials') {
-      return {
-        data: {
-          data: [
-            {
-              id: 'credential_1',
-              user_id: 'user_1',
-              user_name: '山田 太郎',
-              certification_type: '研修認定',
-              certification_number: 'CERT-001',
-              issued_date: '2025-04-01T00:00:00.000Z',
-              expiry_date: '2028-03-31T00:00:00.000Z',
-              tenure_years: 5.5,
-              weekly_work_hours: 32,
-              consented_patients: [],
-            },
-          ],
-        },
-        isLoading: false,
-      };
-    }
-
-    if (key === 'pharmacist-options') {
-      return {
-        data: {
-          data: [{ id: 'user_1', name: '山田 太郎', site_name: '本店', role: 'pharmacist' }],
-        },
-        isLoading: false,
-      };
-    }
-
-    return { data: { data: [] }, isLoading: false };
-  },
+  useQuery: useQueryMock,
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
   }),
 }));
+
+function defaultUseQueryImpl({ queryKey }: { queryKey: readonly unknown[] }) {
+  const key = queryKey[0];
+
+  if (key === 'pharmacist-credentials') {
+    return {
+      data: {
+        data: [
+          {
+            id: 'credential_1',
+            user_id: 'user_1',
+            user_name: '山田 太郎',
+            certification_type: '研修認定',
+            certification_number: 'CERT-001',
+            issued_date: '2025-04-01T00:00:00.000Z',
+            expiry_date: '2028-03-31T00:00:00.000Z',
+            tenure_years: 5.5,
+            weekly_work_hours: 32,
+            consented_patients: [],
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+  }
+
+  if (key === 'pharmacist-options') {
+    return {
+      data: {
+        data: [{ id: 'user_1', name: '山田 太郎', site_name: '本店', role: 'pharmacist' }],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    };
+  }
+
+  return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+}
 
 vi.mock('@/components/ui/data-table', () => ({
   DataTable: ({
@@ -153,6 +160,7 @@ vi.mock('sonner', () => ({
 describe('PharmacistCredentialsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useQueryMock.mockImplementation(defaultUseQueryImpl);
   });
 
   it('associates credential dialog fields with visible labels', () => {
@@ -207,6 +215,26 @@ describe('PharmacistCredentialsContent', () => {
 
     fireEvent.click(saveButton);
     expect(mutationMutateMock).not.toHaveBeenCalled();
+  });
+
+  it('shows ErrorState (not a false-empty table) with retry when the credentials query fails', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[0] === 'pharmacist-credentials') {
+        // 取得失敗 → 空一覧(false-empty)ではなく ErrorState + 再読み込み。
+        return { data: undefined, isLoading: false, isError: true, refetch };
+      }
+      return defaultUseQueryImpl({ queryKey });
+    });
+
+    render(<PharmacistCredentialsContent />);
+
+    expect(screen.getByText('サーバーエラーが発生しました')).toBeTruthy();
+    // 空のテーブルを描画していないこと(false-empty 回避)。
+    expect(screen.queryByTestId('credentials-table')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it('names row actions by pharmacist and certification target', () => {

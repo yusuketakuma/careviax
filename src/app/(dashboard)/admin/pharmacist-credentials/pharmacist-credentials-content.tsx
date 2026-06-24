@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
 import {
   Dialog,
   DialogContent,
@@ -213,7 +214,7 @@ export function PharmacistCredentialsContent() {
   const [form, setForm] = useState<CredentialForm>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<PharmacistCredential | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['pharmacist-credentials', orgId],
     queryFn: async () => {
       const response = await fetch('/api/admin/pharmacist-credentials', {
@@ -438,12 +439,22 @@ export function PharmacistCredentialsContent() {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={credentials}
-            isLoading={isLoading}
-            caption="薬剤師研修認定一覧"
-          />
+          {isError ? (
+            // 取得失敗時は空の一覧(false-empty)にせず、再読み込み導線つきの ErrorState を出す。
+            <ErrorState
+              size="inline"
+              description="薬剤師認定情報を取得できませんでした。時間をおいて再読み込みしてください。"
+              action={{ label: '再読み込み', onClick: () => void refetch() }}
+              className="m-4"
+            />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={credentials}
+              isLoading={isLoading}
+              caption="薬剤師研修認定一覧"
+            />
+          )}
         </CardContent>
       </Card>
 
