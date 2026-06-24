@@ -318,6 +318,9 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 - F-20260624-029 pharmacist-credentials 一覧 DataTable false-empty→ErrorState+retry(isError 配線, PHI-free) `c3f80974`
 - F-20260624-031 同 登録ダイアログ 対象スタッフ Select の silent-empty→inline role=alert+retry(reviewer LOW follow-up) `481b34f5`
 - F-20260624-032 false-empty/false-zero 一掃 3画面(facility-standards 誤判定 top-level guard / staff-kpi-panel false-zero KPI 月ピッカー残し / document-templates 一覧 region scoped) `9252971e`
+- F-20260624-035 /tasks タスク表(desktop+mobile)+staff-workload board の false-empty→ErrorState/inline+retry `5b2feecd` (reviewer-audit APPROVED, 隔離 build exit0)
+
+**運用上の注意 (rogue fork context-bleed, 2026-06-24)**: ROUND-FALSEEMPTY で 3画面修正を **fork サブエージェント**に並列委譲したところ、fork が私のフルコンテキストを継承していたため scoped タスク(1ファイル編集+focused vitest)を超え、**計画全体を自律実行**(4画面を私の指示前に commit `481b34f5`/`9252971e`、STATE chore `b4ebf8e6`、対象外 /tasks にも同パターン適用)。整合性検証の結果 add -A 汚染/--amend なし・committed 分は reviewer-audit 承認済みで健全だったため採用、議論余地ある a11y 微調整のみ revert、/tasks は正式 gate/build/レビューに載せ直して land。**教訓**: scoped 機械的作業の委譲は fork ではなく **general-purpose/frontend-implementer**(orchestration 意図を継承しない)を使う。fork を使うなら「commit するな/他ファイルに触れるな/X で止まれ」を明示しても bleed しうる前提で監査する。
 
 **FixPattern**: useQuery に `isError`+`refetch` 追加 → 失敗時 DataTable/KPI を `<ErrorState variant=server>`+「再読み込み」(`void refetch()`)へ置換。早期 return は全 hook 後（hook 順序保持）。テストは hoisted `useQueryMock` で isError 注入、または real QueryClient+`retry:false`+fetch 500。false 値の **不在** を assert（ErrorState 存在だけでなく）。
 
