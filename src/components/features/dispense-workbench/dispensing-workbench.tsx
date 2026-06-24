@@ -115,7 +115,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     if (phase !== 'dispense' && phase !== 'audit') return; // set/seta は別 effect
     let cancelled = false;
     void (async () => {
-      const { patients, rows } = await loadWorkbenchPatientRowsAsync();
+      const { patients, rows } = await loadWorkbenchPatientRowsAsync({ phase });
       if (cancelled) return;
       if (patients.length === 0) {
         hydrate({ patients: [] });
@@ -166,7 +166,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         return;
       }
 
-      const result = await loadSetCalendarForPatientAsync(selId);
+      const result = await loadSetCalendarForPatientAsync(selId, phase);
       if (cancelled) return;
       if (!result) {
         hydrate({ patients: [] });

@@ -375,3 +375,127 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('dispensing-workbench.adapter real-data default + phase filtering', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    delete process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA;
+  });
+
+  it('defaults to the real-data path when the flag is unset (§15 real-data default)', async () => {
+    // フラグ未設定でも実 API を読む（mock seed に戻らない）。
+    delete process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA;
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        data: [
+          {
+            patient_id: 'patient_1',
+            cycle_id: 'cycle_1',
+            name: '佐藤 花子',
+            name_kana: 'サトウ ハナコ',
+            overall_status: 'dispensing',
+            badge: 'in_progress',
+            start_date: '2026-06-17',
+            registered_date: '2026-06-01',
+            latest_set_plan_id: null,
+            latest_set_plan_cycle_id: null,
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { isRealDataEnabled, loadPatientsAsync } = await import('./dispensing-workbench.adapter');
+
+    expect(isRealDataEnabled()).toBe(true);
+    const result = await loadPatientsAsync();
+    expect(fetchMock).toHaveBeenCalledWith('/api/dispense-workbench/patients', expect.any(Object));
+    expect(result.map((p) => p.id)).toEqual(['patient_1']);
+  });
+
+  it("retains a mock opt-out seam when the flag is 'mock' (rollback path)", async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = 'mock';
+    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { isRealDataEnabled, loadPatientsAsync } = await import('./dispensing-workbench.adapter');
+
+    expect(isRealDataEnabled()).toBe(false);
+    const result = await loadPatientsAsync();
+    // seed へ退避（非空）し、実 API は叩かない。
+    expect(result.length).toBeGreaterThan(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('appends ?phase= to the patients query for the audit phase', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadPatientsAsync } = await import('./dispensing-workbench.adapter');
+    await loadPatientsAsync('audit');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/dispense-workbench/patients?phase=audit',
+      expect.any(Object),
+    );
+  });
+
+  it('maps the internal setp phase to the set URL token with include_set_plan', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/dispense-workbench/patients?include_set_plan=1&phase=set') {
+        return jsonResponse({
+          data: [
+            {
+              patient_id: 'patient_1',
+              cycle_id: 'cycle_latest_without_plan',
+              name: '佐藤 花子',
+              name_kana: 'サトウ ハナコ',
+              overall_status: 'setting',
+              badge: 'in_progress',
+              start_date: '2026-06-17',
+              registered_date: '2026-06-01',
+              latest_set_plan_id: 'plan_1',
+              latest_set_plan_cycle_id: 'cycle_1',
+            },
+          ],
+        });
+      }
+      if (url === '/api/set-plans/plan_1/calendar') {
+        return jsonResponse(calendarBody());
+      }
+      return new Response('unexpected url', { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadSetCalendarForPatientAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadSetCalendarForPatientAsync('patient_1', 'setp');
+
+    expect(result?.selId).toBe('patient_1');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/dispense-workbench/patients?include_set_plan=1&phase=set',
+      expect.any(Object),
+    );
+  });
+
+  it('maps the seta phase to set-audit and fails closed on the empty gate', async () => {
+    // set-audit は BFF で空集合ゲート → 0 件 → null（seed カレンダーへ戻さない）。
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadSetCalendarForPatientAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadSetCalendarForPatientAsync('patient_1', 'seta');
+
+    expect(result).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/dispense-workbench/patients?include_set_plan=1&phase=set-audit',
+      expect.any(Object),
+    );
+  });
+});
