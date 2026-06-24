@@ -7,6 +7,7 @@ import { AlertTriangle, BarChart3, FileCheck2, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -58,7 +59,7 @@ export function StaffKpiPanel() {
   const orgId = useOrgId();
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['staff-kpi', orgId, month],
     queryFn: async () => {
       const response = await fetch(`/api/admin/staff-metrics?month=${month}`, {
@@ -161,46 +162,57 @@ export function StaffKpiPanel() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          icon={Users}
-          label="対象スタッフ"
-          value={`${summary?.total_staff ?? 0}名`}
-          helper="KPI 集計対象"
+      {isError ? (
+        // 取得失敗時は KPI を false-zero(0名/0件/0%)・空テーブルにせず、再読み込み導線を示す。
+        <ErrorState
+          size="inline"
+          description="スタッフKPIを取得できませんでした。時間をおいて再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: () => void refetch() }}
         />
-        <SummaryCard
-          icon={BarChart3}
-          label="平均月間訪問"
-          value={`${summary?.avg_monthly_visits ?? 0}件`}
-          helper="実績ベース"
-        />
-        <SummaryCard
-          icon={FileCheck2}
-          label="平均提出率"
-          value={`${summary?.avg_report_submission_rate ?? 0}%`}
-          helper="CareReport 作成率"
-        />
-        <SummaryCard
-          icon={AlertTriangle}
-          label="負荷偏り"
-          value={`${summary?.overloaded_count ?? 0} / ${summary?.underutilized_count ?? 0}`}
-          helper="高負荷 / 余力あり"
-        />
-      </div>
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard
+              icon={Users}
+              label="対象スタッフ"
+              value={`${summary?.total_staff ?? 0}名`}
+              helper="KPI 集計対象"
+            />
+            <SummaryCard
+              icon={BarChart3}
+              label="平均月間訪問"
+              value={`${summary?.avg_monthly_visits ?? 0}件`}
+              helper="実績ベース"
+            />
+            <SummaryCard
+              icon={FileCheck2}
+              label="平均提出率"
+              value={`${summary?.avg_report_submission_rate ?? 0}%`}
+              helper="CareReport 作成率"
+            />
+            <SummaryCard
+              icon={AlertTriangle}
+              label="負荷偏り"
+              value={`${summary?.overloaded_count ?? 0} / ${summary?.underutilized_count ?? 0}`}
+              helper="高負荷 / 余力あり"
+            />
+          </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">薬剤師別 KPI</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={items}
-            isLoading={isLoading}
-            caption="薬剤師別 KPI 一覧"
-          />
-        </CardContent>
-      </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">薬剤師別 KPI</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <DataTable
+                columns={columns}
+                data={items}
+                isLoading={isLoading}
+                caption="薬剤師別 KPI 一覧"
+              />
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

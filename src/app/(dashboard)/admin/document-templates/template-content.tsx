@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminDocumentTemplatesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { DataTable } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -135,7 +136,7 @@ export function DocumentTemplateContent() {
     contentText: JSON.stringify(DEFAULT_TEMPLATE_CONTENT.care_report, null, 2),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['document-templates', orgId, filterType],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -521,13 +522,22 @@ export function DocumentTemplateContent() {
             </div>
           </CardHeader>
           <CardContent>
-            <DataTable
-              columns={columns}
-              data={data?.data ?? []}
-              isLoading={isLoading}
-              caption="文書テンプレート一覧"
-              emptyMessage="文書テンプレートはまだありません"
-            />
+            {isError ? (
+              // 取得失敗時は空一覧(false-empty)にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                size="inline"
+                description="文書テンプレートを取得できませんでした。時間をおいて再読み込みしてください。"
+                action={{ label: '再読み込み', onClick: () => void refetch() }}
+              />
+            ) : (
+              <DataTable
+                columns={columns}
+                data={data?.data ?? []}
+                isLoading={isLoading}
+                caption="文書テンプレート一覧"
+                emptyMessage="文書テンプレートはまだありません"
+              />
+            )}
           </CardContent>
         </Card>
       </PageSection>

@@ -12,6 +12,7 @@ import { format, differenceInDays, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { AlertTriangle, CheckCircle2, XCircle, Bell } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -126,7 +127,7 @@ function ClaimStatusBadge({ status }: { status: FacilityStandard['claim_status']
 export function FacilityStandardsContent() {
   const orgId = useOrgId();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['facility-standards', orgId],
     queryFn: async () => {
       const res = await fetch('/api/admin/facility-standards', {
@@ -188,6 +189,19 @@ export function FacilityStandardsContent() {
     ],
     [],
   );
+
+  if (isError) {
+    // 取得失敗時は空データから誤った「判定」を出さず(false-judgement 回避)、再読み込み導線を示す。
+    return (
+      <div className="space-y-4">
+        <ErrorState
+          size="inline"
+          description="施設基準を取得できませんでした。時間をおいて再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: () => void refetch() }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

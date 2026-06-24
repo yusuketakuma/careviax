@@ -141,6 +141,34 @@ describe('DocumentTemplateContent', () => {
     });
   });
 
+  it('shows ErrorState (not a false-empty list) with retry when the templates query fails', async () => {
+    let templatesCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.startsWith('/api/templates') && !init?.method) {
+          templatesCalls += 1;
+          // 取得失敗 → 空一覧ではなく ErrorState + 再読み込み。
+          return new Response(JSON.stringify({ message: 'failed' }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('サーバーエラーが発生しました')).toBeTruthy();
+    // false-empty（空一覧メッセージ）を出していないこと。
+    expect(screen.queryByText('文書テンプレートはまだありません')).toBeNull();
+
+    const callsBeforeRetry = templatesCalls;
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    await waitFor(() => {
+      expect(templatesCalls).toBeGreaterThan(callsBeforeRetry);
+    });
+  });
+
   it('names the edit action and loads the selected template into the form', async () => {
     renderContent();
 
