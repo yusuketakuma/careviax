@@ -66,6 +66,22 @@ export type DayBoardStaff = {
   audit_task_count: number;
 };
 
+export type ScheduleDayBoardOperationalTask = {
+  id: string;
+  task_type: string;
+  title: string;
+  description: string | null;
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  priority: 'urgent' | 'high' | 'normal' | 'low';
+  assigned_to: string | null;
+  due_date: string | null;
+  sla_due_at: string | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type DayBoardPatientContactStatus =
   | 'pending'
   | 'attempted'
@@ -104,6 +120,8 @@ export type ScheduleDayBoardResponse = {
   report_pending_count: number;
   vehicle_resources: DayBoardVehicleResource[];
   pending_proposals: DayBoardPendingProposal[];
+  /** Current-board visit/proposal operational tasks; replaces the page's org-wide task scan. */
+  operational_tasks: ScheduleDayBoardOperationalTask[];
 };
 
 export type DayBoardVehicleResource = {

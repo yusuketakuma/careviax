@@ -7,6 +7,7 @@ const {
   visitScheduleFindManyMock,
   dispenseTaskGroupByMock,
   taskGroupByMock,
+  taskFindManyMock,
   medicationCycleCountMock,
   proposalFindManyMock,
   facilityFindManyMock,
@@ -23,6 +24,7 @@ const {
   visitScheduleFindManyMock: vi.fn(),
   dispenseTaskGroupByMock: vi.fn(),
   taskGroupByMock: vi.fn(),
+  taskFindManyMock: vi.fn(),
   medicationCycleCountMock: vi.fn(),
   proposalFindManyMock: vi.fn(),
   facilityFindManyMock: vi.fn(),
@@ -47,7 +49,7 @@ vi.mock('@/lib/db/client', () => ({
     membership: { findMany: membershipFindManyMock },
     visitSchedule: { findMany: visitScheduleFindManyMock },
     dispenseTask: { groupBy: dispenseTaskGroupByMock },
-    task: { groupBy: taskGroupByMock },
+    task: { groupBy: taskGroupByMock, findMany: taskFindManyMock },
     medicationCycle: { count: medicationCycleCountMock },
     visitScheduleProposal: { findMany: proposalFindManyMock },
     facility: { findMany: facilityFindManyMock },
@@ -81,6 +83,7 @@ describe('/api/visit-schedules/day-board', () => {
     visitScheduleFindManyMock.mockResolvedValue([]);
     dispenseTaskGroupByMock.mockResolvedValue([]);
     taskGroupByMock.mockResolvedValue([]);
+    taskFindManyMock.mockResolvedValue([]);
     medicationCycleCountMock.mockResolvedValue(0);
     proposalFindManyMock.mockResolvedValue([]);
     facilityFindManyMock.mockResolvedValue([]);
@@ -110,6 +113,7 @@ describe('/api/visit-schedules/day-board', () => {
       lt: new Date('2026-06-13T00:00:00.000Z'),
     });
     expect(select).toMatchObject({
+      cycle: { select: { overall_status: true } },
       carry_items_status: true,
       preparation: {
         select: {
@@ -135,6 +139,165 @@ describe('/api/visit-schedules/day-board', () => {
       gte: new Date('2026-06-20T00:00:00.000Z'),
       lt: new Date('2026-06-21T00:00:00.000Z'),
     });
+  });
+
+  it('scopes audit/report workload and operational tasks to the current day board', async () => {
+    const todaySchedule = {
+      id: 'visit_today',
+      case_id: 'case_today',
+      cycle_id: 'cycle_today',
+      pharmacist_id: 'user_1',
+      visit_type: 'regular',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+      carry_items_status: 'ready',
+      priority: 'normal',
+      site_id: 'site_1',
+      route_order: 1,
+      vehicle_resource_id: null,
+      vehicle_resource: null,
+      time_window_start: new Date(2026, 5, 12, 10, 0),
+      time_window_end: new Date(2026, 5, 12, 10, 30),
+      confirmed_at: null,
+      cycle: { overall_status: 'visit_completed' },
+      preparation: {
+        org_id: 'org_1',
+        prepared_at: null,
+        medication_changes_reviewed: true,
+        carry_items_confirmed: true,
+        previous_issues_reviewed: true,
+        route_confirmed: true,
+        offline_synced: true,
+      },
+      facility_batch_id: null,
+      facility_batch: null,
+      visit_record: null,
+      case_: {
+        patient: { id: 'patient_today', name: '伊藤 キヨ', contacts: [{ id: 'contact_1' }] },
+        care_team_links: [{ role: 'physician' }],
+      },
+    };
+    visitScheduleFindManyMock.mockResolvedValueOnce([todaySchedule]).mockResolvedValueOnce([]);
+    proposalFindManyMock.mockResolvedValue([
+      {
+        id: 'proposal_today',
+        visit_type: 'regular',
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+        proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        case_: { patient: { name: '佐藤 花子' } },
+      },
+    ]);
+    dispenseTaskGroupByMock.mockResolvedValue([
+      { assigned_to: 'user_1', _count: { id: 2 } },
+      { assigned_to: null, _count: { id: 1 } },
+    ]);
+    taskFindManyMock.mockResolvedValue([
+      {
+        id: 'task_visit_today',
+        task_type: 'visit_preparation',
+        title: '訪問準備',
+        description: '持参物確認',
+        status: 'pending',
+        priority: 'urgent',
+        assigned_to: 'user_1',
+        due_date: new Date('2026-06-12T03:00:00.000Z'),
+        sla_due_at: null,
+        related_entity_type: 'visit_schedule',
+        related_entity_id: 'visit_today',
+        metadata: { patient_phone: '090-0000-0000' },
+        created_at: new Date('2026-06-12T00:00:00.000Z'),
+      },
+      {
+        id: 'task_proposal_today',
+        task_type: 'visit_contact_followup',
+        title: '連絡結果を確認',
+        description: null,
+        status: 'in_progress',
+        priority: 'normal',
+        assigned_to: null,
+        due_date: null,
+        sla_due_at: new Date('2026-06-12T04:00:00.000Z'),
+        related_entity_type: 'visit_schedule_proposal',
+        related_entity_id: 'proposal_today',
+        metadata: { callback_note: '自由記載は出さない' },
+        created_at: new Date('2026-06-12T01:00:00.000Z'),
+      },
+    ]);
+
+    const response = (await GET(createRequest('2026-06-12'), {
+      params: Promise.resolve({}),
+    }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(dispenseTaskGroupByMock).toHaveBeenCalledWith({
+      by: ['assigned_to'],
+      where: {
+        org_id: 'org_1',
+        status: 'completed',
+        cycle_id: { in: ['cycle_today'] },
+      },
+      _count: { id: true },
+    });
+    expect(medicationCycleCountMock).not.toHaveBeenCalled();
+    expect(json.data.audit_pending_count).toBe(3);
+    expect(json.data.report_pending_count).toBe(1);
+    expect(json.data.staff[0].audit_task_count).toBe(3);
+
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          task_type: {
+            in: [
+              'visit_preparation',
+              'visit_contact_followup',
+              'visit_schedule_reproposal_needed',
+              'visit_schedule_override_approval',
+              'visit_carry_item_review',
+              'facility_batch_tracker',
+              'mobile_visit_mode',
+            ],
+          },
+          status: { in: ['pending', 'in_progress'] },
+          AND: expect.arrayContaining([
+            {},
+            {
+              OR: [
+                {
+                  related_entity_type: 'visit_schedule',
+                  related_entity_id: { in: ['visit_today'] },
+                },
+                {
+                  related_entity_type: 'visit_schedule_proposal',
+                  related_entity_id: { in: ['proposal_today'] },
+                },
+              ],
+            },
+          ]),
+        }),
+        take: 24,
+        select: expect.not.objectContaining({ metadata: true }),
+      }),
+    );
+    expect(json.data.operational_tasks).toEqual([
+      expect.objectContaining({
+        id: 'task_visit_today',
+        due_date: '2026-06-12T03:00:00.000Z',
+        metadata: null,
+      }),
+      expect.objectContaining({
+        id: 'task_proposal_today',
+        sla_due_at: '2026-06-12T04:00:00.000Z',
+        metadata: null,
+      }),
+    ]);
+    expect(JSON.stringify(json.data)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(json.data)).not.toContain('自由記載は出さない');
   });
 
   it('drops members who are shift-unavailable for the day', async () => {

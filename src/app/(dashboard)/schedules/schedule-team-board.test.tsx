@@ -5,8 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
-import type { DayBoardStaff, ScheduleDayBoardResponse } from '@/types/schedule-day-board';
-import type { ScheduleTask } from './day-view.shared';
+import type {
+  DayBoardStaff,
+  ScheduleDayBoardOperationalTask,
+  ScheduleDayBoardResponse,
+} from '@/types/schedule-day-board';
 import {
   buildScheduleRiskAlert,
   buildStaffLane,
@@ -269,6 +272,14 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
         idle_after_minutes: 25,
       },
     ],
+    operational_tasks: [
+      buildScheduleTask(),
+      buildScheduleTask({
+        id: 'task_outside',
+        title: '翌日の準備',
+        related_entity_id: 'visit_outside',
+      }),
+    ],
   };
 }
 
@@ -318,7 +329,9 @@ function buildCockpitFixture(): DashboardCockpitResponse {
   };
 }
 
-function buildScheduleTask(overrides: Partial<ScheduleTask> = {}): ScheduleTask {
+function buildScheduleTask(
+  overrides: Partial<ScheduleDayBoardOperationalTask> = {},
+): ScheduleDayBoardOperationalTask {
   return {
     id: 'task_preparation',
     task_type: 'visit_preparation',
@@ -377,19 +390,10 @@ function buildJsonResponse(data: unknown) {
 function mockQueries({
   board = buildBoardFixture(),
   cockpit = buildCockpitFixture(),
-  tasks = [
-    buildScheduleTask(),
-    buildScheduleTask({
-      id: 'task_outside',
-      title: '翌日の準備',
-      related_entity_id: 'visit_outside',
-    }),
-  ],
   onQueryConfig,
 }: {
   board?: ScheduleDayBoardResponse | null;
   cockpit?: DashboardCockpitResponse | null;
-  tasks?: ScheduleTask[];
   onQueryConfig?: (config: QueryConfig) => void;
 } = {}) {
   useQueryMock.mockImplementation((options: QueryConfig) => {
@@ -397,9 +401,6 @@ function mockQueries({
     const key = options.queryKey[0];
     if (key === 'schedule-day-board') {
       return { data: board, isLoading: false, isError: false, error: null, refetch: vi.fn() };
-    }
-    if (key === 'tasks') {
-      return { data: tasks, isLoading: false, isError: false, error: null, refetch: vi.fn() };
     }
     return { data: cockpit, isLoading: false, isError: false, error: null, refetch: vi.fn() };
   });
@@ -587,22 +588,19 @@ describe('ScheduleTeamBoard', () => {
       queryConfigs,
       (queryKey) => queryKey[0] === 'schedule-rail-cockpit',
     );
-    const tasksConfig = findQueryConfig(
-      queryConfigs,
-      (queryKey) => queryKey[0] === 'tasks' && queryKey[1] === 'schedule-board',
-    );
 
     expect(boardConfig.queryKey).toEqual(['schedule-day-board', 'org_1', TODAY_KEY]);
     expect(cockpitConfig.queryKey).toEqual(['schedule-rail-cockpit', 'org_1']);
-    expect(tasksConfig.queryKey).toEqual(['tasks', 'schedule-board', 'org_1', TODAY_KEY]);
+    expect(
+      queryConfigs.some(
+        (config) => config.queryKey[0] === 'tasks' && config.queryKey[1] === 'schedule-board',
+      ),
+    ).toBe(false);
 
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
       if (url.startsWith('/api/visit-schedules/day-board')) {
         return buildJsonResponse(buildBoardFixture());
-      }
-      if (url.startsWith('/api/tasks')) {
-        return buildJsonResponse([buildScheduleTask()]);
       }
       return buildJsonResponse(buildCockpitFixture());
     });
@@ -610,20 +608,14 @@ describe('ScheduleTeamBoard', () => {
 
     await boardConfig.queryFn();
     await cockpitConfig.queryFn();
-    await tasksConfig.queryFn();
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toBe(`/api/visit-schedules/day-board?date=${TODAY_KEY}`);
     expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(orgHeaders);
     expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/dashboard/cockpit');
     expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toBe(orgHeaders);
-    expect(fetchMock.mock.calls[2]?.[0]).toBe(
-      '/api/tasks?status=open&task_types=visit_preparation%2Cvisit_contact_followup%2Cvisit_schedule_reproposal_needed%2Cvisit_schedule_override_approval%2Cvisit_carry_item_review%2Cfacility_batch_tracker%2Cmobile_visit_mode',
-    );
-    expect((fetchMock.mock.calls[2]?.[1] as RequestInit).headers).toBe(orgHeaders);
     expect(buildOrgHeadersMock).toHaveBeenNthCalledWith(1, 'org_1');
     expect(buildOrgHeadersMock).toHaveBeenNthCalledWith(2, 'org_1');
-    expect(buildOrgHeadersMock).toHaveBeenNthCalledWith(3, 'org_1');
   });
 
   it('encodes dynamic PATCH ids and preserves raw mutation payloads', async () => {
@@ -892,23 +884,26 @@ describe('ScheduleTeamBoard', () => {
       variables: undefined,
     });
     mockQueries({
-      tasks: [
-        buildScheduleTask({
-          id: 'task_contact',
-          task_type: 'visit_contact_followup',
-          title: '折返し架電が必要です',
-          status: 'pending',
-          priority: 'normal',
-          related_entity_type: 'visit_schedule_proposal',
-          related_entity_id: 'proposal_1',
-        }),
-        buildScheduleTask({
-          id: 'task_cancelled',
-          title: '完了済みの準備',
-          status: 'completed',
-          related_entity_id: 'visit_1',
-        }),
-      ],
+      board: {
+        ...buildBoardFixture(),
+        operational_tasks: [
+          buildScheduleTask({
+            id: 'task_contact',
+            task_type: 'visit_contact_followup',
+            title: '折返し架電が必要です',
+            status: 'pending',
+            priority: 'normal',
+            related_entity_type: 'visit_schedule_proposal',
+            related_entity_id: 'proposal_1',
+          }),
+          buildScheduleTask({
+            id: 'task_cancelled',
+            title: '完了済みの準備',
+            status: 'completed',
+            related_entity_id: 'visit_1',
+          }),
+        ],
+      },
     });
     render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
 

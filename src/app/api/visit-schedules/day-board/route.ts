@@ -12,8 +12,13 @@ import type {
   DayBoardVisit,
   DayBoardVisitPreparationSummary,
   DayBoardVisitReadyBlockerSummary,
+  ScheduleDayBoardOperationalTask,
   ScheduleDayBoardResponse,
 } from '@/types/schedule-day-board';
+import {
+  buildDashboardTaskAssignmentWhere,
+  resolveDashboardAssignmentScope,
+} from '@/server/services/dashboard-assignment-scope';
 import { describeBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import {
   VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER,
@@ -33,6 +38,7 @@ import {
 
 const STAFF_ROW_LIMIT = 6;
 const PENDING_PROPOSAL_LIMIT = 3;
+const OPERATIONAL_TASK_LIMIT = 24;
 /** 余白試算: 勤務帯 9:00-18:00 から昼休みを除いた基準分 */
 const WORKDAY_MINUTES = 9 * 60;
 const LUNCH_MINUTES = 60;
@@ -40,6 +46,16 @@ const TRAVEL_MINUTES_PER_VISIT = 30;
 const DEFAULT_VISIT_MINUTES = 60;
 
 const BOARD_MEMBER_ROLES = ['owner', 'admin', 'pharmacist', 'pharmacist_trainee', 'clerk'] as const;
+const SCHEDULE_BOARD_TASK_TYPES = [
+  'visit_preparation',
+  'visit_contact_followup',
+  'visit_schedule_reproposal_needed',
+  'visit_schedule_override_approval',
+  'visit_carry_item_review',
+  'facility_batch_tracker',
+  'mobile_visit_mode',
+] as const;
+const OPEN_OPERATIONAL_TASK_STATUSES = ['pending', 'in_progress'] as const;
 const VEHICLE_ASSIGNABLE_STATUSES = new Set([
   'planned',
   'in_preparation',
@@ -91,6 +107,37 @@ function isStringId(value: unknown): value is string {
 
 function scheduleReadyAsOf(schedule: Pick<DayBoardScheduleReadySource, 'scheduled_date'>) {
   return schedule.scheduled_date instanceof Date ? schedule.scheduled_date : new Date(0);
+}
+
+function serializeOperationalTask(task: {
+  id: string;
+  task_type: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  assigned_to: string | null;
+  due_date: Date | null;
+  sla_due_at: Date | null;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+  created_at: Date;
+}): ScheduleDayBoardOperationalTask {
+  return {
+    id: task.id,
+    task_type: task.task_type,
+    title: task.title,
+    description: task.description,
+    status: task.status as ScheduleDayBoardOperationalTask['status'],
+    priority: task.priority as ScheduleDayBoardOperationalTask['priority'],
+    assigned_to: task.assigned_to,
+    due_date: task.due_date?.toISOString() ?? null,
+    sla_due_at: task.sla_due_at?.toISOString() ?? null,
+    related_entity_type: task.related_entity_type,
+    related_entity_id: task.related_entity_id,
+    metadata: null,
+    created_at: task.created_at.toISOString(),
+  };
 }
 
 function minutesOfTimeValue(value: Date | null): number | null {
@@ -386,149 +433,148 @@ export const GET = withAuthContext(
     const dayStart = utcDateFromLocalKey(dateKey);
     const dayEnd = addUtcDays(dayStart, 1);
 
-    const [
-      memberships,
-      schedules,
-      auditTaskGroups,
-      openTaskGroups,
-      reportPendingCount,
-      unavailableShifts,
-      vehicleResources,
-      proposals,
-    ] = await Promise.all([
-      prisma.membership.findMany({
-        where: {
-          org_id: ctx.orgId,
-          is_active: true,
-          role: { in: [...BOARD_MEMBER_ROLES] },
-        },
-        orderBy: [{ user: { name_kana: 'asc' } }],
-        select: {
-          role: true,
-          user: { select: { id: true, name: true } },
-        },
-      }),
-      prisma.visitSchedule.findMany({
-        where: {
-          org_id: ctx.orgId,
-          scheduled_date: { gte: dayStart, lt: dayEnd },
-          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-        },
-        orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
-        select: {
-          id: true,
-          case_id: true,
-          cycle_id: true,
-          pharmacist_id: true,
-          visit_type: true,
-          schedule_status: true,
-          scheduled_date: true,
-          carry_items_status: true,
-          priority: true,
-          site_id: true,
-          route_order: true,
-          vehicle_resource_id: true,
-          vehicle_resource: {
-            select: {
-              id: true,
-              label: true,
-              travel_mode: true,
-            },
+    const [memberships, schedules, openTaskGroups, unavailableShifts, vehicleResources, proposals] =
+      await Promise.all([
+        prisma.membership.findMany({
+          where: {
+            org_id: ctx.orgId,
+            is_active: true,
+            role: { in: [...BOARD_MEMBER_ROLES] },
           },
-          time_window_start: true,
-          time_window_end: true,
-          confirmed_at: true,
-          preparation: {
-            select: {
-              org_id: true,
-              prepared_at: true,
-              medication_changes_reviewed: true,
-              carry_items_confirmed: true,
-              previous_issues_reviewed: true,
-              route_confirmed: true,
-              offline_synced: true,
-            },
+          orderBy: [{ user: { name_kana: 'asc' } }],
+          select: {
+            role: true,
+            user: { select: { id: true, name: true } },
           },
-          facility_batch_id: true,
-          facility_batch: { select: { id: true, facility_id: true } },
-          visit_record: { select: { id: true } },
-          case_: {
-            select: {
-              patient: {
-                select: {
-                  id: true,
-                  name: true,
-                  contacts: {
-                    where: { org_id: ctx.orgId, is_emergency_contact: true },
-                    select: { id: true },
+        }),
+        prisma.visitSchedule.findMany({
+          where: {
+            org_id: ctx.orgId,
+            scheduled_date: { gte: dayStart, lt: dayEnd },
+            schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+          },
+          orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+          select: {
+            id: true,
+            case_id: true,
+            cycle_id: true,
+            pharmacist_id: true,
+            visit_type: true,
+            schedule_status: true,
+            scheduled_date: true,
+            carry_items_status: true,
+            priority: true,
+            site_id: true,
+            route_order: true,
+            vehicle_resource_id: true,
+            vehicle_resource: {
+              select: {
+                id: true,
+                label: true,
+                travel_mode: true,
+              },
+            },
+            time_window_start: true,
+            time_window_end: true,
+            confirmed_at: true,
+            cycle: { select: { overall_status: true } },
+            preparation: {
+              select: {
+                org_id: true,
+                prepared_at: true,
+                medication_changes_reviewed: true,
+                carry_items_confirmed: true,
+                previous_issues_reviewed: true,
+                route_confirmed: true,
+                offline_synced: true,
+              },
+            },
+            facility_batch_id: true,
+            facility_batch: { select: { id: true, facility_id: true } },
+            visit_record: { select: { id: true } },
+            case_: {
+              select: {
+                patient: {
+                  select: {
+                    id: true,
+                    name: true,
+                    contacts: {
+                      where: { org_id: ctx.orgId, is_emergency_contact: true },
+                      select: { id: true },
+                    },
                   },
                 },
-              },
-              care_team_links: {
-                where: { org_id: ctx.orgId },
-                select: { role: true },
+                care_team_links: {
+                  where: { org_id: ctx.orgId },
+                  select: { role: true },
+                },
               },
             },
           },
-        },
-      }),
-      prisma.dispenseTask.groupBy({
-        by: ['assigned_to'],
-        where: { org_id: ctx.orgId, status: 'completed' },
-        _count: { id: true },
-      }),
-      prisma.task.groupBy({
-        by: ['assigned_to'],
-        where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
-        _count: { id: true },
-      }),
-      prisma.medicationCycle.count({
-        where: { org_id: ctx.orgId, overall_status: 'visit_completed' },
-      }),
-      prisma.pharmacistShift.findMany({
-        where: {
-          org_id: ctx.orgId,
-          date: { gte: dayStart, lt: dayEnd },
-          available: false,
-        },
-        select: { user_id: true },
-      }),
-      prisma.visitVehicleResource.findMany({
-        where: {
-          org_id: ctx.orgId,
-        },
-        orderBy: [{ available: 'desc' }, { label: 'asc' }],
-        select: {
-          id: true,
-          label: true,
-          site_id: true,
-          vehicle_code: true,
-          travel_mode: true,
-          max_stops: true,
-          available: true,
-        },
-      }),
-      prisma.visitScheduleProposal.findMany({
-        where: {
-          org_id: ctx.orgId,
-          proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
-          proposed_date: { gte: dayStart },
-        },
-        orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
-        take: PENDING_PROPOSAL_LIMIT,
-        select: {
-          id: true,
-          visit_type: true,
-          proposal_status: true,
-          patient_contact_status: true,
-          proposed_date: true,
-          time_window_start: true,
-          time_window_end: true,
-          proposed_pharmacist_id: true,
-          case_: { select: { patient: { select: { name: true } } } },
-        },
-      }),
-    ]);
+        }),
+        prisma.task.groupBy({
+          by: ['assigned_to'],
+          where: { org_id: ctx.orgId, status: { in: ['pending', 'in_progress'] } },
+          _count: { id: true },
+        }),
+        prisma.pharmacistShift.findMany({
+          where: {
+            org_id: ctx.orgId,
+            date: { gte: dayStart, lt: dayEnd },
+            available: false,
+          },
+          select: { user_id: true },
+        }),
+        prisma.visitVehicleResource.findMany({
+          where: {
+            org_id: ctx.orgId,
+          },
+          orderBy: [{ available: 'desc' }, { label: 'asc' }],
+          select: {
+            id: true,
+            label: true,
+            site_id: true,
+            vehicle_code: true,
+            travel_mode: true,
+            max_stops: true,
+            available: true,
+          },
+        }),
+        prisma.visitScheduleProposal.findMany({
+          where: {
+            org_id: ctx.orgId,
+            proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+            proposed_date: { gte: dayStart },
+          },
+          orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+          take: PENDING_PROPOSAL_LIMIT,
+          select: {
+            id: true,
+            visit_type: true,
+            proposal_status: true,
+            patient_contact_status: true,
+            proposed_date: true,
+            time_window_start: true,
+            time_window_end: true,
+            proposed_pharmacist_id: true,
+            case_: { select: { patient: { select: { name: true } } } },
+          },
+        }),
+      ]);
+    const dayCycleIds = Array.from(
+      new Set(schedules.map((schedule) => schedule.cycle_id).filter(isStringId)),
+    );
+    const auditTaskGroups =
+      dayCycleIds.length === 0
+        ? []
+        : await prisma.dispenseTask.groupBy({
+            by: ['assigned_to'],
+            where: { org_id: ctx.orgId, status: 'completed', cycle_id: { in: dayCycleIds } },
+            _count: { id: true },
+          });
+    const reportPendingCount = schedules.filter(
+      (schedule) => schedule.cycle?.overall_status === 'visit_completed',
+    ).length;
 
     // 施設名(facility_batch.facility_id → Facility.name)
     const facilityIds = Array.from(
@@ -725,6 +771,63 @@ export const GET = withAuthContext(
         idle_after_minutes: idleAfter,
       } satisfies DayBoardPendingProposal;
     });
+    const visibleVisitIds = staff.flatMap((member) => member.visits).map((visit) => visit.id);
+    const operationalTaskEntityFilters = [
+      ...(visibleVisitIds.length > 0
+        ? [{ related_entity_type: 'visit_schedule', related_entity_id: { in: visibleVisitIds } }]
+        : []),
+      ...(pendingProposals.length > 0
+        ? [
+            {
+              related_entity_type: 'visit_schedule_proposal',
+              related_entity_id: { in: pendingProposals.map((proposal) => proposal.id) },
+            },
+          ]
+        : []),
+    ];
+    const assignmentScope =
+      operationalTaskEntityFilters.length === 0
+        ? null
+        : await resolveDashboardAssignmentScope({
+            db: prisma,
+            orgId: ctx.orgId,
+            accessContext: ctx,
+          });
+    const operationalTasks =
+      operationalTaskEntityFilters.length === 0 || !assignmentScope
+        ? []
+        : await prisma.task.findMany({
+            where: {
+              org_id: ctx.orgId,
+              task_type: { in: [...SCHEDULE_BOARD_TASK_TYPES] },
+              status: { in: [...OPEN_OPERATIONAL_TASK_STATUSES] },
+              AND: [
+                buildDashboardTaskAssignmentWhere(assignmentScope),
+                { OR: operationalTaskEntityFilters },
+              ],
+            },
+            orderBy: [
+              { sla_due_at: 'asc' },
+              { due_date: 'asc' },
+              { created_at: 'desc' },
+              { id: 'desc' },
+            ],
+            take: OPERATIONAL_TASK_LIMIT,
+            select: {
+              id: true,
+              task_type: true,
+              title: true,
+              description: true,
+              status: true,
+              priority: true,
+              assigned_to: true,
+              due_date: true,
+              sla_due_at: true,
+              related_entity_type: true,
+              related_entity_id: true,
+              created_at: true,
+            },
+          });
 
     const auditPendingCount = auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
     const assignedVehicleCounts = new Map<string, number>();
@@ -796,6 +899,7 @@ export const GET = withAuthContext(
       report_pending_count: reportPendingCount,
       vehicle_resources: vehicleSummaries,
       pending_proposals: pendingProposals,
+      operational_tasks: operationalTasks.map(serializeOperationalTask),
     };
 
     return success({ data: responseData });
