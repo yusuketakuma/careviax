@@ -1,50 +1,88 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { PackagingMethodsContent } from './packaging-methods-content';
-
-setupDomTestEnv();
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
 const mutateMock = vi.hoisted(() => vi.fn());
+const useQueryMock = vi.hoisted(() => vi.fn());
+const useMutationMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@/lib/hooks/use-org-id', () => ({
-  useOrgId: useOrgIdMock,
+// The org-header builders are mocked with SENTINEL returns ('x-test-helper') so the
+// tests prove the component DELEGATES to them: a raw inline `{ 'x-org-id': orgId }`
+// literal would not carry the sentinel, so toEqual on the sentinel object fails for
+// un-converged code (distinguishes helper adoption from a same-shaped raw literal).
+const buildOrgHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({ 'x-org-id': orgId, 'x-test-helper': 'orgHeaders' })),
+);
+const buildOrgJsonHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({
+    'Content-Type': 'application/json',
+    'x-org-id': orgId,
+    'x-test-helper': 'orgJsonHeaders',
+  })),
+);
+
+vi.mock('@/lib/hooks/use-org-id', () => ({ useOrgId: useOrgIdMock }));
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: buildOrgHeadersMock,
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
-
+// NOTE: '@/lib/http/path-segment' is intentionally NOT mocked — the real
+// encodePathSegment is exercised so the hostile-id encode and the dot-segment
+// fail-fast teeth are genuine rather than stubbed.
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({
-    data: {
-      data: [
-        {
-          id: 'method_1',
-          name: '一包化',
-          description: '1回ごとの分包',
-          icon_key: 'package',
-          sort_order: 1,
-          is_active: true,
-        },
-      ],
-    },
-  }),
-  useMutation: () => ({
-    mutate: mutateMock,
-    isPending: false,
-  }),
-  useQueryClient: () => ({
-    invalidateQueries: invalidateQueriesMock,
-  }),
+  useQuery: useQueryMock,
+  useMutation: useMutationMock,
+  useQueryClient: () => ({ invalidateQueries: invalidateQueriesMock }),
 }));
+
+import { PackagingMethodsContent } from './packaging-methods-content';
+
+setupDomTestEnv();
+
+const METHOD = {
+  id: 'method_1',
+  name: '一包化',
+  description: '1回ごとの分包',
+  icon_key: 'package',
+  sort_order: 1,
+  is_active: true,
+};
+
+/** The queryFn passed to the latest useQuery call (captured from the mock). */
+function latestQueryFn() {
+  const call = useQueryMock.mock.calls.at(-1);
+  return call?.[0].queryFn as () => Promise<unknown>;
+}
+
+/** The mutationFn passed to the latest useMutation call (captured from the mock). */
+function latestMutationFn() {
+  const call = useMutationMock.mock.calls.at(-1);
+  return call?.[0].mutationFn as () => Promise<unknown>;
+}
+
+function stubFetchOk() {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [METHOD] }) });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  useOrgIdMock.mockReturnValue('org_1');
+  useQueryMock.mockReturnValue({ data: { data: [METHOD] } });
+  useMutationMock.mockReturnValue({ mutate: mutateMock, isPending: false });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('PackagingMethodsContent', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    useOrgIdMock.mockReturnValue('org_1');
-  });
-
   it('renders packaging method master form and existing methods', () => {
     render(<PackagingMethodsContent />);
 
@@ -62,5 +100,60 @@ describe('PackagingMethodsContent', () => {
 
     expect(screen.getByText('配薬方法を編集')).toBeTruthy();
     expect((screen.getByLabelText('名称') as HTMLInputElement).value).toBe('一包化');
+  });
+
+  it('GET methods delegates to buildOrgHeaders(orgId) instead of a raw x-org-id literal', async () => {
+    const fetchMock = stubFetchOk();
+    render(<PackagingMethodsContent />);
+
+    await latestQueryFn()();
+
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('/api/packaging-methods', {
+      headers: buildOrgHeaders('org_1'),
+    });
+  });
+
+  it('create (POST) delegates to buildOrgJsonHeaders and posts to the static collection path', async () => {
+    const fetchMock = stubFetchOk();
+    render(<PackagingMethodsContent />);
+    // no method loaded → form.id === '' → POST branch (no path segment to encode)
+    await latestMutationFn()();
+
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/packaging-methods');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+  });
+
+  it('update (PATCH) encodes a hostile id via encodePathSegment and uses buildOrgJsonHeaders', async () => {
+    const fetchMock = stubFetchOk();
+    // a hostile id whose encodeURIComponent form differs from the raw string proves
+    // the segment is actually encoded (a raw interpolation would leak '/' and ' ').
+    useQueryMock.mockReturnValue({ data: { data: [{ ...METHOD, id: 'a/b c' }] } });
+    render(<PackagingMethodsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: /一包化/ }));
+    await latestMutationFn()();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/packaging-methods/a%2Fb%20c');
+    expect(init.method).toBe('PATCH');
+    expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+  });
+
+  it('update (PATCH) with a dot-segment id fails closed BEFORE any fetch side effect', async () => {
+    const fetchMock = stubFetchOk();
+    useQueryMock.mockReturnValue({ data: { data: [{ ...METHOD, id: '.' }] } });
+    render(<PackagingMethodsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: /一包化/ }));
+
+    await expect(latestMutationFn()()).rejects.toThrow(/dot segment/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

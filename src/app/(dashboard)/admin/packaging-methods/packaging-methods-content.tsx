@@ -10,6 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type PackagingMethodRow = {
@@ -39,7 +41,7 @@ export function PackagingMethodsContent() {
     queryKey: ['packaging-methods', orgId],
     queryFn: async () => {
       const res = await fetch('/api/packaging-methods', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('配薬方法マスターの取得に失敗しました');
       return res.json() as Promise<{ data: PackagingMethodRow[] }>;
@@ -56,14 +58,13 @@ export function PackagingMethodsContent() {
         sort_order: Number(form.sort_order || 0),
         is_active: form.is_active,
       };
+      // encodePathSegment runs during URL construction (before fetch), so a dot
+      // segment id (e.g. '.') fails closed BEFORE the mutating PATCH side effect.
       const res = await fetch(
-        form.id ? `/api/packaging-methods/${form.id}` : '/api/packaging-methods',
+        form.id ? `/api/packaging-methods/${encodePathSegment(form.id)}` : '/api/packaging-methods',
         {
           method: form.id ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify(body),
         },
       );
