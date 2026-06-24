@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, handoffBoardFindFirstMock, withOrgContextMock } =
-  vi.hoisted(() => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
-    handoffBoardFindFirstMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-  }));
+const {
+  authMock,
+  membershipFindFirstMock,
+  handoffBoardFindFirstMock,
+  userFindFirstMock,
+  withOrgContextMock,
+} = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  handoffBoardFindFirstMock: vi.fn(),
+  userFindFirstMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/config', () => ({ auth: authMock }));
 
@@ -15,6 +21,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     membership: { findFirst: membershipFindFirstMock },
     handoffBoard: { findFirst: handoffBoardFindFirstMock },
+    user: { findFirst: userFindFirstMock },
   },
 }));
 
@@ -51,6 +58,7 @@ describe('/api/handoff-board/items', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    userFindFirstMock.mockResolvedValue({ id: 'user_2' });
   });
 
   it('returns 201 on valid transfer creation', async () => {
@@ -148,8 +156,8 @@ describe('/api/handoff-board/items', () => {
       id: 'item_transfer',
       board_id: 'board_1',
       content: 'セット先行準備(施設GH)',
-      recipient_user_id: null,
-      recipient_label: '鈴木さん(事務)',
+      recipient_user_id: 'user_2',
+      recipient_label: '鈴木 一郎(事務スタッフ)',
       lifecycle_status: 'proposed',
       scope: '数量セットまで。最終確認は薬剤師',
       rationale: '判断WIP 18/目安12 — 余白では捌けないため',
@@ -167,7 +175,8 @@ describe('/api/handoff-board/items', () => {
     const req = createRequest('http://localhost/api/handoff-board/items', {
       board_id: 'board_1',
       content: 'セット先行準備(施設GH)',
-      recipient_label: '鈴木さん(事務)',
+      recipient_user_id: 'user_2',
+      recipient_label: '鈴木 一郎(事務スタッフ)',
       scope: '数量セットまで。最終確認は薬剤師',
       rationale: '判断WIP 18/目安12 — 余白では捌けないため',
       deadline: '2026-06-11T08:00:00.000Z',
@@ -177,10 +186,15 @@ describe('/api/handoff-board/items', () => {
     const json = await res!.json();
     expect(json.data.id).toBe('item_transfer');
 
+    expect(userFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'user_2', org_id: 'org_1' },
+      select: { id: true },
+    });
     expect(itemCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          recipient_label: '鈴木さん(事務)',
+          recipient_user_id: 'user_2',
+          recipient_label: '鈴木 一郎(事務スタッフ)',
           lifecycle_status: 'proposed',
           scope: '数量セットまで。最終確認は薬剤師',
           rationale: '判断WIP 18/目安12 — 余白では捌けないため',
@@ -195,9 +209,35 @@ describe('/api/handoff-board/items', () => {
           action: 'handoff_transfer_created',
           target_type: 'handoff_item',
           target_id: 'item_transfer',
+          changes: expect.objectContaining({
+            recipient_user_id: 'user_2',
+            recipient_label: '鈴木 一郎(事務スタッフ)',
+          }),
         }),
       }),
     );
+  });
+
+  it('rejects a recipient user id outside the current org before transaction side effects', async () => {
+    handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
+    userFindFirstMock.mockResolvedValueOnce(null);
+
+    const req = createRequest('http://localhost/api/handoff-board/items', {
+      board_id: 'board_1',
+      content: 'セット先行準備(施設GH)',
+      recipient_user_id: 'user_other_org',
+      recipient_label: '別組織ユーザー',
+      scope: '数量セットまで',
+      rationale: '判断WIPが目安超過のため',
+      deadline: '2026-06-11T08:00:00.000Z',
+    });
+    const res = await POST(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(400);
+    await expect(res!.json()).resolves.toMatchObject({
+      message: '宛先ユーザーが見つかりません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('rejects content-only handoff notes instead of creating legacy items', async () => {

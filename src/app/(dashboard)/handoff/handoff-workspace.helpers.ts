@@ -57,6 +57,13 @@ export type HandoffBoardItem = {
   resolved_at: string | null;
 };
 
+export type HandoffRecipientOption = {
+  id: string;
+  name: string;
+  role: string;
+  role_label: string;
+};
+
 export const CONSULT_STATUS_ORDER: HandoffConsultStatus[] = [
   'open',
   'checking',
@@ -126,6 +133,7 @@ export type HandoffBoardResponse = {
   id: string;
   shift_date: string;
   items: HandoffBoardItem[];
+  recipient_options: HandoffRecipientOption[];
   month_item_count: number;
   summary: {
     outgoing_count: number;

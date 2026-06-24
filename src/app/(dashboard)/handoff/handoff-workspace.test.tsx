@@ -67,6 +67,10 @@ function buildItem(overrides: Partial<HandoffBoardItem>): HandoffBoardItem {
 const BOARD: HandoffBoardResponse = {
   id: 'board_1',
   shift_date: '2026-06-11',
+  recipient_options: [
+    { id: 'user_2', name: '鈴木 一郎', role: 'clerk', role_label: '事務スタッフ' },
+    { id: 'user_3', name: '佐藤 薬剤師', role: 'pharmacist', role_label: '薬剤師' },
+  ],
   items: [
     buildItem({
       id: 'item_1',
@@ -155,6 +159,18 @@ function stubFetch(
   ];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes('/api/handoff-board/items') && init?.method === 'POST') {
+      return new Response(
+        JSON.stringify({
+          data: {
+            id: 'created_handoff',
+            board_id: 'board_1',
+            content: 'セット先行準備(施設GH)',
+          },
+        }),
+        { status: 201 },
+      );
+    }
     if (url.includes('/api/handoff-board')) {
       return new Response(JSON.stringify({ data: board }), { status: 200 });
     }
@@ -305,9 +321,8 @@ describe('HandoffWorkspace', () => {
     fireEvent.change(screen.getByLabelText('件名'), {
       target: { value: 'セット先行準備(施設GH)' },
     });
-    fireEvent.change(screen.getByLabelText('宛先(誰に渡すか)'), {
-      target: { value: '鈴木さん(事務)' },
-    });
+    fireEvent.click(screen.getByLabelText('宛先(誰に渡すか)'));
+    fireEvent.click(screen.getByRole('option', { name: '鈴木 一郎(事務スタッフ)' }));
     fireEvent.change(screen.getByLabelText('①何を(作業の範囲)'), {
       target: { value: '数量セットまで' },
     });
@@ -324,6 +339,54 @@ describe('HandoffWorkspace', () => {
     // 全項目が揃えば無効理由は消える
     expect(submit.getAttribute('aria-describedby')).toBeNull();
     expect(screen.queryByText(/未入力のため渡せません:/)).toBeNull();
+  });
+
+  it('creates transfers with the selected recipient user id so the recipient can receive it', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    const fetchMock = stubFetch();
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('handoff-open-transfer'));
+    fireEvent.change(await screen.findByLabelText('件名'), {
+      target: { value: 'セット先行準備(施設GH)' },
+    });
+    fireEvent.click(screen.getByLabelText('宛先(誰に渡すか)'));
+    fireEvent.click(screen.getByRole('option', { name: '鈴木 一郎(事務スタッフ)' }));
+    fireEvent.change(screen.getByLabelText('①何を(作業の範囲)'), {
+      target: { value: '数量セットまで' },
+    });
+    fireEvent.change(screen.getByLabelText('②なぜ(根拠)'), {
+      target: { value: '判断WIPが目安超過のため' },
+    });
+    fireEvent.change(screen.getByLabelText('③いつまで(期限)'), {
+      target: { value: '2026-06-11T17:00' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '渡す(責任を移す)' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/handoff-board/items',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+    const createCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input) === '/api/handoff-board/items' && init?.method === 'POST',
+    );
+    expect(createCall).toBeTruthy();
+    expect(JSON.parse(String(createCall?.[1]?.body))).toMatchObject({
+      board_id: 'board_1',
+      content: 'セット先行準備(施設GH)',
+      recipient_user_id: 'user_2',
+      recipient_label: '鈴木 一郎(事務スタッフ)',
+      lifecycle_status: 'proposed',
+      scope: '数量セットまで',
+      rationale: '判断WIPが目安超過のため',
+    });
   });
 
   it('shows 受領確認 action for incoming items', async () => {
@@ -353,6 +416,23 @@ describe('HandoffWorkspace', () => {
     });
     expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
     expect(screen.queryByTestId('handoff-incoming-empty')).toBeNull();
+  });
+
+  it('keeps transfer submission disabled when no active recipient options are available', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    stubFetch({ ...BOARD, recipient_options: [] });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('handoff-open-transfer'));
+    expect(await screen.findByText(/宛先候補を取得できません/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '渡す(責任を移す)' })).toHaveProperty(
+      'disabled',
+      true,
+    );
   });
 
   it('refreshes board queries from workflow realtime events', async () => {
