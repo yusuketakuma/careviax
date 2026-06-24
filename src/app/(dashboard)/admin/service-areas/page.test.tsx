@@ -5,12 +5,34 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { toast } from 'sonner';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import ServiceAreasPage from './page';
 
 setupDomTestEnv();
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
+}));
+
+// org-header builders are mocked with SENTINEL returns ('x-test-helper') so the tests
+// prove the page DELEGATES to them (a raw inline literal lacks the sentinel, so a
+// deep-equal on the sentinel object fails for un-converged code). '@/lib/http/path-segment'
+// is intentionally NOT mocked — the real encodePathSegment is exercised for the
+// hostile-encode and dot fail-fast teeth.
+const buildOrgHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({ 'x-org-id': orgId, 'x-test-helper': 'orgHeaders' })),
+);
+const buildOrgJsonHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string) => ({
+    'Content-Type': 'application/json',
+    'x-org-id': orgId,
+    'x-test-helper': 'orgJsonHeaders',
+  })),
+);
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: buildOrgHeadersMock,
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
 vi.mock('sonner', () => ({
@@ -212,9 +234,10 @@ describe('ServiceAreasPage', () => {
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/service-areas/area_1',
-        expect.objectContaining({ method: 'DELETE', headers: { 'x-org-id': 'org_1' } }),
+        expect.objectContaining({ method: 'DELETE', headers: buildOrgHeaders('org_1') }),
       );
     });
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
   it('names edit actions by service area and loads that row into the form', async () => {
@@ -240,5 +263,139 @@ describe('ServiceAreasPage', () => {
       expect(className).toContain('min-h-[44px]');
       expect(className).toContain('sm:min-h-[44px]');
     }
+  });
+
+  // A fetch stub that serves the sites list and a single service area (with the given
+  // id) and 200s every POST/PATCH/DELETE so the convergence teeth can assert call args.
+  function stubFetchWithArea(areaId: string) {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url === '/api/service-areas' && !init?.method) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: areaId,
+                site_id: 'site_1',
+                name: '北多摩エリア',
+                area_type: 'radius',
+                geo_data: { match_keywords: ['北多摩'] },
+                notes: '16km 圏確認済み',
+                site: { id: 'site_1', name: '本店' },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it('both GET queries delegate to buildOrgHeaders(orgId)', async () => {
+    const fetchMock = stubFetchWithArea('area_1');
+    renderPage();
+
+    await screen.findByRole('option', { name: '本店' });
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy-sites', {
+      headers: buildOrgHeaders('org_1'),
+    });
+    expect(fetchMock).toHaveBeenCalledWith('/api/service-areas', {
+      headers: buildOrgHeaders('org_1'),
+    });
+  });
+
+  it('create (POST) delegates to buildOrgJsonHeaders and posts to the static collection path', async () => {
+    const fetchMock = stubFetchWithArea('area_1');
+    renderPage();
+
+    await screen.findByRole('option', { name: '本店' });
+    fireEvent.change(screen.getByLabelText('拠点'), { target: { value: 'site_1' } });
+    fireEvent.change(screen.getByLabelText('エリア名'), { target: { value: '新規エリア' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          String(input) === '/api/service-areas' &&
+          (init as RequestInit | undefined)?.method === 'POST',
+      );
+      expect(postCall).toBeTruthy();
+    });
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+    const postCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/service-areas' &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect((postCall![1] as RequestInit).headers).toEqual(buildOrgJsonHeaders('org_1'));
+  });
+
+  it('update (PATCH) encodes a hostile area id via encodePathSegment and uses buildOrgJsonHeaders', async () => {
+    const fetchMock = stubFetchWithArea('a/b c');
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '北多摩エリア（本店）を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '更新する' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/service-areas/a%2Fb%20c',
+        expect.objectContaining({ method: 'PATCH', headers: buildOrgJsonHeaders('org_1') }),
+      );
+    });
+  });
+
+  it('update (PATCH) with a dot-segment area id fails closed before any PATCH fetch', async () => {
+    const fetchMock = stubFetchWithArea('.');
+    vi.mocked(toast.error).mockClear();
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '北多摩エリア（本店）を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '更新する' }));
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    const patchCalls = fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+    );
+    expect(patchCalls).toHaveLength(0);
+  });
+
+  it('DELETE encodes a hostile area id via encodePathSegment', async () => {
+    const fetchMock = stubFetchWithArea('a/b c');
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '北多摩エリア（本店）を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/service-areas/a%2Fb%20c',
+        expect.objectContaining({ method: 'DELETE', headers: buildOrgHeaders('org_1') }),
+      );
+    });
+  });
+
+  it('DELETE with a dot-segment area id fails closed before any DELETE fetch', async () => {
+    const fetchMock = stubFetchWithArea('.');
+    vi.mocked(toast.error).mockClear();
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '北多摩エリア（本店）を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    const deleteCalls = fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
+    );
+    expect(deleteCalls).toHaveLength(0);
   });
 });

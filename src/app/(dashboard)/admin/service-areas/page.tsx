@@ -20,6 +20,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 
@@ -86,7 +88,7 @@ export default function ServiceAreasPage() {
     queryKey: ['service-areas-sites', orgId],
     queryFn: async () => {
       const res = await fetch('/api/pharmacy-sites', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('拠点一覧の取得に失敗しました');
       return res.json() as Promise<{ data: PharmacySite[] }>;
@@ -98,7 +100,7 @@ export default function ServiceAreasPage() {
     queryKey: ['service-areas', orgId],
     queryFn: async () => {
       const res = await fetch('/api/service-areas', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問エリアの取得に失敗しました');
       return res.json() as Promise<{ data: ServiceArea[] }>;
@@ -113,20 +115,22 @@ export default function ServiceAreasPage() {
 
       const geoData = parseJsonObjectText(form.geoText, 'エリア定義(JSON) の形式が不正です');
 
-      const res = await fetch(form.id ? `/api/service-areas/${form.id}` : '/api/service-areas', {
-        method: form.id ? 'PATCH' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+      // encodePathSegment runs during URL construction (before fetch), so a dot
+      // segment id fails closed before the mutating PATCH side effect.
+      const res = await fetch(
+        form.id ? `/api/service-areas/${encodePathSegment(form.id)}` : '/api/service-areas',
+        {
+          method: form.id ? 'PATCH' : 'POST',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify({
+            site_id: form.site_id,
+            name: form.name.trim(),
+            area_type: form.area_type,
+            geo_data: geoData,
+            notes: form.notes.trim() || undefined,
+          }),
         },
-        body: JSON.stringify({
-          site_id: form.site_id,
-          name: form.name.trim(),
-          area_type: form.area_type,
-          geo_data: geoData,
-          notes: form.notes.trim() || undefined,
-        }),
-      });
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message ?? '訪問エリアの保存に失敗しました');
@@ -144,9 +148,11 @@ export default function ServiceAreasPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/service-areas/${id}`, {
+      // encodePathSegment runs before fetch, so a dot-segment id fails closed
+      // before the destructive DELETE side effect.
+      const res = await fetch(`/api/service-areas/${encodePathSegment(id)}`, {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問エリアの削除に失敗しました');
     },
