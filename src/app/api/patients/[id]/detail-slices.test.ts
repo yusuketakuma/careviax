@@ -155,6 +155,9 @@ const sliceRoutes = [
       timeline_events: [],
       self_reports: [],
     },
+    // F-003 Cycle C: the timeline route injects a ScopedTxRunner (a function),
+    // not the global prisma client, so its first service arg is a function.
+    expectedFirstArg: expect.any(Function),
   },
   {
     name: 'readiness',
@@ -195,6 +198,7 @@ const sliceRoutes = [
   serviceMock: typeof getPatientOverviewMock;
   successData: unknown;
   expectedBody: unknown;
+  expectedFirstArg?: unknown;
 }>;
 
 function callSliceRoute(
@@ -445,7 +449,7 @@ describe('patient detail slice routes', () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject(routeCase.expectedBody as object);
     expect(routeCase.serviceMock).toHaveBeenCalledWith(
-      {},
+      'expectedFirstArg' in routeCase ? routeCase.expectedFirstArg : {},
       {
         orgId: 'org_custom',
         patientId: 'patient_custom',

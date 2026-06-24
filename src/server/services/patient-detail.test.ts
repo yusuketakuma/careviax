@@ -20,6 +20,8 @@ vi.mock('@/server/services/home-care-ops', () => ({
   getPatientHomeCareFeatureSummary: getPatientHomeCareFeatureSummaryMock,
 }));
 
+import type { Prisma } from '@prisma/client';
+import type { ScopedTxRunner } from '@/lib/db/rls';
 import {
   getPatientDocumentsData,
   getPatientOverview,
@@ -28,6 +30,17 @@ import {
   getPatientVisitsData,
   getPatientWorkflowPreviewData,
 } from './patient-detail';
+
+/**
+ * In-process ScopedTxRunner that runs `work` directly against the injected `db`
+ * mock (no real tx). The suite mocks global `@/lib/db/client` as `{}`, so any
+ * read that escaped onto the global prisma would throw — proving every timeline
+ * read flows through this injected executor.
+ */
+const runnerFor =
+  (db: unknown): ScopedTxRunner =>
+  (work) =>
+    work(db as Prisma.TransactionClient);
 
 function buildDb<T extends Record<string, unknown> = Record<string, never>>(overrides?: T) {
   return {
@@ -1547,7 +1560,7 @@ describe('getPatientTimelineData', () => {
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -1622,7 +1635,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -1780,7 +1793,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -1859,7 +1872,7 @@ describe('getPatientTimelineData', () => {
     });
 
     await expect(
-      getPatientTimelineData(db, {
+      getPatientTimelineData(runnerFor(db), {
         orgId: 'org_1',
         patientId: 'patient_1',
         role: 'pharmacist',
@@ -2070,7 +2083,7 @@ describe('getPatientTimelineData', () => {
       const db = buildDb(buildOverrides(dotSegment));
 
       await expect(
-        getPatientTimelineData(db, {
+        getPatientTimelineData(runnerFor(db), {
           orgId: 'org_1',
           patientId: 'patient_1',
           role: 'pharmacist',
@@ -2233,7 +2246,7 @@ describe('getPatientTimelineData', () => {
       user: { findMany: vi.fn().mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]) },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: rawPatientId,
       role: 'pharmacist',
@@ -2372,7 +2385,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -2444,7 +2457,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -2519,7 +2532,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -2611,7 +2624,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -2698,7 +2711,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -2772,7 +2785,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -2845,7 +2858,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -2935,7 +2948,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -3000,7 +3013,7 @@ describe('getPatientTimelineData', () => {
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
     });
 
-    await getPatientTimelineData(db, {
+    await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -3054,7 +3067,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -3144,7 +3157,7 @@ describe('getPatientTimelineData', () => {
       auditLog: { findMany: auditLogFindManyMock },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist_trainee',
@@ -3195,7 +3208,7 @@ describe('getPatientTimelineData', () => {
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -3289,7 +3302,7 @@ describe('getPatientTimelineData', () => {
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -3353,7 +3366,7 @@ describe('getPatientTimelineData', () => {
       auditLog: { findMany: auditLogFindManyMock },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -3434,7 +3447,7 @@ describe('getPatientTimelineData', () => {
     });
 
     try {
-      const result = await getPatientTimelineData(db, {
+      const result = await getPatientTimelineData(runnerFor(db), {
         orgId: 'org_1',
         patientId: 'patient_1',
         role: 'pharmacist',
@@ -3509,7 +3522,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -3559,7 +3572,7 @@ describe('getPatientTimelineData', () => {
       },
     });
 
-    const result = await getPatientTimelineData(db, {
+    const result = await getPatientTimelineData(runnerFor(db), {
       orgId: 'org_1',
       patientId: 'patient_1',
       role: 'pharmacist',
@@ -3570,6 +3583,263 @@ describe('getPatientTimelineData', () => {
       'communication:comm_b',
       'communication:comm_a',
     ]);
+  });
+
+  it('flows every timeline read through the injected scoped executor, never the global prisma', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'report_1',
+            report_type: 'home_visit_report',
+            status: 'draft',
+            created_by: 'pharmacist_1',
+            created_at: new Date('2026-04-02T10:00:00.000Z'),
+            delivery_records: [],
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'audit_1',
+            action: 'export',
+            target_type: 'medication_history',
+            target_id: 'patient_1',
+            actor_id: 'user_2',
+            changes: { export: { target_type: 'medication_history' } },
+            created_at: new Date('2026-04-05T11:00:00.000Z'),
+          },
+        ]),
+      },
+    });
+
+    // The runScoped seam records every executor it hands out. Each call must hand
+    // `work` the injected `db` executor, never the global `{}` prisma. A generic
+    // (non-vi.fn) impl preserves the ScopedTxRunner type parameter.
+    const seenExecutors: unknown[] = [];
+    let runScopedCallCount = 0;
+    const runScoped: ScopedTxRunner = (work) => {
+      runScopedCallCount += 1;
+      seenExecutors.push(db);
+      return work(db as unknown as Prisma.TransactionClient);
+    };
+
+    const result = await getPatientTimelineData(runScoped, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    // reads landed on the injected executor's mocks
+    expect(db.patient.findFirst).toHaveBeenCalled();
+    expect(db.careReport.findMany).toHaveBeenCalled();
+    expect(db.auditLog.findMany).toHaveBeenCalled();
+    // runScoped invoked once per scoped read; every invocation handed the injected executor
+    expect(runScopedCallCount).toBeGreaterThan(0);
+    expect(runScopedCallCount).toBe(seenExecutors.length);
+    expect(seenExecutors.every((executor) => executor === db)).toBe(true);
+    // panel still renders through the scoped seam
+    expect(result?.timeline_events.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['operation_history:audit_1', 'care_report:report_1']),
+    );
+    expect(result?.partial_failures).toBeUndefined();
+  });
+
+  it('degrades a per-source scoped tx rejection into partial_failures without a 500', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'report_1',
+            report_type: 'home_visit_report',
+            status: 'draft',
+            created_by: 'pharmacist_1',
+            created_at: new Date('2026-04-02T10:00:00.000Z'),
+            delivery_records: [],
+          },
+        ]),
+      },
+      communicationEvent: {
+        // simulate the scoped tx timing out for this source's read
+        findMany: vi.fn().mockRejectedValue(new Error('tx timeout')),
+      },
+    });
+
+    try {
+      const result = await getPatientTimelineData(runnerFor(db), {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      });
+
+      expect(result?.timeline_events).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: 'care_report:report_1' })]),
+      );
+      expect(result?.partial_failures).toEqual([
+        {
+          source: 'communicationEvents',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+      ]);
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('fails soft when the op_history audit-log read rejects: events still render and the failure is surfaced redacted', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'report_1',
+            report_type: 'home_visit_report',
+            status: 'draft',
+            created_by: 'pharmacist_1',
+            created_at: new Date('2026-04-02T10:00:00.000Z'),
+            delivery_records: [],
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: vi.fn().mockRejectedValue(new Error('audit log query failed')),
+      },
+    });
+
+    try {
+      const result = await getPatientTimelineData(runnerFor(db), {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      });
+
+      // registry events still render despite op_history failure
+      expect(result?.timeline_events).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: 'care_report:report_1' })]),
+      );
+      // no operation_history events leaked through
+      expect(
+        result?.timeline_events.some((event) => event.event_type === 'operation_history'),
+      ).toBe(false);
+      expect(result?.partial_failures).toEqual([
+        {
+          source: 'operation_history',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+      ]);
+      // redaction proof: error.name only, never the raw message
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[patient-timeline] source query failed', {
+        orgId: 'org_1',
+        source: 'operation_history',
+        error: 'Error',
+      });
+      expect(JSON.stringify(consoleErrorSpy.mock.calls)).not.toContain('audit log query failed');
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
+  it('fails soft when actor-name resolution rejects: events render with actor_name null and the failure is surfaced', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'report_1',
+            report_type: 'home_visit_report',
+            status: 'draft',
+            created_by: 'pharmacist_1',
+            created_at: new Date('2026-04-02T10:00:00.000Z'),
+            delivery_records: [],
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'audit_1',
+            action: 'export',
+            target_type: 'medication_history',
+            target_id: 'patient_1',
+            actor_id: 'user_2',
+            changes: { export: { target_type: 'medication_history' } },
+            created_at: new Date('2026-04-05T11:00:00.000Z'),
+          },
+        ]),
+      },
+      // both batchResolveNames calls resolve actor ids via user.findMany; reject it
+      user: {
+        findMany: vi.fn().mockRejectedValue(new Error('user lookup failed')),
+      },
+    });
+
+    try {
+      const result = await getPatientTimelineData(runnerFor(db), {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      });
+
+      const careReportEvent = result?.timeline_events.find(
+        (event) => event.id === 'care_report:report_1',
+      );
+      const operationHistoryEvent = result?.timeline_events.find(
+        (event) => event.id === 'operation_history:audit_1',
+      );
+      // events still render with actor_name null (no whole-panel 500 from name lookup)
+      expect(careReportEvent?.actor_name).toBeNull();
+      expect(operationHistoryEvent?.actor_name).toBeNull();
+      // both source-actor and operation-actor failures surfaced under DISTINCT keys
+      expect(result?.partial_failures).toEqual([
+        {
+          source: 'actor_names',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+        {
+          source: 'operation_actor_names',
+          message: '一部のタイムライン情報を取得できませんでした',
+        },
+      ]);
+      // redaction proof
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[patient-timeline] source query failed', {
+        orgId: 'org_1',
+        source: 'actor_names',
+        error: 'Error',
+      });
+      expect(JSON.stringify(consoleErrorSpy.mock.calls)).not.toContain('user lookup failed');
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });
 

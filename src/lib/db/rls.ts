@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { getRequestAuthContext, type RequestAuthContext } from '@/lib/auth/request-context';
 import { prisma } from './client';
 import { logSecurityEvent } from '@/lib/auth/security-events';
@@ -87,4 +87,76 @@ export async function withOrgContext<T>(
     ...(options?.maxWaitMs ? { maxWait: options.maxWaitMs } : {}),
     ...(options?.timeoutMs ? { timeout: options.timeoutMs } : {}),
   });
+}
+
+/**
+ * Minimal client surface the scoped runner needs: the interactive `$transaction`
+ * overload that hands out a `Prisma.TransactionClient`. Lets tests inject a fake
+ * client without dragging in the whole PrismaClient surface.
+ */
+type ScopedTxClient = {
+  $transaction: <T>(
+    fn: (tx: Prisma.TransactionClient) => Promise<T>,
+    options?: { timeout?: number; maxWait?: number },
+  ) => Promise<T>;
+};
+
+/**
+ * A single injected executor seam for RLS-scoped reads. Each call opens its own
+ * short PostgreSQL transaction with RLS context applied, runs `work(tx)`, and
+ * returns the result. The handed-out `tx` is the ONLY executor `work` should use;
+ * there is no free-floating client to fall back onto.
+ */
+export type ScopedTxRunner = <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
+
+const SCOPED_TX_DEFAULT_TIMEOUT_MS = 3000;
+const SCOPED_TX_MAX_WAIT_MS = 2000;
+
+/**
+ * Builds a {@link ScopedTxRunner} bound to a single org. Reuses the proven
+ * `withOrgContext` machinery (validateOrgId / request-context default / orgId
+ * mismatch guard / rls_context_missing log / applyRlsContext) but exposes the
+ * `tx` to the caller so the timeline service can hand each source its own short
+ * transaction. The global `prisma` client is reachable ONLY through the
+ * `client ?? prisma` default here — callers inject a fake `client` in tests.
+ */
+export function createScopedTxRunner(
+  orgId: string,
+  options?: {
+    requestContext?: RequestAuthContext;
+    client?: ScopedTxClient;
+    timeoutMs?: number;
+  },
+): ScopedTxRunner {
+  validateOrgId(orgId);
+  return (work) => {
+    const requestContext = options?.requestContext ?? getRequestAuthContext();
+    if (requestContext?.orgId && requestContext.orgId !== orgId) {
+      throw new Error(
+        `Request orgId mismatch: expected ${requestContext.orgId}, received ${orgId}`,
+      );
+    }
+
+    if (!requestContext) {
+      logSecurityEvent({
+        event_type: 'rls_context_missing',
+        org_id: orgId,
+        path: 'db/createScopedTxRunner',
+        method: 'INTERNAL',
+        details: { org_id: orgId },
+      });
+    }
+
+    const client: ScopedTxClient = options?.client ?? (prisma as PrismaClient);
+    return client.$transaction(
+      async (tx) => {
+        await applyRlsContext(tx, { orgId, requestContext });
+        return work(tx);
+      },
+      {
+        timeout: options?.timeoutMs ?? SCOPED_TX_DEFAULT_TIMEOUT_MS,
+        maxWait: SCOPED_TX_MAX_WAIT_MS,
+      },
+    );
+  };
 }

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
+import type { ScopedTxRunner } from '@/lib/db/rls';
 import {
   getPatientPrivacyFlags,
   maskAddressDetail,
@@ -98,27 +99,23 @@ function maskFoundationForExternalViewer(foundation: PatientFoundationData): Pat
   };
 }
 
-type PatientTimelineDb = {
-  auditLog: Pick<Prisma.TransactionClient['auditLog'], 'findMany'>;
-  billingCandidate: Pick<Prisma.TransactionClient['billingCandidate'], 'findMany'>;
-  careReport: Pick<Prisma.TransactionClient['careReport'], 'findMany'>;
-  communicationEvent: Pick<Prisma.TransactionClient['communicationEvent'], 'findMany'>;
-  conferenceNote: Pick<Prisma.TransactionClient['conferenceNote'], 'findMany'>;
-  dispenseResult: Pick<Prisma.TransactionClient['dispenseResult'], 'findMany'>;
-  externalAccessGrant: Pick<Prisma.TransactionClient['externalAccessGrant'], 'findMany'>;
-  firstVisitDocument: Pick<Prisma.TransactionClient['firstVisitDocument'], 'findMany'>;
-  inquiryRecord: Pick<Prisma.TransactionClient['inquiryRecord'], 'findMany'>;
-  managementPlan: Pick<Prisma.TransactionClient['managementPlan'], 'findMany'>;
-  medicationCycle: Pick<Prisma.TransactionClient['medicationCycle'], 'findMany'>;
-  patient: Pick<Prisma.TransactionClient['patient'], 'findFirst'>;
-  patientSelfReport: Pick<Prisma.TransactionClient['patientSelfReport'], 'findMany'>;
-  prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findMany'>;
-  user: Pick<Prisma.TransactionClient['user'], 'findMany'>;
-  visitRecord: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
-  visitSchedule: Pick<Prisma.TransactionClient['visitSchedule'], 'findMany'>;
-};
-
 type DetailArgs = PatientDetailScopeArgs;
+
+/**
+ * Row shape of the inline op_history `auditLog.findMany` projection. Declared so
+ * the fail-soft `operationHistory` binding has a stable type across the empty
+ * (degraded) and populated branches and stays assignable to the timeline
+ * projection consumers.
+ */
+type PatientTimelineOperationHistoryRow = {
+  id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  actor_id: string;
+  changes: Prisma.JsonValue;
+  created_at: Date;
+};
 
 const PATIENT_TIMELINE_QUERY_CONCURRENCY = 8;
 
@@ -425,37 +422,50 @@ export async function getPatientVisitsData(db: DbClient, args: DetailArgs) {
   };
 }
 
-export async function getPatientTimelineData(db: PatientTimelineDb, args: DetailArgs) {
-  const patient = await db.patient.findFirst({
-    where: buildPatientDetailWhere(args),
-    select: {
-      id: true,
-      cases: {
-        ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
-        select: {
-          id: true,
+export async function getPatientTimelineData(runScoped: ScopedTxRunner, args: DetailArgs) {
+  const patient = await runScoped((tx) =>
+    tx.patient.findFirst({
+      where: buildPatientDetailWhere(args),
+      select: {
+        id: true,
+        cases: {
+          ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
+          select: {
+            id: true,
+          },
         },
       },
-    },
-  });
+    }),
+  );
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
   const canManageBilling = hasPermission(args.role, 'canManageBilling');
   const billingRefs = canManageBilling
-    ? await listPatientBillingCaseRefs(db, args, caseIds)
+    ? await runScoped((tx) => listPatientBillingCaseRefs(tx, args, caseIds))
     : { visitRecordIds: [] as string[], cycleIds: [] as string[] };
 
-  const fetchCtx: TimelineFetchCtx = {
-    db,
+  // The per-source fetch ctx minus `db`: each settled task supplies its own
+  // RLS-scoped `tx` as `db`, so a slow source trips only its own short tx budget.
+  const baseFetchCtx: Omit<TimelineFetchCtx, 'db'> = {
     orgId: args.orgId,
     patientId: args.patientId,
     caseIds,
     canManageBilling,
     billingRefs,
   };
+  // Each settled task wraps its source fetch in its own RLS-scoped short tx,
+  // handing the per-source `tx` in as `ctx.db`. The fetch return is the source
+  // union; the trailing `as TimelineTasks` re-keys it (as the pre-Cycle-C code
+  // did) once the per-source `tx` plumbing is applied.
   const timelineTasks = Object.fromEntries(
-    TIMELINE_SOURCES.map((source) => [source.key, () => source.fetch(fetchCtx)]),
+    TIMELINE_SOURCES.map((source) => {
+      // `source` is the adapter union; widen its fetch to a uniform signature so
+      // the generic runScoped infers a single `readonly unknown[]` instead of
+      // collapsing onto the first union member's row type.
+      const fetchScoped = (ctx: TimelineFetchCtx): Promise<readonly unknown[]> => source.fetch(ctx);
+      return [source.key, () => runScoped((tx) => fetchScoped({ ...baseFetchCtx, db: tx }))];
+    }),
   ) as TimelineTasks;
   const timelineFallbacks = Object.fromEntries(
     TIMELINE_SOURCES.map((source) => [source.key, source.emptyFallback]),
@@ -494,51 +504,82 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     canManageBilling,
   });
 
-  const sourceActorNameMapPromise = batchResolveNames(
-    db,
-    args.orgId,
-    Array.from(
-      new Set(
-        compactPreviewValues(
-          TIMELINE_SOURCES.flatMap((source) =>
-            source.collectActorIds
-              ? (timelineSources[source.key] as readonly unknown[]).flatMap((row) =>
-                  source.collectActorIds!(row as never),
-                )
-              : [],
-          ),
+  // source-actor name resolution is fail-soft (codex condition, option 1):
+  // a name-lookup reject must NOT 500 the whole panel — events still render with
+  // actor_name:null and the failure is surfaced as partial_failures 'actor_names'.
+  const sourceActorIds = Array.from(
+    new Set(
+      compactPreviewValues(
+        TIMELINE_SOURCES.flatMap((source) =>
+          source.collectActorIds
+            ? (timelineSources[source.key] as readonly unknown[]).flatMap((row) =>
+                source.collectActorIds!(row as never),
+              )
+            : [],
         ),
       ),
     ),
   );
+  const sourceActorNameMapPromise = runScoped((tx) =>
+    batchResolveNames(tx, args.orgId, sourceActorIds),
+  ).catch((error) => {
+    logPatientTimelineTaskFailure(args.orgId, { key: 'actor_names', error });
+    partialFailures.push(toPatientTimelinePartialFailure({ key: 'actor_names', error }));
+    return new Map<string, string>();
+  });
 
-  const operationHistory = await db.auditLog.findMany({
-    where: {
-      org_id: args.orgId,
-      OR: operationHistoryFilters,
-    },
-    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-    take: 20,
-    select: {
-      id: true,
-      action: true,
-      target_type: true,
-      target_id: true,
-      actor_id: true,
-      changes: true,
-      created_at: true,
-    },
+  // op_history is the 14th (inline) source. FAIL-SOFT, not unguarded-throw: a
+  // timeout/deep-page failure on this audit-log read degrades the panel visibly
+  // (operationHistory=[] + partial_failures source 'operation_history') instead
+  // of 500-ing. Downstream consumers (batchResolveNames / firstVisitDocumentActions
+  // / buildOperationHistoryEvents) all no-op safely on [].
+  let operationHistory: PatientTimelineOperationHistoryRow[] = [];
+  try {
+    operationHistory = await runScoped((tx) =>
+      tx.auditLog.findMany({
+        where: {
+          org_id: args.orgId,
+          OR: operationHistoryFilters,
+        },
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        take: 20,
+        select: {
+          id: true,
+          action: true,
+          target_type: true,
+          target_id: true,
+          actor_id: true,
+          changes: true,
+          created_at: true,
+        },
+      }),
+    );
+  } catch (error) {
+    logPatientTimelineTaskFailure(args.orgId, { key: 'operation_history', error });
+    operationHistory = [];
+    partialFailures.push(toPatientTimelinePartialFailure({ key: 'operation_history', error }));
+  }
+
+  // operation-history-actor name resolution is fail-soft with a DISTINCT source
+  // key ('operation_actor_names') so a failure here is attributable separately.
+  const operationActorIds = Array.from(
+    new Set(compactPreviewValues(operationHistory.map((item) => item.actor_id))),
+  );
+  const operationActorNameMapPromise = runScoped((tx) =>
+    batchResolveNames(tx, args.orgId, operationActorIds),
+  ).catch((error) => {
+    logPatientTimelineTaskFailure(args.orgId, { key: 'operation_actor_names', error });
+    partialFailures.push(toPatientTimelinePartialFailure({ key: 'operation_actor_names', error }));
+    return new Map<string, string>();
   });
 
   const [sourceActorNameMap, operationActorNameMap] = await Promise.all([
     sourceActorNameMapPromise,
-    batchResolveNames(
-      db,
-      args.orgId,
-      Array.from(new Set(compactPreviewValues(operationHistory.map((item) => item.actor_id)))),
-    ),
+    operationActorNameMapPromise,
   ]);
   const actorNameMap = new Map([...sourceActorNameMap, ...operationActorNameMap]);
+  // Re-sort: fail-soft pushes above append out of order; keep partial_failures stable.
+  partialFailures.sort((left, right) => left.source.localeCompare(right.source));
 
   const projectCtx: TimelineProjectCtx = {
     patientId: args.patientId,
