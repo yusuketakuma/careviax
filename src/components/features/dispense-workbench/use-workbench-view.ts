@@ -38,7 +38,7 @@ import {
   startKeyOf,
   totals as calcTotals,
 } from './dispensing-workbench.logic';
-import { loadPatients } from './dispensing-workbench.adapter';
+import { isRealDataEnabled, loadPatients } from './dispensing-workbench.adapter';
 import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
 import {
   areQuantitiesEquivalentForUnit,
@@ -58,6 +58,7 @@ import type {
   NgCode,
   Phase,
   SeedPatient,
+  WorkbenchListState,
   WorkbenchModel,
   WorkbenchView,
 } from './dispensing-workbench.types';
@@ -171,11 +172,16 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
   const compareOpen = useWorkbenchStore((s) => s.compareOpen);
   const model = useWorkbenchStore((s) => s.model);
   const patients = useWorkbenchStore((s) => s.patients);
+  const hydrated = useWorkbenchStore((s) => s.hydrated);
+  const loadError = useWorkbenchStore((s) => s.loadError);
 
   return useMemo(
     () =>
       buildView({
         phase,
+        isRealData: isRealDataEnabled(),
+        hydrated,
+        loadError,
         selId,
         sortMode,
         done,
@@ -219,6 +225,8 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
       compareOpen,
       model,
       patients,
+      hydrated,
+      loadError,
     ],
   );
 }
@@ -246,6 +254,27 @@ interface BuildViewArgs {
   model: WorkbenchModel;
   /** 患者リスト。省略時はモック seed（既定パス / 既存テスト互換）*/
   patients?: SeedPatient[];
+  /** 実データパスが有効か（左ペインの取得状態判定に使う。省略時 false=モック扱いで常に ready）。 */
+  isRealData?: boolean;
+  /** store が hydrate 済みか（false=実データ未取得＝loading）。 */
+  hydrated?: boolean;
+  /** 実データ取得が失敗したか（true=error 状態）。 */
+  loadError?: boolean;
+}
+
+/** 左ペインの取得状態を導出する（loading/error/empty/ready）。 */
+function deriveListState(args: {
+  isRealData: boolean;
+  hydrated: boolean;
+  loadError: boolean;
+  dataUnavailable: boolean;
+}): WorkbenchListState {
+  // モックは常に通常表示（seed）。実データのみ取得状態を反映する。
+  if (!args.isRealData) return 'ready';
+  if (args.loadError) return 'error';
+  // hydrate 前は loading（seed のちらつきを避ける）。
+  if (!args.hydrated) return 'loading';
+  return args.dataUnavailable ? 'empty' : 'ready';
 }
 
 /**
@@ -1098,6 +1127,13 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
           ? 'セット'
           : 'セット監査';
 
+  const listState = deriveListState({
+    isRealData: args.isRealData ?? false,
+    hydrated: args.hydrated ?? false,
+    loadError: args.loadError ?? false,
+    dataUnavailable,
+  });
+
   return {
     phase: ph,
     isGrid,
@@ -1109,6 +1145,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     patients,
     patientCount: pts.length + '',
     sortButtons,
+    listState,
 
     phases,
     flowHint,

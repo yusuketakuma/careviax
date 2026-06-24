@@ -148,14 +148,18 @@ export async function loadWorkbenchPatientRowsAsync(
 ): Promise<{
   patients: SeedPatient[];
   rows: DispenseWorkbenchPatientRow[];
+  /** fetch が成功したか。false=取得失敗（障害と「0件」を区別するための信号。空状態の honest 表示に使う）。 */
+  ok: boolean;
 }> {
-  if (USE_MOCK) return { patients: buildPatients(), rows: [] };
+  if (USE_MOCK) return { patients: buildPatients(), rows: [], ok: true };
   const path = `/api/dispense-workbench/patients${buildPatientsQuery(options)}`;
   const body = await fetchJson<DispenseWorkbenchPatientsResponse>(path);
-  if (!body || !Array.isArray(body.data) || body.data.length === 0) {
-    return { patients: [], rows: [] };
+  // body=null は非2xx/例外＝取得失敗。配列だが空は「取得成功・0件」で区別する。
+  if (!body) return { patients: [], rows: [], ok: false };
+  if (!Array.isArray(body.data) || body.data.length === 0) {
+    return { patients: [], rows: [], ok: true };
   }
-  return { patients: patientsFromApi(body.data), rows: body.data };
+  return { patients: patientsFromApi(body.data), rows: body.data, ok: true };
 }
 
 /** dispense-tasks リスト API の最小レスポンス（id/status/cycle_id のみ参照）。 */

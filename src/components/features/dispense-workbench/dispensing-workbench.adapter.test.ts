@@ -498,4 +498,26 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
       expect.any(Object),
     );
   });
+
+  it('reports ok=false when the patients fetch fails (distinguishes a fault from 0 件)', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => new Response('server error', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadWorkbenchPatientRowsAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadWorkbenchPatientRowsAsync({ phase: 'dispense' });
+
+    expect(result).toEqual({ patients: [], rows: [], ok: false });
+  });
+
+  it('reports ok=true on a successful but empty patients fetch (0 件は空状態)', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadWorkbenchPatientRowsAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadWorkbenchPatientRowsAsync({ phase: 'dispense' });
+
+    expect(result).toEqual({ patients: [], rows: [], ok: true });
+  });
 });

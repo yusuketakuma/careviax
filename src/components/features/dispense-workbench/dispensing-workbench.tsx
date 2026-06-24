@@ -93,6 +93,8 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   const setCalendarState = useWorkbenchStore((s) => s.setCalendarState);
   const setOperators = useWorkbenchStore((s) => s.setOperators);
   const operators = useWorkbenchStore((s) => s.operators);
+  const setLoadError = useWorkbenchStore((s) => s.setLoadError);
+  const retryNonce = useWorkbenchStore((s) => s.retryNonce);
   const selId = useWorkbenchStore((s) => s.selId);
   const planId = useWorkbenchStore((s) => s.writeContext.planId);
   // 接続状態は HeaderSyncStatus と同一の useNetworkOnline（新規リアルタイム購読を増やさない）。
@@ -120,9 +122,11 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     if (phase !== 'dispense' && phase !== 'audit') return; // set/seta は別 effect
     let cancelled = false;
     void (async () => {
-      const { patients, rows } = await loadWorkbenchPatientRowsAsync({ phase });
+      const { patients, rows, ok } = await loadWorkbenchPatientRowsAsync({ phase });
       if (cancelled) return;
       if (patients.length === 0) {
+        // 取得失敗(!ok)はエラー状態、取得成功・0件は空状態として区別する。
+        setLoadError(!ok);
         hydrate({ patients: [] });
         return;
       }
@@ -130,9 +134,12 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       const wb = await loadWorkbenchAsync(phase, targetId, { patientRows: rows });
       if (cancelled) return;
       if (!wb) {
+        // リストは取得できたが選択患者の詳細取得に失敗＝障害。
+        setLoadError(true);
         hydrate({ patients: [] });
         return;
       }
+      setLoadError(false);
       hydrate({
         patients,
         selId: targetId,
@@ -149,8 +156,8 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     return () => {
       cancelled = true;
     };
-    // selId 変更時に選択患者の model を再取得する。phase 変更でも再評価。
-  }, [phase, selId, hydrate, setWriteContext, setOperators]);
+    // selId / retryNonce 変更時に選択患者の model を再取得する。phase 変更でも再評価。
+  }, [phase, selId, retryNonce, hydrate, setWriteContext, setOperators, setLoadError]);
 
   // ---- 実データ結線（カレンダー: set / seta）----
   // 既定（モック）では no-op。opt-in 時は direct /set entry でも cycle_id -> SetPlan -> calendar
@@ -162,6 +169,8 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     // セット / セット監査はカレンダー由来で operator chrome を持たない。前工程の dispenser/操作者を
     // 残さないよう null へ倒す（status bar は '—'）。
     setOperators({ dispenserName: null, operatorName: null });
+    // カレンダー工程では前工程のエラー状態を引き継がない（空/未計画は空状態として扱う）。
+    setLoadError(false);
     let cancelled = false;
     void (async () => {
       if (planId) {
@@ -193,7 +202,17 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     return () => {
       cancelled = true;
     };
-  }, [phase, selId, planId, hydrate, setCalendarState, setWriteContext, setOperators]);
+  }, [
+    phase,
+    selId,
+    planId,
+    retryNonce,
+    hydrate,
+    setCalendarState,
+    setWriteContext,
+    setOperators,
+    setLoadError,
+  ]);
 
   // ---- F-key / キーボードアクションの写像 ----
   const runAction = useCallback(

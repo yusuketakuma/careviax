@@ -690,6 +690,15 @@ export interface PrimaryButtonView {
  * 設計プロト renderVals（L1062-1086）の網羅。コンポーネントはこれと store の actions
  * のみを消費する（renderVals の onClick 等の生ハンドラは store action へ写像）。
  */
+/**
+ * 左ペイン（患者リスト）の取得状態。
+ * - loading: 実データ未取得（hydrate 前。seed のちらつきを避けスケルトン表示）
+ * - error: 取得失敗（障害。再読み込み導線を出す）
+ * - empty: 取得成功・0件（この工程に対象患者なし）
+ * - ready: 通常表示（実データ or モック seed）
+ */
+export type WorkbenchListState = 'loading' | 'error' | 'empty' | 'ready';
+
 export interface WorkbenchView {
   // phase 派生
   phase: Phase;
@@ -703,6 +712,8 @@ export interface WorkbenchView {
   patients: PatientListItem[];
   patientCount: string;
   sortButtons: SortButtonView[];
+  /** 左ペインの取得状態（loading/error/empty/ready）。 */
+  listState: WorkbenchListState;
 
   // 工程タブ
   phases: PhaseTabView[];

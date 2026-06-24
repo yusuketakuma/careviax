@@ -519,3 +519,85 @@ describe('buildView calendar period', () => {
     expect(allowed.primary.cursor).toBe('pointer');
   });
 });
+
+describe('buildView listState (左ペインの実データ取得状態)', () => {
+  const listBase = {
+    phase: 'dispense' as const,
+    selId: patient.id,
+    sortMode: 'start' as const,
+    done: {},
+    audit: {},
+    setCells: {},
+    auditCells: {},
+    outChk: {},
+    checks: {},
+    ng: {},
+    target: null,
+    holdModal: null,
+    holdInfo: {},
+    packet: {},
+    compareOpen: false,
+    // 実データ空時は store の hydrate-empty が model:{} を入れる。それに合わせ空 model で構成する
+    // （非空 model + 空 patients は本番に存在しない不整合で、autoTarget が空 days を参照して落ちる）。
+    model: {},
+  };
+
+  it('モック（isRealData 省略）は常に ready（seed 表示・状態は出さない）', () => {
+    expect(buildView({ ...listBase, patients: [patient] }).listState).toBe('ready');
+  });
+
+  it('実データ未取得（hydrated=false）は loading（seed のちらつきを避ける）', () => {
+    expect(
+      buildView({ ...listBase, isRealData: true, hydrated: false, patients: [] }).listState,
+    ).toBe('loading');
+  });
+
+  it('実データ取得失敗（loadError）は error（hydrated 済みでも error を優先）', () => {
+    expect(
+      buildView({
+        ...listBase,
+        isRealData: true,
+        hydrated: true,
+        loadError: true,
+        patients: [],
+      }).listState,
+    ).toBe('error');
+  });
+
+  it('error は loading より優先（loadError なら hydrate 前でも error）', () => {
+    // loadError 判定が !hydrated(loading) 判定より前にあることを固定する（優先順位の teeth）。
+    expect(
+      buildView({
+        ...listBase,
+        isRealData: true,
+        hydrated: false,
+        loadError: true,
+        patients: [],
+      }).listState,
+    ).toBe('error');
+  });
+
+  it('実データ取得成功・0件は empty（障害と区別する）', () => {
+    expect(
+      buildView({
+        ...listBase,
+        isRealData: true,
+        hydrated: true,
+        loadError: false,
+        patients: [],
+      }).listState,
+    ).toBe('empty');
+  });
+
+  it('実データ取得成功・患者ありは ready', () => {
+    expect(
+      buildView({
+        ...listBase,
+        isRealData: true,
+        hydrated: true,
+        loadError: false,
+        patients: [patient],
+      }).listState,
+    ).toBe('ready');
+  });
+});
