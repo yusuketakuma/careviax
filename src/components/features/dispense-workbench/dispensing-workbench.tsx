@@ -6,9 +6,11 @@
  * 役割:
  *  - props { phase }（ルートから注入）。useWorkbenchView(phase) で派生 view を 1 回取得し子へ配分。
  *  - レイアウト: 患者リボン / BODY(左=PatientListPanel・
- *    中央=PhaseTabs + (isGrid:PrescriptionGrid | isCal:MedicationCalendarGrid)・右=RightPane) /
+ *    中央=PhaseHeader + (isGrid:PrescriptionGrid | isCal:MedicationCalendarGrid)・右=RightPane) /
  *    ステータスバー。
- *  - フェーズタブは 4 ルート（/dispense /audit /set /set-audit）へ遷移。
+ *  - 4 工程は分離された独立画面（/dispense /audit /set /set-audit）。工程切替は
+ *    アプリ標準の左メニュー（navigation-config.ts）で行い、workbench 内に独自タブを持たない。
+ *    PhaseHeader は現工程のみを静的表示する（他工程への遷移リンクなし）。
  *    物理 F12「次工程へ」は store.primary(phase) がゲート通過時に返す next phase を処理する。
  *  - HoldReasonDialog / PrescriptionCompareDialog をマウント（開閉は view.holdOpen / view.compareOpen）。
  *
@@ -37,7 +39,7 @@ import {
 import { isCalendarPhase } from './dispensing-workbench.types';
 import type { FKeyAction, Phase } from './dispensing-workbench.types';
 
-import { PhaseTabs } from './phase-tabs';
+import { PhaseHeader } from './phase-header';
 import { PatientListPanel } from './patient-list-panel';
 import { PrescriptionGrid } from './prescription-grid';
 import { MedicationCalendarGrid } from './medication-calendar-grid';
@@ -317,7 +319,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
 
         {/* 中央ペイン */}
         <div className={styles.centerPane}>
-          <PhaseTabs view={view} phase={phase} />
+          <PhaseHeader view={view} phase={phase} />
           {view.isGrid ? (
             <PrescriptionGrid
               view={view}

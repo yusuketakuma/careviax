@@ -407,7 +407,7 @@ async function openSetWorkbenchWithRealData(page: Page, path: string) {
   const periodLabel = formatSetCalendarPeriod(calendar.data.period_start, calendar.data.day_count);
 
   const main = page.locator('main');
-  const phaseNav = page.locator('main').getByRole('navigation', { name: '工程タブ' });
+  const phaseNav = page.locator('main').getByRole('navigation', { name: '現在の工程' });
   let targetPatientButton = page.locator('button').filter({ hasText: targetPatient!.name }).first();
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await expect(phaseNav).toBeVisible({ timeout: 90_000 });
@@ -538,13 +538,12 @@ async function confirmVisitCarryPacketOnSetPage(main: Locator) {
   await pressAllUnpressedToggleButtons(carryPacket, { required: true });
 }
 
-async function clickSetAuditPhaseTabUntilStable(page: Page, main: Locator) {
+async function navigateToSetAuditViaLeftMenuUntilStable(page: Page, main: Locator) {
+  // 工程切替は左メニュー（navigation-config.ts）の href ベースリンクで行う。
+  // 旧 in-workbench クリック可能タブ <Link> は撤去済み。
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const setAuditLink = main.getByRole('link', { name: 'セット監査', exact: true }).first();
+    const setAuditLink = page.locator('a[href="/set-audit"]').first();
     await expect(setAuditLink).toBeVisible({ timeout: 45_000 });
-    const setAuditHref = await setAuditLink.getAttribute('href');
-    if (!setAuditHref) throw new Error('Set-audit workbench link did not expose an href');
-    expect(setAuditHref).toBe('/set-audit');
 
     await setAuditLink.click({ noWaitAfter: true });
     const reachedSetAudit = await page
@@ -554,7 +553,9 @@ async function clickSetAuditPhaseTabUntilStable(page: Page, main: Locator) {
     if (reachedSetAudit) {
       await waitForStableUi(page);
       if (/\/set-audit(?:$|\?)/.test(new URL(page.url()).pathname)) {
-        await expect(main.locator('a[aria-current="page"]')).toContainText('セット監査', {
+        // 遷移後は静的工程ヘッダが現工程（セット監査）を表示する。
+        const phaseHeader = main.getByRole('navigation', { name: '現在の工程' });
+        await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('セット監査', {
           timeout: 30_000,
         });
         return;
@@ -562,17 +563,19 @@ async function clickSetAuditPhaseTabUntilStable(page: Page, main: Locator) {
     }
   }
 
-  throw new Error(`Set-audit phase tab did not settle on /set-audit; current URL: ${page.url()}`);
+  throw new Error(
+    `Set-audit left-menu navigation did not settle on /set-audit; current URL: ${page.url()}`,
+  );
 }
 
 async function openSetAuditViaSetWithCarryEvidence(page: Page) {
   const data = await openSetWorkbenchWithRealData(page, '/set');
   const main = page.locator('main');
-  await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+  await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
   await waitForVisibleSetAuditCell(main);
   await confirmVisitCarryPacketOnSetPage(main);
 
-  await clickSetAuditPhaseTabUntilStable(page, main);
+  await navigateToSetAuditViaLeftMenuUntilStable(page, main);
   await expect(main).toContainText(data.periodLabel, { timeout: 30_000 });
   await waitForVisibleSetAuditCell(main);
   return data;
@@ -913,8 +916,8 @@ test.describe('prescription intake flow', () => {
     await openStableRoute(page, dispenseHref);
     await expect(page).toHaveURL(/\/dispense/);
 
-    // 新 DispensingWorkbench の工程タブが安定アンカー（旧「調剤」見出しは撤去済み）。
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible({
+    // 新 DispensingWorkbench の静的工程ヘッダが安定アンカー（旧「調剤」見出しは撤去済み）。
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible({
       timeout: 90_000,
     });
 
@@ -931,8 +934,10 @@ test.describe('dispense → audit flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dispense');
 
-    // 新 DispensingWorkbench の工程タブが安定アンカー（旧「調剤」見出しは撤去済み）。
-    await expect(page.locator('main').getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    // 新 DispensingWorkbench の静的工程ヘッダが安定アンカー（旧「調剤」見出しは撤去済み）。
+    await expect(
+      page.locator('main').getByRole('navigation', { name: '現在の工程' }),
+    ).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -963,11 +968,10 @@ test.describe('dispense → audit flow', () => {
     await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
-    await expect(main.getByRole('link', { name: '調剤', exact: true })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    const phaseHeader = main.getByRole('navigation', { name: '現在の工程' });
+    await expect(phaseHeader).toBeVisible();
+    // 現工程（調剤）は静的ヘッダ内の aria-current="page" span に表示される。
+    await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤');
     await expect(main.getByText('患者(P)')).toHaveCount(0);
     await expect(main.getByText('調剤(C)')).toHaveCount(0);
     await expect(main.getByRole('button', { name: /前回処方と比較/ })).toBeVisible();
@@ -1028,17 +1032,19 @@ test.describe('dispense → audit flow', () => {
     await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
-    // 新ワークベンチは工程タブ（調剤監査 → /audit）の <Link> で遷移する。
-    const auditLink = main.getByRole('link', { name: '調剤監査', exact: true }).first();
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible({
+      timeout: 45_000,
+    });
+    // 工程切替は左メニュー（href ベース。'監査' は critical バッジを持つためラベル一致を避ける）。
+    const auditLink = page.locator('a[href="/audit"]').first();
     await expect(auditLink).toBeVisible({ timeout: 45_000 });
-    const auditHref = await auditLink.getAttribute('href');
-    if (!auditHref) throw new Error('Audit workbench link did not expose an href');
-    expect(auditHref).toBe('/audit');
-    await openStableRoute(page, auditHref);
+    await openStableRoute(page, '/audit');
     await expect(page).toHaveURL(/\/audit/);
 
-    // 遷移後は調剤監査工程タブが active（aria-current="page"）。
-    await expect(main.locator('a[aria-current="page"]')).toBeVisible({
+    // 遷移後は監査画面の静的工程ヘッダが現工程（調剤監査）を表示する。
+    const phaseHeader = main.getByRole('navigation', { name: '現在の工程' });
+    await expect(phaseHeader).toBeVisible({ timeout: 45_000 });
+    await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤監査', {
       timeout: 45_000,
     });
 
@@ -1049,7 +1055,9 @@ test.describe('dispense → audit flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/audit');
 
-    await expect(page.locator('main').getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    await expect(
+      page.locator('main').getByRole('navigation', { name: '現在の工程' }),
+    ).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -1077,26 +1085,26 @@ test.describe('dispense → audit flow', () => {
     await openStableRoute(page, dispenseShortcutHref);
     await expect(page).toHaveURL(/\/dispense/);
 
-    const phaseTabs = main.getByRole('navigation', { name: '工程タブ' });
-    await expect(phaseTabs).toBeVisible({
+    const phaseHeader = main.getByRole('navigation', { name: '現在の工程' });
+    await expect(phaseHeader).toBeVisible({
       timeout: 45_000,
     });
 
-    // → audit via 工程タブ（調剤監査 → /audit）
-    const auditLink = phaseTabs.getByRole('link', { name: '調剤監査', exact: true }).first();
-    await expect(auditLink).toHaveAttribute('href', '/audit');
+    // → audit via 左メニュー（href ベース。'監査' は critical バッジを持つ）
+    await expect(page.locator('a[href="/audit"]').first()).toBeVisible({ timeout: 45_000 });
     await openStableRoute(page, '/audit');
     await expect(page).toHaveURL(/\/audit/);
-    await expect(main.locator('a[aria-current="page"]')).toBeVisible({
+    await expect(phaseHeader).toBeVisible({ timeout: 45_000 });
+    await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤監査', {
       timeout: 45_000,
     });
 
-    // → back to dispense via 工程タブ（調剤 → /dispense）
-    const dispenseLink = main.getByRole('link', { name: '調剤', exact: true }).first();
-    await expect(dispenseLink).toHaveAttribute('href', '/dispense');
+    // → back to dispense via 左メニュー（調剤 → /dispense）
+    await expect(page.locator('a[href="/dispense"]').first()).toBeVisible({ timeout: 45_000 });
     await openStableRoute(page, '/dispense');
     await expect(page).toHaveURL(/\/dispense/);
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible({
+    await expect(phaseHeader).toBeVisible({ timeout: 45_000 });
+    await expect(phaseHeader.locator('[aria-current="page"]')).toContainText('調剤', {
       timeout: 45_000,
     });
 
@@ -1127,7 +1135,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await openStableRoute(page, '/set');
 
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
     await expect(main.getByText('麻薬分類未確認 1剤')).toBeVisible();
     await expect(main.getByText('特記なし')).toHaveCount(0);
 
@@ -1141,7 +1149,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await openSetWorkbenchWithRealData(page, '/set');
 
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
     await expect(main).toContainText('セット対象期間');
     await expect(main).toContainText('一包化袋');
     await expect(main).toContainText('1包');
@@ -1155,7 +1163,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await openSetWorkbenchWithRealData(page, '/set-audit');
 
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
     await expect(main).toContainText('セット対象期間');
     await expect(main).toContainText('一包化袋');
     await expect(main).toContainText('1包');
@@ -1200,7 +1208,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await openStableRoute(page, '/set-audit');
 
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: '現在の工程' })).toBeVisible();
     const cell = await waitForVisibleSetAuditCell(main);
     await cell.click();
     await expect(main.getByRole('button', { name: '監査OK', exact: true })).toBeVisible();
