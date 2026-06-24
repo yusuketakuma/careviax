@@ -255,4 +255,29 @@ Progress (2026-06-24 cont.):
 
 Remaining of "全て修正して": program now essentially COMPLETE. Landed set: F-20260624-002 backend hardening `a0dfa217` (codex) / F-20260624-004 FE timeline `244e8843` (claude) / F-20260624-001 safety-check `87400f54` (claude) / F-003 Cycle A registry `e0b4f364` (claude) / **F-003 Cycle C RLS-on-read `815a8baf` (claude, just landed)**. F-005 (timeout-safe RLS-on-read) folded INTO Cycle C — done. Only two items remain, BOTH honest human-gated blockers (not actionable by the loop): (1) **timeline-deep-pagination-deferred** — loss-free deep cursor needs a materialized per-event occurred_at column (additive migration, HUMAN-GATED) or a formally-proven loss-free source-local cursor; artifact `.agent-loop/plans/F-20260624-003-bc-rev2-plan.md` §2 is the shelved flawed attempt. (2) **rls-force-nonsuperuser-proof** (BLOCKED.md) — FORCE-RLS denial proof needs a non-superuser Postgres role + cross-org seed fixture. Next Discover (§22b/§23 Axis 2): pick a fresh component-vertical-slice or area-batch target outside these blockers.
 
+### ROUND-ORG-HEADERS-2 (2026-06-24, claude×codex 並列 dual-maker, resumed after /clear)
+
+User「過去ログ確認して続きを開始」→ F-003 Cycle C を再開・完遂後、§23 Axis 2 で admin org-header/path-segment 収束 sweep を継続。
+
+**LANDED（全 maker/checker'd・objective gate GREEN）:**
+
+- F-003 Cycle C (RLS-on-read, timeout-safe) `815a8baf` + ledger `1b2b76f0`（claude / codex）
+- F-007 card-workspace href `856b7bef`（codex / claude）
+- F-009 packaging-methods `b4bcff8d`（claude / codex）
+- F-011 alert-rules page `ac7c1ba2`（claude / codex; rev1 CHANGES_REQUESTED→rev2: saveMutation PATCH 分岐 + testMutation teeth 追加）
+- F-013 signal-tuning-panel `745268e5`（claude / codex; NEW test）→ **admin/alert-rules dir 完全収束**
+- F-015 service-areas `3148efd3`（claude / codex）
+- F-016 institutions `359c38bc`（codex / claude）
+- F-017 business-holidays（codex maker, in-flight）
+
+**プロセス知見（FixPattern 候補）:**
+
+- 共有ワークツリーでの並列 dual-maker build: 各 maker の source が compile する状態を「source stable」合図で確認 → 片方が combined build（両 source 検証）→ コミットは `git commit -- <自パス>` の partial commit で相手の uncommitted を温存。
+- jest-dom matcher 未登録（repo は plain DOM assertion 規約 `.disabled`/`.textContent.toContain`）。
+- zsh `${PIPESTATUS[0]}` は空 → gate exit は直接 `$?`。
+- 並列 build の重複起動 → Next.js "wait for the build to complete" ロック衝突 → 単一実行厳守。
+- URLSearchParams query の dynamic 部は encodePathSegment 不要（path segment のみ encode）。
+
+**残: FEATURE_QUEUE.md「ROUND-ORG-HEADERS-2」backlog（~25 ファイル、未着手）。drug-master-content.tsx は BIG=sub-slice 必須。** gbrain writeback TODO: 本ラウンドの FixPattern（shared-tree-parallel-build-coordination / plain-dom-assertion-convention / zsh-pipestatus）。
+
 > Note: a hard-stop writes the **Resume point** here before exiting so the next session can resume without re-deriving context.
