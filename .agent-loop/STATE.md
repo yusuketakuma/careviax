@@ -308,4 +308,19 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 
 **環境メモ**: 本セッションで claude が起動した `next dev`(PID 58301, :3000)が main `.next` を占有。auto-mode 分類器が claude による kill を拒否。in-place build は衝突するため build は **隔離 git worktree** で実施(render-smoke/codex 実証)。zsh は `${PIPESTATUS[0]}` 空→gate exit は直接 `$?`。
 
+### ROUND-FALSEEMPTY (2026-06-24, claude solo — user: codex リミット到達、claude 単独運用へ。codex 宛タスクも claude が処理)
+
+**運用変更**: codex usage 上限到達のため **claude 単独運用**へ正式移行（人間指示）。maker/checker 分離は **reviewer-audit/code-reviewer サブエージェント**の独立 checker パスで担保（同一コンテキスト self-approve せず）。codex 宛だった F-029 も claude が実装。build は dev server(PID 58301) 占有のため隔離 worktree（`pnpm_config_verify_deps_before_run=false` で symlink node_modules の purge 中断を回避; CI=true は main node_modules 削除リスクで厳禁）。
+
+**LANDED (claude maker / reviewer-audit checker, 全 gate GREEN + 隔離 build exit0):**
+
+- F-20260624-030 /admin/realtime workbench 優先度 enum→日本語ラベル(PRIORITY_DISPLAY_LABELS, 色のみ依存回避) `40fb1a20`
+- F-20260624-029 pharmacist-credentials 一覧 DataTable false-empty→ErrorState+retry(isError 配線, PHI-free) `c3f80974`
+- F-20260624-031 同 登録ダイアログ 対象スタッフ Select の silent-empty→inline role=alert+retry(reviewer LOW follow-up) `481b34f5`
+- F-20260624-032 false-empty/false-zero 一掃 3画面(facility-standards 誤判定 top-level guard / staff-kpi-panel false-zero KPI 月ピッカー残し / document-templates 一覧 region scoped) `9252971e`
+
+**FixPattern**: useQuery に `isError`+`refetch` 追加 → 失敗時 DataTable/KPI を `<ErrorState variant=server>`+「再読み込み」(`void refetch()`)へ置換。早期 return は全 hook 後（hook 順序保持）。テストは hoisted `useQueryMock` で isError 注入、または real QueryClient+`retry:false`+fetch 500。false 値の **不在** を assert（ErrorState 存在だけでなく）。
+
+**残 backlog(非§15)**: billing-rules/page.tsx は admin DataTable で唯一 false-empty 残だが **§15 billing 隣接 → defer**(UI error-state のみでも billing は人間判断に寄せる)。pharmacist error 分岐の dangling `htmlFor` label = a11y NIT(reviewer 指摘, role=alert で SR 担保, 機能影響なし)。他: #2b/c/d MasterEditorView スタブ実データ化, #29 44px タッチ, #30 StateBadge enum→token 残(jobs/billing-rules/performance/pca), #12b priority-before-take(design-gated)。
+
 > Note: a hard-stop writes the **Resume point** here before exiting so the next session can resume without re-deriving context.
