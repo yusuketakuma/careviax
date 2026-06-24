@@ -1,0 +1,817 @@
+{
+  "renderDefects": [
+    {
+      "screen": "/dispense, /audit, /set, /set-audit",
+      "issue": "4工程の共有ワークベンチが既定(NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA未設定)でモックseed患者(山田花子等)を本番描画し、堅牢な実API(/api/dispense-tasks/workbench, /api/dispense-audits, /api/set-plans/calendar, /api/set-audits)に一切接続しない。監査OK/NG/保留操作もMOCK_WRITE_NOOPで永続化されず、架空患者を実画面として操作できる。医療調剤・監査工程の根幹欠陥。",
+      "severity": "blocker",
+      "evidence": "dispensing-workbench.adapter.ts:59-65 (USE_MOCK=env!=='1'); page.tsx docstring『段階1・モックデータ駆動』; submitDispenseAudit/submitSetAudit MOCK_WRITE_NOOP"
+    },
+    {
+      "screen": "/admin/drug-masters",
+      "issue": "本番『医薬品マスター管理』が実データ非接続のプレースホルダMasterEditorViewを描画(『薬剤マスター1〜8』固定、全件『有効』固定)。実装済みのDrugMasterContent(variant=master)が同ディレクトリに存在するのに誤配線で未使用。",
+      "severity": "blocker",
+      "evidence": "drug-masters/page.tsx:9-16 がMasterEditorView; master-editor-view.tsx:29,85; 実装はformulary/page.tsx:9のみ利用"
+    },
+    {
+      "screen": "/admin/staff",
+      "issue": "スタッフ画面が捏造placeholder(『スタッフ1〜8』全件role=done『有効』、保存ボタン無ハンドラ)を本番表示。完成済みstaff-metricsバックエンドとStaffKpiPanelは/admin/performanceに配線され本画面では未使用。",
+      "severity": "blocker",
+      "evidence": "master-editor-view.tsx:29,85,107; performance/page.tsx:28,620 がStaffKpiPanel; staff-metrics route.ts:54-294"
+    },
+    {
+      "screen": "/admin/facilities",
+      "issue": "施設マスターが本番でハードコードのダミー8件(施設1〜8)を表示、全件『有効』固定、保存ボタン無配線。実CRUD(/api/admin/facilities)完備で他画面から利用済みなのに本画面のみ未接続。",
+      "severity": "blocker",
+      "evidence": "master-editor-view.tsx:29,78,85,96-108; route.ts:83-123,131-183"
+    },
+    {
+      "screen": "/dashboard",
+      "issue": "@db.Timeの訪問時刻をローカル時間として描画するタイムゾーン不整合。BFFがtoISOString()しクライアントがgetHours()で読むためJST本番で約9時間ずれ、条件バナー/期限/タイムラインのブロック位置が全てずれる。コードベース正規規約(getUTCHours)違反で本画面のみ。",
+      "severity": "blocker",
+      "evidence": "cockpit/route.ts:320-321; dashboard-cockpit.helpers.ts:31; 正規規約 src/lib/visits/time-of-day.ts:3"
+    },
+    {
+      "screen": "/prescriptions/intake",
+      "issue": "行内アクション(入力へ送る/並べて比較)がintakeを識別せず常に固定の/prescriptionsへ遷移。遷移先はURLパラメータを読まず内部stateで選択するため、ユーザーは未選択リストに放り出される。トリアージ主要導線が機能的に空振り。",
+      "severity": "blocker",
+      "evidence": "intake-triage.shared.ts:98-99 (href:()=>'/prescriptions'); prescriptions-workspace.tsx にuseSearchParams消費なし"
+    },
+    {
+      "screen": "/handoff",
+      "issue": "仕事を渡すダイアログがrecipient_user_idを送らずrecipient_label自由文のみ送信。direction判定がuser_id一致前提のため宛先の『私に来た』に永遠に出ず、受領確認ボタンも出ない。3点セット/監査ログ/受領確認という画面の中核価値が構造的に機能しない。",
+      "severity": "blocker",
+      "evidence": "handoff-workspace.tsx:282-298,344-353; route.ts:48-58,154,158-160"
+    },
+    {
+      "screen": "/admin/facility-standards",
+      "issue": "requirements_statusが空オブジェクト{}のときObject.values({}).every(Boolean)がtrueを返しclaim_status='claimable'(算定可)と誤判定。要件未確認の届出が算定可と表示され誤った加算算定を誘発しうる。",
+      "severity": "major",
+      "evidence": "facility-standards route.ts:50-54"
+    },
+    {
+      "screen": "/dispense, /audit, /set, /set-audit",
+      "issue": "ステータスバーの調剤者・監査者名がハードコード固定氏名(山田花子/佐々木健)で、実データ時もログインユーザー/実担当者に置換されない。二人制監査の責任主体表示が虚偽。route.tsはdispenser/auditorを返すのにUIが無視。",
+      "severity": "major",
+      "evidence": "dispensing-workbench.tsx:350-353; route.ts:422-430,464"
+    },
+    {
+      "screen": "/dispense, /audit, /set, /set-audit",
+      "issue": "接続状態が常時『オンライン』固定表示。実際の接続/同期状態を反映せず、PWA/Dexieオフライン前提でも常にオンラインを断言する偽インジケータ。",
+      "severity": "major",
+      "evidence": "dispensing-workbench.tsx:362-364"
+    },
+    {
+      "screen": "/dispense, /audit, /set, /set-audit",
+      "issue": "作業証跡写真(セット前/後/監査完了)が斜線ハッチの静的プレースホルダ枠のみで撮影/アップロード/表示の結線が皆無。実データ時も常に空ダミー枠。3省2ガイドラインの作業証跡として機能しない見せかけUI。",
+      "severity": "major",
+      "evidence": "medication-calendar-grid.tsx:333-356; use-workbench-view.ts:1078-1079"
+    },
+    {
+      "screen": "/dispense, /audit, /set, /set-audit",
+      "issue": "右ペインcalBarMeta(セット者名/『セット完了：6/16 15:10』/監査者)が固定文字列で実データに置換されない偽の証跡メタ。",
+      "severity": "major",
+      "evidence": "use-workbench-view.ts:1076-1077"
+    },
+    {
+      "screen": "/dispense, /audit, /set, /set-audit",
+      "issue": "min-width:1540px+overflow:hiddenのデスクトップ専用root。1366pxノートPC・全タブレット/スマホで横オーバーフローし主操作が画面外へ切れる。Mobile First方針と矛盾。",
+      "severity": "major",
+      "evidence": "dispensing-workbench.module.css:20-24,226-235"
+    },
+    {
+      "screen": "/admin/external-professionals",
+      "issue": "他職種マスターがactiveCategory='医療機関'のMasterEditorViewスタブで、捏造8件・全件『有効』固定・保存非機能。完全な実CRUD(/api/admin/external-professionals)が存在し患者ケアチームから利用済みなのに未接続。",
+      "severity": "major",
+      "evidence": "master-editor-view.tsx:29,85,107; external-professionals route.ts:48-90"
+    },
+    {
+      "screen": "/patients",
+      "issue": "患者カード一覧がデフォルト80件で打ち切られるが優先度ソートはDB take後のname_kana順80行に対してのみ実行。81位以降の高優先度患者(麻薬監査待ち/urgent)がボード/チップ/タイルから不可視。assigned_totalは全件数を出すため『N名のうちM名』がフィルタと誤認される。truncation表示なし。",
+      "severity": "major",
+      "evidence": "board/route.ts:40,513,685-689,740; patients-board.tsx:707-709"
+    },
+    {
+      "screen": "/statistics",
+      "issue": "『本日完了』KPIがcompleted_atでなくupdated_at基準。完了済みタスクの任意編集でupdated_atが再スタンプされ当日完了に誤計上。スループット過大。",
+      "severity": "major",
+      "evidence": "dispensing-stats/route.ts:31-37; prescription.prisma:269 (completed_atなし)"
+    },
+    {
+      "screen": "/statistics",
+      "issue": "『鑑査待ち』KPIがaudits:{none:{}}定義で、監査済みかつ差戻し(failed)タスクは監査行があるため除外。再調剤・再監査が必要なreworkタスクの監査バックログを過少報告。",
+      "severity": "major",
+      "evidence": "dispensing-stats/route.ts:22-28; prescription.prisma:304-327"
+    },
+    {
+      "screen": "/billing",
+      "issue": "『摘要欄テンプレ {N}種』がtemplate_typeをorg_idのみでgroupByし、care_report/contract等の無関係テンプレ種別を含む全種別を計数。虚偽の件数を表示。",
+      "severity": "major",
+      "evidence": "billing-evidence/check/route.ts:143-146,243; admin.prisma:216"
+    },
+    {
+      "screen": "/billing",
+      "issue": "疑義テーブルは10件で打ち切るがKPI『疑義』は全件数を表示。11件以上の月は残りへの導線・件数注記がなく、超過分の疑義を見落とす。",
+      "severity": "major",
+      "evidence": "billing-evidence/check/route.ts:22,103-118; billing-check-content.tsx:188-223"
+    },
+    {
+      "screen": "/admin/users",
+      "issue": "『最終アクティブ』列が実ログインでなくactivated_at??last_invited_at??invited_at??updated_atの代理値。Userにlast_login系フィールド無し。updated_atは権限編集等で動くため虚偽の鮮度を示し、アカウント停止判断の根拠を誤らせる。",
+      "severity": "major",
+      "evidence": "pharmacists/route.ts:139-143; organization.prisma:192-227"
+    },
+    {
+      "screen": "/admin/users",
+      "issue": "ownerロールの扱いが不整合で破壊的。一覧では生表示・絞り込み不能で、詳細編集を開くとbuildDetailFormがowner→adminに変換し保存するとownerが黙ってadminに降格。責任者権限喪失。",
+      "severity": "major",
+      "evidence": "users-content.tsx:118-125,149,220; pharmacists/[id]/route.ts:106-116"
+    },
+    {
+      "screen": "/handoff",
+      "issue": "『私に来た』空状態をニュートラルでなく緑成功バッジ『なし — 受け取り待ちはありません』で常時表示。direction構造バグでincomingが常時ゼロのため、未受領があっても恒常的に緑=完了/安全と誤って安心させるfalse-empty。",
+      "severity": "major",
+      "evidence": "handoff-workspace.tsx:1013-1019"
+    },
+    {
+      "screen": "/handoff",
+      "issue": "事務員→薬剤師の相談起票UIがこの画面にも他tsxにも存在せず、ConsultWorkspaceはconsult_status付きitem0件でreturn nullとなり相談セクション自体が描画されない。相談解決パネルが空振りで非表示。",
+      "severity": "major",
+      "evidence": "handoff-workspace.tsx:635-713,661; items/route.ts:19,38"
+    },
+    {
+      "screen": "/reports",
+      "issue": "施設一括下書き行がrecipient_label='施設(看護師長)'固定でstatus='before_visit'/action:null永続。訪問完了後も施設一括報告書を生成・遷移できないビジュアルデッドエンド。",
+      "severity": "major",
+      "evidence": "care-reports/today-workspace/route.ts:596-614"
+    },
+    {
+      "screen": "/admin/incidents",
+      "issue": "severity(near_miss/level1/level2)とstatus(open/reviewed/closed)がサービスでselectされstatusフィルタ/admin更新まで実装済みなのにUIで一切表示されない。重大度も対応状況も判別不能で再発防止管理として致命的に情報欠落。",
+      "severity": "major",
+      "evidence": "incidents-content.tsx:154-176; incident-reports.ts:12-30; [id]/route.ts:23-26"
+    },
+    {
+      "screen": "/admin/incidents",
+      "issue": "新規ヒヤリハット記録作成UIが画面に存在せず(POST実装済み)、記録ゼロ件時もEmptyStateに作成ボタンなし。編集専用画面化し1件も増やせない。",
+      "severity": "major",
+      "evidence": "incidents-content.tsx:144-151; route.ts:31-49"
+    },
+    {
+      "screen": "/admin/incidents",
+      "issue": "一覧がcreated_at降順固定でstatus/severityフィルタ・ソートがUIに無く、APIの?status=も未利用。未対応の重大インシデント優先発見の導線が存在しない。",
+      "severity": "major",
+      "evidence": "incidents-content.tsx:60-62; route.ts:13-21; incident-reports.ts:93"
+    },
+    {
+      "screen": "/admin/audit-logs",
+      "issue": "操作者カラムが人名でなく生のユーザーID(CUID)を常時表示。APIがactor_name解決をせずAuditLogモデルにactor_nameフィールドも無いため、監査者が誰の操作か判読できない。",
+      "severity": "major",
+      "evidence": "audit-logs-content.tsx:39,123; audit-logs/route.ts:54-62; admin.prisma:163-186"
+    },
+    {
+      "screen": "/admin/audit-logs",
+      "issue": "操作者テキストフィルタがactor_id完全一致前提で毎キーストローク即時クエリ発火。人名解決もないためIDを完全入力しない限り常に0件→『ログがありません』となり実質使用不能。",
+      "severity": "major",
+      "evidence": "audit-logs-content.tsx:95,222; route.ts:38"
+    },
+    {
+      "screen": "/admin/audit-logs, /admin/billing-rules, /admin/pharmacist-credentials, /admin/facility-standards, /admin/data-explorer, /admin/service-areas, /admin/business-holidays, /admin/pharmacy-sites, /admin/shifts",
+      "issue": "取得失敗時にisError未処理でfalse-empty/捏造ゼロを表示。エラーと真の空/0件が区別できず、コンプライアンス critical画面で『データなし』『0件』を確信的に表示。再試行導線も欠落。DataTableはerrorMessage propを持つが未配線の箇所多数。",
+      "severity": "major",
+      "evidence": "billing-rules/page.tsx:389-393,549-554; pharmacist-credentials-content.tsx:216; facility-standards-content.tsx:129-139; data-explorer-content.tsx:347-382; service-areas/page.tsx:99-109; business-holidays-content.tsx:126; shifts-content.tsx:905-933"
+    },
+    {
+      "screen": "/admin/pharmacy-sites",
+      "issue": "list GETがcanVisitだが全アクション(編集/保険設定/追加/削除)はcanAdmin。非adminでもサーバーガード無しに動作見えするUIが表示され、全ボタンがサイレント403。can-do affordance不一致。",
+      "severity": "major",
+      "evidence": "pharmacy-sites/route.ts:179; [id]/route.ts:12-15; insurance-configs/route.ts:22-26; navigation-config.ts:179"
+    },
+    {
+      "screen": "/admin/institutions",
+      "issue": "非管理者(canReport保持・canAdmin非保持)に新規登録/編集/削除ボタンが常時表示・有効化され、押下すると必ず403。操作可能に見えて必ず失敗する誤誘導UI。content側に権限分岐なし。",
+      "severity": "major",
+      "evidence": "institutions-content.tsx:234,190-206; permission-matrix.ts:65,79,95"
+    },
+    {
+      "screen": "/admin/master-hub",
+      "issue": "スタッフ・施設マスターカードがstatus='healthy'/issue_count=0固定で休暇/権限/施設鮮度の実データを参照せず、note『本日の休みは反映済み』も常時表示のダミー文言。鮮度ハブ目的に反しfalse-healthy。",
+      "severity": "major",
+      "evidence": "master-hub/route.ts:293-326; 比較対象 車両カード route.ts:381-419"
+    },
+    {
+      "screen": "/admin/uat",
+      "issue": "外部前提(PMDA/Backup/ISMS)チェックがprocess.cwd()のdocs/・tools/infra/をfs.existsSyncで読むがnext.config output:'standalone'がこれらを同梱しないため本番で恒久的にexists:false=偽の『pending/missing』を表示。",
+      "severity": "major",
+      "evidence": "external-readiness.ts:79-92,120,173,216-217; uat-content.tsx:493-509"
+    },
+    {
+      "screen": "/admin/uat",
+      "issue": "Pilot Readinessカードがloading/error分岐なしの{readiness?...:null}で、API失敗/遅延時にカードも失敗表示も出ないサイレント失敗。他3カードはloading/error分岐あり。",
+      "severity": "major",
+      "evidence": "uat-content.tsx:544; 対比462-470,635-642,731-738"
+    },
+    {
+      "screen": "/admin/uat",
+      "issue": "チェックリスト進捗がin-memory useState Setのみでサーバー永続/復元なし。リロードで全チェックがリセットされ捏造0/N進捗を表示。チェック済snapshotとUI状態がドリフト。",
+      "severity": "major",
+      "evidence": "uat-content.tsx:236,380-381,852-855"
+    },
+    {
+      "screen": "/schedules",
+      "issue": "監査デスクブロック『監査N件』が全期間の完了済み調剤タスク数(日付フィルタ無、status=completed)を当日の監査ワークロードとして表示。履歴累積を今日の値として誤表示する二重の誤り。",
+      "severity": "blocker",
+      "evidence": "day-board route.ts:475-479,558-562,622; schedule-team-board.helpers.ts:336-362"
+    },
+    {
+      "screen": "/schedules",
+      "issue": "終業前『報告』ブロックが全期間のvisit_completedサイクル数(日付フィルタ無)で表示され当日の報告書作成負荷を表さない。累積履歴が今日のブロックとして出る。",
+      "severity": "blocker",
+      "evidence": "day-board route.ts:485-487; schedule-team-board.tsx:815; helpers.ts:365-384"
+    },
+    {
+      "screen": "/schedules",
+      "issue": "事務スタッフ全員のレーンに同一ハードコード定常業務ブロック(窓口・取込9:00-11:45/入力・庶務13:00-16:00)が架空スケジュールとして表示。複数事務員で全員に同一の偽予定が並ぶ。",
+      "severity": "major",
+      "evidence": "schedule-team-board.helpers.ts:386-413"
+    },
+    {
+      "screen": "/schedules",
+      "issue": "監査/報告/移動/昼/事務の仮置きブロックが確定訪問(🔒)と同じ実線塗りで、推定であることが視覚・凡例で区別されない。凡例は移動(斜線)/余白(緑点線)のみ。確定スケジュールと誤認リスク。",
+      "severity": "major",
+      "evidence": "schedule-team-board.tsx:218-226,880-891"
+    },
+    {
+      "screen": "/admin/notification-settings",
+      "issue": "FAX/MCSチャネルトグルが死んだUI。説明文は配信を示唆するが配信層scheduleNotificationDeliveriesはSMS/LINEのみ送信。FAX/MCSをONにしても何も送られず管理者は通知が届いていると誤認。",
+      "severity": "major",
+      "evidence": "notifications.ts:354-362,404-423; notification-settings-content.tsx:173-184"
+    },
+    {
+      "screen": "/admin/notification-settings",
+      "issue": "イベント通知ルールのトグルON時recipients:{}(空)で保存され受信ロール/ユーザー指定UIも無い。配信時に宛先解決できずONでも配信先ゼロになりうる(『有効化しました』トーストは出る)。",
+      "severity": "major",
+      "evidence": "notification-settings-content.tsx:409-418; notification-rules/route.ts:13-16"
+    },
+    {
+      "screen": "/admin/jobs",
+      "issue": "GET /api/jobsがtake:50のため低頻度ジョブの最新runが50行から漏れ実行済みでも『未実行』と誤表示(false-empty)。サマリの実行中/失敗/一部失敗カウントも過小算出。JOB_DEFINITIONSは30件超。",
+      "severity": "major",
+      "evidence": "jobs/route.ts:244-246,8-143; jobs-dashboard-content.tsx:201-203"
+    },
+    {
+      "screen": "/admin/jobs",
+      "issue": "error_logがサーバーで固定文字列『エラーが記録されています』にサニタイズされて返るのに展開行は<pre>で生スタックトレース風に描画。運用者は診断情報を得られず再実行以外の原因調査が画面上で不可能。",
+      "severity": "major",
+      "evidence": "jobs/route.ts:211; jobs-dashboard-content.tsx:328-333"
+    },
+    {
+      "screen": "/admin/jobs",
+      "issue": "ハンドラ実装済みだがJOB_DEFINITIONS未登録の4ジョブ(initial-home-visit-assessment/pca-pump-rental-overdue/pca-pump-return-inspection-pending/drug-master-freshness-check)が監視画面に一切表示されず実行状況・再実行ができない監視漏れ。",
+      "severity": "major",
+      "evidence": "jobs/[jobType]/route.ts:64,73,104-105; route.ts:8-143"
+    },
+    {
+      "screen": "/admin/settings",
+      "issue": "設定行コントロールがh-8(32px)強制でInputのmin-h-[44px]既定を上書き。タッチデバイスで全設定コントロールが44px未満。",
+      "severity": "major",
+      "evidence": "settings-content.tsx:104,121,289; input.tsx:11; ui-ux-design-guidelines.md:47,230"
+    },
+    {
+      "screen": "/admin/settings",
+      "issue": "コンプライアンス数値制約(session_timeout最大30分/retention最低365日等)がクライアントInputにもサーバーparseSettingInputValueにも一切適用されず、非有限値は0に強制変換。session_timeout=0/9999やretention=0を保存でき3省2ガイドライン違反をサイレントに許容。",
+      "severity": "major",
+      "evidence": "settings-catalog.ts:22-56,189-197; route.ts:172-321"
+    },
+    {
+      "screen": "/settings",
+      "issue": "『設定に寄せる候補』インベントリ(23項目)が完全な静的ハードコード配列だが、UIは『コード全体をスキャンし整理しています』と動的スキャン結果のように提示。実コード状態と同期せず古い固定値を真実として表示。",
+      "severity": "major",
+      "evidence": "system-settings-inventory.ts:54-309; operational-policy-content.tsx:326-328,312-313"
+    },
+    {
+      "screen": "/admin/alert-rules",
+      "issue": "ルールごとのseverity(critical/warning/info)が編集可能・バッジ表示されるのにCDSエンジンがrule.severityを一切読まずコード定数でハードコード。表示severityがランタイム挙動を反映しない誤誘導コントロール。",
+      "severity": "major",
+      "evidence": "alert-rules/page.tsx:219-239,357; checker.ts:874,1043,1257"
+    },
+    {
+      "screen": "/admin/document-templates",
+      "issue": "同一テンプレートのcontentを上部JSON Textareaと下部TemplateBodyEditorの2エディタが別経路でPATCHし、古いcontentスナップショットで相手の変更を上書きするロストアップデート。版番号も上がらず監査性も損なう。",
+      "severity": "major",
+      "evidence": "template-content.tsx:466-477; template-body-editor.tsx:88-91"
+    },
+    {
+      "screen": "/admin/document-templates",
+      "issue": "TemplateBodyEditorがテンプレ切替時に未保存編集をサイレント破棄(コメントは『破棄しない』だが実装は無条件再ハイドレート)。さらにbody_text未設定時ハードコードのダミー文面DEFAULT_BODY_TEXTが保存済み本文のように表示され、そのまま保存するとプレースホルダが永続化。",
+      "severity": "major",
+      "evidence": "template-body-editor.tsx:26-27,76-81,90"
+    },
+    {
+      "screen": "/admin/data-explorer",
+      "issue": "行ページングが不能。fetchがlimit:25固定でoffsetを送らずhasMore/totalCountを未利用。25行超のテーブルは26行目以降に到達不可。バックエンドはoffset/hasMore対応済み。",
+      "severity": "major",
+      "evidence": "data-explorer-content.tsx:153,346-383; data-explorer.ts:412-517"
+    },
+    {
+      "screen": "/admin/business-holidays",
+      "issue": "店舗フィルタSelectの値不整合。filterSiteId初期=空文字だが『全店舗』のvalue='__all'。再選択するとsite_id=__allをAPI送信し存在しないIDでフィルタされ常に0件(偽の空)になる。",
+      "severity": "major",
+      "evidence": "business-holidays-content.tsx:119,130-131,326,331"
+    },
+    {
+      "screen": "/admin/business-holidays",
+      "issue": "月集計の境界オフバイワン。GETがdate lte:翌月1日でフィルタするため翌月1日の休日が当月結果に混入しサマリーカード・一覧で過大カウント。",
+      "severity": "major",
+      "evidence": "business-holidays/route.ts:20-28; business-holidays-content.tsx:121-124,308-310"
+    },
+    {
+      "screen": "/admin/shifts",
+      "issue": "月保存がPromise.allで変更セルごとに単一POSTを並列発火。フル月編集で数十〜数百の同時リクエスト、部分失敗で月が半保存され汎用トースト1つのみ。トランザクショナルな/bulkエンドポイントが既存だが未使用。",
+      "severity": "major",
+      "evidence": "shifts-content.tsx:435-458; pharmacist-shifts/bulk/route.ts:32-58"
+    },
+    {
+      "screen": "/admin/performance",
+      "issue": "薬剤師負荷上位カードがurgent_items(緊急/emergency件数)を『代替』(fallback割当)とラベル誤表示。ユーザーは緊急件数を代替割当数と誤読。",
+      "severity": "major",
+      "evidence": "performance/page.tsx:503; workflow-dashboard-sections.ts:297-305"
+    },
+    {
+      "screen": "/admin/performance",
+      "issue": "ランタイム指標がglobalThisインメモリstore(current-processのみ)。Amplify/サーバーレスのマルチインスタンスでは各lambdaが別storeとなり、表示P95/超過率は到達インスタンスの断片で運用判断を過小評価させる。",
+      "severity": "minor",
+      "evidence": "performance.ts:61-76; performance/page.tsx:627-630"
+    },
+    {
+      "screen": "/admin/metrics",
+      "issue": "UIに404→PLACEHOLDER分岐とisPlaceholderロジックがあるがバックエンドは常に200を返し404もplaceholderも返さない到達不能デッドコード。実データがオールゼロ(新規開局等)のときisPlaceholder=falseで後発品0%『目標未達』等の誤アラートが発火しうる。",
+      "severity": "major",
+      "evidence": "admin/metrics/route.ts:127-138; metrics-dashboard-content.tsx:131,174,178-186"
+    },
+    {
+      "screen": "/admin/analytics",
+      "issue": "『今月』KPIカードが当月データ無のとき過去月の数値を『今月』ラベルで表示しうる。今月候補captionのみ実月を示すがレビュー待ち/算定可率/締め進捗には月表記がなく古い月を現在として誤読。",
+      "severity": "major",
+      "evidence": "billing-evidence/analytics/route.ts:204-228; analytics-content.tsx:268-288"
+    },
+    {
+      "screen": "/dispense, /audit",
+      "issue": "差戻し(NG)時の理由コードがUI14種とbackend reject_reason_code6種で不一致、送信時マッピング欠落の懸念。麻薬ダブルカウント未完了ゲートも一行『未完了』のみでどの薬剤/フィールドが不一致か行レベル提示がない。",
+      "severity": "minor",
+      "evidence": "use-workbench-view.ts:79-94,1047-1053; dispense-audits/route.ts:174-181,227-236"
+    },
+    {
+      "screen": "/visits, /patients, /prescriptions/intake, /reports, /billing, /admin/master-hub",
+      "issue": "右レール(次にやること/止まっている理由/根拠・記録)がグローバルヘッダーのドロワートグルからしか開けず初期非表示。BFFが算出した最高価値の次アクション/ブロッカーが発見困難。複数画面のコメント/設計意図(2カラム常設)と乖離。",
+      "severity": "minor",
+      "evidence": "action-rail.tsx:397-417; app-header.tsx:295; ui-store workspaceRailOpen初期false; visits-today.tsx:386"
+    },
+    {
+      "screen": "/prescriptions/intake",
+      "issue": "重複検知バナーが『{matched_date}取込分と発行日・Rp構成が一致』と説明するがmatched_dateは既存取込のcreated_at(取込日)で発行日(prescribed_date)ではない。薬剤師が原本照合時に日付の意味を取り違える恐れ。",
+      "severity": "major",
+      "evidence": "triage/route.ts:235,99-110; intake-triage-content.tsx:386-387"
+    },
+    {
+      "screen": "/prescriptions",
+      "issue": "サマリーバーの『疑義』『調剤待』件数がロード済みページ(最大50件)からのみ集計されサーバー全体値でない。50件超で過少表示しトリアージバッジが危険サイドの誤った数値を提示。",
+      "severity": "major",
+      "evidence": "prescriptions-workspace.tsx:180-187,221-245"
+    },
+    {
+      "screen": "/visits",
+      "issue": "Evidence行『前回訪問記録』が実際は当日対象患者の全期間訪問記録件数(日付フィルタ無)を集計しており、ラベルの意味と乖離し大きな誤解を招く数値になりうる。",
+      "severity": "minor",
+      "evidence": "visits/today-preparation/route.ts visitRecord.count(no date filter); visits-today.tsx:281"
+    },
+    {
+      "screen": "/admin/pharmacist-credentials",
+      "issue": "『同意患者』列がかかりつけ薬剤師同意ではなく、非キャンセル訪問予定がある(かつ何らかの有効同意を持つ)患者を列挙。かかりつけ薬剤師管理画面の目的と乖離する誤ラベル。",
+      "severity": "major",
+      "evidence": "pharmacist-credentials-content.tsx:354-373; route.ts:38-81"
+    },
+    {
+      "screen": "/admin/pca-pumps",
+      "issue": "レンタル取消(取消)が確認ダイアログなしで即時実行。CLAUDE.md『破壊的操作は確認ダイアログ必須』違反。誤クリックで稼働中レンタルが不可逆にキャンセルされプンプがavailableに解放される。",
+      "severity": "major",
+      "evidence": "pca-pumps-content.tsx:925-934"
+    },
+    {
+      "screen": "/admin/contact-profiles",
+      "issue": "preferred_contact_time(連絡可能時間帯)が行型に取得されPATCHスキーマ/サービスで編集可能なのに編集フォームに入力欄が一切なく、その管理画面で閲覧も維持もできない。",
+      "severity": "major",
+      "evidence": "contact-profiles-content.tsx:36,74-83,407-491; route.ts:94; contact-profiles.ts:1039-1041"
+    },
+    {
+      "screen": "/admin/pharmacy-cooperation",
+      "issue": "6クエリのいずれかがloading/errorだと(二次的なcontract-documentsクエリ含め)ページ全体が単一フルページエラー/スケルトンに崩壊し、稼働中の主要データ全てが隠れる。isError集約がdocumentsクエリにBoolean guardなしで含まれる。",
+      "severity": "major",
+      "evidence": "pharmacy-cooperation-setup-content.tsx:973-980,1216-1234"
+    },
+    {
+      "screen": "/admin/dispense-audit-stats",
+      "issue": "差戻し棒グラフで6コード中3コード(quantity_error/packaging_error/carry_type_error)が同じbg-chart-3となり視覚的に区別不能。chart-1..5の別トークンが存在するのに未使用。",
+      "severity": "minor",
+      "evidence": "dispense-audit-stats/page.tsx:36-38; globals.css:97-101"
+    },
+    {
+      "screen": "/admin/operations-insights",
+      "issue": "工程バーチャートでsampleCount===0(実績なし)の工程が『0分』の実測バー(min-height2%)として描画され、データ欠損と実測ゼロが視覚的に区別できず『その工程は速い』と誤読しうる(false-empty)。",
+      "severity": "major",
+      "evidence": "operations-insights-content.tsx:216-223,49-52"
+    },
+    {
+      "screen": "/admin/operations-insights, /admin/metrics",
+      "issue": "工程平均所要分がcreated_at→updated_atの差分算出で、updated_atは後続編集で更新されるため『所要時間』として意味的に不正確。古いレコード修正で平均が膨張しnext focus/ヒントが実態と乖離。MetricCardやヒントは断定的提示。",
+      "severity": "major",
+      "evidence": "operations-insights/route.ts:73-88; operations-insights.ts:53-63"
+    },
+    {
+      "screen": "/admin/inventory-forecast",
+      "issue": "施設一括訪問カードに個人用敬称『様』が常時付与され『施設A 5名 様』という不正表示。isFacilityBatchフラグが純関数→型→APIまで通っているのにUIで未使用。",
+      "severity": "major",
+      "evidence": "inventory-forecast-content.tsx:260; inventory-forecast.ts:79,318"
+    },
+    {
+      "screen": "/admin/realtime",
+      "issue": "優先度バッジが生英語enum(urgent/high/normal/low)をそのまま表示、ワークベンチbadgesもtask_type/status/proposal_status等の生DB enum文字列が日本語UIに露出。他バッジは日本語化済みで不一致。",
+      "severity": "minor",
+      "evidence": "realtime/page.tsx:341-343,362-367; workflow-dashboard-sections.ts:438,459-461"
+    },
+    {
+      "screen": "/admin/data-explorer",
+      "issue": "編集(PATCH)が生UPDATEのみでAuditLog書き込みなし。User/Membership/BillingRule/Patient等を横断編集できる広大な書込面で誰がどのテーブル行をどう変更したかが残らずAudit by Default/3省2ガイドラインに反する。",
+      "severity": "major",
+      "evidence": "data-explorer.ts:519-561; 対比 external-access.ts:6"
+    },
+    {
+      "screen": "/admin/pharmacist-credentials",
+      "issue": "資格のDELETEがハードdelete(prisma.delete)でPATCH/DELETEともに監査ログ記録なし(POSTのみ記録)。医療の資格失効が監査不能・不可逆。",
+      "severity": "minor",
+      "evidence": "pharmacist-credentials/[id]/route.ts:115-117; route.ts:141-150"
+    },
+    {
+      "screen": "/dashboard",
+      "issue": "今すぐ対応カードの主要操作ボタンがmin-h-[40px]でWCAG AA/CLAUDE.mgの44pxを満たさない。同画面の他ボタン(処方受付/FilterChipBar/NextActionPanel)は44pxで本カードのみ不整合。",
+      "severity": "minor",
+      "evidence": "dashboard-cockpit.tsx:219,223"
+    },
+    {
+      "screen": "/admin/settings",
+      "issue": "healthカードが/api/health解決前に'loading'/'unknown'/'未取得'という疑似ステータス文字列を健全値として描画(本来のローディングスケルトンでない)。/api/healthがthrow(非503)時はreact-queryエラーが無視されカードがunknownに固定。",
+      "severity": "minor",
+      "evidence": "settings-content.tsx:397,407,417,365-375"
+    },
+    {
+      "screen": "/statistics",
+      "issue": "completedLast7Daysをバックエンドが毎回findManyスキャンで計算しZodで検証するがUIのどこにも描画されないデッドペイロード。統計画面の趣旨であるトレンド系列が破棄され無駄なクエリコスト。",
+      "severity": "minor",
+      "evidence": "dispensing-stats/route.ts:41-73,64-73; statistics-content.tsx:33,144-146"
+    }
+  ],
+  "themes": [
+    "偽データ/捏造UI問題が最大の構造的負債: (a) 共有DispensingWorkbenchが本番デフォルトでモックseed患者を表示し堅牢な実APIに未接続(4工程)、(b) MasterEditorViewスタブを誤配線した5画面(drug-masters/staff/facilities/external-professionals ほか)で『N件1〜8』固定行・全件『有効』固定・保存非機能、(c) ステータスバーのハードコード氏名・常時オンライン・固定タイムスタンプ。いずれも完成済みバックエンドが存在し配線・フラグ反転で解消可能な高ROI。",
+    "false-empty/捏造ゼロが横断的かつ深刻: 多数のadmin画面(audit-logs/billing-rules/pharmacist-credentials/facility-standards/data-explorer/service-areas/business-holidays/pharmacy-sites/shifts/metrics/KPIカード群)で取得失敗やローディングがisError未処理により『データなし』『0件』『健全』に縮退。DataTableはerrorMessage propを備えるのに未配線。エラーと真の空/0/未計測の区別が必要。",
+    "集計セマンティクスの誤り: KPI/件数が間違った母集団・タイムスタンプ・スコープで算出される事例が頻発(本日完了=updated_at基準、鑑査待ち=rejected除外、所要時間=created→updated近似、摘要テンプレ=全種別計数、疑義/調剤待=ロード済みページのみ、前回訪問記録=全期間件数、ガント監査/報告=全期間累積)。コンプライアンス critical(算定/監査)で特に危険。",
+    "右レール(次にやること/止まっている理由/根拠・記録)がグローバルヘッダードロワー依存で初期非表示: dashboard/visits/patients/intake/reports/billing/master-hubで最高価値の次アクションとブロッカーが発見困難。xl+で本文横の常設カラム化、モバイルはドロワー維持が反復推奨。",
+    "アクション/権限affordanceの不一致: 行内アクションや戻り先リンクがコンテキスト(intake_id/patient/cycle)を捨て固定リスト遷移する空振り(intake/handoff/blocked-reason/visits next-action)、および非adminに常時表示され必ず403するボタン(pharmacy-sites/institutions)。深いリンク化とロール連動表示が必要。",
+    "監査証跡/コンプライアンスの欠落: 作業証跡写真がプレースホルダ(調剤ワークベンチ)、data-explorer/pharmacist-credentials編集に監査ログなし・ハードdelete、外部前提チェックがstandaloneビルドで偽negative。3省2ガイドライン(Audit by Default/作業証跡/S3 Object Lock)に直結する人ゲート(security/prod)案件。",
+    "タイムゾーン/@db.Time取り扱いの規約逸脱: dashboard cockpitがgetUTCHours規約に反しJST本番で約9時間ずれ。business-holidays等もローカルTZ依存で非JST環境ずれの潜在。getUTCHours/formatUtcDateKeyへの統一が必要。",
+    "タッチターゲット44px未達とMobile First違反: 調剤ワークベンチのmin-width:1540pxデスクトップ専用、admin-settings h-8(32px)、dashboard 40pxボタン、テンプレチップ36px、prescriptions行・通知/ワークベンチリンク等が散発。WCAG AA/CLAUDE.md規約違反。",
+    "ハードコード閾値/想定値の設定化余地: WIP目安・営業時間9-18/訪問60分・在庫予測の日量推定・KPI目標値・鮮度しきい値・契約デフォルト(単価5500/締日31)・通知severity固定などがコード固定で組織別運用に追従しない。Setting化で精度向上。",
+    "状態色6軸トークン(StateBadge/StatusDot)の不徹底と色のみ依存: incidents/alert-rules/billing-rules/jobs/notification-settings等で生enum文字列・色のみ表現・アイコン非併用が残る。state-color SSOTへの統一とアイコン+テキスト併用がアクセシビリティ要件。"
+  ],
+  "topCandidates": [
+    {
+      "rank": 1,
+      "title": "DispensingWorkbench(4工程)を実データ既定化: USE_MOCK反転し本番でモックseed患者を出さない、フラグ未設定は空/エラー状態へ倒す",
+      "screens": ["/dispense", "/audit", "/set", "/set-audit"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "prod",
+      "rationale": "全工程で架空患者を実画面として操作でき監査OK/NGも永続化されない最大のblocker群。実API・サービスは実装済みでフラグ反転と本番mock無効化が中心。dataUnavailable経路も既存で土台あり。1差分で複数blockerを同時解消。"
+    },
+    {
+      "rank": 2,
+      "title": "MasterEditorViewスタブの5画面を実CRUDに接続(drug-mastersは既存DrugMasterContent差し替え、staff/facilities/external-professionalsは実API配線)",
+      "screens": [
+        "/admin/drug-masters",
+        "/admin/staff",
+        "/admin/facilities",
+        "/admin/external-professionals"
+      ],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "L",
+      "complianceFlag": "none",
+      "rationale": "本番admin画面が捏造8件・全件『有効』・保存非機能のplaceholderを表示するblocker。drug-mastersは同型コンポーネント差し替えで即解消、他はGET/POST/PATCH/DELETE完備の実APIが未配線。共通スタブのため横展開効果が高い。"
+    },
+    {
+      "rank": 3,
+      "title": "ステータスバー/calBarMetaの調剤者・監査者・接続状態・セット完了時刻を実データ結線(ハードコード氏名/常時オンライン/固定日時の除去)",
+      "screens": ["/dispense", "/audit", "/set", "/set-audit"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "auth",
+      "rationale": "二人制監査の責任主体表示が虚偽(固定氏名)・常時オンライン偽装・固定タイムスタンプ。route.tsがdispenser/auditor/audited_atを既に返すためviewへ流し込み+navigator.onLine連動。医療監査証跡の正確性に直結。auth/セッション参照のため人ゲート。"
+    },
+    {
+      "rank": 4,
+      "title": "@db.Time訪問時刻のタイムゾーン整合をcockpit BFF/ヘルパーでgetUTCHours規約に統一",
+      "screens": ["/dashboard"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "S",
+      "complianceFlag": "none",
+      "rationale": "JST本番で訪問時刻が約9時間ずれ条件バナー/期限/タイムライン全体が破綻するblocker。route.tsのtoISO()をtimeDateToString/Minutesに置換しgetHours依存を除去。既存正規ヘルパーに寄せる小差分で高インパクト。"
+    },
+    {
+      "rank": 5,
+      "title": "調剤・監査・スケジュールの集計を当日スコープ/正しいタイムスタンプに是正(本日完了/鑑査待ち/ガント監査・報告/所要時間)",
+      "screens": ["/statistics", "/schedules", "/admin/operations-insights", "/admin/metrics"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "KPI・ガントブロック・所要時間が全期間累積やupdated_at近似で算出され、当日負荷・スループット・監査バックログを誤表示するblocker/major群。completed_at導入は別途migration、即時はwhere条件・audits判定・日付フィルタの修正で大半解消。臨床/算定判断の信頼性に直結。"
+    },
+    {
+      "rank": 6,
+      "title": "取得失敗時のエラー状態+再試行をDataTable/カードに横断配線しfalse-empty/捏造ゼロを撲滅",
+      "screens": [
+        "/admin/audit-logs",
+        "/admin/billing-rules",
+        "/admin/pharmacist-credentials",
+        "/admin/facility-standards",
+        "/admin/data-explorer",
+        "/admin/service-areas",
+        "/admin/business-holidays",
+        "/admin/pharmacy-sites",
+        "/admin/shifts",
+        "/admin/metrics"
+      ],
+      "type": "ui",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "多数のコンプライアンスcritical画面で失敗が『データなし/0件/健全』に縮退。DataTableはerrorMessage prop済みで未配線が主因。isError/refetch参照を足すだけの低コスト高ROIで、誤った業務判断を広範に防ぐ。"
+    },
+    {
+      "rank": 7,
+      "title": "handoff宛先をユーザー選択式にしrecipient_user_idを送信(direction/受領確認/相談起票の機能回復+緑false-empty是正)",
+      "screens": ["/handoff"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "3点セット/監査ログ/受領確認という画面の中核価値が構造的に機能しないblocker。自由文→Combobox化でroute.tsのdirection判定が機能し『私に来た』『受領確認』が届く。あわせて緑成功バッジのfalse-empty是正と相談起票導線追加。"
+    },
+    {
+      "rank": 8,
+      "title": "facility-standards空requirements_status({})をunknown扱いにし誤った算定可表示を防止",
+      "screens": ["/admin/facility-standards"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "S",
+      "complianceFlag": "billing",
+      "rationale": "要件未確認の届出がObject.values({}).every(Boolean)=trueで『算定可』と誤判定され誤った加算算定を誘発しうるmajor。route.tsでvalues.length===0をunknown分岐する小差分。算定根拠の正確性に直結する人ゲート(billing)。"
+    },
+    {
+      "rank": 9,
+      "title": "行内アクション/戻り先リンクをコンテキスト付き深いリンクに(intake→対象intake・比較ペア、blocked-reason→患者/cycle、visits next-action→患者監査)",
+      "screens": ["/prescriptions/intake", "/patients", "/visits"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "トリアージ主要導線が固定/prescriptions遷移で機能的空振り(intake blocker)、blocked-reason/next-actionも汎用リスト遷移で再検索を強いる。useSearchParams消費とactionHrefの具体化で受付→入力/監査の連続作業を完結。"
+    },
+    {
+      "rank": 10,
+      "title": "作業証跡写真(セット前/後/監査完了)をS3 presigned撮影・アップロード・サムネ表示で実装",
+      "screens": ["/dispense", "/audit", "/set", "/set-audit"],
+      "type": "new-feature",
+      "value": "high",
+      "size": "L",
+      "complianceFlag": "security",
+      "rationale": "静的ダミー枠のみで3省2ガイドラインの作業証跡として機能しないmajor。S3 Object Lock証跡保管方針に整合する高ROI機能。set-audits APIはphoto_asset_ids検証の仕組みを既に持つ。security人ゲート。"
+    },
+    {
+      "rank": 11,
+      "title": "DispensingWorkbenchの1024-1540px/タブレット対応(右ペイン折りたたみ or 横スクロール明示・デスクトップ推奨ガード)",
+      "screens": ["/dispense", "/audit", "/set", "/set-audit"],
+      "type": "ui",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "min-width:1540px+overflow:hiddenで主流ノートPC・全タブレット/スマホで操作不能のmajor。Mobile First方針と矛盾。狭幅では明示的なデスクトップ推奨案内+主操作の到達性確保。"
+    },
+    {
+      "rank": 12,
+      "title": "患者ボードのtruncation可視化+優先度ソートをDB take前にサーバー側で実行(first 80 of N バナー/ページング)",
+      "screens": ["/patients"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "80件打ち切り+take後ソートで高優先度患者(麻薬監査待ち)がボード/チップ/タイルから不可視になるmajor。assigned_total全件表示でフィルタと誤認。サーバー側優先ソートとtruncation注記で見落とし防止。"
+    },
+    {
+      "rank": 13,
+      "title": "data-explorer編集(PATCH)に監査ログ記録を追加しハードdeleteを廃止",
+      "screens": ["/admin/data-explorer"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "prod",
+      "rationale": "User/Membership/BillingRule/Patient等を横断編集できる広大な書込面で監査ログが残らずAudit by Default/3省2ガイドライン違反のmajor。createAuditLogEntryの既存パターン流用。本番データ整合に関わる人ゲート(prod)。"
+    },
+    {
+      "rank": 14,
+      "title": "incidentsカードにstatus/severity StateBadge表示+statusフィルタ・ソート+status変更コントロール+新規記録作成導線",
+      "screens": ["/admin/incidents"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "auth",
+      "rationale": "重大度も対応状況も判別不能で新規記録もできず編集専用化した再発防止管理として致命的なmajor複数。サービス/APIは実装済み(status更新はcanAdmin・監査ログ済)でUI配線が中心。status更新がauth人ゲート。"
+    },
+    {
+      "rank": 15,
+      "title": "prescriptions/billing/intakeのサマリー件数をサーバー集計値に変更(疑義/調剤待/疑義超過/摘要テンプレ正母集団)",
+      "screens": ["/prescriptions", "/billing"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "billing",
+      "rationale": "ロード済み50件のみ集計・10件打ち切り超過の見落とし・誤った母集団計数で危険サイドの過少/虚偽数値を提示するmajor。status別groupBy集計と超過導線で確定値表示。算定/トリアージ判断に直結する人ゲート(billing)。"
+    },
+    {
+      "rank": 16,
+      "title": "admin-settings数値設定にコンプライアンス範囲(min/max)をクライアントInput+サーバーZodで強制",
+      "screens": ["/admin/settings"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "security",
+      "rationale": "session_timeout/retention/password_min_lengthが無制約でparseが非数値を0に強制し3省2ガイドライン違反をサイレント許容するmajor。SettingCatalogItemにmin/maxを足しInput属性とz.refineに配線。security人ゲート。"
+    },
+    {
+      "rank": 17,
+      "title": "admin shifts月保存を既存/api/pharmacist-shifts/bulkに切替(トランザクショナル・原子保存)",
+      "screens": ["/admin/shifts"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "S",
+      "complianceFlag": "none",
+      "rationale": "数十〜数百の並列単一POSTで月が半保存され汎用トースト1つになるmajor。bulkハンドラ実装済みで1差分置換。原子性+正確なエラーで半保存failure modeを除去する高ROI。"
+    },
+    {
+      "rank": 18,
+      "title": "admin jobs: error_logの安全構造化要約表示+take:50撤廃(job_type毎最新1件)+未登録4ハンドラのJOB_DEFINITIONS追加",
+      "screens": ["/admin/jobs"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "security",
+      "rationale": "診断不能な固定error_log・低頻度ジョブの偽『未実行』・4ジョブの監視漏れというmajor3点。PHI/secret除去要約・DISTINCT ON・定義追加で監視の信頼性回復。error_log要約はsecurity人ゲート。"
+    },
+    {
+      "rank": 19,
+      "title": "facility-standards/incidents/data-explorerの届出登録・資料添付・記録作成フォーム実装(死んだ追加CTAの実体化)",
+      "screens": ["/admin/facility-standards"],
+      "type": "new-feature",
+      "value": "high",
+      "size": "L",
+      "complianceFlag": "prod",
+      "rationale": "閲覧専用なのに『資料を追加/不足項目へ移動』が存在しないDOMにスクロールする死んだボタンで、施設基準の登録手段が皆無のmajor。届出入力フォーム新設で算定要件管理が機能する。本番算定設定のため人ゲート(prod)。"
+    },
+    {
+      "rank": 20,
+      "title": "FAX/MCS通知チャネルを配信実装まで通すか『準備中』バッジで明示(誤認防止)+イベントルール受信者指定UI",
+      "screens": ["/admin/notification-settings"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "配信層がSMS/LINEのみなのにFAX/MCSトグルが配信を示唆し、recipients:{}空送信で配信先ゼロでも『有効化』トーストが出るmajor2点。通知が届いていると誤認させる運用リスクを除去。"
+    },
+    {
+      "rank": 21,
+      "title": "権限affordance是正: pharmacy-sites/institutionsで非adminにadmin操作ボタンを非表示/無効化(またはページガード+ロール連動nav)",
+      "screens": ["/admin/pharmacy-sites", "/admin/institutions"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "auth",
+      "rationale": "canVisit閲覧+canAdmin操作の権限不一致で、非adminに動作見えするボタンが全て403する誤誘導UIのmajor。ctx.permissions連動の表示分岐+サーバーガード。auth領域の人ゲート。"
+    },
+    {
+      "rank": 22,
+      "title": "reports施設一括報告書のrecipientを実ケアチームから解決し完了訪問で下書き生成可能に(ビジュアルデッドエンド解消)",
+      "screens": ["/reports"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "recipient_label固定+status=before_visit/action:null永続で施設一括報告書を生成も遷移もできないmajor。facility_batchのfacility_id/patient_idsから実宛先解決とready_to_generate設定で多職種報告の漏れを塞ぐ。"
+    },
+    {
+      "rank": 23,
+      "title": "右レール(次にやること/止まっている理由/根拠)をxl+で本文横の常設カラム化(モバイルはドロワー維持)",
+      "screens": [
+        "/dashboard",
+        "/visits",
+        "/patients",
+        "/prescriptions/intake",
+        "/reports",
+        "/billing",
+        "/admin/master-hub"
+      ],
+      "type": "ui",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "最高価値の次アクション/ブロッカーがヘッダードロワー依存で初期非表示というminorが7画面横断。各画面の設計意図(2カラム常設)と乖離。共通action-railの表示モード追加で広範に操作性向上。"
+    },
+    {
+      "rank": 24,
+      "title": "alert-rule.severityをCDSエンジンに配線(または severity コントロール撤去)+条件JSONの構造化ビルダー",
+      "screens": ["/admin/alert-rules"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "編集可能なseverityがランタイムに反映されない誤誘導コントロールと、yj_codes/therapeutic_categoriesのみ有効な生JSONで無反応ルールが作れるmajor/minor。安全アラートの実効性に直結。"
+    },
+    {
+      "rank": 25,
+      "title": "document-templatesの本文二重編集UI統合+楽観ロック(ロストアップデート防止)+未保存破棄ガード+placeholder誤保存防止",
+      "screens": ["/admin/document-templates"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "同一contentを2エディタが別経路PATCHしロストアップデート、切替で未保存破棄、ダミー文面誤保存というmajor3点。版管理の監査性と誤送付防止に直結。If-Match条件付き更新+dirtyガード+placeholder属性化。"
+    },
+    {
+      "rank": 26,
+      "title": "inventory-forecast施設バッチの敬称出し分け+影響患者数の実人数補正+薬剤/患者ドリルダウン",
+      "screens": ["/admin/inventory-forecast"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "『施設A 5名 様』不正表示と影響患者数の過少計数(major)に加え、薬剤行・患者カードが非アクションで発注確認への着地点がない。isFacilityBatchは既に提供済み、shortage→患者対応は内部計算済みで露出が中心。"
+    },
+    {
+      "rank": 27,
+      "title": "data-explorer/institutions行ページネーション・深いリンク・検索debounce(大量データ到達性とDB負荷)",
+      "screens": ["/admin/data-explorer", "/admin/institutions"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "none",
+      "rationale": "data-explorerはlimit:25固定で26行目以降到達不能(major)、institutionsはデッドな[id]詳細エンドポイント・debounceなし全件スキャン。backendはoffset/hasMore/recent_prescriptions対応済みでUI配線が中心。"
+    },
+    {
+      "rank": 28,
+      "title": "UATチェックリスト進捗のサーバー/localStorage永続化+Readinessカードのloading/error分岐+standalone対応の外部前提チェック",
+      "screens": ["/admin/uat"],
+      "type": "ui+backend",
+      "value": "high",
+      "size": "M",
+      "complianceFlag": "prod",
+      "rationale": "進捗のin-memoryリセットで捏造0/N、Readinessサイレント失敗、standaloneビルドで偽negativeのPMDA/Backup/ISMS表示というmajor3点。パイロット判断の信頼性に直結。外部前提のstandalone対応がprod人ゲート。"
+    },
+    {
+      "rank": 29,
+      "title": "タッチターゲット44px是正の横断パス(dashboard 40px・admin-settings h-8・テンプレチップ36px・prescriptions行・通知/ワークベンチリンク)",
+      "screens": [
+        "/dashboard",
+        "/admin/settings",
+        "/admin/document-templates",
+        "/prescriptions",
+        "/admin/realtime",
+        "/admin/uat"
+      ],
+      "type": "ui",
+      "value": "medium",
+      "size": "S",
+      "complianceFlag": "none",
+      "rationale": "WCAG AA/CLAUDE.md 44px規約違反が複数画面に散発。min-h-[44px]/py付与の低コスト是正でMobile First現場(在宅訪問)の誤タップを横断的に削減。"
+    },
+    {
+      "rank": 30,
+      "title": "生enum→日本語ラベル/StateBadgeトークン化の横断統一(realtime優先度・jobs/incidents/billing-rules状態・performance proposal_status・pca鮮度)",
+      "screens": ["/admin/realtime", "/admin/jobs", "/admin/performance", "/admin/pca-pumps"],
+      "type": "ui",
+      "value": "medium",
+      "size": "S",
+      "complianceFlag": "none",
+      "rationale": "生英語enum露出・色のみ依存・アイコン非併用がminorで複数画面に残存。state-color 6軸SSOTへの統一とラベルマップ集約でアクセシビリティ(色だけに依存しない)と日本語UI一貫性を横断改善。"
+    }
+  ]
+}
