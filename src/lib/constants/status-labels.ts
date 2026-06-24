@@ -169,6 +169,18 @@ export const PRIORITY_ROLE: Record<string, StatusRoleOrNeutral> = {
   low: 'readonly',
 };
 
+/** 優先度 enum の日本語表示ラベル(PRIORITY_ROLE と同じキー集合)。生 enum をそのまま
+ *  画面に出さず、StateBadge 等のテキストに使う(色のみ依存を避けアイコン+語で示す)。 */
+export const PRIORITY_DISPLAY_LABELS: Record<string, string> = {
+  emergency: '緊急',
+  critical: '重大',
+  urgent: '至急',
+  high: '高',
+  normal: '中',
+  medium: '中',
+  low: '低',
+};
+
 /** VisitOutcome(訪問結果). completed=done、cancelled=blocked、postponed/課題あり/再訪=confirm、配薬のみ=info。 */
 export const VISIT_OUTCOME_ROLE: Record<string, StatusRoleOrNeutral> = {
   completed: 'done',

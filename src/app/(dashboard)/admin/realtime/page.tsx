@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/ui/error-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
-import { PRIORITY_ROLE } from '@/lib/constants/status-labels';
+import { PRIORITY_DISPLAY_LABELS, PRIORITY_ROLE } from '@/lib/constants/status-labels';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
@@ -339,7 +339,7 @@ export default function RealtimePage() {
                               : (PRIORITY_ROLE[item.priority] as StatusRole)
                           }
                         >
-                          {item.priority}
+                          {PRIORITY_DISPLAY_LABELS[item.priority] ?? item.priority}
                         </StateBadge>
                       </div>
                       <p className="mt-2 font-medium text-foreground">{item.title}</p>

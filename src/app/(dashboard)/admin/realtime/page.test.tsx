@@ -108,6 +108,15 @@ describe('RealtimePage', () => {
     );
   });
 
+  it('renders the workbench priority as a Japanese label, not the raw enum', () => {
+    render(<RealtimePage />);
+
+    // WORKFLOW_DATA.unified_workbench[0].priority === 'urgent' → display label 至急
+    // (StateBadge pairs the token color with this text, so it is not color-only).
+    expect(screen.getByText('至急')).toBeTruthy();
+    expect(screen.queryByText('urgent')).toBeNull();
+  });
+
   it('reflects SSE connection state in the indicator color (connected=done, reconnecting=confirm)', () => {
     // 接続中: done(正常, 状態色トークン)。
     useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
