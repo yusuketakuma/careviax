@@ -199,6 +199,23 @@ describe('/api/patients/board', () => {
       foundation_href: '/patients/patient_1#patient-foundation',
     });
     expect(JSON.stringify(json.data.cards[0])).not.toContain('090-1111-2222');
+    // assigned_total(1) === displayed(1) → not truncated
+    expect(json.data.truncated).toBe(false);
+  });
+
+  it('flags truncated when more patients exist than the name-ordered fetch returns', async () => {
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    patientFindManyMock.mockResolvedValue([buildPatientRow(new Date('2026-06-12T00:00:00.000Z'))]);
+    // 30 assigned patients but the name-ordered fetch returned 1 card → board is truncated,
+    // so a high-priority patient beyond the fetch limit could be hidden.
+    patientCountMock.mockResolvedValue(30);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.data.assigned_total).toBe(30);
+    expect(json.data.cards.length).toBe(1);
+    expect(json.data.truncated).toBe(true);
   });
 
   it('encodes patient card hrefs while preserving raw patient ids and static workflow links', async () => {
@@ -489,6 +506,10 @@ describe('/api/patients/board', () => {
         items: expect.arrayContaining(['連絡先未設定']),
       },
     });
+    // foundation_issue filter reduced cards to 1 of 2 FETCHED, but the fetch was NOT
+    // capped (assigned_total 2 === fetched 2) — filtering is not truncation.
+    expect(json.data.assigned_total).toBe(2);
+    expect(json.data.truncated).toBe(false);
   });
 
   it('rejects invalid board foundation issue values before querying patients', async () => {

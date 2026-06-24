@@ -61,6 +61,7 @@ function buildFixture(): PatientBoardResponse {
     generated_at: localIso(9, 42),
     scope: 'mine',
     assigned_total: 28,
+    truncated: false,
     cards: [
       card({
         patient_id: 'pt_tanaka',
@@ -223,6 +224,33 @@ describe('PatientsBoard', () => {
       '私の担当 28名のうち 5名を表示',
     );
     expect(screen.getByRole('searchbox', { name: '氏名・状態で検索' })).toBeTruthy();
+  });
+
+  it('does not show the truncation note when the board is not truncated', () => {
+    render(<PatientsBoard />);
+    expect(screen.queryByTestId('patients-board-truncation-note')).toBeNull();
+  });
+
+  it('shows a name-order truncation note (distinct from search) when the board is truncated', () => {
+    const data = buildFixture();
+    data.truncated = true;
+    useRealtimeQueryMock.mockReturnValue({
+      data,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+    render(<PatientsBoard />);
+
+    const note = screen.getByTestId('patients-board-truncation-note');
+    // honest: states the fetch was capped (取得上限), high-priority patients may be out
+    // of range, and search only covers the fetched set — so it does not read as a filter
+    // nor over-claim the displayed cards are the name-ordered top-N of all assigned.
+    expect(note.textContent).toContain('取得上限');
+    expect(note.textContent).toContain('優先度の高い患者が表示範囲外');
+    expect(note.textContent).toContain(`全${data.assigned_total}名`);
+    expect(note.textContent).toContain(`${data.cards.length}名`);
   });
 
   it('renders patient cards with hazard tags, next visit, process dots and step shortcuts', () => {

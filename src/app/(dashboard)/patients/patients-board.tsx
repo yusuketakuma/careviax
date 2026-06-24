@@ -749,6 +749,17 @@ export function PatientsBoard() {
           </div>
         ) : (
           <div className="space-y-4">
+            {data.truncated ? (
+              <div
+                role="note"
+                data-testid="patients-board-truncation-note"
+                className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-2.5 text-xs leading-5 text-state-confirm"
+              >
+                全{data.assigned_total}名のうち取得上限により{data.cards.length}
+                名のみ取得しています。優先度の高い患者が表示範囲外の場合があります。
+                検索も取得済みの患者が対象のため、見つからないときは条件を絞り込んでください。
+              </div>
+            ) : null}
             <div className="min-w-0">
               {visibleCards.length === 0 ? (
                 <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">

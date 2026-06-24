@@ -738,6 +738,10 @@ export const GET = withAuthContext(
       generated_at: now.toISOString(),
       scope,
       assigned_total: assignedTotal,
+      // 取得上限で実際に打ち切られたか = 母数 > 取得行数(フィルタ/slice 前の patients)。
+      // foundation_issue 等の絞り込みで cards が減るのは truncation ではないため、
+      // cards.length ではなく patients.length と比較する(誤検知防止)。
+      truncated: assignedTotal > patients.length,
       cards: cards.map((card) => {
         const { facility_batch_id, facility_batch_patient_count, ...publicCard } = card;
         void facility_batch_id;
