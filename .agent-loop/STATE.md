@@ -327,3 +327,17 @@ User-directed program after the org-header sweep. Method: ultracode 51-screen re
 **残 backlog(非§15)**: billing-rules/page.tsx は admin DataTable で唯一 false-empty 残だが **§15 billing 隣接 → defer**(UI error-state のみでも billing は人間判断に寄せる)。pharmacist error 分岐の dangling `htmlFor` label = a11y NIT(reviewer 指摘, role=alert で SR 担保, 機能影響なし)。他: #2b/c/d MasterEditorView スタブ実データ化, #29 44px タッチ, #30 StateBadge enum→token 残(jobs/billing-rules/performance/pca), #12b priority-before-take(design-gated)。
 
 > Note: a hard-stop writes the **Resume point** here before exiting so the next session can resume without re-deriving context.
+
+### ROUND-WORKBENCH (2026-06-24, claude solo + ultracode workflow)
+
+**§15 人間承認**: ユーザーが AskUserQuestion で 4画面ワークベンチの「読取＋書込フル実データ化」を明示承認 → BLOCKED.md `mainui-workbench-real-data-default` / `mainui-workbench-operator-identity` の human-gate を解除（実装は maker/checker + objective gate + 非モック監査証跡検証を通す）。工程キュー=待ち+作業中、4工程=分離画面（切替は左メニュー）も確定。
+
+**ultracode workflow `wf_4c349ea2-c3c`**: design(3レンズ)→synthesize→review(3敵対的, 全 CHANGES_REQUESTED で実バグ捕捉)→implement Slice T→verify。統合プラン=`~/.claude/plans/foamy-wishing-fern.md`（16k字＋レビュー補正20件追記）。後続 Slice 1〜4 はこの補正版で進める。レビュー補正の要点: `useRealtimeEvents().connected` はコンパイル不可→`useNetworkOnline()`; API auditor は現閲覧者であり履歴帰属でない→fail-closed「—」; seta は SetBatch 集計(Slice 2)前に base-status で出さない; phase を全 call site に通す; Slice T E2E は左メニュー(ラベル「監査」)＋href セレクタ。
+
+**LANDED**:
+- Slice T 工程タブ撤去→分離画面（PhaseHeader=静的 `<nav aria-label="現在の工程">`, phase-tabs.tsx 削除, .phaseTabBar 枠/トークン据置でレイアウト不変, 工程切替=左メニュー）`531ac1d3`（claude maker / reviewer-audit APPROVED; unit/tsc/no-unused/prettier/eslint/隔離build green; E2E 2スペックを新アンカー+左メニュー href へ移行＝lint/collection clean）。
+
+**未了/follow-up**:
+- E2E runtime 検証: 稼働 :3000 が turbopack で全スペック環境エラー → webpack e2e サーバ(:3012)で `pnpm test:e2e:local` 要確認（私の変更とは無関係の環境ブロック）。
+- Slice 1（実データ既定化+dispense/audit phase フィルタ）/ Slice 2（set/seta SetBatch 集計）/ Slice 3（operator-identity, useNetworkOnline + 履歴 auditor fail-closed）/ Slice 4（書込帰属検証, ctx.userId のみ・改竄 payload 否認テスト）は補正版プランで後続。
+- ローカル main は Slice T 未取込（main...refactor = 3 ahead / 1 behind; 先のマージは時点マージ。再マージは要指示）。
