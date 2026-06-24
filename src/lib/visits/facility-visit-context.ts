@@ -1,4 +1,5 @@
 import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
+import { buildVisitRecordHref } from '@/lib/visits/navigation';
 
 export type FacilityVisitContextPatient = {
   scheduleId: string;
@@ -100,7 +101,7 @@ function decodeFacilityVisitContextRaw(
 
 export function createFacilityVisitRecordHref(scheduleId: string, context: FacilityVisitContext) {
   void context;
-  return `/visits/${scheduleId}/record`;
+  return buildVisitRecordHref(scheduleId);
 }
 
 export function getNextGroupedVisitScheduleId(

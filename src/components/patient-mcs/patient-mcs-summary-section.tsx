@@ -8,6 +8,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   createPatientMcsQueryKey,
   fetchPatientMcsOverview,
@@ -85,7 +86,7 @@ export function PatientMcsSummarySection({
           連携ページで同期するとここに表示されます。
         </p>
         <Link
-          href={`/patients/${patientId}/mcs`}
+          href={buildPatientHref(patientId, '/mcs')}
           className={buttonVariants({ variant: 'outline', size: 'sm' })}
         >
           <Link2 className="mr-1.5 size-4" aria-hidden="true" />

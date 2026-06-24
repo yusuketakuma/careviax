@@ -43,6 +43,8 @@ import {
 } from '@/lib/constants/site-config-fields';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { isValidDateKey } from '@/lib/validations/date-key';
 
 type PharmacySite = {
@@ -167,7 +169,7 @@ export function PharmacySitesContent() {
     queryKey: ['pharmacy-sites-admin', orgId],
     queryFn: async () => {
       const response = await fetch('/api/pharmacy-sites', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('薬局情報の取得に失敗しました');
       return response.json() as Promise<{ data: PharmacySite[] }>;
@@ -180,9 +182,15 @@ export function PharmacySitesContent() {
   const configsQuery = useQuery({
     queryKey: ['insurance-configs', orgId, configSiteId],
     queryFn: async () => {
-      const response = await fetch(`/api/pharmacy-sites/${configSiteId}/insurance-configs`, {
-        headers: { 'x-org-id': orgId },
-      });
+      // enabled gates this on a non-null configSiteId; guard keeps the type narrowed
+      // for encodePathSegment and fails closed if ever invoked without one.
+      if (!configSiteId) throw new Error('拠点が選択されていません');
+      const response = await fetch(
+        `/api/pharmacy-sites/${encodePathSegment(configSiteId)}/insurance-configs`,
+        {
+          headers: buildOrgHeaders(orgId),
+        },
+      );
       if (!response.ok) throw new Error('保険設定の取得に失敗しました');
       return response.json() as Promise<{ data: InsuranceConfig[] }>;
     },
@@ -197,9 +205,9 @@ export function PharmacySitesContent() {
   const saveSiteMutation = useMutation({
     mutationFn: async () => {
       if (!editingSite || !siteForm) throw new Error('編集対象がありません');
-      const response = await fetch(`/api/pharmacy-sites/${editingSite.id}`, {
+      const response = await fetch(`/api/pharmacy-sites/${encodePathSegment(editingSite.id)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(siteForm),
       });
       const payload = await response.json().catch(() => ({}));
@@ -223,13 +231,16 @@ export function PharmacySitesContent() {
     mutationFn: async () => {
       if (!configSiteId || !configForm) throw new Error('設定対象がありません');
       if (configSaveBlocker) throw new Error(configSaveBlocker);
+      // encode EVERY dynamic segment independently (configSiteId, and editingConfigId
+      // on PATCH); each fails closed on a dot segment before the mutation.
+      const encodedSiteId = encodePathSegment(configSiteId);
       const url = editingConfigId
-        ? `/api/pharmacy-sites/${configSiteId}/insurance-configs/${editingConfigId}`
-        : `/api/pharmacy-sites/${configSiteId}/insurance-configs`;
+        ? `/api/pharmacy-sites/${encodedSiteId}/insurance-configs/${encodePathSegment(editingConfigId)}`
+        : `/api/pharmacy-sites/${encodedSiteId}/insurance-configs`;
       const method = editingConfigId ? 'PATCH' : 'POST';
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           ...configForm,
           auto_close_overlaps:
@@ -260,8 +271,8 @@ export function PharmacySitesContent() {
     mutationFn: async () => {
       if (!deleteConfig) throw new Error('削除対象がありません');
       const response = await fetch(
-        `/api/pharmacy-sites/${deleteConfig.siteId}/insurance-configs/${deleteConfig.configId}`,
-        { method: 'DELETE', headers: { 'x-org-id': orgId } },
+        `/api/pharmacy-sites/${encodePathSegment(deleteConfig.siteId)}/insurance-configs/${encodePathSegment(deleteConfig.configId)}`,
+        { method: 'DELETE', headers: buildOrgHeaders(orgId) },
       );
       if (!response.ok) throw new Error('削除に失敗しました');
     },

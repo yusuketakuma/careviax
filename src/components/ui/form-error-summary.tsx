@@ -19,14 +19,15 @@ export const FormErrorSummary = React.forwardRef<HTMLDivElement, FormErrorSummar
       showMessage = true,
       compact = false,
       className,
+      id,
       ...props
     },
-    ref
+    ref,
   ) => {
     if (items.length === 0) return null;
 
     return (
-      <div ref={ref} tabIndex={-1} className="scroll-mt-20">
+      <div id={id} ref={ref} tabIndex={-1} className="scroll-mt-20">
         <Alert variant="destructive" className={cn(className)} {...props}>
           <AlertTriangle className="size-4" />
           <AlertTitle>{title}</AlertTitle>

@@ -179,6 +179,34 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
     });
   });
 
+  it('uses normalized raw patient and lab ids for DB reads and writes', async () => {
+    const rawPatientId = 'patient/a b?x=1#frag';
+    const rawLabId = 'lab/a b?x=1#frag';
+
+    const response = (await PATCH(createPatchRequest({ note: '再確認済み' }), {
+      params: Promise.resolve({ id: ` ${rawPatientId} `, labId: ` ${rawLabId} ` }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(patientLabObservationFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: rawLabId,
+        org_id: 'org_1',
+        patient_id: rawPatientId,
+      },
+    });
+    expect(patientLabObservationUpdateMock).toHaveBeenCalledWith({
+      where: { id: rawLabId },
+      data: { note: '再確認済み' },
+    });
+    expect(JSON.stringify(patientLabObservationFindFirstMock.mock.calls)).not.toContain(
+      encodeURIComponent(rawLabId),
+    );
+    expect(JSON.stringify(patientLabObservationFindFirstMock.mock.calls)).not.toContain(
+      encodeURIComponent(rawPatientId),
+    );
+  });
+
   it('does not update when the lab is outside the assigned patient scope', async () => {
     patientLabObservationFindFirstMock.mockResolvedValue(null);
 

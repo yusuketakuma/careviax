@@ -13,6 +13,10 @@ import { Loading } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import {
   buildAudienceShareSections,
@@ -59,6 +63,18 @@ type ShareReplyDetail = {
   }>;
 };
 
+function buildCareReportApiPath(reportId: string) {
+  return `/api/care-reports/${encodePathSegment(reportId)}`;
+}
+
+function buildPatientApiPath(patientId: string, suffix: string) {
+  return `/api/patients/${encodePathSegment(patientId)}${suffix}`;
+}
+
+function buildCommunicationRequestApiPath(requestId: string) {
+  return `/api/communication-requests/${encodePathSegment(requestId)}`;
+}
+
 export function InterprofessionalShareContent({ reportId }: { reportId: string }) {
   const orgId = useOrgId();
   const isBootstrappingOrg = !orgId;
@@ -69,8 +85,8 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const reportQuery = useQuery({
     queryKey: ['care-report', reportId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/care-reports/${reportId}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(buildCareReportApiPath(reportId), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('報告書の取得に失敗しました');
       return res.json() as Promise<{ data: ShareCareReport }>;
@@ -92,11 +108,15 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const careTeamQuery = useQuery({
     queryKey: ['patient-care-team', patientId, report?.case_id, orgId],
     queryFn: async () => {
+      if (!patientId) throw new Error('患者IDがありません');
       const params = new URLSearchParams();
       if (report?.case_id) params.set('case_id', report.case_id);
-      const res = await fetch(`/api/patients/${patientId}/care-team?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const res = await fetch(
+        `${buildPatientApiPath(patientId, '/care-team')}?${params.toString()}`,
+        {
+          headers: buildOrgHeaders(orgId),
+        },
+      );
       if (!res.ok) throw new Error('ケアチームの取得に失敗しました');
       return res.json() as Promise<{ data: CareTeamMemberSummary[] }>;
     },
@@ -106,8 +126,9 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const contactsQuery = useQuery({
     queryKey: ['patient-contacts', patientId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/contacts`, {
-        headers: { 'x-org-id': orgId },
+      if (!patientId) throw new Error('患者IDがありません');
+      const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('連絡先の取得に失敗しました');
       return res.json() as Promise<{ data: ContactPartySummary[] }>;
@@ -123,7 +144,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
         related_entity_id: reportId,
       });
       const res = await fetch(`/api/communication-requests?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('返信状況の取得に失敗しました');
       return res.json() as Promise<{ data: ShareCommunicationRequest[] }>;
@@ -146,8 +167,10 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const replyDetailQuery = useQuery({
     queryKey: ['communication-request', replyRequest?.id, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/communication-requests/${replyRequest?.id}`, {
-        headers: { 'x-org-id': orgId },
+      const requestId = replyRequest?.id;
+      if (!requestId) throw new Error('返信依頼IDがありません');
+      const res = await fetch(buildCommunicationRequestApiPath(requestId), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('返信内容の取得に失敗しました');
       return res.json() as Promise<{ data: ShareReplyDetail }>;
@@ -181,7 +204,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       });
       const res = await fetch('/api/tasks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(input),
       });
       if (!res.ok) {
@@ -245,13 +268,15 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   const patientName = report.patient_summary?.name ?? null;
   const introShortcuts = [
     { href: '/reports', label: '報告書一覧' },
-    ...(patientId && canViewPatient ? [{ href: `/patients/${patientId}`, label: '患者詳細' }] : []),
+    ...(patientId && canViewPatient
+      ? [{ href: buildPatientHref(patientId), label: '患者詳細' }]
+      : []),
     { href: '/external', label: '外部連携' },
   ];
   const externalShareAction =
     patientId && canViewPatient && canUseShareOutput ? (
       <Link
-        href={`/patients/${patientId}/share`}
+        href={buildPatientHref(patientId, '/share')}
         className={cn(
           buttonVariants({ variant: 'outline', size: 'sm' }),
           'min-h-[44px] sm:min-h-0',
@@ -270,7 +295,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       <PageScaffold>
         <div data-testid="interprofessional-share" className="contents">
           <WorkflowPageIntro
-            backHref={`/reports/${report.id}`}
+            backHref={buildReportHref(report.id)}
             backLabel="報告書詳細へ戻る"
             title="他職種向け共有ページ"
             description={
@@ -300,7 +325,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
     <PageScaffold>
       <div data-testid="interprofessional-share" className="contents">
         <WorkflowPageIntro
-          backHref={`/reports/${report.id}`}
+          backHref={buildReportHref(report.id)}
           backLabel="報告書詳細へ戻る"
           title="他職種向け共有ページ"
           description={
@@ -352,7 +377,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
           </div>
         ) : null}
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
           {/* 左: 共有する相手 */}
           <section
             aria-labelledby="share-audience-heading"

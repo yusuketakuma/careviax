@@ -5,11 +5,17 @@ import { act, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { AnalyticsContent } from './analytics-content';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
 
 setupDomTestEnv();
 
@@ -194,6 +200,49 @@ describe('AnalyticsContent', () => {
     expect(screen.queryByLabelText('患者名で検索')).toBeNull();
     // both concurrent queries succeed -> resource-map section also renders
     expect(await screen.findByText('基幹薬局')).toBeTruthy();
+  });
+
+  it('fetches analytics and resource-map data with shared org headers and exact query keys', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      void init;
+      const url = String(input);
+      if (url === '/api/billing-evidence/analytics') {
+        return new Response(JSON.stringify(BILLING_BODY), { status: 200 });
+      }
+      if (url === '/api/pharmacy-sites?view=resource_map') {
+        return new Response(JSON.stringify(RESOURCE_BODY), { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const queryClient = makeClient();
+
+    renderWithClient(queryClient);
+
+    expect(await screen.findByText('月次推移')).toBeTruthy();
+    expect(await screen.findByText('基幹薬局')).toBeTruthy();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/billing-evidence/analytics');
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/pharmacy-sites?view=resource_map');
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
+    expect(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .map((query) => query.queryKey),
+    ).toEqual(
+      expect.arrayContaining([
+        ['billing-analytics', 'org_1'],
+        ['pharmacy-sites', 'org_1', 'resource-map'],
+      ]),
+    );
   });
 
   it('shows a billing error state while the resource map still renders independently', async () => {

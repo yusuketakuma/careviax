@@ -10,6 +10,9 @@ import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatDateLabel, formatDateTimeLabel } from '@/lib/ui/date-format';
 
 type PatientResponse = {
@@ -73,7 +76,7 @@ export default function PatientVisitRecordsPrintPage() {
     enabled: Boolean(orgId),
     queryFn: async () => {
       const response = await fetch('/api/me/org', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('薬局情報を取得できませんでした');
@@ -86,8 +89,8 @@ export default function PatientVisitRecordsPrintPage() {
     queryKey: ['visit-record-print-patient', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}`, {
+        headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('患者情報を取得できませんでした');
@@ -107,7 +110,7 @@ export default function PatientVisitRecordsPrintPage() {
       if (dateTo) query.set('date_to', dateTo);
 
       const response = await fetch(`/api/visit-records?${query.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('訪問記録を取得できませんでした');
@@ -136,7 +139,7 @@ export default function PatientVisitRecordsPrintPage() {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-6">
         <p className="text-sm text-destructive">印刷データを取得できませんでした。</p>
-        <Link href={`/patients/${patientId}`} className={buttonVariants({ variant: 'outline' })}>
+        <Link href={buildPatientHref(patientId)} className={buttonVariants({ variant: 'outline' })}>
           戻る
         </Link>
       </div>
@@ -146,7 +149,7 @@ export default function PatientVisitRecordsPrintPage() {
   return (
     <div className="mx-auto max-w-4xl p-6 print:p-0">
       <PrintPageToolbar
-        backHref={`/patients/${patientId}`}
+        backHref={buildPatientHref(patientId)}
         backLabel="患者詳細へ戻る"
         title="訪問記録一覧 印刷ビュー"
         description="対象期間の訪問記録を薬歴向けにまとめて印刷できます。"
@@ -178,7 +181,9 @@ export default function PatientVisitRecordsPrintPage() {
               <tr>
                 <th className="bg-gray-100 px-2 py-1 text-left">対象期間</th>
                 <td colSpan={3} className="px-2 py-1">
-                  {dateFrom || dateTo ? `${dateFrom || '開始指定なし'} - ${dateTo || '終了指定なし'}` : '全期間'}
+                  {dateFrom || dateTo
+                    ? `${dateFrom || '開始指定なし'} - ${dateTo || '終了指定なし'}`
+                    : '全期間'}
                 </td>
               </tr>
             </tbody>
@@ -205,13 +210,16 @@ export default function PatientVisitRecordsPrintPage() {
                       <td className="px-2 py-1">{formatDateLabel(record.visit_date)}</td>
                       <td className="px-2 py-1">
                         {record.schedule
-                          ? (visitTypeLabels[record.schedule.visit_type] ?? record.schedule.visit_type)
+                          ? (visitTypeLabels[record.schedule.visit_type] ??
+                            record.schedule.visit_type)
                           : '—'}
                       </td>
                       <td className="px-2 py-1">
                         {outcomeLabels[record.outcome_status] ?? record.outcome_status}
                       </td>
-                      <td className="px-2 py-1">{formatDateLabel(record.next_visit_suggestion_date)}</td>
+                      <td className="px-2 py-1">
+                        {formatDateLabel(record.next_visit_suggestion_date)}
+                      </td>
                       <td className="px-2 py-1">{formatDateTimeLabel(record.updated_at)}</td>
                     </tr>
                   ))
@@ -229,13 +237,22 @@ export default function PatientVisitRecordsPrintPage() {
           {records.map((record, index) => (
             <section key={record.id}>
               <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-                【{index + 1}. {formatDateLabel(record.visit_date)} / {outcomeLabels[record.outcome_status] ?? record.outcome_status}】
+                【{index + 1}. {formatDateLabel(record.visit_date)} /{' '}
+                {outcomeLabels[record.outcome_status] ?? record.outcome_status}】
               </h2>
               <div className="space-y-2 border border-gray-400 px-3 py-2 text-xs">
-                <p><span className="font-semibold">S:</span> {record.soap_subjective ?? '記録なし'}</p>
-                <p><span className="font-semibold">O:</span> {record.soap_objective ?? '記録なし'}</p>
-                <p><span className="font-semibold">A:</span> {record.soap_assessment ?? '記録なし'}</p>
-                <p><span className="font-semibold">P:</span> {record.soap_plan ?? '記録なし'}</p>
+                <p>
+                  <span className="font-semibold">S:</span> {record.soap_subjective ?? '記録なし'}
+                </p>
+                <p>
+                  <span className="font-semibold">O:</span> {record.soap_objective ?? '記録なし'}
+                </p>
+                <p>
+                  <span className="font-semibold">A:</span> {record.soap_assessment ?? '記録なし'}
+                </p>
+                <p>
+                  <span className="font-semibold">P:</span> {record.soap_plan ?? '記録なし'}
+                </p>
               </div>
             </section>
           ))}

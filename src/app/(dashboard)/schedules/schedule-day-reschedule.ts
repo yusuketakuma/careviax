@@ -1,3 +1,5 @@
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import type { VisitPriority } from './day-view.shared';
 
 type FetchLike = typeof fetch;
@@ -38,12 +40,9 @@ export async function generateScheduleDayRescheduleProposals({
     throw new Error('リスケ対象が選択されていません');
   }
 
-  const res = await fetchImpl(`/api/visit-schedules/${target.id}/reschedule`, {
+  const res = await fetchImpl(`/api/visit-schedules/${encodePathSegment(target.id)}/reschedule`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(form),
   });
 

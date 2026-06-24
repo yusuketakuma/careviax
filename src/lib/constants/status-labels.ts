@@ -169,6 +169,18 @@ export const PRIORITY_ROLE: Record<string, StatusRoleOrNeutral> = {
   low: 'readonly',
 };
 
+/** 優先度 enum の日本語表示ラベル(PRIORITY_ROLE と同じキー集合)。生 enum をそのまま
+ *  画面に出さず、StateBadge 等のテキストに使う(色のみ依存を避けアイコン+語で示す)。 */
+export const PRIORITY_DISPLAY_LABELS: Record<string, string> = {
+  emergency: '緊急',
+  critical: '重大',
+  urgent: '至急',
+  high: '高',
+  normal: '中',
+  medium: '中',
+  low: '低',
+};
+
 /** VisitOutcome(訪問結果). completed=done、cancelled=blocked、postponed/課題あり/再訪=confirm、配薬のみ=info。 */
 export const VISIT_OUTCOME_ROLE: Record<string, StatusRoleOrNeutral> = {
   completed: 'done',
@@ -273,6 +285,16 @@ export const SELF_REPORT_STATUS_ROLE: Record<string, StatusRoleOrNeutral> = {
   converted_to_task: 'done',
   resolved: 'done',
   dismissed: 'readonly',
+};
+
+/** SelfReportStatus の日本語表示ラベル(SELF_REPORT_STATUS_ROLE と同じキー集合)。生 enum を
+ *  画面にそのまま出さないために使う。 */
+export const SELF_REPORT_STATUS_LABELS: Record<string, string> = {
+  submitted: '未対応',
+  triaged: 'トリアージ済',
+  converted_to_task: 'タスク化',
+  resolved: '解決済',
+  dismissed: '見送り',
 };
 
 /** PatientShareCaseStatus(他薬局への患者共有). active=done(共有成立)、revoked/declined=blocked、各種pending=waiting、suspended=confirm、ended=readonly、draft=neutral。 */

@@ -114,4 +114,101 @@ describe('PatientConditionsCard', () => {
 
     expect(mutate).not.toHaveBeenCalled();
   });
+
+  const sampleConditions = [
+    {
+      id: 'condition_1',
+      condition_type: 'disease' as const,
+      name: '心不全',
+      is_primary: true,
+      is_active: true,
+      noted_at: '2026-05-01T00:00:00.000Z',
+      notes: '訪問時に息切れ確認',
+    },
+  ];
+
+  it('saves conditions to an encoded patient path with shared JSON headers and a raw payload', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+
+    let savedConfig: { mutationFn: () => Promise<unknown> } | undefined;
+    useMutationMock.mockImplementation((config: { mutationFn: () => Promise<unknown> }) => {
+      savedConfig = config;
+      return { mutate: vi.fn(), isPending: false };
+    });
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <PatientConditionsCard
+          patientId={hostileId}
+          orgId="org_1"
+          initialConditions={sampleConditions}
+        />,
+      );
+
+      await savedConfig?.mutationFn();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/conditions`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.method).toBe('PUT');
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Content-Type']).toBe('application/json');
+      expect(headers['x-org-id']).toBe('org_1');
+      // payload preserves the mapped conditions verbatim; no patient id leaks into the body.
+      const body = JSON.parse(init.body as string);
+      expect(body.conditions).toEqual([
+        {
+          condition_type: 'disease',
+          name: '心不全',
+          is_primary: true,
+          is_active: true,
+          noted_at: '2026-05-01',
+          notes: '訪問時に息切れ確認',
+        },
+      ]);
+      expect(init.body as string).not.toContain(hostileId);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed without fetching for exact dot-segment patientId %p',
+    async (dotId) => {
+      useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+
+      let savedConfig: { mutationFn: () => Promise<unknown> } | undefined;
+      useMutationMock.mockImplementation((config: { mutationFn: () => Promise<unknown> }) => {
+        savedConfig = config;
+        return { mutate: vi.fn(), isPending: false };
+      });
+
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(
+          <PatientConditionsCard
+            patientId={dotId}
+            orgId="org_1"
+            initialConditions={sampleConditions}
+          />,
+        );
+        await expect(savedConfig?.mutationFn()).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
 });

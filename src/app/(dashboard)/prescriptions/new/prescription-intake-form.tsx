@@ -30,6 +30,7 @@ import { JahisSupplementalRecordsCard } from '@/components/features/prescription
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DrugSuggest, type DrugSelection } from '@/components/features/pharmacy/drug-suggest';
+import { ErrorState } from '@/components/ui/error-state';
 import {
   extractPackagingInstructionTags,
   PACKAGING_INSTRUCTION_TAG_LABELS,
@@ -195,7 +196,7 @@ function GenericCandidatePanel({
 }) {
   const orgId = useOrgId();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['generic-candidates', orgId, query],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -235,6 +236,19 @@ function GenericCandidatePanel({
       <div className="rounded-md border border-tag-info/20 bg-tag-info/10 px-3 py-2 text-xs text-tag-info">
         後発候補を検索中...
       </div>
+    );
+  }
+
+  if (isError) {
+    // 取得失敗を空状態に潰さず、再試行導線つきの ErrorState を出す。
+    return (
+      <ErrorState
+        variant="server"
+        size="inline"
+        title="後発候補を取得できませんでした"
+        description="時間をおいて再読み込みしてください。"
+        action={{ label: '再読み込み', onClick: () => void refetch() }}
+      />
     );
   }
 

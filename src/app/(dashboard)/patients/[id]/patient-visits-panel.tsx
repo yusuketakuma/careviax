@@ -15,6 +15,10 @@ import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
 import { HomeCareFeatureBoard } from '@/components/home-care/home-care-feature-board';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import { cn } from '@/lib/utils';
 import {
   PRIORITY_LABELS,
@@ -64,8 +68,8 @@ export function PatientVisitsPanel({
     queryKey: ['patient-visits-panel', patientId, orgId],
     enabled: Boolean(orgId && patientId && enabled),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/visits`, {
-        headers: { 'x-org-id': orgId ?? '' },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/visits`, {
+        headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
         throw new Error('訪問情報の取得に失敗しました');
@@ -123,15 +127,18 @@ export function PatientVisitsPanel({
   const exportQuery = new URLSearchParams();
   if (dateFrom) exportQuery.set('date_from', dateFrom);
   if (dateTo) exportQuery.set('date_to', dateTo);
-  const exportHref = `/api/patients/${patientId}/visit-records/pdf${exportQuery.size > 0 ? `?${exportQuery.toString()}` : ''}`;
-  const printHref = `/patients/${patientId}/visit-records/print${
-    dateFrom || dateTo
-      ? `?${new URLSearchParams({
-          ...(dateFrom ? { dateFrom } : {}),
-          ...(dateTo ? { dateTo } : {}),
-        }).toString()}`
-      : ''
-  }`;
+  const exportHref = `/api/patients/${encodePathSegment(patientId)}/visit-records/pdf${exportQuery.size > 0 ? `?${exportQuery.toString()}` : ''}`;
+  const printHref = buildPatientHref(
+    patientId,
+    `/visit-records/print${
+      dateFrom || dateTo
+        ? `?${new URLSearchParams({
+            ...(dateFrom ? { dateFrom } : {}),
+            ...(dateTo ? { dateTo } : {}),
+          }).toString()}`
+        : ''
+    }`,
+  );
   const monthlyCountBadges = [
     ...(medicalInsuranceNumber ? [{ label: '医療', limit: 4 }] : []),
     ...(careInsuranceNumber ? [{ label: '介護', limit: 2 }] : []),
@@ -170,8 +177,8 @@ export function PatientVisitsPanel({
               visit_schedules.map((item) => {
                 const scheduleHref = buildScheduleBoardHref(item.id, item.scheduled_date);
                 const visitRecordHref = item.visit_record
-                  ? `/visits/${item.visit_record.id}`
-                  : `/visits/${item.id}/record`;
+                  ? buildVisitHref(item.visit_record.id)
+                  : buildVisitRecordHref(item.id);
 
                 return (
                   <div key={item.id} className="rounded-lg border border-border p-3 text-sm">
@@ -277,7 +284,7 @@ export function PatientVisitsPanel({
                   type="date"
                   value={dateFrom}
                   onChange={(event) => setDateFrom(event.target.value)}
-                  className="h-8 w-40 text-sm"
+                  className="min-h-[44px] w-40 text-sm sm:min-h-[44px]"
                 />
               </div>
               <div className="space-y-1">
@@ -289,7 +296,7 @@ export function PatientVisitsPanel({
                   type="date"
                   value={dateTo}
                   onChange={(event) => setDateTo(event.target.value)}
-                  className="h-8 w-40 text-sm"
+                  className="min-h-[44px] w-40 text-sm sm:min-h-[44px]"
                 />
               </div>
             </div>
@@ -303,7 +310,7 @@ export function PatientVisitsPanel({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <Link
-                        href={`/visits/${item.id}`}
+                        href={buildVisitHref(item.id)}
                         className="font-medium text-primary hover:underline"
                       >
                         {format(new Date(item.visit_date ?? item.created_at), 'yyyy年M月d日(E)', {

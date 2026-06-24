@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { serverCache } from '@/lib/utils/server-cache';
 import {
   buildDashboardTaskAssignmentWhere,
@@ -317,8 +318,11 @@ export const GET = withAuthContext(
       patient_name: schedule.case_.patient.name,
       visit_type: schedule.visit_type,
       schedule_status: schedule.schedule_status,
-      time_start: schedule.time_window_start?.toISOString() ?? null,
-      time_end: schedule.time_window_end?.toISOString() ?? null,
+      // @db.Time stores the wall-clock in its UTC parts; serialize as an "HH:MM"
+      // wall-clock string (canonical getUTC*-based helper) so the client never
+      // re-parses with local getHours() — the ~9h JST timeline-shift bug.
+      time_start: timeDateToString(schedule.time_window_start) ?? null,
+      time_end: timeDateToString(schedule.time_window_end) ?? null,
       facility_batch_id: schedule.facility_batch_id,
     }));
 

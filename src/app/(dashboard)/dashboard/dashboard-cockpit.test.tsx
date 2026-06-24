@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 
 setupDomTestEnv();
@@ -20,6 +21,11 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
 
 import { DashboardCockpit } from './dashboard-cockpit';
 import { formatCockpitGeneratedAtMeta } from './dashboard-cockpit.helpers';
@@ -77,8 +83,8 @@ function buildFixture(): DashboardCockpitResponse {
         patient_name: '伊藤',
         visit_type: 'regular',
         schedule_status: 'planned',
-        time_start: localIso(10, 30),
-        time_end: localIso(11, 30),
+        time_start: '10:30',
+        time_end: '11:30',
         facility_batch_id: null,
       },
       {
@@ -86,8 +92,8 @@ function buildFixture(): DashboardCockpitResponse {
         patient_name: '田中',
         visit_type: 'regular',
         schedule_status: 'planned',
-        time_start: localIso(14, 0),
-        time_end: localIso(15, 0),
+        time_start: '14:00',
+        time_end: '15:00',
         facility_batch_id: null,
       },
     ],
@@ -180,6 +186,47 @@ describe('DashboardCockpit', () => {
     expect(screen.getByRole('button', { name: 'チーム全体' }).getAttribute('aria-pressed')).toBe(
       'false',
     );
+  });
+
+  it('fetches cockpit data with shared org headers and stable scope query keys', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => {
+      return new Response(JSON.stringify({ data: buildFixture() }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<DashboardCockpit />);
+
+    const mineConfig = useRealtimeQueryMock.mock.calls[0]?.[0] as {
+      queryKey: unknown[];
+      queryFn: () => Promise<unknown>;
+    };
+    expect(mineConfig.queryKey).toEqual(['dashboard', 'cockpit', 'org_1', 'mine']);
+
+    await mineConfig.queryFn();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit?scope=mine');
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
+
+    fireEvent.click(screen.getByRole('button', { name: 'チーム全体' }));
+    const teamConfig = useRealtimeQueryMock.mock.calls.at(-1)?.[0] as {
+      queryKey: unknown[];
+      queryFn: () => Promise<unknown>;
+    };
+    expect(teamConfig.queryKey).toEqual(['dashboard', 'cockpit', 'org_1', 'team']);
+
+    fetchMock.mockClear();
+    await teamConfig.queryFn();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/dashboard/cockpit?scope=team');
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(sentinelHeaders);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
   });
 
   it('disables the team scope when the API applies mine-only dashboard access', () => {

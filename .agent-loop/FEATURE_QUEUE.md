@@ -504,3 +504,106 @@ old tasks unless they are actively being edited for another reason.
 並行 housekeeping（joint）: matrix §3 stale 訂正（DataTable は既に skeleton/empty 内蔵、consent は isLoading 済）;
 gbrain promotion review: `projects/careviax/lessons/candidates/api-response-validation-and-consolidation`
 (times_confirmed=2) を §13 gate で VerifiedLesson 昇格検討。
+
+## RUN-20260622-001 Cycle 6 — admin a11y / 情報設計スライス（claude=owner, codex=reviewer）
+
+レーン: 全て Claude UI lane・自ファイル LOCK・maker/checker・objective gate・codex peer review。
+
+### F-20260622-001 — admin UI/UX 連続スライス（全 DONE）
+
+| slice  | 内容                                                                                                                                         | 状態                                                                                      |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| slice1 | admin service-areas + alert-rules: native `<select>`(36px) → 共有 `@/components/ui/select`、44px 全 breakpoint trigger、空保存ブロッカー維持 | **done** e73ff383（codex rev2 APPROVED; vitest 11/11 + 全 gate green）                    |
+| slice2 | admin capacity: 「今すぐ見るべきこと」を chart 上へ昇格（SSOT §2/L117 情報順）、loading skeleton 追従、DOM順序テスト                         | **done** 91d47e84（codex rev3 APPROVED; vitest 3/3 + 全 gate green）                      |
+| slice3 | admin document-templates: PageSection(h2) + CardTitle asChild h3 階層、TemplateBodyEditor 内側 h2→h3 + aria-labelledby                       | **done** f40a77f5（codex 4-round plan + patch rev1 APPROVED; vitest 8/8 + 全 gate green） |
+
+### F-20260622-002 — drug-masters native-select a11y 移行（8 selects、3 sub-slice 分割）
+
+origin: slice1 verify subagent が検出した範囲外残渣（drug-master-content.tsx の 8 native select、mixed label/aria パターン）。1メガ diff を避け 4a/4b/4c に分割（codex 承認）。
+
+| sub-slice | 対象 selects                                           | 状態                                                                                                                                                                                                                                                |
+| --------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4a        | #1 対象拠点 / #2 コピー元拠点 / #3 テンプレート        | **in review (rev2)**: plan rev5 APPROVED（5-round; clear sentinel + 完全 target reset + 44px trigger/item + 強化 mock）。実装(frontend-implementer)→ codex patch rev1 changes_requested（P1 stale-async-preview guard + test 契約3件）→ rev2 実装中 |
+| 4b        | #4 CSV用途 / #5 取込ソース / #6 取込状態 / #7 薬効分類 | queued（filter selects、空 option なし）                                                                                                                                                                                                            |
+| 4c        | #8 採用後発薬（accessible name 欠落も補修）            | queued                                                                                                                                                                                                                                              |
+
+deferred（判断要・別タスク）: M9 business-holidays（カレンダー↔一括登録結合）/ M3 billing-rules（§15 billing hard-stop 近接=human-gate）。
+
+### native-select a11y バックログ（read-only インベントリ 2026-06-22、将来 Discover 候補）
+
+slice1/4a と同種の sub-44px native `<select>` 残債。admin lane を優先、患者・臨床画面は医療/PHI ハザードのため要慎重・別 PLAN。
+
+- **admin（低〜中リスク、優先）**: drug-masters 残り5（=4b/4c）/ admin/pharmacy-cooperation-setup-content（1）。
+- **clinical/患者（高リスク・要慎重、各別 PLAN）**: patients/[id]/card-workspace（23）/ prescriptions/new/prescription-intake-form（9）/ patients/[id]/patient-insurance-card（5）/ patient-documents-panel（4）/ patients/[id]/mcs（3）/ prescription-history（2）/ patient-labs-card（1）/ patients-board（1）/ referrals/new（2）/ schedules/schedule-team-board（1）/ workflow/pharmacy-cooperation（1）/ billing/partner-cooperation（1=billing hard-stop 近接）。
+- 方針: slice1 で確立した shared `@/components/ui/select` + 44px trigger/item + MockSelect パターンを踏襲。label-wrap は aria-labelledby へ翻訳、空 option が action を gate する場合は明示 clear sentinel + 完全 state reset（slice4a で確立）。
+
+### §22b 自律探索 追加候補（2026-06-23、read-only Discover sweep）
+
+§22b idle 自律探索の初回成果。今回は general-purpose subagent で実施したが、§22b 改訂により**今後の探索は gstack スキル優先**（`/health` / `/design-review`|`/design-consultation` / `/cso`(advisory) / `/investigate`）。
+**dedupe:** 探索が挙げた select 移行候補（mcs/insurance/labs/documents/schedule-team-board/pharmacy-cooperation/partner-billing 等）は上記「native-select a11y バックログ」に**計上済み** → 重複登録しない。state-color drift は CLOSED（migration-map L360 残ゼロ）。TODO/FIXME は Claude-lane 非テストに 0 件。以下は既存インベントリに**無い NEW 候補**のみ（要 PLAN_REVIEW + LOCK、未着手）:
+
+- **referral-form-unsaved-guard-and-select**（owner: claude-lead, est S）: `referrals/new/referral-form.tsx` の native select 2件（依頼種別/性別, `h-8`=32px）を共有 Select へ + 多項目 intake フォームに `useUnsavedChangesGuard` 追加（現在ガード無し＝入力中離脱でデータ損失）。evidence: referral-form.tsx:177,321 / guard 不在（cf. prescription-intake-form.tsx:525 はガード有）。why: 紹介 intake のデータ損失防止 + select 整合。
+- ~~**icon-button-aria-labels**（owner: claude-lead, est S）~~ **INVALID（2026-06-23, recon-before-PLAN で取消）**: recon の結果、主張サイトは全て既にラベル済み or 存在せず＝実ギャップなし。external-share copy ボタンは `aria-label="URLをコピー"` 等あり(:596/:610)、shifts 月送りは `aria-label="前月"/"翌月"`(:946/955)、medication-calendar には該当 Button が無い。§22b の汎用サブエージェント探索の false-positive。**教訓: a11y 探索は gstack `/design-review` を優先**（汎用サブエージェントは行番号・存在を誤りやすい）。実装不要。
+- **dispense-workbench-select-migration**（owner: claude-lead）**DESIGN-GATED / DEFER（2026-06-23 recon）**: native select 2件は実在（`right-pane.tsx:874` NG分類, `prescription-grid.tsx:510`）が、(1) **a11y ギャップなし**（NG分類 label は `htmlFor="ng-classification"` で正しく関連付け済み）、(2) workbench 独自の **`--wb-*` CSS 変数＋inline style**（意図的な「レセコン風」高密度デザイン）で書かれている。よって shared shadcn Select への移行は a11y/bug 修正ではなく**デザイン一貫性の taste 判断**で、ワークベンチの意図的な見た目を変えるリスクがある。→ 機械的移行スライスにはせず **defer**。判断には `/design-review` or `/design-consultation`（または人間のデザイン決定）が必要。a11y-only の余地も現状なし。
+- （L-size 別途・consistency-only）patient-form.tsx(42) / card-workspace.tsx(23) は既に `min-h-[44px]` 応答パターン使用 → a11y 動機ではなく整合のみ、優先度低。
+
+### §22b 自律探索 第2弾（2026-06-23、gstack `/health` で実施）
+
+gstack `/health`（read-only コード品質ダッシュボード）の結果。**codebase は健全**: typecheck exit 0 / vitest **8780 passed | 1 skipped** / 実 src lint 0 problems。唯一の実 candidate は CI ハイジーン:
+
+- **eslint-ignore-stale-harness-worktrees**（owner: codex-lead = build/gate/tooling, reviewer: claude-lead, est S, **CI-hygiene 高価値**）: `pnpm lint`（`eslint .`）が exit 1。原因は git-ignore 済み `.harness-worktrees/*`（古い base d607ffd9 から fork した stale worktree 2件: F-UX-REPORTS-RAIL-DRAWER + harness/worker）内のコピーに setState-in-effect error + unused-vars。eslint flat-config は `eslint.config.mjs:9` の `globalIgnores([...])` を持つが `.harness-worktrees/**` を含まない → eslint が物理ディレクトリを走査。**fix: `globalIgnores` に `.harness-worktrees/**`を追加**（1行、低リスク）。代替: stale worktree を`git worktree remove`で prune（使用中なら不可なので ignore 追加が安全）。evidence: /health lint exit 1（5 problems 全て .harness-worktrees 配下、実 src 0）。why: 毎パッチで caveat 化してきた lint gate の red を解消し`pnpm lint` を clean な objective gate に戻す。
+  - note: これは私(claude)が全パッチ検証で繰り返し flag してきた環境ノイズの恒久 fix。owner は build/tooling なので codex レーンへ surfacing（§22b クロスレーン探索）。
+
+### §22b 自律探索 F-003 deferred href-hardening candidates（2026-06-23、codex read-only Discover）
+
+F-20260623-003 は `patient-detail-foundation` の 8 patient action href のみを source patch 対象にしたため、
+同じ raw patient id route-construction pattern を持つ sibling surfaces を follow-up として intake。いずれも
+owner-lane: **codex**（backend/service/job href construction）、要 PLAN_REVIEW + LOCK、未着手。
+
+- **patient-home-operations-href-hardening**（owner: codex, est S）: `src/server/services/patient-home-operations.ts` の patient action href を shared patient href helper へ寄せる。scope: home-care operation summary/action hrefs only; DB where identity は raw 維持。evidence: F-003 read-only Discover で raw `/patients/${...}` pattern 3件。
+- **patient-detail-documents-href-hardening**（owner: codex, est S）: `src/server/services/patient-detail-documents.ts` の document-related patient hrefs を path-segment encoded route builder へ寄せる。scope: documents service action hrefs only; document URL/presigned URL は非対象。evidence: F-003 read-only Discover で raw `/patients/${...}` pattern 7件。
+- **patient-detail-timeline-events-href-hardening**（owner: codex, est M）: `src/server/services/patient-detail-timeline-events.ts` の timeline hrefs を route/path segment と query param で分けて harden する。scope: patient path segment encoding + query values via URLSearchParams where applicable; timeline semantics 不変。evidence: F-003 read-only Discover で raw path/query mixed patterns 複数件。
+- **daily-preparation-patient-href-hardening**（owner: codex, est S）: `src/server/jobs/daily/preparation.ts` の generated patient href を shared route helper へ寄せる。scope: daily preparation job output link only; job query/data selection 不変。evidence: F-003 read-only Discover で raw `/patients/${...}` pattern 1件。
+
+### F-001 review follow-ups（2026-06-23、codex の referral-form patch review が surfacing）
+
+F-20260623-001（referral-form select 移行＋unsaved-guard）のレビューで codex が指摘した、この UI スライス範囲外の項目。いずれも別 PLAN_REVIEW + LOCK 必須、未着手。
+
+- **referral-intake-persist-type-and-checklist**（owner: codex = API/domain, reviewer: claude, **P1 data-capture gap**）: 新規紹介フォームは `referral_type` と書類チェックリストを収集・dirty 追跡するが、`/api/cases` の `createCaseSchema` は `patient_id/referral_source/referral_date/notes` のみ受理し**これらを永続化しない**。収集データが保存されないギャップ。要 schema/API 拡張＋PLAN（DB/契約変更のため hard-stop 近接の判断要）。evidence: codex confirmed createCaseSchema fields。
+- **referral-create-transactional-or-safe-retry**（owner: codex = API/domain, reviewer: claude, **P1 data-integrity / 高リスク**）: 紹介作成は patient POST 成功後に case POST する2段階。case POST 失敗後のリトライで**重複/孤児 patient** が発生しうる。要 transactional referral-create endpoint もしくは安全な reuse/retry 戦略＋PLAN。pre-existing だが在宅紹介 intake で高リスク。evidence: codex review (2段階 POST フロー)。
+- **referral-form-error-summary-focus-target**（owner: claude = UI/a11y, est S）: `FormErrorSummary` の focus 対象 id が focusable wrapper でなく内側 Alert に付いている疑い（バリデーション失敗時にフォーカスが当たらない）。WCAG focus 管理の a11y 修正。evidence: codex review (F-001 a11y note)。
+
+### ROUND-ORG-HEADERS-2 admin convergence sweep（2026-06-24, claude×codex 並列 dual-maker）
+
+手法: `buildOrgHeaders`/`buildOrgJsonHeaders`（x-org-id 統一）+ `encodePathSegment`（動的 path segment、dot fail-closed）への収束。test teeth bar=sentinel-mocked org-headers + real encodePathSegment + GET/POST/PATCH-hostile/PATCH-dot/DELETE-hostile/DELETE-dot。共有ワークツリー並列の build は **source-stable 確認 → combined build**、コミットは **`git commit -- <自パス>` の partial commit**（相手の uncommitted 変更を温存）。
+
+**LANDED（本ラウンド、全 maker/checker'd・gate GREEN）:**
+
+- F-20260624-009 admin/packaging-methods `b4bcff8d`（claude / codex）
+- F-20260624-011 admin/alert-rules page.tsx `ac7c1ba2`（claude / codex; rev2 で PATCH/testMutation teeth 補強）
+- F-20260624-013 admin/alert-rules signal-tuning-panel `745268e5`（claude / codex; NEW test file）→ **admin/alert-rules dir 完全収束**
+- F-20260624-015 admin/service-areas `3148efd3`（claude / codex; multi-callsite + dot fail-closed）
+- F-20260624-016 admin/institutions `359c38bc`（codex / claude; GET=query-param so no encode）
+- F-20260624-017 admin/business-holidays（codex maker, in-flight）
+
+**残バックログ（recon 2026-06-24、未着手・将来 Discover; いずれも要 LOCK + maker/checker）:**
+
+Pattern A+B（path segment + header、coherent スライス優先）:
+
+- [ ] **admin/drug-masters/drug-master-content.tsx**（6 path + 21 header, ~1900行）— **BIG: card-workspace 同様に sub-slice 分割必須**、単一スライス禁止
+- [ ] admin/shifts/shifts-content.tsx（5 path + 6 header; business-holidays と関連）
+- [ ] admin/pca-pumps/pca-pumps-content.tsx
+- [ ] admin/notification-settings/notification-settings-content.tsx（/api/admin/escalation-rules/${id}）
+- [ ] admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx
+- [ ] admin/pharmacy-sites/pharmacy-sites-content.tsx（**multi-segment**: /api/pharmacy-sites/${siteId}/insurance-configs/${configId} — 各 segment encode）
+- [ ] admin/users/users-content.tsx
+- [ ] admin/document-templates/{document-delivery-rule-manager,template-content}.tsx
+- [ ] admin/incidents/incidents-content.tsx
+- [ ] admin/pharmacist-credentials/pharmacist-credentials-content.tsx
+
+Pattern B only（header swap のみ、小・低価値だが安全）:
+
+- [ ] capacity, contact-profiles, inventory-forecast, jobs, metrics, realtime, performance, admin/settings, dispense-audit-stats, audit-logs
+- [ ] facility-standards, operations-insights, staff-kpi-panel（**no co-located test** → 新規 test file 要）
+
+知見（本ラウンド）: (1) GET の dynamic 部が URLSearchParams query なら encodePathSegment 不要（path segment のみ encode）。(2) jest-dom matcher（toBeEnabled/toHaveTextContent）は未登録 → plain DOM assertion 規約（`.disabled`/`.textContent.toContain`）。(3) zsh は `${PIPESTATUS[0]}` が空 → gate exit は直接 `$?`。(4) 並列 build は原タスク実行中の重複起動で Next.js ロック衝突（"wait for the build to complete"）→ 単一実行厳守。

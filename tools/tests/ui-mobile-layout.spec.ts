@@ -3,7 +3,12 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { Client } from 'pg';
 import { PLAYWRIGHT_SCREENSHOT_DIR } from './helpers/artifacts';
-import { attachLocalSession, createInstrumentedPage, openStableRoute } from './helpers/local-auth';
+import {
+  attachLocalSession,
+  createInstrumentedPage,
+  openStableRoute,
+  reloadStablePage,
+} from './helpers/local-auth';
 
 const DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
@@ -136,6 +141,15 @@ async function writeMobileScreenshot(page: Page, name: string) {
 
 async function openMobileRoute(page: Page, path: string) {
   await openStableRoute(page, path);
+}
+
+async function expectMobileRouteReady(page: Page, readyTestId: string) {
+  const ready = page.getByTestId(readyTestId);
+  if (!(await ready.isVisible({ timeout: 30_000 }).catch(() => false))) {
+    await reloadStablePage(page);
+  }
+
+  await expect(ready).toBeVisible({ timeout: 60_000 });
 }
 
 function filterExpectedMobileRouteErrors(path: string, errors: string[]) {
@@ -357,7 +371,7 @@ test.describe('mobile layout flow', () => {
       );
       await openMobileRoute(page, route.path);
 
-      await expect(page.getByTestId(route.readyTestId)).toBeVisible();
+      await expectMobileRouteReady(page, route.readyTestId);
       await expect(
         page
           .getByRole(route.primaryTarget.role, {

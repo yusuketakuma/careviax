@@ -94,6 +94,14 @@ export type PatientBoardResponse = {
   scope: 'mine' | 'all';
   /** 担当患者の母数(「私の担当 N名のうち M名を表示」の N) */
   assigned_total: number;
+  /**
+   * 取得上限で打ち切られたか = assigned_total > 取得行数(フィルタ/slice 前)。
+   * true のとき cards は assigned_total の一部(取得上限により返却された部分集合)で、
+   * 優先度の高い患者が表示範囲外にいる可能性がある。foundation_issue 等の絞り込みで
+   * cards が減るのは truncation ではない(この値は絞り込み前の取得行数で判定する)。
+   * UI は検索での絞り込みとは区別した truncation 注意を出す。
+   */
+  truncated: boolean;
   cards: PatientBoardCard[];
   chip_counts: PatientBoardChipCounts;
   /** 本日訪問のうち施設一括の対象人数(「本日訪問 3+施設12名」の 12) */

@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
-import type { DayBoardStaff, ScheduleDayBoardResponse } from '@/types/schedule-day-board';
-import type { ScheduleTask } from './day-view.shared';
+import type {
+  DayBoardStaff,
+  ScheduleDayBoardOperationalTask,
+  ScheduleDayBoardResponse,
+} from '@/types/schedule-day-board';
 import {
   buildScheduleRiskAlert,
   buildStaffLane,
@@ -17,6 +20,8 @@ import {
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
+const buildOrgHeadersMock = vi.hoisted(() => vi.fn());
+const buildOrgJsonHeadersMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
@@ -29,6 +34,15 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+vi.mock('@/lib/api/org-headers', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: buildOrgHeadersMock,
+    buildOrgJsonHeaders: buildOrgJsonHeadersMock,
+  };
+});
 
 import { ScheduleTeamBoard } from './schedule-team-board';
 
@@ -258,6 +272,14 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
         idle_after_minutes: 25,
       },
     ],
+    operational_tasks: [
+      buildScheduleTask(),
+      buildScheduleTask({
+        id: 'task_outside',
+        title: '翌日の準備',
+        related_entity_id: 'visit_outside',
+      }),
+    ],
   };
 }
 
@@ -307,7 +329,9 @@ function buildCockpitFixture(): DashboardCockpitResponse {
   };
 }
 
-function buildScheduleTask(overrides: Partial<ScheduleTask> = {}): ScheduleTask {
+function buildScheduleTask(
+  overrides: Partial<ScheduleDayBoardOperationalTask> = {},
+): ScheduleDayBoardOperationalTask {
   return {
     id: 'task_preparation',
     task_type: 'visit_preparation',
@@ -326,29 +350,57 @@ function buildScheduleTask(overrides: Partial<ScheduleTask> = {}): ScheduleTask 
   };
 }
 
+type QueryConfig = {
+  queryKey: readonly unknown[];
+  queryFn: () => Promise<unknown>;
+};
+
+type MutationConfig<TPayload = unknown> = {
+  mutationFn: (payload: TPayload) => Promise<unknown>;
+};
+
+type VisitStatusPayload = {
+  scheduleId: string;
+  status: 'in_progress';
+};
+
+type TaskStatusPayload = {
+  taskId: string;
+  status: 'in_progress';
+};
+
+function findQueryConfig(
+  configs: readonly QueryConfig[],
+  matcher: (queryKey: readonly unknown[]) => boolean,
+): QueryConfig {
+  const config = configs.find((candidate) => matcher(candidate.queryKey));
+  if (!config) {
+    throw new Error('Query config was not captured');
+  }
+  return config;
+}
+
+function buildJsonResponse(data: unknown) {
+  return new Response(JSON.stringify({ data }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 function mockQueries({
   board = buildBoardFixture(),
   cockpit = buildCockpitFixture(),
-  tasks = [
-    buildScheduleTask(),
-    buildScheduleTask({
-      id: 'task_outside',
-      title: '翌日の準備',
-      related_entity_id: 'visit_outside',
-    }),
-  ],
+  onQueryConfig,
 }: {
   board?: ScheduleDayBoardResponse | null;
   cockpit?: DashboardCockpitResponse | null;
-  tasks?: ScheduleTask[];
+  onQueryConfig?: (config: QueryConfig) => void;
 } = {}) {
-  useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+  useQueryMock.mockImplementation((options: QueryConfig) => {
+    onQueryConfig?.(options);
     const key = options.queryKey[0];
     if (key === 'schedule-day-board') {
       return { data: board, isLoading: false, isError: false, error: null, refetch: vi.fn() };
-    }
-    if (key === 'tasks') {
-      return { data: tasks, isLoading: false, isError: false, error: null, refetch: vi.fn() };
     }
     return { data: cockpit, isLoading: false, isError: false, error: null, refetch: vi.fn() };
   });
@@ -508,11 +560,145 @@ describe('ScheduleTeamBoard', () => {
     useUIStore.setState({ workspaceRailOpen: true });
     invalidateQueriesMock.mockReset();
     useMutationMock.mockReset();
+    buildOrgHeadersMock.mockReset();
+    buildOrgJsonHeadersMock.mockReset();
     useMutationMock.mockReturnValue({
       mutate: vi.fn(),
       isPending: false,
       variables: undefined,
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('uses shared org headers for schedule board queries while preserving raw query keys', async () => {
+    const queryConfigs: QueryConfig[] = [];
+    const orgHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    buildOrgHeadersMock.mockReturnValue(orgHeaders);
+    mockQueries({ onQueryConfig: (config) => queryConfigs.push(config) });
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const boardConfig = findQueryConfig(
+      queryConfigs,
+      (queryKey) => queryKey[0] === 'schedule-day-board',
+    );
+    const cockpitConfig = findQueryConfig(
+      queryConfigs,
+      (queryKey) => queryKey[0] === 'schedule-rail-cockpit',
+    );
+
+    expect(boardConfig.queryKey).toEqual(['schedule-day-board', 'org_1', TODAY_KEY]);
+    expect(cockpitConfig.queryKey).toEqual(['schedule-rail-cockpit', 'org_1']);
+    expect(
+      queryConfigs.some(
+        (config) => config.queryKey[0] === 'tasks' && config.queryKey[1] === 'schedule-board',
+      ),
+    ).toBe(false);
+
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.startsWith('/api/visit-schedules/day-board')) {
+        return buildJsonResponse(buildBoardFixture());
+      }
+      return buildJsonResponse(buildCockpitFixture());
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await boardConfig.queryFn();
+    await cockpitConfig.queryFn();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`/api/visit-schedules/day-board?date=${TODAY_KEY}`);
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(orgHeaders);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/dashboard/cockpit');
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toBe(orgHeaders);
+    expect(buildOrgHeadersMock).toHaveBeenNthCalledWith(1, 'org_1');
+    expect(buildOrgHeadersMock).toHaveBeenNthCalledWith(2, 'org_1');
+  });
+
+  it('encodes dynamic PATCH ids and preserves raw mutation payloads', async () => {
+    const mutationConfigs: MutationConfig[] = [];
+    const orgJsonHeaders = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    buildOrgJsonHeadersMock.mockReturnValue(orgJsonHeaders);
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: vi.fn(),
+        isPending: false,
+        variables: undefined,
+      };
+    });
+    mockQueries();
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const fetchMock = vi.fn<typeof fetch>(async () => buildJsonResponse({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const scheduleId = 'schedule/1?x=y#z';
+    const taskId = 'task/1?x=y#z';
+    const statusMutation = mutationConfigs[0] as MutationConfig<VisitStatusPayload>;
+    const taskStatusMutation = mutationConfigs[1] as MutationConfig<TaskStatusPayload>;
+
+    await statusMutation.mutationFn({ scheduleId, status: 'in_progress' });
+    await taskStatusMutation.mutationFn({ taskId, status: 'in_progress' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `/api/visit-schedules/${encodeURIComponent(scheduleId)}`,
+    );
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe('PATCH');
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit).headers).toBe(orgJsonHeaders);
+    expect(JSON.parse((fetchMock.mock.calls[0]?.[1] as RequestInit).body as string)).toEqual({
+      schedule_status: 'in_progress',
+    });
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(`/api/tasks/${encodeURIComponent(taskId)}`);
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).method).toBe('PATCH');
+    expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).toBe(orgJsonHeaders);
+    expect(JSON.parse((fetchMock.mock.calls[1]?.[1] as RequestInit).body as string)).toEqual({
+      status: 'in_progress',
+    });
+    expect(buildOrgJsonHeadersMock).toHaveBeenNthCalledWith(1, 'org_1');
+    expect(buildOrgJsonHeadersMock).toHaveBeenNthCalledWith(2, 'org_1');
+
+    const calledUrls = fetchMock.mock.calls.map((call) => String(call[0])).join('\n');
+    expect(calledUrls).not.toContain('/api/visit-schedules/schedule/1?x=y#z');
+    expect(calledUrls).not.toContain('/api/tasks/task/1?x=y#z');
+    expect(calledUrls).not.toContain('%25');
+  });
+
+  it.each(['.', '..'])('fails closed before PATCH fetch for dot id %s', async (dotId) => {
+    const mutationConfigs: MutationConfig[] = [];
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: vi.fn(),
+        isPending: false,
+        variables: undefined,
+      };
+    });
+    mockQueries();
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const statusMutation = mutationConfigs[0] as MutationConfig<VisitStatusPayload>;
+    const taskStatusMutation = mutationConfigs[1] as MutationConfig<TaskStatusPayload>;
+
+    await expect(
+      statusMutation.mutationFn({ scheduleId: dotId, status: 'in_progress' }),
+    ).rejects.toThrow(RangeError);
+    await expect(
+      taskStatusMutation.mutationFn({ taskId: dotId, status: 'in_progress' }),
+    ).rejects.toThrow(RangeError);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(buildOrgJsonHeadersMock).not.toHaveBeenCalled();
   });
 
   it('renders the new schedule board composition with rail and a single primary action', () => {
@@ -698,23 +884,26 @@ describe('ScheduleTeamBoard', () => {
       variables: undefined,
     });
     mockQueries({
-      tasks: [
-        buildScheduleTask({
-          id: 'task_contact',
-          task_type: 'visit_contact_followup',
-          title: '折返し架電が必要です',
-          status: 'pending',
-          priority: 'normal',
-          related_entity_type: 'visit_schedule_proposal',
-          related_entity_id: 'proposal_1',
-        }),
-        buildScheduleTask({
-          id: 'task_cancelled',
-          title: '完了済みの準備',
-          status: 'completed',
-          related_entity_id: 'visit_1',
-        }),
-      ],
+      board: {
+        ...buildBoardFixture(),
+        operational_tasks: [
+          buildScheduleTask({
+            id: 'task_contact',
+            task_type: 'visit_contact_followup',
+            title: '折返し架電が必要です',
+            status: 'pending',
+            priority: 'normal',
+            related_entity_type: 'visit_schedule_proposal',
+            related_entity_id: 'proposal_1',
+          }),
+          buildScheduleTask({
+            id: 'task_cancelled',
+            title: '完了済みの準備',
+            status: 'completed',
+            related_entity_id: 'visit_1',
+          }),
+        ],
+      },
     });
     render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
 

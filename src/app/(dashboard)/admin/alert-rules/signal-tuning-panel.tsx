@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { cn } from '@/lib/utils';
 import {
   buildSignalTuningState,
@@ -36,7 +38,7 @@ export function SignalTuningPanel() {
   const rulesQuery = useQuery({
     queryKey: ['drug-alert-rules', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/drug-alert-rules', { headers: { 'x-org-id': orgId } });
+      const res = await fetch('/api/drug-alert-rules', { headers: buildOrgHeaders(orgId) });
       if (!res.ok) throw new Error('アラートルールの取得に失敗しました');
       const json = await res.json();
       return (json.data ?? []) as SignalTuningRule[];
@@ -67,7 +69,7 @@ export function SignalTuningPanel() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const diff = diffSignalTuning(currentState, desired);
-      const headers = { 'Content-Type': 'application/json', 'x-org-id': orgId };
+      const headers = buildOrgJsonHeaders(orgId);
 
       for (const alertType of diff.create) {
         const item = SIGNAL_TUNING_ITEMS.find((entry) => entry.alertType === alertType);
@@ -84,8 +86,10 @@ export function SignalTuningPanel() {
         });
         if (!res.ok) throw new Error('表示設定の保存に失敗しました');
       }
+      // encodePathSegment runs before each fetch, so a dot-segment ruleId fails
+      // closed before the is_active PATCH side effect.
       for (const ruleId of diff.activate) {
-        const res = await fetch(`/api/drug-alert-rules/${ruleId}`, {
+        const res = await fetch(`/api/drug-alert-rules/${encodePathSegment(ruleId)}`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({ is_active: true }),
@@ -93,7 +97,7 @@ export function SignalTuningPanel() {
         if (!res.ok) throw new Error('表示設定の保存に失敗しました');
       }
       for (const ruleId of diff.deactivate) {
-        const res = await fetch(`/api/drug-alert-rules/${ruleId}`, {
+        const res = await fetch(`/api/drug-alert-rules/${encodePathSegment(ruleId)}`, {
           method: 'PATCH',
           headers,
           body: JSON.stringify({ is_active: false }),

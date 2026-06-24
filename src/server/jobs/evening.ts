@@ -38,7 +38,7 @@ export async function checkUnrecordedVisits() {
       type: 'reminder',
       title: '薬歴未記入',
       message: '本日の訪問記録が未入力です。薬歴を記入してください。',
-      link: `/visit-schedules/${schedule.id}`,
+      link: `/visit-schedules/${encodeURIComponent(schedule.id)}`,
       dedupe_key: `unrecorded-visit:${schedule.id}:${schedule.pharmacist_id}`,
     }));
 

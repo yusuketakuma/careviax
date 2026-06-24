@@ -32,6 +32,7 @@ import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import {
   MEDICATION_CYCLE_STATUS_ROLE,
   PRIORITY_ROLE,
+  SELF_REPORT_STATUS_LABELS,
   type StatusRoleOrNeutral,
 } from '@/lib/constants/status-labels';
 import type { HomeLinkContext, WorkflowFocus } from '@/lib/dashboard/home-link-builders';
@@ -1196,7 +1197,9 @@ export function WorkflowDashboardView({
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline">{report.status}</Badge>
+                      <Badge variant="outline">
+                        {SELF_REPORT_STATUS_LABELS[report.status] ?? report.status}
+                      </Badge>
                       <Badge variant="secondary">{report.category}</Badge>
                       {report.requested_callback && <Badge variant="destructive">折返し希望</Badge>}
                     </div>
@@ -1345,7 +1348,7 @@ export function WorkflowDashboardView({
         ) : (
           <div className="overflow-hidden rounded-md border border-border">
             <table className="w-full text-sm">
-              <thead className="bg-muted/60">
+              <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
                 <tr>
                   <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground">
                     患者名

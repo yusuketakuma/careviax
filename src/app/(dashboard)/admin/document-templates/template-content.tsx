@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminDocumentTemplatesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { DataTable } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -29,6 +30,7 @@ import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { PageSection } from '@/components/layout/page-section';
 import { TemplateBodyEditor } from './template-body-editor';
 
 type TemplateType =
@@ -134,7 +136,7 @@ export function DocumentTemplateContent() {
     contentText: JSON.stringify(DEFAULT_TEMPLATE_CONTENT.care_report, null, 2),
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['document-templates', orgId, filterType],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -322,12 +324,18 @@ export function DocumentTemplateContent() {
         shortcuts={getAdminDocumentTemplatesShortcutLinks()}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+      <PageSection
+        title="テンプレート版管理"
+        description="文書テンプレートの登録・編集と、登録済みテンプレートの版・更新状況を管理します。"
+        contentClassName="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]"
+      >
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FileText className="h-4 w-4 text-primary" aria-hidden="true" />
-              {editingTemplateId ? 'テンプレートを編集' : 'テンプレートを登録'}
+            <CardTitle asChild className="flex items-center gap-2 text-base">
+              <h3>
+                <FileText className="h-4 w-4 text-primary" aria-hidden="true" />
+                {editingTemplateId ? 'テンプレートを編集' : 'テンプレートを登録'}
+              </h3>
             </CardTitle>
             <CardDescription>JSON 形式でブロック構成や固定文言を管理します。</CardDescription>
           </CardHeader>
@@ -487,7 +495,9 @@ export function DocumentTemplateContent() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">登録済みテンプレート</CardTitle>
+            <CardTitle asChild className="text-base">
+              <h3>登録済みテンプレート</h3>
+            </CardTitle>
             <CardDescription>
               主要文書ごとの既定テンプレートと更新状況を確認できます。
             </CardDescription>
@@ -512,18 +522,28 @@ export function DocumentTemplateContent() {
             </div>
           </CardHeader>
           <CardContent>
-            <DataTable
-              columns={columns}
-              data={data?.data ?? []}
-              isLoading={isLoading}
-              caption="文書テンプレート一覧"
-              emptyMessage="文書テンプレートはまだありません"
-            />
+            {isError ? (
+              // 取得失敗時は空一覧(false-empty)にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                size="inline"
+                description="文書テンプレートを取得できませんでした。時間をおいて再読み込みしてください。"
+                action={{ label: '再読み込み', onClick: () => void refetch() }}
+              />
+            ) : (
+              <DataTable
+                columns={columns}
+                data={data?.data ?? []}
+                isLoading={isLoading}
+                caption="文書テンプレート一覧"
+                emptyMessage="文書テンプレートはまだありません"
+              />
+            )}
           </CardContent>
         </Card>
-      </div>
+      </PageSection>
 
-      {/* p1_10: 文面の3カラムエディタ(テンプレート/文面を編集/差し込み項目) */}
+      {/* p1_10: 文面の3カラムエディタ(テンプレート/文面を編集/差し込み項目)。
+          自前で section + 見出しを持つ独立ブロックのため PageSection で二重ラップしない。 */}
       <TemplateBodyEditor
         templates={(data?.data ?? []).map((template) => ({
           id: template.id,
@@ -532,7 +552,12 @@ export function DocumentTemplateContent() {
         }))}
       />
 
-      <DocumentDeliveryRuleManager />
+      <PageSection
+        title="送達ルール"
+        description="文書種別と相手ロールごとに、既定の送達チャネルとフォールバック順を管理します。"
+      >
+        <DocumentDeliveryRuleManager />
+      </PageSection>
 
       <ConfirmDialog
         open={deleteTarget !== null}

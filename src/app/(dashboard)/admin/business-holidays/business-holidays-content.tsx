@@ -25,8 +25,10 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { encodePathSegment } from '@/lib/http/path-segment';
 
 type Holiday = {
   id: string;
@@ -127,7 +129,7 @@ export function BusinessHolidaysContent() {
       const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
       if (filterSiteId) params.set('site_id', filterSiteId);
       const response = await fetch(`/api/business-holidays?${params}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('休日設定の取得に失敗しました');
       return response.json() as Promise<{ data: Holiday[] }>;
@@ -139,7 +141,7 @@ export function BusinessHolidaysContent() {
     queryKey: ['pharmacy-sites', orgId],
     queryFn: async () => {
       const response = await fetch('/api/pharmacy-sites', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('店舗一覧の取得に失敗しました');
       return response.json() as Promise<{ data: SiteOption[] }>;
@@ -163,11 +165,13 @@ export function BusinessHolidaysContent() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const url = editingId ? `/api/business-holidays/${editingId}` : '/api/business-holidays';
+      const url = editingId
+        ? `/api/business-holidays/${encodePathSegment(editingId)}`
+        : '/api/business-holidays';
       const method = editingId ? 'PATCH' : 'POST';
       const response = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           ...form,
           site_id: form.site_id || undefined,
@@ -194,9 +198,9 @@ export function BusinessHolidaysContent() {
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!deleteTarget) throw new Error('削除対象がありません');
-      const response = await fetch(`/api/business-holidays/${deleteTarget.id}`, {
+      const response = await fetch(`/api/business-holidays/${encodePathSegment(deleteTarget.id)}`, {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('削除に失敗しました');
     },
@@ -214,10 +218,11 @@ export function BusinessHolidaysContent() {
     mutationFn: async () => {
       const dates = Array.from(bulkDates).sort();
       const results = [];
+      const headers = buildOrgJsonHeaders(orgId);
       for (const date of dates) {
         const response = await fetch('/api/business-holidays', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+          headers,
           body: JSON.stringify({
             date,
             name: bulkName,

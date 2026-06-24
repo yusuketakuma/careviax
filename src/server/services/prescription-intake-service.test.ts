@@ -174,6 +174,168 @@ describe('createPrescriptionIntake', () => {
     expect(prismaMock.medicationProfile.findMany).not.toHaveBeenCalled();
   });
 
+  it('blocks outpatient-injection guardrails on a patient/case target before creating a cycle', async () => {
+    const tx = createMockTx();
+    tx.careCase.findFirst.mockResolvedValue({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_1',
+    });
+    tx.drugMaster.findMany.mockResolvedValue([
+      {
+        yj_code: 'INJ001',
+        receipt_code: null,
+        hot_code: null,
+        outpatient_injection_eligible: false,
+      },
+    ]);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: '注射薬A',
+            drug_code: 'INJ001',
+            dosage_form: '注射液',
+            route: 'injection',
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({
+      kind: 'error',
+      error: 'outpatient_injection_not_eligible',
+      blockedLines: [
+        {
+          line_number: 1,
+          drug_name: '注射薬A',
+          reason: '薬剤マスターで外来/在宅自己注射対象として確認されていません',
+        },
+      ],
+    });
+    expect(tx.medicationCycle.create).not.toHaveBeenCalled();
+    expect(tx.workflowException.findFirst).not.toHaveBeenCalled();
+    expect(tx.workflowException.create).not.toHaveBeenCalled();
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks structuring guardrails on a patient/case target before creating a cycle', async () => {
+    const tx = createMockTx();
+    tx.careCase.findFirst.mockResolvedValue({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_1',
+    });
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: '未確認薬剤A',
+            drug_code: undefined,
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({
+      kind: 'error',
+      error: 'structuring_blocked_lines',
+      blockedLines: [{ line_number: 1, drug_name: '未確認薬剤A' }],
+    });
+    expect(tx.medicationCycle.create).not.toHaveBeenCalled();
+    expect(tx.workflowException.findFirst).not.toHaveBeenCalled();
+    expect(tx.workflowException.create).not.toHaveBeenCalled();
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('creates a cycle for a patient/case target only after fail-fast intake guards pass', async () => {
+    const tx = createMockTx();
+    tx.careCase.findFirst.mockResolvedValue({
+      id: 'case_1',
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'pharmacist_1',
+    });
+    tx.medicationCycle.create.mockResolvedValue({
+      id: 'cycle_new',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'intake_received',
+      version: 1,
+    });
+    tx.prescriptionIntake.create.mockResolvedValue({
+      id: 'intake_1',
+    });
+    tx.inquiryRecord.count.mockResolvedValue(0);
+    createDispenseDraftMock.mockResolvedValue({
+      id: 'cycle_new',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      primary_pharmacist_id: 'pharmacist_1',
+    });
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-01',
+        lines: [validLine()],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result.kind).toBe('intake');
+    if (result.kind !== 'intake') throw new Error('expected intake result');
+    expect(result.cycle.id).toBe('cycle_new');
+    expect(tx.medicationCycle.create).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        overall_status: 'intake_received',
+        version: 1,
+      },
+    });
+    expect(tx.prescriptionIntake.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        cycle_id: 'cycle_new',
+      }),
+    });
+    expect(createDispenseDraftMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        cycleId: 'cycle_new',
+      }),
+    );
+  });
+
   it('maps a missing prescriber institution to a validation result before intake side effects', async () => {
     const tx = createMockTx();
     tx.medicationCycle.findFirst.mockResolvedValue({

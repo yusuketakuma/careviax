@@ -94,6 +94,7 @@ export async function checkVisitRecordRetention() {
       const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
       const thresholdLabel = daysUntilExpiry <= 7 ? '7日以内' : '30日以内';
       const patientName = patientById.get(record.patient_id) ?? record.patient_id;
+      const visitRecordHref = `/visits/${encodeURIComponent(record.id)}`;
 
       for (const adminId of adminsByOrg.get(record.org_id) ?? []) {
         notificationData.push({
@@ -102,7 +103,7 @@ export async function checkVisitRecordRetention() {
           type: priority === 'urgent' ? 'urgent' : 'business',
           title: '薬歴の保存期限',
           message: `${patientName} さんの訪問記録が${thresholdLabel}に保存期限を迎えます。保全状況を確認してください。`,
-          link: `/visits/${record.id}`,
+          link: visitRecordHref,
           dedupe_key: `visit-record-retention:${record.id}:${adminId}:${priority}`,
         });
       }

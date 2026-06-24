@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 setupDomTestEnv();
@@ -18,6 +19,15 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SelectSiteContent } from './select-site-content';
@@ -53,6 +63,15 @@ function renderPage() {
 describe('SelectSiteContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(buildOrgHeaders).mockImplementation((orgId, extra) => ({
+      'x-org-id': orgId,
+      ...extra,
+    }));
+    vi.mocked(buildOrgJsonHeaders).mockImplementation((orgId, extra) => ({
+      'Content-Type': 'application/json',
+      'x-org-id': orgId,
+      ...extra,
+    }));
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -68,6 +87,9 @@ describe('SelectSiteContent', () => {
   });
 
   it('renders site cards with the current badge, visit counts, and home-visit tags', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+
     renderPage();
 
     const cards = await screen.findAllByTestId('select-site-card');
@@ -78,9 +100,14 @@ describe('SelectSiteContent', () => {
     expect(within(cards[0]).getByText('本日訪問 28件')).toBeTruthy();
     expect(within(cards[0]).getByText('在宅あり')).toBeTruthy();
     expect(within(cards[1]).queryByText('選択中')).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith('/api/me/sites', { headers: sentinelHeaders });
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
   });
 
   it('switches the site then navigates to the dashboard', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
+
     renderPage();
     const cards = await screen.findAllByTestId('select-site-card');
 
@@ -91,10 +118,12 @@ describe('SelectSiteContent', () => {
         '/api/me/site',
         expect.objectContaining({
           method: 'PUT',
+          headers: sentinelHeaders,
           body: JSON.stringify({ site_id: 'site_east' }),
         }),
       );
     });
+    expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith('/dashboard');
     });

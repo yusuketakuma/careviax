@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   canOpenPatientMcsPage,
   describePatientMcsCardStatus,
@@ -105,7 +106,7 @@ export function PatientMcsLinkCard({ patientId }: { patientId: string }) {
         ) : null}
         {canOpenPatientMcsPage(statusQuery.data) ? (
           <Link
-            href={`/patients/${patientId}/mcs`}
+            href={buildPatientHref(patientId, '/mcs')}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             <Link2 className="mr-1.5 size-4" aria-hidden="true" />

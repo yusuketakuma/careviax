@@ -3,6 +3,7 @@ import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
+import { memberRoleLabel } from '@/lib/auth/member-roles';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { countHandoffBadge } from '@/server/services/nav-badges';
@@ -25,6 +26,15 @@ function toDateOnly(dateStr: string): Date {
 }
 
 type HandoffDirection = 'outgoing' | 'incoming';
+
+const HANDOFF_RECIPIENT_ROLES = [
+  'owner',
+  'admin',
+  'pharmacist',
+  'pharmacist_trainee',
+  'clerk',
+  'driver',
+] as const;
 
 function isCurrentHandoffItem(item: {
   lifecycle_status?: string | null;
@@ -158,10 +168,30 @@ export const GET = withAuthContext(
     const incomingCount = items.filter(
       (item) => item.direction === 'incoming' && item.recipient_user_id === ctx.userId,
     ).length;
+    const recipientMemberships = await prisma.membership.findMany({
+      where: {
+        org_id: ctx.orgId,
+        is_active: true,
+        role: { in: [...HANDOFF_RECIPIENT_ROLES] },
+        user: { is_active: true, id: { not: ctx.userId } },
+      },
+      orderBy: [{ user: { name_kana: 'asc' } }, { user: { name: 'asc' } }],
+      select: {
+        role: true,
+        user: { select: { id: true, name: true } },
+      },
+    });
+    const recipientOptions = recipientMemberships.map((membership) => ({
+      id: membership.user.id,
+      name: membership.user.name,
+      role: membership.role,
+      role_label: memberRoleLabel(membership.role),
+    }));
 
     const data = {
       ...board,
       items,
+      recipient_options: recipientOptions,
       month_item_count: monthItemCount,
       summary: {
         outgoing_count: outgoingCount,

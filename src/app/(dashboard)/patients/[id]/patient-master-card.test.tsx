@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -104,4 +105,199 @@ describe('PatientMasterCard', () => {
     expect(allergyDelete.getAttribute('aria-label')).not.toMatch(/山田|ペニシリン|123456|987654/);
     expect(screen.getByLabelText('患者メモ')).toBeTruthy();
   });
+
+  type Patient = Parameters<typeof PatientMasterCard>[0]['patient'];
+  type CapturedConfig = {
+    queryKey?: unknown[];
+    queryFn?: () => Promise<unknown>;
+    mutationFn?: () => Promise<unknown>;
+  };
+
+  function buildPatientWith(overrides: { id?: string; facilityId?: string | null }): Patient {
+    const base = buildPatient();
+    return {
+      ...base,
+      id: overrides.id ?? base.id,
+      residences: [
+        {
+          ...base.residences[0],
+          facility_id: overrides.facilityId ?? null,
+        },
+      ],
+    };
+  }
+
+  function captureConfigs() {
+    const queryConfigs: CapturedConfig[] = [];
+    const mutationConfigs: CapturedConfig[] = [];
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockImplementation((config: CapturedConfig) => {
+      queryConfigs.push(config);
+      return { data: { data: [] }, isLoading: false };
+    });
+    useMutationMock.mockImplementation((config: CapturedConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    return { queryConfigs, mutationConfigs };
+  }
+
+  function okFetch() {
+    return vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+  }
+
+  it('fetches the static facilities list with org headers', async () => {
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientMasterCard orgId="org_1" patient={buildPatientWith({})} />);
+
+      // facilitiesQuery is the first useQuery in the component.
+      await queryConfigs[0]?.queryFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/facilities');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('encodes the facility id segment for the units query with org headers', async () => {
+    const hostileFacilityId = 'fac/9?a=b#c';
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <PatientMasterCard
+          orgId="org_1"
+          patient={buildPatientWith({ facilityId: hostileFacilityId })}
+        />,
+      );
+
+      // facilityUnitsQuery is the second useQuery; its key carries the raw selected facility id.
+      expect(queryConfigs[1]?.queryKey).toEqual([
+        'patient-master-facility-units',
+        'org_1',
+        hostileFacilityId,
+      ]);
+      await queryConfigs[1]?.queryFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/admin/facilities/${encodeURIComponent(hostileFacilityId)}/units`);
+      expect(url).not.toContain('?a=b');
+      expect(url).not.toContain('#c');
+      expect(url).not.toContain('%25');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('encodes the patient id segment for the qualification-check POST with org headers', async () => {
+    const hostilePatientId = 'pt/1?x=y#z';
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <PatientMasterCard orgId="org_1" patient={buildPatientWith({ id: hostilePatientId })} />,
+      );
+
+      // qualificationCheckMutation is the first useMutation in the component.
+      await mutationConfigs[0]?.mutationFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostilePatientId)}/qualification-check`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.method).toBe('POST');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('encodes the patient id segment for the PATCH save with JSON headers and no id leak in the body', async () => {
+    const hostilePatientId = 'pt/1?x=y#z';
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <PatientMasterCard orgId="org_1" patient={buildPatientWith({ id: hostilePatientId })} />,
+      );
+
+      // saveMutation is the second useMutation in the component.
+      await mutationConfigs[1]?.mutationFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostilePatientId)}`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.method).toBe('PATCH');
+      expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+      const body = init.body as string;
+      // the patient id lives only in the URL path, never in the PATCH payload.
+      expect(body).not.toContain(hostilePatientId);
+      expect(JSON.parse(body)).toMatchObject({ name: '山田花子', name_kana: 'ヤマダハナコ' });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed without fetching for exact dot-segment patient id %p on qualification-check and save',
+    async (dotId) => {
+      const { mutationConfigs } = captureConfigs();
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(<PatientMasterCard orgId="org_1" patient={buildPatientWith({ id: dotId })} />);
+
+        await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(RangeError);
+        await expect(mutationConfigs[1]?.mutationFn?.()).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
+
+  it.each(['.', '..'])(
+    'fails closed without fetching for exact dot-segment facility id %p on the units query',
+    async (dotId) => {
+      const { queryConfigs } = captureConfigs();
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(
+          <PatientMasterCard orgId="org_1" patient={buildPatientWith({ facilityId: dotId })} />,
+        );
+
+        await expect(queryConfigs[1]?.queryFn?.()).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
 });

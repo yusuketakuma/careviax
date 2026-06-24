@@ -7,6 +7,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { ReportShareWorkspace } from './report-share-workspace';
 import {
   buildHeaderMeta,
@@ -39,6 +40,13 @@ vi.mock('next/navigation', () => ({
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
+
+// Actual-backed spy: real encode/guard output for the hostile test, plus
+// return-value delegation teeth for the post-generate router.push navigation.
+vi.mock('@/lib/reports/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/reports/navigation')>();
+  return { ...actual, buildReportHref: vi.fn(actual.buildReportHref) };
+});
 
 const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
   generated_at: '2026-06-11T00:00:00.000Z',
@@ -249,7 +257,10 @@ const COCKPIT: DashboardCockpitResponse = {
   team_capacity: [],
 };
 
-function stubFetch(workspace: ReportsTodayWorkspaceResponse = TODAY_WORKSPACE) {
+function stubFetch(
+  workspace: ReportsTodayWorkspaceResponse = TODAY_WORKSPACE,
+  generatedReportId = 'rep_generated',
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes('/api/care-reports/today-workspace')) {
@@ -263,7 +274,7 @@ function stubFetch(workspace: ReportsTodayWorkspaceResponse = TODAY_WORKSPACE) {
         JSON.stringify({
           data: [
             {
-              id: 'rep_generated',
+              id: generatedReportId,
               report_type: 'care_manager_report',
               status: 'draft',
               updated_at: '2026-06-11T05:00:00.000Z',
@@ -463,6 +474,51 @@ describe('ReportShareWorkspace', () => {
     await waitFor(() => {
       expect(routerPushMock).toHaveBeenCalledWith('/reports/rep_generated');
     });
+  });
+
+  it('navigates to the generated draft via the shared buildReportHref return value', async () => {
+    stubFetch();
+    const realImpl = vi.mocked(buildReportHref).getMockImplementation();
+    vi.mocked(buildReportHref).mockImplementation((id: string) => `/reports/__sentinel_${id}__`);
+    vi.mocked(buildReportHref).mockClear();
+    try {
+      renderWorkspace();
+
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: '田中 一郎 様 医師(山本先生)+ケアマネ の下書きを自動作成',
+        }),
+      );
+
+      await waitFor(() => {
+        expect(routerPushMock).toHaveBeenCalledWith('/reports/__sentinel_rep_generated__');
+      });
+      expect(vi.mocked(buildReportHref).mock.calls).toEqual([['rep_generated']]);
+    } finally {
+      if (realImpl) {
+        vi.mocked(buildReportHref).mockImplementation(realImpl);
+      }
+    }
+  });
+
+  it('encodes a hostile generated report id in the post-create navigation', async () => {
+    stubFetch(TODAY_WORKSPACE, 'report/1?x=y#z');
+    renderWorkspace();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '田中 一郎 様 医師(山本先生)+ケアマネ の下書きを自動作成',
+      }),
+    );
+
+    await waitFor(() => {
+      expect(routerPushMock).toHaveBeenCalledWith(
+        `/reports/${encodeURIComponent('report/1?x=y#z')}`,
+      );
+    });
+    const pushedHrefs = routerPushMock.mock.calls.map((call) => String(call[0]));
+    expect(pushedHrefs.some((href) => href.includes('?x=y'))).toBe(false);
+    expect(pushedHrefs.some((href) => href.includes('#z'))).toBe(false);
   });
 
   it('does not render unsafe raw failure reasons from failed deliveries', async () => {

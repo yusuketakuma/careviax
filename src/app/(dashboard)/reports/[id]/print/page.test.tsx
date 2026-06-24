@@ -3,14 +3,17 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import ReportPrintPage from './page';
 
 const printMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
+const useParamsMock = vi.hoisted(() => vi.fn(() => ({ id: 'report_1' })));
 
 vi.mock('next/navigation', () => ({
-  useParams: () => ({ id: 'report_1' }),
+  useParams: useParamsMock,
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -29,13 +32,18 @@ vi.mock('@/components/features/reports/print-layout', () => ({
 
 vi.mock('@/components/features/workflow/print-page-toolbar', () => ({
   PrintPageToolbar: ({
+    backHref,
+    backLabel,
     title,
     onPrint,
   }: {
+    backHref: string;
+    backLabel: string;
     title: string;
     onPrint?: () => void | Promise<void>;
   }) => (
     <header>
+      <a href={backHref}>{backLabel}</a>
       <span>{title}</span>
       {onPrint ? (
         <button
@@ -145,9 +153,17 @@ function findPrintAuditQueryOptions() {
     | undefined;
 }
 
+function expectNoRawUrlControlChars(url: string, rawId: string) {
+  expect(url).not.toContain(rawId);
+  expect(url).not.toContain('?');
+  expect(url).not.toContain('#');
+  expect(url).not.toContain('%25');
+}
+
 describe('ReportPrintPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useParamsMock.mockReturnValue({ id: 'report_1' });
     vi.useFakeTimers();
     vi.stubGlobal('print', printMock);
   });
@@ -188,10 +204,7 @@ describe('ReportPrintPage', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-org-id': 'org_1',
-      },
+      headers: buildOrgJsonHeaders('org_1'),
       body: JSON.stringify({ intent: 'print_requested' }),
     });
     expect(printMock).toHaveBeenCalledTimes(1);
@@ -246,12 +259,50 @@ describe('ReportPrintPage', () => {
     });
     expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-org-id': 'org_1',
-      },
+      headers: buildOrgJsonHeaders('org_1'),
       body: JSON.stringify({ intent: 'preview_rendered' }),
     });
+  });
+
+  it('encodes hostile report ids only in the preview print-audit URL', async () => {
+    const hostileReportId = 'report/1?x=y#z';
+    const expectedUrl = `/api/care-reports/${encodeURIComponent(hostileReportId)}/print-audit`;
+    useParamsMock.mockReturnValue({ id: hostileReportId });
+    mockReportQueries('success', { id: hostileReportId });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            audited: true,
+            report: {
+              id: hostileReportId,
+              report_type: 'physician_report',
+              content: physicianContent,
+            },
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ReportPrintPage />);
+
+    const printAuditQueryOptions = findPrintAuditQueryOptions();
+    expect(printAuditQueryOptions?.queryKey).toEqual([
+      'care-report-print-audit',
+      'org_1',
+      hostileReportId,
+      expect.any(String),
+    ]);
+    await expect(printAuditQueryOptions?.queryFn?.()).resolves.toMatchObject({
+      data: { audited: true, report: { id: hostileReportId } },
+    });
+    expect(fetchMock).toHaveBeenCalledWith(expectedUrl, {
+      method: 'POST',
+      headers: buildOrgJsonHeaders('org_1'),
+      body: JSON.stringify({ intent: 'preview_rendered' }),
+    });
+    expectNoRawUrlControlChars(expectedUrl, hostileReportId);
   });
 
   it('records a fresh print audit before manual print actions', async () => {
@@ -283,12 +334,52 @@ describe('ReportPrintPage', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-org-id': 'org_1',
-      },
+      headers: buildOrgJsonHeaders('org_1'),
       body: JSON.stringify({ intent: 'print_requested' }),
     });
+    expect(printMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('encodes hostile report ids for manual print audits and the detail back link', async () => {
+    const hostileReportId = 'report/1?x=y#z';
+    const expectedAuditUrl = `/api/care-reports/${encodeURIComponent(hostileReportId)}/print-audit`;
+    const expectedBackHref = buildReportHref(hostileReportId);
+    useParamsMock.mockReturnValue({ id: hostileReportId });
+    mockReportQueries('success', { id: hostileReportId });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            audited: true,
+            report: {
+              id: hostileReportId,
+              report_type: 'physician_report',
+              content: physicianContent,
+            },
+          },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ReportPrintPage />);
+
+    const backLink = screen.getByRole('link', { name: '報告書詳細へ戻る' });
+    expect(backLink.getAttribute('href')).toBe(expectedBackHref);
+    expectNoRawUrlControlChars(expectedBackHref, hostileReportId);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '手動印刷' }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(expectedAuditUrl, {
+      method: 'POST',
+      headers: buildOrgJsonHeaders('org_1'),
+      body: JSON.stringify({ intent: 'print_requested' }),
+    });
+    expectNoRawUrlControlChars(expectedAuditUrl, hostileReportId);
     expect(printMock).toHaveBeenCalledTimes(1);
   });
 
@@ -484,4 +575,45 @@ describe('ReportPrintPage', () => {
 
     expect(printMock).not.toHaveBeenCalled();
   });
+
+  it.each(['.', '..'])(
+    'rejects preview print-audit query before fetch for exact dot report id %s',
+    async (reportId) => {
+      useParamsMock.mockReturnValue({ id: reportId });
+      mockReportQueries('loading');
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      render(<ReportPrintPage />);
+
+      const printAuditQueryOptions = findPrintAuditQueryOptions();
+      expect(printAuditQueryOptions?.queryKey).toEqual([
+        'care-report-print-audit',
+        'org_1',
+        reportId,
+        expect.any(String),
+      ]);
+      await expect(printAuditQueryOptions?.queryFn?.()).rejects.toThrow(RangeError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['.', '..'])(
+    'fails closed before rendering manual print controls for exact dot report id %s',
+    (reportId) => {
+      useParamsMock.mockReturnValue({ id: reportId });
+      mockReportQueries('success', { id: reportId });
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        expect(() => render(<ReportPrintPage />)).toThrow(RangeError);
+      } finally {
+        consoleErrorSpy.mockRestore();
+      }
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(printMock).not.toHaveBeenCalled();
+    },
+  );
 });

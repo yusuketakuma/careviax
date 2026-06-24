@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { pathToFileURL } from 'node:url';
 import { DESIGN_SCREENS, type DesignScreenEntry } from '../tests/helpers/design-screen-map';
+import { maybeUnrefTimeout } from '../shared/abort-timeout';
 
 const DEFAULT_PORT = 3012;
 const DEFAULT_HEAP_MB = 12_288;
@@ -29,12 +30,6 @@ type RunnerOptions = {
 
 let appProcess: ChildProcess | null = null;
 let appExited = false;
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
-}
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {

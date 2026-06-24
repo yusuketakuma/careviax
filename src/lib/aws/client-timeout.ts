@@ -1,4 +1,5 @@
 import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { maybeUnrefTimeout } from '@/lib/utils/abort-timeout';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 
 export const DEFAULT_AWS_CLIENT_REQUEST_TIMEOUT_MS = 5_000;
@@ -24,12 +25,6 @@ type AwsSendOptions = {
 type AwsSendClient = {
   send(command: unknown, options?: AwsSendOptions): Promise<unknown>;
 };
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
-}
 
 function createTimeoutController(timeoutMs: number): { signal: AbortSignal; clear: () => void } {
   const controller = new AbortController();

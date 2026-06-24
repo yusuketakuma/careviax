@@ -4,12 +4,14 @@ import { NextRequest } from 'next/server';
 const {
   authMock,
   membershipFindFirstMock,
+  membershipFindManyMock,
   userFindManyMock,
   withOrgContextMock,
   countHandoffBadgeMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  membershipFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   countHandoffBadgeMock: vi.fn(),
@@ -19,7 +21,7 @@ vi.mock('@/lib/auth/config', () => ({ auth: authMock }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    membership: { findFirst: membershipFindFirstMock },
+    membership: { findFirst: membershipFindFirstMock, findMany: membershipFindManyMock },
     user: { findMany: userFindManyMock },
   },
 }));
@@ -61,6 +63,7 @@ describe('/api/handoff-board', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    membershipFindManyMock.mockResolvedValue([]);
     countHandoffBadgeMock.mockResolvedValue(2);
   });
 
@@ -95,6 +98,17 @@ describe('/api/handoff-board', () => {
       { id: 'user_1', name: 'Taro' },
       { id: 'user_2', name: 'Hanako' },
     ]);
+    membershipFindManyMock.mockResolvedValue([
+      {
+        role: 'clerk',
+        user: {
+          id: 'user_2',
+          name: 'Hanako',
+          email: 'hanako@example.test',
+          phone: '090-0000-0000',
+        },
+      },
+    ]);
 
     const req = createRequest('http://localhost/api/handoff-board?date=2026-04-01');
     const res = await GET(req, { params: Promise.resolve({}) });
@@ -103,6 +117,26 @@ describe('/api/handoff-board', () => {
     expect(json.data.id).toBe('board_1');
     expect(json.data.items[0].created_by_name).toBe('Taro');
     expect(json.data.month_item_count).toBe(5);
+    expect(json.data.recipient_options).toEqual([
+      { id: 'user_2', name: 'Hanako', role: 'clerk', role_label: '事務スタッフ' },
+    ]);
+    expect(JSON.stringify(json.data.recipient_options)).not.toContain('hanako@example.test');
+    expect(JSON.stringify(json.data.recipient_options)).not.toContain('090-0000-0000');
+    expect(membershipFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        is_active: true,
+        role: {
+          in: ['owner', 'admin', 'pharmacist', 'pharmacist_trainee', 'clerk', 'driver'],
+        },
+        user: { is_active: true, id: { not: 'user_1' } },
+      },
+      orderBy: [{ user: { name_kana: 'asc' } }, { user: { name: 'asc' } }],
+      select: {
+        role: true,
+        user: { select: { id: true, name: true } },
+      },
+    });
     expect(findUniqueMock).toHaveBeenCalledWith(
       expect.objectContaining({
         include: {
@@ -191,6 +225,7 @@ describe('/api/handoff-board', () => {
     );
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
   });
 
   it('splits current items into outgoing/incoming and omits legacy content-only rows', async () => {

@@ -130,6 +130,10 @@ describe('ExternalViewerContent', () => {
 
     render(<ExternalViewerContent />);
 
+    // 自己申告のステータスは生 enum ('submitted') ではなく日本語ラベルで表示する。
+    expect(screen.getByText('未対応')).toBeTruthy();
+    expect(screen.queryByText('submitted')).toBeNull();
+
     fireEvent.click(screen.getByRole('button', { name: '受理' }));
 
     expect(updateMutate).toHaveBeenCalledWith({

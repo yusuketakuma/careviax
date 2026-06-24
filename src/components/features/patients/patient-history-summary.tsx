@@ -8,6 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
 import { formatDateLabel as formatDate } from '@/lib/ui/date-format';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
+import { buildVisitHref } from '@/lib/visits/navigation';
 
 type PrescriptionSummaryLine = {
   drug_name: string;
@@ -133,7 +136,7 @@ export function PatientHistorySummary({
             {previousPrescription ? (
               <div className="space-y-0.5 text-[11px]">
                 <Link
-                  href={`/prescriptions/${previousPrescription.id}`}
+                  href={buildPrescriptionHref(previousPrescription.id)}
                   className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline sm:min-h-0 sm:min-w-0"
                 >
                   {formatDate(previousPrescription.prescribed_date)}
@@ -158,7 +161,7 @@ export function PatientHistorySummary({
             {previousVisit ? (
               <div className="space-y-0.5 text-[11px]">
                 <Link
-                  href={`/visits/${previousVisit.id}`}
+                  href={buildVisitHref(previousVisit.id)}
                   className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline sm:min-h-0 sm:min-w-0"
                 >
                   {formatDate(previousVisit.visit_date)}
@@ -186,14 +189,14 @@ export function PatientHistorySummary({
 
       <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
         <Link
-          href={`/patients/${patientId}/prescriptions`}
+          href={buildPatientHref(patientId, '/prescriptions')}
           className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline sm:min-h-0 sm:min-w-0"
         >
           <FileText className="size-3" aria-hidden="true" />
           処方履歴をすべて見る
         </Link>
         <Link
-          href={`/patients/${patientId}#card-recent-activities`}
+          href={buildPatientHref(patientId, '#card-recent-activities')}
           className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline sm:min-h-0 sm:min-w-0"
         >
           <History className="size-3" aria-hidden="true" />

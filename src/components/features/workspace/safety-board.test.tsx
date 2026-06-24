@@ -53,6 +53,26 @@ describe('SafetyBoard', () => {
     expect(unitDose.className).toContain('text-blue-700');
   });
 
+  it('maps categorical home-visit safety tags without exposing unknown procedure tokens', () => {
+    render(
+      <SafetyBoard
+        handlingTags={[
+          'infection_isolation',
+          'procedure:tpn',
+          'procedure:free text should not render',
+        ]}
+      />,
+    );
+
+    const infection = screen.getByText('感染隔離');
+    expect(infection.className).toContain('text-tag-hazard');
+
+    const procedure = screen.getByText('TPN');
+    expect(procedure.className).toContain('text-tag-hazard');
+    expect(screen.getByText('医療処置').className).toContain('text-tag-hazard');
+    expect(screen.queryByText('free text should not render')).toBeNull();
+  });
+
   it('accepts Japanese tag labels directly and falls back to neutral tone for unknown tags', () => {
     render(<SafetyBoard handlingTags={['麻薬', '自費']} />);
 
@@ -85,8 +105,13 @@ describe('SafetyBoard', () => {
 describe('handling tag helpers', () => {
   it('exposes the tag tone map for reuse (e.g. prescription table 安全 column)', () => {
     expect(getHandlingTagLabel('cold_storage')).toBe('冷所');
+    expect(getHandlingTagLabel('infection_isolation')).toBe('感染隔離');
+    expect(getHandlingTagLabel('procedure:home_oxygen')).toBe('在宅酸素');
+    expect(getHandlingTagLabel('procedure:unknown free text')).toBe('医療処置');
     expect(getHandlingTagLabel('未知タグ')).toBe('未知タグ');
     expect(getHandlingTagBadgeClass('narcotic')).toContain('border-red-500');
+    expect(getHandlingTagBadgeClass('infection_isolation')).toContain('text-tag-hazard');
+    expect(getHandlingTagBadgeClass('procedure:home_oxygen')).toContain('text-tag-hazard');
     expect(getHandlingTagBadgeClass('未知タグ')).toContain('text-muted-foreground');
   });
 });

@@ -23,18 +23,37 @@ end. It is the first file consulted on resume and the last file written on a har
   `active_task_id`, locked paths, and the next command in **Resume point** before exiting).
 
 ```yaml
-current_run_id: RUN-20260621-001
-current_cycle: 2 # §16 Continuous loop: F-011 S2e 完了マイルストン後、drain せず次サイクル(S2d scope)へ自動継続。
-cycle_start_time: 2026-06-21T12:28:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: F-011-S2d-scope
-current_cycle_note: 'F-011 S2e(状態色6軸集約)完了マイルストン: clerk-support/S1-S5/realtime SSE/後発 全 landed・codex APPROVED、full unit 8664 pass + build green、SSOT 境界事例 85679a60。§16 Continuous loop により drain せず次サイクルへ: S2d(patients/new 段階表示・reports グルーピング=大規模 UX)を §14b で read-only scope し PLAN 起票する。'
-files_changed_count: 2 # 本サイクルの loop-control 編集(LOOP_POLICY.md/STATE.md §16)。
-claude_status: discovering # §16 Discover sweep: S2e 完了後、次の高価値タスク=S2d を read-only scope 中。
-codex_status: reviewing # loop POLICY_UPDATE(§16)レビュー + dashboard-first UX sweep(mobile E2E) 並行。
-last_memory_bootstrap: 2026-06-21 # .agent-loop policy/config/state + design-analyst grounding。
-zero_actionable_count: 0 # §16 により drain でも Discover を再実行してから判断。
-last_gate_result: pass # full unit 8664 passed/1 skipped + 本番 build green(S2e 完了時点)。
-next_action: §16 Discover — S2d(patients/new 段階表示・reports グルーピング)を read-only で recon/scope し PLAN_REVIEW_REQUEST を起票。実装は plan 承認+LOCK 後。inbound review/lock は最優先 yield。
+current_run_id: RUN-20260622-001
+current_cycle: 6 # resident loop: F-002 slice1-4a ALL DONE/committed; codex F-003/F-004 landed + F-006 in review; LOOP_POLICY §20/§21 (subagent-orchestration) peer-approved.
+cycle_start_time: 2026-06-22T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
+active_task_id: - # slice4a landed; next Discover = slice4b/4c (drug-masters #4-#8) + F-20260622-005 (preview-invalidation follow-up). Not started.
+current_cycle_note: 'Cycle 6 resident loop. F-20260622-001 admin UI: slice1 e73ff383 (select a11y), slice2 91d47e84 (capacity info-order), slice3 f40a77f5 (document-templates h2/h3) ALL DONE. F-20260622-002 slice4a 780dcff2 DONE: drug-masters formulary selects #1対象拠点/#2コピー元拠点/#3テンプレート → shared Select (44px, label-wrap→aria-labelledby, explicit clear sentinels) + medical-safety stale-preview hardening (drift-proof ref-SSOT apply*-setters, request-context-stamped dry-run guards, target-change + import/auto-refresh preview invalidation cleared-before-await). codex review: 5 plan + 6 patch rounds (concurrency/medical-safety checker split surfaced + closed real stale-async-preview races); implemented via frontend-implementer subagent in worktree, claude-lead verified each diff + gates in main. Parallel codex backend (claude reviewed+approved): F-003 540d503e (presign fail-closed), F-004 d5dc1efa (offline lastError §9 sanitize), F-006 in review (patient-mcs URL-encode). LOOP_POLICY §20 (main loop free / work in subagents) + §21 (max subagent concurrency / main=orchestrator) added + ApplyNow §1-21 grouped index; codex peer-approved. Loop FixPatterns: serial build/no-unused (TS6053); no backticks in agmsg bodies; heredoc-to-file for agmsg envelopes.'
+files_changed_count: 0 # all source committed (F-002 slice1-4a by claude: e73ff383/91d47e84/f40a77f5/780dcff2; F-003/F-004 by codex). Dirty = .agent-loop ledgers + .codex/ralph-state + codex F-006 in-flight (patient-mcs, codex lock) + untracked projects/ gbrain pages.
+claude_status: idle_orchestrator # F-002 slice1-4a all DONE/committed; all my LOCKs released. Per §20/§21 main loop free for codex; reviewing codex F-006; next Discover = slice4b/4c + F-005.
+codex_status: active_backend # landed F-003/F-004; F-006 (patient-mcs URL-encode) in review (claude approved patch, codex landing). Recording slice4a rev6 review ledgers.
+last_memory_bootstrap: 2026-06-22 # gbrain filesystem store(/Users/yusuke/brain/projects/careviax)直読。NOTE: `gbrain list --type` は空=構造化 memory は slug-path file、federated semantic index 非掲載。
+zero_actionable_count: 0
+last_gate_result: pass # slice4a committed 780dcff2 (rev6 approved; vitest 49/49, eslint 0, prettier, typecheck exit0, build exit0, no-unused exit0 serial, diff-check). slice1/2/3 + codex F-003/F-004 also green/landed.
+next_action: >
+  F-002 slice1-4a all landed (e73ff383 / 91d47e84 / f40a77f5 / 780dcff2). Next per §16 Discover,
+  run under §20/§21 (work in subagents, main loop free, fan out disjoint partitions):
+  - slice4b: drug-masters filter selects #4 CSV用途 / #5 取込ソース / #6 取込状態 / #7 薬効分類
+    (no empty options) → shared Select; same MockSelect/44px pattern. Claude UI lane, single file
+    (drug-master-content.tsx) + test — NOTE same file as 4a, so 4b and 4c must be SERIAL (one LOCK
+    holder at a time), not concurrent with each other.
+  - slice4c: #8 採用後発薬 (adds the missing accessible name) + any remainder.
+  - F-20260622-005 (follow-up safety, agreed with codex): broader generation/onError preview
+    invalidation + preview-required final apply for copy/template. Codex or Claude lane TBD.
+  - mcs-content.tsx direct MCS fetch URL-encode (Claude UI follow-up to codex F-006) if filed.
+  Also pending: GateResult/LoopRun gbrain writeback for this run's landed slices (file-plane; DB blocked).
+  Deferred (judgment): M9 business-holidays (calendar↔bulk-register) / M3 billing-rules (§15
+  billing hard-stop adjacency — human-gate care).
+  BlockedContext (BLOCKED.md): gbrain DB/index writeback fails on embedding dim mismatch
+  (expected 768, got 1024); file-plane writes succeed, semantic-index put fails → DB recall stays
+  stale until human realigns the index. Loop continues on file-plane recall meanwhile.
+  Warm slice queue (§14b read-only scope, admin lane=Claude owner, disjoint from codex locks):
+  - slice3 [scoped] M5 document-templates: 大機能直列を PageSection(h2)化(PageSection 実在=reuse)。中規模。
+  - deferred(判断要): M9 business-holidays(カレンダー↔一括登録結合)/ M3 billing-rules(§15 hard-stop 近接)/ drug-masters select(M6 連動: slice1 で確認した範囲外 native h-9 select 残渣)。
 ```
 
 ## gbrain memory (this run)
@@ -61,6 +80,79 @@ next_action: §16 Discover — S2d(patients/new 段階表示・reports グルー
 - ImplementationDecision: projects/careviax/decisions/2026-06-21/bounded-search-minimal-projections (F-010A 721ce32d; bounded backend search + minimal projections)
 - GateResult: projects/careviax/gates/2026-06-21/f-20260620-010-721ce32d (F-010A 721ce32d; focused tests/typecheck/no-unused/eslint/prettier/diff-check/build GREEN)
 - PerformanceFinding: projects/careviax/performance-findings/2026-06-21/contact-summary-sequential-bounded-scan (F-010A 721ce32d; avoid redundant per-kind contact scans)
+- BlockedContext: projects/careviax/blocked/2026-06-22/set-audit-fixed-fixture-e2e-timeout (RUN-20260622-001 medical-ui hard-stop; focused set-audit e2e repeated timeout)
+- FixPattern: projects/careviax/fix-patterns/2026-06-22/set-audit-spa-nav-preserves-workbench-state (RUN-20260622-001 medical-ui gate; test-side blocker resolved)
+- GateResult: projects/careviax/gates/2026-06-22/medical-ui-gate-focused-green (RUN-20260622-001 medical-ui gate; focused static/E2E validation green)
+- ReviewFinding: projects/careviax/reviews/2026-06-22/ssot-token-fork-caught-in-review (RUN-20260622-001 medical-ui review; claude-lead caught a per-screen READABLE_STATUS_BADGE_CLASSES fork of the State Color SSOT, resolved by promoting into status-tokens.ts not plain-revert; §18/§7 + review-method)
+- GateResult: projects/careviax/gates/2026-06-22/medical-ui-gate-prescription-intake-timeout-fail (RUN-20260622-001 medical-ui gate; full gate failed on prescription-intakes 500 / Prisma transaction timeout)
+- BlockedContext: projects/careviax/blocked/2026-06-22/prescription-intake-transaction-timeout (RUN-20260622-001 medical-ui gate; owner/lock decision needed before product fix)
+- PerformanceFinding: projects/careviax/performance-findings/2026-06-22/prescription-intake-guardrail-before-cycle-create (RUN-20260622-001 read-only root cause; blocked POST creates cycles before guardrail failure)
+- ReviewFinding: projects/careviax/reviews/2026-06-22/admin-select-test-contract-payload-and-hit-target (F-20260622-001-slice1; Base UI Select migration tests must assert responsive hit target classes and submitted payload serialization. Written to gbrain file-plane after `gbrain put` failed with embedding dimension mismatch.)
+- FixPattern: projects/careviax/fix-patterns/2026-06-22/serial-no-unused-after-next-build (RUN-20260622-001 loop validation; run `typecheck:no-unused` serially after Next.js build to avoid transient `.next/types` TS6053 false negatives.)
+- FixPattern: projects/careviax/fix-patterns/2026-06-22/agloop-shell-backticks-strip-tokens (RUN-20260622-001 agmsg transport hygiene; avoid shell backticks in AGLOOP bodies built through shell variables because command substitution can strip tokens.)
+- FixPattern: projects/careviax/fix-patterns/2026-06-23/href-helper-convergence-test-teeth (F-040〜F-048 claude-maker; raw entity href→共有ヘルパ収束の test teeth=actual-backed spy+sentinel return-value委譲+per-callsite mock.calls厳密+hostile encode+dot-segment fail-fast。API URLはencodeURIComponent('.')no-op正規化をlocal helperで遮断。)
+- CandidateLesson: projects/careviax/lessons/role-agnostic-load-balancing (LOOP_POLICY §23; maker/checkロール非依存・相互チェックのみ不変・2軸負荷均等化。codex=supervisor pattern採用でドレインラグ低減。href収束で gap 22:11→22:14。)
+
+## §24 COMPONENT_VERTICAL_SLICE + dual-maker (2026-06-23, user-directed)
+
+手法を機能縦スライス(FE component + API route + server + lib + test)＋dual-maker並列＋コンポーネント全般リファクタへ再設計。LOOP_POLICY §24 として codify(a071cf4b, peer-approved/human-gate pending)。横断 near-dup batch(旧 F-052/F-053)は廃止。
+
+landed (本ラウンド):
+
+- FOUNDATION-A F-060 `98b7b3cc`: src/lib/http/path-segment.ts(encodePathSegment, exact dot fail-closed) + src/lib/api/org-headers.ts(buildOrgHeaders/buildOrgJsonHeaders, case-insensitive collision fail-closed)。
+- codex F-061 Patient Labs `7ee44b18` (縦スライス: labs-card + labs API tests + 44px Select a11y)。
+- claude F-062 Patient Visit Records `6aad8ed8` (visits-panel + helper + print page; href/URL/header収束 + 44px; BE verify-only)。
+- codex F-063 Management Plan `e95e53f4` (panel URL hardening; print page は F-064 へ tracked defer)。
+- §24 codify F-065 `a071cf4b`。
+- claude F-066 Patient Readiness card `3e12c4c7` (readiness fetch encode + buildOrgHeaders; action_href server-generated as-is)。
+- claude F-068 Patient Timeline `f979c976` (timeline fetch encode + buildOrgHeaders; raw id in queryKey)。
+- codex F-064 Management Plan print page `94b6220f` (+ralph-state `4fa65c7b`; cross-patient plan-mix privacy guard `careCase.patient.id===patientId`)。
+- claude F-070 Patient Communications panel `cf276e04` (contacts+communications GET encode/buildOrgHeaders; emergency-draft static POST→buildOrgJsonHeaders)。
+- claude F-071 Patient Conditions card `ff7b8572` (conditions PUT encode + buildOrgJsonHeaders; body verbatim)。
+- codex F-069 Conference Notes content `2ded20c5` (+ralph `729af303`; buildConferenceNoteApiPath + buildProposalHref URLSearchParams + buildReportHref)。
+- claude F-073 Patient Insurance card `165eb121` (GET/create/update/delete; MULTI-SEGMENT encode patientId+insuranceId on nested CRUD)。
+- codex F-072 Care Report detail page `10dd6ac2` (+ralph `c88585ed`; buildCareReportApiPath + idempotency-key-preserving buildOrgJsonHeaders; print/share via encodePathSegment fallback — buildReportHref is single-arg, no suffix)。
+  in-flight (dual-maker parallel): claude F-075 patient-master-card (4 callsites: facilityId+patient.id encode + static facilities header), codex F-074 care-report-print-page。
+  key design facts surfaced this round:
+- F-072 step-5 CHECKER CATCH: `buildReportHref(reportId)` is single-arg → `/reports/${encodeURIComponent(id)}`; cannot take a `/print|/share` suffix. Use `/reports/${encodePathSegment(id)}/print|share` for sub-routes; buildReportHref only for the plain detail link.
+- header-helper teeth: two valid styles — (a) import real helper + assert `init.headers).toEqual(buildOrgHeaders(org))` [F-070/F-073], (b) vi.mock the helper + assert `toHaveBeenCalledWith(org[,extra])` [codex F-072]; (b) proves adoption more definitively (raw inline object wouldn't trip the spy) since for no-extra-header GETs (a) can't distinguish raw vs helper.
+- multi-segment slices encode EVERY dynamic segment (patientId AND insuranceId / facilityId); dot guard tests cover each segment independently.
+- feature_id collisions happen under parallel dual-maker (F-061, F-074); FE side renames (→F-062, →F-075) per precedent.
+  recon(read-only)済: id補間 77ファイル/~78箇所、BE route 359本は normalizeRequiredRouteParam 正規化済(verify主体)、boilerplate(x-org-id 317/queryKey 484/onError 187)。component slice 候補マップ有。
+  残り patient panel 候補: patient-care-team-panel, patient-contacts-panel, patient-packaging-card(GET+mut), visit-constraints-card(GET+mut), card-workspace(大)。
+
+gbrain writeback(本セッション): FixPattern href-helper-convergence-test-teeth, CandidateLesson role-agnostic-load-balancing(上記)。**TODO 次サイクル**: FixPattern vertical-slice-encode-header-teeth + buildReportHref-single-arg-pitfall + LoopRun(dual-maker F-066〜092 大量 landed)を gbrain へ書く。
+
+### dual-maker 大量ラウンド (2026-06-23, F-066〜F-092) — F-060 primitive 全面採用
+
+claude landed: F-066 readiness `3e12c4c7` / F-068 timeline `f979c976` / F-070 communications `cf276e04` / F-071 conditions `ff7b8572` / F-073 insurance(multi-seg) `165eb121` / F-075 master-card(4 callsite) `fe5724ab` / F-077 care-team `7426943d` / F-078 packaging `c122983a` / F-080 contacts `ffe1a68e`。
+codex landed: F-064 mgmt-print `94b6220f` / F-069 conference-notes `2ded20c5` / F-072 care-report-detail `10dd6ac2` / F-074 care-report-print `9b733abd` / F-076 interprofessional-share `0f27d6e8` / F-079 visit-constraints `e129749a` / F-086 print-hub `4d0341b5` / F-087 prescription-detail `d7f40b17` / F-088 prescription-inline `33112a3f` / F-090 patient-documents-panel `51ae7eda` / F-091 facility-multi-visit-href `a032d9fb`。
+**card-workspace 6分割 COMPLETE** (claude, 4559行): F-081 documents `583b8390` / F-082 overview+home-ops `9c82aac8` / F-083 billing-profile+mcs `8da2d9b5` / F-084 prescription-intakes+billing-collection(Idempotency-Key保持) `ae05bb78` / F-085 upload-helper(presign/complete/download, 外部S3 PUT不可侵) `67a14228` / F-089 static collections `0a847522`。生 x-org-id リテラル残存ゼロ。/api/tasks foundation POST は意図的に不変(x-org-id無し→追加はsemantics変更)。
+**LOOP-OPS docs** (codex maker / claude checker, human承認済): AGENTS.md/CLAUDE.md/MESSAGE_PROTOCOL.md/LOOP_POLICY.md に §25(ACK-first handoff + sender-side WIP + serial long gates + 2-live-agents) を codify `ce885448`。
+当ラウンドの新知見: (1) billing collection の Idempotency-Key は buildOrgJsonHeaders(org,{extra}) で保持必須(codex HIGH catch)。(2) helper採用の test 証明は sentinel/identity または mock+spy toHaveBeenCalledWith が必要(toEqual は同形literalと区別不能)。(3) PUT/POST body は exact-equality + 動的 timestamp は ISO-shape、path id は body 非混入を断定。(4) mixed input contract(string vs object mutationFn)は contract別 probe で locate。(5) 巨大ファイルは sub-slice 逐次分割(1 lock/1 patch/1 commit, lock解放間隔)で review 可能性維持。(6) build と typecheck:no-unused は直列(.next/types race、§25)。
+
+**gbrain writeback 完了 (2026-06-23 ラウンドクローズ、user-directed)** — semantic検索可・typed link済:
+
+- FixPattern: projects/careviax/fix-patterns/2026-06-23/api-url-header-convergence-test-teeth (url/header収束スライスの test teeth bar 全条件)
+- FixPattern: projects/careviax/fix-patterns/2026-06-23/nav-helper-suffix-arity-pitfall (buildReportHref単一引数 vs buildPatientHref suffix)
+- ImplementationDecision: projects/careviax/decisions/2026-06-23/org-json-headers-idempotency-extra (Idempotency-Key保持)
+- LoopRun: projects/careviax/loop-runs/2026-06-23/dual-maker-url-header-convergence (claude15+codex11+LOOP-OPS、防いだ欠陥、§25 process lessons)
+  ラウンド status: CLOSED。残: codex F-092 collaboration-content commit(承認済、自動受領)。次ラウンド候補(未着手): 他領域の生 /api 補間・href、admin系、settings系。
+
+### ROUND-ORG-HEADERS (2026-06-23 継続) — area-batch + COMPONENT_VERTICAL_SLICE dual-maker
+
+手法: user-directed「残りをまとめて1スライス化」→ 領域別バッチ(複数ファイル/slice)でターン圧縮。maker≠checker、build serialization(BUILDING/DONE_BUILDING announce)。
+landed:
+
+- codex F-100 billing-check `7e9ca149` (静的GET header-only; hard-stop-care=純粋header swap、意味変化なし; claude独立検証20テスト)。
+- codex F-102 schedule-day 5純ヘルパー `ce9e8195` (facility-batch/visit-day静的 + proposal-action/reschedule/preparation動的; raw-input単一エンコード; claude独立検証189テスト)。
+- claude F-101 cases-tab + 完全MCSスライス `f9650946` (cases-tab 4callsite[pharmacists GET/cases POST静的, transition/save動的caseId] + mcs-content 3 mutation + lib/patient-mcs/query overview GET; 全て encodePathSegment(raw)、raw id は queryKey/body/getPatientCareQueryKeys invalidation 維持; 6ファイル/465+80; build exit0/99テスト)。
+  in-flight: codex F-103 communications/requests-content (resolve-followup動的POST + list静的GET; claude承認+lock grant済、codex実装中)。
+  key 知見(本ラウンド):
+- raw-input単一エンコード契約(codex catch×2): `encodePathSegment(rawId)` のみ。既に `encodeURIComponent(patientId)` で派生した alias を再ラップ禁止(二重エンコード→%25、no-%25 teeth違反)。mcs-content の `patientPathId=encodeURIComponent(...)` は `=encodePathSegment(patientId)` へ置換。
+- lib helper consumer も同スライスに含める(codex HIGH): mcs-content は lib/patient-mcs/query の overview GET を import → 3 mutation だけ変換すると dot 挙動不整合(mutation fail-closed / GET dot許容)。
+- fire-and-forget onClick の dot-guard test: cases-tab save/transition は useMutation 不使用の plain onClick → RangeError が unhandled rejection 化。process-level で Vitest の unhandledRejection listener を一時detach して捕捉、fail-before-fetch を断定(captureUnhandledRejections helper)。hook-backed(useQuery/useMutation captured fn)なら直接 await でよい。
+- checker split(codex): reviewer-strict(source/security) + test-auditor(teeth網羅) の2軸。test-auditor が exact body 欠落・component-level dot-guard 欠落を P2/P3 で指摘。
 
 ## Resume point
 
@@ -68,21 +160,170 @@ next_action: §16 Discover — S2d(patients/new 段階表示・reports グルー
      any locked paths to release, and the single next command/action to take.
      Empty at bootstrap. -->
 
-**active_task_id**: なし（F-011 Stage1 完了）。次は FEATURE_QUEUE / F-011 Stage2+ を別 PLAN_REVIEW で。
+**active_task_id**: `RUN-20260622-001-medical-ui-gate-stabilization`
 
-**完了済（このサイクル, landed+verified）**:
+**Hard Stop reason**: focused set-audit final approval conflict Playwright validation timed out repeatedly. The last failed DOM showed `セット監査 進捗 0 / 3` and disabled approval/checklist controls after set → set-audit navigation/hydration. This likely needs review or edits outside Codex's currently granted locked paths.
 
-- F-20260620-009 グローバル検索パレット — commit 18e2a29e。
-- F-20260620-012 最小投影 backend（reviewer=claude, Medium 検出）— commit cc8209fc。
-- F-011 Stage1a（workbench module.css chrome 配色トークン化, dark AA）— commit 5c5048d9。
-- F-011 Stage1b-1（view 色生成 SSOT を theme 安定 --wb-\* token 化, A-prime, dark AA + contrast contract test）— commit 9c295163。
-- F-011 Stage1b-2（消費側 inline + logic.ts form 色 + LEGEND 同 source + semantic 分離 compare/packet/outside-med≠tonyo）— commit 393541c7。**F-011 Stage1(P-B 調剤系4画面配色揃え)完了・lock release 済**。
+**Locks still active**:
 
-**確立した token 体系（module.css .root, theme 安定）**: --wb-state-{done,blocked,confirm,readonly}/--wb-info/--wb-hazard（dark solid=fill兼ink）、--wb-_-bg/-border（固定 light tint）、--wb-phase-_（dot/strong=白ラベルAA/border）、--wb-tag-\*/avatar/chip（category）、--wb-surface/-alt/-muted/-selected/--wb-accent/--wb-ink/-ink-muted/--wb-line（data-plane 安定 light）。外殻 chrome=Stage1a adaptive --wb-primary/confirm。contract test=workbench-color-tokens.test.ts（raw hex/未定義token/change-type/数値contrast）。
+- `medical-ui-gate-stab-20260622` (codex-lead): `src/app/(dashboard)/patients/patients-board.tsx`, six `tools/tests/*.spec.ts` paths. Do not release until peer review / next decision.
+- `F-20260622-001-slice1` (claude-lead): admin service-area / alert-rule select migration approved but held behind this gate pause.
 
-**中断点: なし（F-011 Stage1 完了, lock release 済）。**
+**Codex changes currently dirty**:
 
-- 次の着手候補: F-011 Stage2+（UI_AUDIT_MATRIX §4: T1 DataTable state 標準化 → T4 状態色6軸集約 → T3/T5 MasterEditor/responsive → T6/T7 a11y → P-A 個別 → T2 typo）は**別 PLAN_REVIEW_REQUEST**で開始（Stage1 と混ぜない／codex 既出 note）。または FEATURE_QUEUE の次タスク。
-- 着手時: lock 取得 → 実装 → maker/checker → objective gate → commit。frontend-implementer は worktree 隔離で共有ブランチ不適（main tree で実装 or isolation 無し agent）。
+- Deduplicated patient-board handling tag class lookup to reuse the shared safety-board helper.
+- Made prescription intake test `apiFetch` avoid mutating POST retries.
+- Stabilized schedule proposal / weekly optimizer tests with deterministic schedule fixtures.
+- Reduced several UI E2E retry/reload budgets.
+- Updated set → set-audit E2E helpers for href navigation, target patient reselection, and carry/outside-med evidence setup.
+- Added mobile non-submit set-audit smoke coverage.
+- gbrain BlockedContext written: `projects/careviax/blocked/2026-06-22/set-audit-fixed-fixture-e2e-timeout`.
+
+**Validation snapshot**:
+
+- PASS: targeted ESLint before the final helper edit for patient board / billing / dispensing / schedule specs.
+- PASS: `pnpm exec tsc --noEmit --pretty false --incremental false --skipLibCheck` before the final helper edit.
+- PASS: focused schedule Playwright for proposal detail / weekly optimizer / reproposal controls.
+- PASS: focused set→set-audit navigation after route-href change.
+- FAIL: focused set-audit final approval conflict Playwright timed out repeatedly, latest at `tools/tests/e2e-prescription-dispensing-flow.spec.ts`.
+
+**Single next action**: ask `claude-lead` to review or grant a narrow product-code lock for `src/components/features/dispense-workbench/*` hydration/write-handler root cause. After that, rerun only the single focused conflict test before any broad validation.
+
+**claude-lead ownership + read-only root-cause analysis (2026-06-22)**: dispense-workbench is `src/components/**` = Claude lane → claude OWNS this root cause (no lock-grant into Claude's lane; codex keeps its medical-ui-gate-stab lock + remains reviewer; set-audit=medication-safety/high-risk → mutual review). Findings (file:line):
+
+- `進捗 0/3` has `totC=3,dnC=0` (use-workbench-view.ts L987-1020). If it were the fail-closed `dataUnavailable` empty state, `calendarDayCount=0` → `0/0` + gate "実データを取得できませんでした". It is `0/3`, so the CALENDAR HYDRATED (3 cells) — NOT a hydrate-to-empty failure.
+- Disabled approval+checklist: right-pane.tsx L761-799 — checklist items AND `監査OK` share `disabled={cellActionDisabled}`; `監査OK` title "対象セルを選択してから監査OKにしてください" ⇒ `cellActionDisabled` = no selected target cell (`hasSelectedCell` false). Per-cell `監査OK` needs only a selected cell (NOT the 6 checks; 6 checks gate FINAL approval per logic.ts L411).
+- Test helper `markAllVisibleSetAuditCellsOk` (e2e spec L416-440) clicks a pending cell then expects `監査OK` enabled. Hard-stop ⇒ after the cell click `hasSelectedCell` stayed false (監査OK never enabled) ⇒ 0/3.
+- LEADING HYPOTHESIS (product, Claude lane): the seta hydration effect (dispensing-workbench.tsx L150-184; deps phase/selId/planId/...) RE-RUNS after the cell click and clobbers the selected target (hydrate/setCalendarState resets store target) ⇒ control re-disables. ALT (test/fixture): seeded plan not audit-ready at load / serial-fixture timing.
+- DISAMBIGUATION (needs tooling): run ONLY the focused conflict test instrumented to log when the cell-click fires vs when the seta effect re-runs; read `loadCalendarWriteContextAsync` (adapter L216-243) to confirm whether it preserves or resets `target` on re-hydrate. If product: fix = make seta hydrate idempotent / not clobber an existing user selection (or auto-select first un-audited cell on seta entry) — under a NEW task F-20260622-002 LOCK on `src/components/features/dispense-workbench/**`, codex reviewer.
+- Sent to codex: OWNER_DECISION_RESULT (ownership + this analysis + request for failing-test title/locators/seed path). No blind e2e retries agreed.
+- **RESOLVED 2026-06-22 (test-side, confirmed by codex)**: the LEADING HYPOTHESIS branch was the cause but via TEST navigation, not a product effect-clobber. Codex's earlier edit set the set→set-audit phase-tab nav to `openStableRoute('/set-audit')` = FULL PAGE RELOAD → lost the client-side zustand-persist workbench store + /set carry evidence → set-audit loaded un-audited → 0/3 → `cellActionDisabled` → disabled controls → no POST. Fix (codex, test lane): revert to client-side `clickAndWaitForStableRoute` on the Set Audit tab (SPA nav preserves store); focused conflict now GREEN 1/1 (6.5s). **NO dispense-workbench product change** — Claude lane unedited, F-20260622-002 NOT opened. Reusable FixPattern (codex to write): e2e on in-session workbench client state must use client-side SPA nav, not full-reload, between phase tabs. claude=reviewer-standby for codex's full-tree PATCH_REVIEW_REQUEST (will check P1#1/#2 populated-fixture per §17).
+
+**Current update 2026-06-22T10:26:08+09:00 (codex-lead)**: prior blocker remains resolved in test lane. Additional fixes after the earlier note: direct helper probe now uses the production `include_set_plan=1` contract, outside-med toggle locator no longer captures visit-carry buttons, set→set-audit SPA navigation waits directly on URL/active tab/UI instead of the generic `Promise.any` route helper, and the conflict test asserts `approvalPayload.plan_id`. Validation now green for locked-path format/lint/diff-check, full `tsc --noEmit`, billing/PCA guardrail focused E2E, set-audit conflict focused E2E, set-audit persistence focused E2E, and mobile set-audit smoke. Caveat: a combined `--grep 'set-audit final approval'` desktop run was interrupted after hanging once after the conflict case passed; the persistence case passed in a separate focused run. Next action is peer review, not commit/release.
+
+**Current update 2026-06-22T10:32:14+09:00 (codex-lead)**: combined-run caveat resolved. The same desktop `--grep 'set-audit final approval'` command passed both set-audit final approval cases in one worker (`2 passed (1.3m)`). GateResult written: `projects/careviax/gates/2026-06-22/medical-ui-gate-focused-green`. PATCH_REVIEW_UPDATE sent to claude-lead with this evidence; commit/release still waits for peer review.
+
+**Current update 2026-06-22T10:45:00+09:00 (codex-lead)**: Claude review returned one must-fix, PI-005: do not fork the State Color SSOT in patients-board. Codex accepted the scoped handoff and changed `STATUS_TOKENS[*].badgeClassName` to the readable `text-foreground` + role ring/tint variant, restored patients-board to `spec.badgeClassName`, and updated `state-badge.test.tsx` to assert the new 7-role contract. Validation passed: focused Prettier, focused ESLint, StateBadge unit 31/31, PatientsBoard unit 12/12, no-emit tsc, and `git diff --check`. Re-review requested.
+
+**Current update 2026-06-22T11:40:00+09:00 (codex-lead)**: User-directed policy change proposed as ApplyNow §19: Claude-origin agmsg items preempt local Codex work at every drain/cycle boundary. Updated `.agent-loop/LOOP_POLICY.md` §19 + Peer-approval row and `.agent-loop/MESSAGE_PROTOCOL.md` transport rules. Claude granted the supervisor-doc lock and requested a PATCH_REVIEW_REQUEST; until approval, Codex honors the user directive operationally but does not mark the policy peer-approved. Before this policy patch, Claude had approved PI-005, but final full `pnpm medical-ui:e2e:gate` was not green: one run failed on set-audit final approval returning to `/set`, then a focused `--grep 'set-audit final approval'` rerun was interrupted by the user after the persistence case hung at the approval POST wait. Do not commit/release locks until the remaining final gate blocker is resolved and re-validated; process any new Claude message first.
+
+**Current update 2026-06-22T11:55:00+09:00 (codex-lead)**: Claude returned `PATCH_REVIEW_RESULT approved` for `agent-loop-claude-priority-policy-20260622`. §19 is now marked peer-approved for this run, with permanent promotion to AGENTS.md / CLAUDE.md still human-gated. The policy-doc slice is independent of the medical-ui gate; Codex may commit the policy/protocol/ledger docs and release only that policy lock. The medical-ui lock remains held until final gate/review completion.
+
+**Current update 2026-06-22T12:52:14+09:00 (codex-lead)**: final medical-ui gate remains blocked. Controlled `pnpm medical-ui:e2e:gate` passed preflight/DB checks, then failed in `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts` expecting 400 but receiving 500 for the blocked-injection `/api/prescription-intakes` POST. Next dev log root cause: Prisma interactive transaction expired at `workflowException.findFirst` after 5s in `src/server/services/prescription-intake-service.ts`. Minimal authenticated direct fetch to the same blocked payload returned the expected 400 with `blocked_lines`, but took 33.7s. A single Playwright grep attempt became orphan/SIGTERM and is not pass evidence. Codex sent AGLOOP v5 `VERIFY_BLOCKED` `codex-20260622T125214-jst-medical-ui-gate-blocked` requesting Claude owner/lock decision; current Codex lock forbids `src/server/**` and `src/app/api/**`, so no product-code fix should start until ACK/decision.
+
+**Current update 2026-06-22T12:59:51+09:00 (codex-lead)**: Claude ACKed with `OWNER_DECISION_RESULT`: Codex owns backend perf/stability, but only read-only root-cause is allowed now; implementation is held by §14 >20-file hard-stop and possible migration human-gate. Read-only findings: `WorkflowException` lacks a composite `(org_id, cycle_id, exception_type, status)` index, but current e2e DB has only 95 rows and the exact `findFirst` equivalent is a 0.086ms seq scan, so the immediate gate failure is not proven to be an index-only problem. More important: the `case_id/patient_id` path creates a new `MedicationCycle` before structuring/outpatient-injection guardrails. The e2e DB now has 185 cycles for the target case and 93 target cycles without any `PrescriptionIntake`, matching repeated blocked POST side effects. Fix classification: code-level first, migration optional/future. Recommended code fix is to make invalid prescription guardrails fail fast before creating a new cycle / before the 5s interactive transaction does avoidable writes, while preserving the 400 + `blocked_lines` contract. Do not implement until human/Claude decision.
+
+**Current update 2026-06-23 (claude-lead)**: User-directed LOOP_POLICY **§23 role-agnostic load balancing** added + codex peer-approved (commits 5a562d20 + 9d724ebb). Either Supervisor may MAKER or CHECKER any task; §1 owner-lanes → soft capability default; only invariant = maker ≠ checker (cross-check). Two axes: (1) busy→light handoff at next task boundary; (2) light side self-generates + takes maker work (no pure-reviewer steady state). Diagnosis of the imbalance: the F-013..F-034 entity-href sweep was all backend → old hard lanes pinned codex as 22-consecutive maker, claude pure-checker. **First §23 cycle demonstrated**: F-20260623-035 (today-preparation visit_mode_href → shared buildVisitRecordHref) implemented by **claude as MAKER**, audited by **codex as CHECKER** (reviewer-audit APPROVED), committed 635bc532 (claude). entity-href sweep state: 6 shared guarded helpers (buildPatientHref / buildPartnerVisitRecordHref / buildReportHref / buildVisitHref+buildVisitRecordHref / buildPrescriptionHref); /patients /partner-visit-records /reports /visits /prescriptions /visit-schedules namespaces hardened (F-013..F-035). Going forward: lighter side takes next maker per §23; both run whole-codebase gstack-first Discover (§22b/§23 Axis 2).
+
+**Current update 2026-06-24 (claude-lead, resumed after /clear)**: Drained a 38-msg codex backlog (2026-06-23 13:44–15:10); live queue reconciled from codex's latest STATUS_PING/REQUEST_DELEGATE.
+
+- **F-20260623-105 (Claude maker)** medications + prescription-history org-header/path-segment convergence: maker work COMPLETE with ALL codex prepatch findings folded in — HIGH org-scoped all 4 medication queryKeys + invalidations (`['medication-*', orgId, patientId]`, orgId-first to match the prescription-history sibling); MEDIUM exact add-medication body (`toEqual` full 6-field domain body + `buildOrgJsonHeaders` calledWith); LOW exact queryKey shapes (`toEqual([key,'org_1',HOSTILE])` + summary key); invalidation-key coverage (harness now exposes the invalidateQueries spy + onSuccess; add-medication and issue-status onSuccess assert org-scoped invalidation). Gates GREEN: prettier/eslint/diff-check, vitest 25/25, tsc exit 0, no-unused exit 0. Scope boundary held: did NOT widen into `safety-check-content.tsx` (codex-acknowledged follow-up; its still-org-agnostic key no longer prefix-matches the now-org-scoped key — practically negligible, separate routes never co-mounted). PATCH_REVIEW_REQUEST sent → **codex CODE_REVIEW_RESULT = APPROVED (no findings; independent gate run vitest 38 / eslint / prettier / diff-check / typecheck:no-unused all PASS). COMMITTED 588e8af3 (4 locked files only, +554/-42; STATE.md + projects/ kept out). Claude RELEASED the F-105 lock; DONE sent.** Follow-up filed mentally: org-scope `safety-check-content.tsx` medication-issues key/invalidation to match the new shape (fresh 2026-06-24 task).
+- DECLINED codex's HANDOFF (drove F-105 myself post-context-swap).
+- **F-106 / F-107 / F-108 (Codex maker)**: header-only org-header convergence for OperationalPolicyContent / Admin AnalyticsContent / DashboardCockpit. Plans reviewed (static URLs, no encodePathSegment, queryKeys already org-scoped, forbidden_paths disjoint from F-105 and each other) → **PLAN APPROVED + LOCK_GRANT sent for all three**. Codex unblocked (was idle).
+- **F-104 generate-from-visit**: ACK codex CORRECTION — id collision (F-104 already = report-delivery-dashboard d96658f4); plan SUPERSEDED; codex to refile under a fresh 2026-06-24 id.
+
+**Single next action**: org-header sweep DONE — F-105 588e8af3 (claude), F-106 76b916bd / F-107 3bcd563c / F-108 36349e01 (codex, all claude-APPROVED). codex ledger 1d9fadd6.
+
+**Active program — patient-timeline "全て修正して" (user directive 2026-06-24)** + safety-check follow-up:
+
+- **F-20260624-001** (safety-check convergence, claude maker): rev1 codex CHANGES_REQUESTED (2 findings: WorkflowBackLink raw `/patients/${patientId}` → buildPatientHref; consultation mutation must precompute/validate encodePathSegment(selectedIssue.id) BEFORE interventions POST so dot-id fails closed before side effect). Subagent `sc-rev2` implementing rev2 → then re-send PATCH_REVIEW_REQUEST.
+- **F-20260624-002** (timeline BACKEND hardening, **codex maker / claude checker**): ALL tl-backend findings — H1 firstVisitDocuments unbounded findMany+missing composite idx, H2 AuditLog OR-7 unindexed scan, M1 RLS 2nd-layer inactive on read path (route uses raw prisma, no withOrgContext), M2 Promise.all all-or-nothing, M3 JST day-label server-TZ bug, M4 concurrency=4, L1 serial name resolve, L2 sort tiebreak. **GATED: index migration = changes_database_schema human-gate (local verify only, no prod); M1 RLS = security-care; H3 cursor pagination + adapter registry split to F-20260624-003.** codex ACKed → recon→PLAN_REVIEW_REQUEST first; claude reviews plan before LOCK.
+- **F-20260624-004** (timeline FE, **claude maker / codex checker**): B1a category colors (`patient-activity-timeline.tsx:80-114` ad-hoc sky/emerald/violet/amber/slate) → `--chart-1..5` series tokens (guidelines L180: series≠state); B1b event status badges → StateBadge/STATUS_TOKENS (L170); B2 completeness banner (recent-N digest, not full history — clinical-safety). LOCK_REQUEST+plan sent → awaiting grant; implement via FE subagent.
+- Investigation: tl-backend report received (deep, corrected my "no unbounded query"/"fully parallel" claims — concurrency=4, firstVisitDocuments unbounded, RLS-inactive, TZ bug). tl-recon/product/design reports not yet delivered via channel (re-pinged).
+
+Progress (2026-06-24 cont.):
+
+- **F-20260624-002** (backend): plan rev1 → claude CHANGES_REQUESTED (PLAN-M1-TX-TIMEOUT: single withOrgContext wrap = the 2026-06-22 5s interactive-tx timeout class, defeats M2/M4; PLAN-H2-EVENT-LOSS: patient_id predicate drops legacy audit rows). codex rev2 resolved both (M1 → NOT wrapped in F-002, RLS-on-read split to **F-20260624-005** which must prove timeout-safety; H2 → index-only, no patient_id predicate, write-site recon confirmed optional/unset). **claude APPROVED rev2 + LOCK_GRANT** → codex IMPLEMENTING. Migration additive/local-verify-only, prod HUMAN-GATED.
+- **F-20260624-001 rev2** (safety-check): codex CHANGES_REQUESTED 2 findings FIXED (WorkflowBackLink→buildPatientHref; consultation precomputes encodePathSegment BEFORE interventions POST = fail-closed). Gates green (vitest 14/14, tsc 0, nu 0). PATCH_REVIEW_REQUEST rev2 sent → awaiting codex CODE_REVIEW_RESULT.
+- **F-20260624-004** (FE timeline): B1a category colors → --chart-1..5 series tokens (guidelines L180); B1b status left as neutral Badge (not bespoke, no over-engineer); B2 completeness banner ("直近のみ・全履歴ではない", clinical safety). Gates green (vitest 9/9, tsc 0, nu 0). PATCH_REVIEW_REQUEST sent → awaiting codex CODE_REVIEW_RESULT.
+- Deferred: F-20260624-003 (cursor pagination + adapter registry), F-20260624-005 (RLS-on-read enforcement, timeout-safe).
+- Investigation agents tl-recon/product/design never delivered reports via channel (only tl-backend did); design/product/system angles covered by claude's own reads.
+
+**LANDED (org-header sweep + timeline "全て修正して" fix-set)**: F-105 588e8af3 / F-106 76b916bd / F-107 3bcd563c / F-108 36349e01 / F-20260624-001 safety-check **87400f54** / F-20260624-004 FE timeline **244e8843** / F-20260624-002 backend hardening **a0dfa217** (codex, claude-APPROVED high-risk: event-loss guard, JST, settled fail-soft, additive index migration LOCAL-verified/prod-gated). All maker/checker'd.
+
+**LANE REVERSAL (user directive 2026-06-24, ultracode ON)**: remaining timeline follow-ups flip to **CLAUDE maker / CODEX checker** (codex ACKed, checker-standby). 8 idle investigation/impl subagents terminated. Codex granted a small disjoint protocol-docs task (preempted by my reviews per §19).
+
+- **F-20260624-003** (Claude maker): source-adapter registry refactor [behavior-preserving] + cursor pagination [additive contract].
+- **F-20260624-005** (Claude maker): timeout-safe RLS-on-read (NOT naive withOrgContext wrap — must avoid the 2026-06-22 interactive-tx 5s timeout, preserve fail-soft, keep explicit org_id filters).
+- **Design DONE**: ultracode Workflow (wt0ox27hl, 17 agents/1.05M tok) produced a concrete file-level plan → saved `.agent-loop/plans/F-20260624-003-timeline-followups-plan.md`. claude verified the high-risk decisions (pagination Group-A/B split rule for deep-page event-loss; per-source short-tx `withReadOrgContext` timeout:3000 structurally timeout-safe; ph_os-superuser FORCE-RLS test → it.skip+BLOCKED if no non-superuser role; A/B no-migration). **PLAN_REVIEW_REQUEST sent to codex** (§26 compact + artifact ref) → awaiting PLAN_REVIEW_RESULT.
+- **Cycle A LANDED**: codex plan APPROVED_CYCLE_A_ONLY (B/C → rev2 for 5 findings). Implemented via ultracode workflow (1 implementer + 3 adversarial verifiers, all PASS) → all gates green (106 oracle, tsc, no-unused, eslint, prettier, **build** under §26 long-gate lease) → codex CODE_REVIEW APPROVED → **committed e0b4f364** (claude, 3 files +1177/-875). DONE/lock released. Registry: 13 SourceAdapters; op_history stays inline/unguarded-throw; buildPatientTimelineEvents rebuilt on registry (keeps route.ts byte-identical); events↔registry value cycle is call-time/type-only (codex advisory: do NOT add module-init reads of events in registry.ts during B/C).
+- **B/C rev2 designed** (wuz3g6u2j, artifact `.agent-loop/plans/F-20260624-003-bc-rev2-plan.md`): resolved C cleanly (DI-preserving ScopedTxRunner seam, op_history fail-soft-with-partial_failures, honest RLS-proof). **BUT claude adversarial self-review found the rev2 Group-B pagination mechanism (per-source native keyset + occurred MergeFloor) STILL has a deep-page LOSS** (the exact B-GROUPB class): ~36 of ~76 fetched rows/page are non-emitted (occurred<floor); Group-A re-fetches them via lte floor but Group-B's native keyset advances PAST them → never re-fetched → lost; plus a no-progress edge. Root cause: occurred_at is a computed coalesce, not a DB column → no single-column Group-B keyset bounds the occurred window without a materialized-occurred migration (human-gated) or unbounded over-fetch. The single-source test would NOT catch it (needs a multi-source cut).
+- **codex VERDICT (validated my finding)**: B-GROUPB-RESIDUAL CONFIRMED. **Cycle B DEFERRED entirely** (codex: even Group-A+op_history-only pagination risks users reading "Load More" as full-history; keep the F-002/F-004 bounded+fail-soft+JST+banner digest stable). **Cycle C APPROVED** to proceed independently + 1 condition: actor-name resolution (batchResolveNames) also tx-wrapped → must be fail-soft (codex option 1) or it newly 500s the panel.
+- **DEFERRED TASK — `timeline-deep-pagination-deferred` (design-first, NOT started; renamed off F-006 to avoid collision — codex took F-20260624-006 for schedule-team-board org-header convergence, claude-APPROVED + lock-granted)**: deep, loss-free cursor pagination needs EITHER a materialized per-event occurred_at/order_key column (additive migration, HUMAN-GATED) OR a formally loss-free source-local cursor preserving un-emitted native-prefix rows, proven by a MULTI-SOURCE overfetch/cut loss test. Do not implement opportunistically. Artifact `.agent-loop/plans/F-20260624-003-bc-rev2-plan.md` §2 is the shelved (flawed) attempt — keep for reference.
+- **Cycle C (RLS-on-read) LANDED `815a8baf` (2026-06-24, claude maker / codex checker)**: ScopedTxRunner DI seam (createScopedTxRunner, timeout 3000 / maxWait 2000, per-source short tx), route drops prisma import + injects runScoped, op_history + source-actor + op-actor name resolution ALL fail-soft-with-partial_failures [keys 'operation_history'/'actor_names'/'operation_actor_names'], honest structural-only RLS proof (8 set_config on handed-out tx + throwing-proxy global) + FORCE-RLS it.skip → BLOCKED.md rls-force-nonsuperuser-proof (human-gated). Resumed after /clear: self-reviewed impl already in tree → all gates GREEN (focused vitest 137 pass/1 skip, tsc exit0, build exit0, no-unused exit0 serial under long-gate lease, prettier/eslint/diff-check) → LONG_GATE_RELEASE + PATCH_REVIEW_REQUEST → codex ran independent serial typecheck/build/no-unused GREEN + CODE_REVIEW APPROVED (no findings, C-only scope, no Cycle B/pagination/schema/registry creep) → committed 8 locked files only (STATE/BLOCKED/projects/ops/plans excluded). C-only lock RELEASED, DONE sent.
+- Codex protocol-docs §26 (comm compression + long-gate lease) committed fe197d9d (claude-APPROVED, §26 human-gate for permanent promotion).
+
+Remaining of "全て修正して": program now essentially COMPLETE. Landed set: F-20260624-002 backend hardening `a0dfa217` (codex) / F-20260624-004 FE timeline `244e8843` (claude) / F-20260624-001 safety-check `87400f54` (claude) / F-003 Cycle A registry `e0b4f364` (claude) / **F-003 Cycle C RLS-on-read `815a8baf` (claude, just landed)**. F-005 (timeout-safe RLS-on-read) folded INTO Cycle C — done. Only two items remain, BOTH honest human-gated blockers (not actionable by the loop): (1) **timeline-deep-pagination-deferred** — loss-free deep cursor needs a materialized per-event occurred_at column (additive migration, HUMAN-GATED) or a formally-proven loss-free source-local cursor; artifact `.agent-loop/plans/F-20260624-003-bc-rev2-plan.md` §2 is the shelved flawed attempt. (2) **rls-force-nonsuperuser-proof** (BLOCKED.md) — FORCE-RLS denial proof needs a non-superuser Postgres role + cross-org seed fixture. Next Discover (§22b/§23 Axis 2): pick a fresh component-vertical-slice or area-batch target outside these blockers.
+
+### ROUND-ORG-HEADERS-2 (2026-06-24, claude×codex 並列 dual-maker, resumed after /clear)
+
+User「過去ログ確認して続きを開始」→ F-003 Cycle C を再開・完遂後、§23 Axis 2 で admin org-header/path-segment 収束 sweep を継続。
+
+**LANDED（全 maker/checker'd・objective gate GREEN）:**
+
+- F-003 Cycle C (RLS-on-read, timeout-safe) `815a8baf` + ledger `1b2b76f0`（claude / codex）
+- F-007 card-workspace href `856b7bef`（codex / claude）
+- F-009 packaging-methods `b4bcff8d`（claude / codex）
+- F-011 alert-rules page `ac7c1ba2`（claude / codex; rev1 CHANGES_REQUESTED→rev2: saveMutation PATCH 分岐 + testMutation teeth 追加）
+- F-013 signal-tuning-panel `745268e5`（claude / codex; NEW test）→ **admin/alert-rules dir 完全収束**
+- F-015 service-areas `3148efd3`（claude / codex）
+- F-016 institutions `359c38bc`（codex / claude）
+- F-017 business-holidays（codex maker, in-flight）
+
+**プロセス知見（FixPattern 候補）:**
+
+- 共有ワークツリーでの並列 dual-maker build: 各 maker の source が compile する状態を「source stable」合図で確認 → 片方が combined build（両 source 検証）→ コミットは `git commit -- <自パス>` の partial commit で相手の uncommitted を温存。
+- jest-dom matcher 未登録（repo は plain DOM assertion 規約 `.disabled`/`.textContent.toContain`）。
+- zsh `${PIPESTATUS[0]}` は空 → gate exit は直接 `$?`。
+- 並列 build の重複起動 → Next.js "wait for the build to complete" ロック衝突 → 単一実行厳守。
+- URLSearchParams query の dynamic 部は encodePathSegment 不要（path segment のみ encode）。
+
+**残: FEATURE_QUEUE.md「ROUND-ORG-HEADERS-2」backlog（~25 ファイル、未着手）。drug-master-content.tsx は BIG=sub-slice 必須。** gbrain writeback TODO: 本ラウンドの FixPattern（shared-tree-parallel-build-coordination / plain-dom-assertion-convention / zsh-pipestatus）。
+
+### ROUND-MAINUI (2026-06-24, user /goal: 主要UI改善 — UI+対応backend, 高ROI新機能可, 左メニュー全リンク先必須, ultracode探索, 操作性全力)
+
+User-directed program after the org-header sweep. Method: ultracode 51-screen research → master backlog → dual-maker (claude×codex) ROI slices, maker/checker + objective gates, §15 human-gate for auth/billing/security/destructive/prod.
+
+**Research artifact**: `ops/MAINUI_RESEARCH_SYNTHESIS.json` (30 ROI candidates / 78 render defects / 10 themes, from a 52-agent Workflow). Render verification: PASS (render-smoke 94/0fail, all 25 sidebar routes clean).
+
+**LANDED (all maker/checker'd, gates GREEN):**
+
+- F-20260624-020 左メニュー: 到達不能3管理画面(ヒヤリハット/鑑査差戻し分析/薬局間協力)を admin サイドバー追加 `89c3bb3e` (claude/codex)
+- F-20260624-021 visit-prep 在宅intake安全コンテキスト(PHI-minimal) `1d7a34a9` (codex/claude)
+- F-20260624-022 /schedules 当日スコープ集計+perf(org-wide /api/tasks GET 撤廃) `352753f8` (codex/claude)
+- F-20260624-023 dashboard @db.Time TZ バグ(JST~9hずれ)修正: route が wall-clock "HH:MM" emit `4da83466` (claude/codex)
+- F-20260624-024 drug-masters 偽データスタブ→実 DrugMasterContent(variant=master) `fd05b650` (claude/codex)
+- F-20260624-025 handoff recipient routing(BLOCKER#7: recipient_user_id, direction復旧) `b4c29119` (codex/claude)
+- F-20260624-026 /prescriptions/intake 行アクション deep-link(buildPrescriptionHref) `5384f60c` (codex/claude)
+- F-20260624-027 患者ボード truncation honesty(truncated=assignedTotal>fetched, バナー) `e71eb083` (claude/codex)
+- F-20260624-028 dispense-task 読取権限を clerk read-all 整合(canDispense||canAuditDispense||canReport, write は canDispense-only) `c46f18c7` (codex maker/claude checker; **codex usage-limit handoff により claude が承認済みコードを commit**)
+- §15 human-gate 8項目を BLOCKED.md 記録 `9c35cb6d`
+
+**AUTH-POLICY 判断(人間)**: F-028 で「事務(clerk) read-all を維持(canReport も許可)」を AskUserQuestion で確定。checker が read-all 仕様との矛盾を検知→人間エスカレーション→反映、の流れが機能。
+
+**CODEX HANDOFF (2026-06-24 04:42)**: codex が usage 上限で全タスクを claude へ委譲し standing down。**claude が単独実装エージェント**に。今後の claude maker スライスは **reviewer-audit/code-reviewer サブエージェントを checker パス**として使う(同一コンテキスト self-approve 禁止、OMC/CLAUDE.md)+ objective gates が arbiter。codex は人間が明示再開するまで新規作業しない。
+
+**残 backlog(非§15・未着手)**: #2b/c/d 他 MasterEditorView スタブ画面(staff/facilities/external-professionals 実データ化=中規模, drop-in 実コンポーネントなし→構築要), #6 false-empty DataTable error 横断配線(~10 admin画面), #29 44px タッチターゲット, #30 StateBadge enum→token, #12b 患者ボード priority-before-take(design-gated: JS派生順序→bounded priority pre-query か materialized column[human-gate]). 詳細は `ops/MAINUI_RESEARCH_SYNTHESIS.json`。
+**§15 human-gate(BLOCKED.md, 自動land禁止)**: workbench実データ既定化(prod/audit-attribution), 操作者ID(auth), billing集計(billing), 証跡写真S3(security/prod), data-explorer監査ログ+no-harddelete(prod), settings範囲(security), jobs error-log redaction(security), incidents/permission(auth), notification OS-bridge redaction(security/privacy).
+
+**環境メモ**: 本セッションで claude が起動した `next dev`(PID 58301, :3000)が main `.next` を占有。auto-mode 分類器が claude による kill を拒否。in-place build は衝突するため build は **隔離 git worktree** で実施(render-smoke/codex 実証)。zsh は `${PIPESTATUS[0]}` 空→gate exit は直接 `$?`。
+
+### ROUND-FALSEEMPTY (2026-06-24, claude solo — user: codex リミット到達、claude 単独運用へ。codex 宛タスクも claude が処理)
+
+**運用変更**: codex usage 上限到達のため **claude 単独運用**へ正式移行（人間指示）。maker/checker 分離は **reviewer-audit/code-reviewer サブエージェント**の独立 checker パスで担保（同一コンテキスト self-approve せず）。codex 宛だった F-029 も claude が実装。build は dev server(PID 58301) 占有のため隔離 worktree（`pnpm_config_verify_deps_before_run=false` で symlink node_modules の purge 中断を回避; CI=true は main node_modules 削除リスクで厳禁）。
+
+**LANDED (claude maker / reviewer-audit checker, 全 gate GREEN + 隔離 build exit0):**
+
+- F-20260624-030 /admin/realtime workbench 優先度 enum→日本語ラベル(PRIORITY_DISPLAY_LABELS, 色のみ依存回避) `40fb1a20`
+- F-20260624-029 pharmacist-credentials 一覧 DataTable false-empty→ErrorState+retry(isError 配線, PHI-free) `c3f80974`
+- F-20260624-031 同 登録ダイアログ 対象スタッフ Select の silent-empty→inline role=alert+retry(reviewer LOW follow-up) `481b34f5`
+- F-20260624-032 false-empty/false-zero 一掃 3画面(facility-standards 誤判定 top-level guard / staff-kpi-panel false-zero KPI 月ピッカー残し / document-templates 一覧 region scoped) `9252971e`
+- F-20260624-035 /tasks タスク表(desktop+mobile)+staff-workload board の false-empty→ErrorState/inline+retry `5b2feecd` (reviewer-audit APPROVED, 隔離 build exit0)
+
+**運用上の注意 (rogue fork context-bleed, 2026-06-24)**: ROUND-FALSEEMPTY で 3画面修正を **fork サブエージェント**に並列委譲したところ、fork が私のフルコンテキストを継承していたため scoped タスク(1ファイル編集+focused vitest)を超え、**計画全体を自律実行**(4画面を私の指示前に commit `481b34f5`/`9252971e`、STATE chore `b4ebf8e6`、対象外 /tasks にも同パターン適用)。整合性検証の結果 add -A 汚染/--amend なし・committed 分は reviewer-audit 承認済みで健全だったため採用、議論余地ある a11y 微調整のみ revert、/tasks は正式 gate/build/レビューに載せ直して land。**教訓**: scoped 機械的作業の委譲は fork ではなく **general-purpose/frontend-implementer**(orchestration 意図を継承しない)を使う。fork を使うなら「commit するな/他ファイルに触れるな/X で止まれ」を明示しても bleed しうる前提で監査する。
+
+**FixPattern**: useQuery に `isError`+`refetch` 追加 → 失敗時 DataTable/KPI を `<ErrorState variant=server>`+「再読み込み」(`void refetch()`)へ置換。早期 return は全 hook 後（hook 順序保持）。テストは hoisted `useQueryMock` で isError 注入、または real QueryClient+`retry:false`+fetch 500。false 値の **不在** を assert（ErrorState 存在だけでなく）。
+
+**残 backlog(非§15)**: billing-rules/page.tsx は admin DataTable で唯一 false-empty 残だが **§15 billing 隣接 → defer**(UI error-state のみでも billing は人間判断に寄せる)。pharmacist error 分岐の dangling `htmlFor` label = a11y NIT(reviewer 指摘, role=alert で SR 担保, 機能影響なし)。他: #2b/c/d MasterEditorView スタブ実データ化, #29 44px タッチ, #30 StateBadge enum→token 残(jobs/billing-rules/performance/pca), #12b priority-before-take(design-gated)。
 
 > Note: a hard-stop writes the **Resume point** here before exiting so the next session can resume without re-deriving context.

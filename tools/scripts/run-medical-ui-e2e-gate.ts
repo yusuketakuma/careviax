@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { maybeUnrefTimeout } from '../shared/abort-timeout';
 
 const APP_ORIGIN = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3012';
 const APP_PORT = new URL(APP_ORIGIN).port || '3012';
@@ -21,12 +22,6 @@ const E2E_ENV = {
 
 let appProcess: ChildProcess | null = null;
 let appExited = false;
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
-}
 
 export function createRequestAbort(timeoutMs = READY_CHECK_TIMEOUT_MS) {
   const controller = new AbortController();

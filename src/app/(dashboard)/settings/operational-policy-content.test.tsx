@@ -3,9 +3,10 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
-import type { OperationalPolicyResponse } from './operational-policy-content';
+import type { OperationalPolicy, OperationalPolicyResponse } from './operational-policy-content';
 
 const { useQueryMock, useMutationMock, mutateMock } = vi.hoisted(() => ({
   useQueryMock: vi.fn(),
@@ -18,6 +19,15 @@ vi.mock('@tanstack/react-query', () => ({
   useMutation: useMutationMock,
   useQueryClient: () => ({ setQueryData: vi.fn() }),
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -135,9 +145,49 @@ function mockQueries({
   useMutationMock.mockReturnValue({ mutate: mutateMock, isPending: false });
 }
 
+function renderWithCapturedQueries({
+  policy = buildPolicyFixture(),
+  cockpit = buildCockpitFixture(),
+}: {
+  policy?: OperationalPolicyResponse;
+  cockpit?: DashboardCockpitResponse | null;
+} = {}) {
+  const queryConfigs = new Map<string, { queryKey: unknown[]; queryFn: () => unknown }>();
+  const mutationConfigs: Array<{
+    mutationFn: (values: Partial<OperationalPolicy>) => unknown;
+    onSuccess?: (data: OperationalPolicyResponse) => unknown;
+  }> = [];
+  useQueryMock.mockImplementation((options: { queryKey: unknown[]; queryFn: () => unknown }) => {
+    queryConfigs.set(String(options.queryKey[0]), options);
+    const key = options.queryKey[0];
+    if (key === 'operational-policy') {
+      return { data: policy, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    }
+    return { data: cockpit, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+  });
+  useMutationMock.mockImplementation(
+    (options: {
+      mutationFn: (values: Partial<OperationalPolicy>) => unknown;
+      onSuccess?: (data: OperationalPolicyResponse) => unknown;
+    }) => {
+      mutationConfigs.push(options);
+      return { mutate: mutateMock, isPending: false };
+    },
+  );
+  render(<OperationalPolicyContent />);
+  return { queryConfigs, mutationConfigs };
+}
+
+function stubFetch(json: unknown = { data: buildPolicyFixture() }) {
+  const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => json } as Response);
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 beforeEach(() => {
   useUIStore.setState({ workspaceRailOpen: true });
   mutateMock.mockReset();
+  vi.clearAllMocks();
 });
 
 describe('OperationalPolicyContent', () => {
@@ -237,5 +287,69 @@ describe('OperationalPolicyContent', () => {
       true,
     );
     expect((screen.getByRole('button', { name: '標準' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('fetches policy and rail cockpit with buildOrgHeaders while preserving static URLs and query keys', async () => {
+    const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinel);
+    const { queryConfigs } = renderWithCapturedQueries();
+    const fetchMock = stubFetch({ data: buildPolicyFixture() });
+
+    try {
+      await queryConfigs.get('operational-policy')!.queryFn();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [policyUrl, policyInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(policyUrl).toBe('/api/settings/operational-policy');
+      expect(policyInit.headers).toBe(sentinel);
+      expect(queryConfigs.get('operational-policy')!.queryKey).toEqual([
+        'operational-policy',
+        'org_1',
+      ]);
+
+      fetchMock.mockClear();
+      await queryConfigs.get('settings-rail-cockpit')!.queryFn();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [cockpitUrl, cockpitInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(cockpitUrl).toBe('/api/dashboard/cockpit');
+      expect(cockpitInit.headers).toBe(sentinel);
+      expect(queryConfigs.get('settings-rail-cockpit')!.queryKey).toEqual([
+        'settings-rail-cockpit',
+        'org_1',
+      ]);
+
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('patches the operational policy with buildOrgJsonHeaders and the exact values body', async () => {
+    const sentinel = {
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+      'x-test-helper': 'buildOrgJsonHeaders',
+    };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
+    const { mutationConfigs } = renderWithCapturedQueries();
+    const fetchMock = stubFetch({
+      data: buildPolicyFixture({ policy: buildPolicyFixture().policy }),
+    });
+    const values: Partial<OperationalPolicy> = {
+      safety_sign_sensitivity: 'high',
+      quiet_hours: false,
+    };
+
+    try {
+      await mutationConfigs[0].mutationFn(values);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/settings/operational-policy');
+      expect(init.method).toBe('PATCH');
+      expect(init.headers).toBe(sentinel);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+      expect(JSON.parse(init.body as string)).toEqual(values);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

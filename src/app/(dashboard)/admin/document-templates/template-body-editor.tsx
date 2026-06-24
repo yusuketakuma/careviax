@@ -120,12 +120,14 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
   return (
     <section
       data-testid="template-body-editor"
-      aria-label="報告テンプレート編集"
+      aria-labelledby="template-body-editor-heading"
       className="rounded-lg border border-border/70 bg-card p-4"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-foreground">報告文面を編集</h2>
+          <h2 id="template-body-editor-heading" className="text-base font-bold text-foreground">
+            報告文面を編集
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {selected?.name ?? 'テンプレート未選択'} / 差し込み {mergeUsage.usedCount}/
             {mergeUsage.totalCount} 項目
@@ -150,7 +152,7 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)_240px]">
         <div className="rounded-lg border border-border/70 bg-background p-4">
-          <h2 className="text-sm font-bold text-foreground">テンプレート</h2>
+          <h3 className="text-sm font-bold text-foreground">テンプレート</h3>
           <ul className="mt-3 space-y-2.5" role="list">
             {templates.map((template) => {
               const active = template.id === selected?.id;
@@ -177,7 +179,7 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
         </div>
 
         <div className="rounded-lg border border-border/70 bg-background p-4">
-          <h2 className="text-sm font-bold text-foreground">文面を編集</h2>
+          <h3 className="text-sm font-bold text-foreground">文面を編集</h3>
           <Textarea
             ref={textareaRef}
             value={bodyText}
@@ -188,7 +190,7 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
         </div>
 
         <div className="rounded-lg border border-border/70 bg-background p-4">
-          <h2 className="text-sm font-bold text-foreground">差し込み項目</h2>
+          <h3 className="text-sm font-bold text-foreground">差し込み項目</h3>
           <div className="mt-3 grid grid-cols-2 gap-2">
             {MERGE_FIELDS.map((field) => (
               <button

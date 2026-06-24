@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Activity, ClipboardList, History } from 'lucide-react';
 import { useId } from 'react';
 import { cn } from '@/lib/utils';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 type PatientHistoryQuickLinksVariant = 'panel' | 'inline';
 
@@ -19,14 +20,14 @@ function getHistoryLinks(patientId: string, showTimeline: boolean) {
   return [
     {
       key: 'prescriptions',
-      href: `/patients/${patientId}/prescriptions`,
+      href: buildPatientHref(patientId, '/prescriptions'),
       label: '処方歴',
       description: '前回処方・Do・変更点',
       icon: ClipboardList,
     },
     {
       key: 'visits',
-      href: `/patients/${patientId}#card-recent-activities`,
+      href: buildPatientHref(patientId, '#card-recent-activities'),
       label: '訪問歴',
       description: '訪問記録・次回提案',
       icon: History,
@@ -35,7 +36,7 @@ function getHistoryLinks(patientId: string, showTimeline: boolean) {
       ? [
           {
             key: 'timeline',
-            href: `/patients/${patientId}#card-recent-activities`,
+            href: buildPatientHref(patientId, '#card-recent-activities'),
             label: '統合履歴',
             description: '処方・訪問・連携の時系列',
             icon: Activity,

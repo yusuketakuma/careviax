@@ -9,6 +9,9 @@ import { PrintLayout } from '@/components/features/reports/print-layout';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildReportHref } from '@/lib/reports/navigation';
 import type {
   PhysicianReportContent,
   CareManagerReportContent,
@@ -450,6 +453,10 @@ function AudienceReportPrint({ content }: { content: AudienceReportContent }) {
 
 // ─── Print page ───────────────────────────────────────────────────────────────
 
+function buildCareReportPrintAuditPath(reportId: string) {
+  return `/api/care-reports/${encodePathSegment(reportId)}/print-audit`;
+}
+
 export default function ReportPrintPage() {
   const params = useParams<{ id: string }>();
   const reportId = params.id;
@@ -462,12 +469,9 @@ export default function ReportPrintPage() {
   >({
     queryKey: ['care-report-print-audit', orgId, reportId, auditRunId],
     queryFn: async () => {
-      const res = await fetch(`/api/care-reports/${reportId}/print-audit`, {
+      const res = await fetch(buildCareReportPrintAuditPath(reportId), {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ intent: 'preview_rendered' }),
       });
       if (res.status === 403) throw new Error('PRINT_FORBIDDEN');
@@ -490,12 +494,9 @@ export default function ReportPrintPage() {
     printAuditQuery.error.message === 'PRINT_FORBIDDEN';
 
   const recordPrintRequestedAudit = useCallback(async () => {
-    const res = await fetch(`/api/care-reports/${reportId}/print-audit`, {
+    const res = await fetch(buildCareReportPrintAuditPath(reportId), {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-org-id': orgId,
-      },
+      headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({ intent: 'print_requested' }),
     });
     if (res.status === 403) {
@@ -582,7 +583,7 @@ export default function ReportPrintPage() {
   return (
     <PrintLayout pharmacyName={data.pharmacy_name}>
       <PrintPageToolbar
-        backHref={`/reports/${reportId}`}
+        backHref={buildReportHref(reportId)}
         backLabel="報告書詳細へ戻る"
         title="報告書 印刷ビュー"
         description="A4印刷に最適化したレイアウトです。印刷前に内容を確認してください。"

@@ -17,10 +17,12 @@ discipline that the two sessions have already proven in practice. Only `ApplyNow
 - `## Peer approval` tracks the proposed_by / reviewed_by / status of each policy line so no single
   Supervisor can unilaterally promote a rule.
 
-- **Run:** RUN-20260620-001
-- **Cycle:** 4 (Discover sweep; bootstrap re-run — no new ApplyNow, gbrain memory set unchanged since Cycle 2; §1–10 stand)
-- **Date:** 2026-06-20
+- **Run:** RUN-20260622-001 (resident quality loop restart; gbrain Memory Bootstrap re-run for the placement-optimization workstream)
+- **Cycle:** 1 (Bootstrap — read all .agent-loop ledgers + gbrain recall; this-run ApplyNow patch §17–18 proposed below, pending codex peer approval)
+- **Bootstrap re-run (session restart 2026-06-22, claude-lead):** re-read all 11 .agent-loop ledgers + gbrain filesystem SSOT recall (semantic index returns none — structured memory is slug-path files per STATE note). Classification: all relevant ApplyNow memories (`false-empty-and-stale-wipe`, `verify-component-capability-before-extension`, `mutation-raw-row-phi-leak`/`mutation-reuse-get-safe-projection`, `readapijson-schema-fail-closed`) are **already encoded** in §7/§9/§10/§17/§18; `pharmacy-cooperation-api-contracts` stays Consider; `state-color-token-unification` stays Ignore. **No NEW ApplyNow line emerges** → §17–19 patch (already PEER-APPROVED, in-effect) continues to govern this continued run. Sent to codex-lead as LOOP_POLICY_PATCH_PROPOSED (continuity confirmation, no new line). Live repo/tests/lint/typecheck/build/LOCKS/STATE take priority over recall.
+- **Date:** 2026-06-22
 - **Supervisors:** claude-lead (UI/UX + main impl), codex-lead (backend/perf/refactor/test review)
+- **Prior runs:** RUN-20260620-001 (Cycle 4), RUN-20260621-001 (Cycle 2) — §1–16 stand unchanged.
 
 > **STATUS: gbrain connected 2026-06-20** — careviax indexed (read-write, local postgres).
 > ApplyNow below is seeded from already-proven lane/LOCK/drain discipline; from the next cycle,
@@ -34,16 +36,45 @@ discipline that the two sessions have already proven in practice. Only `ApplyNow
 
 Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
 
-1. **Lane discipline.** Claude owns `src/app/(dashboard)/**` and `src/components/**` (UI/UX + main
-   implementation). Codex owns backend / perf / refactor / test-review. Do not edit across lanes
-   without an explicit handoff.
+### ApplyNow index (§1–25 grouped — the numbered rules below remain the SSOT/full text)
+
+Organized for navigation; each rule's authoritative wording, evidence, and peer-approval status stay in
+the numbered entries that follow.
+
+- **A. Lane, LOCK & coordination discipline** — §1 lane split (SOFT DEFAULT, see §23) · §2 LOCK before edit · §3 drain inbox
+  before commit · §4 stage only own files · §5 Supervisors-only on agmsg · §11 workload-balancing handoff
+  · §19 Codex drains Claude-origin first · §20 main loop free / work in subagents · §21 maximize subagent
+  concurrency / main = orchestrator · §23 role-agnostic load balancing (maker/checker rotate by load; cross-check invariant)
+  · §24 component-vertical-slice batching + dual-maker parallel (compartment = one component's FE+API+server+lib+test)
+  · §25 ACK-first handoff + sender-side WIP discipline.
+- **B. Verification & quality gates** — §6 verify-before-done (real gate cmds) · §17 state-display
+  correctness on placement slices · §18 verify-capability + reuse-first before extending a component.
+- **C. Compliance, PHI & security** — §7 UI/UX SSOT + State Color tokens · §8 Compliance-by-Design + RLS
+  · §9 PHI redaction symmetry on mutations · §10 fail-closed client API reads.
+- **D. Continuous operation & idle productivity** — §12 idle-capacity useful work · §13 loop-engineering
+  PDCA track · §14 idle-time productivity playbook · §15 no passive-wait per-turn trigger · §22 idle
+  delegate + auto-discover pipeline · §16
+  continuous loop (repeat on drain).
+
+> Provenance: §1–6 are the proven seed (lane/LOCK/drain/verify). §7–16 are applied/peer-approved general
+> rules. §17–21 are this-run (RUN-20260622-001) user/peer-directed patches; permanent promotion to
+> AGENTS.md/CLAUDE.md stays human-gated via PROMOTION_QUEUE §13. See the Peer-approval table for status.
+> Transport identity note (2026-06-23): live agmsg addressing uses only `claude` and `codex`.
+> `claude-lead` / `codex-lead` remain role descriptors for the supervisor lanes and historical records.
+
+1. **Lane discipline.** _(SOFT DEFAULT — superseded by §23 role-agnostic load balancing.)_ As a
+   capability tiebreaker, Claude leans `src/app/(dashboard)/**` and `src/components/**` (UI/UX + main
+   implementation); Codex leans backend / perf / refactor / test-review. But per §23 either Supervisor
+   may MAKER or CHECKER any task by load — lanes no longer hard-gate assignment; the maker ≠ checker
+   cross-check invariant is what holds. Still: don't edit peer-locked paths without a §11 handoff.
 2. **LOCK before edit.** Announce a path LOCK over agmsg (team `phos`, supervisor-to-supervisor
    only) before editing any shared file. Release the LOCK when the edit lands.
 3. **Drain inbox before commit.** Run `inbox.sh phos <name>` and resolve every pending message
    before staging or committing. Never commit over an unread LOCK or objection.
 4. **Stage only your own files.** `git add` only paths in your lane. Never blanket `git add -A`.
-5. **Supervisors-only on agmsg.** Only claude-lead and codex-lead write to agmsg. Subagents and
-   workers never message directly — they report up to their Supervisor.
+5. **Supervisors-only on agmsg.** Only the live `claude` and `codex` transport identities write to
+   agmsg, acting as the `claude-lead` / `codex-lead` supervisor roles. Subagents and workers never
+   message directly — they report up to their Supervisor.
 6. **Verify before claiming done.** Use the real commands: `pnpm lint`, `pnpm typecheck`,
    `pnpm typecheck:no-unused`, `pnpm format:check`, `pnpm test`, `pnpm build`,
    `pnpm test:e2e` / `pnpm test:e2e:audit`. No "done" without passing evidence.
@@ -155,6 +186,270 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
     writes, hard-stops human-gated). This makes the loop self-perpetuating: milestone → Discover → plan →
     implement → verify → land → Discover…, until the human ends the goal/run.
 
+### ApplyNow — RUN-20260622-001 this-run patch (gbrain Memory Bootstrap → placement-optimization workstream)
+
+> Status: **PEER-APPROVED** 2026-06-22 — codex-lead `LOOP_POLICY_PATCH_APPROVED` (re: policy-patch-20260622-001;
+> notes: §17 closes the placement-slice state-display gap without duplicating §7/§9/§10; §18 enforces
+> current-capability recon + reuse-first). **In-effect for RUN-20260622-001.** Permanent promotion to
+> AGENTS.md/CLAUDE.md remains human-gated (PROMOTION_QUEUE §13). Scoped to this run's active work
+> (PLACEMENT_AUDIT SYS/HIGH/MED placement slices, which touch
+> data-views and shared components). Derived only from `ApplyNow`-classified gbrain memories; the generic
+> §1–16 above are unchanged. Does not duplicate §7 (state-color SSOT) / §9 (PHI symmetry) / §10 (fail-closed
+> reads) — it adds the two disciplines those leave under-specified for placement work.
+
+17. **State-display correctness on any data-view placement slice.** Source: gbrain FailurePattern
+    `projects/careviax/failures/false-empty-and-stale-wipe-on-fetch-failure` (high, peer_reviewed). Any
+    SYS-3/SYS-4/MED slice that moves, wraps, or re-scaffolds a screen rendering query data MUST preserve
+    (and where missing, apply) the verified state-display contract — never regress it during a placement
+    move:
+    - Blocking `ErrorState` **only** on first-load failure (`isError && !data`).
+    - Refetch failure **with** data (`isError && data`, TanStack v5 isRefetchError): keep the last good
+      data + a **non-blocking** inline `ErrorState` (size=inline, live=polite) + retry; never wipe stale data.
+    - Gate empty/"…ありません" copy on `!isLoading` (skeleton while loading) — no false-empty.
+    - Suppress derived threshold alerts **and** warning color on a tagged placeholder/no-data path
+      (e.g. 404 → `{ placeholder: true }`, neutral color), not just the alert text.
+    - Reuse the existing `ErrorState`/`EmptyState` components (no new error/empty component); wire each
+      query's retry to **its own** `refetch` (no cross-wiring concurrent queries).
+    - If the slice adds/relocates a data view, add/keep tests for the 5 paths: success / first-load-error
+      (no cards/alerts) / refetch-keeps-data+warning / placeholder no-alert+neutral / loading no-false-empty.
+18. **Verify-capability + reuse-first before extending or relocating a shared component.** Source: gbrain
+    CandidateLesson `projects/careviax/lessons/candidates/verify-component-capability-before-extension`
+    (medium, peer_reviewed). Before any placement slice extends, wraps, or relocates a shared/core
+    component:
+    - Read the component's **current** props/render/tests first; confirm the capability is actually missing.
+      Audit ledgers (`PLACEMENT_AUDIT`/`UI_AUDIT_MATRIX`) can predate the component and over-state the gap —
+      note stale rows for correction instead of building to the stale framing.
+    - Prefer **caller wiring of an existing capability** and existing shared scaffolds
+      (`PageScaffold`/`AdminPageHeader`/`WorkflowPageIntro`/`WorkspaceActionRail`/`StateBadge`/`StatusDot`/
+      `DataTable`/`CardTitle asChild`) over a new duplicate layout/state/header component (reuse-first,
+      smaller blast radius). Do not introduce a similarly-named parallel component.
+    - Reserve core-component changes for genuinely-missing capability, with a backward-compatible
+      default-off and a regression test covering existing callers.
+19. **Codex drains Claude-origin messages before local work.** User-directed this-run policy patch
+    (2026-06-22) for Codex's own supervisor loop. At every Codex inbox drain, before continuing any
+    Codex-owned implementation, verification, commit, or idle-ladder task, Codex first handles every
+    pending message from the live `claude` identity / `claude-lead` role. This includes
+    `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`, `CHANGES_REQUESTED`,
+    `LOCK_REQUEST`, `HANDOFF`, `PAUSE_REQUEST`, `URGENT`, and equivalent `REQUEST CHANGES`
+    coordination. If a long-running local gate or investigation is in progress and a Claude-origin
+    item arrives at the next safe boundary, Codex pauses or aborts lower-priority local work when
+    safe, ACKs/triages the Claude item, and only then resumes. This rule does not weaken §3 inbox
+    drain, §14/§15 yield-first, maker/checker separation, user-priority directives, hard-stops, or
+    human-approval gates; it only makes Codex's handling order explicit.
+20. **Supervisor main loop stays free; do the work in subagents (both Supervisors).** User-directed
+    policy (2026-06-22). Each Supervisor's MAIN loop (`claude-lead`, `codex-lead`) must stay available
+    to receive and triage the peer's agmsg messages at all times. A busy main loop only processes
+    pushed agmsg events at a turn boundary, so the main loop must NOT be occupied by sustained or
+    blocking work. Therefore:
+    - **Delegate the actual work to subagents.** Multi-file implementation, refactors, test authoring,
+      verification runs, builds, and long investigations are run in subagents (e.g. Claude's
+      `frontend-implementer`/`Explore`/worktree agents; Codex's equivalent task subagents). The
+      Supervisor main loop reserves itself for: draining/triaging the inbox, coordination (LOCK
+      grant/deny, ACK, plan/patch reviews, owner/handoff decisions), spawning/steering subagents, and
+      committing already-reviewed owned work.
+    - **Keep the main loop short-turn.** Prefer subagents or `run_in_background` for anything that would
+      block the loop more than briefly, so the Supervisor returns to a turn boundary quickly and can act
+      on a peer message (review request, LOCK, URGENT, PAUSE/HANDOFF) without delay.
+    - **Symmetric for Codex.** Codex follows the same rule: its main loop stays free for claude-origin
+      messages (reinforces §19), with implementation/verification pushed to its own subagents.
+    - **Unchanged constraints.** Subagents still NEVER post to agmsg or touch shared ledgers directly —
+      the Supervisor summarizes a subagent's result into a single envelope before it goes on the wire
+      (MESSAGE_PROTOCOL transport rule). Maker/checker separation holds: a subagent that implements is
+      not the approver; the peer Supervisor reviews. Brief inline ops (quick reads, small edits,
+      sending messages, granting locks, staging a reviewed commit) are fine — the rule targets
+      sustained/blocking work that would make the main loop unresponsive to the peer.
+21. **Maximize subagent concurrency; the main loop is the orchestrator (both Supervisors).** User-directed
+    (2026-06-22); extends §20. Run MULTIPLE subagents in parallel for independent work instead of
+    serializing it, so throughput is maximized while the main loop devotes its capacity to orchestration
+    and stays free for peer comms.
+    - **Fan out, don't serialize.** When work items have disjoint file scopes/lanes (e.g. implement
+      slice A, recon slice B, verify slice C), dispatch them to concurrent subagents rather than doing
+      them one-by-one inline. Prefer parallel subagents + `run_in_background` gates over blocking the loop.
+    - **Disjoint partitions only (mechanical-conflict prevention).** Before fanning out, the Supervisor
+      ensures each concurrent subagent edits a disjoint `locked_paths` set — never two subagents writing
+      the same file. Overlapping scope is serialized or merged into one subagent. LOCK discipline (§2)
+      holds across all concurrent subagents.
+    - **The main loop's primary job is orchestration:** spawn / steer / resume subagents, keep their
+      partitions disjoint, route each subagent's summarized result onto agmsg, drain/triage the peer
+      inbox, run/await objective gates, and review/commit. Heavy work itself lives in the subagents (§20).
+    - **Peer-responsiveness first.** If orchestrating many subagents would delay peer triage, cap
+      concurrency so the main loop still returns to drain the inbox promptly — receiving the peer's
+      messages (§19/§20) outranks raw fan-out.
+    - **Unchanged:** subagents never post to agmsg or touch shared ledgers (the Supervisor serializes
+      their outputs into envelopes); maker/checker holds across every concurrent subagent (an
+      implementing subagent is never the approver); all hard-stops stay human-gated.
+22. **Idle time = delegate + auto-discover the pipeline (standing rule, both Supervisors).** User-directed
+    (2026-06-23). Consolidates §11/§14/§16 into two always-on idle obligations; whenever there is free
+    capacity (blocked/waiting with no higher-priority inbound), do BOTH, not just consume the queue:
+    - **a. Delegate / hand off work.** Don't hold a queued or in-flight item that the peer or a subagent
+      could advance. Push it out: dispatch disjoint slices to concurrent subagents (§20/§21), or hand a
+      non-conflicting subtask to the peer via the §11 HANDOFF / `REQUEST_DELEGATE` envelope (ACK,
+      idempotency_key, owner/reviewer set, declared LOCKs). If the peer is silent/stalled with approved-
+      but-unstarted or pending work, proactively nudge them (`claude→codex`, idempotent) to pick it up —
+      do not wait passively (see also the proactive-nudge feedback memory).
+    - **b. Auto-discover NEW development candidates — WHOLE codebase, every improvement category (feed the
+      pipeline, don't just drain it).** Beyond §16's "pick the next queued item," proactively SOURCE new
+      work across the ENTIRE codebase (frontend AND backend AND infra/tools), not just one lane. Cover
+      every category (user-directed 2026-06-23): **bug fixes, refactoring, API design/contract
+      improvements, performance / processing-speed, security, plus frontend screen layout / interaction
+      model / UI-UX / a11y / state-display** — any place code can be improved. Read-only sweep of recent
+      diffs, specs (`docs/*spec*`, roadmap), `UI_AUDIT_MATRIX`, TODO/FIXME, untested/weak contracts,
+      slow/hot paths, duplicate/DuplicateMap candidates, error-prone patterns, and follow-ups flagged in
+      landed reviews. File each as a `FEATURE_QUEUE` intake entry (via `prompts/feature-intake.md`
+      classification) with a one-line scope **+ owner-lane tag** (claude = FE/UX/state-display; codex =
+      backend/API/perf/refactor/test/RLS; **hard-stop** = auth/billing/payments/security-policy/destructive
+      migration/prod-deploy → flag for human gate, never auto-action). Discovery is whole-codebase and
+      lane-agnostic (it only SURFACES candidates); IMPLEMENTATION still respects lane ownership + normal
+      PLAN_REVIEW + LOCK. Always dedupe against the existing `FEATURE_QUEUE` backlog before filing.
+      **Tooling — prefer gstack skills for discovery/audit over a bespoke general-purpose subagent**
+      (per CLAUDE.md gstack directive; purpose-built, higher-signal). Route by category:
+      `/health` (code-quality / all-checks / refactor / bug candidates, full stack), `/cso` (security /
+      threat-model — advisory; security is a hard-stop lane), `/benchmark` (performance / hot paths),
+      `/investigate` (root-cause for a specific bug/regression), `/code-review` or `/review` (a diff's
+      latent issues), `/design-review` or `/design-consultation` (UI/UX / layout / interaction / a11y /
+      state-display). Use a general-purpose subagent only when no gstack skill fits. gstack runs in the
+      main loop, so keep discovery passes bounded and yield immediately to inbound peer messages.
+    - **Symmetric for Codex.** Codex runs the same two idle obligations: delegate/handoff, and
+      whole-codebase auto-discovery into `FEATURE_QUEUE` (all categories above, owner-lane-tagged) using
+      the same gstack-first tooling — it is NOT limited to its own backend lane for DISCOVERY, only for
+      implementation. Both Supervisors surface candidates anywhere; the owner-lane tag routes who implements.
+    - **Safety envelope (unchanged):** discovery/recon read-only; writes only to own lane / gbrain /
+      jointly-owned ledgers (incl. FEATURE_QUEUE intake) under explicit LOCK; never edit peer-locked paths
+      or start implementation without plan approval; yield immediately to inbound review/LOCK/URGENT/user-
+      priority; all hard-stops (auth/billing/payments/security/destructive migration/prod deploy) stay
+      human-gated; no new external sends/deploys. Auto-discovery surfaces candidates only — it never
+      auto-implements a hard-stop or unreviewed slice.
+
+- **§23 Role-agnostic load balancing (maker/checker rotate by load; cross-check is the only invariant).**
+  User-directed 2026-06-23. Either Supervisor may be MAKER (implementer) OR CHECKER (auditor/approver)
+  for ANY task. The fixed owner-lane split of §1 (Claude=FE/UX, Codex=backend) is **downgraded to a soft
+  capability-preference default** — a tiebreaker when loads are equal, NOT a hard gate. The single
+  **non-negotiable invariant**: maker ≠ checker for the same change — the implementer never self-approves;
+  every change still gets independent cross-review + the objective gate. Hard-stops
+  (auth/billing/payments/security-policy/destructive migration/prod deploy) stay human-gated regardless of
+  who is maker. Why this exists: with hard lanes, a one-sided work stream (e.g. the F-013..F-034 entity-href
+  sweep was entirely backend) pins one Supervisor as maker and the other as pure-checker — a 100% imbalance.
+  Role-agnosticism + the two axes below remove that structurally.
+
+  - **Load metric.** Per Supervisor, a rolling count of (in-flight + queued) tasks where it is MAKER, plus
+    its consecutive-maker streak. **Imbalance trigger** = one side has been MAKER on ≥3 consecutive features
+    while the other was pure-CHECKER, OR its actionable-maker queue is ≥3 deeper than the peer's.
+
+  - **Axis 1 — hand off from busy → light (redistribute).** On imbalance, the NEXT eligible task's MAKER
+    role goes to the LIGHTER Supervisor; the busier one becomes its CHECKER. Use the §11 HANDOFF /
+    owner-decision envelope (stable idempotency_key, ACK before work, updated owner_agent/reviewer_agent,
+    declared locked_paths/forbidden_paths) — now WITHOUT the lane restriction. The busier Supervisor's
+    Discover (§22b) must also surface ≥1 candidate the lighter side can MAKE, so the light queue refills.
+    Never disrupt an in-flight assignment; rebalance at the next task boundary.
+
+  - **Axis 2 — make the light side generate + take work (no pure-reviewer steady state).** The lighter
+    Supervisor must, each idle cycle, run gstack-first whole-codebase Discover (§22b) and PULL a candidate
+    to implement AS MAKER (capability-matched first, but any lane is allowed), rather than only waiting for
+    review work. Sitting in pure-reviewer mode while makeable work exists is not an acceptable steady state.
+
+  - **Blocked-light exception.** If the light side's only candidates are human-gated (e.g. a design-gated UI
+    decision), it (a) escalates the blocker to the human, and (b) runs NON-gated Discover (a11y / FE perf /
+    FE refactor / test hardening / docs) to find makeable work — it does NOT fall back to pure-review.
+
+  - **Symmetric + self-correcting.** Applies to whichever side is heavier, in both directions. Capability
+    soft-default only breaks ties. All other discipline (§1–6 LOCK/drain/stage-own-files/verify, §19
+    drain-order, §20 main-loop-free, §21 subagent fan-out, maker/checker separation, hard-stops) is
+    unchanged. Status: proposed by claude, pending codex concurrence + human gate for permanent.
+
+- **§24 Component-vertical-slice batching + dual-maker parallel (compartment = one component's full code range).**
+  User-directed 2026-06-23. Supersedes the short-lived horizontal "near-dup batch" framing. A **compartment =
+  one feature/component's vertical code range**: its FE component(s) + the API route(s) it calls + the server
+  service(s) behind them + lib + types + all tests. One feature = one such slice, taken through a single
+  PLAN → LOCK → implement → gate → PATCH → DONE cycle.
+
+  - **Work scope per slice = broad component refactor**, not a narrow one-line patch: (a) href/URL/id
+    `encode + dot-guard` convergence, (b) shared-primitive adoption (see FOUNDATION below), (c) duplicate
+    removal / type tidy / boilerplate unification (headers, queryKeys, error handlers) **for the files the
+    slice touches**, (d) in-component a11y/UX debt (e.g. 44px touch targets per docs/ui-ux-design-guidelines.md).
+    Keep the diff slice-bounded; if a touched file mixes risk, split BEFORE implementation rather than
+    weakening scope or mix-deferring within a touched file.
+
+  - **Dual-maker parallel.** Claude and codex each own a DISJOINT slice as MAKER simultaneously and act as
+    the other's CHECKER. LOCK scopes are disjoint by directory/file so there is no edit conflict.
+    `maker ≠ checker` (§23) remains the only non-negotiable invariant. Throughput ~2× while §23 load-balancing
+    is achieved in parallel.
+
+  - **LOCK lists every touched file** (no broad wildcard-only locks). BE route handlers that already call
+    `normalizeRequiredRouteParam` are **verify-only** in the slice (no source edit unless recon finds a gap);
+    pure data-fetch API URLs unrelated to a converted browser href may be uniformly deferred to a **tracked**
+    follow-up candidate (named in FEATURE_QUEUE / a FEATURE_INTAKE), never silently. Browser-facing download/PDF
+    anchors with raw ids must NOT be left raw in a touched file.
+
+  - **FOUNDATION primitives (F-060, landed 98b7b3cc):** `encodePathSegment` (src/lib/http/path-segment.ts —
+    fail-closed exact `.`/`..`, else encodeURIComponent) for API/download URL id path segments;
+    `buildOrgHeaders`/`buildOrgJsonHeaders` (src/lib/api/org-headers.ts — fail-closed, reject case-insensitive
+    `x-org-id`/`content-type` collisions) for tenant headers. Existing nav helpers
+    (buildPatientHref/buildVisitHref/buildReportHref/buildPrescriptionHref/buildVisitRecordHref) stay the
+    **browser-route public contract**; encodePathSegment does not replace them (future DuplicateMap may converge).
+
+  - **Per-site teeth (unchanged bar):** actual-backed helper spies + sentinel return-value delegation per
+    callsite; hostile slash/query/hash encode with no raw leak + no `%25` double-encode; exact-dot fail-fast
+    (`RangeError` before fetch / during render as appropriate); raw id preserved in queryKey/cache/mutation
+    payload; API URL teeth execute the captured queryFn/mutationFn. hard-stops human-gated regardless of maker.
+
+  - **Evidence:** FOUNDATION-A F-060 (98b7b3cc); codex F-061 Patient Labs (7ee44b18), F-063 Management Plan
+    (e95e53f4); claude F-062 Patient Visit Records (6aad8ed8). Status: proposed by claude, pending codex
+    concurrence + human gate for permanent.
+
+25. **ACK-first handoff, sender-side WIP discipline, and serial long gates (both Supervisors).** User-directed
+    2026-06-23; codifies the improvement after observed Codex drain lag on Claude PATCHes. Extends §20/§21
+    without weakening LOCK, maker/checker separation, or objective gates.
+
+    - **ACK before heavy work.** On receiving `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`,
+      `VERIFY_REQUEST`, `LOCK_REQUEST`, `HANDOFF`, `PAUSE_REQUEST`, `URGENT`, or `CHANGES_REQUESTED`,
+      the Supervisor sends a short ACK/STATUS/grant/deny within one drain before starting sustained
+      review, implementation, or validation. The ACK is only receipt/liveness; final verdict still
+      requires checker-audit and gates.
+    - **Sender does not assume receipt.** After sending a lock/review/handoff request, the sender waits
+      for ACK/STATUS/verdict before treating it as received. Do not stack multiple unacked
+      `PATCH_REVIEW_REQUEST`s for the same maker/checker pair; send an idempotent nudge instead.
+      Disjoint maker work may continue only if locks and WIP limits are respected.
+    - **Main loop stays dispatcher-only.** Main Supervisors keep doing coordination, ACKs, lock routing,
+      subagent steering, and reviewed commits. Sustained implementation, review analysis, and long gates
+      run in subagents/background and are summarized back by the Supervisor.
+    - **Serialize Next.js long gates.** Do not run `pnpm build` concurrently with `pnpm typecheck` or
+      `pnpm typecheck:no-unused`; `.next/types` generation can race. Run those gates serially.
+    - **Two live agents by default.** The active loop has only `claude` and `codex` transport identities.
+      A relay/third agent requires explicit current-run human approval.
+
+26. **Communication compression and always-on delivery discipline (both Supervisors).** User-directed
+    2026-06-24; makes the Claude/Codex loop faster while preserving ACK gates, locks, and checker separation.
+
+    - **Codex delivery mode stays `monitor`.** Codex should keep agmsg monitor delivery enabled for this
+      worktree and verify it with
+      `~/.agents/skills/agmsg/scripts/delivery.sh status codex "$(pwd)"` at bootstrap. If it drifts, run
+      `~/.agents/skills/agmsg/scripts/delivery.sh set monitor codex "$(pwd)"`. Already-running Codex
+      sessions still require a restart/first turn before the bridge fully engages, so manual inbox drains
+      remain mandatory.
+    - **Use `STATE_SUMMARY` instead of narrative catch-up.** At cycle start, after commits, before long
+      gates, and after conflicts, send one compact state digest: active lock, pending review, running gate,
+      blocked item, and next action. Do not use long prose status packets when a summary is enough.
+    - **Use a real long-gate lease.** Before `pnpm build`, `pnpm typecheck`, or
+      `pnpm typecheck:no-unused`, acquire `.agent-loop/scripts/long-gate-lock.sh`, send `LONG_GATE_LOCK`,
+      wait for ACK/no-conflict, run only one long Next.js gate at a time, then release with
+      `.agent-loop/scripts/long-gate-lock.sh release <owner> "<result>"` and always emit
+      `LONG_GATE_RELEASE` with result or skip reason.
+    - **Batch only homogeneous low-risk reviews.** `BATCH_REVIEW_REQUEST` may group same-pattern,
+      low-risk slices with identical validation expectations. Exclude auth, RLS, permissions, DB,
+      medical/patient semantics, audit logs, offline sync, realtime, billing, destructive operations,
+      and any slice with unique risk; those still get one request each.
+    - **Keep review envelopes short.** A review request names changed paths, what changed since the last
+      ACK/review, validation already run, known risk, and the requested verdict. Long logs and unchanged
+      plan history stay in repo artifacts, not agmsg.
+    - **Reduce ACK noise.** `URGENT`, `LOCK_REQUEST`, `LONG_GATE_LOCK`, `HANDOFF`, `PAUSE_REQUEST`, and
+      `CHANGES_REQUESTED` remain blocking ACK-gated messages. Review/verify requests need quick receipt
+      ACK before sustained work. `FYI`, `DONE`, `STATE_SUMMARY`, and `LONG_GATE_RELEASE` do not expect ACK
+      unless the sender explicitly asks.
+    - **Group shared-ledger updates.** `.agent-loop/STATE.md`, `.codex/ralph-state.md`, and
+      `CODEX_GOAL_PROGRESS.md` should be updated at coherent boundaries under explicit lock. If that lock
+      is unavailable, send `STATE_SUMMARY` and continue the already-owned source/test slice rather than
+      blocking on ledger churn; reconcile the ledger at the next safe boundary.
+
 ## Consider
 
 Weigh against the current objective; log the decision in the run log. (Seed list — extend from
@@ -193,17 +488,27 @@ External dependencies gating otherwise-ready work. Mark blocked items `cc:blocke
 Each policy line needs proposed_by + reviewed_by + status before it graduates to ApplyNow.
 Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 
-| Policy line                                       | proposed_by | reviewed_by | status                                 |
-| ------------------------------------------------- | ----------- | ----------- | -------------------------------------- |
-| ApplyNow §1–6 (lane/LOCK/drain/verify discipline) | claude-lead | codex-lead  | applied (proven seed)                  |
-| ApplyNow §7 (UI/UX SSOT + State Color tokens)     | claude-lead | _pending_   | proposed                               |
-| ApplyNow §8 (Compliance by Design + RLS)          | codex-lead  | _pending_   | proposed                               |
-| ApplyNow §9 (PHI redaction symmetry on mutations) | claude-lead | codex-lead  | applied                                |
-| ApplyNow §10 (fail-closed client reads)           | claude-lead | codex-lead  | applied                                |
-| ApplyNow §11 (workload-balancing handoff)         | codex-lead  | claude-lead | applied                                |
-| ApplyNow §12 (idle-capacity useful work)          | human       | claude-lead | applied                                |
-| ApplyNow §13 (loop-engineering PDCA track)        | human       | codex-lead  | applied                                |
-| ApplyNow §14 (idle-time productivity playbook)    | claude-lead | codex-lead  | applied                                |
-| ApplyNow §15 (no passive-wait per-turn trigger)   | human       | codex-lead  | peer-approved (human gate for applied) |
-| ApplyNow §16 (continuous loop — repeat on drain)  | human       | codex-lead  | peer-approved (human gate for applied) |
-| _next candidate_                                  | _name_      | _name_      | proposed                               |
+| Policy line                                                               | proposed_by | reviewed_by | status                                                                                                                                                    |
+| ------------------------------------------------------------------------- | ----------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ApplyNow §1–6 (lane/LOCK/drain/verify discipline)                         | claude-lead | codex-lead  | applied (proven seed)                                                                                                                                     |
+| ApplyNow §7 (UI/UX SSOT + State Color tokens)                             | claude-lead | _pending_   | proposed                                                                                                                                                  |
+| ApplyNow §8 (Compliance by Design + RLS)                                  | codex-lead  | _pending_   | proposed                                                                                                                                                  |
+| ApplyNow §9 (PHI redaction symmetry on mutations)                         | claude-lead | codex-lead  | applied                                                                                                                                                   |
+| ApplyNow §10 (fail-closed client reads)                                   | claude-lead | codex-lead  | applied                                                                                                                                                   |
+| ApplyNow §11 (workload-balancing handoff)                                 | codex-lead  | claude-lead | applied                                                                                                                                                   |
+| ApplyNow §12 (idle-capacity useful work)                                  | human       | claude-lead | applied                                                                                                                                                   |
+| ApplyNow §13 (loop-engineering PDCA track)                                | human       | codex-lead  | applied                                                                                                                                                   |
+| ApplyNow §14 (idle-time productivity playbook)                            | claude-lead | codex-lead  | applied                                                                                                                                                   |
+| ApplyNow §15 (no passive-wait per-turn trigger)                           | human       | codex-lead  | peer-approved (human gate for applied)                                                                                                                    |
+| ApplyNow §16 (continuous loop — repeat on drain)                          | human       | codex-lead  | peer-approved (human gate for applied)                                                                                                                    |
+| ApplyNow §17 (state-display correctness, this-run)                        | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)                                                                                      |
+| ApplyNow §18 (verify-capability + reuse-first)                            | claude-lead | codex-lead  | peer-approved (in-effect RUN-20260622-001; human gate for permanent)                                                                                      |
+| ApplyNow §19 (Codex drains Claude-origin first)                           | codex-lead  | claude-lead | peer-approved (this-run; human gate for permanent AGENTS/CLAUDE.md promotion)                                                                             |
+| ApplyNow §20 (main loop free; work in subagents)                          | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                                     |
+| ApplyNow §21 (max subagent concurrency; main=orch)                        | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-22; human gate for permanent)                                                                     |
+| ApplyNow §22 (idle delegate + whole-codebase auto-discover, gstack-first) | human       | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; whole-codebase/all-category scope user-directed; human gate for permanent)                    |
+| ApplyNow §23 (role-agnostic load balancing: maker/checker rotate by load) | claude-lead | codex-lead  | peer-approved (codex LOOP_POLICY_PATCH_APPROVED 2026-06-23; user-directed; §1 lanes → soft default; cross-check invariant held; human gate for permanent) |
+| ApplyNow §24 (component-vertical-slice batching + dual-maker parallel)    | claude-lead | _pending_   | proposed (user-directed 2026-06-23; FOUNDATION F-060 + F-061/062/063 landed as evidence; human gate for permanent)                                        |
+| ApplyNow §25 (ACK-first handoff + sender-side WIP discipline)             | human       | claude-lead | peer-approved (user-directed 2026-06-23; human gate satisfied this run; pending permanent promotion)                                                      |
+| ApplyNow §26 (communication compression + long-gate lease discipline)     | human       | _pending_   | proposed (user-directed 2026-06-24; pending peer review and human-gate promotion)                                                                         |
+| _next candidate_                                                          | _name_      | _name_      | proposed                                                                                                                                                  |

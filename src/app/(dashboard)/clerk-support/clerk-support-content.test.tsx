@@ -2,6 +2,7 @@
 
 import { render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import type { ClerkSupportResponse } from '@/types/clerk-support';
 
@@ -12,6 +13,11 @@ const { useQueryMock } = vi.hoisted(() => ({ useQueryMock: vi.fn() }));
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
@@ -55,6 +61,10 @@ function buildFixture(): ClerkSupportResponse {
 describe('ClerkSupportContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(buildOrgHeaders).mockImplementation((orgId, extra) => ({
+      'x-org-id': orgId,
+      ...extra,
+    }));
     useQueryMock.mockReturnValue({
       data: buildFixture(),
       isLoading: false,
@@ -137,5 +147,44 @@ describe('ClerkSupportContent', () => {
 
     render(<ClerkSupportContent />);
     expect(screen.getByText('いま事務側で止まっている作業はありません。')).toBeTruthy();
+  });
+
+  it('fetches the clerk-support dashboard with shared org headers and raw query key', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: buildFixture() }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured = config;
+        return {
+          data: buildFixture(),
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      },
+    );
+
+    try {
+      render(<ClerkSupportContent />);
+
+      if (!captured) throw new Error('query config was not captured');
+      expect(captured.queryKey).toEqual(['clerk-support', 'org_1']);
+      await captured.queryFn();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/dashboard/clerk-support');
+      expect(init.headers).toBe(sentinelHeaders);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

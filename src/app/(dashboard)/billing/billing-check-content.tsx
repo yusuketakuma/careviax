@@ -12,6 +12,7 @@ import {
   type BlockedReason,
   type EvidenceItem,
 } from '@/components/features/workspace/action-rail';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { cn } from '@/lib/utils';
@@ -34,7 +35,7 @@ export async function fetchBillingCheck(
   month: BillingCheckMonth,
 ): Promise<BillingCheckResponse> {
   const res = await fetch(`/api/billing-evidence/check?month=${month}`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('算定チェック集計の取得に失敗しました');
   const json = await res.json();

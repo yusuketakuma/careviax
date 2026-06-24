@@ -104,6 +104,34 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
+  it('uses decoded hostile route ids as raw identity on GET without treating them as paths', async () => {
+    const hostileId = '../settings?x=1#frag';
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: hostileId,
+      org_id: 'org_1',
+      lines: [],
+      prescriber_institution_ref: null,
+      jahis_supplemental_records: [],
+      cycle: null,
+    });
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: hostileId }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const findFirstArg = prescriptionIntakeFindFirstMock.mock.calls[0]?.[0] as {
+      where: { id: string; org_id: string };
+    };
+    expect(findFirstArg.where).toEqual({
+      id: hostileId,
+      org_id: 'org_1',
+    });
+    expect(findFirstArg.where.id).not.toBe(encodeURIComponent(hostileId));
+  });
+
   it('rejects blank prescription intake ids before parsing or loading the intake on PATCH', async () => {
     const response = await PATCH(
       createRequest({

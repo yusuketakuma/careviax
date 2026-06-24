@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   STATISTICS_CATEGORIES,
@@ -66,7 +67,7 @@ function DispensingKpiStrip() {
   const { data, isError, isLoading, refetch } = useQuery<DispensingKpiResult>({
     queryKey: ['statistics-dispensing-kpi', orgId],
     queryFn: async () => {
-      const res = await fetch(DISPENSING_STATS_URL, { headers: { 'x-org-id': orgId } });
+      const res = await fetch(DISPENSING_STATS_URL, { headers: buildOrgHeaders(orgId) });
       // 403 = no permission for this org: render a locked state, not a false-empty zero.
       if (res.status === 403) return { locked: true };
       const payload = await readApiJson(res, {

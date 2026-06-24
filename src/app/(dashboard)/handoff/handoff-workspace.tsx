@@ -53,6 +53,7 @@ import {
   type HandoffBoardItem,
   type HandoffBoardResponse,
   type HandoffConsultStatus,
+  type HandoffRecipientOption,
   type HandoffResolutionAction,
 } from './handoff-workspace.helpers';
 
@@ -229,6 +230,7 @@ function HandoffItemCard({
 
 type TransferDraft = {
   content: string;
+  recipient_user_id: string;
   recipient_label: string;
   scope: string;
   rationale: string;
@@ -238,6 +240,7 @@ type TransferDraft = {
 
 const EMPTY_TRANSFER_DRAFT: TransferDraft = {
   content: '',
+  recipient_user_id: '',
   recipient_label: '',
   scope: '',
   rationale: '',
@@ -250,19 +253,25 @@ function TransferDialog({
   onOpenChange,
   boardId,
   orgId,
+  recipientOptions,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   boardId: string | null;
   orgId: string;
+  recipientOptions: HandoffRecipientOption[];
   onCreated: () => void;
 }) {
   const [draft, setDraft] = useState<TransferDraft>(EMPTY_TRANSFER_DRAFT);
+  const selectedRecipient = recipientOptions.find(
+    (option) => option.id === draft.recipient_user_id,
+  );
+  const canSelectRecipient = recipientOptions.length > 0;
 
   const isComplete =
     draft.content.trim().length > 0 &&
-    draft.recipient_label.trim().length > 0 &&
+    Boolean(selectedRecipient) &&
     draft.scope.trim().length > 0 &&
     draft.rationale.trim().length > 0 &&
     draft.deadline.length > 0;
@@ -270,7 +279,7 @@ function TransferDialog({
   // 責任移譲は取消不可。無効ボタンが何で詰まっているかを示し、解消対象を明確にする。
   const missingFields = [
     draft.content.trim().length === 0 ? '件名' : null,
-    draft.recipient_label.trim().length === 0 ? '宛先(誰に渡すか)' : null,
+    !selectedRecipient ? '宛先(誰に渡すか)' : null,
     draft.scope.trim().length === 0 ? '①何を(作業の範囲)' : null,
     draft.rationale.trim().length === 0 ? '②なぜ(根拠)' : null,
     draft.deadline.length === 0 ? '③いつまで(期限)' : null,
@@ -289,7 +298,10 @@ function TransferDialog({
           board_id: boardId,
           content: draft.content.trim(),
           priority: draft.priority,
-          recipient_label: draft.recipient_label.trim(),
+          recipient_user_id: draft.recipient_user_id,
+          recipient_label:
+            draft.recipient_label.trim() ||
+            (selectedRecipient ? `${selectedRecipient.name}(${selectedRecipient.role_label})` : ''),
           lifecycle_status: 'proposed',
           scope: draft.scope.trim(),
           rationale: draft.rationale.trim(),
@@ -343,14 +355,36 @@ function TransferDialog({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="handoff-transfer-recipient">宛先(誰に渡すか)</Label>
-              <Input
-                id="handoff-transfer-recipient"
-                value={draft.recipient_label}
-                onChange={(event) =>
-                  setDraft((prev) => ({ ...prev, recipient_label: event.target.value }))
-                }
-                placeholder="例: 鈴木さん(事務)"
-              />
+              <Select
+                value={draft.recipient_user_id}
+                disabled={!canSelectRecipient}
+                onValueChange={(value) => {
+                  const nextRecipient = recipientOptions.find((option) => option.id === value);
+                  setDraft((prev) => ({
+                    ...prev,
+                    recipient_user_id: value ?? '',
+                    recipient_label: nextRecipient
+                      ? `${nextRecipient.name}(${nextRecipient.role_label})`
+                      : '',
+                  }));
+                }}
+              >
+                <SelectTrigger id="handoff-transfer-recipient" className="w-full">
+                  <SelectValue placeholder="宛先を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {recipientOptions.map((option) => (
+                    <SelectItem key={option.id} value={option.id}>
+                      {option.name}({option.role_label})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!canSelectRecipient ? (
+                <p className="text-xs text-state-confirm" role="alert">
+                  宛先候補を取得できません。アクティブなスタッフ登録を確認してください。
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="handoff-transfer-priority">優先度</Label>
@@ -415,7 +449,7 @@ function TransferDialog({
             <Button
               type="submit"
               className="min-h-[44px]"
-              disabled={!isComplete || createMutation.isPending || !boardId}
+              disabled={!isComplete || createMutation.isPending || !boardId || !canSelectRecipient}
               aria-describedby={
                 !isComplete && !createMutation.isPending && boardId
                   ? 'handoff-transfer-missing'
@@ -1061,6 +1095,7 @@ export function HandoffWorkspace() {
         onOpenChange={setTransferDialogOpen}
         boardId={board?.id ?? null}
         orgId={orgId}
+        recipientOptions={board?.recipient_options ?? []}
         onCreated={invalidateBoard}
       />
     </section>

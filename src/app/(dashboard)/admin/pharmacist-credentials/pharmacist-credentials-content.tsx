@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
 import {
   Dialog,
   DialogContent,
@@ -213,7 +214,7 @@ export function PharmacistCredentialsContent() {
   const [form, setForm] = useState<CredentialForm>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<PharmacistCredential | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['pharmacist-credentials', orgId],
     queryFn: async () => {
       const response = await fetch('/api/admin/pharmacist-credentials', {
@@ -438,12 +439,22 @@ export function PharmacistCredentialsContent() {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={credentials}
-            isLoading={isLoading}
-            caption="薬剤師研修認定一覧"
-          />
+          {isError ? (
+            // 取得失敗時は空の一覧(false-empty)にせず、再読み込み導線つきの ErrorState を出す。
+            <ErrorState
+              size="inline"
+              description="薬剤師認定情報を取得できませんでした。時間をおいて再読み込みしてください。"
+              action={{ label: '再読み込み', onClick: () => void refetch() }}
+              className="m-4"
+            />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={credentials}
+              isLoading={isLoading}
+              caption="薬剤師研修認定一覧"
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -464,28 +475,47 @@ export function PharmacistCredentialsContent() {
           </DialogHeader>
           <div className="grid gap-4 py-2 md:grid-cols-2">
             <Field label="対象スタッフ" htmlFor="credential-user">
-              <Select
-                value={form.user_id || 'unselected'}
-                onValueChange={(value) =>
-                  setForm((current) => ({
-                    ...current,
-                    user_id: value && value !== 'unselected' ? value : '',
-                  }))
-                }
-              >
-                <SelectTrigger id="credential-user">
-                  <SelectValue placeholder="選択してください" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unselected">選択してください</SelectItem>
-                  {pharmacistOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                      {option.site_name ? ` / ${option.site_name}` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {pharmacistsQuery.isError ? (
+                // スタッフ一覧の取得失敗時は空の選択肢(false-empty)にせず、原因と再読み込み導線を示す。
+                <div
+                  id="credential-user-error"
+                  role="alert"
+                  className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+                >
+                  <span>スタッフ一覧を取得できませんでした。</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void pharmacistsQuery.refetch()}
+                  >
+                    再読み込み
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={form.user_id || 'unselected'}
+                  onValueChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      user_id: value && value !== 'unselected' ? value : '',
+                    }))
+                  }
+                >
+                  <SelectTrigger id="credential-user">
+                    <SelectValue placeholder="選択してください" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unselected">選択してください</SelectItem>
+                    {pharmacistOptions.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name}
+                        {option.site_name ? ` / ${option.site_name}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </Field>
             <Field label="認定種別" htmlFor="credential-certification-type">
               <Input

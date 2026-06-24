@@ -211,10 +211,12 @@ pnpm deploy           # AWS Amplify deploy (or CDK deploy)
 
 ## Autonomous Refinement Loop (Claude × Codex × agmsg × gbrain)
 
-Claude を主実装、Codex を agmsg 経由の peer reviewer/auditor とする継続改善ループの運用基盤は `.agent-loop/` にある。**ループを回す前に `.agent-loop/README.md` を読むこと**（運用の SSOT）。
+Claude / Codex を agmsg 経由で maker/checker に割り当てる継続改善ループの運用基盤は `.agent-loop/` にある。**ループを回す前に `.agent-loop/README.md` を読むこと**（運用の SSOT）。現在の live transport identity は `claude` と `codex` の 2 つのみで、`claude-lead` / `codex-lead` は supervisor role descriptor として扱う。
 
 - **maker/checker 分離**: 実装した側は自己完了判定しない（Claude 実装→Codex review、逆も同様）。最終判定は objective gate（`pnpm lint` / `typecheck` / `typecheck:no-unused` / `format:check` / `test` / `build` / 必要時 `test:e2e`）に寄せる。`.agent-loop/GATE_CONFIG.md` 参照。
 - **編集規律**: 編集前に agmsg で対象 path を LOCK、commit 前に inbox drain、自ファイルのみ stage。`.agent-loop/LOCKS.md` / `MESSAGE_PROTOCOL.md`（AGLOOP v5）。
+- **Claude main dispatcher discipline**: Claude の main loop は inbox drain、ACK/LOCK/review routing、subagent steering、commit に寄せる。`PLAN_REVIEW_REQUEST` / `PATCH_REVIEW_REQUEST` / `VERIFY_REQUEST` / `LOCK_REQUEST` / `HANDOFF` / `PAUSE_REQUEST` / `URGENT` / `CHANGES_REQUESTED` を受けたら、長い review/gate の前に短い ACK/STATUS を返す。自分が送信側のときも ACK/verdict を受けるまで受領済みとみなさず、同じ maker/checker ペアに未処理 PATCH を積み重ねない。
+- **Long gate discipline**: `pnpm build` と `pnpm typecheck` / `pnpm typecheck:no-unused` は並列実行しない（`.next/types` race 回避）。長い gate は subagent/background に回し、main loop は Codex からの agmsg を drain できる状態を保つ。
 - **gbrain**: 長期記憶だが現在の repo 状態・テスト・型・lint・build より**優先しない**。※ 2026-06-20 接続済み（ローカル postgres、`mcp__gbrain__*` は次回 Claude Code 起動後に有効）。詳細は下記 GBrain Configuration。
 
 ## GBrain Configuration (configured by /setup-gbrain, 2026-06-20)

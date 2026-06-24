@@ -4,6 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import type {
   VisitPreparationBoardResponse,
   VisitPreparationCard,
@@ -23,6 +24,12 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
 }));
+
+// Actual-backed spy so the board fetch test can prove org-header helper adoption via return identity.
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
 
 import { VisitsToday } from './visits-today';
 
@@ -65,7 +72,7 @@ function buildCards(): VisitPreparationCard[] {
       is_facility: false,
       patient_count: null,
       meta_label: '在宅・滞在45分',
-      safety_tags: ['narcotic', 'cold_storage'],
+      safety_tags: ['narcotic', 'cold_storage', 'infection_isolation', 'procedure:home_oxygen'],
       prep_done: 3,
       prep_total: 4,
       accent: 'caution',
@@ -90,7 +97,7 @@ function buildCards(): VisitPreparationCard[] {
       is_facility: true,
       patient_count: 12,
       meta_label: '12名・滞在90分',
-      safety_tags: ['narcotic', 'cold_storage', 'allergy'],
+      safety_tags: ['narcotic', 'cold_storage', 'allergy', 'procedure:tpn'],
       prep_done: 3,
       prep_total: 4,
       accent: 'progress',
@@ -207,6 +214,8 @@ describe('VisitsToday', () => {
     expect(within(cards[1]).getByText('田中 一郎 様')).toBeTruthy();
     expect(within(cards[1]).getByText('麻薬')).toBeTruthy();
     expect(within(cards[1]).getByText('冷所')).toBeTruthy();
+    expect(within(cards[1]).getByText('感染隔離')).toBeTruthy();
+    expect(within(cards[1]).getByText('在宅酸素')).toBeTruthy();
     expect(within(cards[1]).getByText(/持参薬 — 麻薬監査待ち\(期限12:00\)/)).toBeTruthy();
     expect(cards[1].getAttribute('data-accent')).toBe('caution');
     expect(
@@ -222,6 +231,7 @@ describe('VisitsToday', () => {
     expect(within(cards[2]).getByText('セット 9/12 — 事務が先行準備中')).toBeTruthy();
     expect(cards[2].getAttribute('data-accent')).toBe('progress');
     expect(within(cards[2]).getByText('アレルギー')).toBeTruthy();
+    expect(within(cards[2]).getByText('TPN')).toBeTruthy();
     expect(within(cards[2]).getByRole('link', { name: '→ セットへ' })).toBeTruthy();
     expect(within(cards[2]).getByRole('link', { name: '→ 施設パケット' })).toBeTruthy();
 
@@ -282,5 +292,50 @@ describe('VisitsToday', () => {
     expect(screen.getByRole('link', { name: '訪問予定を確認' })).toBeTruthy();
     expect(screen.getByText('本日の訪問予定はありません。')).toBeTruthy();
     expect(screen.getByRole('link', { name: '今日のルートを確認する' })).toBeTruthy();
+  });
+
+  it('fetches the today-preparation board with helper org headers and a raw query key', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useRealtimeQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured = config;
+        return {
+          data: buildFixture(),
+          isLoading: false,
+          isError: false,
+          error: null,
+          refetch: refetchMock,
+        };
+      },
+    );
+    // the route returns success({ data }) and fetchVisitPreparationBoard unwraps json.data.
+    const boardFixture = buildFixture();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: boardFixture }),
+    } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<VisitsToday />);
+
+      if (!captured) throw new Error('useRealtimeQuery config was not captured');
+      expect(captured.queryKey).toEqual(['visits', 'today-preparation', 'org_1']);
+      const result = await captured.queryFn();
+
+      // the queryFn must unwrap the { data } envelope and return the board itself.
+      expect(result).toBe(boardFixture);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/visits/today-preparation');
+      expect(init.headers).toBe(sentinelHeaders);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.mocked(buildOrgHeaders).mockReset();
+    }
   });
 });

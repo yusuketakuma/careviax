@@ -136,6 +136,120 @@ describe('visit-workflow-projection', () => {
     });
   });
 
+  it('encodes dynamic path segments while keeping query identities raw', () => {
+    const scheduleId = '../schedule?x=1#frag';
+    const reportId = 'report/../x?download=1#frag';
+    const patientId = 'patient/1?tab=team#frag';
+
+    const actions = buildPostVisitWorkflowActions({
+      recordId: 'record/1?raw=1#frag',
+      scheduleId,
+      patientId,
+      soapComplete: false,
+      collaborationMentioned: true,
+      medicationManagementComplete: true,
+      billingBlockerCount: 1,
+      billingCandidateCount: 2,
+      billingMonth: '2026-04-01',
+      careTeamContactCount: 1,
+      hasNextVisitSuggestion: false,
+      reports: [
+        {
+          id: reportId,
+          report_type: 'physician_report',
+          status: 'draft',
+        },
+      ],
+      conferenceContext: [
+        {
+          id: 'note_1',
+          note_type: 'service_manager',
+          title: '担当者会議',
+          conference_date: '2026-04-20T00:00:00.000Z',
+          action_items: ['共有事項を確認'],
+        },
+      ],
+    });
+
+    const encodedScheduleHref = `/visits/${encodeURIComponent(scheduleId)}/record`;
+    const encodedReportHref = `/reports/${encodeURIComponent(reportId)}`;
+    const encodedCollaborationHref = `/patients/${encodeURIComponent(patientId)}/collaboration`;
+
+    expect(actions.find((action) => action.key === 'report')).toMatchObject({
+      primary_action: {
+        operation: 'open_report',
+        href: encodedReportHref,
+      },
+      href: encodedReportHref,
+    });
+    expect(actions.find((action) => action.key === 'care_team_share')).toMatchObject({
+      primary_action: {
+        operation: 'review_share',
+        href: encodedCollaborationHref,
+      },
+      href: encodedCollaborationHref,
+    });
+    expect(actions.find((action) => action.key === 'billing_review')).toMatchObject({
+      primary_action: {
+        operation: 'review_billing_blockers',
+        href: encodedScheduleHref,
+      },
+      href: encodedScheduleHref,
+    });
+    expect(actions.find((action) => action.key === 'next_visit')).toMatchObject({
+      primary_action: {
+        operation: 'edit_next_visit_suggestion',
+        href: encodedScheduleHref,
+      },
+      href: encodedScheduleHref,
+    });
+
+    const conferenceHref = actions.find((action) => action.key === 'conference_followup')?.href;
+    expect(conferenceHref).toBe(
+      `/conferences?${new URLSearchParams({ patient_id: patientId }).toString()}`,
+    );
+    expect(new URLSearchParams(conferenceHref?.split('?')[1]).get('patient_id')).toBe(patientId);
+  });
+
+  it.each(['.', '..'])('rejects exact dot-segment report id %s', (reportId) => {
+    expect(() =>
+      buildPostVisitWorkflowActions({
+        recordId: 'record_1',
+        scheduleId: 'schedule_1',
+        patientId: 'patient_1',
+        soapComplete: true,
+        collaborationMentioned: true,
+        medicationManagementComplete: true,
+        billingBlockerCount: 0,
+        careTeamContactCount: 1,
+        hasNextVisitSuggestion: false,
+        reports: [
+          {
+            id: reportId,
+            report_type: 'physician_report',
+            status: 'draft',
+          },
+        ],
+      }),
+    ).toThrow(RangeError);
+  });
+
+  it.each(['.', '..'])('rejects exact dot-segment schedule id %s', (scheduleId) => {
+    expect(() =>
+      buildPostVisitWorkflowActions({
+        recordId: 'record_1',
+        scheduleId,
+        patientId: 'patient_1',
+        soapComplete: false,
+        collaborationMentioned: true,
+        medicationManagementComplete: true,
+        billingBlockerCount: 0,
+        careTeamContactCount: 1,
+        hasNextVisitSuggestion: false,
+      }),
+    ).toThrow(RangeError);
+  });
+
   it('does not prompt candidate generation while billing candidates are still loading', () => {
     const actions = buildPostVisitWorkflowActions({
       recordId: 'record_1',

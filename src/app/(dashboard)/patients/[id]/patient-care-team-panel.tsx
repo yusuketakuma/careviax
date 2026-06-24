@@ -27,6 +27,8 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { careTeamContactBadges, type CareTeamContactBadge } from '@/lib/patient/care-team-contact';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { cn } from '@/lib/utils';
 
@@ -161,7 +163,7 @@ export function PatientCareTeamPanel({
     queryKey: ['external-professional-options', orgId],
     queryFn: async () => {
       const response = await fetch('/api/admin/external-professionals', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('他職種マスターの取得に失敗しました');
       return response.json() as Promise<{ data: ExternalProfessionalOption[] }>;
@@ -174,10 +176,7 @@ export function PatientCareTeamPanel({
     mutationFn: async () => {
       const response = await fetch('/api/admin/external-professionals', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(quickCreateDraft),
       });
       const payload = await response.json().catch(() => ({}));
@@ -203,12 +202,9 @@ export function PatientCareTeamPanel({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/care-team`, {
+      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/care-team`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           case_id: selectedCaseId,
           links: rows

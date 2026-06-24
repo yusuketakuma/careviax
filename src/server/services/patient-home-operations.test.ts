@@ -506,6 +506,72 @@ describe('getPatientHomeOperationsData', () => {
     });
   });
 
+  it('encodes patient action href path segments while preserving raw patient identity fields', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientId = encodeURIComponent(rawPatientId);
+    const db = createDb();
+
+    const result = await getPatientHomeOperationsData(db as never, {
+      orgId: 'org_1',
+      patientId: rawPatientId,
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    const itemsByKey = Object.fromEntries(result?.items.map((item) => [item.key, item]) ?? []);
+    expect(itemsByKey.documents?.href).toBe(`/patients/${encodedPatientId}#patient-documents`);
+    expect(itemsByKey.mcs?.href).toBe(`/patients/${encodedPatientId}/mcs`);
+    expect(itemsByKey.prescription?.href).toBe(`/patients/${encodedPatientId}/prescriptions`);
+
+    const billingHref = new URL(itemsByKey.billing?.href ?? '', 'https://example.test');
+    expect(billingHref.pathname).toBe('/billing/candidates');
+    expect(billingHref.searchParams.get('patient_id')).toBe(rawPatientId);
+    const conferenceHref = new URL(itemsByKey.conference?.href ?? '', 'https://example.test');
+    expect(conferenceHref.pathname).toBe('/conferences');
+    expect(conferenceHref.searchParams.get('patient_id')).toBe(rawPatientId);
+
+    expect(db.firstVisitDocument.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ patient_id: rawPatientId }),
+      }),
+    );
+    expect(db.patientMcsLink.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ patient_id: rawPatientId }),
+      }),
+    );
+    expect(db.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({ patient_id: rawPatientId }),
+            expect.objectContaining({ billing_target_id: rawPatientId }),
+          ]),
+        }),
+      }),
+    );
+    expect(db.task.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          task_type: 'patient_mcs_profile',
+          related_entity_id: rawPatientId,
+        }),
+      }),
+    );
+    expect(db.task.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          task_type: 'patient_billing_payment_profile',
+          related_entity_id: rawPatientId,
+        }),
+      }),
+    );
+    expect(itemsByKey.mcs?.quick_actions).toEqual(
+      expect.arrayContaining([expect.objectContaining({ resource_id: rawPatientId })]),
+    );
+    expect(JSON.stringify(result)).not.toContain(`/patients/${rawPatientId}`);
+  });
+
   it('bounds billing candidate rows while keeping open and excluded counts exact when count is available', async () => {
     const count = vi.fn().mockResolvedValueOnce(42).mockResolvedValueOnce(3);
     const db = createDb({

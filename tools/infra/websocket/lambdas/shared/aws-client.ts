@@ -1,4 +1,5 @@
 import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { maybeUnrefTimeout } from './abort-timeout';
 
 export const DEFAULT_WEBSOCKET_AWS_CLIENT_REQUEST_TIMEOUT_MS = 5_000;
 export const MAX_WEBSOCKET_AWS_CLIENT_REQUEST_TIMEOUT_MS = 30_000;
@@ -26,12 +27,6 @@ function normalizePositiveInteger(
   const parsed = Number.parseInt(value ?? '', 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return options.fallback;
   return Math.min(parsed, options.max);
-}
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
 }
 
 function createTimeoutController(timeoutMs: number): { signal: AbortSignal; clear: () => void } {

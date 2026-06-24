@@ -54,7 +54,11 @@ function doseFrequencyLabel(line: { dose: string; frequency: string }): string {
 // ── GET: ワークベンチ projection ──
 
 export const GET = withAuthContext(async (_req, ctx, { params }) => {
-  if (!hasPermission(ctx.role, 'canDispense') && !hasPermission(ctx.role, 'canAuditDispense')) {
+  if (
+    !hasPermission(ctx.role, 'canDispense') &&
+    !hasPermission(ctx.role, 'canAuditDispense') &&
+    !hasPermission(ctx.role, 'canReport')
+  ) {
     return forbidden('調剤ワークベンチの閲覧権限がありません');
   }
 

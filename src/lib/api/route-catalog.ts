@@ -134,6 +134,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'cases',
   },
   {
+    path: '/api/referrals',
+    methods: ['POST'],
+    permission: 'canVisit',
+    description: '紹介受付から患者と初回ケースを原子的に登録',
+    area: 'cases',
+  },
+  {
     path: '/api/visit-schedules',
     methods: ['GET', 'POST'],
     permission: 'canVisit',

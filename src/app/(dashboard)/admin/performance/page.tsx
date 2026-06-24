@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminPerformanceShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -307,7 +308,7 @@ export default function PerformancePage() {
   );
 
   return (
-    <div className="space-y-6">
+    <PageScaffold variant="bare">
       <AdminPageHeader
         title="運用パフォーマンス"
         description="訪問制御、変更負荷、ルート確定率、API 遅延の主要運用指標を継続監視します。"
@@ -741,6 +742,6 @@ export default function PerformancePage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageScaffold>
   );
 }

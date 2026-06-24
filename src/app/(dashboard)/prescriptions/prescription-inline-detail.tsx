@@ -9,7 +9,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
 import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { cn } from '@/lib/utils';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { SOURCE_LABELS } from './new/prescription-form.shared';
@@ -113,8 +117,8 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['prescription-intake-detail', orgId, intakeId],
     queryFn: async () => {
-      const res = await fetch(`/api/prescription-intakes/${intakeId}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('取得失敗');
       return res.json() as Promise<IntakeDetail>;
@@ -144,6 +148,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
     variant: 'outline' as const,
   };
   const inquiries = data.cycle.inquiries;
+  const prescriptionDetailHref = buildPrescriptionHref(data.id);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -172,7 +177,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
             className="min-h-11 min-w-11 px-2 text-[10px] sm:h-6 sm:min-h-0 sm:min-w-0"
             asChild
           >
-            <Link href={`/prescriptions/${data.id}`}>
+            <Link href={prescriptionDetailHref}>
               <ExternalLink className="mr-0.5 size-3" aria-hidden="true" />
               詳細
             </Link>
@@ -183,7 +188,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
             className="min-h-11 min-w-11 px-2 text-[10px] sm:h-6 sm:min-h-0 sm:min-w-0"
             asChild
           >
-            <Link href={`/patients/${patient.id}`}>患者</Link>
+            <Link href={buildPatientHref(patient.id)}>患者</Link>
           </Button>
         </div>
       </div>
@@ -352,7 +357,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
           <Link href="/dispense">調剤キューへ</Link>
         </Button>
         <Button variant="outline" size="sm" className="h-6 px-3 text-[11px]" asChild>
-          <Link href={`/prescriptions/${data.id}`}>全画面表示</Link>
+          <Link href={prescriptionDetailHref}>全画面表示</Link>
         </Button>
       </div>
     </div>

@@ -106,7 +106,7 @@ export const GET = withAuthContext(
           patient_name: proposal.case_.patient.name,
           next_action: '候補日時を電話で確認',
           due_label: formatNullableDateKey(proposal.proposed_date),
-          href: `/schedules/proposals?detail=${proposal.id}`,
+          href: `/schedules/proposals?detail=${encodeURIComponent(proposal.id)}`,
         }),
       ),
     ].slice(0, CLERK_TASK_LIMIT);

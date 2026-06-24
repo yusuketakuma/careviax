@@ -37,14 +37,37 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { toast } from 'sonner';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { ConferencesContent } from './conferences-content';
 
 setupDomTestEnv();
 
 describe('ConferencesContent', () => {
+  type ConferenceNoteTestFixture = {
+    id: string;
+    note_type: string;
+    title: string;
+    content: string;
+    participants: Array<{ name: string; role: string }>;
+    conference_date: string;
+    action_items: Array<{ title: string; assignee?: string; converted_task_id?: string }> | null;
+    case_id: string | null;
+    patient_id?: string | null;
+    sync_summary?: {
+      report_draft_ids?: string[];
+      billing_candidate_id?: string | null;
+      visit_proposal_id?: string | null;
+      tasks_created?: number;
+      medication_issues_created?: number;
+    } | null;
+    generated_report_id?: string | null;
+    created_at: string;
+  };
+
   const mutationConfigs: Array<{
-    mutationFn?: (payload: object) => Promise<unknown>;
-    onSuccess?: (payload: unknown) => void;
+    mutationFn?: (payload: Record<string, unknown>) => Promise<unknown>;
+    onSuccess?: (payload: unknown) => void | Promise<void>;
   }> = [];
   const mutationMocks: ReturnType<typeof vi.fn>[] = [];
   const queryConfigs: Array<{
@@ -52,6 +75,65 @@ describe('ConferencesContent', () => {
     queryFn?: () => Promise<unknown>;
   }> = [];
   const invalidateQueriesMock = vi.fn();
+
+  function makeConferenceNote(
+    overrides: Partial<ConferenceNoteTestFixture> = {},
+  ): ConferenceNoteTestFixture {
+    return {
+      id: 'note_1',
+      note_type: 'service_manager',
+      title: '担当者会議',
+      content: '会議目的: 訪問頻度の見直し',
+      participants: [{ name: '佐藤CM', role: 'care_manager' }],
+      conference_date: '2026-03-30T10:00:00.000Z',
+      action_items: [{ title: 'サービス調整を反映', assignee: '薬剤師' }],
+      case_id: 'case_1',
+      patient_id: 'patient_1',
+      sync_summary: {
+        report_draft_ids: ['report_1'],
+        tasks_created: 1,
+      },
+      generated_report_id: null,
+      created_at: '2026-03-30T11:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  function mockConferenceNoteQueries(summaryNote: ConferenceNoteTestFixture) {
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        const { queryKey } = config;
+        queryConfigs.push(config);
+        if (queryKey[0] === 'conference-notes') {
+          return {
+            data: {
+              data: [summaryNote],
+            },
+            isLoading: false,
+          };
+        }
+        if (queryKey[0] === 'conference-note-detail' && queryKey[2] === summaryNote.id) {
+          return {
+            data: summaryNote,
+            isLoading: false,
+          };
+        }
+        if (queryKey[0] === 'conference-notes-calendar') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'community-activities') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-external-professionals') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-prescriber-institution-suggestion') {
+          return { data: { data: null }, isLoading: false };
+        }
+        return { data: undefined, isLoading: false };
+      },
+    );
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -230,7 +312,7 @@ describe('ConferencesContent', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/api/conference-notes?'),
       expect.objectContaining({
-        headers: { 'x-org-id': 'org_1' },
+        headers: buildOrgHeaders('org_1'),
       }),
     );
     const calledUrl = String(fetchMock.mock.calls[0][0]);
@@ -256,6 +338,212 @@ describe('ConferencesContent', () => {
     const calledUrl = String(fetchMock.mock.calls[0][0]);
     expect(calledUrl).toContain('/api/conference-notes?');
     expect(calledUrl).toContain('detail_level=summary');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('encodes report, proposal, and PDF browser hrefs for hostile note identities', async () => {
+    const hostileNoteId = 'note/id?download=1#frag';
+    const hostileReportId = 'report/id?tab=summary#draft';
+    const hostileCaseId = 'case/id?x=1#frag';
+    const hostilePatientId = 'patient/id?y=2#frag';
+    const note = makeConferenceNote({
+      id: hostileNoteId,
+      case_id: hostileCaseId,
+      patient_id: hostilePatientId,
+      sync_summary: {
+        report_draft_ids: [hostileReportId],
+        visit_proposal_id: 'proposal_1',
+        tasks_created: 1,
+      },
+    });
+    mockConferenceNoteQueries(note);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: note }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ConferencesContent initialFocus="notes" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    const detailConfig = queryConfigs.find(
+      (config) =>
+        config.queryKey[0] === 'conference-note-detail' && config.queryKey[2] === hostileNoteId,
+    );
+    expect(detailConfig?.queryKey).toEqual(['conference-note-detail', 'org_1', hostileNoteId]);
+    await detailConfig?.queryFn?.();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/conference-notes/note%2Fid%3Fdownload%3D1%23frag',
+      {
+        headers: buildOrgHeaders('org_1'),
+      },
+    );
+    expect(screen.getByRole('link', { name: 'ドラフト1' }).getAttribute('href')).toBe(
+      buildReportHref(hostileReportId),
+    );
+    const proposalParams = new URLSearchParams({
+      case_id: hostileCaseId,
+      patient_id: hostilePatientId,
+      focus: 'patient',
+    });
+    expect(screen.getByRole('link', { name: '訪問候補を確認' }).getAttribute('href')).toBe(
+      `/schedules/proposals?${proposalParams.toString()}`,
+    );
+
+    const pdfHref = screen.getByRole('link', { name: 'PDF' }).getAttribute('href');
+    expect(pdfHref).toBe('/api/conference-notes/note%2Fid%3Fdownload%3D1%23frag/pdf');
+    expect(pdfHref).not.toContain('?download');
+    expect(pdfHref).not.toContain('#frag');
+    expect(pdfHref).not.toContain('%25');
+
+    vi.unstubAllGlobals();
+  });
+
+  it('encodes save-summary report and proposal hrefs without encoding raw summary state', () => {
+    const hostileReportId = 'report/id?tab=summary#draft';
+    const hostileCaseId = 'case/id?x=1#frag';
+    const hostilePatientId = 'patient/id?y=2#frag';
+    const contextParams = new URLSearchParams({
+      case_id: hostileCaseId,
+      patient_id: hostilePatientId,
+    });
+    useSearchParamsMock.mockReturnValue(contextParams);
+
+    render(<ConferencesContent initialFocus="notes" />);
+
+    act(() => {
+      mutationConfigs[0]?.onSuccess?.({
+        data: {
+          id: 'note_1',
+          title: '退院前カンファ',
+          case_id: hostileCaseId,
+          patient_id: hostilePatientId,
+        },
+        sync: {
+          report_draft_ids: [hostileReportId],
+          visit_proposal_id: 'proposal_1',
+        },
+      });
+    });
+
+    expect(screen.getByRole('link', { name: 'ドラフト1' }).getAttribute('href')).toBe(
+      buildReportHref(hostileReportId),
+    );
+    const proposalParams = new URLSearchParams({
+      case_id: hostileCaseId,
+      patient_id: hostilePatientId,
+      focus: 'patient',
+    });
+    expect(screen.getByRole('link', { name: '訪問候補を確認' }).getAttribute('href')).toBe(
+      `/schedules/proposals?${proposalParams.toString()}`,
+    );
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['patient-home-operations', hostilePatientId, 'org_1'],
+    });
+  });
+
+  it('uses shared JSON headers and encoded dynamic paths for conference note mutations', async () => {
+    const hostileNoteId = 'note/id?task=1#frag';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { report_draft_ids: ['report_1'] } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ConferencesContent initialFocus="notes" />);
+
+    await mutationConfigs[2]?.mutationFn?.({
+      noteId: hostileNoteId,
+      actionItemIndex: 2,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/conference-notes/note%2Fid%3Ftask%3D1%23frag/tasks',
+      {
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: JSON.stringify({ action_item_index: 2 }),
+      },
+    );
+
+    await mutationConfigs[3]?.mutationFn?.({
+      note: makeConferenceNote({ id: hostileNoteId }),
+      reportType: 'care_manager_report',
+      autoSend: true,
+      includeStructuredContent: false,
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      '/api/conference-notes/note%2Fid%3Ftask%3D1%23frag/generate-report',
+      {
+        method: 'POST',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: JSON.stringify({
+          report_type: 'care_manager_report',
+          auto_send: true,
+          include_structured_content: false,
+        }),
+      },
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects dot-segment conference note ids before fetch for dynamic note paths', async () => {
+    const dotNote = makeConferenceNote({ id: '.' });
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        const { queryKey } = config;
+        queryConfigs.push(config);
+        if (queryKey[0] === 'conference-notes') {
+          return {
+            data: {
+              data: [dotNote],
+            },
+            isLoading: false,
+          };
+        }
+        if (queryKey[0] === 'conference-note-detail' && queryKey[2] === dotNote.id) {
+          return { data: undefined, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-notes-calendar') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'community-activities') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-external-professionals') {
+          return { data: { data: [] }, isLoading: false };
+        }
+        if (queryKey[0] === 'conference-prescriber-institution-suggestion') {
+          return { data: { data: null }, isLoading: false };
+        }
+        return { data: undefined, isLoading: false };
+      },
+    );
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ConferencesContent initialFocus="notes" />);
+    fireEvent.click(screen.getByRole('button', { name: '詳細を開く' }));
+
+    const detailConfig = queryConfigs.find(
+      (config) => config.queryKey[0] === 'conference-note-detail' && config.queryKey[2] === '.',
+    );
+    await expect(detailConfig?.queryFn?.()).rejects.toThrow(RangeError);
+    await expect(detailConfig?.queryFn?.()).rejects.toThrow('Path segment cannot be a dot segment');
+    await expect(
+      mutationConfigs[2]?.mutationFn?.({ noteId: '..', actionItemIndex: 0 }),
+    ).rejects.toThrow(RangeError);
+    await expect(
+      mutationConfigs[3]?.mutationFn?.({
+        note: makeConferenceNote({ id: '.' }),
+        reportType: 'internal_record',
+        autoSend: false,
+        includeStructuredContent: true,
+      }),
+    ).rejects.toThrow(RangeError);
+    expect(fetchMock).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();
   });

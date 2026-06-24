@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { AnchorHTMLAttributes } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 const fetchNextPageMock = vi.hoisted(() => vi.fn());
@@ -17,6 +18,12 @@ const useRealtimeEventsMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
 }));
+
+// Actual-backed spy so the GET header test can prove helper adoption via return-value identity.
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
 
 vi.mock('@/lib/hooks/use-realtime-events', () => ({
   useRealtimeEvents: useRealtimeEventsMock,
@@ -169,10 +176,14 @@ describe('PrescriptionsWorkspace', () => {
     });
   });
 
-  it('fetches one server page with limit/cursor and no polling interval', async () => {
+  it('fetches one server page with limit/cursor, no polling, and helper org headers', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+
     render(<PrescriptionsWorkspace />);
 
     const options = latestInfiniteQueryOptions();
+    // infinite queryKey carries the status/source filters; realtime invalidation key (['prescription-intakes','org_1']) is separate.
     expect(options.queryKey).toEqual(['prescription-intakes', 'org_1', 'all', 'all']);
     expect(options.refetchInterval).toBeUndefined();
     expect(options.getNextPageParam({ nextCursor: 'cursor_1' })).toBe('cursor_1');
@@ -187,9 +198,11 @@ describe('PrescriptionsWorkspace', () => {
     expect(url.searchParams.has('cursor')).toBe(false);
     expect(url.searchParams.has('status')).toBe(false);
     expect(url.searchParams.has('source_type')).toBe(false);
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-      headers: { 'x-org-id': 'org_1' },
-    });
+    // helper-return identity (toBe), not an equal-shaped literal; helper called with the real org.
+    expect((fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)?.headers).toBe(
+      sentinelHeaders,
+    );
+    expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
 
     fetchMock.mockClear();
     await options.queryFn({ pageParam: 'cursor_1' });

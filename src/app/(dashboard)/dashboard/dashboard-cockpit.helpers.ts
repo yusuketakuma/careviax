@@ -26,10 +26,15 @@ export function formatCockpitGeneratedAtMeta(generatedAtIso: string, now: Date):
   return ageMs >= COCKPIT_FRESHNESS_WINDOW_MS ? `${timeLabel} / 要更新` : timeLabel;
 }
 
-/** ISO 文字列 → ローカル 0:00 からの経過分。 */
-export function minutesOfDay(iso: string): number {
-  const date = new Date(iso);
-  return date.getHours() * 60 + date.getMinutes();
+/**
+ * "HH:MM" 壁時計文字列 → 0:00 からの経過分。
+ * 訪問時刻は @db.Time 由来の壁時計(BFF で timeDateToString 済み)なので、
+ * Date 経由でローカル TZ 再解釈せず文字列を直接パースする(JST ずれ防止)。
+ */
+export function minutesOfDay(clock: string): number {
+  const [hours, minutes] = clock.split(':').map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0;
+  return hours * 60 + minutes;
 }
 
 /** 期限までの残り時間ラベル(例: あと 2時間18分)。期限超過は overdue=true。 */

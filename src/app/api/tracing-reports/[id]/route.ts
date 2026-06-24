@@ -6,6 +6,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { buildTracingReportPdfPath } from '@/lib/reports/tracing-report-pdf-path';
 import {
   communicationChannelSchema,
   DEFAULT_COMMUNICATION_CHANNEL,
@@ -182,7 +183,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...(status === 'acknowledged' && !existing.acknowledged_at
             ? { acknowledged_at: new Date() }
             : {}),
-          pdf_url: `/api/tracing-reports/${id}/pdf`,
+          pdf_url: buildTracingReportPdfPath(id),
         },
         select: {
           id: true,

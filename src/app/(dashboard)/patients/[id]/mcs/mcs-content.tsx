@@ -24,6 +24,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   parsePatientMcsSyncResult,
@@ -54,12 +56,10 @@ function isOtherProfessionalRole(role: string | null) {
 }
 
 async function syncPatientMcs(patientId: string, orgId: string, sourceUrl?: string) {
-  const response = await fetch(`/api/patients/${patientId}/mcs-sync`, {
+  const patientPathId = encodePathSegment(patientId);
+  const response = await fetch(`/api/patients/${patientPathId}/mcs-sync`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(sourceUrl ? { source_url: sourceUrl } : {}),
   });
 
@@ -80,12 +80,10 @@ async function createPatientMcsCheckLog(
     nextAction: string;
   },
 ) {
-  const response = await fetch(`/api/patients/${patientId}/mcs/logs`, {
+  const patientPathId = encodePathSegment(patientId);
+  const response = await fetch(`/api/patients/${patientPathId}/mcs/logs`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({
       content_type: input.contentType,
       summary: input.summary,
@@ -113,12 +111,10 @@ async function updatePatientMcsProfile(
     note: string | null;
   },
 ) {
-  const response = await fetch(`/api/patients/${patientId}/mcs`, {
+  const patientPathId = encodePathSegment(patientId);
+  const response = await fetch(`/api/patients/${patientPathId}/mcs`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({
       linked_status: input.linkedStatus,
       participation_status: input.participationStatus,

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { MasterEditorView } from '../master-editor-view';
@@ -8,10 +9,39 @@ import { DrugMasterContent, parseReorderPointInput } from './drug-master-content
 
 setupDomTestEnv();
 
-const { useOrgIdMock, pendingRequestsMock, mutationMutateMock } = vi.hoisted(() => ({
+type MutationOptions = {
+  mutationFn?: (...args: unknown[]) => unknown;
+  onSuccess?: (...args: unknown[]) => unknown;
+  onError?: (...args: unknown[]) => unknown;
+};
+
+const {
+  useOrgIdMock,
+  pendingRequestsMock,
+  mutationMutateMock,
+  lastMutationOptions,
+  invalidateQueriesMock,
+  capturedQueryKeys,
+  detailDataMock,
+  stockConfigDataMock,
+  candidatesDataMock,
+} = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
   pendingRequestsMock: vi.fn(),
   mutationMutateMock: vi.fn(),
+  lastMutationOptions: { current: null as MutationOptions | null },
+  // Controllable so a test can hold invalidation pending and assert previews are already cleared
+  // synchronously (before the await resolves). Defaults to immediate resolve.
+  invalidateQueriesMock: vi.fn((): Promise<void> => Promise.resolve()),
+  // slice4b: every useQuery call records its FULL queryKey here so filter tests can assert the
+  // key shape reacts to the migrated Select state (state+queryKey, not DOM-only).
+  capturedQueryKeys: [] as ReadonlyArray<unknown>[],
+  // slice4c: controllable payloads for the drug-detail panel queries so a test can render the
+  // 採用後発薬 (preferred generic) Select. Default null/empty preserves the prior behavior
+  // (the fallback `{ data: null }` branch) so every existing test is unaffected.
+  detailDataMock: { current: null as unknown },
+  stockConfigDataMock: { current: null as unknown },
+  candidatesDataMock: { current: [] as unknown[] },
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -19,12 +49,16 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useMutation: () => ({
-    mutate: mutationMutateMock,
+  useMutation: (options?: MutationOptions) => ({
+    mutate: (...args: unknown[]) => {
+      lastMutationOptions.current = options ?? null;
+      mutationMutateMock(...args);
+    },
     isPending: false,
     variables: null,
   }),
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+    capturedQueryKeys.push(queryKey as ReadonlyArray<unknown>);
     const key = queryKey[0];
     if (key === 'drug-masters') {
       return { data: { data: [], totalCount: 0, hasMore: false }, isLoading: false };
@@ -260,15 +294,243 @@ vi.mock('@tanstack/react-query', () => ({
     if (key === 'drug-master-import-logs') {
       return { data: { data: [] }, isLoading: false };
     }
+    // slice4c: drug-detail panel queries that back the 採用後発薬 (preferred generic) Select.
+    // Controllable via the hoisted refs; default values keep the prior null/empty behavior.
+    if (key === 'drug-master-detail') {
+      return { data: detailDataMock.current, isLoading: false, isError: false };
+    }
+    if (key === 'pharmacy-drug-stock') {
+      return { data: { data: stockConfigDataMock.current }, isLoading: false };
+    }
+    if (key === 'preferred-generic-candidates') {
+      return { data: { data: candidatesDataMock.current }, isLoading: false };
+    }
     return { data: null, isLoading: false, isError: false };
   },
   useQueryClient: () => ({
-    invalidateQueries: vi.fn(),
+    invalidateQueries: invalidateQueriesMock,
   }),
 }));
 
 vi.mock('@/components/ui/data-table', () => ({
   DataTable: () => <div data-testid="drug-master-table" />,
+}));
+
+// Records the original className of every SelectItem so the >=44px touch-target contract
+// can be asserted on the SOURCE className (the mock must not inject min-h itself). selectKey is the
+// owning Select's trigger id || aria-label || aria-labelledby, so items from different Selects
+// (e.g. target-site site_2 vs copy-source site_2) are captured + deduped INDEPENDENTLY.
+const capturedSelectItems: Array<{
+  selectKey: string;
+  value: unknown;
+  children: ReactNode;
+  className?: string;
+}> = [];
+
+// R1 teeth: a one-shot synchronous hook the MockSelect runs INSIDE the native <select> onChange,
+// immediately AFTER the component's onValueChange (which runs applySelectedTemplateId etc.
+// synchronously) but BEFORE control returns to RTL's act wrapper / passive-effect flush. Tests use
+// it to invoke a stale onSuccess in the SAME turn, so a regression that drops the synchronous ref
+// write (leaving only the passive useEffect backstop) is NOT masked by an effect flush.
+const afterSelectChangeHook: { current: (() => void) | null } = { current: null };
+
+// SelectItem children may be a node array (e.g. `name（count件）`); flatten to a plain string for
+// label assertions without depending on React.Children inside the test body.
+function flattenLabel(node: ReactNode): string {
+  if (node === null || node === undefined || node === false || node === true) return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(flattenLabel).join('');
+  const element = node as { props?: { children?: ReactNode } };
+  if (element.props && 'children' in element.props) return flattenLabel(element.props.children);
+  return '';
+}
+
+// Base UI Select renders a portaled listbox jsdom can't drive; mock it to a native <select>
+// that forwards the trigger's id/className/aria-* so getByRole('combobox', { name }) resolves,
+// and that keeps clear/sentinel items so clear-back-to-'' flows stay testable.
+vi.mock('@/components/ui/select', async () => {
+  const React = await import('react');
+
+  type ItemProps = { value?: unknown; children?: ReactNode; className?: string };
+  type TriggerProps = {
+    id?: string;
+    className?: string;
+    'aria-label'?: string;
+    'aria-labelledby'?: string;
+    'aria-describedby'?: string;
+    'aria-invalid'?: boolean;
+    children?: ReactNode;
+  };
+
+  // Marker components so the JSX tree (which is traversed BEFORE any of these render) can be
+  // matched by component identity rather than by props injected at render time.
+  const SelectContent = ({ children }: { children: ReactNode }) => <>{children}</>;
+  const SelectItem = ({ children }: ItemProps) => <>{children}</>;
+  const SelectTrigger = ({ children }: TriggerProps) => <>{children}</>;
+  const SelectValue = ({
+    placeholder,
+    children,
+  }: {
+    placeholder?: string;
+    children?: ReactNode;
+  }) => <>{children ?? placeholder ?? null}</>;
+
+  function collectItems(children: ReactNode, selectKey: string): ItemProps[] {
+    const items: ItemProps[] = [];
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as ItemProps;
+      if (child.type === SelectItem) {
+        const item = {
+          value: props.value,
+          children: props.children,
+          className: props.className,
+        };
+        items.push(item);
+        // Capture the ORIGINAL SelectItem className (the mock never injects min-h itself)
+        // so the >=44px touch-target contract can be asserted on the source value.
+        // Dedup by selectKey+value+label so StrictMode/rerenders don't inflate the module array
+        // (N1) while keeping per-Select items distinct (R3): one Select's item can never satisfy
+        // another Select's assertion.
+        const key = `${selectKey}::${String(item.value)}::${flattenLabel(item.children)}`;
+        if (
+          !capturedSelectItems.some(
+            (c) => `${c.selectKey}::${String(c.value)}::${flattenLabel(c.children)}` === key,
+          )
+        ) {
+          capturedSelectItems.push({ selectKey, ...item });
+        }
+      }
+      items.push(...collectItems(props.children, selectKey));
+    });
+    return items;
+  }
+
+  function findTriggerProps(children: ReactNode): TriggerProps | undefined {
+    let triggerProps: TriggerProps | undefined;
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as TriggerProps;
+      if (child.type === SelectTrigger) triggerProps = props;
+      if (!triggerProps) triggerProps = findTriggerProps(props.children);
+    });
+    return triggerProps;
+  }
+
+  function findPlaceholder(children: ReactNode): string | undefined {
+    let placeholder: string | undefined;
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as { placeholder?: string; children?: ReactNode };
+      if (child.type === SelectValue && props.placeholder) placeholder = props.placeholder;
+      if (placeholder === undefined) placeholder = findPlaceholder(props.children);
+    });
+    return placeholder;
+  }
+
+  // Mirror findPlaceholder, but return the SelectValue element's own props so we can faithfully
+  // model Base UI's closed-trigger label contract: children (the production label) win over
+  // placeholder, and a BARE SelectValue (neither) must fall back to the raw value — the
+  // regression a bare `<SelectValue />` would ship.
+  function findSelectValue(
+    children: ReactNode,
+  ): { children?: ReactNode; placeholder?: string } | undefined {
+    let found: { children?: ReactNode; placeholder?: string } | undefined;
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as { placeholder?: string; children?: ReactNode };
+      if (child.type === SelectValue && found === undefined) {
+        found = { children: props.children, placeholder: props.placeholder };
+      }
+      if (found === undefined) found = findSelectValue(props.children);
+    });
+    return found;
+  }
+
+  function MockSelect({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (value: string) => void;
+    children: ReactNode;
+  }) {
+    const triggerProps = findTriggerProps(children);
+    const placeholder = findPlaceholder(children);
+    const selectValueProps = findSelectValue(children);
+    // Per-Select identity for capture/dedupe: prefer the trigger id, then aria-label, then
+    // aria-labelledby (all already forwarded by the mock). These are unique per migrated Select.
+    const selectKey =
+      triggerProps?.id ??
+      triggerProps?.['aria-label'] ??
+      triggerProps?.['aria-labelledby'] ??
+      'unknown-select';
+    // Reproduce Base UI's CLOSED-trigger label contract on SelectPrimitive.Value:
+    //   children (production-supplied label) > placeholder > bare fallback.
+    // The bare fallback is the regression: a non-empty value renders raw (e.g. "operations"),
+    // an empty-string value renders blank — which is exactly what these assertions must catch.
+    const selectValueChildrenText = flattenLabel(selectValueProps?.children);
+    const displayLabel =
+      selectValueChildrenText !== ''
+        ? selectValueChildrenText
+        : (selectValueProps?.placeholder ?? (value === '' ? '' : String(value ?? '')));
+    const items = collectItems(children, selectKey);
+    return (
+      <>
+        <span data-testid={`${selectKey}-display`}>{displayLabel}</span>
+        <select
+          id={triggerProps?.id}
+          className={triggerProps?.className}
+          aria-label={triggerProps?.['aria-label']}
+          aria-labelledby={triggerProps?.['aria-labelledby']}
+          aria-describedby={triggerProps?.['aria-describedby']}
+          aria-invalid={triggerProps?.['aria-invalid']}
+          value={value}
+          onChange={(event) => {
+            onValueChange?.(event.target.value);
+            // R1 teeth: run the one-shot stale-onSuccess hook in the SAME synchronous turn, before
+            // RTL flushes passive effects, so the synchronous ref write is what must reject it.
+            const hook = afterSelectChangeHook.current;
+            if (hook) {
+              afterSelectChangeHook.current = null;
+              hook();
+            }
+          }}
+        >
+          <option value="">{placeholder ?? ''}</option>
+          {items.map((item) => (
+            <option key={String(item.value)} value={String(item.value)}>
+              {React.Children.toArray(item.children).join('')}
+            </option>
+          ))}
+        </select>
+      </>
+    );
+  }
+
+  return {
+    Select: MockSelect,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+  };
+});
+
+// slice4c: the drug-detail panel (which hosts the 採用後発薬 Select) lives inside a Base UI Dialog
+// (Sheet) that portals + gates on `open` — the same class of primitive jsdom can't drive that we
+// already mock for Select/DataTable. Mock it to render children inline so the panel is testable;
+// the panel's own `detailQuery.data` guard (controlled via detailDataMock) decides what shows.
+vi.mock('@/components/ui/sheet', () => ({
+  Sheet: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetDescription: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetTrigger: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetClose: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
 vi.mock('next/link', () => ({
@@ -289,6 +551,11 @@ describe('DrugMasterContent', () => {
     useOrgIdMock.mockReturnValue('org_1');
     pendingRequestsMock.mockReturnValue([]);
     mutationMutateMock.mockClear();
+    lastMutationOptions.current = null;
+    capturedSelectItems.length = 0;
+    detailDataMock.current = null;
+    stockConfigDataMock.current = null;
+    candidatesDataMock.current = [];
   });
 
   it('shows PMDA and other externally configured sources in master status', () => {
@@ -319,7 +586,9 @@ describe('DrugMasterContent', () => {
 
     expect(screen.getByTestId('drug-master-editor')).toBeTruthy();
     expect(screen.getByText('カテゴリ')).toBeTruthy();
-    expect(screen.getByText('薬剤マスター一覧')).toBeTruthy();
+    // '薬剤マスター一覧' now appears as both the page h1 (AdminPageHeader) and the editor
+    // column h2; scope to the level-2 heading so the assertion stays unambiguous.
+    expect(screen.getByRole('heading', { name: '薬剤マスター一覧', level: 2 })).toBeTruthy();
     expect(screen.getByText('詳細を編集')).toBeTruthy();
     expect(screen.getByText('薬剤マスター 8')).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存する' })).toBeTruthy();
@@ -484,6 +753,1228 @@ describe('DrugMasterContent', () => {
       decision: 'reject',
       decision_note: '申請内容を確認して却下',
     });
+  });
+});
+
+describe('DrugMasterContent formulary select migration (slice4a)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useOrgIdMock.mockReturnValue('org_1');
+    pendingRequestsMock.mockReturnValue([]);
+    mutationMutateMock.mockClear();
+    lastMutationOptions.current = null;
+    capturedSelectItems.length = 0;
+    afterSelectChangeHook.current = null;
+    invalidateQueriesMock.mockReset();
+    invalidateQueriesMock.mockImplementation(async () => undefined);
+    detailDataMock.current = null;
+    stockConfigDataMock.current = null;
+    candidatesDataMock.current = [];
+  });
+
+  // These builders produce the RAW server JSON for a dry-run (no request-context fields). The
+  // request-context (`requestTargetSiteId`/`requestSourceSiteId`/`requestTemplateId`/`requestCsv`/
+  // `requestOverwrite`) is stamped by the PRODUCTION mutationFn, so tests run the real captured
+  // mutationFn (R3) instead of hand-injecting those fields.
+  const makeTemplateServerResponse = () => ({
+    itemCount: 12,
+    appliedCount: 0,
+    skippedCount: 0,
+    overwrite: false,
+    dryRun: true,
+    preview: {
+      summary: {
+        item_count: 12,
+        create_count: 3,
+        update_count: 1,
+        skip_existing_count: 0,
+        apply_count: 4,
+      },
+      rows: [
+        {
+          action: 'create' as const,
+          drug_master_id: 'drug_1',
+          reorder_point: null,
+          preferred_generic_id: null,
+          drug_master: { id: 'drug_1', yj_code: '111111111111', drug_name: 'テンプレ薬' },
+        },
+      ],
+    },
+  });
+
+  const makeCopyServerResponse = () => ({
+    sourceCount: 5,
+    copiedCount: 0,
+    skippedCount: 0,
+    overwrite: false,
+    dryRun: true,
+    preview: {
+      summary: {
+        source_count: 5,
+        create_count: 2,
+        update_count: 0,
+        skip_existing_count: 0,
+        apply_count: 2,
+      },
+      rows: [
+        {
+          action: 'create' as const,
+          drug_master_id: 'drug_c',
+          reorder_point: null,
+          preferred_generic_id: null,
+          drug_master: { id: 'drug_c', yj_code: '999999999999', drug_name: 'コピー薬' },
+        },
+      ],
+    },
+  });
+
+  const makeBulkServerResponse = (rowCount = 1) => ({
+    importedCount: 0,
+    unmatchedRows: [] as Array<{ rowNumber: number; yj_code?: string; drug_name?: string }>,
+    invalidRows: [] as Array<{ rowNumber: number; reason: string }>,
+    preview: {
+      summary: {
+        totalRows: rowCount,
+        processableRows: rowCount,
+        createCount: rowCount,
+        updateCount: 0,
+        deactivateCount: 0,
+        noChangeCount: 0,
+        unmatchedCount: 0,
+        invalidCount: 0,
+      },
+      rows: Array.from({ length: rowCount }, (_, index) => ({
+        rowNumber: index + 1,
+        status: 'create' as const,
+        yj_code: `2222222222${String(index).padStart(2, '0')}`,
+        drug_name: `CSV薬${index + 1}`,
+      })),
+    },
+  });
+
+  // Stub global.fetch to return the given server JSON, execute the REAL captured mutationFn so the
+  // production request-context stamping runs against the live controls/request body, then return
+  // its stamped result (to be fed into onSuccess). This exercises R3.
+  async function runCapturedDryRun(serverJson: unknown, vars?: unknown) {
+    const options = lastMutationOptions.current;
+    if (!options?.mutationFn) throw new Error('no captured mutationFn');
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => serverJson,
+    }));
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+    try {
+      return await options.mutationFn(vars);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }
+
+  it('updates state when the target-site combobox value changes (#1)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const target = screen.getByRole('combobox', { name: '採用品設定の対象拠点' });
+    fireEvent.change(target, { target: { value: 'site_2' } });
+
+    expect(screen.getByText('コピー先: 支店')).toBeTruthy();
+  });
+
+  it('updates state when the copy-source combobox value changes (#2)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const copyButton = screen.getByRole('button', { name: /コピー差分確認/ });
+    expect(copyButton).toHaveProperty('disabled', true);
+
+    // Target defaults to the first site (site_1), so the copy-source list excludes it; site_2 is
+    // the available source option.
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+
+    expect(screen.getByRole('button', { name: /コピー差分確認/ })).toHaveProperty(
+      'disabled',
+      false,
+    );
+  });
+
+  it('updates state when the template combobox value changes (#3)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+
+    expect(screen.getByRole('button', { name: '在宅内科 標準セット（12件） を削除' })).toBeTruthy();
+  });
+
+  it('keeps the >=44px touch-target contract on migrated triggers and items', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    for (const name of ['採用品設定の対象拠点', 'コピー元拠点', '適用する採用品テンプレート']) {
+      const trigger = screen.getByRole('combobox', { name });
+      expect(trigger.className).toContain('min-h-[44px]');
+      expect(trigger.className).toContain('sm:min-h-[44px]');
+    }
+
+    // The mock never injects min-h; every captured SelectItem className must carry it on its own,
+    // including the clear sentinel item.
+    const sentinelItem = capturedSelectItems.find((item) => item.value === '__none__');
+    const normalItem = capturedSelectItems.find((item) => item.value === 'template_1');
+    expect(sentinelItem?.className).toContain('min-h-[44px]');
+    expect(normalItem?.className).toContain('min-h-[44px]');
+  });
+
+  it('disables copy actions again when the copy source is cleared (#2)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const copyCombobox = screen.getByRole('combobox', { name: 'コピー元拠点' });
+    fireEvent.change(copyCombobox, { target: { value: 'site_2' } });
+    expect(screen.getByRole('button', { name: /コピー差分確認/ })).toHaveProperty(
+      'disabled',
+      false,
+    );
+    expect(screen.getByRole('button', { name: /採用品をコピー/ })).toHaveProperty(
+      'disabled',
+      false,
+    );
+
+    // Choose the explicit clear sentinel.
+    fireEvent.change(copyCombobox, { target: { value: '__none__' } });
+
+    expect(screen.getByRole('button', { name: /コピー差分確認/ })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: /採用品をコピー/ })).toHaveProperty('disabled', true);
+  });
+
+  it('gates template apply on selection and clears back to disabled (#3)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const templateCombobox = screen.getByRole('combobox', { name: '適用する採用品テンプレート' });
+    expect(screen.getByRole('button', { name: /適用差分確認/ })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: /テンプレートを適用/ })).toHaveProperty(
+      'disabled',
+      true,
+    );
+
+    fireEvent.change(templateCombobox, { target: { value: 'template_1' } });
+    expect(screen.getByRole('button', { name: /適用差分確認/ })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: /テンプレートを適用/ })).toHaveProperty(
+      'disabled',
+      false,
+    );
+
+    fireEvent.change(templateCombobox, { target: { value: '__none__' } });
+    expect(screen.getByRole('button', { name: /適用差分確認/ })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: /テンプレートを適用/ })).toHaveProperty(
+      'disabled',
+      true,
+    );
+  });
+
+  it('does not fire the delete mutation before confirmation and clears selection delete gating (#3)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const templateCombobox = screen.getByRole('combobox', { name: '適用する採用品テンプレート' });
+    fireEvent.change(templateCombobox, { target: { value: 'template_1' } });
+
+    fireEvent.click(screen.getByRole('button', { name: '在宅内科 標準セット（12件） を削除' }));
+    expect(mutationMutateMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('alertdialog', { name: '採用品テンプレートを削除しますか' }),
+    ).toBeTruthy();
+  });
+
+  it('clears the template-apply preview when the target site changes (#1 mandatory)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+
+    // Run the REAL mutationFn (stamps context from live controls) then feed its result to onSuccess.
+    const stamped = await runCapturedDryRun(makeTemplateServerResponse(), { dryRun: true });
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+    expect(screen.getByText('テンプレ薬')).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('combobox', { name: '採用品設定の対象拠点' }), {
+      target: { value: 'site_2' },
+    });
+
+    expect(screen.queryByText('テンプレ薬')).toBeNull();
+  });
+
+  it('clears the CSV bulk preview when the target site changes (#1 mandatory)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const csv = '222222222200,CSV薬1,1,,,';
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), {
+      target: { value: csv },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+
+    const stamped = await runCapturedDryRun(makeBulkServerResponse());
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+    expect(screen.getByText('CSV反映前プレビュー')).toBeTruthy();
+    expect(screen.getByText('反映可能')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', false);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '採用品設定の対象拠点' }), {
+      target: { value: 'site_2' },
+    });
+
+    expect(screen.queryByText('CSV反映前プレビュー')).toBeNull();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', true);
+  });
+
+  // R3 — the production mutationFn must stamp the request-context from the live controls.
+  it('stamps the live request-context onto each dry-run mutationFn result (R3)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    // Template dry-run: target site_1 (default), template_1, overwrite false.
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+    const templateStamped = (await runCapturedDryRun(makeTemplateServerResponse(), {
+      dryRun: true,
+    })) as Record<string, unknown>;
+    expect(templateStamped.requestTargetSiteId).toBe('site_1');
+    expect(templateStamped.requestTemplateId).toBe('template_1');
+    expect(templateStamped.requestOverwrite).toBe(false);
+
+    // Copy dry-run: target site_1, source site_2, overwrite false.
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /コピー差分確認/ }));
+    const copyStamped = (await runCapturedDryRun(makeCopyServerResponse(), {
+      dryRun: true,
+    })) as Record<string, unknown>;
+    expect(copyStamped.requestTargetSiteId).toBe('site_1');
+    expect(copyStamped.requestSourceSiteId).toBe('site_2');
+    expect(copyStamped.requestOverwrite).toBe(false);
+
+    // Bulk dry-run: target site_1, the live CSV.
+    const csv = '222222222200,CSV薬1,1,,,';
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), { target: { value: csv } });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    const bulkStamped = (await runCapturedDryRun(makeBulkServerResponse())) as Record<
+      string,
+      unknown
+    >;
+    expect(bulkStamped.requestTargetSiteId).toBe('site_1');
+    expect(bulkStamped.requestCsv).toBe(csv);
+  });
+
+  // REQUIRED 1 — P1 medical safety / R3: a stale in-flight dry-run from the PREVIOUS context must
+  // NOT restore a preview. Context is changed and the OLD onSuccess is invoked IMMEDIATELY with no
+  // reliance on any passive effect flush between the change and the onSuccess.
+  it('ignores a stale template-apply preview that resolves after the target changed (#1 safety, same-turn)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+    // Stamp against site_1 (live controls) BEFORE the target changes.
+    const stamped = await runCapturedDryRun(makeTemplateServerResponse(), { dryRun: true });
+
+    // R1 teeth: the stale onSuccess fires in the SAME turn as the target change (inside the select
+    // onChange, after the handler's synchronous ref write, before any passive-effect flush). If the
+    // synchronous write is removed, only the (not-yet-flushed) useEffect backstop would run and the
+    // stale preview WOULD render — so this test fails without the load-bearing sync write.
+    afterSelectChangeHook.current = () => lastMutationOptions.current?.onSuccess?.(stamped);
+    fireEvent.change(screen.getByRole('combobox', { name: '採用品設定の対象拠点' }), {
+      target: { value: 'site_2' },
+    });
+
+    expect(screen.queryByText('テンプレ薬')).toBeNull();
+  });
+
+  it('ignores a stale CSV bulk preview that resolves after the target changed (#1 safety, same-turn)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const csv = '222222222200,CSV薬1,1,,,';
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), { target: { value: csv } });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    const stamped = await runCapturedDryRun(makeBulkServerResponse());
+
+    // R1 teeth: stale onSuccess fires in the same turn as the target change (before effect flush).
+    afterSelectChangeHook.current = () => lastMutationOptions.current?.onSuccess?.(stamped);
+    fireEvent.change(screen.getByRole('combobox', { name: '採用品設定の対象拠点' }), {
+      target: { value: 'site_2' },
+    });
+
+    expect(screen.queryByText('CSV反映前プレビュー')).toBeNull();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', true);
+  });
+
+  it('ignores a stale copy preview that resolves after the copy source changed (#2 safety, same-turn)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    // Target defaults to site_1; copy source can be site_2 only.
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /コピー差分確認/ }));
+    const stamped = await runCapturedDryRun(makeCopyServerResponse(), { dryRun: true });
+
+    // R1 teeth: stale onSuccess fires in the same turn the copy source is cleared (before effect
+    // flush), so the synchronous copySourceSiteIdRef write in the handler is what rejects it.
+    afterSelectChangeHook.current = () => lastMutationOptions.current?.onSuccess?.(stamped);
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: '__none__' },
+    });
+
+    expect(screen.queryByText('コピー薬')).toBeNull();
+    expect(screen.getByRole('button', { name: /採用品をコピー/ })).toHaveProperty('disabled', true);
+  });
+
+  // REQUIRED 2 / R2 — overwrite is part of the request body and clears previews; a dry-run started
+  // with overwrite=false that resolves after the user toggles overwrite=true must be discarded.
+  it('ignores a stale copy preview after the overwrite toggle changed (#2 overwrite safety)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /コピー差分確認/ }));
+    // Stamp with overwrite=false (live control state).
+    const stamped = await runCapturedDryRun(makeCopyServerResponse(), { dryRun: true });
+
+    // Toggle overwrite (handler syncs overwriteRef synchronously).
+    fireEvent.click(screen.getByLabelText('既存の採用品設定を上書き'));
+
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+
+    expect(screen.queryByText('コピー薬')).toBeNull();
+  });
+
+  it('ignores a stale template-apply preview after the overwrite toggle changed (#3 overwrite safety)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+    const stamped = await runCapturedDryRun(makeTemplateServerResponse(), { dryRun: true });
+
+    fireEvent.click(screen.getByLabelText('既存の採用品設定を上書き'));
+
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+
+    expect(screen.queryByText('テンプレ薬')).toBeNull();
+  });
+
+  it('renders a fresh copy preview only when the request context still matches (#2)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /コピー差分確認/ }));
+
+    const stamped = await runCapturedDryRun(makeCopyServerResponse(), { dryRun: true });
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+
+    expect(screen.getByText('コピー薬')).toBeTruthy();
+  });
+
+  // rev3 R1/PI-012 — non-combobox reset paths that clear selectedTemplateId/bulkCsv must also sync
+  // the paired ref (via the applySelectedTemplateId/applyBulkCsv helpers), so a stale dry-run
+  // onSuccess resolving immediately after the reset cannot restore the cleared preview.
+  it('ignores a stale template preview after the テンプレート検索 input clears the selection (R1)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+    const stamped = await runCapturedDryRun(makeTemplateServerResponse(), { dryRun: true });
+
+    // R1 teeth: dispatch the search-input change (which runs applySelectedTemplateId('') synchronously
+    // in its onChange) and the stale onSuccess in the SAME act turn, before any passive-effect flush.
+    const searchInput = screen.getByLabelText('採用品テンプレート検索') as HTMLInputElement;
+    const nativeValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    )?.set;
+    act(() => {
+      nativeValueSetter?.call(searchInput, '在宅');
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+
+    expect(screen.queryByText('テンプレ薬')).toBeNull();
+  });
+
+  it('ignores a stale template preview after deleteTemplate success clears the selection (R1)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+    const stamped = await runCapturedDryRun(makeTemplateServerResponse(), { dryRun: true });
+    // Capture the apply-preview onSuccess BEFORE the delete flow overwrites lastMutationOptions.
+    const applyOnSuccess = lastMutationOptions.current?.onSuccess;
+
+    // Drive the real delete flow: open confirm dialog, confirm → deleteTemplate.mutate() records
+    // its options; its onSuccess calls applySelectedTemplateId('') (syncs the ref).
+    fireEvent.click(screen.getByRole('button', { name: '在宅内科 標準セット（12件） を削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+    const deleteOnSuccess = lastMutationOptions.current?.onSuccess;
+
+    // R1 teeth: the delete success handler resets selectedTemplateId SYNCHRONOUSLY (via
+    // applySelectedTemplateId, before it awaits invalidateQueries). Invoke it, then the stale
+    // apply-preview onSuccess, both in the SAME synchronous act turn with NO await between — so no
+    // passive effect flushes in between and only the synchronous ref write can reject the stale
+    // preview. (We deliberately do not await the delete promise before the stale onSuccess.)
+    await act(async () => {
+      const deletePromise = deleteOnSuccess?.({ deleted: true });
+      applyOnSuccess?.(stamped);
+      await deletePromise;
+    });
+
+    expect(screen.queryByText('テンプレ薬')).toBeNull();
+  });
+
+  it('ignores a stale CSV bulk preview after bulkImport success clears the CSV (R1)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const csv = '222222222200,CSV薬1,1,,,';
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), { target: { value: csv } });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    const stamped = await runCapturedDryRun(makeBulkServerResponse());
+    const previewOnSuccess = lastMutationOptions.current?.onSuccess;
+
+    // Render a fresh preview first so 一括登録 is enabled.
+    act(() => {
+      previewOnSuccess?.(stamped);
+    });
+    fireEvent.click(screen.getByRole('button', { name: /一括登録/ }));
+    const importOnSuccess = lastMutationOptions.current?.onSuccess;
+
+    // R1 teeth: the import success handler resets bulkCsv SYNCHRONOUSLY (via applyBulkCsv, before it
+    // awaits invalidateQueries). Invoke it, then re-fire the stale preview onSuccess, both in the
+    // SAME synchronous act turn with NO await between — only the synchronous ref write can reject it.
+    await act(async () => {
+      const importPromise = importOnSuccess?.({
+        importedCount: 1,
+        unmatchedRows: [],
+        invalidRows: [],
+      });
+      previewOnSuccess?.(stamped);
+      await importPromise;
+    });
+
+    expect(screen.queryByText('CSV反映前プレビュー')).toBeNull();
+  });
+
+  // rev4 R2 — same-page preview invalidation on master data change: a master import/auto-refresh
+  // changes the drug master that previews were computed against, so the import/auto-refresh success
+  // handlers must clear copy/template/bulk previews. Bulk is most safety-critical because its apply
+  // is gated by local canApplyBulkPreview, so a stale bulkPreview would otherwise stay actionable.
+  it('clears the bulk preview and disables 一括登録 after a master import succeeds (R2)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const csv = '222222222200,CSV薬1,1,,,';
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), { target: { value: csv } });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    const stamped = await runCapturedDryRun(makeBulkServerResponse());
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+    expect(screen.getByText('CSV反映前プレビュー')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', false);
+
+    // Drive a master import: clicking records importMutation options; invoke its onSuccess.
+    fireEvent.click(screen.getByRole('button', { name: 'SSK全件取込' }));
+    await act(async () => {
+      await lastMutationOptions.current?.onSuccess?.({
+        action: 'ssk',
+        definition: { label: 'SSK全件取込' },
+        response: { data: { importedCount: 1, entryName: 'ssk' } },
+      });
+    });
+
+    expect(screen.queryByText('CSV反映前プレビュー')).toBeNull();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', true);
+  });
+
+  it('clears the bulk preview and disables 一括登録 after the auto-refresh job succeeds (R2)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const csv = '222222222200,CSV薬1,1,,,';
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), { target: { value: csv } });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    const stamped = await runCapturedDryRun(makeBulkServerResponse());
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+    expect(screen.getByText('CSV反映前プレビュー')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /フリーマスター一括更新/ }));
+    await act(async () => {
+      await lastMutationOptions.current?.onSuccess?.({ data: { processedCount: 3 } });
+    });
+
+    expect(screen.queryByText('CSV反映前プレビュー')).toBeNull();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', true);
+  });
+
+  it('clears copy and template previews after a master import succeeds (R2)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    // Render a copy preview.
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /コピー差分確認/ }));
+    const copyStamped = await runCapturedDryRun(makeCopyServerResponse(), { dryRun: true });
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(copyStamped);
+    });
+    expect(screen.getByText('コピー薬')).toBeTruthy();
+
+    // Render a template preview.
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+    const templateStamped = await runCapturedDryRun(makeTemplateServerResponse(), { dryRun: true });
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(templateStamped);
+    });
+    expect(screen.getByText('テンプレ薬')).toBeTruthy();
+
+    // Master import clears both previews.
+    fireEvent.click(screen.getByRole('button', { name: 'SSK全件取込' }));
+    await act(async () => {
+      await lastMutationOptions.current?.onSuccess?.({
+        action: 'ssk',
+        definition: { label: 'SSK全件取込' },
+        response: { data: { importedCount: 1, entryName: 'ssk' } },
+      });
+    });
+
+    expect(screen.queryByText('コピー薬')).toBeNull();
+    expect(screen.queryByText('テンプレ薬')).toBeNull();
+  });
+
+  it('clears copy and template previews after the auto-refresh job succeeds (R2)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /コピー差分確認/ }));
+    const copyStamped = await runCapturedDryRun(makeCopyServerResponse(), { dryRun: true });
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(copyStamped);
+    });
+    expect(screen.getByText('コピー薬')).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('combobox', { name: '適用する採用品テンプレート' }), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /適用差分確認/ }));
+    const templateStamped = await runCapturedDryRun(makeTemplateServerResponse(), { dryRun: true });
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(templateStamped);
+    });
+    expect(screen.getByText('テンプレ薬')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /フリーマスター一括更新/ }));
+    await act(async () => {
+      await lastMutationOptions.current?.onSuccess?.({ data: { processedCount: 3 } });
+    });
+
+    expect(screen.queryByText('コピー薬')).toBeNull();
+    expect(screen.queryByText('テンプレ薬')).toBeNull();
+  });
+
+  // rev5 R1 — previews must be cleared SYNCHRONOUSLY, BEFORE the invalidateQueries await resolves,
+  // so a slow refetch cannot leave a stale bulk preview visible + 一括登録 enabled in the meantime.
+  // We hold invalidateQueries pending (never resolve it) and assert the preview is already gone.
+  it('clears the bulk preview before invalidation resolves on import success (R1 ordering)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const csv = '222222222200,CSV薬1,1,,,';
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), { target: { value: csv } });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    const stamped = await runCapturedDryRun(makeBulkServerResponse());
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+    expect(screen.getByText('CSV反映前プレビュー')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', false);
+
+    // Hold invalidation PENDING (never resolves) so we observe the state between sync clear + await.
+    let resolveInvalidate: (() => void) | undefined;
+    invalidateQueriesMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInvalidate = resolve;
+        }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'SSK全件取込' }));
+    act(() => {
+      // onSuccess runs the synchronous preview clears, then awaits the (pending) invalidation.
+      void lastMutationOptions.current?.onSuccess?.({
+        action: 'ssk',
+        definition: { label: 'SSK全件取込' },
+        response: { data: { importedCount: 1, entryName: 'ssk' } },
+      });
+    });
+
+    // Invalidation is still pending, yet the preview must already be gone and apply disabled.
+    expect(screen.queryByText('CSV反映前プレビュー')).toBeNull();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', true);
+    resolveInvalidate?.();
+  });
+
+  it('clears the bulk preview before invalidation resolves on auto-refresh success (R1 ordering)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const csv = '222222222200,CSV薬1,1,,,';
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), { target: { value: csv } });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    const stamped = await runCapturedDryRun(makeBulkServerResponse());
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+    expect(screen.getByText('CSV反映前プレビュー')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', false);
+
+    let resolveInvalidate: (() => void) | undefined;
+    invalidateQueriesMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInvalidate = resolve;
+        }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /フリーマスター一括更新/ }));
+    act(() => {
+      void lastMutationOptions.current?.onSuccess?.({ data: { processedCount: 3 } });
+    });
+
+    expect(screen.queryByText('CSV反映前プレビュー')).toBeNull();
+    expect(screen.getByRole('button', { name: /一括登録/ })).toHaveProperty('disabled', true);
+    resolveInvalidate?.();
+  });
+
+  // REQUIRED 2 — lock the COMPLETE #1 reset contract: copy-source reset + copy preview clear +
+  // expanded bulk preview cannot survive a target change.
+  it('re-disables copy actions and clears a copy preview on target change, proving setCopySourceSiteId("") + setCopyPreview(null) (#1 contract)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'コピー元拠点' }), {
+      target: { value: 'site_2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /コピー差分確認/ }));
+    const stamped = await runCapturedDryRun(makeCopyServerResponse(), { dryRun: true });
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+    expect(screen.getByText('コピー薬')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /採用品をコピー/ })).toHaveProperty(
+      'disabled',
+      false,
+    );
+
+    // Target change must reset copy source ('') AND clear the copy preview.
+    fireEvent.change(screen.getByRole('combobox', { name: '採用品設定の対象拠点' }), {
+      target: { value: 'site_2' },
+    });
+
+    expect(screen.queryByText('コピー薬')).toBeNull();
+    expect(screen.getByRole('button', { name: /コピー差分確認/ })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: /採用品をコピー/ })).toHaveProperty('disabled', true);
+  });
+
+  it('discards an EXPANDED bulk preview on target change, proving setBulkPreview(null) + setBulkPreviewExpanded(false) (#1 contract)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const csv = 'many rows csv';
+    fireEvent.change(screen.getByLabelText('CSV一括登録'), { target: { value: csv } });
+    fireEvent.click(screen.getByRole('button', { name: /^差分確認$/ }));
+    const stamped = await runCapturedDryRun(makeBulkServerResponse(8));
+    act(() => {
+      lastMutationOptions.current?.onSuccess?.(stamped);
+    });
+    expect(screen.getByText('CSV反映前プレビュー')).toBeTruthy();
+
+    // Expand the >6-row preview.
+    fireEvent.click(screen.getByRole('button', { name: /全8件を表示/ }));
+    expect(screen.getByText('CSV薬8')).toBeTruthy();
+
+    // Target change discards the expanded preview entirely.
+    fireEvent.change(screen.getByRole('combobox', { name: '採用品設定の対象拠点' }), {
+      target: { value: 'site_2' },
+    });
+    expect(screen.queryByText('CSV反映前プレビュー')).toBeNull();
+    expect(screen.queryByText('CSV薬8')).toBeNull();
+    expect(screen.queryByRole('button', { name: /件を表示/ })).toBeNull();
+  });
+
+  // REQUIRED 3 — explicit clear sentinels for #2/#3 exist as real options with value '__none__'.
+  it('exposes explicit clear sentinels for copy-source and template (#2/#3)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const copyClear = screen.getByRole('option', {
+      name: 'コピー元拠点を未選択に戻す',
+    }) as HTMLOptionElement;
+    const templateClear = screen.getByRole('option', {
+      name: 'テンプレートを未選択に戻す',
+    }) as HTMLOptionElement;
+    expect(copyClear.value).toBe('__none__');
+    expect(templateClear.value).toBe('__none__');
+
+    // The mock placeholder must not mask a missing sentinel SelectItem: assert the captured
+    // SOURCE items contain EXACTLY the two __none__ sentinels with their labels.
+    const sentinelItems = capturedSelectItems.filter((item) => item.value === '__none__');
+    const sentinelLabels = sentinelItems
+      .map((item) => flattenLabel(item.children))
+      .sort((a, b) => a.localeCompare(b));
+    expect(sentinelItems).toHaveLength(2);
+    expect(sentinelLabels).toEqual(
+      ['コピー元拠点を未選択に戻す', 'テンプレートを未選択に戻す'].sort((a, b) =>
+        a.localeCompare(b),
+      ),
+    );
+  });
+
+  // REQUIRED 4 / R3 — every migrated SelectItem carries min-h-[44px] in its SOURCE className,
+  // asserted PER-Select so target-site/site_2 and copy-source/site_2 are checked INDEPENDENTLY
+  // (one Select's capture cannot satisfy another Select's assertion).
+  it('keeps min-h-[44px] on ALL migrated SelectItems, per Select (#1/#2/#3)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    // selectKey = trigger id (#1/#2) or aria-label (#3).
+    const expected: Array<{ selectKey: string; value: unknown; label: string }> = [
+      { selectKey: 'drug-master-target-site', value: 'site_1', label: '本店' }, // target-site (#1)
+      { selectKey: 'drug-master-target-site', value: 'site_2', label: '支店' }, // target-site (#1)
+      {
+        selectKey: 'drug-master-copy-source',
+        value: '__none__',
+        label: 'コピー元拠点を未選択に戻す',
+      }, // copy clear (#2)
+      { selectKey: 'drug-master-copy-source', value: 'site_2', label: '支店' }, // copy source (#2)
+      {
+        selectKey: '適用する採用品テンプレート',
+        value: '__none__',
+        label: 'テンプレートを未選択に戻す',
+      }, // template clear (#3)
+      {
+        selectKey: '適用する採用品テンプレート',
+        value: 'template_1',
+        label: '在宅内科 標準セット（12件）',
+      }, // template item (#3)
+    ];
+
+    for (const { selectKey, value, label } of expected) {
+      const match = capturedSelectItems.find(
+        (item) =>
+          item.selectKey === selectKey &&
+          item.value === value &&
+          flattenLabel(item.children) === label,
+      );
+      expect(
+        match,
+        `missing migrated SelectItem ${selectKey} / ${String(value)} / ${label}`,
+      ).toBeTruthy();
+      expect(match?.className).toContain('min-h-[44px]');
+    }
+
+    // Explicitly prove target-site/site_2 and copy-source/site_2 are SEPARATE captures (R3): a
+    // copy-source site_2 losing min-h must not be masked by the target-site site_2 capture.
+    const site2Captures = capturedSelectItems.filter(
+      (item) => item.value === 'site_2' && flattenLabel(item.children) === '支店',
+    );
+    const site2SelectKeys = new Set(site2Captures.map((item) => item.selectKey));
+    expect(site2SelectKeys.has('drug-master-target-site')).toBe(true);
+    expect(site2SelectKeys.has('drug-master-copy-source')).toBe(true);
+
+    // No migrated item is missing the touch-target class.
+    expect(capturedSelectItems.every((item) => item.className?.includes('min-h-[44px]'))).toBe(
+      true,
+    );
+  });
+});
+
+describe('DrugMasterContent filter select migration (slice4b)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useOrgIdMock.mockReturnValue('org_1');
+    pendingRequestsMock.mockReturnValue([]);
+    mutationMutateMock.mockClear();
+    lastMutationOptions.current = null;
+    capturedSelectItems.length = 0;
+    capturedQueryKeys.length = 0;
+    afterSelectChangeHook.current = null;
+    invalidateQueriesMock.mockReset();
+    invalidateQueriesMock.mockImplementation(async () => undefined);
+    detailDataMock.current = null;
+    stockConfigDataMock.current = null;
+    candidatesDataMock.current = [];
+  });
+
+  // The import-logs queryKey is ['drug-master-import-logs', <source>, <status>]. We assert the
+  // LATEST captured key (the render after the Select change) reflects the new filter state —
+  // state+queryKey, not DOM-only.
+  function latestImportLogsKey(): ReadonlyArray<unknown> {
+    const matches = capturedQueryKeys.filter((key) => key[0] === 'drug-master-import-logs');
+    return matches[matches.length - 1] ?? [];
+  }
+
+  // The drug-masters queryKey is ['drug-masters', orgId, params] where params is the encoded
+  // URLSearchParams string (category lives there).
+  function latestDrugMastersParams(): string {
+    const matches = capturedQueryKeys.filter((key) => key[0] === 'drug-masters');
+    return (matches[matches.length - 1]?.[2] as string) ?? '';
+  }
+
+  it('reflects the new source on the import-logs queryKey when ソース changes (#5)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(latestImportLogsKey()).toEqual(['drug-master-import-logs', 'all', 'all']);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '取込履歴ソース' }), {
+      target: { value: 'pmda' },
+    });
+
+    expect(latestImportLogsKey()).toEqual(['drug-master-import-logs', 'pmda', 'all']);
+  });
+
+  it('reflects the new status on the import-logs queryKey when 状態 changes (#6)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '取込履歴状態' }), {
+      target: { value: 'failed' },
+    });
+
+    expect(latestImportLogsKey()).toEqual(['drug-master-import-logs', 'all', 'failed']);
+  });
+
+  it('adds then removes the category param on the drug-masters queryKey via 薬効分類フィルタ (#7)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    // Default '' (全薬効分類) → no category param.
+    expect(new URLSearchParams(latestDrugMastersParams()).get('category')).toBeNull();
+
+    const categoryCombobox = screen.getByRole('combobox', { name: '薬効分類フィルタ' });
+    fireEvent.change(categoryCombobox, { target: { value: '3' } });
+    expect(new URLSearchParams(latestDrugMastersParams()).get('category')).toBe('3');
+
+    // Back to '' (全薬効分類) must be reselectable and must drop the param (Base UI keeps value=''
+    // selectable under a controlled '' value; it is NOT collapsed to a placeholder).
+    fireEvent.change(categoryCombobox, { target: { value: '' } });
+    expect(new URLSearchParams(latestDrugMastersParams()).get('category')).toBeNull();
+  });
+
+  it('carries purpose=audit on the export request when CSV出力用途=監査 (#4)', async () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'CSV出力用途' }), {
+      target: { value: 'audit' },
+    });
+
+    // Click CSV出力 to capture the export mutation options, then execute the REAL mutationFn
+    // against a stubbed fetch so the production purpose stamping runs (not DOM-only).
+    fireEvent.click(screen.getByRole('button', { name: /CSV出力/ }));
+
+    const options = lastMutationOptions.current;
+    expect(options?.mutationFn).toBeTruthy();
+
+    let requestedUrl = '';
+    const fetchMock = vi.fn(async (url: string) => {
+      requestedUrl = url;
+      return {
+        ok: true,
+        blob: async () => new Blob(['csv']),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
+    try {
+      await options!.mutationFn!();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(requestedUrl).toContain('/api/pharmacy-drug-stocks/export');
+    expect(new URL(requestedUrl, 'http://localhost').searchParams.get('purpose')).toBe('audit');
+  });
+
+  it('keeps >=44px on all slice4b filter triggers (#4/#5/#6/#7)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    for (const name of ['CSV出力用途', '取込履歴ソース', '取込履歴状態', '薬効分類フィルタ']) {
+      const trigger = screen.getByRole('combobox', { name });
+      expect(trigger.className).toContain('min-h-[44px]');
+      expect(trigger.className).toContain('sm:min-h-[44px]');
+    }
+  });
+
+  it('exposes the migrated filter comboboxes by accessible name (#4/#5/#6/#7)', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    expect(screen.getByRole('combobox', { name: 'CSV出力用途' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '取込履歴ソース' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '取込履歴状態' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: '薬効分類フィルタ' })).toBeTruthy();
+  });
+
+  // PER-Select empty/clear contract via capturedSelectItems keyed by selectKey (the trigger
+  // aria-label). #4/#5/#6 render their real options only — no '' value, no __none__ sentinel.
+  // #7 MUST keep the '' 全薬効分類 item, with no __none__ sentinel.
+  it('enforces the per-Select empty-option contract (#4/#5/#6 no empty, #7 keeps empty) ', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const itemsFor = (selectKey: string) =>
+      capturedSelectItems.filter((item) => item.selectKey === selectKey);
+
+    // #4 CSV出力用途: exactly the four purposes, no '' / no __none__.
+    const exportValues = itemsFor('CSV出力用途')
+      .map((item) => String(item.value))
+      .sort();
+    expect(exportValues).toEqual(['audit', 'operations', 'pharmacist_review', 'posting']);
+    expect(exportValues).not.toContain('');
+    expect(exportValues).not.toContain('__none__');
+
+    // #5 取込履歴ソース: IMPORT_LOG_SOURCE_OPTIONS values (incl. non-empty 'all'), no '' / no __none__.
+    const sourceValues = itemsFor('取込履歴ソース').map((item) => String(item.value));
+    expect(sourceValues).toContain('all');
+    expect(sourceValues).toContain('pmda');
+    expect(sourceValues).not.toContain('');
+    expect(sourceValues).not.toContain('__none__');
+
+    // #6 取込履歴状態: IMPORT_LOG_STATUS_OPTIONS values (incl. non-empty 'all'), no '' / no __none__.
+    const statusValues = itemsFor('取込履歴状態').map((item) => String(item.value));
+    expect(statusValues).toContain('all');
+    expect(statusValues).toContain('failed');
+    expect(statusValues).not.toContain('');
+    expect(statusValues).not.toContain('__none__');
+
+    // #7 薬効分類フィルタ: MUST contain the '' 全薬効分類 item, no __none__ sentinel.
+    const categoryItems = itemsFor('薬効分類フィルタ');
+    const emptyCategory = categoryItems.find((item) => item.value === '');
+    expect(emptyCategory, 'category Select must keep the value="" 全薬効分類 item').toBeTruthy();
+    expect(flattenLabel(emptyCategory?.children)).toBe('全薬効分類');
+    expect(emptyCategory?.className).toContain('min-h-[44px]');
+    expect(categoryItems.map((item) => String(item.value))).not.toContain('__none__');
+  });
+
+  // CLOSED-TRIGGER LABEL CONTRACT (the bug codex found): the four migrated filter Selects must
+  // pass an explicit SelectValue child so the closed trigger renders the Japanese label, never a
+  // raw machine value (#4/#5/#6) or a blank (#7's value=""). The mock's `${selectKey}-display`
+  // span reproduces Base UI's bare-SelectValue fallback, so a regression to `<SelectValue />`
+  // would make these assertions fail.
+  it('renders the human-readable label on the closed trigger for the four filter Selects', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    const displayText = (selectKey: string) =>
+      screen.getByTestId(`${selectKey}-display`).textContent;
+
+    // #4 CSV出力用途: default 'operations' → 運用台帳, after change to 'audit' → 監査.
+    expect(displayText('CSV出力用途')).toBe('運用台帳');
+    fireEvent.change(screen.getByRole('combobox', { name: 'CSV出力用途' }), {
+      target: { value: 'audit' },
+    });
+    expect(displayText('CSV出力用途')).toBe('監査');
+
+    // #5 取込履歴ソース: default 'all' → すべてのソース, after change to 'pmda' → PMDA.
+    expect(displayText('取込履歴ソース')).toBe('すべてのソース');
+    fireEvent.change(screen.getByRole('combobox', { name: '取込履歴ソース' }), {
+      target: { value: 'pmda' },
+    });
+    expect(displayText('取込履歴ソース')).toBe('PMDA');
+
+    // #6 取込履歴状態: default 'all' → すべての状態, after change to 'failed' → 失敗のみ.
+    expect(displayText('取込履歴状態')).toBe('すべての状態');
+    fireEvent.change(screen.getByRole('combobox', { name: '取込履歴状態' }), {
+      target: { value: 'failed' },
+    });
+    expect(displayText('取込履歴状態')).toBe('失敗のみ');
+
+    // #7 薬効分類フィルタ: default '' → 全薬効分類, change to '3' → 3: 代謝性医薬品,
+    // then back to '' → 全薬効分類 (the empty-string regression must not blank the trigger).
+    const categoryCombobox = () => screen.getByRole('combobox', { name: '薬効分類フィルタ' });
+    expect(displayText('薬効分類フィルタ')).toBe('全薬効分類');
+    fireEvent.change(categoryCombobox(), { target: { value: '3' } });
+    expect(displayText('薬効分類フィルタ')).toBe('3: 代謝性医薬品');
+    fireEvent.change(categoryCombobox(), { target: { value: '' } });
+    expect(displayText('薬効分類フィルタ')).toBe('全薬効分類');
+  });
+});
+
+describe('DrugMasterContent preferred-generic select migration (slice4c)', () => {
+  // A complete-enough DrugMasterDetail so the drug-detail panel (which hosts the 採用後発薬
+  // Select) renders. generic_name is set so the panel's `generic_name || candidates>0` guard
+  // passes and the candidate query is exercised.
+  function buildDetail(): unknown {
+    return {
+      id: 'drug_1',
+      yj_code: '9999999999',
+      receipt_code: null,
+      jan_code: null,
+      drug_name: '先発薬A',
+      drug_name_kana: null,
+      generic_name: 'イブプロフェン',
+      drug_price: 50,
+      unit: '錠',
+      dosage_form: null,
+      therapeutic_category: null,
+      manufacturer: null,
+      is_generic: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      is_high_risk: false,
+      outpatient_injection_eligible: false,
+      outpatient_injection_note: null,
+      is_lasa_risk: false,
+      tall_man_name: null,
+      lasa_group_key: null,
+      max_administration_days: null,
+      stock_config: null,
+      hot_code: null,
+      transitional_expiry_date: null,
+      package_inserts: [],
+      interactions_as_a: [],
+      interactions_as_b: [],
+    };
+  }
+
+  // A stocked config whose preferred_generic display name covers the "saved id with no matching
+  // candidate" fallback branch of selectedPreferredGenericLabel.
+  function buildStockConfig(): unknown {
+    return {
+      id: 'stock_1',
+      site_id: 'site_1',
+      drug_master_id: 'drug_1',
+      is_stocked: true,
+      stock_qty: 10,
+      reorder_point: 5,
+      preferred_generic_id: null,
+      adoption_source: null,
+      adoption_note: null,
+      last_reviewed_at: null,
+      reviewed_by_id: null,
+      follow_up_status: null,
+      follow_up_reason: null,
+      follow_up_due_date: null,
+      follow_up_resolved_at: null,
+      updated_at: '2026-05-27T00:00:00.000Z',
+      preferred_generic: {
+        id: 'gen_saved',
+        drug_name: '保存済みジェネリック',
+        yj_code: '0000000000',
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useOrgIdMock.mockReturnValue('org_1');
+    pendingRequestsMock.mockReturnValue([]);
+    mutationMutateMock.mockClear();
+    lastMutationOptions.current = null;
+    capturedSelectItems.length = 0;
+    capturedQueryKeys.length = 0;
+    afterSelectChangeHook.current = null;
+    invalidateQueriesMock.mockReset();
+    invalidateQueriesMock.mockImplementation(async () => undefined);
+    // Drive the detail panel open with a generic-name drug, a stocked config, and one candidate.
+    detailDataMock.current = buildDetail();
+    stockConfigDataMock.current = buildStockConfig();
+    candidatesDataMock.current = [
+      { id: 'gen_1', drug_name: 'ジェネリックA', yj_code: '1234567890' },
+    ];
+  });
+
+  const display = () => screen.getByTestId('採用後発薬-display').textContent;
+  const combobox = () => screen.getByRole('combobox', { name: '採用後発薬' });
+
+  // (a) default closed-trigger label (effectivePreferredGenericId === '' → 指定しない) and
+  // (e) the trigger carries aria-label 採用後発薬.
+  it('renders 指定しない on the closed trigger by default and exposes the aria-label', () => {
+    render(<DrugMasterContent />);
+
+    expect(display()).toBe('指定しない');
+    // aria-label resolves the combobox by accessible name, proving the trigger forwards it.
+    expect(combobox()).toBeTruthy();
+  });
+
+  // (b) the value="" 指定しない SelectItem is present AND every item carries the >=44px
+  // touch-target className on its SOURCE value (same assertion style as slice4b).
+  it('keeps the value="" 指定しない item and min-h-[44px] on all 採用後発薬 items', () => {
+    render(<DrugMasterContent />);
+
+    const items = capturedSelectItems.filter((item) => item.selectKey === '採用後発薬');
+    const noneItem = items.find((item) => item.value === '');
+    expect(
+      noneItem,
+      'preferred-generic Select must keep the value="" 指定しない item',
+    ).toBeTruthy();
+    expect(flattenLabel(noneItem?.children)).toBe('指定しない');
+    // No __none__ sentinel — '' is the real "指定しない" value (medical value-semantics contract).
+    expect(items.map((item) => String(item.value))).not.toContain('__none__');
+
+    const candidateItem = items.find((item) => item.value === 'gen_1');
+    expect(candidateItem).toBeTruthy();
+    expect(flattenLabel(candidateItem?.children)).toBe('ジェネリックA (1234567890)');
+
+    for (const item of items) {
+      expect(item.className).toContain('min-h-[44px]');
+    }
+  });
+
+  // (c) selecting candidate gen_1 → closed trigger shows `drug_name (yj_code)`, and
+  // (d) selecting back to '' → 指定しない again (empty-string must not blank the trigger).
+  it('reflects the selected candidate label on the closed trigger and clears back to 指定しない', () => {
+    render(<DrugMasterContent />);
+
+    expect(display()).toBe('指定しない');
+
+    fireEvent.change(combobox(), { target: { value: 'gen_1' } });
+    expect(display()).toBe('ジェネリックA (1234567890)');
+
+    fireEvent.change(combobox(), { target: { value: '' } });
+    expect(display()).toBe('指定しない');
+  });
+
+  // (f) medical-safety regression (slice4c rev2): a saved preferred_generic_id that is non-empty,
+  // not in the candidate list, AND has no saved preferred_generic.drug_name must NOT leak the raw
+  // machine id onto the closed trigger — it must show the pharmacist-safe unresolved label instead.
+  it('shows the unresolved label (not the raw id) when the saved 採用後発薬 id has no candidate or saved name', () => {
+    // Stocked config: saved id 'gen_missing' with no embedded preferred_generic display name.
+    stockConfigDataMock.current = {
+      ...(buildStockConfig() as Record<string, unknown>),
+      preferred_generic_id: 'gen_missing',
+      preferred_generic: null,
+    };
+    // Candidates do NOT contain 'gen_missing' (only the resolvable gen_1), so no candidate match.
+    candidatesDataMock.current = [
+      { id: 'gen_1', drug_name: 'ジェネリックA', yj_code: '1234567890' },
+    ];
+
+    render(<DrugMasterContent />);
+
+    // effectivePreferredGenericId resolves to 'gen_missing' from the stock config (no user pick).
+    expect(display()).not.toBe('gen_missing');
+    expect(display()).toBe('保存済みの採用後発薬を確認してください');
   });
 });
 

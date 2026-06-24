@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { PatientActivityTimeline } from './patient-activity-timeline';
 import type { PatientTimelineSnapshot } from './patient-detail.types';
 
@@ -19,8 +21,8 @@ export function PatientTimelinePanel({
     queryKey: ['patient-timeline', patientId, orgId],
     enabled: Boolean(orgId && patientId && enabled),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/timeline`, {
-        headers: { 'x-org-id': orgId ?? '' },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/timeline`, {
+        headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
         throw new Error('患者タイムラインの取得に失敗しました');

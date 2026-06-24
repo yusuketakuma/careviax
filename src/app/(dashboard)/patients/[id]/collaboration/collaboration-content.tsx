@@ -11,6 +11,9 @@ import { CommentThread } from '@/components/features/comments/comment-thread';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePresenceUsers } from '@/lib/hooks/use-presence-users';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import type { PatientOverview } from '../patient-detail.types';
 import {
@@ -30,7 +33,7 @@ import {
 
 function CollaborationSkeleton() {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(240px,10fr)] xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
       {[0, 1, 2].map((column) => (
         <div key={column} className="space-y-4 rounded-lg border border-border/70 bg-card p-4">
           <Skeleton className="h-5 w-40" />
@@ -67,8 +70,8 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
   const overviewQuery = useQuery<PatientOverview>({
     queryKey: overviewQueryKey,
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/overview`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/overview`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者情報の取得に失敗しました');
       return res.json();
@@ -122,7 +125,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
               : '同じカードを同時に見ている人と直近の動きを共有します'}
           </p>
         </div>
-        <WorkflowBackLink href={`/patients/${patientId}`} label="カードへ戻る" />
+        <WorkflowBackLink href={buildPatientHref(patientId)} label="カードへ戻る" />
       </div>
 
       <div className="mt-4">
@@ -141,7 +144,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(240px,10fr)] xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
             <section
               aria-labelledby="collaboration-presence-heading"
               className="rounded-lg border border-border/70 bg-card p-4 xl:min-h-[600px]"

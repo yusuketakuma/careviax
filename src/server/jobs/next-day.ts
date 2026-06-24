@@ -2,6 +2,7 @@ import { subDays } from 'date-fns';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { runJob } from './runner';
 
 function startOfDay(value: Date) {
@@ -108,7 +109,7 @@ export async function checkUnsentReports() {
         title: '報告書未送付',
         message:
           '訪問記録に対する報告書（居宅療養管理指導報告書等）が未送付です。作成・送付を行ってください。',
-        link: `/patients/${vr.patient_id}/reports`,
+        link: buildPatientHref(vr.patient_id, '/reports'),
         dedupe_key: `unsent-report:${vr.id}`,
       });
     }

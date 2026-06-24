@@ -18,6 +18,8 @@ import {
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
@@ -29,14 +31,10 @@ import type {
   DayBoardPendingProposal,
   DayBoardStaff,
   DayBoardVisit,
+  ScheduleDayBoardOperationalTask,
   ScheduleDayBoardResponse,
 } from '@/types/schedule-day-board';
-import {
-  TASK_TYPE_LABELS,
-  formatTaskDueLabel,
-  taskPriorityClass,
-  type ScheduleTask,
-} from './day-view.shared';
+import { TASK_TYPE_LABELS, formatTaskDueLabel, taskPriorityClass } from './day-view.shared';
 import {
   BOARD_END_MINUTES,
   BOARD_START_MINUTES,
@@ -63,7 +61,7 @@ async function fetchScheduleDayBoard(
   date: string,
 ): Promise<ScheduleDayBoardResponse> {
   const res = await fetch(`/api/visit-schedules/day-board?date=${date}`, {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const json = await readApiJson<{ data: ScheduleDayBoardResponse }>(
     res,
@@ -74,7 +72,7 @@ async function fetchScheduleDayBoard(
 
 async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitResponse> {
   const res = await fetch('/api/dashboard/cockpit', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   const json = await readApiJson<{ data: DashboardCockpitResponse }>(
     res,
@@ -83,32 +81,7 @@ async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitRespo
   return json.data;
 }
 
-const SCHEDULE_BOARD_TASK_TYPES = [
-  'visit_preparation',
-  'visit_contact_followup',
-  'visit_schedule_reproposal_needed',
-  'visit_schedule_override_approval',
-  'visit_carry_item_review',
-  'facility_batch_tracker',
-  'mobile_visit_mode',
-] as const;
-
-type ScheduleTaskStatusUpdate = Extract<ScheduleTask['status'], 'in_progress'>;
-
-async function fetchScheduleOperationalTasks(orgId: string): Promise<ScheduleTask[]> {
-  const params = new URLSearchParams({
-    status: 'open',
-    task_types: SCHEDULE_BOARD_TASK_TYPES.join(','),
-  });
-  const res = await fetch(`/api/tasks?${params.toString()}`, {
-    headers: { 'x-org-id': orgId },
-  });
-  const json = await readApiJson<{ data: ScheduleTask[] }>(
-    res,
-    'スケジュール運用タスクの取得に失敗しました',
-  );
-  return json.data;
-}
+type ScheduleTaskStatusUpdate = Extract<ScheduleDayBoardOperationalTask['status'], 'in_progress'>;
 
 async function updateScheduleOperationalTaskStatus({
   orgId,
@@ -119,12 +92,9 @@ async function updateScheduleOperationalTaskStatus({
   taskId: string;
   status: ScheduleTaskStatusUpdate;
 }) {
-  const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+  const res = await fetch(`/api/tasks/${encodePathSegment(taskId)}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify({ status }),
   });
   if (!res.ok) {
@@ -150,12 +120,9 @@ async function patchVisitSchedule({
   scheduleId: string;
   payload: Record<string, unknown>;
 }) {
-  const res = await fetch(`/api/visit-schedules/${scheduleId}`, {
+  const res = await fetch(`/api/visit-schedules/${encodePathSegment(scheduleId)}`, {
     method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-org-id': orgId,
-    },
+    headers: buildOrgJsonHeaders(orgId),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -1043,21 +1010,14 @@ type ScheduleOperationalTaskUpdatePayload = {
 };
 
 function visibleScheduleOperationalTasks(
-  tasks: ScheduleTask[],
+  tasks: ScheduleDayBoardOperationalTask[],
   board: ScheduleDayBoardResponse,
-): ScheduleTask[] {
+): ScheduleDayBoardOperationalTask[] {
   const visitIds = new Set(board.staff.flatMap((member) => member.visits).map((visit) => visit.id));
   const proposalIds = new Set(board.pending_proposals.map((proposal) => proposal.id));
 
   return tasks.filter((task) => {
     if (task.status !== 'pending' && task.status !== 'in_progress') return false;
-    if (
-      !SCHEDULE_BOARD_TASK_TYPES.includes(
-        task.task_type as (typeof SCHEDULE_BOARD_TASK_TYPES)[number],
-      )
-    ) {
-      return false;
-    }
     if (task.related_entity_type === 'visit_schedule' && task.related_entity_id) {
       return visitIds.has(task.related_entity_id);
     }
@@ -1068,7 +1028,7 @@ function visibleScheduleOperationalTasks(
   });
 }
 
-function findTaskVisit(task: ScheduleTask, board: ScheduleDayBoardResponse) {
+function findTaskVisit(task: ScheduleDayBoardOperationalTask, board: ScheduleDayBoardResponse) {
   if (task.related_entity_type !== 'visit_schedule' || !task.related_entity_id) return null;
   return (
     board.staff
@@ -1077,7 +1037,7 @@ function findTaskVisit(task: ScheduleTask, board: ScheduleDayBoardResponse) {
   );
 }
 
-function findTaskProposal(task: ScheduleTask, board: ScheduleDayBoardResponse) {
+function findTaskProposal(task: ScheduleDayBoardOperationalTask, board: ScheduleDayBoardResponse) {
   if (task.related_entity_type !== 'visit_schedule_proposal' || !task.related_entity_id) {
     return null;
   }
@@ -1085,7 +1045,7 @@ function findTaskProposal(task: ScheduleTask, board: ScheduleDayBoardResponse) {
 }
 
 function operationalTaskContext(
-  task: ScheduleTask,
+  task: ScheduleDayBoardOperationalTask,
   board: ScheduleDayBoardResponse,
   todayKey: string,
 ) {
@@ -1103,7 +1063,7 @@ function operationalTaskContext(
   return '対象は現在の表示日外です';
 }
 
-function operationalTaskActionHref(task: ScheduleTask) {
+function operationalTaskActionHref(task: ScheduleDayBoardOperationalTask) {
   if (task.task_type === 'visit_preparation' || task.task_type === 'visit_carry_item_review') {
     return '/visits';
   }
@@ -1119,7 +1079,7 @@ function operationalTaskActionHref(task: ScheduleTask) {
   return '/tasks';
 }
 
-function operationalTaskActionLabel(task: ScheduleTask) {
+function operationalTaskActionLabel(task: ScheduleDayBoardOperationalTask) {
   if (task.task_type === 'visit_preparation' || task.task_type === 'visit_carry_item_review') {
     return '準備一覧へ';
   }
@@ -1133,21 +1093,17 @@ function ScheduleOperationalTasksCard({
   board,
   tasks,
   todayKey,
-  loading,
-  error,
   pendingTaskId,
   onUpdateTaskStatus,
 }: {
   board: ScheduleDayBoardResponse;
-  tasks: ScheduleTask[];
+  tasks: ScheduleDayBoardOperationalTask[];
   todayKey: string;
-  loading: boolean;
-  error: boolean;
   pendingTaskId: string | null;
   onUpdateTaskStatus: (payload: ScheduleOperationalTaskUpdatePayload) => void;
 }) {
   const visibleTasks = visibleScheduleOperationalTasks(tasks, board);
-  if (!loading && !error && visibleTasks.length === 0) return null;
+  if (visibleTasks.length === 0) return null;
 
   return (
     <section
@@ -1161,80 +1117,70 @@ function ScheduleOperationalTasksCard({
         </h3>
         <span className="text-xs text-muted-foreground">スケジュールに影響する未完了タスク</span>
       </div>
-      {loading ? (
-        <p className="mt-3 rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
-          運用タスクを確認しています...
-        </p>
-      ) : error ? (
-        <p className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
-          運用タスクを取得できませんでした。右レールの止まっている理由も確認してください。
-        </p>
-      ) : (
-        <ul className="mt-3 grid gap-2 md:grid-cols-2" role="list">
-          {visibleTasks.slice(0, 6).map((task) => {
-            const pending = pendingTaskId === task.id;
-            const contextLabel = operationalTaskContext(task, board, todayKey);
-            return (
-              <li
-                key={task.id}
-                className="rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded bg-background px-1.5 py-0.5 text-[11px] font-bold text-muted-foreground">
-                    {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
-                  </span>
-                  <span
-                    className={cn(
-                      'rounded px-1.5 py-0.5 text-[11px] font-bold',
-                      taskPriorityClass(task.priority),
-                    )}
-                  >
-                    {task.priority}
-                  </span>
-                  <span className="ml-auto text-xs font-semibold text-muted-foreground">
-                    期限 {formatTaskDueLabel(task)}
-                  </span>
-                </div>
-                <p className="mt-1 line-clamp-2 text-sm font-semibold text-foreground">
-                  {task.title}
+      <ul className="mt-3 grid gap-2 md:grid-cols-2" role="list">
+        {visibleTasks.slice(0, 6).map((task) => {
+          const pending = pendingTaskId === task.id;
+          const contextLabel = operationalTaskContext(task, board, todayKey);
+          return (
+            <li
+              key={task.id}
+              className="rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded bg-background px-1.5 py-0.5 text-[11px] font-bold text-muted-foreground">
+                  {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
+                </span>
+                <span
+                  className={cn(
+                    'rounded px-1.5 py-0.5 text-[11px] font-bold',
+                    taskPriorityClass(task.priority),
+                  )}
+                >
+                  {task.priority}
+                </span>
+                <span className="ml-auto text-xs font-semibold text-muted-foreground">
+                  期限 {formatTaskDueLabel(task)}
+                </span>
+              </div>
+              <p className="mt-1 line-clamp-2 text-sm font-semibold text-foreground">
+                {task.title}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{contextLabel}</p>
+              {task.description ? (
+                <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                  {task.description}
                 </p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{contextLabel}</p>
-                {task.description ? (
-                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                    {task.description}
-                  </p>
-                ) : null}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Link
-                    href={operationalTaskActionHref(task)}
-                    aria-label={`${contextLabel}の${operationalTaskActionLabel(task)}を開く`}
-                    className={buttonVariants({
-                      variant: 'outline',
-                      size: 'sm',
-                      className: 'min-h-[44px] bg-card',
-                    })}
+              ) : null}
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Link
+                  href={operationalTaskActionHref(task)}
+                  aria-label={`${contextLabel}の${operationalTaskActionLabel(task)}を開く`}
+                  className={buttonVariants({
+                    variant: 'outline',
+                    size: 'sm',
+                    className: 'min-h-[44px] bg-card',
+                  })}
+                >
+                  {operationalTaskActionLabel(task)}
+                </Link>
+                {task.status === 'pending' ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="min-h-[44px] bg-card"
+                    disabled={pending}
+                    onClick={() => onUpdateTaskStatus({ taskId: task.id, status: 'in_progress' })}
+                    aria-label={`${contextLabel}を対応中にする`}
                   >
-                    {operationalTaskActionLabel(task)}
-                  </Link>
-                  {task.status === 'pending' ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="min-h-[44px] bg-card"
-                      disabled={pending}
-                      onClick={() => onUpdateTaskStatus({ taskId: task.id, status: 'in_progress' })}
-                      aria-label={`${contextLabel}を対応中にする`}
-                    >
-                      対応中
-                    </Button>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                    対応中
+                  </Button>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
@@ -1317,12 +1263,6 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
     enabled: Boolean(orgId) && activeView === 'list',
     staleTime: 30_000,
   });
-  const operationalTasksQuery = useQuery({
-    queryKey: ['tasks', 'schedule-board', orgId, dateKey],
-    queryFn: () => fetchScheduleOperationalTasks(orgId),
-    enabled: Boolean(orgId) && activeView === 'list',
-    staleTime: 30_000,
-  });
   const statusMutation = useMutation({
     mutationFn: (payload: StatusChangePayload) => updateVisitScheduleStatus({ orgId, ...payload }),
     onSuccess: async () => {
@@ -1372,7 +1312,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
 
   const board = boardQuery.data ?? null;
   const cockpit = cockpitQuery.data ?? null;
-  const operationalTasks = operationalTasksQuery.data ?? [];
+  const operationalTasks = board?.operational_tasks ?? [];
 
   const blockedReasons: BlockedReason[] = (cockpit?.blocked_reasons ?? []).map((reason) => ({
     id: reason.id,
@@ -1454,8 +1394,6 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
                   board={board}
                   tasks={operationalTasks}
                   todayKey={todayKey}
-                  loading={operationalTasksQuery.isLoading}
-                  error={operationalTasksQuery.isError}
                   pendingTaskId={
                     taskStatusMutation.isPending
                       ? (taskStatusMutation.variables?.taskId ?? null)

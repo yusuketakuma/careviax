@@ -60,6 +60,9 @@ import { POST } from './route';
 
 const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 const CURRENT_UPDATED_AT_DATE = new Date(CURRENT_UPDATED_AT);
+const HOSTILE_TRACING_REPORT_ID = 'tracing/with space%2F?x=#';
+const HOSTILE_TRACING_REPORT_PDF_URL =
+  '/api/tracing-reports/tracing%2Fwith%20space%252F%3Fx%3D%23/pdf';
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/communication-requests/request_1/resolve-followup', {
@@ -427,5 +430,80 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     for (const call of auditLogCreateMock.mock.calls) {
       expect(JSON.stringify(call[0]?.data.changes)).not.toContain('トレーシング返信を確認');
     }
+  });
+
+  it('encodes only the linked tracing report pdf_url and keeps follow-up identity fields raw', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'responded',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      subject: '服薬情報提供書の確認',
+      recipient_name: '在宅主治医',
+      related_entity_type: 'tracing_report',
+      related_entity_id: HOSTILE_TRACING_REPORT_ID,
+    });
+    communicationRequestTxFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      related_entity_type: 'tracing_report',
+      related_entity_id: HOSTILE_TRACING_REPORT_ID,
+      recipient_name: '在宅主治医',
+      status: 'closed',
+      updated_at: new Date('2026-06-18T00:01:00.000Z'),
+      responses: [],
+    });
+    tracingReportFindFirstMock.mockResolvedValue({
+      id: HOSTILE_TRACING_REPORT_ID,
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'received',
+      sent_at: new Date('2026-06-17T00:00:00.000Z'),
+      acknowledged_at: null,
+    });
+
+    const response = await POST(
+      createRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+        followup: 'トレーシング返信を確認',
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(tracingReportFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: HOSTILE_TRACING_REPORT_ID,
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        status: true,
+        sent_at: true,
+        acknowledged_at: true,
+      },
+    });
+    expect(tracingReportUpdateMock).toHaveBeenCalledWith({
+      where: { id: HOSTILE_TRACING_REPORT_ID },
+      data: expect.objectContaining({
+        status: 'acknowledged',
+        sent_to_physician: '在宅主治医',
+        pdf_url: HOSTILE_TRACING_REPORT_PDF_URL,
+      }),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'tracing_report_status_changed',
+        target_id: HOSTILE_TRACING_REPORT_ID,
+        changes: expect.objectContaining({
+          linked_communication_request_id: 'request_1',
+        }),
+      }),
+    });
   });
 });

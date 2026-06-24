@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import type { ClerkSupportKpis, ClerkSupportResponse } from '@/types/clerk-support';
@@ -24,7 +25,7 @@ import type { ClerkSupportKpis, ClerkSupportResponse } from '@/types/clerk-suppo
 
 async function fetchClerkSupport(orgId: string): Promise<ClerkSupportResponse> {
   const res = await fetch('/api/dashboard/clerk-support', {
-    headers: { 'x-org-id': orgId },
+    headers: buildOrgHeaders(orgId),
   });
   if (!res.ok) throw new Error('事務サポート集計の取得に失敗しました');
   const json = await res.json();

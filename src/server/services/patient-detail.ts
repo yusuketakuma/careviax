@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
+import type { ScopedTxRunner } from '@/lib/db/rls';
 import {
   getPatientPrivacyFlags,
   maskAddressDetail,
@@ -21,21 +22,30 @@ import {
 } from '@/server/services/patient-detail-foundation';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
 import { listPatientLabSummary } from '@/server/services/patient-detail-labs';
-import { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
-import { buildPatientTimelineEvents } from '@/server/services/patient-detail-timeline-events';
 import {
-  buildPatientTimelineConferenceNoteWhere,
-  buildPatientTimelineOperationHistoryFilters,
-} from '@/server/services/patient-detail-timeline-query';
+  type PatientDetailTaskFailure,
+  runPatientDetailTasks,
+  runPatientDetailTasksSettled,
+} from '@/server/services/patient-detail-tasks';
+import {
+  buildOperationHistoryEvents,
+  buildTimelineHrefBundle,
+  latestFirstVisitDocumentActionByDocumentId,
+} from '@/server/services/patient-detail-timeline-events';
+import {
+  TIMELINE_SOURCES,
+  type TimelineFallbacks,
+  type TimelineFetchCtx,
+  type TimelineProjectCtx,
+  type TimelineTasks,
+} from '@/server/services/patient-detail-timeline-registry';
+import { buildPatientTimelineOperationHistoryFilters } from '@/server/services/patient-detail-timeline-query';
 import {
   buildAssignedCareCaseWhere,
-  buildCareReportCaseScope,
-  buildNullableCaseScope,
   buildPatientDetailWhere,
   buildVisitRecordCaseScope,
   type PatientDetailScopeArgs,
 } from '@/server/services/patient-detail-scope';
-import { buildVisibleExternalAccessGrantWhere } from '@/server/services/external-access';
 
 export { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
 export { getPatientCommunicationsData } from '@/server/services/patient-detail-communications';
@@ -89,51 +99,53 @@ function maskFoundationForExternalViewer(foundation: PatientFoundationData): Pat
   };
 }
 
-type PatientTimelineDb = {
-  auditLog: Pick<Prisma.TransactionClient['auditLog'], 'findMany'>;
-  billingCandidate: Pick<Prisma.TransactionClient['billingCandidate'], 'findMany'>;
-  careReport: Pick<Prisma.TransactionClient['careReport'], 'findMany'>;
-  communicationEvent: Pick<Prisma.TransactionClient['communicationEvent'], 'findMany'>;
-  conferenceNote: Pick<Prisma.TransactionClient['conferenceNote'], 'findMany'>;
-  dispenseResult: Pick<Prisma.TransactionClient['dispenseResult'], 'findMany'>;
-  externalAccessGrant: Pick<Prisma.TransactionClient['externalAccessGrant'], 'findMany'>;
-  firstVisitDocument: Pick<Prisma.TransactionClient['firstVisitDocument'], 'findMany'>;
-  inquiryRecord: Pick<Prisma.TransactionClient['inquiryRecord'], 'findMany'>;
-  managementPlan: Pick<Prisma.TransactionClient['managementPlan'], 'findMany'>;
-  medicationCycle: Pick<Prisma.TransactionClient['medicationCycle'], 'findMany'>;
-  patient: Pick<Prisma.TransactionClient['patient'], 'findFirst'>;
-  patientSelfReport: Pick<Prisma.TransactionClient['patientSelfReport'], 'findMany'>;
-  prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'findMany'>;
-  user: Pick<Prisma.TransactionClient['user'], 'findMany'>;
-  visitRecord: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
-  visitSchedule: Pick<Prisma.TransactionClient['visitSchedule'], 'findMany'>;
-};
-
 type DetailArgs = PatientDetailScopeArgs;
 
-const PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT = 8;
+/**
+ * Row shape of the inline op_history `auditLog.findMany` projection. Declared so
+ * the fail-soft `operationHistory` binding has a stable type across the empty
+ * (degraded) and populated branches and stays assignable to the timeline
+ * projection consumers.
+ */
+type PatientTimelineOperationHistoryRow = {
+  id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  actor_id: string;
+  changes: Prisma.JsonValue;
+  created_at: Date;
+};
 
-async function listVisibleTimelineExternalShares(
-  db: PatientTimelineDb,
-  args: DetailArgs,
-  caseIds: string[],
-) {
-  return db.externalAccessGrant.findMany({
-    where: buildVisibleExternalAccessGrantWhere({
-      orgId: args.orgId,
-      patientId: args.patientId,
-      caseIds,
-    }),
-    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-    take: PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT,
-    select: {
-      id: true,
-      granted_to_name: true,
-      expires_at: true,
-      accessed_at: true,
-      created_at: true,
-    },
+const PATIENT_TIMELINE_QUERY_CONCURRENCY = 8;
+
+type PatientTimelinePartialFailure = {
+  source: string;
+  message: string;
+};
+
+function describePatientTimelineTaskError(error: unknown) {
+  if (error instanceof Error) {
+    return error.name;
+  }
+  return 'Unknown error';
+}
+
+function logPatientTimelineTaskFailure(orgId: string, failure: PatientDetailTaskFailure) {
+  console.error('[patient-timeline] source query failed', {
+    orgId,
+    source: failure.key,
+    error: describePatientTimelineTaskError(failure.error),
   });
+}
+
+function toPatientTimelinePartialFailure(
+  failure: PatientDetailTaskFailure,
+): PatientTimelinePartialFailure {
+  return {
+    source: failure.key,
+    message: '一部のタイムライン情報を取得できませんでした',
+  };
 }
 
 export async function getPatientOverview(db: DbClient, args: DetailArgs) {
@@ -410,373 +422,74 @@ export async function getPatientVisitsData(db: DbClient, args: DetailArgs) {
   };
 }
 
-export async function getPatientTimelineData(db: PatientTimelineDb, args: DetailArgs) {
-  const patient = await db.patient.findFirst({
-    where: buildPatientDetailWhere(args),
-    select: {
-      id: true,
-      cases: {
-        ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
-        select: {
-          id: true,
+export async function getPatientTimelineData(runScoped: ScopedTxRunner, args: DetailArgs) {
+  const patient = await runScoped((tx) =>
+    tx.patient.findFirst({
+      where: buildPatientDetailWhere(args),
+      select: {
+        id: true,
+        cases: {
+          ...(buildAssignedCareCaseWhere(args) ? { where: buildAssignedCareCaseWhere(args) } : {}),
+          select: {
+            id: true,
+          },
         },
       },
-    },
-  });
+    }),
+  );
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
   const canManageBilling = hasPermission(args.role, 'canManageBilling');
   const billingRefs = canManageBilling
-    ? await listPatientBillingCaseRefs(db, args, caseIds)
+    ? await runScoped((tx) => listPatientBillingCaseRefs(tx, args, caseIds))
     : { visitRecordIds: [] as string[], cycleIds: [] as string[] };
 
+  // The per-source fetch ctx minus `db`: each settled task supplies its own
+  // RLS-scoped `tx` as `db`, so a slow source trips only its own short tx budget.
+  const baseFetchCtx: Omit<TimelineFetchCtx, 'db'> = {
+    orgId: args.orgId,
+    patientId: args.patientId,
+    caseIds,
+    canManageBilling,
+    billingRefs,
+  };
+  // Each settled task wraps its source fetch in its own RLS-scoped short tx,
+  // handing the per-source `tx` in as `ctx.db`. The fetch return is the source
+  // union; the trailing `as TimelineTasks` re-keys it (as the pre-Cycle-C code
+  // did) once the per-source `tx` plumbing is applied.
+  const timelineTasks = Object.fromEntries(
+    TIMELINE_SOURCES.map((source) => {
+      // `source` is the adapter union; widen its fetch to a uniform signature so
+      // the generic runScoped infers a single `readonly unknown[]` instead of
+      // collapsing onto the first union member's row type.
+      const fetchScoped = (ctx: TimelineFetchCtx): Promise<readonly unknown[]> => source.fetch(ctx);
+      return [source.key, () => runScoped((tx) => fetchScoped({ ...baseFetchCtx, db: tx }))];
+    }),
+  ) as TimelineTasks;
+  const timelineFallbacks = Object.fromEntries(
+    TIMELINE_SOURCES.map((source) => [source.key, source.emptyFallback]),
+  ) as TimelineFallbacks;
+
+  const { results: timelineSources, failures: sourceFailures } = await runPatientDetailTasksSettled(
+    timelineTasks,
+    timelineFallbacks,
+    {
+      concurrency: PATIENT_TIMELINE_QUERY_CONCURRENCY,
+      onTaskError: (failure) => logPatientTimelineTaskFailure(args.orgId, failure),
+    },
+  );
+
   const {
-    visitSchedules,
-    visitRecords,
-    careReports,
-    communicationEvents,
     selfReports,
-    externalShares,
-    inquiryRecords,
     prescriptionIntakes,
-    dispenseResults,
-    managementPlans,
     firstVisitDocuments,
     conferenceNotes,
     billingCandidates,
-  } = await runPatientDetailTasks({
-    visitSchedules: () =>
-      caseIds.length === 0
-        ? Promise.resolve([])
-        : db.visitSchedule.findMany({
-            where: {
-              org_id: args.orgId,
-              case_id: { in: caseIds },
-            },
-            orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
-            take: 12,
-            select: {
-              id: true,
-              visit_type: true,
-              scheduled_date: true,
-              schedule_status: true,
-              priority: true,
-              pharmacist_id: true,
-              confirmed_at: true,
-              route_order: true,
-              created_at: true,
-              updated_at: true,
-              visit_record: {
-                select: {
-                  id: true,
-                  outcome_status: true,
-                },
-              },
-            },
-          }),
-    visitRecords: () =>
-      caseIds.length === 0
-        ? Promise.resolve([])
-        : db.visitRecord.findMany({
-            where: {
-              org_id: args.orgId,
-              patient_id: args.patientId,
-              ...buildVisitRecordCaseScope(caseIds),
-            },
-            orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
-            take: 12,
-            select: {
-              id: true,
-              schedule_id: true,
-              pharmacist_id: true,
-              visit_date: true,
-              outcome_status: true,
-              next_visit_suggestion_date: true,
-              cancellation_reason: true,
-              postpone_reason: true,
-              revisit_reason: true,
-              created_at: true,
-            },
-          }),
-    careReports: () =>
-      db.careReport.findMany({
-        where: {
-          org_id: args.orgId,
-          patient_id: args.patientId,
-          ...buildCareReportCaseScope(caseIds),
-        },
-        orderBy: [{ created_at: 'desc' }],
-        take: 8,
-        select: {
-          id: true,
-          report_type: true,
-          status: true,
-          created_by: true,
-          created_at: true,
-          delivery_records: {
-            orderBy: [{ created_at: 'desc' }],
-            take: 4,
-            select: {
-              id: true,
-              channel: true,
-              recipient_name: true,
-              status: true,
-              sent_at: true,
-              confirmed_at: true,
-              created_at: true,
-            },
-          },
-        },
-      }),
-    communicationEvents: () =>
-      db.communicationEvent.findMany({
-        where: {
-          org_id: args.orgId,
-          patient_id: args.patientId,
-          event_type: { not: 'patient_self_report' },
-          ...buildNullableCaseScope(caseIds),
-        },
-        orderBy: [{ occurred_at: 'desc' }],
-        take: 8,
-        select: {
-          id: true,
-          event_type: true,
-          channel: true,
-          direction: true,
-          subject: true,
-          counterpart_name: true,
-          occurred_at: true,
-        },
-      }),
-    selfReports: () =>
-      db.patientSelfReport.findMany({
-        where: {
-          org_id: args.orgId,
-          patient_id: args.patientId,
-        },
-        orderBy: [{ created_at: 'desc' }],
-        take: 8,
-        select: {
-          id: true,
-          subject: true,
-          category: true,
-          content: true,
-          relation: true,
-          status: true,
-          reported_by_name: true,
-          requested_callback: true,
-          preferred_contact_time: true,
-          created_at: true,
-        },
-      }),
-    externalShares: () => listVisibleTimelineExternalShares(db, args, caseIds),
-    inquiryRecords: () =>
-      caseIds.length === 0
-        ? Promise.resolve([])
-        : db.inquiryRecord.findMany({
-            where: {
-              org_id: args.orgId,
-              cycle: {
-                patient_id: args.patientId,
-                case_id: { in: caseIds },
-              },
-            },
-            orderBy: [{ resolved_at: 'desc' }, { inquired_at: 'desc' }, { created_at: 'desc' }],
-            take: 8,
-            select: {
-              id: true,
-              reason: true,
-              inquiry_to_physician: true,
-              inquiry_content: true,
-              result: true,
-              proposal_origin: true,
-              residual_adjustment: true,
-              change_detail: true,
-              inquired_at: true,
-              resolved_at: true,
-              created_at: true,
-              line: {
-                select: {
-                  intake: {
-                    select: {
-                      id: true,
-                    },
-                  },
-                },
-              },
-            },
-          }),
-    prescriptionIntakes: () =>
-      caseIds.length === 0
-        ? Promise.resolve([])
-        : db.prescriptionIntake.findMany({
-            where: {
-              org_id: args.orgId,
-              cycle: {
-                patient_id: args.patientId,
-                case_id: { in: caseIds },
-              },
-            },
-            orderBy: [{ created_at: 'desc' }],
-            take: 10,
-            select: {
-              id: true,
-              source_type: true,
-              prescribed_date: true,
-              prescriber_name: true,
-              prescriber_institution: true,
-              original_collected_by: true,
-              created_at: true,
-              cycle: {
-                select: {
-                  overall_status: true,
-                },
-              },
-              lines: {
-                take: 3,
-                select: {
-                  id: true,
-                },
-              },
-            },
-          }),
-    dispenseResults: () =>
-      caseIds.length === 0
-        ? Promise.resolve([])
-        : db.dispenseResult.findMany({
-            where: {
-              org_id: args.orgId,
-              line: {
-                intake: {
-                  cycle: {
-                    patient_id: args.patientId,
-                    case_id: { in: caseIds },
-                  },
-                },
-              },
-            },
-            orderBy: [{ dispensed_at: 'desc' }],
-            take: 12,
-            select: {
-              id: true,
-              actual_drug_name: true,
-              actual_quantity: true,
-              actual_unit: true,
-              carry_type: true,
-              dispensed_by: true,
-              dispensed_at: true,
-              task: {
-                select: {
-                  cycle: {
-                    select: {
-                      overall_status: true,
-                    },
-                  },
-                },
-              },
-              line: {
-                select: {
-                  intake: {
-                    select: {
-                      id: true,
-                    },
-                  },
-                },
-              },
-            },
-          }),
-    managementPlans: () =>
-      caseIds.length === 0
-        ? Promise.resolve([])
-        : db.managementPlan.findMany({
-            where: {
-              org_id: args.orgId,
-              case_id: {
-                in: caseIds,
-              },
-            },
-            orderBy: [{ updated_at: 'desc' }],
-            take: 6,
-            select: {
-              id: true,
-              status: true,
-              title: true,
-              effective_from: true,
-              next_review_date: true,
-              created_by: true,
-              approved_by: true,
-              approved_at: true,
-              reviewed_by: true,
-              reviewed_at: true,
-              created_at: true,
-            },
-          }),
-    firstVisitDocuments: () =>
-      caseIds.length === 0
-        ? Promise.resolve([])
-        : db.firstVisitDocument.findMany({
-            where: {
-              org_id: args.orgId,
-              patient_id: args.patientId,
-              case_id: { in: caseIds },
-            },
-            orderBy: [{ created_at: 'desc' }],
-            select: {
-              id: true,
-              document_url: true,
-              delivered_at: true,
-              delivered_to: true,
-              created_at: true,
-            },
-          }),
-    conferenceNotes: () =>
-      db.conferenceNote.findMany({
-        where: {
-          ...buildPatientTimelineConferenceNoteWhere({
-            orgId: args.orgId,
-            patientId: args.patientId,
-            caseIds,
-          }),
-        },
-        orderBy: [{ conference_date: 'desc' }],
-        take: 8,
-        select: {
-          id: true,
-          note_type: true,
-          title: true,
-          conference_date: true,
-          follow_up_date: true,
-          follow_up_completed: true,
-          generated_report_id: true,
-          action_items: true,
-        },
-      }),
-    billingCandidates: () =>
-      canManageBilling
-        ? db.billingCandidate.findMany({
-            where: {
-              org_id: args.orgId,
-              patient_id: args.patientId,
-              ...(billingRefs.cycleIds.length === 0
-                ? { id: { in: [] } }
-                : { cycle_id: { in: billingRefs.cycleIds } }),
-            },
-            orderBy: [{ updated_at: 'desc' }],
-            take: 8,
-            select: {
-              id: true,
-              billing_month: true,
-              billing_code: true,
-              billing_name: true,
-              points: true,
-              status: true,
-              exclusion_reason: true,
-              updated_at: true,
-            },
-          })
-        : Promise.resolve([]),
-  });
+  } = timelineSources;
+  const partialFailures = [...sourceFailures]
+    .sort((left, right) => left.key.localeCompare(right.key))
+    .map(toPatientTimelinePartialFailure);
 
   const prescriptionIntakeIds = prescriptionIntakes.map((item) => item.id);
   const firstVisitDocumentIds = firstVisitDocuments.map((item) => item.id);
@@ -791,66 +504,104 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     canManageBilling,
   });
 
-  const operationHistory = await db.auditLog.findMany({
-    where: {
-      org_id: args.orgId,
-      OR: operationHistoryFilters,
-    },
-    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-    take: 20,
-    select: {
-      id: true,
-      action: true,
-      target_type: true,
-      target_id: true,
-      actor_id: true,
-      changes: true,
-      created_at: true,
-    },
-  });
-
-  const actorNameMap = await batchResolveNames(
-    db,
-    args.orgId,
-    Array.from(
-      new Set(
-        compactPreviewValues([
-          ...visitSchedules.map((item) => item.pharmacist_id),
-          ...visitRecords.map((item) => item.pharmacist_id),
-          ...careReports.map((item) => item.created_by),
-          ...dispenseResults.map((item) => item.dispensed_by),
-          ...managementPlans.flatMap((item) => [
-            item.created_by,
-            item.approved_by,
-            item.reviewed_by,
-          ]),
-          ...operationHistory.map((item) => item.actor_id),
-        ]),
+  // source-actor name resolution is fail-soft (codex condition, option 1):
+  // a name-lookup reject must NOT 500 the whole panel — events still render with
+  // actor_name:null and the failure is surfaced as partial_failures 'actor_names'.
+  const sourceActorIds = Array.from(
+    new Set(
+      compactPreviewValues(
+        TIMELINE_SOURCES.flatMap((source) =>
+          source.collectActorIds
+            ? (timelineSources[source.key] as readonly unknown[]).flatMap((row) =>
+                source.collectActorIds!(row as never),
+              )
+            : [],
+        ),
       ),
     ),
   );
+  const sourceActorNameMapPromise = runScoped((tx) =>
+    batchResolveNames(tx, args.orgId, sourceActorIds),
+  ).catch((error) => {
+    logPatientTimelineTaskFailure(args.orgId, { key: 'actor_names', error });
+    partialFailures.push(toPatientTimelinePartialFailure({ key: 'actor_names', error }));
+    return new Map<string, string>();
+  });
 
-  const timelineEvents = buildPatientTimelineEvents({
+  // op_history is the 14th (inline) source. FAIL-SOFT, not unguarded-throw: a
+  // timeout/deep-page failure on this audit-log read degrades the panel visibly
+  // (operationHistory=[] + partial_failures source 'operation_history') instead
+  // of 500-ing. Downstream consumers (batchResolveNames / firstVisitDocumentActions
+  // / buildOperationHistoryEvents) all no-op safely on [].
+  let operationHistory: PatientTimelineOperationHistoryRow[] = [];
+  try {
+    operationHistory = await runScoped((tx) =>
+      tx.auditLog.findMany({
+        where: {
+          org_id: args.orgId,
+          OR: operationHistoryFilters,
+        },
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        take: 20,
+        select: {
+          id: true,
+          action: true,
+          target_type: true,
+          target_id: true,
+          actor_id: true,
+          changes: true,
+          created_at: true,
+        },
+      }),
+    );
+  } catch (error) {
+    logPatientTimelineTaskFailure(args.orgId, { key: 'operation_history', error });
+    operationHistory = [];
+    partialFailures.push(toPatientTimelinePartialFailure({ key: 'operation_history', error }));
+  }
+
+  // operation-history-actor name resolution is fail-soft with a DISTINCT source
+  // key ('operation_actor_names') so a failure here is attributable separately.
+  const operationActorIds = Array.from(
+    new Set(compactPreviewValues(operationHistory.map((item) => item.actor_id))),
+  );
+  const operationActorNameMapPromise = runScoped((tx) =>
+    batchResolveNames(tx, args.orgId, operationActorIds),
+  ).catch((error) => {
+    logPatientTimelineTaskFailure(args.orgId, { key: 'operation_actor_names', error });
+    partialFailures.push(toPatientTimelinePartialFailure({ key: 'operation_actor_names', error }));
+    return new Map<string, string>();
+  });
+
+  const [sourceActorNameMap, operationActorNameMap] = await Promise.all([
+    sourceActorNameMapPromise,
+    operationActorNameMapPromise,
+  ]);
+  const actorNameMap = new Map([...sourceActorNameMap, ...operationActorNameMap]);
+  // Re-sort: fail-soft pushes above append out of order; keep partial_failures stable.
+  partialFailures.sort((left, right) => left.source.localeCompare(right.source));
+
+  const projectCtx: TimelineProjectCtx = {
     patientId: args.patientId,
     actorNameMap,
-    visitSchedules,
-    visitRecords,
-    careReports,
-    communicationEvents,
-    selfReports,
-    externalShares,
-    inquiryRecords,
-    prescriptionIntakes,
-    dispenseResults,
-    managementPlans,
-    firstVisitDocuments,
-    conferenceNotes,
-    billingCandidates,
-    operationHistory,
-  });
+    firstVisitDocumentActions: latestFirstVisitDocumentActionByDocumentId(operationHistory),
+    hrefs: buildTimelineHrefBundle(args.patientId),
+  };
+  const timelineEvents = [
+    ...TIMELINE_SOURCES.flatMap((source) =>
+      source.toEvents(timelineSources[source.key] as never, projectCtx),
+    ),
+    ...buildOperationHistoryEvents(operationHistory, projectCtx),
+  ]
+    .sort(
+      (left, right) =>
+        right.occurred_at.getTime() - left.occurred_at.getTime() || right.id.localeCompare(left.id),
+    )
+    .slice(0, 40);
 
   return {
     timeline_events: timelineEvents,
     self_reports: selfReports,
+    ...(partialFailures.length > 0 ? { partial_failures: partialFailures } : {}),
   };
 }

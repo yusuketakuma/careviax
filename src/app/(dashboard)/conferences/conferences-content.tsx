@@ -54,7 +54,10 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { sectionTemplatesFor, type StructuredSectionDraft } from './conference-note-templates';
 import { SectionIntro } from '@/components/ui/section-intro';
 import { PageSection } from '@/components/layout/page-section';
@@ -195,6 +198,22 @@ function getConferenceReportDraftIds(
   );
 }
 
+function buildConferenceNoteApiPath(noteId: string, suffix = '') {
+  return `/api/conference-notes/${encodePathSegment(noteId)}${suffix}`;
+}
+
+function buildProposalHref(
+  caseId: string | null | undefined,
+  patientId: string | null | undefined,
+) {
+  const params = new URLSearchParams({
+    case_id: caseId ?? '',
+    patient_id: patientId ?? '',
+    focus: 'patient',
+  });
+  return `/schedules/proposals?${params.toString()}`;
+}
+
 function NoteCard({
   note,
   onConvertToTask,
@@ -320,7 +339,7 @@ function NoteCard({
                   {reportDraftIds.map((reportId, index) => (
                     <Link
                       key={reportId}
-                      href={`/reports/${reportId}`}
+                      href={buildReportHref(reportId)}
                       className="inline-flex min-h-[44px] items-center rounded-lg border border-tag-info/30 bg-background px-3 py-1.5 text-xs font-medium text-tag-info hover:bg-tag-info/10 sm:min-h-0"
                     >
                       ドラフト{index + 1}
@@ -336,14 +355,14 @@ function NoteCard({
                   ) : null}
                   {note.sync_summary?.visit_proposal_id ? (
                     <Link
-                      href={`/schedules/proposals?case_id=${note.case_id ?? ''}&patient_id=${note.patient_id ?? ''}&focus=patient`}
+                      href={buildProposalHref(note.case_id, note.patient_id)}
                       className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
                     >
                       訪問候補を確認
                     </Link>
                   ) : note.case_id || note.patient_id ? (
                     <Link
-                      href={`/schedules/proposals?case_id=${note.case_id ?? ''}&patient_id=${note.patient_id ?? ''}&focus=patient`}
+                      href={buildProposalHref(note.case_id, note.patient_id)}
                       className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
                     >
                       訪問候補を作成
@@ -356,7 +375,7 @@ function NoteCard({
             <div className="flex justify-end">
               <div className="flex flex-wrap gap-2">
                 <Link
-                  href={`/api/conference-notes/${note.id}/pdf`}
+                  href={buildConferenceNoteApiPath(note.id, '/pdf')}
                   target="_blank"
                   className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border px-2 text-xs font-medium hover:bg-muted sm:h-7 sm:min-h-0 sm:min-w-0"
                 >
@@ -589,7 +608,7 @@ export function ConferencesContent({
         path: '/api/conference-notes',
         params,
         init: {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
         errorMessage: 'カンファレンスノートの取得に失敗しました',
       });
@@ -601,8 +620,8 @@ export function ConferencesContent({
     queryKey: ['conference-note-detail', orgId, selectedNoteId],
     queryFn: async () => {
       if (!selectedNoteId) return null;
-      const response = await fetch(`/api/conference-notes/${selectedNoteId}`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(buildConferenceNoteApiPath(selectedNoteId), {
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('カンファレンスノート詳細の取得に失敗しました');
       const payload = (await response.json()) as { data: ConferenceNote };
@@ -617,7 +636,7 @@ export function ConferencesContent({
       return fetchAllCursorPages<CommunityActivity>({
         path: '/api/community-activities',
         init: {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
         errorMessage: '地域活動の取得に失敗しました',
       });
@@ -629,7 +648,7 @@ export function ConferencesContent({
     queryKey: ['conference-external-professionals', orgId],
     queryFn: async () => {
       const response = await fetch('/api/admin/external-professionals', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('他職種マスターの取得に失敗しました');
       return response.json() as Promise<{ data: ExternalProfessionalOption[] }>;
@@ -667,7 +686,7 @@ export function ConferencesContent({
         path: '/api/conference-notes',
         params,
         init: {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
         errorMessage: 'カレンダー用カンファレンス記録の取得に失敗しました',
       });
@@ -691,7 +710,7 @@ export function ConferencesContent({
         params.set('case_id', contextCaseId);
       }
       const response = await fetch(`/api/prescriber-institutions/suggestion?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('処方元医療機関候補の取得に失敗しました');
       return response.json() as Promise<{ data: PrescriberInstitutionSuggestion | null }>;
@@ -703,7 +722,7 @@ export function ConferencesContent({
     mutationFn: async (payload: object) => {
       const response = await fetch('/api/conference-notes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error('作成に失敗しました');
@@ -747,7 +766,7 @@ export function ConferencesContent({
     mutationFn: async (payload: object) => {
       const response = await fetch('/api/community-activities', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error('作成に失敗しました');
@@ -770,9 +789,9 @@ export function ConferencesContent({
       noteId: string;
       actionItemIndex: number;
     }) => {
-      const response = await fetch(`/api/conference-notes/${noteId}/tasks`, {
+      const response = await fetch(buildConferenceNoteApiPath(noteId, '/tasks'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ action_item_index: actionItemIndex }),
       });
       if (!response.ok) {
@@ -807,9 +826,9 @@ export function ConferencesContent({
       autoSend: boolean;
       includeStructuredContent: boolean;
     }) => {
-      const response = await fetch(`/api/conference-notes/${note.id}/generate-report`, {
+      const response = await fetch(buildConferenceNoteApiPath(note.id, '/generate-report'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           report_type: reportType,
           auto_send: autoSend,
@@ -1558,7 +1577,7 @@ export function ConferencesContent({
                   (reportId, index) => (
                     <Link
                       key={reportId}
-                      href={`/reports/${reportId}`}
+                      href={buildReportHref(reportId)}
                       className="inline-flex rounded-lg border border-tag-info/30 bg-background px-3 py-2 text-sm font-medium text-tag-info hover:bg-tag-info/10"
                     >
                       ドラフト{index + 1}
@@ -1575,14 +1594,14 @@ export function ConferencesContent({
                 ) : null}
                 {lastSyncSummary.visitProposalId ? (
                   <Link
-                    href={`/schedules/proposals?case_id=${lastSyncSummary.caseId ?? ''}&patient_id=${lastSyncSummary.patientId ?? ''}&focus=patient`}
+                    href={buildProposalHref(lastSyncSummary.caseId, lastSyncSummary.patientId)}
                     className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
                   >
                     訪問候補を確認
                   </Link>
                 ) : lastSyncSummary.caseId || lastSyncSummary.patientId ? (
                   <Link
-                    href={`/schedules/proposals?case_id=${lastSyncSummary.caseId ?? ''}&patient_id=${lastSyncSummary.patientId ?? ''}&focus=patient`}
+                    href={buildProposalHref(lastSyncSummary.caseId, lastSyncSummary.patientId)}
                     className="inline-flex rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
                   >
                     訪問候補を作成

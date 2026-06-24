@@ -7,6 +7,9 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { REPORT_TYPE_LABELS, REPORT_STATUS_CONFIG } from '@/lib/constants/status-labels';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 import {
   CONTACT_STATUS_LABELS,
   PROPOSAL_STATUS_LABELS,
@@ -187,8 +190,8 @@ export function buildPatientResult(item: PatientSearchItem): SearchResultRow {
     badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.patient,
     title: `${item.name} 様`,
     subtitle: subtitleParts.length > 0 ? subtitleParts.join('。') : null,
-    // id は path segment。壊れた payload(slash/query/hash 混入)で別 route へ遷移しないよう encode。
-    href: `/patients/${encodeURIComponent(item.id)}`,
+    // 共有 guarded helper(buildPatientHref)で encode + dot-segment(./..) 拒否。検索結果は API 由来 → 不正 id は fail-fast。
+    href: buildPatientHref(item.id),
   };
 }
 
@@ -209,8 +212,8 @@ export function buildPrescriptionResult(item: PrescriptionSearchItem): SearchRes
     badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.prescription,
     title: rxNumber,
     subtitle: subtitleParts.length > 0 ? subtitleParts.join(' / ') : null,
-    // id は path segment。壊れた payload(slash/query/hash 混入)で別 route へ遷移しないよう encode。
-    href: `/prescriptions/${encodeURIComponent(item.id)}`,
+    // 共有 guarded helper(buildPrescriptionHref)で encode + dot-segment(./..) 拒否。検索結果は API 由来 → 不正 id は fail-fast。
+    href: buildPrescriptionHref(item.id),
   };
 }
 
@@ -257,8 +260,8 @@ export function buildReportResult(
     badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.report,
     title,
     subtitle: statusLabel,
-    // id は path segment。壊れた payload(slash/query/hash 混入)で別 route へ遷移しないよう encode。
-    href: `/reports/${encodeURIComponent(item.id)}`,
+    // 共有 guarded helper(buildReportHref)で encode + dot-segment(./..) 拒否。検索結果は API 由来 → 不正 id は fail-fast。
+    href: buildReportHref(item.id),
   };
 }
 

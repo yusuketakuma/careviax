@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { SELF_REPORT_STATUS_LABELS } from '@/lib/constants/status-labels';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { cn } from '@/lib/utils';
@@ -322,7 +323,9 @@ export function ExternalViewerContent({
                           {report.reported_by_name ?? '報告者非表示'}
                         </p>
                       </div>
-                      <Badge variant="outline">{report.status}</Badge>
+                      <Badge variant="outline">
+                        {SELF_REPORT_STATUS_LABELS[report.status] ?? report.status}
+                      </Badge>
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">
                       {report.category}

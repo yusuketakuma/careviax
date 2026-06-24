@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { PatientFacilityMultiVisitCard } from './patient-facility-multi-visit-card';
 import type { PatientOverview } from './patient-detail.types';
 
@@ -19,6 +20,11 @@ vi.mock('next/link', () => ({
     </a>
   ),
 }));
+
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
 
 function buildPatient(overrides: Partial<PatientOverview> = {}): PatientOverview {
   return {
@@ -186,6 +192,8 @@ function buildPatient(overrides: Partial<PatientOverview> = {}): PatientOverview
 
 describe('PatientFacilityMultiVisitCard', () => {
   it('shows facility/unit readiness and schedule grouping guidance', () => {
+    vi.mocked(buildPatientHref).mockClear();
+
     render(<PatientFacilityMultiVisitCard patient={buildPatient()} />);
 
     expect(screen.getByText('施設・個人宅の複数名同時訪問設定')).toBeTruthy();
@@ -203,6 +211,50 @@ describe('PatientFacilityMultiVisitCard', () => {
     expect(screen.getByRole('link', { name: '連携で編集' }).getAttribute('href')).toBe(
       '/patients/patient_1/collaboration',
     );
+  });
+
+  it('routes the collaboration link through buildPatientHref return value', () => {
+    const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockImplementation(
+      (patientId: string, suffix = '') => `/patients/__sentinel_${patientId}__${suffix}`,
+    );
+    vi.mocked(buildPatientHref).mockClear();
+
+    try {
+      render(<PatientFacilityMultiVisitCard patient={buildPatient()} />);
+
+      expect(screen.getByRole('link', { name: '連携で編集' }).getAttribute('href')).toBe(
+        '/patients/__sentinel_patient_1__/collaboration',
+      );
+      expect(vi.mocked(buildPatientHref)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith('patient_1', '/collaboration');
+    } finally {
+      if (realImpl) vi.mocked(buildPatientHref).mockImplementation(realImpl);
+      vi.mocked(buildPatientHref).mockClear();
+    }
+  });
+
+  it('encodes only the patient id segment for hostile collaboration ids', () => {
+    vi.mocked(buildPatientHref).mockClear();
+    const patientId = 'patient/1?tab=x#frag';
+
+    render(<PatientFacilityMultiVisitCard patient={buildPatient({ id: patientId })} />);
+
+    const href = screen.getByRole('link', { name: '連携で編集' }).getAttribute('href');
+    expect(href).toBe(`/patients/${encodeURIComponent(patientId)}/collaboration`);
+    expect(href).not.toContain('?tab=x');
+    expect(href).not.toContain('#frag');
+    expect(href).not.toContain('%25');
+    expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith(patientId, '/collaboration');
+  });
+
+  it.each(['.', '..'])('inherits the patient href dot-segment guard for %s', (patientId) => {
+    vi.mocked(buildPatientHref).mockClear();
+
+    expect(() =>
+      render(<PatientFacilityMultiVisitCard patient={buildPatient({ id: patientId })} />),
+    ).toThrow(RangeError);
+    expect(vi.mocked(buildPatientHref)).toHaveBeenCalledWith(patientId, '/collaboration');
   });
 
   it('treats an individual home address as a multi-visit grouping source', () => {

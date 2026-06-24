@@ -129,7 +129,7 @@ function buildAttentionPresentation(key: PatientAttentionKey): AttentionPresenta
     return {
       label,
       accentClass: 'bg-muted-foreground/30',
-      badgeClass: 'bg-muted text-muted-foreground',
+      badgeClass: 'bg-muted text-foreground ring-1 ring-border',
     };
   }
   const spec = STATUS_TOKENS[role];
@@ -151,16 +151,16 @@ const ATTENTION_PRESENTATIONS: Record<PatientAttentionKey, AttentionPresentation
 /** status_text の文字色 → 6 軸トークン(critical=blocked / positive=done / caution=confirm /
  * info=info タグ / external=waiting / neutral=状態色なし)。 */
 const STATUS_TONE_CLASSES: Record<PatientStatusTone, string> = {
-  critical: 'font-bold text-state-blocked',
-  positive: 'font-semibold text-state-done',
-  caution: 'font-semibold text-state-confirm',
-  info: 'text-tag-info',
-  external: 'font-semibold text-state-waiting',
-  neutral: 'text-muted-foreground',
+  critical: 'font-bold text-foreground',
+  positive: 'font-semibold text-foreground',
+  caution: 'font-semibold text-foreground',
+  info: 'font-medium text-foreground',
+  external: 'font-semibold text-foreground',
+  neutral: 'text-foreground/80',
 };
 
 /** 患者属性タグ(腎機能/嚥下/アレルギー)。要注意の患者属性 → confirm トークン(橙)。 */
-const PATIENT_SAFETY_TAG_CLASS = 'border-state-confirm/40 bg-state-confirm/10 text-state-confirm';
+const PATIENT_SAFETY_TAG_CLASS = 'border-state-confirm/45 bg-state-confirm/15 text-foreground';
 const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> = {
   renal: { label: '腎機能', className: PATIENT_SAFETY_TAG_CLASS },
   swallowing: { label: '嚥下', className: PATIENT_SAFETY_TAG_CLASS },
@@ -172,9 +172,9 @@ const FOUNDATION_STATUS_CLASSES: Record<
   NonNullable<PatientBoardCard['foundation_summary']>['status'],
   string
 > = {
-  ready: 'border-state-done/30 bg-state-done/10 text-state-done',
-  needs_confirmation: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
-  missing: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
+  ready: 'border-state-done/35 bg-state-done/10 text-foreground',
+  needs_confirmation: 'border-state-confirm/35 bg-state-confirm/10 text-foreground',
+  missing: 'border-state-blocked/35 bg-state-blocked/10 text-foreground',
 };
 
 const SAFETY_TAG_DISPLAY_LIMIT = 3;
@@ -266,7 +266,7 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
           : '期限超過の患者はいません',
       chip: 'priority',
       icon: AlertTriangle,
-      className: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
+      className: 'border-state-blocked/35 bg-state-blocked/10 text-foreground',
     },
     {
       key: 'release',
@@ -275,7 +275,7 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
       description: waitReleaseCount > 0 ? '照会回答などで工程を戻せます' : '待ち解除はありません',
       chip: 'priority',
       icon: MessageSquareWarning,
-      className: 'border-state-done/30 bg-state-done/10 text-state-done',
+      className: 'border-state-done/35 bg-state-done/10 text-foreground',
     },
     {
       key: 'visit',
@@ -288,7 +288,7 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
         todayVisitCount > 0 ? '出発前チェックとセット確認' : '今日の個別訪問はありません',
       chip: 'visit_today',
       icon: CalendarDays,
-      className: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
+      className: 'border-tag-info/35 bg-tag-info/10 text-foreground',
     },
     {
       key: 'hold',
@@ -300,7 +300,7 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
           : '外部待ち・休止はありません',
       chip: externalCount > 0 ? 'external' : 'paused',
       icon: PauseCircle,
-      className: 'border-state-waiting/30 bg-state-waiting/10 text-state-waiting',
+      className: 'border-state-waiting/35 bg-state-waiting/10 text-foreground',
     },
   ];
 }
@@ -749,6 +749,17 @@ export function PatientsBoard() {
           </div>
         ) : (
           <div className="space-y-4">
+            {data.truncated ? (
+              <div
+                role="note"
+                data-testid="patients-board-truncation-note"
+                className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-2.5 text-xs leading-5 text-state-confirm"
+              >
+                全{data.assigned_total}名のうち取得上限により{data.cards.length}
+                名のみ取得しています。優先度の高い患者が表示範囲外の場合があります。
+                検索も取得済みの患者が対象のため、見つからないときは条件を絞り込んでください。
+              </div>
+            ) : null}
             <div className="min-w-0">
               {visibleCards.length === 0 ? (
                 <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">

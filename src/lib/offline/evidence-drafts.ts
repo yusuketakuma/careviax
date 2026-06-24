@@ -94,6 +94,24 @@ const DEFAULT_EVIDENCE_SYNC_FETCH_TIMEOUT_MS = 15_000;
 const MAX_EVIDENCE_SYNC_FETCH_TIMEOUT_MS = 60_000;
 const activeEvidenceSyncRuns = new Map<string, Promise<EvidenceSyncResult>>();
 
+type PresignedUploadPayload = {
+  id: string;
+  uploadUrl: string;
+  headers?: Record<string, string>;
+};
+
+const GENERIC_EVIDENCE_SYNC_ERROR_MESSAGE = '証跡写真の同期に失敗しました';
+const SAFE_EVIDENCE_SYNC_ERROR_MESSAGES = new Set([
+  '写真データを復号できませんでした',
+  'アップロードURLの取得に失敗しました',
+  '写真のアップロードに失敗しました',
+  '写真のアップロード確定に失敗しました',
+  '写真のアップロード結果が不正です',
+  '訪問記録の取得に失敗しました',
+  '訪問記録への添付紐づけに失敗しました',
+  '証跡写真の同期がタイムアウトしました',
+]);
+
 export type EvidenceSyncResult = {
   synced: number;
   /** 訪問記録が未作成などで保留(未同期のまま端末に残る) */
@@ -106,6 +124,39 @@ function evidenceSyncFetchTimeoutMs() {
     fallbackMs: DEFAULT_EVIDENCE_SYNC_FETCH_TIMEOUT_MS,
     maxMs: MAX_EVIDENCE_SYNC_FETCH_TIMEOUT_MS,
   });
+}
+
+function parsePresignedUploadPayload(payload: unknown): PresignedUploadPayload | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const data = (payload as { data?: unknown }).data;
+  if (typeof data !== 'object' || data === null) return null;
+  const { id, uploadUrl, headers } = data as {
+    id?: unknown;
+    uploadUrl?: unknown;
+    headers?: unknown;
+  };
+  if (typeof id !== 'string') return null;
+  if (typeof uploadUrl !== 'string') return null;
+  const normalizedId = id.trim();
+  const normalizedUploadUrl = uploadUrl.trim();
+  if (normalizedId.length === 0) return null;
+  if (normalizedUploadUrl.length === 0) return null;
+  if (headers !== undefined) {
+    if (typeof headers !== 'object' || headers === null || Array.isArray(headers)) return null;
+    if (!Object.values(headers).every((value) => typeof value === 'string')) return null;
+  }
+  return {
+    id: normalizedId,
+    uploadUrl: normalizedUploadUrl,
+    headers: headers as Record<string, string> | undefined,
+  };
+}
+
+function safeEvidenceSyncErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return GENERIC_EVIDENCE_SYNC_ERROR_MESSAGE;
+  return SAFE_EVIDENCE_SYNC_ERROR_MESSAGES.has(error.message)
+    ? error.message
+    : GENERIC_EVIDENCE_SYNC_ERROR_MESSAGE;
 }
 
 async function fetchEvidenceSync(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -134,11 +185,14 @@ async function resolveVisitRecordIdForDraft(
   scheduleId: string,
   headers: Record<string, string>,
 ): Promise<string | null> {
-  const scheduleRes = await fetchEvidenceSync(`/api/visit-schedules/${scheduleId}`, { headers });
+  const schedulePathId = encodeURIComponent(scheduleId);
+  const scheduleRes = await fetchEvidenceSync(`/api/visit-schedules/${schedulePathId}`, {
+    headers,
+  });
   if (scheduleRes.ok) {
     return resolveScheduleVisitRecordId(await scheduleRes.json().catch(() => null));
   }
-  const recordRes = await fetchEvidenceSync(`/api/visit-records/${scheduleId}`, { headers });
+  const recordRes = await fetchEvidenceSync(`/api/visit-records/${schedulePathId}`, { headers });
   return recordRes.ok ? scheduleId : null;
 }
 
@@ -149,6 +203,7 @@ async function uploadEvidenceDraft(
   orgId: string,
 ): Promise<void> {
   const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
+  const visitRecordPathId = encodeURIComponent(visitRecordId);
   let fileAssetId =
     draft.uploadedVisitRecordId === visitRecordId ? (draft.uploadedFileAssetId ?? null) : null;
 
@@ -171,12 +226,16 @@ async function uploadEvidenceDraft(
     });
     const presignJson = await presignRes.json().catch(() => null);
     if (!presignRes.ok) {
-      throw new Error(presignJson?.message ?? 'アップロードURLの取得に失敗しました');
+      throw new Error('アップロードURLの取得に失敗しました');
+    }
+    const presignedUpload = parsePresignedUploadPayload(presignJson);
+    if (!presignedUpload) {
+      throw new Error('アップロードURLの取得に失敗しました');
     }
 
-    const uploadRes = await fetchEvidenceSync(presignJson.data.uploadUrl, {
+    const uploadRes = await fetchEvidenceSync(presignedUpload.uploadUrl, {
       method: 'PUT',
-      headers: presignJson.data.headers,
+      headers: presignedUpload.headers,
       body: blob,
     });
     if (!uploadRes.ok) throw new Error('写真のアップロードに失敗しました');
@@ -185,13 +244,13 @@ async function uploadEvidenceDraft(
       method: 'POST',
       headers: jsonHeaders,
       body: JSON.stringify({
-        file_id: presignJson.data.id,
+        file_id: presignedUpload.id,
         etag: uploadRes.headers.get('etag') ?? undefined,
       }),
     });
     if (!completeRes.ok) throw new Error('写真のアップロード確定に失敗しました');
 
-    const completedFileAssetId = presignJson?.data?.id;
+    const completedFileAssetId = presignedUpload.id;
     if (typeof completedFileAssetId !== 'string' || !completedFileAssetId) {
       throw new Error('写真のアップロード結果が不正です');
     }
@@ -206,7 +265,7 @@ async function uploadEvidenceDraft(
   if (!fileAssetId) throw new Error('写真のアップロード結果が不正です');
 
   // 4. 訪問記録 attachments へ紐づけ(既存添付とマージ、楽観ロック version 必須)
-  const detailRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordId}`, {
+  const detailRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordPathId}`, {
     headers: { 'x-org-id': orgId },
   });
   const detail = await detailRes.json().catch(() => null);
@@ -214,7 +273,7 @@ async function uploadEvidenceDraft(
     throw new Error('訪問記録の取得に失敗しました');
   }
 
-  const patchRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordId}`, {
+  const patchRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordPathId}`, {
     method: 'PATCH',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -223,8 +282,7 @@ async function uploadEvidenceDraft(
     }),
   });
   if (!patchRes.ok) {
-    const patchJson = await patchRes.json().catch(() => null);
-    throw new Error(patchJson?.message ?? '訪問記録への添付紐づけに失敗しました');
+    throw new Error('訪問記録への添付紐づけに失敗しました');
   }
 }
 
@@ -267,7 +325,7 @@ async function syncEvidenceDraftsOnce(config: EvidenceSyncConfig): Promise<Evide
     } catch (error) {
       await offlineDb.evidenceDrafts.update(draft.id!, {
         retryCount: draft.retryCount + 1,
-        lastError: error instanceof Error ? error.message : 'Unknown error',
+        lastError: safeEvidenceSyncErrorMessage(error),
       });
       result.failed += 1;
     }
@@ -290,7 +348,7 @@ export async function syncEvidenceDrafts(config: EvidenceSyncConfig): Promise<Ev
 export function setupEvidenceAutoSync(config: EvidenceSyncConfig): () => void {
   const handler = () => {
     syncEvidenceDrafts(config).catch((error) => {
-      console.warn('[offline-evidence] automatic sync failed', error);
+      console.warn('[offline-evidence] automatic sync failed', safeEvidenceSyncErrorMessage(error));
     });
   };
 

@@ -7,6 +7,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
+import { buildTracingReportPdfPath } from '@/lib/reports/tracing-report-pdf-path';
 import {
   communicationResponseContentSchema,
   requiredTrimmedStringSchema,
@@ -323,7 +324,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           data: {
             status: 'acknowledged',
             sent_to_physician: updated.recipient_name,
-            pdf_url: `/api/tracing-reports/${linkedTracingReport.id}/pdf`,
+            pdf_url: buildTracingReportPdfPath(linkedTracingReport.id),
             ...(!linkedTracingReport.acknowledged_at ? { acknowledged_at: new Date() } : {}),
           },
         });

@@ -28,7 +28,7 @@ export type CockpitVisit = {
   patient_name: string;
   visit_type: string;
   schedule_status: string;
-  /** time_window_start(ISO)。未設定は null */
+  /** time_window_start を "HH:MM" 壁時計で表現(@db.Time の UTC parts 由来)。未設定は null */
   time_start: string | null;
   time_end: string | null;
   /** 施設一括訪問のグループキー(同一値はまとめて表示) */

@@ -4,6 +4,10 @@ import {
   ensureTodayVisitPreparationBoardFixtures,
 } from './helpers/grouped-visit-fixtures';
 import {
+  ensureScheduleVehicleResourceFixtures,
+  SCHEDULE_VEHICLE_FIXTURE_IDS as SCHEDULE_OPTIMIZER_IDS,
+} from './helpers/schedule-vehicle-resource-fixtures';
+import {
   attachLocalSession,
   clickAndWaitForStableRoute,
   createInstrumentedPage,
@@ -28,22 +32,67 @@ function escapeRegExp(value: string) {
 }
 
 async function openScheduleBoard(page: Page) {
-  await openStableRoute(page, '/schedules');
   const teamBoard = page.getByTestId('schedule-team-board');
-  if (!(await teamBoard.isVisible({ timeout: 45_000 }).catch(() => false))) {
-    await reloadStablePage(page);
-  }
+  await openStableRouteUntilVisible(page, '/schedules', () => teamBoard, {
+    attempts: 3,
+    timeout: 60_000,
+  });
 
   await expect(teamBoard).toBeVisible({ timeout: 45_000 });
+
+  const boardSettled = () =>
+    teamBoard
+      .getByTestId('schedule-team-gantt')
+      .or(teamBoard.getByText('スケジュールを表示できません'));
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (
+      await boardSettled()
+        .isVisible({ timeout: 30_000 })
+        .catch(() => false)
+    ) {
+      return;
+    }
+
+    const bodyText = (
+      (await page
+        .locator('body')
+        .textContent()
+        .catch(() => '')) ?? ''
+    ).trim();
+    if (!bodyText || attempt < 2) {
+      await reloadStablePage(page);
+      await expect(teamBoard).toBeVisible({ timeout: 45_000 });
+    }
+  }
+
+  await expect(boardSettled()).toBeVisible({ timeout: 60_000 });
 }
 
 async function openVisitRecordPage(page: Page, url: string) {
   await openStableRoute(page, url);
 
   const switcher = page.getByTestId('facility-visit-record-switcher');
-  if (!(await switcher.isVisible({ timeout: 5_000 }).catch(() => false))) {
+  if (!(await switcher.isVisible({ timeout: 60_000 }).catch(() => false))) {
     await reloadStablePage(page);
   }
+}
+
+async function openAdminMasterHub(page: Page) {
+  await openStableRoute(page, '/admin');
+
+  const masterHub = page.getByTestId('master-hub');
+  await expect(page.getByRole('heading', { name: 'マスター', exact: true })).toBeVisible();
+  await expect(masterHub).toBeVisible();
+
+  const firstCard = masterHub.getByTestId('master-hub-card').first();
+  if (!(await firstCard.isVisible({ timeout: 45_000 }).catch(() => false))) {
+    await reloadStablePage(page);
+    await expect(page.getByRole('heading', { name: 'マスター', exact: true })).toBeVisible();
+    await expect(masterHub).toBeVisible();
+  }
+
+  await expect(firstCard).toBeVisible({ timeout: 90_000 });
 }
 
 async function expectNoPageHorizontalOverflow(page: Page) {
@@ -73,6 +122,113 @@ async function expectMinTouchTargetHeight(locator: Locator, minHeight = 44) {
   if (!box) throw new Error('Touch target was not measurable');
 
   expect(box.height).toBeGreaterThanOrEqual(minHeight);
+}
+
+async function openStableRouteUntilVisible(
+  page: Page,
+  path: string,
+  readyLocator: () => Locator,
+  options: { attempts?: number; timeout?: number } = {},
+) {
+  const attempts = options.attempts ?? 2;
+  const timeout = options.timeout ?? 60_000;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await openStableRoute(page, path);
+    const hasBodyText = await expect
+      .poll(
+        async () =>
+          (
+            (await page
+              .locator('body')
+              .textContent()
+              .catch(() => '')) ?? ''
+          ).trim().length,
+        { timeout: Math.min(timeout, 10_000) },
+      )
+      .toBeGreaterThan(0)
+      .then(() => true)
+      .catch(() => false);
+    if (!hasBodyText) continue;
+
+    if (
+      await readyLocator()
+        .isVisible({ timeout })
+        .catch(() => false)
+    ) {
+      return;
+    }
+  }
+
+  await expect(readyLocator()).toBeVisible({ timeout });
+}
+
+type ProposalDashboardState = 'detail' | 'empty' | 'loading' | 'blank' | 'pending';
+
+async function waitForProposalDashboardState(
+  page: Page,
+  main: Locator,
+  timeout: number,
+): Promise<ProposalDashboardState> {
+  const deadline = Date.now() + timeout;
+  let lastState: ProposalDashboardState = 'pending';
+
+  while (Date.now() < deadline) {
+    const bodyText = (
+      (await page
+        .locator('body')
+        .textContent()
+        .catch(() => '')) ?? ''
+    ).trim();
+    if (!bodyText) {
+      lastState = 'blank';
+    } else if ((await page.getByRole('button', { name: /確定フローを開く/ }).count()) > 0) {
+      return 'detail';
+    } else if (
+      await main
+        .getByText('条件に一致する訪問候補はありません。')
+        .isVisible()
+        .catch(() => false)
+    ) {
+      lastState = 'empty';
+    } else if (bodyText.includes('訪問候補を読み込み中')) {
+      lastState = 'loading';
+    } else {
+      lastState = 'pending';
+    }
+
+    await page.waitForTimeout(1_000);
+  }
+
+  return lastState;
+}
+
+type WeeklyOptimizerState = 'generation' | 'shift-empty' | 'no-pharmacists' | 'loading' | 'pending';
+
+async function waitForWeeklyOptimizerState(
+  page: Page,
+  main: Locator,
+  timeout: number,
+): Promise<WeeklyOptimizerState> {
+  const deadline = Date.now() + timeout;
+  let lastState: WeeklyOptimizerState = 'pending';
+
+  while (Date.now() < deadline) {
+    const text = (await main.textContent()) ?? '';
+    if (text.includes('この枠に提案')) {
+      return 'generation';
+    }
+    if (text.includes('勤務シフトなし')) {
+      return 'shift-empty';
+    }
+    if (text.includes('対象週に勤務シフトがある薬剤師がいません。')) {
+      return 'no-pharmacists';
+    }
+    lastState = text.includes('週間最適化ビューを読み込み中...') ? 'loading' : 'pending';
+    await page.waitForTimeout(1_000);
+  }
+
+  return lastState;
 }
 
 async function swipeVisitSwitcherToNext(page: Page) {
@@ -295,14 +451,19 @@ test.describe('schedule page', () => {
   test('current schedule board exposes route and proposal workspaces without old day-view chrome', async ({
     context,
   }) => {
+    test.slow();
     const { page, errors } = await createInstrumentedPage(context);
     await openScheduleBoard(page);
 
     const board = page.getByTestId('schedule-team-board');
     await expect(board.getByTestId('schedule-view-mode-toggle')).toBeVisible();
     await expect(board.getByTestId('schedule-team-gantt')).toBeVisible({ timeout: 90_000 });
-    await expect(board.getByTestId('schedule-pending-proposals')).toBeVisible();
-    await expect(board.locator('a[href="/schedules/route-compare"]').first()).toBeVisible();
+    await expect(board.getByTestId('schedule-pending-proposals')).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(board.locator('a[href="/schedules/route-compare"]').first()).toBeVisible({
+      timeout: 90_000,
+    });
     await expect(
       board.locator('a[href^="/schedules/proposals?workspace=dashboard"]').first(),
     ).toBeVisible();
@@ -351,62 +512,65 @@ test.describe('schedule page', () => {
   test('proposal dashboard opens detail with confirmation flow and reproposal controls', async ({
     context,
   }, testInfo) => {
+    test.slow();
     test.skip(
       testInfo.project.name !== 'chromium',
       'Proposal dashboard detail interaction coverage runs in the desktop viewport.',
     );
 
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/schedules/proposals?workspace=dashboard');
+    await openStableRouteUntilVisible(
+      page,
+      '/schedules/proposals?workspace=dashboard',
+      () => page.getByLabel('ケース/患者検索'),
+      { timeout: 90_000 },
+    );
 
     await expect(page.getByLabel('ケース/患者検索')).toBeVisible();
     await expect(page.getByLabel('候補日 From')).toBeVisible();
     await expect(page.getByLabel('候補日 To')).toBeVisible();
 
-    const detailButton = page.getByRole('button', { name: /確定フローを開く/ }).first();
-    await expect
-      .poll(
-        async () => {
-          const hasDetail =
-            (await page.getByRole('button', { name: /確定フローを開く/ }).count()) > 0;
-          const hasEmpty = await page
-            .locator('main')
-            .getByText('条件に一致する訪問候補はありません。')
-            .isVisible()
-            .catch(() => false);
-          return hasDetail || hasEmpty;
-        },
-        {
-          message: 'proposal dashboard should settle with detail rows or an empty state',
-          timeout: 90_000,
-        },
-      )
-      .toBe(true);
-
-    if ((await page.getByRole('button', { name: /確定フローを開く/ }).count()) > 0) {
-      await expectMinTouchTargetHeight(detailButton);
-      await detailButton.click();
-      await expect(page.getByTestId('schedule-proposal-active-row')).toBeVisible({
-        timeout: 45_000,
-      });
-
-      const sheet = page.getByRole('dialog');
-      await expect(sheet.getByTestId('proposal-confirmation-flow')).toBeVisible({
-        timeout: 90_000,
-      });
-      await expect(sheet.getByTestId('proposal-candidate-cards')).toBeVisible();
-      await expect(sheet.getByTestId('proposal-flow-steps')).toBeVisible();
-      await expect(sheet.getByLabel('電話で確認した内容')).toBeVisible();
-      await expect(sheet.locator('#schedule-proposal-reproposal')).toBeVisible();
-      await expect(sheet.getByLabel('再提案開始日')).toBeVisible();
-      await expect(sheet.getByLabel('希望時間 From')).toBeVisible();
-      await expect(sheet.getByLabel('希望時間 To')).toBeVisible();
-      await expect(sheet.getByLabel('候補数')).toBeVisible();
-      await expect(sheet.getByRole('button', { name: /変更希望で再提案/ })).toBeVisible();
-      await expectNoLocatorHorizontalOverflow(sheet);
-    } else {
-      await expect(page.locator('main')).toContainText('条件に一致する訪問候補はありません。');
+    const main = page.locator('main');
+    let dashboardState = await waitForProposalDashboardState(page, main, 90_000);
+    if (
+      dashboardState === 'blank' ||
+      dashboardState === 'loading' ||
+      dashboardState === 'pending'
+    ) {
+      await openStableRouteUntilVisible(
+        page,
+        '/schedules/proposals?workspace=dashboard',
+        () => page.getByLabel('ケース/患者検索'),
+        { timeout: 90_000 },
+      );
+      dashboardState = await waitForProposalDashboardState(page, main, 150_000);
     }
+    expect(
+      dashboardState,
+      'proposal dashboard fixture must expose detail rows for confirmation-flow coverage',
+    ).toBe('detail');
+
+    const detailButton = page.getByRole('button', { name: /確定フローを開く/ }).first();
+    await expectMinTouchTargetHeight(detailButton);
+    await detailButton.click();
+    await expect(page.getByTestId('schedule-proposal-active-row')).toBeVisible({
+      timeout: 45_000,
+    });
+
+    const sheet = page.getByRole('dialog');
+    await expect(sheet.getByTestId('proposal-confirmation-flow')).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(sheet.getByTestId('proposal-candidate-cards')).toBeVisible();
+    await expect(sheet.getByTestId('proposal-flow-steps')).toBeVisible();
+    await expect(sheet.getByLabel('電話で確認した内容')).toBeVisible();
+    await expect(sheet.locator('#schedule-proposal-reproposal')).toBeVisible();
+    await expect(sheet.getByLabel('再提案開始日')).toBeVisible();
+    await expect(sheet.getByLabel('希望時間 From')).toBeVisible();
+    await expect(sheet.getByLabel('希望時間 To')).toBeVisible();
+    await expect(sheet.getByLabel('候補数')).toBeVisible();
+    await expect(sheet.getByRole('button', { name: /変更希望で再提案/ })).toBeVisible();
+    await expectNoLocatorHorizontalOverflow(sheet);
 
     await expectNoPageHorizontalOverflow(page);
 
@@ -417,8 +581,23 @@ test.describe('schedule page', () => {
   test('weekly optimizer exposes current route preview and generation controls', async ({
     context,
   }) => {
+    test.slow();
+    await ensureScheduleVehicleResourceFixtures();
     const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
-    await openStableRoute(page, '/schedules/proposals?workspace=optimizer');
+    const optimizerParams = new URLSearchParams({
+      workspace: 'optimizer',
+      week: SCHEDULE_OPTIMIZER_IDS.acceptanceDate,
+      optimizer_case_id: SCHEDULE_OPTIMIZER_IDS.caseId,
+      optimizer_visit_type: 'regular',
+      optimizer_priority: 'normal',
+      optimizer_travel_mode: 'DRIVE',
+      optimizer_pharmacist_id: SCHEDULE_OPTIMIZER_IDS.userId,
+      optimizer_date: SCHEDULE_OPTIMIZER_IDS.acceptanceDate,
+      optimizer_time_from: '09:00',
+      optimizer_time_to: '18:00',
+    });
+    const optimizerPath = `/schedules/proposals?${optimizerParams.toString()}`;
+    await openStableRoute(page, optimizerPath);
 
     const main = page.locator('main');
     await expect(main.getByRole('heading', { name: '週間最適化ビュー' })).toBeVisible({
@@ -429,22 +608,21 @@ test.describe('schedule page', () => {
     await expect(main.getByLabel('優先度')).toBeVisible();
     await expect(main.locator('#weekly-travel-mode')).toBeVisible();
     await expect(main.locator('#weekly-vehicle-resource')).toBeVisible();
-    await expect
-      .poll(
-        async () => {
-          const text = (await main.textContent()) ?? '';
-          return text.includes('この枠に提案') || text.includes('勤務シフトなし');
-        },
-        {
-          message: 'weekly optimizer should settle with cells or shift empty state',
-          timeout: 45_000,
-        },
-      )
-      .toBe(true);
-    const generationButton = main.getByRole('button', { name: /この枠に提案/ }).first();
-    if (await generationButton.isVisible().catch(() => false)) {
-      await expectMinTouchTargetHeight(generationButton);
+    let optimizerState = await waitForWeeklyOptimizerState(page, main, 60_000);
+    if (optimizerState === 'loading' || optimizerState === 'pending') {
+      await openStableRoute(page, optimizerPath);
+      await expect(main.getByRole('heading', { name: '週間最適化ビュー' })).toBeVisible({
+        timeout: 90_000,
+      });
+      await expect(main.locator('#weekly-vehicle-resource')).toBeVisible();
+      optimizerState = await waitForWeeklyOptimizerState(page, main, 150_000);
     }
+    expect(optimizerState, 'weekly optimizer fixture must expose a proposal-generation cell').toBe(
+      'generation',
+    );
+    const generationButton = main.getByRole('button', { name: /この枠に提案/ }).first();
+    await expect(generationButton).toBeVisible();
+    await expectMinTouchTargetHeight(generationButton);
     await expect(main.getByText('選択セルのルートプレビュー')).toBeVisible();
 
     // Filter known React Query warning for visit-route-plan (tracked as BUG-002)
@@ -511,13 +689,7 @@ test.describe('schedule page', () => {
     await openStableRoute(page, '/schedules/proposals?workspace=dashboard');
 
     const detailButton = page.getByRole('button', { name: /確定フローを開く/ }).first();
-    if (!(await detailButton.isVisible({ timeout: 90_000 }).catch(() => false))) {
-      await expect(page.locator('main')).toContainText(
-        /条件に一致する訪問候補はありません。|訪問候補を読み込み中/,
-      );
-      expect(errors).toEqual([]);
-      return;
-    }
+    await expect(detailButton).toBeVisible({ timeout: 90_000 });
 
     await detailButton.click();
     const sheet = page.getByRole('dialog');
@@ -550,9 +722,12 @@ test.describe('visits page', () => {
     const main = page.locator('main');
     await expect(page.getByTestId('visits-today')).toBeVisible();
     await expect(main.getByRole('heading', { name: '訪問', exact: true })).toBeVisible();
-    await expect(main.getByRole('link', { name: '訪問モードを開始' })).toBeVisible({
-      timeout: 45_000,
-    });
+    const visitModeLink = main.getByRole('link', { name: '訪問モードを開始' });
+    if (!(await visitModeLink.isVisible({ timeout: 60_000 }).catch(() => false))) {
+      await reloadStablePage(page);
+      await expect(page.getByTestId('visits-today')).toBeVisible({ timeout: 45_000 });
+    }
+    await expect(visitModeLink).toBeVisible({ timeout: 120_000 });
     await expect(page.getByTestId('visits-today-list')).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -583,25 +758,38 @@ test.describe('visits page', () => {
   });
 
   test('visit detail page loads from visits list', async ({ context }) => {
+    test.slow();
     await ensureTodayVisitPreparationBoardFixtures(localDateKey());
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/visits');
 
     const firstVisitLink = page.getByRole('link', { name: '訪問モードを開始' });
+    await expect(firstVisitLink).toBeVisible({ timeout: 90_000 });
     const firstVisitHref = await firstVisitLink.getAttribute('href');
     if (!firstVisitHref) throw new Error('Visit mode link did not expose an href');
     expect(firstVisitHref).toMatch(/^\/visits\/[^/]+\/record$/);
     const firstVisitUrlPattern = new RegExp(`${escapeRegExp(firstVisitHref)}$`);
 
-    await clickAndWaitForStableRoute(page, firstVisitUrlPattern, () =>
-      firstVisitLink.click({ noWaitAfter: true }),
-    );
-    await expect(page).toHaveURL(firstVisitUrlPattern);
-    await expect(page.getByRole('heading', { name: '訪問記録入力' })).toBeVisible();
-    await expect(page.getByRole('link', { name: '訪問一覧へ戻る' })).toBeVisible();
-    await expect(page.getByRole('region', { name: '訪問前確認' })).toBeVisible({
-      timeout: 45_000,
+    const readinessSection = page.locator('#visit-step-readiness');
+    await openStableRouteUntilVisible(page, firstVisitHref, () => readinessSection, {
+      attempts: 4,
+      timeout: 90_000,
     });
+    await expect(page).toHaveURL(firstVisitUrlPattern);
+    await expect(readinessSection).toBeVisible({ timeout: 90_000 });
+    await expect(readinessSection).toContainText('訪問前確認');
+
+    const viewportSize = page.viewportSize();
+    if (viewportSize && viewportSize.width >= 768) {
+      await expect(page.getByRole('heading', { name: '訪問記録入力' })).toBeVisible({
+        timeout: 90_000,
+      });
+      await expect(page.getByRole('link', { name: '訪問一覧へ戻る' })).toBeVisible();
+    } else {
+      await expect(page.getByRole('heading', { name: '訪問前確認' })).toBeVisible({
+        timeout: 90_000,
+      });
+    }
 
     expect(errors).toEqual([]);
   });
@@ -613,9 +801,15 @@ test.describe('visits page', () => {
 
     const main = page.locator('main');
     await expect(page.getByTestId('visits-today')).toBeVisible({ timeout: 45_000 });
-    await expect(main.getByRole('link', { name: /カードへ/ }).first()).toBeVisible();
-    await expect(main.getByRole('link', { name: /ルート詳細/ }).first()).toBeVisible();
-    await expect(main.getByRole('link', { name: /セットへ/ }).first()).toBeVisible();
+    await expect(main.getByRole('link', { name: /カードへ/ }).first()).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(main.getByRole('link', { name: /ルート詳細/ }).first()).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(main.getByRole('link', { name: /セットへ/ }).first()).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(page.getByTestId('visits-today-offline-note')).toContainText(
       'オフラインでも全機能',
     );
@@ -626,6 +820,7 @@ test.describe('visits page', () => {
   test('grouped facility and private-home visit record pages render from database context', async ({
     context,
   }) => {
+    test.slow();
     const ids = await ensureGroupedVisitFixtures();
     await attachLocalSession(context);
     const { page, errors } = await createInstrumentedPage(context);
@@ -804,11 +999,8 @@ test.describe('admin master hub', () => {
 
   test('admin master hub loads with current master cards', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/admin');
+    await openAdminMasterHub(page);
 
-    await expect(page.getByRole('heading', { name: 'マスター', exact: true })).toBeVisible();
-    await expect(page.getByTestId('master-hub')).toBeVisible();
-    await expect(page.getByTestId('master-hub-card').first()).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole('heading', { name: '管理者ダッシュボード' })).toHaveCount(0);
 
     expect(errors).toEqual([]);

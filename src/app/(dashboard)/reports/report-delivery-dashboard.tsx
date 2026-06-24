@@ -12,12 +12,15 @@ import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
   CHANNEL_LABELS,
   REPORT_STATUS_CONFIG,
   REPORT_TYPE_LABELS,
 } from '@/lib/constants/status-labels';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { cn } from '@/lib/utils';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
@@ -95,7 +98,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
       const response = await fetch(
         `/api/care-reports/analytics?overdue_days=${normalizedOverdueDays}`,
         {
-          headers: { 'x-org-id': orgId },
+          headers: buildOrgHeaders(orgId),
         },
       );
       if (!response.ok) throw new Error('報告書分析の取得に失敗しました');
@@ -108,10 +111,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
     mutationFn: async () => {
       const response = await fetch('/api/care-reports/reminders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ overdue_days: normalizedOverdueDays }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -327,7 +327,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Link
-                          href={`/patients/${item.patient_id}`}
+                          href={buildPatientHref(item.patient_id)}
                           className={cn(buttonVariants({ variant: 'ghost' }))}
                         >
                           患者詳細
@@ -343,7 +343,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                           関連依頼
                         </Link>
                         <Link
-                          href={`/reports/${item.report_id}`}
+                          href={buildReportHref(item.report_id)}
                           className={cn(buttonVariants({ variant: 'outline' }))}
                         >
                           報告書を開く

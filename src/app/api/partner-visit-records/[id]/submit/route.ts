@@ -3,6 +3,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
+import { buildPartnerVisitRecordHref } from '@/lib/pharmacy-cooperation/navigation';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import {
   resolvePartnerVisitRecordTransition,
@@ -150,7 +151,7 @@ export const POST = withAuthContext<{ id: string }>(
             type: 'business',
             title: '協力訪問記録が提出されました',
             message: 'アプリで協力訪問記録を確認してください',
-            link: `/partner-visit-records/${record.id}`,
+            link: buildPartnerVisitRecordHref(record.id),
             explicitUserIds: [record.visit_request.requested_by],
             metadata: {
               partner_visit_record_id: record.id,

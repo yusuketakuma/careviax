@@ -11,6 +11,9 @@ import {
   buildCareTeamReliabilitySummary,
   buildPatientContactReadiness,
 } from '@/lib/patient/care-team-contact';
+import { getHomeVisitIntake, specialProcedureLabels } from '@/lib/patient/home-visit-intake';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildVisitRecordHref } from '@/lib/visits/navigation';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
   VisitPrepBlockedReason,
@@ -43,9 +46,12 @@ const SAFETY_TAG_ORDER = [
   'unit_dose',
   'half_tablet',
   'crush_prohibited',
+  'infection_isolation',
   'allergy',
   'swallowing',
 ];
+const PROCEDURE_SAFETY_TAG_PREFIX = 'procedure:';
+const KNOWN_SPECIAL_PROCEDURE_KEYS = new Set(Object.keys(specialProcedureLabels));
 
 /** セット工程を通過済みの MedicationCycleStatus。 */
 const SET_DONE_STATUSES = ['set_audited', 'visit_ready', 'visit_completed', 'reported'];
@@ -91,6 +97,7 @@ type ScheduleQueryRow = {
     updated_at: Date;
   } | null;
   case_: {
+    required_visit_support: unknown;
     care_team_links?: Array<{
       role: string;
       is_primary: boolean;
@@ -134,6 +141,42 @@ type ScheduleQueryRow = {
   } | null;
 };
 
+function hasActiveInfectionIsolation(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized.length > 0 && !['なし', '無し', 'none', 'no', 'false', '不要'].includes(normalized)
+  );
+}
+
+function collectHomeVisitIntakeSafetyTags(schedule: ScheduleQueryRow): string[] {
+  const intake = getHomeVisitIntake(schedule.case_.required_visit_support);
+  if (!intake) return [];
+
+  const tags = new Set<string>();
+  if (intake.narcotics_base === true || intake.narcotics_rescue === true) tags.add('narcotic');
+  if (hasActiveInfectionIsolation(intake.infection_isolation)) tags.add('infection_isolation');
+
+  for (const rawProcedure of intake.special_medical_procedures ?? []) {
+    const procedureKey = typeof rawProcedure === 'string' ? rawProcedure.trim() : '';
+    if (!procedureKey || !KNOWN_SPECIAL_PROCEDURE_KEYS.has(procedureKey)) continue;
+    if (procedureKey === 'narcotics' || procedureKey === 'terminal_pain') tags.add('narcotic');
+    if (procedureKey !== 'narcotics') tags.add(`${PROCEDURE_SAFETY_TAG_PREFIX}${procedureKey}`);
+  }
+
+  return [...tags];
+}
+
+function sortSafetyTags(tags: Set<string>): string[] {
+  const orderedTags = SAFETY_TAG_ORDER.filter((tag) => tags.has(tag));
+  const procedureTags = [...tags]
+    .filter((tag) => tag.startsWith(PROCEDURE_SAFETY_TAG_PREFIX))
+    .sort((left, right) => left.localeCompare(right, 'ja'));
+  return [...orderedTags, ...procedureTags];
+}
+
 function collectSafetyTags(schedule: ScheduleQueryRow): Set<string> {
   const tags = new Set<string>();
   for (const line of schedule.cycle?.prescription_intakes[0]?.lines ?? []) {
@@ -144,6 +187,7 @@ function collectSafetyTags(schedule: ScheduleQueryRow): Set<string> {
   if (schedule.case_.patient.scheduling_preference?.swallowing_route?.trim()) {
     tags.add('swallowing');
   }
+  for (const tag of collectHomeVisitIntakeSafetyTags(schedule)) tags.add(tag);
   return tags;
 }
 
@@ -202,7 +246,7 @@ function summarizeChecks(checks: VisitPrepCheck[]): {
 function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
   const preparation = schedule.preparation;
   const tags = collectSafetyTags(schedule);
-  const safetyTags = SAFETY_TAG_ORDER.filter((tag) => tags.has(tag));
+  const safetyTags = sortSafetyTags(tags);
   const audit = narcoticAuditPending(schedule);
   const cycleStatus = schedule.cycle?.overall_status ?? null;
   const foundationGapLabels = collectFoundationGapLabels(schedule);
@@ -268,10 +312,11 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
 
   const patient = schedule.case_.patient;
   const stayMinutes = minutesBetween(schedule.time_window_start, schedule.time_window_end);
+  const patientHref = buildPatientHref(patient.id);
 
   return {
     schedule_id: schedule.id,
-    visit_mode_href: `/visits/${schedule.id}/record`,
+    visit_mode_href: buildVisitRecordHref(schedule.id),
     time_label: schedule.time_window_start ? formatTimeOfDay(schedule.time_window_start) : null,
     title: patient.name,
     is_facility: false,
@@ -286,10 +331,10 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
     actions: audit
       ? [
           { label: '監査へ', href: '/audit' },
-          { label: 'カードへ', href: `/patients/${patient.id}` },
+          { label: 'カードへ', href: patientHref },
         ]
       : [
-          { label: 'カードへ', href: `/patients/${patient.id}` },
+          { label: 'カードへ', href: patientHref },
           { label: 'ルート詳細', href: '/schedules' },
         ],
   };
@@ -309,7 +354,7 @@ function deriveFacilityVisitCard(
   for (const schedule of schedules) {
     for (const tag of collectSafetyTags(schedule)) tagSet.add(tag);
   }
-  const safetyTags = SAFETY_TAG_ORDER.filter((tag) => tagSet.has(tag));
+  const safetyTags = sortSafetyTags(tagSet);
 
   const setDoneCount = schedules.filter(
     (schedule) => schedule.cycle && SET_DONE_STATUSES.includes(schedule.cycle.overall_status),
@@ -348,7 +393,7 @@ function deriveFacilityVisitCard(
 
   return {
     schedule_id: lead.id,
-    visit_mode_href: `/visits/${lead.id}/record`,
+    visit_mode_href: buildVisitRecordHref(lead.id),
     time_label: lead.time_window_start ? formatTimeOfDay(lead.time_window_start) : null,
     title: name.startsWith('施設') ? name : `施設${name}`,
     is_facility: true,
@@ -419,6 +464,7 @@ export const GET = withAuthContext(
           },
           case_: {
             select: {
+              required_visit_support: true,
               care_team_links: {
                 select: {
                   role: true,

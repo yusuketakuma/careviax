@@ -2,8 +2,9 @@
 
 **Purpose.** This is the wire format for cross-supervisor coordination in the
 CareViaX (PH-OS Pharmacy) agent loop. It defines the exact message envelope,
-the legal message types, and the transport. Only the two supervisors —
-`claude-lead` and `codex-lead` — exchange these messages. Everything a
+the legal message types, and the transport. The live agmsg transport identities
+are only `claude` and `codex`; role descriptors such as `claude-lead` and
+`codex-lead` may still describe the two supervisor lanes in prose. Everything a
 subagent produces is summarized by its supervisor before it goes on the wire.
 
 **How it's used in the loop.** Each cycle, a supervisor drains its inbox,
@@ -28,11 +29,11 @@ idempotency_key: <stable dedup key, e.g. hash of type+task_id+intent>
 task_id: <TASK-id or ->
 subtask_id: <SUBTASK-id or ->
 feature_id: <F-... | ->
-from: <claude-lead | codex-lead>
-to: <claude-lead | codex-lead>
+from: <claude | codex>
+to: <claude | codex>
 origin_agent: <agent/subagent that produced the underlying work>
-owner: <who is accountable for the work>
-reviewer: <who performs the approval pass>
+owner_agent: <claude | codex>
+reviewer_agent: <claude | codex>
 status: <queued | in_progress | blocked | review | approved | rejected | done>
 branch: <git branch the work lives on>
 state_version: <int — STATE.md / ledger version this envelope was built against>
@@ -52,12 +53,13 @@ details: |
 - `task_id` / `subtask_id` / `feature_id`: stable ids; use `-` when not
   applicable. `feature_id` ties the envelope to a `.agent-loop/FEATURE_QUEUE.md`
   `F-...` entry.
-- `origin_agent` ≠ `owner`: `origin_agent` is the agent/subagent that produced
-  the underlying work, while `owner` is the supervisor accountable for it on the
-  wire. In the gbrain schema, `owner` maps to `owner_agent` and `reviewer` maps
-  to `reviewer_agent`.
-- `owner` ≠ `reviewer` always (no self-approval; authoring and review are
-  separate passes per project policy).
+- `from` / `to` are transport addresses and must be the live agmsg identities
+  `claude` or `codex` only. Do not send to `claude-lead` or `codex-lead`.
+- `origin_agent` ≠ `owner_agent`: `origin_agent` is the agent/subagent that
+  produced the underlying work, while `owner_agent` is the live supervisor
+  identity accountable for it on the wire.
+- `owner_agent` ≠ `reviewer_agent` always (no self-approval; authoring and
+  review are separate passes per project policy).
 - `state_version`: the STATE.md / ledger version the envelope was built against;
   lets the receiver detect stale envelopes.
 - `timestamp`: ISO8601 (JST) emission time.
@@ -86,6 +88,12 @@ details: |
 | `CODE_REVIEW_RESULT`         | reviewer → owner | Pass/fail gate with findings.                                                                                |
 | `VERIFY_REQUEST`             | owner → reviewer | Ask reviewer to run verification (typecheck/test/build).                                                     |
 | `VERIFY_RESULT`              | reviewer → owner | Verification evidence + verdict.                                                                             |
+| `BATCH_REVIEW_REQUEST`       | owner → reviewer | Ask for one checker pass over multiple same-risk, same-pattern slices; verdicts remain per slice.            |
+| `BATCH_REVIEW_RESULT`        | reviewer → owner | Per-slice verdicts for a batch review; any rejected slice returns to owner independently.                    |
+| `ACK`                        | either           | Receipt/liveness ACK for an ACK-required message; not an approval or lock grant unless explicitly stated.    |
+| `STATE_SUMMARY`              | either           | Compact current-state digest: active lock, pending review, running gate, blocked item, and next action.      |
+| `LONG_GATE_LOCK`             | either           | Lease a serialized Next.js long gate (`pnpm build`, `pnpm typecheck`, `pnpm typecheck:no-unused`).           |
+| `LONG_GATE_RELEASE`          | either           | Release a long-gate lease and report the validation result or skip reason.                                   |
 | `BLOCKED`                    | either           | Work blocked on external dependency (`cc:blocked`).                                                          |
 | `UNBLOCK`                    | either           | Dependency resolved; resume.                                                                                 |
 | `HANDOFF`                    | lead → lead      | Transfer ownership of a task/subtask to the other lead with ACK, stable idempotency, and explicit locks.     |
@@ -116,7 +124,8 @@ details: |
 
 ## §8.3 — Worked Example: `PLAN_REVIEW_REQUEST`
 
-`claude-lead` (UI/UX lane) asks `codex-lead` (backend/review lane) to review a
+`claude` (the Claude supervisor, UI/UX lane) asks `codex` (the Codex supervisor,
+backend/review lane) to review a
 plan to unify state colors across the prescriptions list.
 
 ```
@@ -127,11 +136,11 @@ idempotency_key: plan-review:TASK-state-color-unification:SUB-prescriptions-list
 task_id: TASK-state-color-unification
 subtask_id: SUB-prescriptions-list
 feature_id: -
-from: claude-lead
-to: codex-lead
-origin_agent: claude-lead
-owner: claude-lead
-reviewer: codex-lead
+from: claude
+to: codex
+origin_agent: claude
+owner_agent: claude
+reviewer_agent: codex
 status: review
 branch: refactor/state-color-unification
 state_version: 42
@@ -152,7 +161,7 @@ details: |
 ```
 
 A reply would come back as `type: PLAN_REVIEW_RESULT` with
-`status: approved | rejected`, `from: codex-lead`, `to: claude-lead`, and
+`status: approved | rejected`, `from: codex`, `to: claude`, and
 `details` carrying the findings.
 
 ---
@@ -176,11 +185,48 @@ team `phos`.
 
 **Rules.**
 
-- Only `claude-lead` and `codex-lead` write to agmsg. Subagents/workers
+- Only the live transport identities `claude` and `codex` write to agmsg. They
+  act as the `claude-lead` and `codex-lead` supervisor roles. Subagents/workers
   **never** post directly; their supervisor summarizes a subagent's result
   into a single envelope (`IMPL_COMPLETE`, `CODE_REVIEW_RESULT`, etc.) before
   it goes on the wire.
+- **Claude-origin priority.** On each Codex drain, messages from the live
+  `claude` identity / `claude-lead` role are handled before Codex continues
+  local implementation, verification, commits, or idle-ladder work. Inbound
+  `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`, `CODE_REVIEW_REQUEST`,
+  `BATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`, `CHANGES_REQUESTED`, `LOCK_REQUEST`,
+  `LONG_GATE_LOCK`, `HANDOFF`, `PAUSE_REQUEST`, and `URGENT` messages require
+  immediate triage/ACK before lower-priority Codex tasks resume.
+- **ACK-first review handoff.** For `PLAN_REVIEW_REQUEST`,
+  `PATCH_REVIEW_REQUEST`, `CODE_REVIEW_REQUEST`, `BATCH_REVIEW_REQUEST`,
+  `VERIFY_REQUEST`, `LOCK_REQUEST`, `LONG_GATE_LOCK`, `HANDOFF`,
+  `PAUSE_REQUEST`, `URGENT`, and `CHANGES_REQUESTED`, the receiver sends a short
+  `ACK`/STATUS/grant/deny within one drain before starting sustained review,
+  implementation, or gate work. The ACK can say "in review" and is separate from
+  the final verdict.
+- **Sender-side receipt discipline.** A sender does not assume agmsg delivery was
+  acted on until an ACK/STATUS/verdict arrives. Do not stack multiple unacked
+  `PATCH_REVIEW_REQUEST`s for the same maker/checker pair; nudge idempotently
+  instead. Disjoint maker work may continue only if it does not violate locks or
+  WIP limits.
 - Drain the inbox before committing; stage only your own lane's files.
+- **Supervisor main-loop availability (both leads; LOOP_POLICY §20).** Each Supervisor's main loop
+  must stay free to receive and triage the peer's messages. A busy main loop only processes pushed
+  agmsg events at a turn boundary, so sustained/blocking work (multi-file edits, builds, test/verify
+  runs, long investigations) is delegated to **subagents** (or `run_in_background`), not run inline in
+  the main loop. The main loop reserves itself for inbox drain/triage, coordination (LOCK/ACK/review/
+  owner decisions), spawning/steering subagents, and committing reviewed work. Subagents still never
+  post to agmsg — the Supervisor summarizes their output into one envelope. This applies symmetrically
+  to the live `claude` and `codex` sessions and reinforces the Claude-origin priority rule above.
+- **Long gate serialization.** `pnpm build` must not run concurrently with
+  `pnpm typecheck` or `pnpm typecheck:no-unused`; Next.js `.next/types` generation
+  can race. Run those gates serially, preferably outside the main loop. Before
+  starting one, acquire the local lease with
+  `.agent-loop/scripts/long-gate-lock.sh acquire <owner> "<command>" [ttl_minutes]`
+  and send `LONG_GATE_LOCK`; if the helper reports `status=locked`, do not start
+  the gate. Always release with
+  `.agent-loop/scripts/long-gate-lock.sh release <owner> "<result>"` and send
+  `LONG_GATE_RELEASE`.
 - `<body>` is the full §8.1 envelope (the fenced `AGLOOP v5 ...` block).
 
 ### §8.5 — Idempotency & ACK
@@ -189,16 +235,75 @@ team `phos`.
   `idempotency_key` is **not reprocessed**: the receiver returns a
   duplicate-ACK referencing the original `message_id` and takes no further
   action. Retries/resends therefore reuse the same `idempotency_key`.
-- **ACK-gated types.** `LOCK_REQUEST`, `HANDOFF`, and `CHANGES_REQUESTED`
-  require an explicit ACK/grant/deny before the sender proceeds:
+- **ACK-gated blocking types.** `LOCK_REQUEST`, `LONG_GATE_LOCK`, `HANDOFF`, and
+  `CHANGES_REQUESTED` require an explicit ACK/grant/deny before the sender
+  proceeds:
   - `LOCK_REQUEST` → wait for `LOCK_GRANT` / `LOCK_DENY` before editing.
+  - `LONG_GATE_LOCK` → wait for `ACK` / conflict notice before starting the long
+    gate unless the peer is unreachable after two drains and no conflicting gate
+    is visible in the local lease; release afterward with
+    `long-gate-lock.sh release` and `LONG_GATE_RELEASE`.
   - `HANDOFF` → wait for the receiver's ACK before releasing ownership. A resent
     handoff reuses the same stable `idempotency_key` and must not double-flip ownership.
     The receiver edits only the granted `locked_paths`; load handoff does not widen scope
     or bypass the same objective gate before `PATCH_REVIEW_REQUEST`.
   - `CHANGES_REQUESTED` → the owner must ACK and address the changes before
     re-requesting review.
-    All other types are fire-and-forward (no blocking ACK required).
+    Other review-request types are not edit-permission gates, but still require a
+    receipt ACK/STATUS per the transport rules above so the sender can avoid blind
+    stacking and drain-lag stalls.
+
+### §8.6 — Communication Efficiency Rules
+
+These rules are user-directed as of 2026-06-24 and are designed to keep both
+supervisors responsive without weakening maker/checker separation.
+
+**ACK taxonomy.**
+
+- Must receive ACK/grant/deny before proceeding: `URGENT`, `LOCK_REQUEST`,
+  `LONG_GATE_LOCK`, `HANDOFF`, `PAUSE_REQUEST`, and `CHANGES_REQUESTED`.
+- Must receive quick receipt ACK before sustained work, but not before unrelated
+  non-conflicting work: `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`,
+  `CODE_REVIEW_REQUEST`, `BATCH_REVIEW_REQUEST`, and `VERIFY_REQUEST`.
+- No ACK expected by default: `FYI:`/`IMPL_PROGRESS`, `DONE`,
+  `STATE_SUMMARY`, `LONG_GATE_RELEASE`, `MEMORY_WRITEBACK_DONE`, and
+  `STATUS_PING`, unless the message explicitly asks for a reply.
+
+**STATE_SUMMARY.** Send a `STATE_SUMMARY` at cycle start, after a commit, before
+starting a long gate, or after resolving a conflict. Keep it compact:
+
+```
+active_lock: <paths or ->
+pending_review: <task/message_id or ->
+running_gate: <command/owner/expires_at or ->
+blocked_on: <thing or ->
+next_action: <one line>
+```
+
+**Compact review envelopes.** A review request should carry only:
+
+- what changed since the last ACK/review;
+- exact owned paths;
+- validation already run;
+- known risks or explicit "none";
+- requested reviewer verdict.
+
+Do not paste unchanged plan history or full gate logs into agmsg. Put long
+evidence in repo files, commits, or validation logs and link the path/command.
+
+**Batch review.** Use `BATCH_REVIEW_REQUEST` only when slices are homogeneous,
+low risk, and same-pattern, for example repeated shared-header adoption with the
+same helper and same test shape. The envelope must list each slice with paths,
+validation, risk, and intended commit grouping. Any slice touching auth, RLS,
+patient/medical data semantics, audit logs, DB migrations, permissions, offline
+sync, realtime, billing, or destructive operations is excluded from batching and
+gets its own review.
+
+**Ledger contention.** Shared ledgers (`.agent-loop/STATE.md`,
+`.codex/ralph-state.md`, `CODEX_GOAL_PROGRESS.md`) are updated at coherent
+boundaries under explicit lock, not for every small agmsg packet. If the ledger
+lock is unavailable, send `STATE_SUMMARY` and keep the source/test slice moving
+inside its existing lock; reconcile the ledger at the next safe boundary.
 
 ### Identity mapping
 
@@ -210,5 +315,6 @@ The live agmsg identities map to the AGLOOP supervisor roles:
 | `codex` (the Codex session)         | `codex-lead`  | backend / perf / refactor / test review — `prisma/**`, `src/server/**`, `src/lib/db/**` |
 
 When sending, use the live identity as `<from>`/`<to>` on the CLI
-(`send.sh phos claude codex "..."`) and the AGLOOP role inside the envelope's
-`from:` / `to:` fields (`from: claude-lead`).
+(`send.sh phos claude codex "..."`) and in the envelope's `from:` / `to:`
+fields (`from: claude`, `to: codex`). Keep `claude-lead` / `codex-lead` only as
+supervisor-role descriptors in prose or historical ledgers.

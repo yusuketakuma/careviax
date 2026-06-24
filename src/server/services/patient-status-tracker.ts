@@ -11,6 +11,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { derivePatientStatusIcon, STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import type { PatientStatusIcon } from '@/types/dashboard-home';
@@ -289,7 +290,7 @@ export async function trackPatientStatusChanges(
             type: trigger.severity === 'urgent' ? 'urgent' : 'business',
             title,
             message: `${STATUS_ICON_CONFIG[previousStatus].label} → ${STATUS_ICON_CONFIG[currentStatus].label}`,
-            link: `/patients/${p.patient_id}`,
+            link: buildPatientHref(p.patient_id),
             is_read: false,
             dedupe_key: `patient-status:${p.patient_id}:${previousStatus}:${currentStatus}:${statusChangeDateKey}`,
           });

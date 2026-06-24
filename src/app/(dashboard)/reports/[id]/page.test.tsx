@@ -11,9 +11,24 @@ const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const sendMutateMock = vi.hoisted(() => vi.fn());
 const getReportDetailShortcutLinksMock = vi.hoisted(() => vi.fn());
+const buildOrgHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string, extra?: Record<string, string>) => ({ 'x-org-id': orgId, ...extra })),
+);
+const buildOrgJsonHeadersMock = vi.hoisted(() =>
+  vi.fn((orgId: string, extra?: Record<string, string>) => ({
+    'Content-Type': 'application/json',
+    'x-org-id': orgId,
+    ...extra,
+  })),
+);
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
+}));
+
+vi.mock('@/lib/api/org-headers', () => ({
+  buildOrgHeaders: buildOrgHeadersMock,
+  buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -138,6 +153,19 @@ const structuredPhysicianContent = {
   plan: '次回訪問で残薬を再確認します',
   physician_communication: '処方継続で問題ありません',
   warnings: [],
+};
+
+const HOSTILE_REPORT_ID = 'report/1?x=y#z';
+const ENCODED_HOSTILE_REPORT_ID = 'report%2F1%3Fx%3Dy%23z';
+
+type QueryConfig = {
+  queryKey?: unknown[];
+  queryFn?: () => Promise<unknown>;
+  enabled?: boolean;
+};
+
+type MutationConfig<TInput = unknown> = {
+  mutationFn?: (input?: TInput) => Promise<unknown>;
 };
 
 function mockReport() {
@@ -538,6 +566,276 @@ describe('ReportDetailPage send safety dialog', () => {
       expected_updated_at: '2026-05-12T00:00:00.000Z',
     });
   });
+
+  it('encodes hostile report ids once for the GET query while preserving the raw query key', async () => {
+    const queryConfigs: QueryConfig[] = [];
+    useParamsMock.mockReturnValue({ id: HOSTILE_REPORT_ID });
+    useQueryMock.mockImplementation((options: QueryConfig) => {
+      queryConfigs.push(options);
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: mockReport() },
+        isLoading: false,
+      };
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ data: mockReport() }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+
+    render(<ReportDetailPage />);
+
+    const detailQuery = queryConfigs.find((config) => config.queryKey?.[0] === 'care-report');
+    expect(detailQuery?.queryKey).toEqual(['care-report', HOSTILE_REPORT_ID, 'org_1']);
+
+    await detailQuery?.queryFn?.();
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toBe(`/api/care-reports/${ENCODED_HOSTILE_REPORT_ID}`);
+    expect(url).not.toContain('?');
+    expect(url).not.toContain('#');
+    expect(url).not.toContain('%25');
+    expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: { 'x-org-id': 'org_1' },
+      }),
+    );
+  });
+
+  it('encodes hostile report ids for draft confirmation without changing the body', async () => {
+    const mutationConfigs: Array<MutationConfig> = [];
+    useParamsMock.mockReturnValue({ id: HOSTILE_REPORT_ID });
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: sendMutateMock,
+        isPending: false,
+      };
+    });
+    useQueryMock.mockImplementation((options: QueryConfig) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: { ...mockReport(), status: 'draft' } },
+        isLoading: false,
+      };
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ data: { status: 'confirmed' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+
+    render(<ReportDetailPage />);
+
+    await mutationConfigs[0]?.mutationFn?.();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/care-reports/${ENCODED_HOSTILE_REPORT_ID}`,
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+        },
+        body: JSON.stringify({
+          expected_updated_at: '2026-05-12T00:00:00.000Z',
+          status: 'confirmed',
+        }),
+      }),
+    );
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('?');
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('#');
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('%25');
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('encodes hostile report ids for single and bulk send while preserving idempotency headers and bodies', async () => {
+    const mutationConfigs: Array<MutationConfig> = [];
+    useParamsMock.mockReturnValue({ id: HOSTILE_REPORT_ID });
+    useMutationMock.mockImplementation((config: MutationConfig) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: sendMutateMock,
+        isPending: false,
+      };
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ data: { ok: true } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    const singleBody = {
+      channel: 'email',
+      recipient_name: '山田 太郎',
+      recipient_contact: 'doctor@example.com',
+      recipient_role: 'physician',
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
+      safety_ack: true,
+    };
+    const bulkBody = {
+      recipients: [
+        {
+          channel: 'fax',
+          recipient_name: '青葉内科',
+          recipient_contact: '03-1111-1111',
+          recipient_role: 'physician',
+        },
+      ],
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
+      safety_ack: true,
+    };
+
+    render(<ReportDetailPage />);
+
+    await mutationConfigs[1]?.mutationFn?.(singleBody);
+    await mutationConfigs[2]?.mutationFn?.(bulkBody);
+
+    for (const call of fetchMock.mock.calls) {
+      const url = String(call[0]);
+      expect(url).toBe(`/api/care-reports/${ENCODED_HOSTILE_REPORT_ID}/send`);
+      expect(url).not.toContain('?');
+      expect(url).not.toContain('#');
+      expect(url).not.toContain('%25');
+      expect(call[1]).toEqual(
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+            'x-org-id': 'org_1',
+            'Idempotency-Key': expect.stringMatching(/^care-report-send:/),
+          }),
+        }),
+      );
+    }
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify(singleBody));
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(JSON.stringify(bulkBody));
+    expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.objectContaining({
+        'Idempotency-Key': expect.stringMatching(/^care-report-send:/),
+      }),
+    );
+  });
+
+  it('encodes hostile report ids for PDF, print, and share hrefs', () => {
+    useParamsMock.mockReturnValue({ id: HOSTILE_REPORT_ID });
+
+    render(<ReportDetailPage />);
+
+    const hrefs = [
+      screen.getByRole('link', { name: 'PDFを開く' }).getAttribute('href'),
+      screen.getByRole('link', { name: '印刷ビュー' }).getAttribute('href'),
+      screen.getByRole('link', { name: '他職種共有' }).getAttribute('href'),
+    ];
+    expect(hrefs).toEqual([
+      `/api/care-reports/${ENCODED_HOSTILE_REPORT_ID}/pdf`,
+      `/reports/${ENCODED_HOSTILE_REPORT_ID}/print`,
+      `/reports/${ENCODED_HOSTILE_REPORT_ID}/share`,
+    ]);
+    for (const href of hrefs) {
+      expect(href).not.toContain('?');
+      expect(href).not.toContain('#');
+      expect(href).not.toContain('%25');
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails fast before fetching for exact dot-segment report id "%s"',
+    async (dotSegmentId) => {
+      const queryConfigs: QueryConfig[] = [];
+      const mutationConfigs: Array<MutationConfig> = [];
+      useParamsMock.mockReturnValue({ id: dotSegmentId });
+      useQueryMock.mockImplementation((options: QueryConfig) => {
+        queryConfigs.push(options);
+        const scope = options.queryKey?.[0];
+        if (scope === 'care-report-external-professionals') {
+          return {
+            data: { data: [] },
+            isLoading: false,
+          };
+        }
+
+        return {
+          data: { data: { ...mockReport(), status: 'draft' } },
+          isLoading: false,
+        };
+      });
+      useMutationMock.mockImplementation((config: MutationConfig) => {
+        mutationConfigs.push(config);
+        return {
+          mutate: sendMutateMock,
+          isPending: false,
+        };
+      });
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ data: { ok: true } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      );
+
+      render(<ReportDetailPage />);
+
+      const detailQuery = queryConfigs.find((config) => config.queryKey?.[0] === 'care-report');
+      await expect(detailQuery?.queryFn?.()).rejects.toThrow(RangeError);
+      await expect(mutationConfigs[0]?.mutationFn?.()).rejects.toThrow(RangeError);
+      await expect(
+        mutationConfigs[1]?.mutationFn?.({
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          expected_updated_at: '2026-05-12T00:00:00.000Z',
+          safety_ack: true,
+        }),
+      ).rejects.toThrow(RangeError);
+      await expect(
+        mutationConfigs[2]?.mutationFn?.({
+          recipients: [],
+          expected_updated_at: '2026-05-12T00:00:00.000Z',
+          safety_ack: true,
+        }),
+      ).rejects.toThrow(RangeError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['.', '..'])(
+    'throws instead of rendering output links for report id "%s"',
+    (dotSegmentId) => {
+      useParamsMock.mockReturnValue({ id: dotSegmentId });
+      const consoleErrorMock = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        expect(() => render(<ReportDetailPage />)).toThrow(RangeError);
+      } finally {
+        consoleErrorMock.mockRestore();
+      }
+    },
+  );
 
   it('does not display or send legacy title/body report content', () => {
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {

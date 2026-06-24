@@ -548,6 +548,12 @@ export type PatientTimelineSnapshot = {
     preferred_contact_time: string | null;
     created_at: string;
   }>;
+  /**
+   * Surfaced when one or more timeline sources degrade (per-source query
+   * failure / op_history fail-soft / actor-name fail-soft). Additive: omitted
+   * when every source succeeded. `source` is the failing source key.
+   */
+  partial_failures?: { source: string; message: string }[];
 };
 
 export type PatientReadinessSnapshot = {

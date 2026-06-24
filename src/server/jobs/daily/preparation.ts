@@ -3,6 +3,7 @@ import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { runJob } from '../runner';
 import {
   buildCarryItemReviewTaskKey,
@@ -97,6 +98,7 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
     for (const schedule of schedules) {
       const patientId = schedule.case_.patient_id;
       const patientName = schedule.case_.patient.name;
+      const patientHref = buildPatientHref(patientId);
       const requirement = await withOrgContext(schedule.org_id, (tx) =>
         evaluateInitialHomeVisitAssessmentRequirement(tx, {
           orgId: schedule.org_id,
@@ -126,7 +128,7 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
             patient_id: patientId,
             patient_name: patientName,
             schedule_id: schedule.id,
-            action_href: `/patients/${patientId}`,
+            action_href: patientHref,
             action_label: '患者記録を確認',
           }) ?? {},
       });
@@ -138,7 +140,7 @@ export async function checkInitialHomeVisitAssessmentBacklog() {
           type: 'urgent',
           title: '初回算定月の事前訪問要件が未確認です',
           message: `${patientName}さんの初回訪問前日までの患家訪問・環境聴取記録を確認してください。`,
-          link: `/patients/${patientId}`,
+          link: patientHref,
           explicitUserIds: [schedule.pharmacist_id],
           dedupeKey,
           metadata:

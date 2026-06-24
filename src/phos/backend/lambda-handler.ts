@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { maybeUnrefTimeout } from '@/lib/utils/abort-timeout';
 import { toErrorLambdaResponse, toLambdaJsonResponse } from './error-response';
 import type { PhosLambdaResponse } from './error-response';
 import {
@@ -268,12 +269,6 @@ function readSoftDeadlineMs(
   const remainingMs = lambdaContext?.getRemainingTimeInMillis?.();
   if (!Number.isFinite(remainingMs)) return undefined;
   return Math.max(0, (remainingMs as number) - deadlineBufferMs);
-}
-
-function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
 }
 
 async function withSoftDeadline<T>(promise: Promise<T>, timeoutMs: number | undefined): Promise<T> {

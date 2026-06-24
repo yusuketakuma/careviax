@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import type {
   PatientDocumentsSnapshot,
   PatientOverview,
@@ -38,6 +39,23 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
 }));
 
+// Actual-backed spy: buildOrgJsonHeaders keeps real behavior by default (so F-081/F-082 header assertions stay
+// valid) but can be given a sentinel return in the F-083 test to prove helper adoption (not just equal shape).
+vi.mock('@/lib/api/org-headers', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api/org-headers')>();
+  return {
+    ...actual,
+    buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
+    buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
+  };
+});
+
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   CardWorkspace,
   buildConferenceStructuredContent,
@@ -1026,6 +1044,63 @@ describe('CardWorkspace', () => {
     expect(screen.queryByTestId('next-action-panel')).toBeNull();
     expect(screen.queryByTestId('blocked-reasons-panel')).toBeNull();
     expect(screen.queryByTestId('evidence-panel')).toBeNull();
+  });
+
+  it('routes card workspace patient links through buildPatientHref and encodes compare query params', () => {
+    const hostileId = 'pt/1?x=y#z';
+    const realBuildPatientHref = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockClear();
+    vi.mocked(buildPatientHref).mockImplementation(
+      (patientId: string, suffix = '') =>
+        `/patients/__encoded_${encodeURIComponent(patientId)}__${suffix}`,
+    );
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { id: hostileId } });
+
+    try {
+      render(<CardWorkspace patientId={hostileId} />);
+
+      const calls = vi
+        .mocked(buildPatientHref)
+        .mock.calls.map(([patientId, suffix]) => [patientId, suffix ?? '']);
+      const expectedCalls = [
+        [hostileId, '/collaboration'],
+        [hostileId, '#patient-profile-summary'],
+        [hostileId, '#patient-profile-summary'],
+        [hostileId, '/safety-check'],
+        [hostileId, '/edit'],
+        [hostileId, '#patient-documents'],
+        [hostileId, '/mcs'],
+        [hostileId, '/prescriptions'],
+      ];
+      expect(calls.map((call) => JSON.stringify(call)).sort()).toEqual(
+        expectedCalls.map((call) => JSON.stringify(call)).sort(),
+      );
+
+      const hrefs = Array.from(document.querySelectorAll('a')).map((link) =>
+        link.getAttribute('href'),
+      );
+      expect(hrefs).toContain(
+        `/patients/__encoded_${encodeURIComponent(hostileId)}__/collaboration`,
+      );
+      expect(hrefs).toContain(
+        `/patients/__encoded_${encodeURIComponent(hostileId)}__/safety-check`,
+      );
+      expect(hrefs).toContain(
+        `/patients/__encoded_${encodeURIComponent(hostileId)}__#patient-documents`,
+      );
+      expect(hrefs).toContain(`/patients/__encoded_${encodeURIComponent(hostileId)}__/mcs`);
+      expect(hrefs).toContain(
+        `/patients/__encoded_${encodeURIComponent(hostileId)}__/prescriptions`,
+      );
+      expect(hrefs).toContain(
+        `/patients/compare?${new URLSearchParams({ patients: hostileId }).toString()}`,
+      );
+      expect(hrefs).not.toContain(`/patients/${hostileId}/collaboration`);
+    } finally {
+      if (realBuildPatientHref)
+        vi.mocked(buildPatientHref).mockImplementation(realBuildPatientHref);
+      vi.clearAllMocks();
+    }
   });
 
   it('keeps the embedded documents panel in place when document loading fails', () => {
@@ -2480,5 +2555,774 @@ describe('CardWorkspace', () => {
         attended: true,
       },
     ]);
+  });
+
+  // F-081 (card-workspace sub-slice 1/5): PatientCardDocumentsPanel documents GET URL/header hardening.
+  function captureDocumentsQueryConfig(hostilePatientId: string) {
+    // mockPatientQuery sets up every CardWorkspace query/mutation; we then wrap useQuery to also
+    // record the patient-documents config (incl queryFn) without weakening the baseline behavior.
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { id: hostilePatientId } });
+    const baseImpl = useQueryMock.getMockImplementation();
+    let documentsConfig: { queryKey: unknown[]; queryFn?: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        if (config?.queryKey?.[0] === 'patient-documents') {
+          documentsConfig = config;
+        }
+        return baseImpl?.(config);
+      },
+    );
+    return () => documentsConfig;
+  }
+
+  it('fetches patient documents from an encoded patient path with org headers (raw query key)', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    const getDocumentsConfig = captureDocumentsQueryConfig(hostileId);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId={hostileId} />);
+
+      const config = getDocumentsConfig();
+      expect(config?.queryKey).toEqual(['patient-documents', hostileId, 'org_1']);
+      await config?.queryFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/documents`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed without fetching for exact dot-segment patient id %p on the documents GET',
+    async (dotId) => {
+      const getDocumentsConfig = captureDocumentsQueryConfig(dotId);
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        expect(() => render(<CardWorkspace patientId={dotId} />)).toThrow(RangeError);
+        expect(getDocumentsConfig()).toBeUndefined();
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
+
+  // F-082 (card-workspace sub-slice 2/5): CardWorkspace overview + home-operations GET URL/header hardening.
+  function captureWorkspaceQueryConfig(scope: string, patientId: string) {
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { id: patientId } });
+    const baseImpl = useQueryMock.getMockImplementation();
+    let scopedConfig: { queryKey: unknown[]; queryFn?: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        if (config?.queryKey?.[0] === scope) {
+          scopedConfig = config;
+        }
+        return baseImpl?.(config);
+      },
+    );
+    return () => scopedConfig;
+  }
+
+  it.each([
+    ['patient-overview', 'overview'],
+    ['patient-home-operations', 'home-operations'],
+  ])('fetches %s from an encoded patient path with org headers', async (scope, segment) => {
+    const hostileId = 'pt/1?x=y#z';
+    const getConfig = captureWorkspaceQueryConfig(scope, hostileId);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId={hostileId} />);
+
+      const config = getConfig();
+      expect(config?.queryKey).toEqual([scope, hostileId, 'org_1']);
+      await config?.queryFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/${segment}`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each([
+    ['patient-overview', '.'],
+    ['patient-overview', '..'],
+    ['patient-home-operations', '.'],
+    ['patient-home-operations', '..'],
+  ])(
+    'fails closed without fetching for %s with exact dot-segment patient id %p',
+    async (scope, dotId) => {
+      const getConfig = captureWorkspaceQueryConfig(scope, dotId);
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        expect(() => render(<CardWorkspace patientId={dotId} />)).toThrow(RangeError);
+        expect(getConfig()?.queryKey).toEqual([scope, dotId, 'org_1']);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
+
+  // F-083 (card-workspace sub-slice 3/5): billing-profile PATCH + mcs/logs POST URL/header hardening.
+  // The two target mutationFns are not individually named in the mock, so we capture every useMutation config and
+  // locate them by the request each emits. A merged representative input drives BOTH (each reads its own fields).
+  function captureAllMutationConfigs(patientId: string) {
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { id: patientId } });
+    const baseImpl = useMutationMock.getMockImplementation();
+    const mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }> = [];
+    useMutationMock.mockImplementation(
+      (config: { mutationFn?: (input: unknown) => Promise<unknown> }) => {
+        mutationConfigs.push(config);
+        return baseImpl?.(config);
+      },
+    );
+    return mutationConfigs;
+  }
+
+  const F083_INPUT = {
+    patientId: 'PLACEHOLDER',
+    // billing fields
+    payerType: 'self',
+    payerName: '山田太郎',
+    payerRelation: 'self',
+    billingAddressMode: 'same_as_residence',
+    billingAddress: '東京都千代田区1-1-1',
+    paymentMethod: 'bank_transfer',
+    collectionTiming: 'month_end',
+    receiptIssue: 'issue',
+    invoiceIssue: 'issue',
+    unpaidTolerance: 'normal',
+    note: '請求メモ',
+    // mcs fields
+    contentType: 'medication_adherence',
+    summary: '服薬確認OK',
+    nextAction: '次回訪問で再確認',
+  };
+
+  // Execute each captured mutationFn one at a time so we can attribute each emitted request to a config index.
+  async function probeMutationUrls(
+    mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }>,
+    fetchMock: ReturnType<typeof vi.fn>,
+    input: unknown,
+  ) {
+    const urlByIndex: Array<string | undefined> = [];
+    for (let i = 0; i < mutationConfigs.length; i += 1) {
+      fetchMock.mockClear();
+      try {
+        await mutationConfigs[i].mutationFn?.(input);
+      } catch {
+        // unrelated input contracts throw before fetch; ignored.
+      }
+      urlByIndex[i] = fetchMock.mock.calls[0] ? String(fetchMock.mock.calls[0][0]) : undefined;
+    }
+    return urlByIndex;
+  }
+
+  it('encodes billing-profile and mcs-logs paths, sends helper-built JSON headers, and preserves exact raw bodies', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    const enc = encodeURIComponent(hostileId);
+    // sentinel that a manual { 'Content-Type', 'x-org-id' } literal can NEVER produce -> proves helper adoption.
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinelHeaders);
+
+    const mutationConfigs = captureAllMutationConfigs(hostileId);
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId={hostileId} />);
+
+      const input = { ...F083_INPUT, patientId: hostileId };
+      const urlByIndex = await probeMutationUrls(mutationConfigs, fetchMock, input);
+      const billingIndex = urlByIndex.findIndex((u) => u?.includes('/billing-profile'));
+      const mcsIndex = urlByIndex.findIndex((u) => u?.includes('/mcs/logs'));
+      expect(billingIndex).toBeGreaterThanOrEqual(0);
+      expect(mcsIndex).toBeGreaterThanOrEqual(0);
+
+      // Re-run the two target mutations cleanly so we can inspect their exact request.
+      fetchMock.mockClear();
+      await mutationConfigs[billingIndex].mutationFn?.(input);
+      const [billingUrl, billingInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      fetchMock.mockClear();
+      await mutationConfigs[mcsIndex].mutationFn?.(input);
+      const [mcsUrl, mcsInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+      // encoded URLs, helper-built headers (identity proves the helper, not an equal-shaped literal).
+      expect(billingUrl).toBe(`/api/patients/${enc}/billing-profile`);
+      expect(billingInit.method).toBe('PATCH');
+      expect(billingInit.headers).toBe(sentinelHeaders);
+      expect(mcsUrl).toBe(`/api/patients/${enc}/mcs/logs`);
+      expect(mcsInit.method).toBe('POST');
+      expect(mcsInit.headers).toBe(sentinelHeaders);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+      for (const url of [billingUrl, mcsUrl]) {
+        expect(url).not.toContain('?x=y');
+        expect(url).not.toContain('#z');
+        expect(url).not.toContain('%25');
+        expect(url).not.toContain(`/${hostileId}/`);
+      }
+
+      // exact billing body (all fields preserved; patient id NOT serialized).
+      const billingBody = JSON.parse(billingInit.body as string);
+      expect(billingBody).toEqual({
+        payer_type: 'self',
+        payer_name: '山田太郎',
+        payer_relation: 'self',
+        billing_address_mode: 'same_as_residence',
+        billing_address: '東京都千代田区1-1-1',
+        payment_method: 'bank_transfer',
+        collection_timing: 'month_end',
+        receipt_issue: 'issue',
+        invoice_issue: 'issue',
+        unpaid_tolerance: 'normal',
+        note: '請求メモ',
+      });
+      expect(billingInit.body as string).not.toContain(hostileId);
+
+      // mcs body: exact key set + values; occurred_at is a generated ISO timestamp (deterministic shape).
+      const mcsBody = JSON.parse(mcsInit.body as string);
+      expect(Object.keys(mcsBody).sort()).toEqual([
+        'content_type',
+        'next_action',
+        'occurred_at',
+        'summary',
+      ]);
+      expect(mcsBody).toMatchObject({
+        content_type: 'medication_adherence',
+        summary: '服薬確認OK',
+        next_action: '次回訪問で再確認',
+      });
+      expect(mcsBody.occurred_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      expect(mcsInit.body as string).not.toContain(hostileId);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed: billing-profile and mcs-logs mutationFns reject RangeError before fetch for dot id %p',
+    async (dotId) => {
+      // 1) probe with a safe id to locate the two target config indices (useMutation order is deterministic).
+      const probeConfigs = captureAllMutationConfigs('patient_probe');
+      const probeFetch = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+      vi.stubGlobal('fetch', probeFetch);
+      render(<CardWorkspace patientId="patient_probe" />);
+      const probeUrls = await probeMutationUrls(probeConfigs, probeFetch, {
+        ...F083_INPUT,
+        patientId: 'patient_probe',
+      });
+      const billingIndex = probeUrls.findIndex((u) => u?.includes('/billing-profile'));
+      const mcsIndex = probeUrls.findIndex((u) => u?.includes('/mcs/logs'));
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+      expect(billingIndex).toBeGreaterThanOrEqual(0);
+      expect(mcsIndex).toBeGreaterThanOrEqual(0);
+
+      // 2) dot render (same deterministic order) -> the two target mutationFns must fail closed before fetch.
+      const dotConfigs = captureAllMutationConfigs(dotId);
+      const dotFetch = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', dotFetch);
+      try {
+        expect(() => render(<CardWorkspace patientId={dotId} />)).toThrow(RangeError);
+        expect(dotConfigs[billingIndex]).toBeDefined();
+        expect(dotConfigs[mcsIndex]).toBeDefined();
+        expect(dotFetch).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
+
+  // F-084 (card-workspace sub-slice 4/6): prescription-intakes PATCH x3 (fax string-arg + 2 object-arg) +
+  // billing-candidates/collection PATCH (object-arg, must preserve Idempotency-Key). Mixed input contracts:
+  // drive each config with the fax string AND the two object fixtures so every target fires with a valid contract.
+  const F084_INTAKE_INPUT = {
+    intakeId: 'PLACEHOLDER',
+    documentUrl: 'https://files.example.com/rx.pdf',
+    originalCollectedAt: '2026-06-02T00:00:00.000Z',
+    reconciliationResult: 'matched' as const,
+    discrepancyNote: null,
+    storageLocation: 'store' as const,
+    ePrescriptionExchangeNumber: null,
+    ePrescriptionAcquiredStatus: 'pending' as const,
+    dispensingResultRegistration: 'pending' as const,
+    note: '原本確認メモ',
+  };
+  const F084_BILLING_INPUT = {
+    candidateId: 'PLACEHOLDER',
+    idempotencyKey: 'idem-key-abc',
+    status: 'collected',
+    expectedUpdatedAt: '2026-06-01T00:00:00.000Z',
+    billedAmount: 1000,
+    collectedAmount: 1000,
+    paymentMethod: 'cash',
+    payerName: '山田太郎',
+    scheduledCollectionAt: null,
+  };
+
+  async function runEachWith(
+    mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }>,
+    args: unknown[],
+  ) {
+    for (const config of mutationConfigs) {
+      for (const arg of args) {
+        try {
+          await config.mutationFn?.(arg);
+        } catch {
+          // wrong-contract executions throw or build noise URLs; filtered out by exact-URL match below.
+        }
+      }
+    }
+  }
+
+  it('encodes intake/billing PATCH paths, sends helper JSON headers (billing keeps Idempotency-Key), preserves bodies', async () => {
+    const hostileIntake = 'in/1?x=y#z';
+    const encIntake = encodeURIComponent(hostileIntake);
+    const hostileCand = 'cand/9?a=b#c';
+    const encCand = encodeURIComponent(hostileCand);
+    const idemKey = F084_BILLING_INPUT.idempotencyKey;
+    // merging impl proves both helper adoption AND extra-header propagation.
+    vi.mocked(buildOrgJsonHeaders).mockImplementation(
+      (org: string, extra?: Record<string, string>) => ({
+        'x-org-id': org,
+        'x-test-helper': 'buildOrgJsonHeaders',
+        ...extra,
+      }),
+    );
+
+    const mutationConfigs = captureAllMutationConfigs('patient_1');
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId="patient_1" />);
+
+      await runEachWith(mutationConfigs, [
+        hostileIntake, // fax (string contract)
+        { ...F084_INTAKE_INPUT, intakeId: hostileIntake }, // document + original-management (object contract)
+        { ...F084_BILLING_INPUT, candidateId: hostileCand }, // billing (object contract)
+      ]);
+
+      const calls = fetchMock.mock.calls.map(
+        ([url, init]) => [String(url), init] as [string, RequestInit],
+      );
+      const intakeCalls = calls.filter(([u]) => u === `/api/prescription-intakes/${encIntake}`);
+      const billingCalls = calls.filter(
+        ([u]) => u === `/api/billing-candidates/${encCand}/collection`,
+      );
+
+      // all three prescription-intakes PATCHes hit the encoded path with helper headers and no Idempotency-Key.
+      expect(intakeCalls.length).toBeGreaterThanOrEqual(3);
+      const intakeBodies = intakeCalls.map(([, init]) => {
+        expect(init.method).toBe('PATCH');
+        expect(init.headers).toEqual({
+          'x-org-id': 'org_1',
+          'x-test-helper': 'buildOrgJsonHeaders',
+        });
+        expect(String(init.body)).not.toContain(hostileIntake);
+        return JSON.parse(String(init.body));
+      });
+      // exact bodies discriminated by their distinctive keys.
+      const faxBody = intakeBodies.find(
+        (b) => Object.keys(b).length === 1 && 'original_collected_at' in b,
+      );
+      const documentBody = intakeBodies.find((b) => 'original_document_url' in b);
+      const mgmtBody = intakeBodies.find((b) => 'original_management' in b);
+      expect(faxBody.original_collected_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(documentBody).toEqual({ original_document_url: 'https://files.example.com/rx.pdf' });
+      expect(mgmtBody).toMatchObject({
+        original_collected_at: '2026-06-02T00:00:00.000Z',
+        original_management: { reconciliation_result: 'matched', discrepancy_note: null },
+      });
+
+      // billing keeps Idempotency-Key in headers (helper extra) and never serializes ids into the body.
+      expect(billingCalls.length).toBeGreaterThanOrEqual(1);
+      const [, billingInit] = billingCalls[0];
+      expect(billingInit.method).toBe('PATCH');
+      expect(billingInit.headers).toEqual({
+        'x-org-id': 'org_1',
+        'x-test-helper': 'buildOrgJsonHeaders',
+        'Idempotency-Key': idemKey,
+      });
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1', {
+        'Idempotency-Key': idemKey,
+      });
+      expect(String(billingInit.body)).not.toContain(hostileCand);
+      expect(String(billingInit.body)).not.toContain(idemKey);
+      const billingBody = JSON.parse(String(billingInit.body));
+      expect(billingBody).toMatchObject({
+        status: 'collected',
+        billed_amount: 1000,
+        collected_amount: 1000,
+        payment_method: 'cash',
+        payer_name: '山田太郎',
+      });
+
+      for (const [u] of [...intakeCalls, ...billingCalls]) {
+        expect(u).not.toContain('%25');
+      }
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed: intake/billing mutationFns reject RangeError before fetch for dot id %p',
+    async (dotId) => {
+      const mutationConfigs = captureAllMutationConfigs('patient_1');
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      try {
+        render(<CardWorkspace patientId="patient_1" />);
+
+        // run every config with the dot id in all three contracts; collect rejections.
+        const rejections: unknown[] = [];
+        for (const config of mutationConfigs) {
+          for (const arg of [
+            dotId,
+            { ...F084_INTAKE_INPUT, intakeId: dotId },
+            { ...F084_BILLING_INPUT, candidateId: dotId },
+          ]) {
+            await config.mutationFn?.(arg).catch((e: unknown) => rejections.push(e));
+          }
+        }
+
+        // the encoded dot path would be a no-op for encodeURIComponent, so encodePathSegment must fail closed:
+        // at least the 4 target mutations (fax + document + original-management + billing) reject RangeError.
+        const rangeErrors = rejections.filter((e) => e instanceof RangeError);
+        expect(rangeErrors.length).toBeGreaterThanOrEqual(4);
+        // and no malformed dot request reached fetch for the guarded endpoints.
+        for (const call of fetchMock.mock.calls) {
+          const url = String(call[0]);
+          expect(url).not.toContain(`/api/prescription-intakes/${dotId}`);
+          expect(url).not.toContain(`/api/billing-candidates/${dotId}/`);
+        }
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
+
+  // F-085 (card-workspace sub-slice 5/6): prescription upload helper - presigned-upload + complete POST headers via
+  // buildOrgJsonHeaders (external S3 PUT untouched) + download URL fileId via encodePathSegment.
+  function mockUploadWorkspace() {
+    return mockPatientQuery(buildWorkspace(), {
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 1,
+      top_alerts: [],
+      items: [
+        {
+          key: 'prescription',
+          label: '処方せん',
+          status: '受付あり',
+          description: 'FAX先行',
+          href: '/patients/patient_1/prescriptions',
+          action_label: '処方履歴へ',
+          tone: 'attention',
+          updated_at: '2026-06-09T00:00:00.000Z',
+          metrics: [{ label: '原本', value: '未着/未記録' }],
+          alerts: ['処方せん画像/PDFが未保存です'],
+          quick_actions: [
+            {
+              key: 'save_prescription_document',
+              label: '画像/PDFを保存',
+              resource_id: 'intake_0500',
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  function triggerPrescriptionUpload() {
+    const file = new File(['pdf'], 'prescription.pdf', { type: 'application/pdf' });
+    fireEvent.change(screen.getByLabelText('ファイル'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: /画像\/PDFを保存/ }));
+    return file;
+  }
+
+  it('uploads via encoded download URL + helper JSON headers, keeps external PUT headers, preserves exact bodies', async () => {
+    const presignId = 'file_raw_42';
+    const completeId = 'file/1?x=y#z';
+    const sentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
+
+    const { prescriptionDocumentMutate } = mockUploadWorkspace();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            id: presignId,
+            uploadUrl: 'https://uploads.example.com/prescription.pdf',
+            headers: { 'x-amz-server-side-encryption': 'AES256' },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, headers: new Headers({ etag: 'etag-1' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { id: completeId } }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId="patient_1" />);
+      const file = triggerPrescriptionUpload();
+
+      await waitFor(() => {
+        expect(prescriptionDocumentMutate).toHaveBeenCalledWith({
+          intakeId: 'intake_0500',
+          documentUrl: `http://localhost:3000/api/files/${encodeURIComponent(completeId)}/download`,
+        });
+      });
+      const docUrl = prescriptionDocumentMutate.mock.calls[0][0].documentUrl as string;
+      expect(docUrl).not.toContain('?x=y');
+      expect(docUrl).not.toContain('#z');
+      expect(docUrl).not.toContain('%25');
+
+      // presigned-upload: helper headers + exact body.
+      const [presignUrl, presignInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(presignUrl).toBe('/api/files/presigned-upload');
+      expect(presignInit.headers).toBe(sentinel);
+      expect(JSON.parse(String(presignInit.body))).toEqual({
+        purpose: 'prescription',
+        patient_id: 'patient_1',
+        file_name: 'prescription.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: file.size,
+      });
+
+      // external S3 PUT: headers come from the presign response, NOT the org helper.
+      const [putUrl, putInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+      expect(putUrl).toBe('https://uploads.example.com/prescription.pdf');
+      expect(putInit.headers).toEqual({ 'x-amz-server-side-encryption': 'AES256' });
+      expect(putInit.headers).not.toBe(sentinel);
+
+      // complete: helper headers + exact body (file_id is the presign id, not the completed id).
+      const [completeUrl, completeInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+      expect(completeUrl).toBe('/api/files/complete');
+      expect(completeInit.headers).toBe(sentinel);
+      expect(JSON.parse(String(completeInit.body))).toEqual({ file_id: presignId, etag: 'etag-1' });
+
+      // exactly 3 requests (presign + S3 PUT + complete) and the helper invoked exactly twice with the real org.
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed: dot-segment completed file id never builds a malformed download URL or mutates (%p)',
+    async (dotId) => {
+      const { prescriptionDocumentMutate } = mockUploadWorkspace();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            data: {
+              id: 'file_raw_42',
+              uploadUrl: 'https://uploads.example.com/prescription.pdf',
+              headers: { 'x-amz-server-side-encryption': 'AES256' },
+            },
+          }),
+        })
+        .mockResolvedValueOnce({ ok: true, headers: new Headers({ etag: 'etag-1' }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { id: dotId } }) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(<CardWorkspace patientId="patient_1" />);
+        triggerPrescriptionUpload();
+
+        // the helper completes all 3 fetches, then encodePathSegment(dotId) throws building the download URL;
+        // PrescriptionDocumentQuickForm catches it and surfaces the exact RangeError message (fail-closed proof).
+        expect(await screen.findByText('Path segment cannot be a dot segment')).toBeTruthy();
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        expect(prescriptionDocumentMutate).not.toHaveBeenCalled();
+        for (const call of fetchMock.mock.calls) {
+          expect(String(call[0])).not.toContain(`/api/files/${dotId}/download`);
+        }
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
+
+  // F-089 (card-workspace sub-slice 6/6 FINAL): converge the 4 static-collection callsites onto org header helpers.
+  // (The /api/tasks foundation POST exclusion is already locked by the existing foundation-task test, which asserts its
+  //  headers === { 'content-type': 'application/json' } with NO x-org-id.)
+  it('converges static-collection GET/POST callsites onto buildOrgHeaders/buildOrgJsonHeaders', async () => {
+    const getSentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    const jsonSentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgJsonHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(getSentinel);
+    vi.mocked(buildOrgJsonHeaders).mockReturnValue(jsonSentinel);
+
+    mockPatientQuery(buildWorkspace());
+    const baseQuery = useQueryMock.getMockImplementation();
+    const baseMutation = useMutationMock.getMockImplementation();
+    const queryConfigs: Array<{ queryKey?: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+    const mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }> = [];
+    useQueryMock.mockImplementation(
+      (config: { queryKey?: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        queryConfigs.push(config);
+        return baseQuery?.(config);
+      },
+    );
+    useMutationMock.mockImplementation(
+      (config: { mutationFn?: (input: unknown) => Promise<unknown> }) => {
+        mutationConfigs.push(config);
+        return baseMutation?.(config);
+      },
+    );
+
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ data: {} }),
+    } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CardWorkspace patientId="patient_1" />);
+
+      // --- 2 static GETs use buildOrgHeaders (exact URLs) ---
+      const pharmacyCfg = queryConfigs.find((c) => c.queryKey?.[0] === 'pharmacy-partnerships');
+      fetchMock.mockClear();
+      await pharmacyCfg?.queryFn?.();
+      {
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toBe('/api/pharmacy-partnerships?status=active&limit=20');
+        expect(init.headers).toBe(getSentinel);
+      }
+
+      const mgmtCfg = queryConfigs.find((c) => c.queryKey?.[0] === 'management-plans');
+      const effectiveCaseId = mgmtCfg?.queryKey?.[1] as string;
+      fetchMock.mockClear();
+      await mgmtCfg?.queryFn?.();
+      {
+        const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(url).toBe(`/api/management-plans?case_id=${encodeURIComponent(effectiveCaseId)}`);
+        expect(init.headers).toBe(getSentinel);
+      }
+      // exactly the two executed GET queryFns called buildOrgHeaders, each with the real org.
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
+      expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(2, 'org_1');
+
+      // --- 2 static JSON POSTs use buildOrgJsonHeaders (locate by URL) ---
+      const shareInput = {
+        caseId: 'case_1',
+        baseSiteId: 'site_1',
+        partnerPharmacyId: 'partner_1',
+        effectiveFrom: null,
+        effectiveTo: null,
+      };
+      const conferenceInput = {
+        patientId: 'patient_1',
+        caseId: 'case_1',
+        noteType: 'service_manager',
+        title: '担当者会議',
+        conferenceDate: '2026-06-01',
+        conferenceFormat: 'in_person',
+        location: '',
+        organizer: 'care_manager',
+        reportType: 'care_manager_report',
+        followUpDate: '',
+        followUpCompleted: false,
+        agenda: '',
+        content: '会議メモ',
+        participantsRaw: '佐藤CM:care_manager',
+        pharmacyParticipantsRaw: '鈴木薬剤師',
+        visitScheduleChange: '',
+        targetDischargeDate: '',
+        actionItemsRaw: '',
+      };
+      const probe = async (input: unknown, urlPart: string) => {
+        for (const config of mutationConfigs) {
+          fetchMock.mockClear();
+          try {
+            await config.mutationFn?.(input);
+          } catch {
+            // unrelated mutation input contracts throw before fetch; ignored.
+          }
+          const call = fetchMock.mock.calls[0];
+          if (call && String(call[0]).includes(urlPart)) {
+            return fetchMock.mock.calls[0] as [string, RequestInit];
+          }
+        }
+        return undefined;
+      };
+
+      const shareCall = await probe(shareInput, '/api/patient-share-cases');
+      expect(shareCall?.[0]).toBe('/api/patient-share-cases');
+      expect(shareCall?.[1]?.method).toBe('POST');
+      expect(shareCall?.[1]?.headers).toBe(jsonSentinel);
+      // patient-share-cases body is the raw input, unchanged.
+      expect(JSON.parse(String(shareCall?.[1]?.body))).toEqual(shareInput);
+
+      const conferenceCall = await probe(conferenceInput, '/api/conference-notes');
+      expect(conferenceCall?.[0]).toBe('/api/conference-notes');
+      expect(conferenceCall?.[1]?.method).toBe('POST');
+      expect(conferenceCall?.[1]?.headers).toBe(jsonSentinel);
+      // body still flows through unchanged (header-only slice): the transformed fields are all preserved.
+      const conferenceBody = JSON.parse(String(conferenceCall?.[1]?.body));
+      expect(conferenceBody).toMatchObject({
+        note_type: 'service_manager',
+        conference_type: 'service_manager',
+        title: '担当者会議',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        content: '会議メモ',
+        follow_up_completed: false,
+      });
+      expect(conferenceBody.conference_date).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(Array.isArray(conferenceBody.participants)).toBe(true);
+      expect(conferenceBody.metadata).toBeTruthy();
+
+      expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
   });
 });

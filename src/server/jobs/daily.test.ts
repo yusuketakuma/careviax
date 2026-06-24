@@ -666,14 +666,17 @@ describe('daily job local date keys', () => {
   });
 
   it('uses local-calendar expiry dates in prescription expiry notifications', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
     prescriptionIntakeFindManyMock.mockResolvedValue([
       {
-        id: 'intake_1',
+        id: 'intake/1',
         prescription_expiry_date: new Date('2026-06-09T15:30:00.000Z'),
         cycle: {
           case_: {
             org_id: 'org_1',
-            patient_id: 'patient_1',
+            patient_id: rawPatientId,
             primary_pharmacist_id: 'pharmacist_1',
           },
         },
@@ -690,7 +693,8 @@ describe('daily job local date keys', () => {
           org_id: 'org_1',
           user_id: 'pharmacist_1',
           message: '処方箋の有効期限が 2026-06-10 です。早急に対応してください。',
-          dedupe_key: 'prescription-expiry:intake_1',
+          link: encodedPatientHref,
+          dedupe_key: 'prescription-expiry:intake/1',
         }),
       ],
       skipDuplicates: true,
@@ -836,11 +840,14 @@ describe('daily job local date keys', () => {
   });
 
   it('creates deduplicated patient foundation review tasks for active cases with foundation gaps', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}#patient-foundation`;
+
     careCaseFindManyMock.mockResolvedValue([
       {
         id: 'case_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         status: 'active',
         primary_pharmacist_id: 'pharmacist_1',
         patient: {
@@ -891,12 +898,12 @@ describe('daily job local date keys', () => {
         priority: 'high',
         assignedTo: 'pharmacist_1',
         relatedEntityType: 'patient',
-        relatedEntityId: 'patient_1',
-        dedupeKey: 'patient-foundation-review:patient_1',
+        relatedEntityId: rawPatientId,
+        dedupeKey: `patient-foundation-review:${rawPatientId}`,
         metadata: expect.objectContaining({
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           case_id: 'case_1',
-          action_href: '/patients/patient_1#patient-foundation',
+          action_href: encodedPatientHref,
           missing_items: expect.arrayContaining([
             '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
             '駐車可否が未確認です。',
@@ -1058,22 +1065,25 @@ describe('daily job local date keys', () => {
   });
 
   it('uses local-calendar dates in consent expiry notifications and tasks', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
     consentRecordFindManyMock.mockResolvedValue([
       {
         id: 'consent_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         case_id: 'case_1',
         consent_type: '居宅療養管理指導',
         expiry_date: new Date('2026-06-14T15:30:00.000Z'),
-        patient: { id: 'patient_1', name: '山田 太郎' },
+        patient: { id: rawPatientId, name: '山田 太郎' },
       },
     ]);
     careCaseFindManyMock.mockResolvedValue([
       {
         id: 'case_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         primary_pharmacist_id: 'pharmacist_1',
       },
     ]);
@@ -1087,6 +1097,8 @@ describe('daily job local date keys', () => {
       data: [
         expect.objectContaining({
           user_id: 'pharmacist_1',
+          link: encodedPatientHref,
+          dedupe_key: 'consent-expiry:consent_1:7',
           message:
             '山田 太郎 さんの 居宅療養管理指導 同意が 2026-06-15 に期限切れ。再取得が必要です。',
         }),
@@ -1100,6 +1112,14 @@ describe('daily job local date keys', () => {
         taskType: 'consent_expiry',
         description: '居宅療養管理指導 の同意が 2026-06-15 に期限切れ',
         dedupeKey: 'consent-expiry:consent_1',
+        relatedEntityId: 'consent_1',
+      }),
+    );
+    expect(careCaseFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ id: { in: ['case_1'] } }, { org_id: 'org_1', patient_id: { in: [rawPatientId] } }],
+        }),
       }),
     );
   });
@@ -1177,21 +1197,24 @@ describe('daily job local date keys', () => {
   });
 
   it('notifies and creates a task for public subsidy insurance nearing expiry', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+
     patientInsuranceFindManyMock.mockResolvedValue([
       {
         id: 'insurance_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         insurance_type: 'public_subsidy',
         valid_until: new Date('2026-06-14T15:30:00.000Z'),
-        patient: { id: 'patient_1', name: '山田 太郎' },
+        patient: { id: rawPatientId, name: '山田 太郎' },
       },
     ]);
     careCaseFindManyMock.mockResolvedValue([
       {
         id: 'case_1',
         org_id: 'org_1',
-        patient_id: 'patient_1',
+        patient_id: rawPatientId,
         primary_pharmacist_id: 'pharmacist_1',
       },
     ]);
@@ -1206,7 +1229,8 @@ describe('daily job local date keys', () => {
         expect.objectContaining({
           user_id: 'pharmacist_1',
           title: '公費の有効期限',
-          link: '/patients/patient_1',
+          link: encodedPatientHref,
+          dedupe_key: 'public-subsidy-expiry:insurance_1:7',
         }),
       ],
       skipDuplicates: true,
@@ -1219,6 +1243,13 @@ describe('daily job local date keys', () => {
         dedupeKey: 'public-subsidy-expiry:insurance_1',
         relatedEntityType: 'patient_insurance',
         relatedEntityId: 'insurance_1',
+      }),
+    );
+    expect(careCaseFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ org_id: 'org_1', patient_id: { in: [rawPatientId] } }],
+        }),
       }),
     );
   });
@@ -1490,6 +1521,9 @@ describe('checkPrescriptionOriginalRetention', () => {
   });
 
   it('creates overdue fax original follow-up tasks and notifications', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPrescriptionHref = `/patients/${encodeURIComponent(rawPatientId)}/prescriptions`;
+
     prescriptionIntakeFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
       {
         id: 'intake_fax_1',
@@ -1498,9 +1532,9 @@ describe('checkPrescriptionOriginalRetention', () => {
         created_at: new Date('2026-03-24T09:00:00.000Z'),
         original_collected_at: null,
         cycle: {
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           case_: {
-            patient_id: 'patient_1',
+            patient_id: rawPatientId,
             primary_pharmacist_id: 'pharmacist_1',
             patient: {
               name: '山田 太郎',
@@ -1518,10 +1552,12 @@ describe('checkPrescriptionOriginalRetention', () => {
       data: expect.arrayContaining([
         expect.objectContaining({
           user_id: 'admin_1',
+          link: encodedPrescriptionHref,
           dedupe_key: 'fax-original-followup:intake_fax_1:admin_1:high',
         }),
         expect.objectContaining({
           user_id: 'pharmacist_1',
+          link: encodedPrescriptionHref,
           dedupe_key: 'fax-original-followup:intake_fax_1:pharmacist_1:high',
         }),
       ]),
@@ -1536,9 +1572,9 @@ describe('checkPrescriptionOriginalRetention', () => {
         relatedEntityId: 'intake_fax_1',
         dedupeKey: 'fax-original-followup:intake_fax_1',
         metadata: expect.objectContaining({
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           patient_name: '山田 太郎',
-          action_href: '/patients/patient_1/prescriptions',
+          action_href: encodedPrescriptionHref,
         }),
       }),
     );
@@ -1690,6 +1726,8 @@ describe('checkPrescriptionOriginalRetention', () => {
   });
 
   it('creates pre-visit initial assessment tasks and notifications for first-claim schedules', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
     vi.mocked(evaluateInitialHomeVisitAssessmentRequirement).mockResolvedValue({
       required: true,
       satisfied: false,
@@ -1703,7 +1741,7 @@ describe('checkPrescriptionOriginalRetention', () => {
         scheduled_date: new Date('2026-03-29T00:00:00.000Z'),
         pharmacist_id: 'pharmacist_1',
         case_: {
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           patient: {
             name: '山田 太郎',
           },
@@ -1723,12 +1761,20 @@ describe('checkPrescriptionOriginalRetention', () => {
         relatedEntityId: 'schedule_1',
         dedupeKey: 'initial-home-visit-assessment:schedule_1',
         metadata: {
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           patient_name: '山田 太郎',
           schedule_id: 'schedule_1',
-          action_href: '/patients/patient_1',
+          action_href: encodedPatientHref,
           action_label: '患者記録を確認',
         },
+      }),
+    );
+    expect(evaluateInitialHomeVisitAssessmentRequirement).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        patientId: rawPatientId,
+        targetDate: new Date('2026-03-29T00:00:00.000Z'),
       }),
     );
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
@@ -1736,9 +1782,11 @@ describe('checkPrescriptionOriginalRetention', () => {
       expect.objectContaining({
         orgId: 'org_1',
         eventType: 'billing_initial_assessment_due',
+        link: encodedPatientHref,
         explicitUserIds: ['pharmacist_1'],
+        dedupeKey: 'initial-home-visit-assessment:schedule_1',
         metadata: {
-          patient_id: 'patient_1',
+          patient_id: rawPatientId,
           schedule_id: 'schedule_1',
         },
       }),
@@ -1778,9 +1826,11 @@ describe('checkVisitRecordRetention', () => {
     const originalTimezone = process.env.TZ;
     process.env.TZ = 'Asia/Tokyo';
     vi.setSystemTime(new Date('2026-03-28T00:00:00+09:00'));
+    const visitRecordId = 'visit/record?x=1#frag';
+    const visitRecordHref = `/visits/${encodeURIComponent(visitRecordId)}`;
     visitRecordFindManyMock.mockResolvedValue([
       {
-        id: 'visit_record_1',
+        id: visitRecordId,
         org_id: 'org_1',
         patient_id: 'patient_1',
         visit_date: new Date('2021-04-25T15:30:00.000Z'),
@@ -1799,12 +1849,15 @@ describe('checkVisitRecordRetention', () => {
             user_id: 'admin_1',
             type: 'business',
             title: '薬歴の保存期限',
-            link: '/visits/visit_record_1',
-            dedupe_key: 'visit-record-retention:visit_record_1:admin_1:high',
+            link: visitRecordHref,
+            dedupe_key: `visit-record-retention:${visitRecordId}:admin_1:high`,
           }),
         ],
         skipDuplicates: true,
       });
+      expect(JSON.stringify(notificationCreateManyMock.mock.calls[0][0].data)).not.toContain(
+        `/visits/${visitRecordId}`,
+      );
       expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
@@ -1814,8 +1867,8 @@ describe('checkVisitRecordRetention', () => {
           description:
             '訪問記録が 2026-04-26 に5年保存期限を迎えます。PDF出力・保全状況を確認してください。',
           relatedEntityType: 'visit_record',
-          relatedEntityId: 'visit_record_1',
-          dedupeKey: 'visit-record-retention:visit_record_1',
+          relatedEntityId: visitRecordId,
+          dedupeKey: `visit-record-retention:${visitRecordId}`,
           metadata: expect.objectContaining({
             patient_id: 'patient_1',
           }),

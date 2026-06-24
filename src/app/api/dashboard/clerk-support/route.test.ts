@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
+const HOSTILE_PROPOSAL_ID = 'proposal/1?tab=x#frag';
+
 const {
   authContextMock,
   medicationCycleCountMock,
@@ -61,7 +63,7 @@ describe('/api/dashboard/clerk-support', () => {
     ]);
     proposalFindManyMock.mockResolvedValue([
       {
-        id: 'proposal_1',
+        id: HOSTILE_PROPOSAL_ID,
         proposed_date: new Date('2026-06-13T00:00:00.000Z'),
         case_: { patient: { name: '鈴木 修' } },
       },
@@ -93,12 +95,14 @@ describe('/api/dashboard/clerk-support', () => {
         href: '/prescriptions/intake',
       }),
       expect.objectContaining({
+        id: `proposal-${HOSTILE_PROPOSAL_ID}`,
         kind_label: '日程確認',
         patient_name: '鈴木 修',
         due_label: '2026-06-13',
-        href: '/schedules/proposals?detail=proposal_1',
+        href: `/schedules/proposals?detail=${encodeURIComponent(HOSTILE_PROPOSAL_ID)}`,
       }),
     ]);
+    expect(json.data.tasks[1].href).not.toBe(`/schedules/proposals?detail=${HOSTILE_PROPOSAL_ID}`);
 
     expect(json.data.consult_items).toEqual([
       '処方内容の判断',

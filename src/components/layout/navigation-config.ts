@@ -1,6 +1,7 @@
 import type { ElementType } from 'react';
 import {
   Activity,
+  AlertTriangle,
   BarChart3,
   Bell,
   Building2,
@@ -197,6 +198,7 @@ export const SIDEBAR_ADMIN_NAV_GROUPS: readonly LayoutNavGroup[] = [
       { label: 'PCAポンプ', href: '/admin/pca-pumps', icon: Package },
       { label: '他職種', href: '/admin/external-professionals', icon: Stethoscope },
       { label: '連携先', href: '/admin/contact-profiles', icon: Users },
+      { label: '薬局間協力', href: '/admin/pharmacy-cooperation', icon: Building2 },
       { label: '訪問エリア', href: '/admin/service-areas', icon: Car },
       { label: '施設基準', href: '/admin/facility-standards', icon: Shield },
     ],
@@ -220,6 +222,8 @@ export const SIDEBAR_ADMIN_NAV_GROUPS: readonly LayoutNavGroup[] = [
   {
     label: '分析・監視',
     items: [
+      { label: 'ヒヤリハット', href: '/admin/incidents', icon: AlertTriangle },
+      { label: '鑑査差戻し分析', href: '/admin/dispense-audit-stats', icon: ClipboardCheck },
       { label: 'データ探索', href: '/admin/data-explorer', icon: Database },
       { label: '監査ログ', href: '/admin/audit-logs', icon: ScrollText },
       { label: 'ジョブ', href: '/admin/jobs', icon: Cog },

@@ -6,6 +6,13 @@ import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminAlertRulesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
@@ -14,6 +21,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { SignalTuningPanel } from './signal-tuning-panel';
 import { PageSection } from '@/components/layout/page-section';
@@ -60,7 +69,7 @@ export default function AlertRulesPage() {
     queryKey: ['drug-alert-rules', orgId],
     queryFn: async () => {
       const res = await fetch('/api/drug-alert-rules', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('処方安全アラートルールの取得に失敗しました');
       return res.json() as Promise<{ data: DrugAlertRule[] }>;
@@ -76,14 +85,13 @@ export default function AlertRulesPage() {
         '条件(JSON) の形式が不正です',
       );
 
+      // encodePathSegment runs during URL construction (before fetch), so a dot
+      // segment id fails closed BEFORE the mutating PATCH side effect.
       const res = await fetch(
-        form.id ? `/api/drug-alert-rules/${form.id}` : '/api/drug-alert-rules',
+        form.id ? `/api/drug-alert-rules/${encodePathSegment(form.id)}` : '/api/drug-alert-rules',
         {
           method: form.id ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({
             alert_type: form.alert_type,
             severity: form.severity,
@@ -120,9 +128,11 @@ export default function AlertRulesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/drug-alert-rules/${id}`, {
+      // encodePathSegment runs before fetch, so a dot-segment id fails closed
+      // BEFORE the destructive DELETE side effect.
+      const res = await fetch(`/api/drug-alert-rules/${encodePathSegment(id)}`, {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('削除に失敗しました');
     },
@@ -150,10 +160,7 @@ export default function AlertRulesPage() {
     mutationFn: async () => {
       const res = await fetch('/api/cds/check', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ cycleId: testCycleId }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -190,39 +197,45 @@ export default function AlertRulesPage() {
         >
           <div className="space-y-2">
             <Label htmlFor="alert_type">アラート種別</Label>
-            <select
-              id="alert_type"
+            <Select
               value={form.alert_type}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, alert_type: event.target.value }))
+              onValueChange={(value) =>
+                setForm((current) => ({ ...current, alert_type: value ?? 'interaction' }))
               }
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
             >
-              {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="alert_type" className="min-h-[44px] w-full sm:min-h-[44px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="severity">重要度</Label>
-            <select
-              id="severity"
+            <Select
               value={form.severity}
-              onChange={(event) =>
+              onValueChange={(value) =>
                 setForm((current) => ({
                   ...current,
-                  severity: event.target.value as 'critical' | 'warning' | 'info',
+                  severity: (value ?? 'warning') as 'critical' | 'warning' | 'info',
                 }))
               }
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
             >
-              <option value="critical">critical</option>
-              <option value="warning">warning</option>
-              <option value="info">info</option>
-            </select>
+              <SelectTrigger id="severity" className="min-h-[44px] w-full sm:min-h-[44px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="critical">critical</SelectItem>
+                <SelectItem value="warning">warning</SelectItem>
+                <SelectItem value="info">info</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border px-3 py-2">

@@ -10,7 +10,10 @@ import { PrintPageToolbar } from '@/components/features/workflow/print-page-tool
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
 type PatientResponse = {
@@ -21,6 +24,7 @@ type PatientResponse = {
 type ManagementPlanResponse = {
   data: {
     id: string;
+    case_id: string;
     title: string;
     summary: string | null;
     content: Record<string, unknown>;
@@ -30,6 +34,16 @@ type ManagementPlanResponse = {
     next_review_date: string | null;
     approved_at: string | null;
     updated_at: string;
+  };
+};
+
+type CareCaseResponse = {
+  data: {
+    id: string;
+    patient: {
+      id: string;
+      name: string;
+    };
   };
 };
 
@@ -45,8 +59,8 @@ export default function ManagementPlanPrintPage() {
     queryKey: ['management-plan-print-patient', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}`, {
+        headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('患者情報を取得できませんでした');
@@ -58,8 +72,8 @@ export default function ManagementPlanPrintPage() {
     queryKey: ['management-plan-print', planId, orgId],
     enabled: Boolean(planId && orgId),
     queryFn: async () => {
-      const response = await fetch(`/api/management-plans/${planId}`, {
-        headers: { 'x-org-id': orgId },
+      const response = await fetch(`/api/management-plans/${encodePathSegment(planId)}`, {
+        headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
       if (!response.ok) throw new Error('管理計画書を取得できませんでした');
@@ -69,7 +83,31 @@ export default function ManagementPlanPrintPage() {
 
   const patient = patientQuery.data;
   const plan = planQuery.data?.data;
-  const ready = Boolean(patient && plan) && !patientQuery.isLoading && !planQuery.isLoading;
+  const planCaseId = plan?.case_id ?? '';
+  const caseQuery = useQuery<CareCaseResponse>({
+    queryKey: ['management-plan-print-case', planCaseId, orgId],
+    enabled: Boolean(planCaseId && orgId),
+    queryFn: async () => {
+      const response = await fetch(`/api/cases/${encodePathSegment(planCaseId)}`, {
+        headers: buildOrgHeaders(orgId),
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('ケース情報を取得できませんでした');
+      return response.json();
+    },
+  });
+
+  const careCase = caseQuery.data?.data;
+  const hasAssociationMismatch = Boolean(
+    patient && plan && careCase && careCase.patient.id !== patientId,
+  );
+  const isLoading =
+    patientQuery.isLoading || planQuery.isLoading || (Boolean(planCaseId) && caseQuery.isLoading);
+  const ready =
+    Boolean(patient && plan && careCase && !hasAssociationMismatch) &&
+    !patientQuery.isLoading &&
+    !planQuery.isLoading &&
+    !caseQuery.isLoading;
 
   useEffect(() => {
     if (!ready) return;
@@ -77,15 +115,23 @@ export default function ManagementPlanPrintPage() {
     return () => window.clearTimeout(timer);
   }, [ready]);
 
-  if (isBootstrappingOrg || patientQuery.isLoading || planQuery.isLoading) {
+  if (isBootstrappingOrg || isLoading) {
     return <Loading />;
   }
 
-  if (!patient || !plan || patientQuery.error || planQuery.error) {
+  if (
+    !patient ||
+    !plan ||
+    !careCase ||
+    hasAssociationMismatch ||
+    patientQuery.error ||
+    planQuery.error ||
+    caseQuery.error
+  ) {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-6">
         <p className="text-sm text-destructive">印刷データを取得できませんでした。</p>
-        <Link href={`/patients/${patientId}`} className={buttonVariants({ variant: 'outline' })}>
+        <Link href={buildPatientHref(patientId)} className={buttonVariants({ variant: 'outline' })}>
           戻る
         </Link>
       </div>
@@ -95,7 +141,7 @@ export default function ManagementPlanPrintPage() {
   return (
     <div className="mx-auto max-w-4xl p-6 print:p-0">
       <PrintPageToolbar
-        backHref={`/patients/${patientId}`}
+        backHref={buildPatientHref(patientId)}
         backLabel="患者詳細へ戻る"
         title="管理計画書 印刷ビュー"
         description="訪問薬剤管理指導計画書をA4印刷向けに確認できます。"
@@ -139,9 +185,7 @@ export default function ManagementPlanPrintPage() {
           </section>
 
           <section>
-            <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-              【要約】
-            </h2>
+            <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">【要約】</h2>
             <div className="min-h-[48px] border border-gray-400 px-3 py-2 text-xs whitespace-pre-wrap">
               {plan.summary ?? '—'}
             </div>

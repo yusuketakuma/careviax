@@ -1,4 +1,6 @@
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { readJsonObjectResponseBody } from '@/lib/api/response-body';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { parsePatientMcsViewData } from './dto';
 
 export class PatientMcsOverviewQueryError extends Error {
@@ -22,10 +24,13 @@ export function createPatientMcsQueryKey(patientId: string, orgId: string, limit
 export async function fetchPatientMcsOverview(patientId: string, orgId: string, limit: number) {
   const normalizedLimit = Number.isInteger(limit) && limit >= 0 ? limit : 0;
   const params = new URLSearchParams({ limit: String(normalizedLimit) });
-  const response = await fetch(`/api/patients/${patientId}/mcs?${params.toString()}`, {
-    headers: { 'x-org-id': orgId },
-    cache: 'no-store',
-  });
+  const response = await fetch(
+    `/api/patients/${encodePathSegment(patientId)}/mcs?${params.toString()}`,
+    {
+      headers: buildOrgHeaders(orgId),
+      cache: 'no-store',
+    },
+  );
   const payload = await readJsonObjectResponseBody(response);
   const message = typeof payload?.message === 'string' ? payload.message : undefined;
 

@@ -199,6 +199,50 @@ describe('TasksContent', () => {
     expect(screen.getByTestId('tasks-table').textContent).toContain('訪問準備');
   });
 
+  it('shows ErrorState (not a false-empty list) with retry when the tasks query fails', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'staff-workload') {
+        return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+      }
+      // タスク取得失敗 → 空一覧(false-empty)・偽の0件ではなく ErrorState + 再読み込み。
+      return { data: undefined, isLoading: false, isError: true, refetch };
+    });
+
+    render(<TasksContent />);
+
+    expect(screen.getByText('サーバーエラーが発生しました')).toBeTruthy();
+    expect(screen.queryByTestId('tasks-table')).toBeNull();
+    expect(screen.queryByText('該当するタスクはありません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a retry instead of a false-empty staff workload board when that query fails', () => {
+    const refetchStaffWorkload = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      if (options.queryKey?.[0] === 'staff-workload') {
+        // スタッフ別業務量の取得失敗 → 「依頼可能なスタッフがいない」かのような false-empty を出さない。
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          refetch: refetchStaffWorkload,
+        };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+
+    render(<TasksContent />);
+
+    expect(screen.getByText('スタッフ別業務量を取得できませんでした。')).toBeTruthy();
+    expect(screen.queryByText('依頼可能なスタッフが見つかりません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchStaffWorkload).toHaveBeenCalledTimes(1);
+  });
+
   it('prefills work request fields from visit or audit deep links', () => {
     render(
       <TasksContent

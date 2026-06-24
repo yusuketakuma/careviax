@@ -16,7 +16,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
+import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { apiDataSchema } from '@/lib/api/response-schemas';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import type { PatientDocumentsSnapshot, PatientOverview } from './patient-detail.types';
 
 type FirstVisitDocumentItem = PatientDocumentsSnapshot['first_visit_documents'][number];
@@ -337,10 +339,7 @@ function MissingFirstVisitDocumentsCreatePanel({
           const template = templatesByDocumentType.get(status.document_type);
           const response = await fetch('/api/first-visit-documents', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-org-id': orgId,
-            },
+            headers: buildOrgJsonHeaders(orgId),
             body: JSON.stringify({
               patient_id: patientId,
               case_id: caseId,
@@ -629,12 +628,9 @@ function FirstVisitDocumentStatusForm({
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/first-visit-documents/${document.id}`, {
+      const response = await fetch(`/api/first-visit-documents/${encodePathSegment(document.id)}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           delivered_at: document.delivered_at ?? new Date().toISOString(),
           delivered_to: deliveredTo.trim() || null,

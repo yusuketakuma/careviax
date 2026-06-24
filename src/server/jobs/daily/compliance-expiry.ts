@@ -2,6 +2,7 @@ import { addDays } from 'date-fns';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { runJob } from '../runner';
 import {
   buildConsentExpiryTaskKey,
@@ -196,7 +197,7 @@ export async function checkConsentExpiry() {
           type: priority === 'urgent' ? 'urgent' : 'business',
           title: '同意書の有効期限',
           message: `${patientName} さんの ${consent.consent_type} 同意が ${formatDateKey(consent.expiry_date)} に期限切れ。再取得が必要です。`,
-          link: `/patients/${consent.patient_id}`,
+          link: buildPatientHref(consent.patient_id),
           dedupe_key: `consent-expiry:${consent.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
         });
       }
@@ -273,7 +274,7 @@ export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}
             type: priority === 'urgent' ? 'urgent' : 'business',
             title: '公費の有効期限',
             message: `${patientName} さんの公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ。証書の確認が必要です。`,
-            link: `/patients/${insurance.patient_id}`,
+            link: buildPatientHref(insurance.patient_id),
             dedupe_key: `public-subsidy-expiry:${insurance.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
           });
         }

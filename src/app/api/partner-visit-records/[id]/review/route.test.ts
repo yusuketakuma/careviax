@@ -50,11 +50,15 @@ vi.mock('@/server/services/notifications', () => ({
 
 import { POST as rawPOST } from './route';
 
-const routeContext = { params: Promise.resolve({ id: 'partner_visit_record_1' }) };
+function createRouteContext(recordId = 'partner_visit_record_1') {
+  return { params: Promise.resolve({ id: recordId }) };
+}
 
-function createRequest(body: unknown) {
+const routeContext = createRouteContext();
+
+function createRequest(body: unknown, recordId = 'partner_visit_record_1') {
   return new NextRequest(
-    'http://localhost/api/partner-visit-records/partner_visit_record_1/review',
+    `http://localhost/api/partner-visit-records/${encodeURIComponent(recordId)}/review`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -121,9 +125,42 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
   });
 
   it('confirms a submitted partner visit record, marks the request confirmed, and creates claim support', async () => {
+    const rawRecordId = 'partner_visit_record/1?tab=x#frag';
+    const encodedRecordHref = `/partner-visit-records/${encodeURIComponent(rawRecordId)}`;
+    partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
+      id: rawRecordId,
+      status: 'submitted',
+      visit_request_id: 'visit_request_1',
+      share_case_id: 'share_case_1',
+      owner_partner_pharmacy_id: 'partner_pharmacy_1',
+      visit_at: new Date('2026-06-20T01:30:00.000Z'),
+      revision_no: 1,
+      share_case: { status: 'active' },
+      owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
+      visit_request: {
+        status: 'submitted',
+        accepted_by: 'partner_user_1',
+        partnership_id: 'partnership_1',
+        partnership: {
+          status: 'active',
+          partner_pharmacy: { status: 'active' },
+          base_site: { id: 'site_1', name: '基幹薬局' },
+        },
+      },
+    });
+    partnerVisitRecordFindUniqueOrThrowMock.mockResolvedValueOnce({
+      id: rawRecordId,
+      status: 'confirmed',
+      visit_request_id: 'visit_request_1',
+      share_case_id: 'share_case_1',
+      owner_partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
+      visit_request: { id: 'visit_request_1', status: 'confirmed', urgency: 'normal' },
+      claim_note: { id: 'claim_note_1', claim_status: 'pending' },
+    });
+
     const response = await rawPOST(
-      createRequest({ decision: 'confirm', doctor_report_required: true }),
-      routeContext,
+      createRequest({ decision: 'confirm', doctor_report_required: true }, rawRecordId),
+      createRouteContext(rawRecordId),
     );
 
     expect(response.status).toBe(200);
@@ -144,7 +181,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     );
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalledWith({
       where: {
-        id: 'partner_visit_record_1',
+        id: rawRecordId,
         org_id: 'org_1',
         status: 'submitted',
         share_case: { status: 'active' },
@@ -170,9 +207,15 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     });
     expect(claimCooperationNoteUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: {
+          partner_visit_record_id_org_id: {
+            partner_visit_record_id: rawRecordId,
+            org_id: 'org_1',
+          },
+        },
         create: expect.objectContaining({
           org_id: 'org_1',
-          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_id: rawRecordId,
           partner_pharmacy_name: '協力薬局',
           prescription_received_by: '基幹薬局',
           dispensing_pharmacy_name: '基幹薬局',
@@ -188,21 +231,32 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         type: 'business',
         title: '協力訪問記録が確認されました',
         message: 'アプリで協力訪問記録の確認結果を確認してください',
+        link: encodedRecordHref,
         explicitUserIds: ['partner_user_1'],
         metadata: {
-          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_id: rawRecordId,
           visit_request_id: 'visit_request_1',
           share_case_id: 'share_case_1',
           decision: 'confirm',
           status: 'confirmed',
         },
+        dedupeKey: `pharmacy_partner_visit_record_confirmed:${rawRecordId}:2026-06-19T00:00:00.000Z`,
       }),
+    );
+    expect(partnerVisitRecordFindUniqueOrThrowMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id_org_id: { id: rawRecordId, org_id: 'org_1' } },
+      }),
+    );
+    expect(JSON.stringify(dispatchNotificationEventMock.mock.calls)).not.toContain(
+      `/partner-visit-records/${rawRecordId}`,
     );
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
       expect.objectContaining({
         action: 'partner_visit_record_confirmed',
+        targetId: rawRecordId,
         changes: expect.objectContaining({
           decision: 'confirm',
           previous_status: 'submitted',

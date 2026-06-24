@@ -59,4 +59,23 @@ describe('patient-visit-records.helpers', () => {
       expect.any(Object),
     );
   });
+
+  it('passes the org header through to the cursor fetch', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [],
+        hasMore: false,
+      }),
+    );
+
+    await fetchPatientVisitRecordsWindow({
+      orgId: 'org_42',
+      patientId: 'patient_1',
+      fetchImpl,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>)['x-org-id']).toBe('org_42');
+  });
 });

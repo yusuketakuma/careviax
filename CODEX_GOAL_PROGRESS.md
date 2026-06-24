@@ -18,6 +18,23 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Claude currently owns Slice B and has locked `src/lib/auth/context.ts`, `src/lib/api/response.ts`, and `src/lib/api/performance.ts`; Codex will not edit those files while the lock is active.
 - The worktree is intentionally dirty from concurrent Claude/Codex slices. Preserve unrelated changes and do not revert user/Claude edits.
 
+### 2026-06-22 JST - Medical UI Gate Stabilization Continuation
+
+- LOCK observed: `medical-ui-gate-stab-20260622` covers patients-board contrast, shared status token contrast regression, and the medical UI Playwright stabilization specs. Claude's admin FE pause remains separate, and existing `.agent-loop/**` / gbrain write-through files are not part of this Codex commit group.
+- Implemented contrast fixes: patient board summary/status/safety badges and shared `StateBadge` badge text now use readable foreground text with token-colored surfaces/rings, preserving non-color state signals through labels, icons, `data-role`, and semantic token classes.
+- Implemented test stabilization: medical UI E2E helpers now avoid stale click-only route assumptions, add route/readiness reload fallbacks, keep proposal dashboards from accepting false empty states too early, retry transient GET-only API resets for set calendar reads, and harden local storage setup against opaque-origin frames.
+- Guardrails preserved: billing/PCA/product code was untouched; prescription/dispensing product code was untouched; POST retry remains disabled in the billing/PCA guardrail helper; no DB schema, RLS, auth, PHI projection, or audit-log behavior changed.
+- Validation passed: changed-file Prettier, ESLint, diff-check, full `pnpm typecheck`, patients-board Vitest `12/12`, focused desktop/mobile prescription/dispensing/set-audit/schedule/visit/billing guardrail Playwright regressions.
+- Validation caveat: after the real medical UI failures were patched and focused-green, repeated long grouped `pnpm medical-ui:e2e:gate` / targeted Playwright reruns were interrupted by browser context `Channel closed`/SIGTERM behavior from the local runner environment. The one-piece gate is therefore not claimed green in this slice; the affected tests pass individually/split.
+
+### 2026-06-22 JST - Prescription Intake Guardrail Before Cycle Create
+
+- Human/Claude decision: fix the prescription-intake blocker properly as a code-level root cause, with no migration. The accepted root cause was that the `case_id/patient_id` path created a `MedicationCycle` before failing structuring/outpatient-injection guardrails.
+- Implemented: `createPrescriptionIntakeInTx()` now resolves a target as either an existing cycle or a case-only context first, runs source/refill/duplicate/structuring/outpatient-injection/prescriber-institution guards before creating a new cycle, and creates the cycle only on the valid success path. Existing-cycle blocked paths still preserve workflow-exception side effects; case-only blocked paths return the same 400 contract without creating an orphan cycle.
+- Tests added: service unit coverage for blocked outpatient-injection case targets creating no cycle/intake/exception, plus valid case targets creating a cycle only after guards pass. The billing/PCA/prescription guardrail E2E now asserts blocked POST elapsed under 5s after route warm-up and confirms the target case's `MedicationCycle` count does not increase.
+- Validation passed: service unit `20/20`; prescription-intakes route unit `31/31`; focused prescription guardrail E2E `1/1`; full billing/PCA/prescription guardrail E2E `4/4`; medical-ui preflight; changed-file Prettier/ESLint/diff-check; full `pnpm typecheck`.
+- Review status: Claude approved the high-risk prescription endpoint change and cleared the reviewed tree to land. Landed as `97ece552` (`fix(ui): stabilize medical gate and intake guardrail`). A separately running `pnpm medical-ui:e2e:targeted` process later ended with Playwright status `interrupted` and no detailed failure artifact, so it is tracked as environment/runner evidence rather than a product regression signal.
+
 ### Loop 0 - Baseline Start
 
 - Required context read: `AGENTS.md`, `.codex/config.toml`, `.codex/hooks.json`, `.codex/rules/default.rules`, `README.md`, `CLAUDE.md`, `package.json`, `.github/workflows/ci.yml`, `docs/testing/README.md`, `docs/testing/TESTING.md`, existing `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.

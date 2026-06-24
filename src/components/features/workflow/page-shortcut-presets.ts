@@ -1,5 +1,7 @@
 import type { PageShortcutLink } from './page-shortcut-links';
 import { buildCommunicationRequestsHref } from '@/lib/communications/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
 
 export function getVisitDetailShortcutLinks(visitRecordId: string): PageShortcutLink[] {
   void visitRecordId;
@@ -12,42 +14,42 @@ export function getVisitDetailShortcutLinks(visitRecordId: string): PageShortcut
 
 export function getPatientHubShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}/edit`, label: '患者情報編集', group: '基本情報' },
-    { href: `/patients/${patientId}/prescriptions`, label: '処方履歴', group: '服薬・経過' },
-    { href: `/patients/${patientId}/medications`, label: '服薬管理', group: '服薬・経過' },
+    { href: buildPatientHref(patientId, '/edit'), label: '患者情報編集', group: '基本情報' },
+    { href: buildPatientHref(patientId, '/prescriptions'), label: '処方履歴', group: '服薬・経過' },
+    { href: buildPatientHref(patientId, '/medications'), label: '服薬管理', group: '服薬・経過' },
     {
-      href: `/patients/${patientId}/medication-calendar`,
+      href: buildPatientHref(patientId, '/medication-calendar'),
       label: '服薬カレンダー',
       group: '服薬・経過',
     },
-    { href: `/patients/${patientId}/consent`, label: '同意記録', group: '連携・共有' },
-    { href: `/patients/${patientId}/mcs`, label: 'MCS連携', group: '連携・共有' },
-    { href: `/patients/${patientId}/share`, label: '外部共有', group: '連携・共有' },
+    { href: buildPatientHref(patientId, '/consent'), label: '同意記録', group: '連携・共有' },
+    { href: buildPatientHref(patientId, '/mcs'), label: 'MCS連携', group: '連携・共有' },
+    { href: buildPatientHref(patientId, '/share'), label: '外部共有', group: '連携・共有' },
   ];
 }
 
 export function getPatientEditShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
-    { href: `/patients/${patientId}/prescriptions`, label: '処方履歴' },
-    { href: `/patients/${patientId}/medications`, label: '服薬管理' },
-    { href: `/patients/${patientId}/consent`, label: '同意記録' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
+    { href: buildPatientHref(patientId, '/prescriptions'), label: '処方履歴' },
+    { href: buildPatientHref(patientId, '/medications'), label: '服薬管理' },
+    { href: buildPatientHref(patientId, '/consent'), label: '同意記録' },
   ];
 }
 
 export function getPatientMedicationShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
-    { href: `/patients/${patientId}/prescriptions`, label: '処方履歴' },
-    { href: `/patients/${patientId}/mcs`, label: 'MCS連携' },
-    { href: `/patients/${patientId}/medication-calendar`, label: '服薬カレンダー' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
+    { href: buildPatientHref(patientId, '/prescriptions'), label: '処方履歴' },
+    { href: buildPatientHref(patientId, '/mcs'), label: 'MCS連携' },
+    { href: buildPatientHref(patientId, '/medication-calendar'), label: '服薬カレンダー' },
   ];
 }
 
 export function getPatientPrescriptionShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
-    { href: `/patients/${patientId}/medications`, label: '服薬管理' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
+    { href: buildPatientHref(patientId, '/medications'), label: '服薬管理' },
     {
       href: `/prescriptions/new?patient_id=${patientId}`,
       label: '処方受付',
@@ -57,36 +59,36 @@ export function getPatientPrescriptionShortcutLinks(patientId: string): PageShor
 
 export function getPatientShareShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
-    { href: `/patients/${patientId}/mcs`, label: 'MCS連携' },
-    { href: `/patients/${patientId}/consent`, label: '同意記録' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
+    { href: buildPatientHref(patientId, '/mcs'), label: 'MCS連携' },
+    { href: buildPatientHref(patientId, '/consent'), label: '同意記録' },
     { href: '/external', label: '外部連携' },
   ];
 }
 
 export function getPatientMcsShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
-    { href: `/patients/${patientId}/medications`, label: '服薬管理' },
-    { href: `/patients/${patientId}/prescriptions`, label: '処方履歴' },
-    { href: `/patients/${patientId}/share`, label: '外部共有' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
+    { href: buildPatientHref(patientId, '/medications'), label: '服薬管理' },
+    { href: buildPatientHref(patientId, '/prescriptions'), label: '処方履歴' },
+    { href: buildPatientHref(patientId, '/share'), label: '外部共有' },
   ];
 }
 
 export function getPatientConsentShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
-    { href: `/patients/${patientId}/mcs`, label: 'MCS連携' },
-    { href: `/patients/${patientId}/share`, label: '外部共有' },
-    { href: `/patients/${patientId}/medications`, label: '服薬管理' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
+    { href: buildPatientHref(patientId, '/mcs'), label: 'MCS連携' },
+    { href: buildPatientHref(patientId, '/share'), label: '外部共有' },
+    { href: buildPatientHref(patientId, '/medications'), label: '服薬管理' },
   ];
 }
 
 export function getPatientMedicationCalendarShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
-    { href: `/patients/${patientId}/medications`, label: '服薬管理' },
-    { href: `/patients/${patientId}/prescriptions`, label: '処方履歴' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
+    { href: buildPatientHref(patientId, '/medications'), label: '服薬管理' },
+    { href: buildPatientHref(patientId, '/prescriptions'), label: '処方履歴' },
   ];
 }
 
@@ -156,7 +158,7 @@ export function getReportDetailShortcutLinks(
 ): PageShortcutLink[] {
   return [
     { href: '/reports', label: '報告書一覧' },
-    ...(patientId ? [{ href: `/patients/${patientId}`, label: '患者詳細' }] : []),
+    ...(patientId ? [{ href: buildPatientHref(patientId), label: '患者詳細' }] : []),
     ...(reportId
       ? [
           {
@@ -175,7 +177,7 @@ export function getReportDetailShortcutLinks(
 
 export function getReportPrintShortcutLinks(reportId: string): PageShortcutLink[] {
   return [
-    { href: `/reports/${reportId}`, label: '報告書詳細' },
+    { href: buildReportHref(reportId), label: '報告書詳細' },
     {
       href: buildCommunicationRequestsHref({
         relatedEntityType: 'care_report',
@@ -190,7 +192,7 @@ export function getReportPrintShortcutLinks(reportId: string): PageShortcutLink[
 
 export function getManagementPlanPrintShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
     { href: '/reports', label: '報告書' },
     { href: '/workflow', label: 'ワークフロー' },
   ];
@@ -198,15 +200,15 @@ export function getManagementPlanPrintShortcutLinks(patientId: string): PageShor
 
 export function getPatientMedicationPrintShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}/medications`, label: '服薬管理' },
-    { href: `/patients/${patientId}/medication-calendar`, label: '服薬カレンダー' },
-    { href: `/patients/${patientId}`, label: '患者詳細' },
+    { href: buildPatientHref(patientId, '/medications'), label: '服薬管理' },
+    { href: buildPatientHref(patientId, '/medication-calendar'), label: '服薬カレンダー' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
   ];
 }
 
 export function getPatientVisitRecordPrintShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
-    { href: `/patients/${patientId}`, label: '患者詳細' },
+    { href: buildPatientHref(patientId), label: '患者詳細' },
     { href: '/visits', label: '訪問一覧' },
     { href: '/reports', label: '報告書' },
   ];

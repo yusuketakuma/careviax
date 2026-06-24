@@ -52,9 +52,12 @@ describe('checkUnrecordedVisits', () => {
   });
 
   it('batches unrecorded visit reminders with duplicate-safe keys', async () => {
+    const rawScheduleId = 'schedule/1?mode=x#frag';
+    const encodedScheduleLink = `/visit-schedules/${encodeURIComponent(rawScheduleId)}`;
+
     visitScheduleFindManyMock.mockResolvedValue([
       {
-        id: 'schedule_1',
+        id: rawScheduleId,
         org_id: 'org_1',
         pharmacist_id: 'pharmacist_1',
       },
@@ -68,14 +71,18 @@ describe('checkUnrecordedVisits', () => {
     const result = await checkUnrecordedVisits();
 
     expect(result).toEqual({ processedCount: 2 });
+    expect(visitRecordFindManyMock).toHaveBeenCalledWith({
+      where: { schedule_id: { in: [rawScheduleId, 'schedule_2'] } },
+      select: { schedule_id: true },
+    });
     expect(notificationCreateMock).not.toHaveBeenCalled();
     expect(notificationCreateManyMock).toHaveBeenCalledTimes(1);
     expect(notificationCreateManyMock).toHaveBeenCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
           user_id: 'pharmacist_1',
-          link: '/visit-schedules/schedule_1',
-          dedupe_key: 'unrecorded-visit:schedule_1:pharmacist_1',
+          link: encodedScheduleLink,
+          dedupe_key: `unrecorded-visit:${rawScheduleId}:pharmacist_1`,
         }),
         expect.objectContaining({
           user_id: 'pharmacist_2',
@@ -85,6 +92,9 @@ describe('checkUnrecordedVisits', () => {
       ]),
       skipDuplicates: true,
     });
+    expect(JSON.stringify(notificationCreateManyMock.mock.calls[0][0].data)).not.toContain(
+      `/visit-schedules/${rawScheduleId}`,
+    );
   });
 
   it('skips already recorded schedules and avoids empty notification writes', async () => {

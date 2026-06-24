@@ -3,13 +3,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   consentRecordFindFirstMock,
   consentRecordFindManyMock,
+  dispatchNotificationEventMock,
   managementPlanFindFirstMock,
   managementPlanFindManyMock,
+  upsertOperationalTaskMock,
 } = vi.hoisted(() => ({
   consentRecordFindFirstMock: vi.fn(),
   consentRecordFindManyMock: vi.fn(),
+  dispatchNotificationEventMock: vi.fn(),
   managementPlanFindFirstMock: vi.fn(),
   managementPlanFindManyMock: vi.fn(),
+  upsertOperationalTaskMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -17,11 +21,11 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 vi.mock('./notifications', () => ({
-  dispatchNotificationEvent: vi.fn().mockResolvedValue([]),
+  dispatchNotificationEvent: dispatchNotificationEventMock,
 }));
 
 vi.mock('./operational-tasks', () => ({
-  upsertOperationalTask: vi.fn().mockResolvedValue({ id: 'task-1' }),
+  upsertOperationalTask: upsertOperationalTaskMock,
   resolveOperationalTasks: vi.fn().mockResolvedValue({ count: 1 }),
 }));
 
@@ -35,6 +39,7 @@ import {
   buildManagementPlanReviewTaskKey,
   isVisitWorkflowGateIssue,
   parseVisitWorkflowGateErrorMessage,
+  scheduleManagementPlanReviewAlert,
 } from './management-plans';
 
 function makeGateDb() {
@@ -361,5 +366,62 @@ describe('getVisitWorkflowGuidance', () => {
 describe('buildManagementPlanReviewTaskKey', () => {
   it('generates expected key format', () => {
     expect(buildManagementPlanReviewTaskKey('plan-123')).toBe('management-plan-review:plan-123');
+  });
+});
+
+describe('scheduleManagementPlanReviewAlert', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dispatchNotificationEventMock.mockResolvedValue([]);
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task-1' });
+  });
+
+  it('encodes notification patient links while preserving raw task and notification identity', async () => {
+    const rawPatientId = 'patient/1?tab=x#frag';
+    const encodedPatientHref = `/patients/${encodeURIComponent(rawPatientId)}`;
+    const tx = {} as Parameters<typeof scheduleManagementPlanReviewAlert>[0];
+    const dueDate = new Date('2026-04-30T00:00:00.000Z');
+
+    await scheduleManagementPlanReviewAlert(tx, {
+      orgId: 'org_1',
+      planId: 'plan_1',
+      caseId: 'case_1',
+      patientId: rawPatientId,
+      dueDate,
+      assignedTo: 'pharmacist_1',
+    });
+
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'management_plan_review',
+        assignedTo: 'pharmacist_1',
+        dueDate,
+        slaDueAt: dueDate,
+        dedupeKey: 'management-plan-review:plan_1',
+        relatedEntityType: 'management_plan',
+        relatedEntityId: 'plan_1',
+        metadata: {
+          case_id: 'case_1',
+          patient_id: rawPatientId,
+        },
+      }),
+    );
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        orgId: 'org_1',
+        eventType: 'management_plan_review_due',
+        link: encodedPatientHref,
+        explicitUserIds: ['pharmacist_1'],
+        dedupeKey: 'management-plan-review:plan_1',
+        metadata: {
+          plan_id: 'plan_1',
+          case_id: 'case_1',
+          patient_id: rawPatientId,
+        },
+      }),
+    );
   });
 });

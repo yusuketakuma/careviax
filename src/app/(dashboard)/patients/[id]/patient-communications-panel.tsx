@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { PatientContactsPanel } from './patient-contacts-panel';
 import { PatientCareTeamPanel } from './patient-care-team-panel';
@@ -53,8 +55,8 @@ export function PatientCommunicationsPanel({
     queryKey: ['patient-contacts', patientId, orgId],
     enabled: Boolean(orgId && patientId && enabled),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/contacts`, {
-        headers: { 'x-org-id': orgId ?? '' },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/contacts`, {
+        headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
         throw new Error('患者連絡先の取得に失敗しました');
@@ -66,8 +68,8 @@ export function PatientCommunicationsPanel({
     queryKey: ['patient-communications', patientId, orgId],
     enabled: Boolean(orgId && patientId && enabled),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/communications`, {
-        headers: { 'x-org-id': orgId ?? '' },
+      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/communications`, {
+        headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
         throw new Error('連携情報の取得に失敗しました');
@@ -147,10 +149,7 @@ function CommunicationQueueCard({
     ) => {
       const res = await fetch('/api/communication-requests', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: draft.patient_id || patientId,
           request_type: draft.request_type,

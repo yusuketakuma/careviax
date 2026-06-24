@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -152,8 +155,8 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['prescription-intake-detail', orgId, intakeId],
     queryFn: async () => {
-      const res = await fetch(`/api/prescription-intakes/${intakeId}`, {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('処方受付の取得に失敗しました');
       return res.json() as Promise<PrescriptionIntakeDetail>;
@@ -177,6 +180,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
   if (isLoading || !data) return <Loading />;
 
   const patient = data.cycle.case_.patient;
+  const patientHref = buildPatientHref(patient.id);
   const statusConfig = CYCLE_STATUS_CONFIG[data.cycle.overall_status] ?? {
     label: data.cycle.overall_status,
     variant: 'outline' as const,
@@ -202,7 +206,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
       >
         <PageShortcutLinks
           links={[
-            { href: `/patients/${patient.id}`, label: '患者詳細' },
+            { href: patientHref, label: '患者詳細' },
             { href: '/dispense', label: '調剤キュー' },
             { href: '/prescriptions/new', label: '新規受付' },
           ]}
@@ -261,10 +265,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div>
-                  <Link
-                    href={`/patients/${patient.id}`}
-                    className="font-medium text-primary hover:underline"
-                  >
+                  <Link href={patientHref} className="font-medium text-primary hover:underline">
                     {patient.name}
                   </Link>
                   <span className="ml-1 text-xs text-muted-foreground">({patient.name_kana})</span>
@@ -586,7 +587,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
             <Link href="/dispense">調剤キューへ</Link>
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <Link href={`/patients/${patient.id}`}>患者詳細</Link>
+            <Link href={patientHref}>患者詳細</Link>
           </Button>
         </div>
       </div>

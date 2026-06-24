@@ -41,9 +41,12 @@ import {
 } from '@/components/ui/table';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { formatDateKey } from '@/lib/date-key';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import { Loading } from '@/components/ui/loading';
+import { ErrorState } from '@/components/ui/error-state';
 import { toast } from 'sonner';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -1177,12 +1180,15 @@ export function PrescriptionHistoryContent() {
   const [routeFilter, setRouteFilter] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['patient-prescriptions', orgId, patientId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/prescriptions?limit=100`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const res = await fetch(
+        `/api/patients/${encodePathSegment(patientId)}/prescriptions?limit=100`,
+        {
+          headers: buildOrgHeaders(orgId),
+        },
+      );
       if (!res.ok) throw new Error('処方履歴の取得に失敗しました');
       return res.json() as Promise<{
         patient: PatientInfo;
@@ -1212,7 +1218,7 @@ export function PrescriptionHistoryContent() {
       if (allDrugCodes.length === 0) return {};
       const res = await fetch('/api/drug-masters/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ yj_codes: allDrugCodes }),
       });
       if (!res.ok) return {};
@@ -1226,12 +1232,9 @@ export function PrescriptionHistoryContent() {
 
   const markOriginalCollectedMutation = useMutation({
     mutationFn: async (intakeId: string) => {
-      const response = await fetch(`/api/prescription-intakes/${intakeId}`, {
+      const response = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           original_collected_at: new Date().toISOString(),
         }),
@@ -1318,6 +1321,19 @@ export function PrescriptionHistoryContent() {
   const handlePrint = useCallback(() => window.print(), []);
 
   if (isLoading) return <Loading />;
+
+  if (isError) {
+    // 取得失敗を空表示に潰さず、再試行導線つきの ErrorState を出す。
+    return (
+      <ErrorState
+        variant="server"
+        size="inline"
+        title="処方履歴を読み込めませんでした"
+        description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
+        action={{ label: '再読み込み', onClick: () => void refetch() }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">

@@ -1,6 +1,7 @@
 import type { MemberRole, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { getPatientPrivacyFlags, maskContactValue, maskPhoneNumber } from '@/lib/patient/privacy';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
@@ -372,6 +373,8 @@ function buildPrintReadiness(args: {
   const missingTemplateLabels = FIRST_VISIT_TEMPLATE_TYPES.filter(
     (item) => !templatesByType.has(item.template_type),
   ).map((item) => item.label);
+  const patientEditHref = buildPatientHref(args.patient.id, '/edit');
+  const patientProfileSummaryHref = buildPatientHref(args.patient.id, '#patient-profile-summary');
   const checks: PrintReadinessCheck[] = [
     {
       key: 'patient_profile',
@@ -382,7 +385,7 @@ function buildPrintReadiness(args: {
         args.patient.name && args.patient.name_kana && args.patient.birth_date
           ? '氏名、フリガナ、生年月日を差し込みできます。'
           : '氏名、フリガナ、生年月日を登録してください。',
-      action_href: `/patients/${args.patient.id}/edit`,
+      action_href: patientEditHref,
       action_label: '基本情報を編集',
     },
     {
@@ -393,7 +396,7 @@ function buildPrintReadiness(args: {
       description: hasResidence
         ? '住所または施設情報を差し込みできます。'
         : '契約書へ転記する住所または施設情報を登録してください。',
-      action_href: `/patients/${args.patient.id}/edit`,
+      action_href: patientEditHref,
       action_label: '住所を編集',
     },
     {
@@ -404,7 +407,7 @@ function buildPrintReadiness(args: {
       description: hasContact
         ? '患者または連絡先の電話番号を差し込みできます。'
         : '患者電話番号、または主連絡先の電話番号を登録してください。',
-      action_href: `/patients/${args.patient.id}/edit`,
+      action_href: patientEditHref,
       action_label: '連絡先を編集',
     },
     {
@@ -415,7 +418,7 @@ function buildPrintReadiness(args: {
       description: hasCareInsurance
         ? '介護保険番号または有効な介護保険レコードがあります。'
         : '契約書・重要事項説明書へ転記する介護保険情報を登録してください。',
-      action_href: `/patients/${args.patient.id}#patient-profile-summary`,
+      action_href: patientProfileSummaryHref,
       action_label: '保険を確認',
     },
     {
@@ -426,7 +429,7 @@ function buildPrintReadiness(args: {
       description: hasKeyPerson
         ? '主連絡先または緊急連絡先があり、代理人・家族署名候補を確認できます。'
         : '家族・代理人署名に備えて主連絡先または緊急連絡先を登録してください。',
-      action_href: `/patients/${args.patient.id}#patient-profile-summary`,
+      action_href: patientProfileSummaryHref,
       action_label: '連絡先を確認',
     },
     {
@@ -437,7 +440,7 @@ function buildPrintReadiness(args: {
       description: activeCase?.start_date
         ? '契約開始日としてケース開始日を参照できます。'
         : '契約開始日に使うケース開始日を登録してください。',
-      action_href: `/patients/${args.patient.id}#patient-profile-summary`,
+      action_href: patientProfileSummaryHref,
       action_label: 'ケースを確認',
     },
     {
@@ -448,7 +451,7 @@ function buildPrintReadiness(args: {
       description: activeCase?.primary_pharmacist_id
         ? '説明担当者候補として主担当薬剤師を参照できます。'
         : '説明担当者の初期値に使う主担当薬剤師を設定してください。',
-      action_href: `/patients/${args.patient.id}#patient-profile-summary`,
+      action_href: patientProfileSummaryHref,
       action_label: '担当者を確認',
     },
     {

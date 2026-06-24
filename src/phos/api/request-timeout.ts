@@ -1,14 +1,12 @@
+import { maybeUnrefTimeout } from '@/lib/utils/abort-timeout';
+
+export { maybeUnrefTimeout } from '@/lib/utils/abort-timeout';
+
 export type PhosRequestAbort = {
   signal: AbortSignal;
   didTimeout: () => boolean;
   clear: () => void;
 };
-
-export function maybeUnrefTimeout(timeout: ReturnType<typeof setTimeout>): void {
-  if (typeof timeout === 'object' && timeout && 'unref' in timeout) {
-    (timeout as { unref?: () => void }).unref?.();
-  }
-}
 
 export function createPhosRequestAbort(args: {
   timeoutMs: number;

@@ -132,4 +132,32 @@ describe('layout navigation config', () => {
       expect.arrayContaining(['採用薬', '配薬方法', 'マスタ', '処方安全アラート']),
     );
   });
+
+  it('surfaces previously sidebar-unreachable admin management screens', () => {
+    // These built screens had no path from the admin sidebar or the /admin master-hub
+    // (only deep-linked from statistics/operations-insights/workflow). Give them a
+    // direct admin-nav entry in a topically-correct group.
+    const monitoring = SIDEBAR_ADMIN_NAV_GROUPS.find((group) => group.label === '分析・監視');
+    const facilities = SIDEBAR_ADMIN_NAV_GROUPS.find((group) => group.label === '施設・連携先');
+
+    const incidents = monitoring?.items.find((item) => item.href === '/admin/incidents');
+    expect(incidents?.label).toBe('ヒヤリハット');
+
+    const dispenseAuditStats = monitoring?.items.find(
+      (item) => item.href === '/admin/dispense-audit-stats',
+    );
+    expect(dispenseAuditStats?.label).toBe('鑑査差戻し分析');
+
+    const pharmacyCooperation = facilities?.items.find(
+      (item) => item.href === '/admin/pharmacy-cooperation',
+    );
+    expect(pharmacyCooperation?.label).toBe('薬局間協力');
+  });
+
+  it('keeps every admin sidebar href pointing at a unique destination', () => {
+    const adminHrefs = SIDEBAR_ADMIN_NAV_GROUPS.flatMap((group) =>
+      group.items.map((item) => item.href),
+    );
+    expect(new Set(adminHrefs).size).toBe(adminHrefs.length);
+  });
 });

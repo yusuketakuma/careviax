@@ -180,6 +180,7 @@ model AuditLog {
   @@index([actor_id])
   @@index([org_id, actor_site_id, created_at])
   @@index([org_id, patient_id, created_at])
+  @@index([org_id, target_type, target_id, created_at(sort: Desc)], map: "AuditLog_org_target_created_idx")
   @@index([target_type])
   @@index([created_at])
 }

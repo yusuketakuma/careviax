@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -138,5 +138,16 @@ describe('DocumentDeliveryRuleManager', () => {
     expect(screen.getByText('送達ルールを編集')).toBeTruthy();
     expect(screen.getByRole('button', { name: '更新する' })).toBeTruthy();
     expect((screen.getByLabelText('フォールバック順') as HTMLInputElement).value).toBe('fax');
+  });
+
+  it('renders the form and list panel titles as real h3 headings (scoped to the manager)', async () => {
+    const { container } = renderManager();
+
+    // 一覧 panel の描画を待ってから、manager コンテナ内に scope して h3 を検証する
+    // (将来 parent PageSection が同名 h2 を出しても誤検出しないように container scope)。
+    await screen.findByText('送達ルール一覧');
+    const scope = within(container);
+    expect(scope.getByRole('heading', { level: 3, name: '送達ルールを登録' })).toBeTruthy();
+    expect(scope.getByRole('heading', { level: 3, name: '送達ルール一覧' })).toBeTruthy();
   });
 });

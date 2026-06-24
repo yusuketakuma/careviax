@@ -22,6 +22,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-visit-contract';
 import { displayDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
@@ -560,7 +561,7 @@ export function ReportShareWorkspace() {
       toast.success('報告書の下書きを作成しました');
       queryClient.invalidateQueries({ queryKey: ['care-reports', 'today-workspace', orgId] });
       queryClient.invalidateQueries({ queryKey: ['care-reports'] });
-      router.push(`/reports/${firstReport.id}`);
+      router.push(buildReportHref(firstReport.id));
     },
     onError: (err: Error) => toast.error(err.message),
   });

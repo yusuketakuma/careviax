@@ -21,6 +21,7 @@ import type { StatusRole } from '@/lib/constants/status-tokens';
 import { USER_ACCOUNT_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorState } from '@/components/ui/error-state';
 import {
   Dialog,
   DialogContent,
@@ -161,7 +162,12 @@ export function ShiftsContent() {
     enabled: !!orgId,
   });
 
-  const { data: pharmacistsData, isLoading: pharmacistsLoading } = useQuery({
+  const {
+    data: pharmacistsData,
+    isLoading: pharmacistsLoading,
+    isError: pharmacistsError,
+    refetch: refetchPharmacists,
+  } = useQuery({
     queryKey: ['pharmacists', orgId, 'admin-shifts'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacists?include_collaborators=true', {
@@ -173,7 +179,12 @@ export function ShiftsContent() {
     enabled: !!orgId,
   });
 
-  const { data: shiftsData, isLoading: shiftsLoading } = useQuery({
+  const {
+    data: shiftsData,
+    isLoading: shiftsLoading,
+    isError: shiftsError,
+    refetch: refetchShifts,
+  } = useQuery({
     queryKey: ['pharmacist-shifts', orgId, format(currentMonth, 'yyyy-MM')],
     queryFn: async () => {
       const month = format(currentMonth, 'yyyy-MM-01');
@@ -948,7 +959,22 @@ export function ShiftsContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {pharmacistsLoading || shiftsLoading ? (
+          {pharmacistsError || shiftsError ? (
+            // 取得失敗を空表示に潰さず、再試行導線つきの ErrorState を出す。
+            <ErrorState
+              variant="server"
+              size="inline"
+              title="シフトを読み込めませんでした"
+              description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
+              action={{
+                label: '再読み込み',
+                onClick: () => {
+                  void refetchPharmacists();
+                  void refetchShifts();
+                },
+              }}
+            />
+          ) : pharmacistsLoading || shiftsLoading ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
               シフトを読み込んでいます...
             </div>

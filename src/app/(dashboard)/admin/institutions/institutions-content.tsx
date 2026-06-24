@@ -18,7 +18,9 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
 type Institution = {
@@ -66,7 +68,7 @@ export function InstitutionsContent() {
       const params = new URLSearchParams();
       if (query.trim()) params.set('q', query.trim());
       const response = await fetch(`/api/prescriber-institutions?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('医療機関マスターの取得に失敗しました');
       return response.json() as Promise<{ data: Institution[] }>;
@@ -102,15 +104,12 @@ export function InstitutionsContent() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const endpoint = editingId
-        ? `/api/prescriber-institutions/${editingId}`
+        ? `/api/prescriber-institutions/${encodePathSegment(editingId)}`
         : '/api/prescriber-institutions';
       const method = editingId ? 'PATCH' : 'POST';
       const response = await fetch(endpoint, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(form),
       });
       const payload = await response.json().catch(() => ({}));
@@ -132,9 +131,9 @@ export function InstitutionsContent() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/prescriber-institutions/${id}`, {
+      const response = await fetch(`/api/prescriber-institutions/${encodePathSegment(id)}`, {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {

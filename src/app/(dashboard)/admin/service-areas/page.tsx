@@ -7,12 +7,21 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminServiceAreasShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 
@@ -79,7 +88,7 @@ export default function ServiceAreasPage() {
     queryKey: ['service-areas-sites', orgId],
     queryFn: async () => {
       const res = await fetch('/api/pharmacy-sites', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('拠点一覧の取得に失敗しました');
       return res.json() as Promise<{ data: PharmacySite[] }>;
@@ -91,7 +100,7 @@ export default function ServiceAreasPage() {
     queryKey: ['service-areas', orgId],
     queryFn: async () => {
       const res = await fetch('/api/service-areas', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問エリアの取得に失敗しました');
       return res.json() as Promise<{ data: ServiceArea[] }>;
@@ -106,20 +115,22 @@ export default function ServiceAreasPage() {
 
       const geoData = parseJsonObjectText(form.geoText, 'エリア定義(JSON) の形式が不正です');
 
-      const res = await fetch(form.id ? `/api/service-areas/${form.id}` : '/api/service-areas', {
-        method: form.id ? 'PATCH' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
+      // encodePathSegment runs during URL construction (before fetch), so a dot
+      // segment id fails closed before the mutating PATCH side effect.
+      const res = await fetch(
+        form.id ? `/api/service-areas/${encodePathSegment(form.id)}` : '/api/service-areas',
+        {
+          method: form.id ? 'PATCH' : 'POST',
+          headers: buildOrgJsonHeaders(orgId),
+          body: JSON.stringify({
+            site_id: form.site_id,
+            name: form.name.trim(),
+            area_type: form.area_type,
+            geo_data: geoData,
+            notes: form.notes.trim() || undefined,
+          }),
         },
-        body: JSON.stringify({
-          site_id: form.site_id,
-          name: form.name.trim(),
-          area_type: form.area_type,
-          geo_data: geoData,
-          notes: form.notes.trim() || undefined,
-        }),
-      });
+      );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.message ?? '訪問エリアの保存に失敗しました');
@@ -137,9 +148,11 @@ export default function ServiceAreasPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/service-areas/${id}`, {
+      // encodePathSegment runs before fetch, so a dot-segment id fails closed
+      // before the destructive DELETE side effect.
+      const res = await fetch(`/api/service-areas/${encodePathSegment(id)}`, {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('訪問エリアの削除に失敗しました');
     },
@@ -181,21 +194,26 @@ export default function ServiceAreasPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="service-area-site">拠点</Label>
-              <select
-                id="service-area-site"
+              <Select
                 value={form.site_id}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, site_id: event.target.value }))
+                onValueChange={(value) =>
+                  setForm((current) => ({ ...current, site_id: value ?? '' }))
                 }
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
-                <option value="">拠点を選択</option>
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  id="service-area-site"
+                  className="min-h-[44px] w-full sm:min-h-[44px]"
+                >
+                  <SelectValue placeholder="拠点を選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sites.map((site) => (
+                    <SelectItem key={site.id} value={site.id}>
+                      {site.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -212,20 +230,26 @@ export default function ServiceAreasPage() {
 
             <div className="space-y-2">
               <Label htmlFor="service-area-type">エリア種別</Label>
-              <select
-                id="service-area-type"
+              <Select
                 value={form.area_type}
-                onChange={(event) =>
+                onValueChange={(value) =>
                   setForm((current) => ({
                     ...current,
-                    area_type: event.target.value as 'radius' | 'polygon',
+                    area_type: (value ?? 'radius') as 'radius' | 'polygon',
                   }))
                 }
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               >
-                <option value="radius">radius</option>
-                <option value="polygon">polygon</option>
-              </select>
+                <SelectTrigger
+                  id="service-area-type"
+                  className="min-h-[44px] w-full sm:min-h-[44px]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="radius">radius</SelectItem>
+                  <SelectItem value="polygon">polygon</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

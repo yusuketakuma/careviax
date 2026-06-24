@@ -24,8 +24,29 @@ vi.mock('./document-delivery-rule-manager', () => ({
   DocumentDeliveryRuleManager: () => <div data-testid="delivery-rule-manager" />,
 }));
 
+// 親(DocumentTemplateContent)が取得済みテンプレートを正しい形で渡しているときだけ
+// sentinel を描画する field-validating mock。実コンポーネントは空配列で null を返すため
+// (template-body-editor.tsx)、親が templates を渡さない/[] を渡す/誤マッピングした場合に
+// 親の DOM 順序テストが fail closed する。
 vi.mock('./template-body-editor', () => ({
-  TemplateBodyEditor: () => <div data-testid="template-body-editor" />,
+  TemplateBodyEditor: ({
+    templates,
+  }: {
+    templates: Array<{ id: string; name: string; content: Record<string, unknown> }>;
+  }) => {
+    const first = templates[0];
+    const sections =
+      first && typeof first.content === 'object' && first.content !== null
+        ? (first.content as { sections?: unknown }).sections
+        : undefined;
+    const matches =
+      templates.length > 0 &&
+      first.id === 'template_1' &&
+      first.name === '主治医報告 基本' &&
+      Array.isArray(sections) &&
+      sections[0] === 'summary';
+    return matches ? <h2 data-testid="body-editor-sentinel">報告文面を編集</h2> : null;
+  },
 }));
 
 function createWrapper() {
@@ -120,6 +141,34 @@ describe('DocumentTemplateContent', () => {
     });
   });
 
+  it('shows ErrorState (not a false-empty list) with retry when the templates query fails', async () => {
+    let templatesCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.startsWith('/api/templates') && !init?.method) {
+          templatesCalls += 1;
+          // 取得失敗 → 空一覧ではなく ErrorState + 再読み込み。
+          return new Response(JSON.stringify({ message: 'failed' }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('サーバーエラーが発生しました')).toBeTruthy();
+    // false-empty（空一覧メッセージ）を出していないこと。
+    expect(screen.queryByText('文書テンプレートはまだありません')).toBeNull();
+
+    const callsBeforeRetry = templatesCalls;
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    await waitFor(() => {
+      expect(templatesCalls).toBeGreaterThan(callsBeforeRetry);
+    });
+  });
+
   it('names the edit action and loads the selected template into the form', async () => {
     renderContent();
 
@@ -133,5 +182,23 @@ describe('DocumentTemplateContent', () => {
       '主治医報告 基本',
     );
     expect((screen.getByLabelText('版') as HTMLInputElement).value).toBe('2');
+  });
+
+  it('orders the page sections テンプレート版管理 → 報告文面を編集 → 送達ルール (info hierarchy)', async () => {
+    renderContent();
+
+    // body-editor sentinel は templates query が解決し、親が期待どおりの形で渡したときのみ描画。
+    const bodyEditor = await screen.findByTestId('body-editor-sentinel');
+    const templateMgmt = screen.getByRole('heading', { level: 2, name: 'テンプレート版管理' });
+    const deliverySection = screen.getByRole('heading', { level: 2, name: '送達ルール' });
+
+    const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+    // SSOT 情報順: テンプレート版管理(h2) → 報告文面を編集(body editor) → 送達ルール(h2)。
+    expect(templateMgmt.compareDocumentPosition(bodyEditor) & FOLLOWING).toBeTruthy();
+    expect(bodyEditor.compareDocumentPosition(deliverySection) & FOLLOWING).toBeTruthy();
+
+    // 内側パネルは CardTitle asChild で実 h3(見出し階層に組み込まれている)。
+    expect(screen.getByRole('heading', { level: 3, name: 'テンプレートを登録' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 3, name: '登録済みテンプレート' })).toBeTruthy();
   });
 });

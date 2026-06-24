@@ -9,6 +9,7 @@ import {
   formatAgeLabel,
   formatDeadlineCountdown,
   formatTimeOfDay,
+  minutesOfDay,
   TIMELINE_END_MINUTES,
   TIMELINE_START_MINUTES,
   timelinePercent,
@@ -157,6 +158,22 @@ describe('buildProcessNowTiles', () => {
   });
 });
 
+describe('minutesOfDay', () => {
+  it('parses an "HH:MM" wall-clock string without local-TZ re-interpretation', () => {
+    // The @db.Time visit clock is delivered as "HH:MM" (TZ-agnostic). 09:30 must be
+    // 570 min regardless of the runner TZ — the old getHours() path shifted ~9h in JST.
+    expect(minutesOfDay('09:30')).toBe(570);
+    expect(minutesOfDay('00:00')).toBe(0);
+    expect(minutesOfDay('23:59')).toBe(23 * 60 + 59);
+    expect(minutesOfDay('15:00')).toBe(900);
+  });
+
+  it('returns 0 for a malformed clock string instead of NaN', () => {
+    expect(minutesOfDay('')).toBe(0);
+    expect(minutesOfDay('not-a-time')).toBe(0);
+  });
+});
+
 describe('buildTimelineBlocks', () => {
   it('places visits as locked blocks and groups facility batches', () => {
     const blocks = buildTimelineBlocks({
@@ -164,19 +181,19 @@ describe('buildTimelineBlocks', () => {
         buildVisit({
           id: 'v1',
           patient_name: '伊藤',
-          time_start: localIso(10, 30),
-          time_end: localIso(11, 30),
+          time_start: '10:30',
+          time_end: '11:30',
         }),
         buildVisit({
           id: 'v2',
           patient_name: 'A',
-          time_start: localIso(15, 0),
+          time_start: '15:00',
           facility_batch_id: 'batch_1',
         }),
         buildVisit({
           id: 'v3',
           patient_name: 'B',
-          time_start: localIso(15, 30),
+          time_start: '15:30',
           facility_batch_id: 'batch_1',
         }),
         buildVisit({ id: 'v4', patient_name: '時間未定' }),
@@ -199,8 +216,8 @@ describe('buildTimelineBlocks', () => {
         buildVisit({
           id: 'v1',
           patient_name: '伊藤',
-          time_start: localIso(10, 30),
-          time_end: localIso(11, 30),
+          time_start: '10:30',
+          time_end: '11:30',
         }),
       ],
       auditCount: 6,
@@ -231,8 +248,8 @@ describe('buildTimelineBlocks', () => {
         buildVisit({
           id: 'v1',
           patient_name: '伊藤',
-          time_start: localIso(12, 30),
-          time_end: localIso(13, 30),
+          time_start: '12:30',
+          time_end: '13:30',
         }),
       ],
       auditCount: 0,
@@ -248,8 +265,8 @@ describe('buildTimelineBlocks', () => {
         buildVisit({
           id: 'v1',
           patient_name: '伊藤',
-          time_start: localIso(15, 30),
-          time_end: localIso(16, 30),
+          time_start: '15:30',
+          time_end: '16:30',
         }),
       ],
       auditCount: 0,

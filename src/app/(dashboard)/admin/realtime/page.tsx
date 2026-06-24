@@ -8,12 +8,13 @@ import { ja } from 'date-fns/locale';
 import { AlertTriangle, BellRing, Clock, RefreshCw, Route, Sparkles } from 'lucide-react';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/ui/error-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
-import { PRIORITY_ROLE } from '@/lib/constants/status-labels';
+import { PRIORITY_DISPLAY_LABELS, PRIORITY_ROLE } from '@/lib/constants/status-labels';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
@@ -152,40 +153,43 @@ export default function RealtimePage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <PageScaffold variant="bare">
       <AdminPageHeader
         title="リアルタイム運用監視"
         description="通知ストリームとワークフロー制御を同じ面で追跡し、遅延や割込影響を即時確認します。"
         shortcuts={getAdminRealtimeShortcutLinks()}
       />
-      <Card className="overflow-hidden border-none bg-[linear-gradient(135deg,rgba(15,23,42,1),rgba(30,41,59,1))] text-white shadow-lg">
+      {/* SYS-5: グラデーション帯 hero は一般画面に持ち込まない(guideline L182)。calm な bg-card イントロへ。 */}
+      <Card>
         <CardContent className="grid gap-5 px-5 py-5 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Live Operations
             </p>
-            <h2 className="mt-2 text-xl font-semibold">通知と訪問制御を同じ運用面で監視</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+            <h2 className="mt-2 text-xl font-semibold text-foreground">
+              通知と訪問制御を同じ運用面で監視
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               通知は SSE で即時反映し、ワークフローは定期再取得で補完して、
               確定ロック、変更承認待ち、緊急影響を継続監視します。
             </p>
           </div>
-          <div className="grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+          <div className="grid gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-300">未読通知</span>
-              <span className="font-medium">{liveNotifications.length}</span>
+              <span className="text-muted-foreground">未読通知</span>
+              <span className="font-medium text-foreground">{liveNotifications.length}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-300">ワークベンチ</span>
-              <span className="font-medium">{workbenchItems.length}</span>
+              <span className="text-muted-foreground">ワークベンチ</span>
+              <span className="font-medium text-foreground">{workbenchItems.length}</span>
             </div>
-            {/* 接続状態を色でも示す。再接続中(=ライブ未保証)を常時 emerald にすると緑=正常の偽シグナルになるため、
-                未接続時は amber(注意)へ切替える。文言も併記し色のみ依存にはしない。dark hero 上のため chrome 配色。 */}
+            {/* SYS-4: 接続状態は状態色トークンで示す。再接続中(=ライブ未保証)を常時 done(緑)にすると
+                緑=正常の偽シグナルになるため confirm(要注意/橙)へ切替える。文言も併記し色のみ依存にしない。 */}
             <div
               className={`rounded-xl border px-3 py-2 text-xs ${
                 realtimeConnected
-                  ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
-                  : 'border-amber-500/20 bg-amber-500/10 text-amber-100'
+                  ? 'border-state-done/20 bg-state-done/10 text-state-done'
+                  : 'border-state-confirm/20 bg-state-confirm/10 text-state-confirm'
               }`}
             >
               {realtimeConnected
@@ -335,7 +339,7 @@ export default function RealtimePage() {
                               : (PRIORITY_ROLE[item.priority] as StatusRole)
                           }
                         >
-                          {item.priority}
+                          {PRIORITY_DISPLAY_LABELS[item.priority] ?? item.priority}
                         </StateBadge>
                       </div>
                       <p className="mt-2 font-medium text-foreground">{item.title}</p>
@@ -374,6 +378,6 @@ export default function RealtimePage() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageScaffold>
   );
 }

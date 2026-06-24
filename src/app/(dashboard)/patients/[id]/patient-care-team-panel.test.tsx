@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -157,4 +158,141 @@ describe('PatientCareTeamPanel', () => {
       '緊急連絡先あり / 不足: 訪看、ケアマネ / 報告FAX未登録: 医師',
     );
   });
+
+  type CapturedConfig = {
+    queryKey?: unknown[];
+    queryFn?: () => Promise<unknown>;
+    mutationFn?: () => Promise<unknown>;
+  };
+
+  function buildCases() {
+    return [
+      {
+        id: 'case_active_123456',
+        status: 'active' as const,
+        care_team_links: [] as never[],
+      },
+    ];
+  }
+
+  function captureConfigs() {
+    const queryConfigs: CapturedConfig[] = [];
+    const mutationConfigs: CapturedConfig[] = [];
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockImplementation((config: CapturedConfig) => {
+      queryConfigs.push(config);
+      return { data: { data: [] } };
+    });
+    useMutationMock.mockImplementation((config: CapturedConfig) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false };
+    });
+    return { queryConfigs, mutationConfigs };
+  }
+
+  function okFetch() {
+    return vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+  }
+
+  it('fetches external professional options with org headers (static path)', async () => {
+    const { queryConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId="patient_1" orgId="org_1" cases={buildCases()} />);
+
+      await queryConfigs[0]?.queryFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/admin/external-professionals');
+      expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('posts a quick-create master with JSON org headers (static path)', async () => {
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId="patient_1" orgId="org_1" cases={buildCases()} />);
+
+      // quickCreateMutation is the first useMutation in the component.
+      await mutationConfigs[0]?.mutationFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/admin/external-professionals');
+      expect(init.method).toBe('POST');
+      expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+      // body is the raw quick-create draft, preserved field-for-field by the slice.
+      expect(JSON.parse(init.body as string)).toEqual({
+        profession_type: 'physician',
+        name: '',
+        organization_name: '',
+        department: '',
+        phone: '',
+        email: '',
+        fax: '',
+        address: '',
+        notes: '',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('saves the care team to an encoded patient path with JSON headers and a raw case_id body', async () => {
+    const hostileId = 'pt/1?x=y#z';
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId={hostileId} orgId="org_1" cases={buildCases()} />);
+
+      // saveMutation is the second useMutation in the component.
+      await mutationConfigs[1]?.mutationFn?.();
+
+      const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/care-team`);
+      expect(url).not.toContain('?x=y');
+      expect(url).not.toContain('#z');
+      expect(url).not.toContain('%25');
+      expect(init.method).toBe('PUT');
+      expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+      const body = init.body as string;
+      // patient id lives only in the URL path; the body is preserved exactly (raw case_id, empty links).
+      expect(body).not.toContain(hostileId);
+      expect(JSON.parse(body)).toEqual({ case_id: 'case_active_123456', links: [] });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed without fetching for exact dot-segment patientId %p on care-team save',
+    async (dotId) => {
+      const { mutationConfigs } = captureConfigs();
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(<PatientCareTeamPanel patientId={dotId} orgId="org_1" cases={buildCases()} />);
+
+        await expect(mutationConfigs[1]?.mutationFn?.()).rejects.toThrow(RangeError);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
 });

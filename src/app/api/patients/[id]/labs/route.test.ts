@@ -182,6 +182,33 @@ describe('/api/patients/[id]/labs GET', () => {
       }),
     );
   });
+
+  it('uses normalized raw patient ids for DB reads instead of URL-encoded ids', async () => {
+    const rawPatientId = 'patient/a b?x=1#frag';
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: ` ${rawPatientId} ` }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(patientFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: rawPatientId,
+          org_id: 'org_1',
+        }),
+      }),
+    );
+    expect(patientLabObservationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: rawPatientId,
+        }),
+      }),
+    );
+    expect(JSON.stringify(patientLabObservationFindManyMock.mock.calls)).not.toContain(
+      encodeURIComponent(rawPatientId),
+    );
+  });
 });
 
 describe('/api/patients/[id]/labs POST', () => {
@@ -252,6 +279,23 @@ describe('/api/patients/[id]/labs POST', () => {
     expect(response.status).toBe(409);
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('uses normalized raw patient ids for lab writes instead of URL-encoded ids', async () => {
+    const rawPatientId = 'patient/a b?x=1#frag';
+    const response = (await POST(createPostRequest(baseLabBody), {
+      params: Promise.resolve({ id: ` ${rawPatientId} ` }),
+    }))!;
+
+    expect(response.status).toBe(201);
+    expect(patientLabObservationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: rawPatientId,
+      }),
+    });
+    expect(JSON.stringify(patientLabObservationCreateMock.mock.calls)).not.toContain(
+      encodeURIComponent(rawPatientId),
+    );
   });
 
   it('validates same-org same-patient assigned visit-record provenance before creating', async () => {

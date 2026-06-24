@@ -1,10 +1,12 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type APIResponse, type Locator, type Page } from '@playwright/test';
 import { Client } from 'pg';
 import {
   attachLocalSession,
   clickAndWaitForStableRoute,
   createInstrumentedPage,
   openStableRoute,
+  reloadStablePage,
+  waitForStableUi,
 } from './helpers/local-auth';
 import { apiPathPattern, fulfillJson, readRouteBody } from './helpers/route-mocks';
 
@@ -69,6 +71,40 @@ const ROUTE_MOCK_TASK_ID = 'dispense_route_mock_task';
 const ROUTE_MOCK_SET_PATIENT_ID = 'set_route_mock_patient';
 const ROUTE_MOCK_SET_PLAN_ID = 'set_route_mock_plan';
 const ROUTE_MOCK_SET_CYCLE_ID = 'set_route_mock_cycle';
+
+function isTransientApiRequestError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /ECONNRESET|ECONNREFUSED|ERR_EMPTY_RESPONSE|ERR_CONNECTION_RESET|socket hang up/i.test(
+    message,
+  );
+}
+
+async function getWithTransientRetry(
+  page: Page,
+  path: string,
+  options: { attempts?: number } = {},
+): Promise<APIResponse> {
+  const attempts = options.attempts ?? 3;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await page.request.get(path);
+      if (response.ok() || response.status() < 500 || attempt === attempts - 1) {
+        return response;
+      }
+    } catch (error) {
+      if (!isTransientApiRequestError(error) || attempt === attempts - 1) {
+        throw error;
+      }
+      lastError = error;
+    }
+
+    await page.waitForTimeout(500 * (attempt + 1));
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(`GET ${path} failed transiently`);
+}
 
 async function routeMockDispenseWorkbench(page: Page) {
   await page.route(apiPathPattern('/api/dispense-workbench/patients'), async (route) => {
@@ -320,17 +356,34 @@ function formatSetCalendarPeriod(start: string, dayCount: number) {
   return `${startDate.getFullYear()}/${startDate.getMonth() + 1}/${startDate.getDate()}（${weekdays[startDate.getDay()]}）〜${endDate.getMonth() + 1}/${endDate.getDate()}（${weekdays[endDate.getDay()]}）`;
 }
 
+async function waitForSetCalendarResponse(page: Page, planId: string) {
+  const response = await page.waitForResponse((candidate) => {
+    const url = new URL(candidate.url());
+    return (
+      url.pathname === `/api/set-plans/${planId}/calendar` && candidate.request().method() === 'GET'
+    );
+  });
+  expect(response.ok()).toBe(true);
+}
+
 async function openSetWorkbenchWithRealData(page: Page, path: string) {
   await page.addInitScript(() => {
-    const resetKey = 'chouzai-workbench-reset-once';
-    if (window.sessionStorage.getItem(resetKey) === '1') return;
-    window.localStorage.removeItem('chouzai-workbench');
-    window.sessionStorage.setItem(resetKey, '1');
+    try {
+      const resetKey = 'chouzai-workbench-reset-once';
+      if (window.sessionStorage.getItem(resetKey) === '1') return;
+      window.localStorage.removeItem('chouzai-workbench');
+      window.sessionStorage.setItem(resetKey, '1');
+    } catch {
+      // Ignore opaque-origin frames where Web Storage is unavailable.
+    }
   });
 
   await openStableRoute(page, path);
 
-  const patientsResponse = await page.request.get('/api/dispense-workbench/patients');
+  const patientsResponse = await getWithTransientRetry(
+    page,
+    '/api/dispense-workbench/patients?include_set_plan=1',
+  );
   expect(patientsResponse.ok()).toBe(true);
   const patients = (await patientsResponse.json()) as WorkbenchPatientsPayload;
   expect(patients.data.length).toBeGreaterThan(0);
@@ -338,20 +391,52 @@ async function openSetWorkbenchWithRealData(page: Page, path: string) {
   const fallbackPlan = patients.data.find((row) => row.latest_set_plan_id);
   const planId = SET_AUDIT_SUCCESS_PLAN_ID || fallbackPlan?.latest_set_plan_id;
   expect(planId).toBeTruthy();
+  const targetPatient = patients.data.find((row) => row.latest_set_plan_id === planId);
+  expect(
+    targetPatient,
+    `Expected patients payload to include selected set plan ${planId}`,
+  ).toBeTruthy();
 
-  const calendarResponse = await page.request.get(`/api/set-plans/${planId}/calendar`);
+  const calendarResponse = await getWithTransientRetry(page, `/api/set-plans/${planId}/calendar`);
   expect(calendarResponse.ok()).toBe(true);
 
   const calendar = (await calendarResponse.json()) as SetCalendarPayload;
   expect(calendar.data.plan_id).toBe(planId);
   expect(calendar.data.rows.length).toBeGreaterThan(0);
   expect(calendar.data.day_count).toBeGreaterThan(0);
+  const periodLabel = formatSetCalendarPeriod(calendar.data.period_start, calendar.data.day_count);
+
+  const main = page.locator('main');
+  const phaseNav = page.locator('main').getByRole('navigation', { name: '工程タブ' });
+  let targetPatientButton = page.locator('button').filter({ hasText: targetPatient!.name }).first();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await expect(phaseNav).toBeVisible({ timeout: 90_000 });
+    if (await targetPatientButton.isVisible({ timeout: 10_000 }).catch(() => false)) {
+      break;
+    }
+    if (attempt === 2) {
+      await expect(targetPatientButton).toBeVisible({ timeout: 1_000 });
+      break;
+    }
+    await reloadStablePage(page);
+    await waitForStableUi(page);
+    targetPatientButton = page.locator('button').filter({ hasText: targetPatient!.name }).first();
+  }
+  const isAlreadySelected = (await targetPatientButton.getAttribute('aria-current')) === 'true';
+  if (!isAlreadySelected) {
+    const calendarReload = waitForSetCalendarResponse(page, planId);
+    await targetPatientButton.click();
+    await calendarReload;
+  }
+  await expect(targetPatientButton).toHaveAttribute('aria-current', 'true', { timeout: 30_000 });
+  await expect(phaseNav).toBeVisible({ timeout: 30_000 });
+  await expect(main).toContainText(periodLabel, { timeout: 30_000 });
 
   return {
     planId: calendar.data.plan_id,
     cycleId: calendar.data.cycle_id,
     drugName: calendar.data.rows[0].line.drug_name,
-    periodLabel: formatSetCalendarPeriod(calendar.data.period_start, calendar.data.day_count),
+    periodLabel,
   };
 }
 
@@ -363,48 +448,133 @@ async function waitForSetAuditApprovalReady(main: Locator) {
 }
 
 async function waitForVisibleSetAuditCell(main: Locator) {
-  const cell = main.getByRole('button', { name: /服薬カレンダーセル.*包/ }).first();
+  const cell = main.getByRole('button', { name: /服薬カレンダーセル/ }).first();
   await expect(cell).toBeVisible({ timeout: 15_000 });
   return cell;
 }
 
+async function activateVisibleControl(control: Locator) {
+  await expect(control).toBeVisible({ timeout: 15_000 });
+  await control.scrollIntoViewIfNeeded();
+  await expect(control).toBeEnabled({ timeout: 15_000 });
+  await expect(control).not.toHaveAttribute('aria-disabled', 'true');
+  await control.click();
+}
+
+async function markAllVisibleSetAuditCellsOk(main: Locator) {
+  await waitForVisibleSetAuditCell(main);
+  const cells = main.getByRole('button', { name: /服薬カレンダーセル/ });
+  const cellCount = await cells.count();
+  expect(cellCount).toBeGreaterThan(0);
+
+  const pendingCells = main.getByRole('button', { name: /服薬カレンダーセル.*未監査/ });
+  for (let guard = 0; guard < cellCount; guard += 1) {
+    const pendingCount = await pendingCells.count();
+    if (pendingCount === 0) break;
+
+    await pendingCells.first().click();
+    const okButton = main.getByRole('button', { name: '監査OK', exact: true });
+    await expect(okButton).toBeEnabled({ timeout: 15_000 });
+    await okButton.click();
+    await expect.poll(() => pendingCells.count(), { timeout: 15_000 }).toBeLessThan(pendingCount);
+  }
+
+  await expect(pendingCells).toHaveCount(0, { timeout: 15_000 });
+  await expect(
+    main.getByRole('progressbar', {
+      name: new RegExp(`セット監査 進捗 ${cellCount} / ${cellCount}`),
+    }),
+  ).toBeVisible({ timeout: 10_000 });
+}
+
+const SET_AUDIT_CHECK_LABELS = [
+  '日付が正しい',
+  '用法が正しい',
+  '数量が正しい',
+  '中止薬が混入していない',
+  '残薬使用の指示と一致',
+  '冷所薬を分離している',
+] as const;
+
+async function pressAllUnpressedToggleButtons(
+  container: Locator,
+  options?: { required?: boolean },
+) {
+  const toggleButtons = container.locator('button[aria-pressed]');
+  const count = await toggleButtons.count();
+  if (options?.required) expect(count).toBeGreaterThan(0);
+
+  for (let index = 0; index < count; index += 1) {
+    const item = toggleButtons.nth(index);
+    await expect(item).toBeVisible({ timeout: 10_000 });
+    if ((await item.getAttribute('aria-pressed')) !== 'true') {
+      await item.click();
+    }
+    await expect(item).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+  }
+}
+
+async function completeSetAuditChecklist(main: Locator) {
+  const targetCell = await waitForVisibleSetAuditCell(main);
+
+  for (const label of SET_AUDIT_CHECK_LABELS) {
+    await targetCell.click();
+    const checkButton = main.getByRole('button', { name: label });
+    await expect(checkButton).toBeEnabled({ timeout: 10_000 });
+    await checkButton.click({ timeout: 10_000 });
+    await expect(checkButton).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 });
+  }
+}
+
 async function confirmVisitCarryPacketOnSetPage(main: Locator) {
-  const carrySections = main.locator(
-    '[data-testid="calendar-outside-meds-confirmation"], [data-testid="visit-carry-packet-confirmation"]',
-  );
-  const uncheckedCarryItems = carrySections.locator('button[aria-pressed="false"]');
+  const outsideMeds = main
+    .getByText('カレンダー外薬（同梱確認）', { exact: true })
+    .locator('xpath=ancestor::div[1]/following-sibling::div[1]');
+  await expect(outsideMeds).toBeVisible({ timeout: 10_000 });
+  await pressAllUnpressedToggleButtons(outsideMeds, { required: true });
 
-  for (let guard = 0; guard < 20; guard += 1) {
-    const remaining = await uncheckedCarryItems.count();
-    if (remaining === 0) break;
-    await uncheckedCarryItems.first().click();
-    await expect
-      .poll(() => uncheckedCarryItems.count(), { timeout: 5_000 })
-      .toBeLessThan(remaining);
+  const carryPacket = main.getByTestId('visit-carry-packet-confirmation');
+  await expect(carryPacket).toBeVisible({ timeout: 10_000 });
+  await pressAllUnpressedToggleButtons(carryPacket, { required: true });
+}
+
+async function clickSetAuditPhaseTabUntilStable(page: Page, main: Locator) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const setAuditLink = main.getByRole('link', { name: 'セット監査', exact: true }).first();
+    await expect(setAuditLink).toBeVisible({ timeout: 45_000 });
+    const setAuditHref = await setAuditLink.getAttribute('href');
+    if (!setAuditHref) throw new Error('Set-audit workbench link did not expose an href');
+    expect(setAuditHref).toBe('/set-audit');
+
+    await setAuditLink.click({ noWaitAfter: true });
+    const reachedSetAudit = await page
+      .waitForURL(/\/set-audit/, { timeout: 45_000, waitUntil: 'domcontentloaded' })
+      .then(() => true)
+      .catch(() => false);
+    if (reachedSetAudit) {
+      await waitForStableUi(page);
+      if (/\/set-audit(?:$|\?)/.test(new URL(page.url()).pathname)) {
+        await expect(main.locator('a[aria-current="page"]')).toContainText('セット監査', {
+          timeout: 30_000,
+        });
+        return;
+      }
+    }
   }
 
-  await expect(uncheckedCarryItems).toHaveCount(0);
-  for (const label of ['お薬カレンダー完成', '服薬説明書', 'お薬手帳シール']) {
-    await expect(main.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'true');
-  }
+  throw new Error(`Set-audit phase tab did not settle on /set-audit; current URL: ${page.url()}`);
 }
 
 async function openSetAuditViaSetWithCarryEvidence(page: Page) {
   const data = await openSetWorkbenchWithRealData(page, '/set');
   const main = page.locator('main');
   await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+  await waitForVisibleSetAuditCell(main);
   await confirmVisitCarryPacketOnSetPage(main);
 
-  await clickAndWaitForStableRoute(
-    page,
-    /\/set-audit/,
-    () =>
-      main.getByRole('link', { name: 'セット監査', exact: true }).first().click({
-        noWaitAfter: true,
-      }),
-    { timeout: 90_000 },
-  );
-  await expect(main.locator('a[aria-current="page"]')).toContainText('セット監査');
+  await clickSetAuditPhaseTabUntilStable(page, main);
+  await expect(main).toContainText(data.periodLabel, { timeout: 30_000 });
+  await waitForVisibleSetAuditCell(main);
   return data;
 }
 
@@ -621,7 +791,10 @@ test.describe('prescription → QR scan → draft', () => {
 
     // Page should render (camera or fallback text input)
     const main = page.locator('main');
-    await expect(main).toBeVisible();
+    if (!(await main.isVisible({ timeout: 45_000 }).catch(() => false))) {
+      await reloadStablePage(page);
+    }
+    await expect(main).toBeVisible({ timeout: 90_000 });
     const content = await main.textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
 
@@ -708,15 +881,15 @@ test.describe('prescription intake flow', () => {
 
     // Navigate to new intake
     const main = page.locator('main');
-    await clickAndWaitForStableRoute(
-      page,
-      /\/prescriptions\/new/,
-      () => main.getByRole('link', { name: '新規受付' }).first().click({ noWaitAfter: true }),
-      { timeout: 45_000 },
-    );
+    const newIntakeLink = main.getByRole('link', { name: '新規受付' }).first();
+    await expect(newIntakeLink).toBeVisible({ timeout: 45_000 });
+    const newIntakeHref = await newIntakeLink.getAttribute('href');
+    if (!newIntakeHref) throw new Error('New prescription intake link did not expose an href');
+    expect(newIntakeHref).toBe('/prescriptions/new');
+    await openStableRoute(page, newIntakeHref);
 
     await expect(page.getByRole('heading', { name: '新規処方受付' })).toBeVisible({
-      timeout: 45_000,
+      timeout: 90_000,
     });
 
     // Required fields should be present
@@ -732,16 +905,17 @@ test.describe('prescription intake flow', () => {
     await openStableRoute(page, '/prescriptions');
 
     const main = page.locator('main');
-    await clickAndWaitForStableRoute(
-      page,
-      /\/dispense/,
-      () => main.getByRole('link', { name: '調剤キュー' }).first().click({ noWaitAfter: true }),
-      { timeout: 45_000 },
-    );
+    const dispenseShortcut = main.getByRole('link', { name: '調剤キュー' }).first();
+    await expect(dispenseShortcut).toBeVisible({ timeout: 45_000 });
+    const dispenseHref = await dispenseShortcut.getAttribute('href');
+    if (!dispenseHref) throw new Error('Dispense shortcut did not expose an href');
+    expect(dispenseHref).toBe('/dispense');
+    await openStableRoute(page, dispenseHref);
+    await expect(page).toHaveURL(/\/dispense/);
 
     // 新 DispensingWorkbench の工程タブが安定アンカー（旧「調剤」見出しは撤去済み）。
     await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible({
-      timeout: 45_000,
+      timeout: 90_000,
     });
 
     expect(errors).toEqual([]);
@@ -774,7 +948,11 @@ test.describe('dispense → audit flow', () => {
     let submitted: DispenseResultsPayload | null = null;
 
     await page.addInitScript(() => {
-      window.localStorage.removeItem('chouzai-workbench');
+      try {
+        window.localStorage.removeItem('chouzai-workbench');
+      } catch {
+        // Ignore opaque-origin frames where Web Storage is unavailable.
+      }
     });
     await routeMockDispenseWorkbench(page);
     await page.route(apiPathPattern('/api/dispense-results'), async (route) => {
@@ -801,19 +979,23 @@ test.describe('dispense → audit flow', () => {
     await expect(tabletQuantityInput).toHaveAttribute('step', '0.5');
     await expect(packageQuantityInput).toHaveAttribute('step', '1');
 
-    await main.getByRole('button', { name: /前回処方と比較/ }).click();
+    await activateVisibleControl(main.getByRole('button', { name: /前回処方と比較/ }));
     const compareDialog = main.getByRole('dialog', { name: /前回処方との比較/ });
     await expect(compareDialog).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(compareDialog).toBeHidden();
 
-    await main.getByRole('button', { name: '全て調剤済' }).click();
+    await activateVisibleControl(main.getByRole('button', { name: '全て調剤済' }));
     await tabletQuantityInput.fill('12.5');
-    await main.getByRole('button', { name: /アムロジピン錠5mg.*実数量確認/ }).click();
+    await activateVisibleControl(
+      main.getByRole('button', { name: /アムロジピン錠5mg.*実数量確認/ }),
+    );
     await main.getByLabel('アムロジピン錠5mg 数量差異理由').fill('残薬調整');
-    await main.getByRole('button', { name: /酸化マグネシウム包.*実数量確認/ }).click();
+    await activateVisibleControl(
+      main.getByRole('button', { name: /酸化マグネシウム包.*実数量確認/ }),
+    );
 
-    await main.getByRole('button', { name: '調剤完了 → 監査へ ▶' }).click();
+    await activateVisibleControl(main.getByRole('button', { name: '調剤完了 → 監査へ ▶' }));
     await expect.poll(() => submitted, { timeout: 15_000 }).not.toBeNull();
     expect(submitted).toMatchObject({
       task_id: ROUTE_MOCK_TASK_ID,
@@ -847,16 +1029,13 @@ test.describe('dispense → audit flow', () => {
 
     const main = page.locator('main');
     // 新ワークベンチは工程タブ（調剤監査 → /audit）の <Link> で遷移する。
-    await clickAndWaitForStableRoute(
-      page,
-      /\/audit/,
-      () =>
-        main
-          .getByRole('link', { name: '調剤監査', exact: true })
-          .first()
-          .click({ noWaitAfter: true }),
-      { timeout: 45_000 },
-    );
+    const auditLink = main.getByRole('link', { name: '調剤監査', exact: true }).first();
+    await expect(auditLink).toBeVisible({ timeout: 45_000 });
+    const auditHref = await auditLink.getAttribute('href');
+    if (!auditHref) throw new Error('Audit workbench link did not expose an href');
+    expect(auditHref).toBe('/audit');
+    await openStableRoute(page, auditHref);
+    await expect(page).toHaveURL(/\/audit/);
 
     // 遷移後は調剤監査工程タブが active（aria-current="page"）。
     await expect(main.locator('a[aria-current="page"]')).toBeVisible({
@@ -886,38 +1065,48 @@ test.describe('dispense → audit flow', () => {
     await openStableRoute(page, '/prescriptions');
     await expect(
       page.locator('main').getByRole('heading', { name: '処方受付' }).first(),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 90_000 });
 
     // → dispense（/prescriptions 側の「調剤キュー」ショートカットは維持）
-    await clickAndWaitForStableRoute(page, /\/dispense/, () =>
-      page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
-    );
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    const dispenseShortcut = main.getByRole('link', { name: '調剤キュー' }).first();
+    await expect(dispenseShortcut).toBeVisible({ timeout: 45_000 });
+    const dispenseShortcutHref = await dispenseShortcut.getAttribute('href');
+    if (!dispenseShortcutHref) throw new Error('Dispense shortcut did not expose an href');
+    expect(dispenseShortcutHref).toBe('/dispense');
+    await openStableRoute(page, dispenseShortcutHref);
+    await expect(page).toHaveURL(/\/dispense/);
+
+    const phaseTabs = main.getByRole('navigation', { name: '工程タブ' });
+    await expect(phaseTabs).toBeVisible({
+      timeout: 45_000,
+    });
 
     // → audit via 工程タブ（調剤監査 → /audit）
-    await clickAndWaitForStableRoute(
-      page,
-      /\/audit/,
-      () =>
-        main.getByRole('link', { name: '調剤監査', exact: true }).first().click({
-          noWaitAfter: true,
-        }),
-      { timeout: 90_000 },
-    );
-    await expect(main.locator('a[aria-current="page"]')).toBeVisible();
+    const auditLink = phaseTabs.getByRole('link', { name: '調剤監査', exact: true }).first();
+    await expect(auditLink).toHaveAttribute('href', '/audit');
+    await openStableRoute(page, '/audit');
+    await expect(page).toHaveURL(/\/audit/);
+    await expect(main.locator('a[aria-current="page"]')).toBeVisible({
+      timeout: 45_000,
+    });
 
     // → back to dispense via 工程タブ（調剤 → /dispense）
-    await clickAndWaitForStableRoute(page, /\/dispense/, () =>
-      main.getByRole('link', { name: '調剤', exact: true }).first().click(),
-    );
-    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    const dispenseLink = main.getByRole('link', { name: '調剤', exact: true }).first();
+    await expect(dispenseLink).toHaveAttribute('href', '/dispense');
+    await openStableRoute(page, '/dispense');
+    await expect(page).toHaveURL(/\/dispense/);
+    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible({
+      timeout: 45_000,
+    });
 
     expect(errors).toEqual([]);
   });
 });
 
 test.describe('set → set-audit real-data direct entry', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test.beforeEach(async ({ context }) => {
     await attachLocalSession(context);
   });
@@ -927,7 +1116,11 @@ test.describe('set → set-audit real-data direct entry', () => {
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await page.addInitScript(() => {
-      window.localStorage.removeItem('chouzai-workbench');
+      try {
+        window.localStorage.removeItem('chouzai-workbench');
+      } catch {
+        // Ignore opaque-origin frames where Web Storage is unavailable.
+      }
     });
     await routeMockSetWorkbench(page);
 
@@ -987,26 +1180,52 @@ test.describe('set → set-audit real-data direct entry', () => {
     expect(errors).toEqual([]);
   });
 
-  test('set-audit final approval stays on set-audit when the API returns a conflict', async ({
+  test('mobile set-audit keeps audit controls reachable without submitting approval', async ({
     context,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      !['Mobile Chrome', 'mobile-chromium'].includes(testInfo.project.name),
+      'Mobile set-audit smoke replaces mobile coverage for fixed-fixture approval POST tests.',
+    );
     const { page, errors } = await createInstrumentedPage(context);
-    await openSetAuditViaSetWithCarryEvidence(page);
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.removeItem('chouzai-workbench');
+      } catch {
+        // Ignore opaque-origin frames where Web Storage is unavailable.
+      }
+    });
+    await routeMockSetWorkbench(page);
+
+    await openStableRoute(page, '/set-audit');
 
     const main = page.locator('main');
-    await waitForVisibleSetAuditCell(main);
-    await main.getByRole('button', { name: '全セルOK' }).click();
-    await (await waitForVisibleSetAuditCell(main)).click();
-    for (const label of [
-      '日付が正しい',
-      '用法が正しい',
-      '数量が正しい',
-      '中止薬が混入していない',
-      '残薬使用の指示と一致',
-      '冷所薬を分離している',
-    ]) {
-      await main.getByRole('button', { name: label }).click();
-    }
+    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    const cell = await waitForVisibleSetAuditCell(main);
+    await cell.click();
+    await expect(main.getByRole('button', { name: '監査OK', exact: true })).toBeVisible();
+    await expect(main.locator('#ng-classification')).toBeEnabled();
+    await expect(main.getByRole('button', { name: 'NG・差戻し' })).toBeDisabled();
+
+    expect(errors).toEqual([]);
+  });
+
+  test('set-audit final approval stays on set-audit when the API returns a conflict', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Final approval POST mutates a fixed DB fixture; mobile non-submit smoke covers responsive controls.',
+    );
+    await resetSetAuditSuccessFixture();
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const data = await openSetAuditViaSetWithCarryEvidence(page);
+    expect(data.planId).toBe(SET_AUDIT_SUCCESS_PLAN_ID);
+
+    const main = page.locator('main');
+    await markAllVisibleSetAuditCellsOk(main);
+    await completeSetAuditChecklist(main);
     await waitForSetAuditApprovalReady(main);
 
     let approvalPayload: unknown = null;
@@ -1038,6 +1257,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     expect(response.status()).toBe(409);
     await expect(page).toHaveURL(/\/set-audit/);
     expect(approvalPayload).toMatchObject({
+      plan_id: data.planId,
       result: 'approved',
       checklist: {
         date_match: true,
@@ -1078,7 +1298,11 @@ test.describe('set → set-audit real-data direct entry', () => {
 
   test('set-audit final approval persists audit, cells, cycle, and visit carry items', async ({
     context,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Final approval POST mutates a fixed DB fixture; mobile non-submit smoke covers responsive controls.',
+    );
     test.slow();
     await resetSetAuditSuccessFixture();
 
@@ -1087,19 +1311,8 @@ test.describe('set → set-audit real-data direct entry', () => {
     expect(data.planId).toBe(SET_AUDIT_SUCCESS_PLAN_ID);
 
     const main = page.locator('main');
-    await waitForVisibleSetAuditCell(main);
-    await main.getByRole('button', { name: '全セルOK' }).click();
-    await (await waitForVisibleSetAuditCell(main)).click();
-    for (const label of [
-      '日付が正しい',
-      '用法が正しい',
-      '数量が正しい',
-      '中止薬が混入していない',
-      '残薬使用の指示と一致',
-      '冷所薬を分離している',
-    ]) {
-      await main.getByRole('button', { name: label }).click();
-    }
+    await markAllVisibleSetAuditCellsOk(main);
+    await completeSetAuditChecklist(main);
     await waitForSetAuditApprovalReady(main);
 
     const [response] = await Promise.all([

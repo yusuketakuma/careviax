@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { dispatchNotificationEvent } from './notifications';
 import { upsertOperationalTask, resolveOperationalTasks } from './operational-tasks';
 
@@ -306,6 +307,7 @@ export async function scheduleManagementPlanReviewAlert(
   },
 ) {
   const dedupeKey = buildManagementPlanReviewTaskKey(args.planId);
+  const patientHref = buildPatientHref(args.patientId);
 
   await upsertOperationalTask(tx, {
     orgId: args.orgId,
@@ -331,7 +333,7 @@ export async function scheduleManagementPlanReviewAlert(
     type: 'reminder',
     title: '管理計画書の見直し期限',
     message: '訪問薬剤管理指導計画書の見直し期限が到来しています。',
-    link: `/patients/${args.patientId}`,
+    link: patientHref,
     explicitUserIds: args.assignedTo ? [args.assignedTo] : [],
     dedupeKey,
     metadata: {

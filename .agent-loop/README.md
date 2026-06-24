@@ -22,6 +22,44 @@ send:  ~/.agents/skills/agmsg/scripts/send.sh phos <from> <to> "<msg>"
 inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 ```
 
+### 1.1 Always-on communication mode
+
+Codex should run this worktree in agmsg `monitor` delivery mode so Claude can
+reach it while long-running work is in progress.
+
+```bash
+~/.agents/skills/agmsg/scripts/delivery.sh status codex "$(pwd)"
+~/.agents/skills/agmsg/scripts/delivery.sh set monitor codex "$(pwd)"
+```
+
+Monitor mode installs the `~/.agents/bin/codex` shim. A Codex session that was
+already running before the mode change does not become fully monitored until it
+is restarted and receives its first turn, so supervisors still drain inboxes
+manually at every loop boundary.
+
+Operational compression rules:
+
+- Send `STATE_SUMMARY` for compact current state instead of long narrative
+  catch-up.
+- Use `LONG_GATE_LOCK` / `LONG_GATE_RELEASE` plus
+  `.agent-loop/scripts/long-gate-lock.sh` before Next.js long gates.
+- Batch only homogeneous low-risk reviews with `BATCH_REVIEW_REQUEST`.
+- Keep review envelopes short: changed paths, delta, validation, risk, verdict
+  requested.
+- ACK only messages that are blocking or request receipt; `FYI`, `DONE`,
+  `STATE_SUMMARY`, and `LONG_GATE_RELEASE` do not need ACK by default.
+
+Long gate lease helper:
+
+```bash
+.agent-loop/scripts/long-gate-lock.sh acquire codex "pnpm build" 90
+.agent-loop/scripts/long-gate-lock.sh status
+.agent-loop/scripts/long-gate-lock.sh release codex "PASS pnpm build"
+```
+
+If `acquire` reports `status=locked`, do not start the gate; drain agmsg and
+wait or negotiate with the peer.
+
 ---
 
 ## 2. File map (`.agent-loop/`)
