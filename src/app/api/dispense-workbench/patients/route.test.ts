@@ -137,6 +137,73 @@ describe('GET /api/dispense-workbench/patients', () => {
     expect(setPlanFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('without a phase filter excludes only cancelled (backward compatible)', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([]);
+
+    await GET(createRequest(), { params: Promise.resolve({}) });
+
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          overall_status: { notIn: ['cancelled'] },
+        }),
+      }),
+    );
+  });
+
+  it('filters by the dispense phase status set (ready_to_dispense + dispensing)', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([]);
+
+    await GET(createRequest('?phase=dispense'), { params: Promise.resolve({}) });
+
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          overall_status: { in: ['ready_to_dispense', 'dispensing'] },
+        }),
+      }),
+    );
+  });
+
+  it('filters by the audit phase status set (dispensed + audit_pending)', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([]);
+
+    await GET(createRequest('?phase=audit'), { params: Promise.resolve({}) });
+
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          overall_status: { in: ['dispensed', 'audit_pending'] },
+        }),
+      }),
+    );
+  });
+
+  it('gates the set-audit phase to an empty set until SetBatch aggregation lands', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(createRequest('?phase=set-audit'), {
+      params: Promise.resolve({}),
+    });
+
+    // base status だけでは set と分離不可なので空集合 = 0件（set-audit 候補を誤表示しない）。
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ overall_status: { in: [] } }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: [] });
+  });
+
+  it('rejects an unknown phase value', async () => {
+    const response = await GET(createRequest('?phase=bogus'), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(400);
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('hydrates the patient-level latest SetPlan only when requested', async () => {
     medicationCycleFindManyMock.mockResolvedValue([
       cycle({

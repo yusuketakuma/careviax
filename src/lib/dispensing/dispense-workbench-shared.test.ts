@@ -15,6 +15,7 @@ import {
   formatRemainingLabel,
   getDispenseMedicationGroupMethodLabel,
   judgeCountRow,
+  PHASE_CYCLE_STATUSES,
   type WorkbenchCountRow,
   type DispenseWorkbenchData,
 } from './dispense-workbench-shared';
@@ -436,6 +437,34 @@ describe('deriveListBadge', () => {
       null,
     ]) {
       expect(deriveListBadge(status)).toBe('not_started');
+    }
+  });
+});
+
+describe('PHASE_CYCLE_STATUSES', () => {
+  it('maps each phase to its wait+in-progress status set', () => {
+    expect(PHASE_CYCLE_STATUSES.dispense).toEqual(['ready_to_dispense', 'dispensing']);
+    expect(PHASE_CYCLE_STATUSES.audit).toEqual(['dispensed', 'audit_pending']);
+    expect(PHASE_CYCLE_STATUSES.set).toEqual(['audited', 'setting']);
+  });
+
+  it('gates set-audit to an empty set (separated from set via SetBatch state, not base status)', () => {
+    expect(PHASE_CYCLE_STATUSES['set-audit']).toEqual([]);
+  });
+
+  it('never includes on_hold/cancelled or upstream intake statuses in any phase', () => {
+    const excluded = [
+      'on_hold',
+      'cancelled',
+      'intake_received',
+      'structuring',
+      'inquiry_pending',
+      'inquiry_resolved',
+    ];
+    for (const statuses of Object.values(PHASE_CYCLE_STATUSES)) {
+      for (const bad of excluded) {
+        expect(statuses).not.toContain(bad);
+      }
     }
   });
 });

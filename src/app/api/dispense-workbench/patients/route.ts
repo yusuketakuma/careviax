@@ -18,6 +18,8 @@ const querySchema = z.object({
   sort: z.enum(['start_date', 'registered_date', 'name_kana']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
   include_set_plan: z.enum(['1', 'true']).optional(),
+  // 工程フィルタ(URL 表記)。未指定は全件(後方互換)。set-audit は SetBatch 集計実装まで空を返す。
+  phase: z.enum(['dispense', 'audit', 'set', 'set-audit']).optional(),
 });
 
 export const GET = withAuthContext(
@@ -36,6 +38,7 @@ export const GET = withAuthContext(
         sort: parsed.data.sort,
         order: parsed.data.order,
         includeSetPlan: parsed.data.include_set_plan != null,
+        phase: parsed.data.phase,
       },
     );
 

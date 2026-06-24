@@ -281,6 +281,27 @@ export function deriveListBadge(
   }
 }
 
+/** ワークベンチ 4 工程（API 境界の URL 表記）。内部 Phase の setp/seta はルートで対応付ける。 */
+export type DispenseWorkbenchPhase = 'dispense' | 'audit' | 'set' | 'set-audit';
+
+/**
+ * 工程キュー = その工程の「待ち＋作業中」の MedicationCycle.overall_status 集合（SSOT）。
+ * 患者ごとの最新サイクルがこの集合に入る工程の左一覧にのみ表示される。
+ * - dispense: 調剤待ち(ready_to_dispense)＋調剤中(dispensing)
+ * - audit: 調剤完了で監査待ち(dispensed)＋監査中(audit_pending)
+ * - set: 監査完了でセット待ち(audited)＋セット作業中(setting)
+ * - set-audit: base status だけでは set と分離不可（setting/audited が重複）。
+ *   セット完了かつセット監査未完の判定は SetBatch.audit_state 集計（後続スライス）に依存するため、
+ *   ここでは **空集合 = ゲート**（base status フィルタでは set-audit 候補を返さない）。
+ * 上流(intake_received/structuring/inquiry_*)・例外(on_hold/cancelled)はどの工程にも含めない。
+ */
+export const PHASE_CYCLE_STATUSES: Record<DispenseWorkbenchPhase, MedicationCycleStatus[]> = {
+  dispense: ['ready_to_dispense', 'dispensing'],
+  audit: ['dispensed', 'audit_pending'],
+  set: ['audited', 'setting'],
+  'set-audit': [],
+};
+
 /** 07 比較テーブル「差」列のバッジ文言。 */
 export function buildChangeBadge(row: {
   change_type: WorkbenchComparisonRow['change_type'];

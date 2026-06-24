@@ -2,7 +2,9 @@ import { format } from 'date-fns';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import {
   deriveListBadge,
+  PHASE_CYCLE_STATUSES,
   type DispenseWorkbenchPatientRow,
+  type DispenseWorkbenchPhase,
 } from '@/lib/dispensing/dispense-workbench-shared';
 import {
   buildMedicationCycleAssignmentWhere,
@@ -27,6 +29,8 @@ export type DispenseWorkbenchPatientsFilters = {
   sort?: DispenseWorkbenchPatientsSort;
   order?: 'asc' | 'desc';
   includeSetPlan?: boolean;
+  /** 工程フィルタ。指定時は当該工程の overall_status 集合のみ返す（未指定は従来どおり全件）。 */
+  phase?: DispenseWorkbenchPhase;
 };
 
 const MAX_CYCLES = 500;
@@ -42,9 +46,14 @@ export async function listDispenseWorkbenchPatients(
   filters: DispenseWorkbenchPatientsFilters = {},
 ): Promise<DispenseWorkbenchPatientRow[]> {
   const assignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+  // 工程指定時は当該工程の status 集合のみ（集合に on_hold/cancelled は含まないため自然に除外）。
+  // 未指定時は従来どおり cancelled のみ除外（後方互換）。notIn を上書きせずマージする。
+  const overallStatusWhere: Prisma.MedicationCycleWhereInput['overall_status'] = filters.phase
+    ? { in: PHASE_CYCLE_STATUSES[filters.phase] }
+    : { notIn: ['cancelled'] };
   const where: Prisma.MedicationCycleWhereInput = {
     org_id: orgId,
-    overall_status: { notIn: ['cancelled'] },
+    overall_status: overallStatusWhere,
     ...(assignmentWhere ?? {}),
   };
 
