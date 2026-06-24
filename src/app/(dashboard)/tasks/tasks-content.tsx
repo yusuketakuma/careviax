@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { PageSection } from '@/components/layout/page-section';
 import { DataTable } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -243,7 +244,7 @@ export function TasksContent({
     return p.toString();
   }, [statusFilter, taskTypeFilter, priorityFilter, assignedToMe, currentUserId]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['tasks', orgId, queryParams],
     queryFn: async () => {
       return fetchAllCursorPages<Task>({
@@ -259,7 +260,12 @@ export function TasksContent({
 
   const tasks = data?.data ?? [];
 
-  const { data: staffWorkloadData, isLoading: isStaffWorkloadLoading } = useQuery({
+  const {
+    data: staffWorkloadData,
+    isLoading: isStaffWorkloadLoading,
+    isError: isStaffWorkloadError,
+    refetch: refetchStaffWorkload,
+  } = useQuery({
     queryKey: ['staff-workload', orgId],
     queryFn: async () => {
       const res = await fetch('/api/staff-workload', {
@@ -529,7 +535,20 @@ export function TasksContent({
           {isStaffWorkloadLoading ? (
             <p className="text-sm text-muted-foreground">スタッフ別業務量を読み込み中...</p>
           ) : null}
-          {!isStaffWorkloadLoading && staffWorkload.length === 0 ? (
+          {!isStaffWorkloadLoading && isStaffWorkloadError ? (
+            // 取得失敗時は「スタッフがいない」かのような false-empty を出さず、再読み込み導線を示す。
+            <div className="col-span-full flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <span>スタッフ別業務量を取得できませんでした。</span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void refetchStaffWorkload()}
+              >
+                再読み込み
+              </Button>
+            </div>
+          ) : !isStaffWorkloadLoading && staffWorkload.length === 0 ? (
             <p className="text-sm text-muted-foreground">依頼可能なスタッフが見つかりません</p>
           ) : null}
         </div>
@@ -787,51 +806,62 @@ export function TasksContent({
         tone="subtle"
         contentClassName="space-y-4"
       >
-        <DataTable
-          columns={columns}
-          data={tasks}
-          isLoading={isLoading}
-          caption="タスク一覧"
-          enableRowSelection
-          onSelectionChange={setSelectedTasks}
-          getRowId={(row) => row.id}
-          getRowA11yLabel={(row) => row.title}
-        />
+        {isError ? (
+          // 取得失敗時は空一覧(false-empty)・偽の0件にせず、再読み込み導線つき ErrorState を出す。
+          <ErrorState
+            size="inline"
+            description="タスクを取得できませんでした。時間をおいて再読み込みしてください。"
+            action={{ label: '再読み込み', onClick: () => void refetch() }}
+          />
+        ) : (
+          <>
+            <DataTable
+              columns={columns}
+              data={tasks}
+              isLoading={isLoading}
+              caption="タスク一覧"
+              enableRowSelection
+              onSelectionChange={setSelectedTasks}
+              getRowId={(row) => row.id}
+              getRowA11yLabel={(row) => row.title}
+            />
 
-        <div className="space-y-3 sm:hidden">
-          {tasks.map((task) => {
-            const cfg = STATUS_CONFIG[task.status];
-            const priCfg = PRIORITY_CONFIG[task.priority];
-            const { actionHref } = describeOperationalTask(task);
-            const due = task.sla_due_at ?? task.due_date;
-            const isOverdue =
-              due && task.status !== 'completed' ? new Date(due) < new Date() : false;
-            return (
-              <div key={task.id} className="space-y-2 rounded-xl border border-border/70 p-4">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {priCfg && <TaskStateBadge label={priCfg.label} role={priCfg.role} />}
-                  {cfg && <TaskStateBadge label={cfg.label} role={cfg.role} />}
-                </div>
-                <p className="text-sm font-medium">{task.title}</p>
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`text-xs ${isOverdue ? 'font-semibold text-state-blocked' : 'text-muted-foreground'}`}
-                  >
-                    期限: {formatDateLabel(due, { pattern: 'MM/dd' })}
-                  </span>
-                  <Link href={actionHref} className="text-xs text-primary hover:underline">
-                    確認する →
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-          {!isLoading && tasks.length === 0 && (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              該当するタスクはありません
-            </p>
-          )}
-        </div>
+            <div className="space-y-3 sm:hidden">
+              {tasks.map((task) => {
+                const cfg = STATUS_CONFIG[task.status];
+                const priCfg = PRIORITY_CONFIG[task.priority];
+                const { actionHref } = describeOperationalTask(task);
+                const due = task.sla_due_at ?? task.due_date;
+                const isOverdue =
+                  due && task.status !== 'completed' ? new Date(due) < new Date() : false;
+                return (
+                  <div key={task.id} className="space-y-2 rounded-xl border border-border/70 p-4">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {priCfg && <TaskStateBadge label={priCfg.label} role={priCfg.role} />}
+                      {cfg && <TaskStateBadge label={cfg.label} role={cfg.role} />}
+                    </div>
+                    <p className="text-sm font-medium">{task.title}</p>
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`text-xs ${isOverdue ? 'font-semibold text-state-blocked' : 'text-muted-foreground'}`}
+                      >
+                        期限: {formatDateLabel(due, { pattern: 'MM/dd' })}
+                      </span>
+                      <Link href={actionHref} className="text-xs text-primary hover:underline">
+                        確認する →
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+              {!isLoading && tasks.length === 0 && (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  該当するタスクはありません
+                </p>
+              )}
+            </div>
+          </>
+        )}
       </PageSection>
     </div>
   );
