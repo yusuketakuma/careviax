@@ -50,6 +50,12 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
   };
 });
 
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+
+import { buildPatientHref } from '@/lib/patient/navigation';
 import {
   CardWorkspace,
   buildConferenceStructuredContent,
@@ -1038,6 +1044,63 @@ describe('CardWorkspace', () => {
     expect(screen.queryByTestId('next-action-panel')).toBeNull();
     expect(screen.queryByTestId('blocked-reasons-panel')).toBeNull();
     expect(screen.queryByTestId('evidence-panel')).toBeNull();
+  });
+
+  it('routes card workspace patient links through buildPatientHref and encodes compare query params', () => {
+    const hostileId = 'pt/1?x=y#z';
+    const realBuildPatientHref = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockClear();
+    vi.mocked(buildPatientHref).mockImplementation(
+      (patientId: string, suffix = '') =>
+        `/patients/__encoded_${encodeURIComponent(patientId)}__${suffix}`,
+    );
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { id: hostileId } });
+
+    try {
+      render(<CardWorkspace patientId={hostileId} />);
+
+      const calls = vi
+        .mocked(buildPatientHref)
+        .mock.calls.map(([patientId, suffix]) => [patientId, suffix ?? '']);
+      const expectedCalls = [
+        [hostileId, '/collaboration'],
+        [hostileId, '#patient-profile-summary'],
+        [hostileId, '#patient-profile-summary'],
+        [hostileId, '/safety-check'],
+        [hostileId, '/edit'],
+        [hostileId, '#patient-documents'],
+        [hostileId, '/mcs'],
+        [hostileId, '/prescriptions'],
+      ];
+      expect(calls.map((call) => JSON.stringify(call)).sort()).toEqual(
+        expectedCalls.map((call) => JSON.stringify(call)).sort(),
+      );
+
+      const hrefs = Array.from(document.querySelectorAll('a')).map((link) =>
+        link.getAttribute('href'),
+      );
+      expect(hrefs).toContain(
+        `/patients/__encoded_${encodeURIComponent(hostileId)}__/collaboration`,
+      );
+      expect(hrefs).toContain(
+        `/patients/__encoded_${encodeURIComponent(hostileId)}__/safety-check`,
+      );
+      expect(hrefs).toContain(
+        `/patients/__encoded_${encodeURIComponent(hostileId)}__#patient-documents`,
+      );
+      expect(hrefs).toContain(`/patients/__encoded_${encodeURIComponent(hostileId)}__/mcs`);
+      expect(hrefs).toContain(
+        `/patients/__encoded_${encodeURIComponent(hostileId)}__/prescriptions`,
+      );
+      expect(hrefs).toContain(
+        `/patients/compare?${new URLSearchParams({ patients: hostileId }).toString()}`,
+      );
+      expect(hrefs).not.toContain(`/patients/${hostileId}/collaboration`);
+    } finally {
+      if (realBuildPatientHref)
+        vi.mocked(buildPatientHref).mockImplementation(realBuildPatientHref);
+      vi.clearAllMocks();
+    }
   });
 
   it('keeps the embedded documents panel in place when document loading fails', () => {
@@ -2547,10 +2610,8 @@ describe('CardWorkspace', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       try {
-        render(<CardWorkspace patientId={dotId} />);
-
-        const config = getDocumentsConfig();
-        await expect(config?.queryFn?.()).rejects.toThrow(RangeError);
+        expect(() => render(<CardWorkspace patientId={dotId} />)).toThrow(RangeError);
+        expect(getDocumentsConfig()).toBeUndefined();
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
@@ -2618,10 +2679,8 @@ describe('CardWorkspace', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       try {
-        render(<CardWorkspace patientId={dotId} />);
-
-        const config = getConfig();
-        await expect(config?.queryFn?.()).rejects.toThrow(RangeError);
+        expect(() => render(<CardWorkspace patientId={dotId} />)).toThrow(RangeError);
+        expect(getConfig()?.queryKey).toEqual([scope, dotId, 'org_1']);
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
@@ -2795,10 +2854,9 @@ describe('CardWorkspace', () => {
       const dotFetch = vi.fn<typeof fetch>();
       vi.stubGlobal('fetch', dotFetch);
       try {
-        render(<CardWorkspace patientId={dotId} />);
-        const dotInput = { ...F083_INPUT, patientId: dotId };
-        await expect(dotConfigs[billingIndex].mutationFn?.(dotInput)).rejects.toThrow(RangeError);
-        await expect(dotConfigs[mcsIndex].mutationFn?.(dotInput)).rejects.toThrow(RangeError);
+        expect(() => render(<CardWorkspace patientId={dotId} />)).toThrow(RangeError);
+        expect(dotConfigs[billingIndex]).toBeDefined();
+        expect(dotConfigs[mcsIndex]).toBeDefined();
         expect(dotFetch).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();

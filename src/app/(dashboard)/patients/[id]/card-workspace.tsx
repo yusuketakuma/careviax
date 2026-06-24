@@ -62,6 +62,7 @@ import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { cn } from '@/lib/utils';
 import { CASE_STATUS_LABELS } from '@/lib/constants/status-labels';
@@ -122,6 +123,10 @@ const TODAY_TONE_CLASSES: Record<PatientWorkspaceTodayTask['tone'], string> = {
   waiting: 'border-border bg-muted text-muted-foreground',
   scheduled: 'border-transparent bg-state-done/10 text-state-done',
 };
+
+function buildPatientCompareHref(patientId: string) {
+  return `/patients/compare?${new URLSearchParams({ patients: patientId }).toString()}`;
+}
 
 /** 止まっている理由: WorkflowException type → カテゴリ色チップ(患者/事務/医療機関) */
 const EXCEPTION_CATEGORY_LABELS: Record<string, string> = {
@@ -519,7 +524,7 @@ function buildHomeOperationsItems(patient: PatientOverview): PatientHomeOperatio
       description: hasDocumentNote
         ? (intake?.document_status_note ?? '契約書類の状態を確認できます。')
         : '契約書、重要事項説明書、同意書、初回訪問文書の作成・交付・回収状況を確認します。',
-      href: `/patients/${patient.id}#patient-documents`,
+      href: buildPatientHref(patient.id, '#patient-documents'),
       action_label: '文書状態へ',
       tone: hasDocumentNote ? 'ok' : 'attention',
       updated_at: null,
@@ -533,7 +538,7 @@ function buildHomeOperationsItems(patient: PatientOverview): PatientHomeOperatio
       description: mcsLinked
         ? 'MCS連携ページでURL、同期状況、共有要点、次アクションを確認します。'
         : '患者別MCS URLの登録、最終確認日、外部連携ログの確認導線です。',
-      href: `/patients/${patient.id}/mcs`,
+      href: buildPatientHref(patient.id, '/mcs'),
       action_label: mcsLinked ? 'MCS連携を管理' : 'MCSを登録',
       tone: mcsLinked ? 'ok' : 'neutral',
       updated_at: null,
@@ -547,7 +552,7 @@ function buildHomeOperationsItems(patient: PatientOverview): PatientHomeOperatio
       description: hasPrescription
         ? '処方受付、原本、電子処方せん、疑義照会、服薬管理への流れを確認します。'
         : 'FAX先行、原本到着、電子処方せん、照合・保管状況の受付が必要です。',
-      href: `/patients/${patient.id}/prescriptions`,
+      href: buildPatientHref(patient.id, '/prescriptions'),
       action_label: '処方履歴へ',
       tone: hasPrescription ? 'ok' : 'attention',
       updated_at: null,
@@ -3287,7 +3292,7 @@ function PatientProfilePanel({ patient }: { patient: PatientOverview }) {
           </p>
         </div>
         <Link
-          href={`/patients/${patient.id}/edit`}
+          href={buildPatientHref(patient.id, '/edit')}
           className={buttonVariants({ variant: 'outline', size: 'sm', className: 'min-h-11' })}
         >
           基本情報を編集
@@ -3601,7 +3606,7 @@ function PatientVisitPreparationPanel({ patient }: { patient: PatientOverview })
           </p>
         </div>
         <Link
-          href={`/patients/${patient.id}/edit`}
+          href={buildPatientHref(patient.id, '/edit')}
           className={buttonVariants({ variant: 'outline', size: 'sm', className: 'min-h-11' })}
         >
           訪問情報を編集
@@ -4156,7 +4161,7 @@ export function CardWorkspace({
       </div>
       <div className="flex flex-wrap gap-2">
         <Link
-          href={`/patients/${patientId}/collaboration`}
+          href={buildPatientHref(patientId, '/collaboration')}
           className={buttonVariants({ variant: 'outline' })}
           data-testid="card-open-collaboration"
         >
@@ -4170,7 +4175,7 @@ export function CardWorkspace({
           プロフィールを確認
         </a>
         <Link
-          href={`/patients/compare?patients=${patientId}`}
+          href={buildPatientCompareHref(patientId)}
           className={buttonVariants({ variant: 'outline' })}
           data-testid="card-open-compare"
         >
@@ -4317,7 +4322,7 @@ export function CardWorkspace({
     {
       id: 'medication-notebook',
       label: 'お薬手帳(最新)',
-      href: `/patients/${patientId}#patient-profile-summary`,
+      href: buildPatientHref(patientId, '#patient-profile-summary'),
     },
     ...(latestInquiryActivity
       ? [
@@ -4333,7 +4338,7 @@ export function CardWorkspace({
       id: 'lab-trend',
       label: '検査値の推移',
       meta: hasEgfr ? 'eGFR' : undefined,
-      href: `/patients/${patientId}#patient-profile-summary`,
+      href: buildPatientHref(patientId, '#patient-profile-summary'),
     },
   ];
 
@@ -4408,7 +4413,7 @@ export function CardWorkspace({
             handlingTags={workspace.safety.handling_tags}
             swallowing={workspace.safety.swallowing ?? undefined}
             cautions={workspace.safety.cautions}
-            safetyCheckHref={`/patients/${patientId}/safety-check`}
+            safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
           />
 
           {/* 今回の処方: 工程チップ(9 工程)+ 薬剤テーブル(薬剤/用法/数量/安全) */}
