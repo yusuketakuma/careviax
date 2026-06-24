@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { ChevronRight } from 'lucide-react';
+import { specialProcedureLabels } from '@/lib/patient/home-visit-intake';
 import { cn } from '@/lib/utils';
 
 /**
@@ -11,7 +12,9 @@ import { cn } from '@/lib/utils';
  * データ未提供の行は出さない(全行未提供なら何も描画しない)。
  */
 
-type HandlingTagTone = 'narcotic' | 'cold' | 'unitDose' | 'caution' | 'neutral';
+const PROCEDURE_SAFETY_TAG_PREFIX = 'procedure:';
+
+type HandlingTagTone = 'narcotic' | 'cold' | 'unitDose' | 'caution' | 'hazardToken' | 'neutral';
 
 /**
  * タグ→トーンの対応。既存 PackagingInstructionTag 語彙(src/lib/dispensing/packaging.ts)の
@@ -35,6 +38,8 @@ const HANDLING_TAG_TONE_MAP: Record<string, HandlingTagTone> = {
   '半錠・分割': 'caution',
   crush_prohibited: 'caution',
   粉砕禁止: 'caution',
+  infection_isolation: 'hazardToken',
+  感染隔離: 'hazardToken',
   // その他の取扱指示 = 中立
   separate_pack: 'neutral',
   別包: 'neutral',
@@ -49,6 +54,7 @@ const HANDLING_TAG_TONE_CLASSES: Record<HandlingTagTone, string> = {
   cold: 'border-teal-400 bg-teal-50 text-teal-700',
   unitDose: 'border-blue-300 bg-blue-50 text-blue-700',
   caution: 'border-amber-400 bg-amber-50 text-amber-700',
+  hazardToken: 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard',
   neutral: 'border-border bg-background text-muted-foreground',
 };
 
@@ -60,17 +66,25 @@ const HANDLING_TAG_DISPLAY_LABELS: Record<string, string> = {
   morning_evening_unit_dose: '朝夕別一包化',
   half_tablet: '半錠・分割',
   crush_prohibited: '粉砕禁止',
+  infection_isolation: '感染隔離',
   separate_pack: '別包',
   staple_required: 'ホッチキス止め',
   label_required: '名前ラベル',
 };
 
 export function getHandlingTagBadgeClass(tag: string): string {
+  if (tag.startsWith(PROCEDURE_SAFETY_TAG_PREFIX)) {
+    return HANDLING_TAG_TONE_CLASSES.hazardToken;
+  }
   const tone = HANDLING_TAG_TONE_MAP[tag] ?? 'neutral';
   return HANDLING_TAG_TONE_CLASSES[tone];
 }
 
 export function getHandlingTagLabel(tag: string): string {
+  if (tag.startsWith(PROCEDURE_SAFETY_TAG_PREFIX)) {
+    const procedureKey = tag.slice(PROCEDURE_SAFETY_TAG_PREFIX.length);
+    return specialProcedureLabels[procedureKey] ?? '医療処置';
+  }
   return HANDLING_TAG_DISPLAY_LABELS[tag] ?? tag;
 }
 

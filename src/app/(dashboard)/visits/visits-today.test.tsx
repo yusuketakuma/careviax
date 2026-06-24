@@ -72,7 +72,7 @@ function buildCards(): VisitPreparationCard[] {
       is_facility: false,
       patient_count: null,
       meta_label: '在宅・滞在45分',
-      safety_tags: ['narcotic', 'cold_storage'],
+      safety_tags: ['narcotic', 'cold_storage', 'infection_isolation', 'procedure:home_oxygen'],
       prep_done: 3,
       prep_total: 4,
       accent: 'caution',
@@ -97,7 +97,7 @@ function buildCards(): VisitPreparationCard[] {
       is_facility: true,
       patient_count: 12,
       meta_label: '12名・滞在90分',
-      safety_tags: ['narcotic', 'cold_storage', 'allergy'],
+      safety_tags: ['narcotic', 'cold_storage', 'allergy', 'procedure:tpn'],
       prep_done: 3,
       prep_total: 4,
       accent: 'progress',
@@ -214,6 +214,8 @@ describe('VisitsToday', () => {
     expect(within(cards[1]).getByText('田中 一郎 様')).toBeTruthy();
     expect(within(cards[1]).getByText('麻薬')).toBeTruthy();
     expect(within(cards[1]).getByText('冷所')).toBeTruthy();
+    expect(within(cards[1]).getByText('感染隔離')).toBeTruthy();
+    expect(within(cards[1]).getByText('在宅酸素')).toBeTruthy();
     expect(within(cards[1]).getByText(/持参薬 — 麻薬監査待ち\(期限12:00\)/)).toBeTruthy();
     expect(cards[1].getAttribute('data-accent')).toBe('caution');
     expect(
@@ -229,6 +231,7 @@ describe('VisitsToday', () => {
     expect(within(cards[2]).getByText('セット 9/12 — 事務が先行準備中')).toBeTruthy();
     expect(cards[2].getAttribute('data-accent')).toBe('progress');
     expect(within(cards[2]).getByText('アレルギー')).toBeTruthy();
+    expect(within(cards[2]).getByText('TPN')).toBeTruthy();
     expect(within(cards[2]).getByRole('link', { name: '→ セットへ' })).toBeTruthy();
     expect(within(cards[2]).getByRole('link', { name: '→ 施設パケット' })).toBeTruthy();
 
