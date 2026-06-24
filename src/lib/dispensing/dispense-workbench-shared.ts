@@ -290,17 +290,51 @@ export type DispenseWorkbenchPhase = 'dispense' | 'audit' | 'set' | 'set-audit';
  * - dispense: 調剤待ち(ready_to_dispense)＋調剤中(dispensing)
  * - audit: 調剤完了で監査待ち(dispensed)＋監査中(audit_pending)
  * - set: 監査完了でセット待ち(audited)＋セット作業中(setting)
- * - set-audit: base status だけでは set と分離不可（setting/audited が重複）。
- *   セット完了かつセット監査未完の判定は SetBatch.audit_state 集計（後続スライス）に依存するため、
- *   ここでは **空集合 = ゲート**（base status フィルタでは set-audit 候補を返さない）。
+ * - set-audit: base status だけでは set と分離不可（setting/audited が重複）。set と同じ base
+ *   集合を起点にし、最終的な set / set-audit の振り分けは最新 SetPlan の SetBatch 集計
+ *   （{@link classifySetBatchPhase}）で行う。set 工程はまだセット作業中の患者、set-audit 工程は
+ *   セット完了かつ監査待ちの患者のみを返す（サーバ側 post-filter）。
  * 上流(intake_received/structuring/inquiry_*)・例外(on_hold/cancelled)はどの工程にも含めない。
  */
 export const PHASE_CYCLE_STATUSES: Record<DispenseWorkbenchPhase, MedicationCycleStatus[]> = {
   dispense: ['ready_to_dispense', 'dispensing'],
   audit: ['dispensed', 'audit_pending'],
   set: ['audited', 'setting'],
-  'set-audit': [],
+  // set と同一 base。SetBatch 集計で set / set-audit を排他分割する（classifySetBatchPhase）。
+  'set-audit': ['audited', 'setting'],
 };
+
+/** 最新 SetPlan の SetBatch 集計（実在セルのみカウント）。 */
+export type SetBatchPhaseCounts = {
+  /** 実在セル総数。 */
+  total: number;
+  /** set_state が set でも hold でもないセル（= 未セット）。hold はセット完了を妨げない。 */
+  pending: number;
+  /** audit_state === 'unaudited' のセル。 */
+  unaudited: number;
+  /** audit_state === 'ng' のセル（監査差戻し）。監査未完了として set-audit 工程に残す。 */
+  ng: number;
+};
+
+/**
+ * 最新 SetPlan の SetBatch 集計から set / set-audit / complete を判定する純関数。
+ * 判定基準は set-derivations.ts の completion-gate と同一:
+ * - set_complete = total>0 && pending===0（保留セルは完了を妨げない）
+ * - audit_complete = unaudited===0 && ng===0（未監査ゼロかつ差戻しゼロ）
+ *
+ * 戻り値:
+ * - 'setting': SetPlan 無し / batch 0 / pending>0（まだセット作業中 → **set 工程**）
+ * - 'audit-pending': set_complete かつ監査未完了（unaudited>0 または ng>0。全セット済で監査・差戻し
+ *   再対応待ち → **set-audit 工程**）。NG は差戻し相当でセット監査の再対応待ちなので除外しない。
+ * - 'complete': set_complete かつ audit_complete（unaudited===0 && ng===0 → どちらの待ち行列にも出さない）
+ */
+export function classifySetBatchPhase(
+  counts: SetBatchPhaseCounts,
+): 'setting' | 'audit-pending' | 'complete' {
+  if (counts.total === 0 || counts.pending > 0) return 'setting';
+  if (counts.unaudited > 0 || counts.ng > 0) return 'audit-pending';
+  return 'complete';
+}
 
 /** 07 比較テーブル「差」列のバッジ文言。 */
 export function buildChangeBadge(row: {

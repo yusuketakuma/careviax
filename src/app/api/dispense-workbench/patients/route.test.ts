@@ -6,12 +6,14 @@ const {
   authCtx,
   medicationCycleFindManyMock,
   setPlanFindManyMock,
+  setBatchFindManyMock,
   buildMedicationCycleAssignmentWhereMock,
   buildSetPlanAssignmentWhereMock,
 } = vi.hoisted(() => ({
   authCtx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' as MemberRole },
   medicationCycleFindManyMock: vi.fn(),
   setPlanFindManyMock: vi.fn(),
+  setBatchFindManyMock: vi.fn(),
   buildMedicationCycleAssignmentWhereMock: vi.fn(),
   buildSetPlanAssignmentWhereMock: vi.fn(),
 }));
@@ -46,6 +48,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     setPlan: {
       findMany: setPlanFindManyMock,
+    },
+    setBatch: {
+      findMany: setBatchFindManyMock,
     },
   },
 }));
@@ -100,6 +105,7 @@ describe('GET /api/dispense-workbench/patients', () => {
     buildMedicationCycleAssignmentWhereMock.mockReturnValue(null);
     buildSetPlanAssignmentWhereMock.mockReturnValue(null);
     setPlanFindManyMock.mockResolvedValue([]);
+    setBatchFindManyMock.mockResolvedValue([]);
   });
 
   it('returns patient rows without SetPlan hydration by default', async () => {
@@ -180,21 +186,125 @@ describe('GET /api/dispense-workbench/patients', () => {
     );
   });
 
-  it('gates the set-audit phase to an empty set until SetBatch aggregation lands', async () => {
+  it('uses the shared audited+setting base for set and set-audit (split happens on SetBatch)', async () => {
     medicationCycleFindManyMock.mockResolvedValue([]);
 
-    const response = await GET(createRequest('?phase=set-audit'), {
-      params: Promise.resolve({}),
-    });
+    await GET(createRequest('?phase=set-audit'), { params: Promise.resolve({}) });
 
-    // base status だけでは set と分離不可なので空集合 = 0件（set-audit 候補を誤表示しない）。
     expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ overall_status: { in: [] } }),
+        where: expect.objectContaining({ overall_status: { in: ['audited', 'setting'] } }),
       }),
     );
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ data: [] });
+  });
+
+  // set / set-audit を SetBatch 集計で排他分割する共通フィクスチャ:
+  //  - patient_a (plan_a): 全セット済・未監査 → set-audit 工程
+  //  - patient_b (plan_b): 一部未セット(pending) → set 工程
+  const PATIENT_CREATED_AT = new Date('2026-06-01T00:00:00Z');
+  function seedSetSplitMocks() {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_a',
+        patient_id: 'patient_a',
+        overall_status: 'setting',
+        patientCreatedAt: PATIENT_CREATED_AT,
+        name: 'あ患者',
+        nameKana: 'アカンジャ',
+      }),
+      cycle({
+        id: 'cycle_b',
+        patient_id: 'patient_b',
+        overall_status: 'audited',
+        patientCreatedAt: PATIENT_CREATED_AT,
+        name: 'い患者',
+        nameKana: 'イカンジャ',
+      }),
+    ]);
+    setPlanFindManyMock.mockResolvedValue([
+      { id: 'plan_a', cycle_id: 'cycle_a', cycle: { patient_id: 'patient_a' } },
+      { id: 'plan_b', cycle_id: 'cycle_b', cycle: { patient_id: 'patient_b' } },
+    ]);
+    setBatchFindManyMock.mockResolvedValue([
+      { plan_id: 'plan_a', set_state: 'set', audit_state: 'unaudited' },
+      { plan_id: 'plan_a', set_state: 'hold', audit_state: 'unaudited' }, // hold はセット完了を妨げない
+      { plan_id: 'plan_b', set_state: 'pending', audit_state: 'unaudited' },
+      { plan_id: 'plan_b', set_state: 'set', audit_state: 'unaudited' },
+    ]);
+  }
+
+  it('set-audit phase keeps only fully-set, unaudited patients (audit-pending)', async () => {
+    seedSetSplitMocks();
+
+    const response = await GET(createRequest('?phase=set-audit'), { params: Promise.resolve({}) });
+    const body = (await response.json()) as { data: { patient_id: string }[] };
+
+    expect(body.data.map((row) => row.patient_id)).toEqual(['patient_a']);
+    // SetBatch は plan_id の単一 findMany（org スコープ）で集計する（N+1 回避）。
+    expect(setBatchFindManyMock).toHaveBeenCalledTimes(1);
+    expect(setBatchFindManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', plan_id: { in: expect.arrayContaining(['plan_a', 'plan_b']) } },
+      select: { plan_id: true, set_state: true, audit_state: true },
+    });
+  });
+
+  it('set phase keeps only patients still being set (pending cells remain)', async () => {
+    seedSetSplitMocks();
+
+    const response = await GET(createRequest('?phase=set'), { params: Promise.resolve({}) });
+    const body = (await response.json()) as { data: { patient_id: string }[] };
+
+    expect(body.data.map((row) => row.patient_id)).toEqual(['patient_b']);
+  });
+
+  it('set-audit excludes a fully audited plan (complete → neither queue)', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_done',
+        patient_id: 'patient_done',
+        overall_status: 'audited',
+        patientCreatedAt: PATIENT_CREATED_AT,
+      }),
+    ]);
+    setPlanFindManyMock.mockResolvedValue([
+      { id: 'plan_done', cycle_id: 'cycle_done', cycle: { patient_id: 'patient_done' } },
+    ]);
+    setBatchFindManyMock.mockResolvedValue([
+      { plan_id: 'plan_done', set_state: 'set', audit_state: 'ok' },
+      { plan_id: 'plan_done', set_state: 'set', audit_state: 'ok' },
+    ]);
+
+    const setAudit = await GET(createRequest('?phase=set-audit'), { params: Promise.resolve({}) });
+    const setPhase = await GET(createRequest('?phase=set'), { params: Promise.resolve({}) });
+
+    await expect(setAudit.json()).resolves.toEqual({ data: [] });
+    await expect(setPhase.json()).resolves.toEqual({ data: [] });
+  });
+
+  it('set-audit keeps a fully set plan with an NG cell (rework pending, not complete)', async () => {
+    // 全セット済・未監査ゼロでも NG が残る間は監査未完了 → set-audit 工程に残す（set/complete でない）。
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_ng',
+        patient_id: 'patient_ng',
+        overall_status: 'setting',
+        patientCreatedAt: PATIENT_CREATED_AT,
+      }),
+    ]);
+    setPlanFindManyMock.mockResolvedValue([
+      { id: 'plan_ng', cycle_id: 'cycle_ng', cycle: { patient_id: 'patient_ng' } },
+    ]);
+    setBatchFindManyMock.mockResolvedValue([
+      { plan_id: 'plan_ng', set_state: 'set', audit_state: 'ok' },
+      { plan_id: 'plan_ng', set_state: 'set', audit_state: 'ng' },
+    ]);
+
+    const setAudit = await GET(createRequest('?phase=set-audit'), { params: Promise.resolve({}) });
+    const setPhase = await GET(createRequest('?phase=set'), { params: Promise.resolve({}) });
+    const auditBody = (await setAudit.json()) as { data: { patient_id: string }[] };
+
+    expect(auditBody.data.map((row) => row.patient_id)).toEqual(['patient_ng']);
+    await expect(setPhase.json()).resolves.toEqual({ data: [] });
   });
 
   it('rejects an unknown phase value', async () => {

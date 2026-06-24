@@ -1,10 +1,12 @@
 import { format } from 'date-fns';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import {
+  classifySetBatchPhase,
   deriveListBadge,
   PHASE_CYCLE_STATUSES,
   type DispenseWorkbenchPatientRow,
   type DispenseWorkbenchPhase,
+  type SetBatchPhaseCounts,
 } from '@/lib/dispensing/dispense-workbench-shared';
 import {
   buildMedicationCycleAssignmentWhere,
@@ -122,11 +124,73 @@ export async function listDispenseWorkbenchPatients(
     });
   }
 
-  if (filters.includeSetPlan) {
+  // set / set-audit 工程は base status（audited/setting）が同一なので、最新 SetPlan の SetBatch
+  // 集計で排他分割する。そのため当該工程では include_set_plan 指定の有無に関わらず最新 SetPlan を解決する。
+  const isSetSplitPhase = filters.phase === 'set' || filters.phase === 'set-audit';
+
+  if (filters.includeSetPlan || isSetSplitPhase) {
     await hydrateLatestSetPlans(prisma, orgId, ctx, rows);
   }
 
-  return sortDispenseWorkbenchPatients(rows, filters);
+  const scopedRows = isSetSplitPhase
+    ? await filterRowsBySetBatchPhase(prisma, orgId, rows, filters.phase as 'set' | 'set-audit')
+    : rows;
+
+  return sortDispenseWorkbenchPatients(scopedRows, filters);
+}
+
+/**
+ * set / set-audit 工程の患者行を、最新 SetPlan の SetBatch 集計で排他分割する。
+ * - set: まだセット作業中（SetPlan 無し / batch 0 / pending>0）。
+ * - set-audit: 全セット済かつ監査未完了（set_complete かつ unaudited>0 または ng>0。NG=差戻し再対応待ち）。
+ * セット監査まで完了（unaudited===0 && ng===0）した cycle はどちらの待ち行列にも出さない
+ * （{@link classifySetBatchPhase}）。SetBatch は plan_id の単一 findMany（org スコープ）で取得し N+1 を避ける。
+ */
+async function filterRowsBySetBatchPhase(
+  prisma: PrismaClient,
+  orgId: string,
+  rows: DispenseWorkbenchPatientRow[],
+  phase: 'set' | 'set-audit',
+): Promise<DispenseWorkbenchPatientRow[]> {
+  const planIds = rows
+    .map((row) => row.latest_set_plan_id)
+    .filter((id): id is string => id != null);
+
+  const countsByPlan = new Map<string, SetBatchPhaseCounts>();
+  if (planIds.length > 0) {
+    const batches = await prisma.setBatch.findMany({
+      where: { org_id: orgId, plan_id: { in: planIds } },
+      select: { plan_id: true, set_state: true, audit_state: true },
+    });
+    for (const batch of batches) {
+      const counts = countsByPlan.get(batch.plan_id) ?? {
+        total: 0,
+        pending: 0,
+        unaudited: 0,
+        ng: 0,
+      };
+      counts.total += 1;
+      // set でも hold でもない = 未セット（hold はセット完了を妨げない: set-derivations と同基準）。
+      if (batch.set_state !== 'set' && batch.set_state !== 'hold') counts.pending += 1;
+      if (batch.audit_state === 'unaudited') counts.unaudited += 1;
+      // NG=差戻しは監査未完了（set-derivations: audit_complete は ng===0 も要件）→ set-audit に残す。
+      else if (batch.audit_state === 'ng') counts.ng += 1;
+      countsByPlan.set(batch.plan_id, counts);
+    }
+  }
+
+  const wantClass = phase === 'set' ? 'setting' : 'audit-pending';
+  return rows.filter((row) => {
+    const counts = (row.latest_set_plan_id
+      ? countsByPlan.get(row.latest_set_plan_id)
+      : undefined) ?? {
+      total: 0,
+      pending: 0,
+      unaudited: 0,
+      ng: 0,
+    };
+    return classifySetBatchPhase(counts) === wantClass;
+  });
 }
 
 async function hydrateLatestSetPlans(
