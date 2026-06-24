@@ -21,6 +21,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { SignalTuningPanel } from './signal-tuning-panel';
 import { PageSection } from '@/components/layout/page-section';
@@ -67,7 +69,7 @@ export default function AlertRulesPage() {
     queryKey: ['drug-alert-rules', orgId],
     queryFn: async () => {
       const res = await fetch('/api/drug-alert-rules', {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('処方安全アラートルールの取得に失敗しました');
       return res.json() as Promise<{ data: DrugAlertRule[] }>;
@@ -83,14 +85,13 @@ export default function AlertRulesPage() {
         '条件(JSON) の形式が不正です',
       );
 
+      // encodePathSegment runs during URL construction (before fetch), so a dot
+      // segment id fails closed BEFORE the mutating PATCH side effect.
       const res = await fetch(
-        form.id ? `/api/drug-alert-rules/${form.id}` : '/api/drug-alert-rules',
+        form.id ? `/api/drug-alert-rules/${encodePathSegment(form.id)}` : '/api/drug-alert-rules',
         {
           method: form.id ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-org-id': orgId,
-          },
+          headers: buildOrgJsonHeaders(orgId),
           body: JSON.stringify({
             alert_type: form.alert_type,
             severity: form.severity,
@@ -127,9 +128,11 @@ export default function AlertRulesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/drug-alert-rules/${id}`, {
+      // encodePathSegment runs before fetch, so a dot-segment id fails closed
+      // BEFORE the destructive DELETE side effect.
+      const res = await fetch(`/api/drug-alert-rules/${encodePathSegment(id)}`, {
         method: 'DELETE',
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('削除に失敗しました');
     },
@@ -157,10 +160,7 @@ export default function AlertRulesPage() {
     mutationFn: async () => {
       const res = await fetch('/api/cds/check', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ cycleId: testCycleId }),
       });
       const payload = await res.json().catch(() => ({}));
