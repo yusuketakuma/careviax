@@ -237,6 +237,27 @@ describe('PharmacistCredentialsContent', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  it('surfaces a retry instead of a silent-empty staff dropdown when pharmacist options fail', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[0] === 'pharmacist-options') {
+        // スタッフ一覧の取得失敗 → 空の選択肢ではなく再読み込み導線。
+        return { data: undefined, isLoading: false, isError: true, refetch };
+      }
+      return defaultUseQueryImpl({ queryKey });
+    });
+
+    render(<PharmacistCredentialsContent />);
+    fireEvent.click(screen.getByRole('button', { name: '資格を登録' }));
+
+    expect(screen.getByText('スタッフ一覧を取得できませんでした。')).toBeTruthy();
+    // 取得失敗時はセレクトを描画していないこと(false-empty 回避)。
+    expect(screen.queryByLabelText('対象スタッフ')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it('names row actions by pharmacist and certification target', () => {
     render(<PharmacistCredentialsContent />);
 
