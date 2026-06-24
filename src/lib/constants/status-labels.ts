@@ -287,6 +287,16 @@ export const SELF_REPORT_STATUS_ROLE: Record<string, StatusRoleOrNeutral> = {
   dismissed: 'readonly',
 };
 
+/** SelfReportStatus の日本語表示ラベル(SELF_REPORT_STATUS_ROLE と同じキー集合)。生 enum を
+ *  画面にそのまま出さないために使う。 */
+export const SELF_REPORT_STATUS_LABELS: Record<string, string> = {
+  submitted: '未対応',
+  triaged: 'トリアージ済',
+  converted_to_task: 'タスク化',
+  resolved: '解決済',
+  dismissed: '見送り',
+};
+
 /** PatientShareCaseStatus(他薬局への患者共有). active=done(共有成立)、revoked/declined=blocked、各種pending=waiting、suspended=confirm、ended=readonly、draft=neutral。 */
 export const PATIENT_SHARE_CASE_STATUS_ROLE: Record<string, StatusRoleOrNeutral> = {
   draft: 'neutral',
