@@ -5,6 +5,7 @@ import { ja } from 'date-fns/locale';
 import { AlertTriangle, Clock, FileText, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { SkeletonRows } from '@/components/ui/loading';
 import { cn } from '@/lib/utils';
 import { SOURCE_LABELS } from './new/prescription-form.shared';
@@ -93,6 +94,9 @@ function ExpiryCell({ date }: { date: string | null }) {
 type PrescriptionsTableProps = {
   items: PrescriptionIntakeRow[];
   isLoading: boolean;
+  isError?: boolean;
+  errorMessage?: string;
+  onRetry?: () => void;
   selectedId: string | null;
   onRowClick: (index: number) => void;
 };
@@ -100,6 +104,9 @@ type PrescriptionsTableProps = {
 export function PrescriptionsTable({
   items,
   isLoading,
+  isError = false,
+  errorMessage,
+  onRetry,
   selectedId,
   onRowClick,
 }: PrescriptionsTableProps) {
@@ -107,6 +114,21 @@ export function PrescriptionsTable({
     return (
       <div className="px-2 py-4">
         <SkeletonRows rows={5} cols={4} />
+      </div>
+    );
+  }
+
+  if (isError && items.length === 0) {
+    return (
+      <div className="p-3">
+        <ErrorState
+          variant="server"
+          title="処方受付一覧を表示できません"
+          description="処方受付データの取得に失敗しました。空の一覧として扱わず、通信状況を確認して再読み込みしてください。"
+          detail={errorMessage}
+          action={onRetry ? { label: '再読み込み', onClick: onRetry } : undefined}
+          headingLevel={3}
+        />
       </div>
     );
   }

@@ -9,6 +9,7 @@ import { buildOrgHeaders } from '@/lib/api/org-headers';
 const fetchMock = vi.hoisted(() => vi.fn());
 const fetchNextPageMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
+const refetchMock = vi.hoisted(() => vi.fn());
 const resetSelectionMock = vi.hoisted(() => vi.fn());
 const useInfiniteQueryMock = vi.hoisted(() => vi.fn());
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -52,11 +53,27 @@ vi.mock('./prescriptions-table', () => ({
   PrescriptionsTable: ({
     items,
     isLoading,
+    isError,
+    errorMessage,
+    onRetry,
   }: {
     items: Array<{ id: string }>;
     isLoading: boolean;
+    isError?: boolean;
+    errorMessage?: string;
+    onRetry?: () => void;
   }) => (
-    <div data-testid="prescriptions-table" data-loading={String(isLoading)}>
+    <div
+      data-testid="prescriptions-table"
+      data-loading={String(isLoading)}
+      data-error={String(isError)}
+    >
+      {errorMessage ? <span>{errorMessage}</span> : null}
+      {onRetry ? (
+        <button type="button" onClick={onRetry}>
+          再読み込み
+        </button>
+      ) : null}
       {items.map((item) => (
         <span key={item.id}>{item.id}</span>
       ))}
@@ -161,6 +178,9 @@ describe('PrescriptionsWorkspace', () => {
         ],
       },
       isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
       fetchNextPage: fetchNextPageMock,
       hasNextPage: true,
       isFetchingNextPage: false,
@@ -271,5 +291,45 @@ describe('PrescriptionsWorkspace', () => {
     expect(latestInfiniteQueryOptions()).toEqual(expect.objectContaining({ enabled: false }));
     expect(latestRealtimeOptions()).toEqual(expect.objectContaining({ enabled: false }));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('passes prescription intake query failures as an error state with retry instead of an empty table', () => {
+    useInfiniteQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('処方受付一覧の取得に失敗しました'),
+      refetch: refetchMock,
+      fetchNextPage: fetchNextPageMock,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+    });
+
+    render(<PrescriptionsWorkspace />);
+
+    const table = screen.getByTestId('prescriptions-table');
+    expect(table.getAttribute('data-error')).toBe('true');
+    expect(table.textContent).toContain('処方受付一覧の取得に失敗しました');
+    expect(table.textContent).not.toContain('該当する処方受付がありません');
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a mobile-first stacked master-detail layout before widening on large screens', () => {
+    render(<PrescriptionsWorkspace />);
+
+    const masterDetailClass = screen.getByTestId('prescriptions-master-detail').className;
+    expect(masterDetailClass).toContain('flex-col');
+    expect(masterDetailClass).toContain('lg:flex-row');
+
+    const masterPaneClass = screen.getByTestId('prescriptions-master-pane').className;
+    expect(masterPaneClass).toContain('w-full');
+    expect(masterPaneClass).toContain('h-[45dvh]');
+    expect(masterPaneClass).toContain('lg:w-[480px]');
+    expect(masterPaneClass).toContain('lg:h-auto');
+
+    expect(screen.getByTestId('prescriptions-detail-pane').className).toContain('min-h-[18rem]');
   });
 });

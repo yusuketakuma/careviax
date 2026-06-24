@@ -145,7 +145,16 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
     [orgId, statusFilter, sourceFilter],
   );
 
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  const {
+    data,
+    error,
+    isError,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    refetch,
+  } = useInfiniteQuery({
     queryKey,
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({
@@ -218,8 +227,13 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
     [resetSelection],
   );
 
+  const handleRetryIntakes = useCallback(() => {
+    void refetch();
+  }, [refetch]);
+
   const inquiryCount = statusCounts['inquiry_pending'] ?? 0;
   const readyCount = statusCounts['ready_to_dispense'] ?? 0;
+  const intakeErrorMessage = error instanceof Error ? error.message : undefined;
 
   return (
     <div className={cn('flex h-[calc(100dvh-64px)] flex-col overflow-hidden', className)}>
@@ -288,12 +302,21 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
         />
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="flex w-[420px] shrink-0 flex-col overflow-hidden border-r lg:w-[480px]">
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row"
+        data-testid="prescriptions-master-detail"
+      >
+        <div
+          className="flex h-[45dvh] min-h-[18rem] w-full shrink-0 flex-col overflow-hidden border-b lg:h-auto lg:min-h-0 lg:w-[480px] lg:border-b-0 lg:border-r"
+          data-testid="prescriptions-master-pane"
+        >
           <div className="min-h-0 flex-1 overflow-hidden">
             <PrescriptionsTable
               items={loadedItems}
               isLoading={!orgId || isLoading}
+              isError={isError}
+              errorMessage={intakeErrorMessage}
+              onRetry={handleRetryIntakes}
               selectedId={selectedId}
               onRowClick={handleRowClick}
             />
@@ -314,7 +337,10 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
           )}
         </div>
 
-        <div className="flex-1 overflow-hidden">
+        <div
+          className="min-h-[18rem] flex-1 overflow-hidden lg:min-h-0"
+          data-testid="prescriptions-detail-pane"
+        >
           {selectedId ? (
             <PrescriptionInlineDetail intakeId={selectedId} />
           ) : (
