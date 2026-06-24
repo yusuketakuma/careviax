@@ -93,6 +93,12 @@ export interface WorkbenchState {
    * mutations hook はこの値を読んで API 単位（batch_id / expected_version 等）を解決する。
    */
   writeContext: WorkbenchWriteContext;
+  /**
+   * status bar 表示用の operator 情報（非永続）。dispenserName=実記録された調剤者、
+   * operatorName=現在の操作者（API auditor=ログイン中の閲覧者。記録済み監査者ではない）。
+   * 既定（モック）/ 実データ取得失敗 / カレンダー工程 / 患者切替直後は null（status bar は '—' へ fail-closed）。
+   */
+  operators: { dispenserName: string | null; operatorName: string | null };
 
   // ---- actions ----
   setPatient: (id: string) => void;
@@ -113,6 +119,11 @@ export interface WorkbenchState {
    * 既定（モック）では未使用。selId 切替やカレンダー取得時に充填する。
    */
   setWriteContext: (patch: Partial<WorkbenchWriteContext>) => void;
+  /**
+   * status bar 表示用の operator 情報を差し替える（実データ dispense/audit 取得時）。
+   * 取得失敗 / カレンダー工程は null へ倒し、捏造名 / 前患者の残値を出さない。
+   */
+  setOperators: (value: { dispenserName: string | null; operatorName: string | null }) => void;
   /**
    * 実データ calendar から復元した set/set-audit state を反映する。
    * 同じ患者の古い persisted セル状態を残さないよう patient prefix で置換する。
@@ -193,11 +204,21 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       patients: INITIAL_PATIENTS,
       hydrated: false,
       writeContext: emptyWriteContext(),
+      operators: { dispenserName: null, operatorName: null },
 
       setPatient: (id) =>
-        set({ selId: id, target: null, holdModal: null, writeContext: emptyWriteContext() }),
+        set({
+          selId: id,
+          target: null,
+          holdModal: null,
+          writeContext: emptyWriteContext(),
+          // 患者切替直後は前患者の operator を残さない（effect が再取得して再充填する）。
+          operators: { dispenserName: null, operatorName: null },
+        }),
 
       setWriteContext: (patch) => set((s) => ({ writeContext: { ...s.writeContext, ...patch } })),
+
+      setOperators: (value) => set({ operators: value }),
 
       setCalendarState: ({
         patientId,
@@ -245,6 +266,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
               auditDoubleCountByDid: {},
               model: {},
               writeContext: emptyWriteContext(),
+              // 空/失敗 hydrate では operator も null（捏造名を残さない）。
+              operators: { dispenserName: null, operatorName: null },
             };
           }
           const nextSelId =

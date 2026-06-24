@@ -83,7 +83,9 @@ export type DispenseWorkbenchData = {
   count_rows: WorkbenchCountRow[];
   packaging_groups?: WorkbenchPackagingGroup[];
   dispenser: { id: string; name: string; time_label: string | null } | null;
-  auditor: { id: string; name: string };
+  // 現在の操作者（= ctx.userId の閲覧者。prospective auditor であって記録済み監査者ではない）。
+  // 取得経路によっては null。詳細は dispensing-workbench.from-api.ts の operators 写像を参照。
+  auditor: { id: string; name: string } | null;
   is_self_audit: boolean;
   has_narcotic: boolean;
   visit_time_label: string | null;

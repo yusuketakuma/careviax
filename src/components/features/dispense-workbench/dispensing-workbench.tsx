@@ -38,6 +38,7 @@ import {
 } from './dispensing-workbench.adapter';
 import { isCalendarPhase } from './dispensing-workbench.types';
 import type { FKeyAction, Phase } from './dispensing-workbench.types';
+import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 
 import { PhaseHeader } from './phase-header';
 import { PatientListPanel } from './patient-list-panel';
@@ -90,8 +91,12 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   const hydrate = useWorkbenchStore((s) => s.hydrate);
   const setWriteContext = useWorkbenchStore((s) => s.setWriteContext);
   const setCalendarState = useWorkbenchStore((s) => s.setCalendarState);
+  const setOperators = useWorkbenchStore((s) => s.setOperators);
+  const operators = useWorkbenchStore((s) => s.operators);
   const selId = useWorkbenchStore((s) => s.selId);
   const planId = useWorkbenchStore((s) => s.writeContext.planId);
+  // 接続状態は HeaderSyncStatus と同一の useNetworkOnline（新規リアルタイム購読を増やさない）。
+  const online = useNetworkOnline();
 
   // ---- 書込結線（計画 §12 / W3b）----
   // mutation 群（実データ時のみ発火・mock は no-op）とフェーズ別ハンドラを生成し、
@@ -138,12 +143,14 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       });
       // 書込結線の id 束を store へ充填（mutations hook が読む）。
       setWriteContext(wb.writeContext);
+      // status bar 用 operator（実 dispenser 名 / 現操作者名。捏造名は出さない）。
+      setOperators(wb.operators);
     })();
     return () => {
       cancelled = true;
     };
     // selId 変更時に選択患者の model を再取得する。phase 変更でも再評価。
-  }, [phase, selId, hydrate, setWriteContext]);
+  }, [phase, selId, hydrate, setWriteContext, setOperators]);
 
   // ---- 実データ結線（カレンダー: set / seta）----
   // 既定（モック）では no-op。opt-in 時は direct /set entry でも cycle_id -> SetPlan -> calendar
@@ -152,6 +159,9 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   useEffect(() => {
     if (!isRealDataEnabled()) return;
     if (!isCalendarPhase(phase)) return;
+    // セット / セット監査はカレンダー由来で operator chrome を持たない。前工程の dispenser/操作者を
+    // 残さないよう null へ倒す（status bar は '—'）。
+    setOperators({ dispenserName: null, operatorName: null });
     let cancelled = false;
     void (async () => {
       if (planId) {
@@ -183,7 +193,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     return () => {
       cancelled = true;
     };
-  }, [phase, selId, planId, hydrate, setCalendarState, setWriteContext]);
+  }, [phase, selId, planId, hydrate, setCalendarState, setWriteContext, setOperators]);
 
   // ---- F-key / キーボードアクションの写像 ----
   const runAction = useCallback(
@@ -349,9 +359,11 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       {/* ===== STATUS BAR ===== */}
       <div className={styles.statusBar}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span>調剤者：山田 花子（薬剤師）</span>
+          {/* 調剤者=実記録（dispense_results.dispensed_by）。未取得/カレンダー工程は '—'（捏造名を出さない）。 */}
+          <span>調剤者：{operators.dispenserName ?? '—'}</span>
           <span style={{ opacity: 0.55 }}>|</span>
-          <span>監査者：佐々木 健（管理薬剤師）</span>
+          {/* 操作者=現在ログイン中の閲覧者（API auditor）。記録済み監査者ではないので「監査者：」では出さない。 */}
+          <span>操作者：{operators.operatorName ?? '—'}</span>
           <span style={{ opacity: 0.55 }}>|</span>
           <span>
             モード：
@@ -361,8 +373,17 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span>
-            接続：<span style={{ color: 'var(--wb-status-online)' }}>オンライン</span>
+          {/* 接続=useNetworkOnline（HeaderSyncStatus と同一）。色だけに依存せずテキスト併用 + aria-label。 */}
+          <span aria-label={`接続状態: ${online ? 'オンライン' : 'オフライン'}`}>
+            接続：
+            <span
+              style={{
+                color: online ? 'var(--wb-status-online)' : 'var(--wb-status-offline)',
+                fontWeight: 700,
+              }}
+            >
+              {online ? 'オンライン' : 'オフライン'}
+            </span>
           </span>
           <span className={styles.mono} style={{ letterSpacing: '.5px' }} suppressHydrationWarning>
             <StatusClock />

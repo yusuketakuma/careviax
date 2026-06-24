@@ -200,6 +200,7 @@ export async function loadWorkbenchAsync(
   audit: Record<string, boolean>;
   quantityConfirmedByDid: Record<string, boolean>;
   writeContext: WorkbenchWriteContextPatch;
+  operators: { dispenserName: string | null; operatorName: string | null };
 } | null> {
   if (USE_MOCK) return null;
   // 詳細 fetch は cycle_id 起点（cycle-bound）なので URL に phase は載せない。
@@ -213,9 +214,10 @@ export async function loadWorkbenchAsync(
     `/api/dispense-tasks/${encodeURIComponent(taskId)}/workbench`,
   );
   if (!data) return null;
-  const { patient, groups, done, audit, quantityConfirmedByDid } = workbenchFromApi(data);
-  // 書込結線の id 束（task_id / cycle_id / cycle.version / グループ割当）を同時に返し、
-  // シェルが setWriteContext で store に充填できるようにする（mutations hook が読む）。
+  const { patient, groups, done, audit, quantityConfirmedByDid, operators } =
+    workbenchFromApi(data);
+  // 書込結線の id 束（task_id / cycle_id / cycle.version / グループ割当）と operator 表示情報を
+  // 同時に返し、シェルが setWriteContext / setOperators で store に充填できるようにする。
   return {
     patient,
     groups,
@@ -223,6 +225,7 @@ export async function loadWorkbenchAsync(
     audit,
     quantityConfirmedByDid,
     writeContext: writeContextFromApi(data),
+    operators,
   };
 }
 

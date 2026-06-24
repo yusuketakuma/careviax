@@ -1072,9 +1072,9 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     ? 'color-mix(in oklch, var(--wb-phase-setp) 8%, var(--wb-surface))'
     : 'color-mix(in oklch, var(--wb-phase-seta) 8%, var(--wb-surface))';
   const calBarTitle = isSet ? 'セット注意' : '監査リスク';
-  const calBarMeta = isSet
-    ? `セット者：山田 花子 ／ 期間 ${periodLabel}`
-    : 'セット完了：6/16 15:10 ／ 監査者：佐々木 健';
+  // セット者 / 監査者 / セット完了時刻の実値は本 view の入力に無いため fail-closed '—'（捏造名・捏造時刻を出さない）。
+  // 期間は実値（periodLabel）なので残す。実 operator 名の結線は後続スライスの follow-up。
+  const calBarMeta = isSet ? `セット者：— ／ 期間 ${periodLabel}` : 'セット完了：— ／ 監査者：—';
   const photoTitle = isSet ? '作業証跡写真（セット前 / セット後）' : '監査証跡写真';
   const photos = isSet ? ['セット前', 'セット後', 'カレンダー全体'] : ['監査完了', '該当セル拡大'];
 

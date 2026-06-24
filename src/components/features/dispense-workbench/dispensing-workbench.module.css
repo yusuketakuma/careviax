@@ -47,6 +47,8 @@
    */
   --wb-status-info: #9fd3ff;
   --wb-status-online: #8fe39a;
+  /* offline=通信なし。暗 status bar 上で AA を満たす淡赤（隣接テキスト「オフライン」が意味を担う）。 */
+  --wb-status-offline: #ff9a9a;
 
   /*
    * F-011 Stage1b（A-prime）: view が返す全色は workbench ローカルの theme 安定トークンで供給する。
@@ -193,6 +195,7 @@
      AA を割る。暗色(--background)へ切替えてコントラストを確保（隣接ラベルが意味を担う）。 */
   --wb-status-info: var(--background);
   --wb-status-online: var(--background);
+  --wb-status-offline: var(--background);
 }
 
 /* AppShell 配下にマウントする場合のヘッダ控除高（計画 §3・単一変更点） */

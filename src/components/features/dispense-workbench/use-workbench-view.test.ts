@@ -105,6 +105,35 @@ describe('buildView calendar period', () => {
     expect(view.gate.text).toContain('未セット 1');
   });
 
+  it('fails closed to — for set/set-audit operator metadata (no fabricated names)', () => {
+    const baseArgs = {
+      selId: patient.id,
+      sortMode: 'start' as const,
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model,
+      patients: [patient],
+    };
+
+    const setView = buildView({ phase: 'setp', ...baseArgs });
+    expect(setView.calBarMeta).toContain('セット者：—');
+    expect(setView.calBarMeta).not.toContain('山田');
+
+    const auditView = buildView({ phase: 'seta', ...baseArgs });
+    expect(auditView.calBarMeta).toBe('セット完了：— ／ 監査者：—');
+    expect(auditView.calBarMeta).not.toContain('佐々木');
+  });
+
   it('shows a narcotic classification review chip without falling back to no-notes', () => {
     const view = buildView({
       phase: 'setp',
