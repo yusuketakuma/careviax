@@ -230,8 +230,12 @@ describe('IntakeTriageContent', () => {
     expect(screen.getByText('重複の疑い(6/9取込分と同一?)')).toBeTruthy();
     expect(screen.getByText('入力済 → 監査中')).toBeTruthy();
     expect(screen.getByText(/田中 一郎 様 — 定期処方 RX-2024-0500/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: '入力へ送る' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: '並べて比較' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '入力へ送る' }).getAttribute('href')).toBe(
+      '/prescriptions/intake_sasaki',
+    );
+    expect(screen.getByRole('link', { name: '並べて比較' }).getAttribute('href')).toBe(
+      '/prescriptions/intake_takahashi',
+    );
     expect(screen.getByRole('link', { name: '→ 監査へ' })).toBeTruthy();
 
     // 受信時刻の相対表記(昨日)

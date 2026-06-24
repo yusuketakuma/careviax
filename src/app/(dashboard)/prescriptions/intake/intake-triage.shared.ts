@@ -11,6 +11,7 @@ import type {
   IntakeTriageRow,
   IntakeTriageStatusKey,
 } from '@/lib/prescriptions/intake-triage-contract';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 
 export type {
@@ -95,8 +96,12 @@ export const INTAKE_ACTION_PRESENTATIONS: Record<
   IntakeTriageActionKey,
   IntakeTriageActionPresentation
 > = {
-  send_to_entry: { label: '入力へ送る', primary: true, href: () => '/prescriptions' },
-  compare: { label: '並べて比較', href: () => '/prescriptions' },
+  send_to_entry: {
+    label: '入力へ送る',
+    primary: true,
+    href: (row) => buildPrescriptionHref(row.intake_id),
+  },
+  compare: { label: '並べて比較', href: (row) => buildPrescriptionHref(row.intake_id) },
   to_dashboard: { label: '→ ダッシュボードへ', href: () => '/dashboard' },
   to_audit: { label: '→ 監査へ', href: () => '/audit' },
   to_dispensing: { label: '→ 調剤へ', href: () => '/dispense' },

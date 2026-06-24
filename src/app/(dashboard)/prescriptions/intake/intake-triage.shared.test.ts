@@ -8,7 +8,13 @@ vi.mock('@/lib/patient/navigation', async (importActual) => {
   return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
 });
 
+vi.mock('@/lib/prescriptions/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/prescriptions/navigation')>();
+  return { ...actual, buildPrescriptionHref: vi.fn(actual.buildPrescriptionHref) };
+});
+
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { INTAKE_ACTION_PRESENTATIONS } from './intake-triage.shared';
 
 function makeRow(overrides: Partial<IntakeTriageRow> = {}): IntakeTriageRow {
@@ -72,21 +78,54 @@ describe('INTAKE_ACTION_PRESENTATIONS', () => {
     },
   );
 
+  it.each(['send_to_entry', 'compare'] as const)(
+    '%s routes the clicked intake through the prescription detail helper',
+    (action) => {
+      vi.mocked(buildPrescriptionHref).mockReturnValueOnce('/prescriptions/__sentinel__');
+
+      expect(INTAKE_ACTION_PRESENTATIONS[action].href(makeRow({ intake_id: 'intake_1' }))).toBe(
+        '/prescriptions/__sentinel__',
+      );
+      expect(vi.mocked(buildPrescriptionHref)).toHaveBeenCalledWith('intake_1');
+      expect(vi.mocked(buildPatientHref)).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['send_to_entry', 'compare'] as const)(
+    '%s encodes a hostile intake id as one prescription detail path segment',
+    (action) => {
+      const hostileIntakeId = 'intake/1?tab=x#frag';
+      expect(
+        INTAKE_ACTION_PRESENTATIONS[action].href(makeRow({ intake_id: hostileIntakeId })),
+      ).toBe(`/prescriptions/${encodeURIComponent(hostileIntakeId)}`);
+      expect(vi.mocked(buildPrescriptionHref)).toHaveBeenCalledWith(hostileIntakeId);
+    },
+  );
+
+  it.each(['send_to_entry', 'compare'] as const)(
+    '%s fails fast via the prescription helper for a dot-segment intake id',
+    (action) => {
+      expect(() => INTAKE_ACTION_PRESENTATIONS[action].href(makeRow({ intake_id: '.' }))).toThrow(
+        RangeError,
+      );
+      expect(vi.mocked(buildPrescriptionHref)).toHaveBeenCalledWith('.');
+    },
+  );
+
   // Static (non-card) actions ignore the row and must never call the patient helper,
   // even when the row carries a hostile/dot patient id.
   it.each([
-    ['send_to_entry', '/prescriptions'],
-    ['compare', '/prescriptions'],
     ['to_dashboard', '/dashboard'],
     ['to_audit', '/audit'],
     ['to_dispensing', '/dispense'],
     ['to_set', '/set'],
   ] as const)(
-    'static action %s returns %s without calling buildPatientHref',
+    'static action %s returns %s without calling route helpers',
     (action, expectedHref) => {
       const row = makeRow({ patient_id: '../settings?x=1#y', action });
       expect(INTAKE_ACTION_PRESENTATIONS[action].href(row)).toBe(expectedHref);
       expect(vi.mocked(buildPatientHref)).not.toHaveBeenCalled();
+      expect(vi.mocked(buildPrescriptionHref)).not.toHaveBeenCalled();
     },
   );
 });
