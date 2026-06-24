@@ -1,7 +1,8 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
+import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
@@ -47,6 +48,14 @@ const cycleInclude = {
 } as const;
 
 export const GET = withAuthContext(async (req, ctx) => {
+  if (
+    !hasPermission(ctx.role, 'canDispense') &&
+    !hasPermission(ctx.role, 'canAuditDispense') &&
+    !hasPermission(ctx.role, 'canReport')
+  ) {
+    return forbidden('調剤タスクの閲覧権限がありません');
+  }
+
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
 

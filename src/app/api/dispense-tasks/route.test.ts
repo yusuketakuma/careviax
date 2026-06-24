@@ -1,30 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import type { MemberRole } from '@prisma/client';
 
 type TestAuthContext = {
   orgId: string;
   userId: string;
-  role: 'pharmacist';
+  role: MemberRole;
 };
 
 type TestRouteContext = { params: Promise<Record<string, string>> };
 
 const {
+  authContextMock,
   withAuthContextMock,
   withOrgContextMock,
   medicationCycleFindFirstMock,
   dispenseTaskFindManyMock,
   dispatchNotificationEventMock,
 } = vi.hoisted(() => ({
+  authContextMock: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist' as MemberRole,
+  },
   withAuthContextMock: vi.fn(
     (handler: (req: NextRequest, ctx: TestAuthContext) => Promise<Response>) => {
-      return (req: NextRequest) => {
-        return handler(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'pharmacist',
-        });
-      };
+      return (req: NextRequest) => handler(req, authContextMock);
     },
   ),
   withOrgContextMock: vi.fn(),
@@ -86,6 +87,7 @@ function createGetRequest(url = 'http://localhost/api/dispense-tasks') {
 describe('/api/dispense-tasks GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authContextMock.role = 'pharmacist';
     dispenseTaskFindManyMock.mockResolvedValue([]);
   });
 
@@ -107,11 +109,68 @@ describe('/api/dispense-tasks GET', () => {
       }),
     );
   });
+
+  it('allows dispense-capable trainee roles to read assigned medication-cycle tasks', async () => {
+    authContextMock.role = 'pharmacist_trainee';
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/dispense-tasks?cycle_id=cycle_trainee'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          cycle_id: 'cycle_trainee',
+        },
+      }),
+    );
+  });
+
+  it('allows clerk roles to read medication-cycle tasks through report read-all permission', async () => {
+    authContextMock.role = 'clerk';
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/dispense-tasks?cycle_id=cycle_clerk'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          cycle_id: 'cycle_clerk',
+        },
+      }),
+    );
+  });
+
+  it.each(['driver', 'external_viewer'] as const)(
+    'forbids %s before reading dispense tasks',
+    async (role) => {
+      authContextMock.role = role;
+
+      const response = await GET(
+        createGetRequest('http://localhost/api/dispense-tasks?cycle_id=cycle_1'),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '調剤タスクの閲覧権限がありません',
+      });
+      expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('/api/dispense-tasks POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authContextMock.role = 'pharmacist';
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
       patient_id: 'patient_1',

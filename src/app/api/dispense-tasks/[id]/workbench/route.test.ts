@@ -130,7 +130,8 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
     );
   });
 
-  it('returns count rows with line metadata for medication format grouping', async () => {
+  it('allows clerk read-all and returns count rows with line metadata for medication format grouping', async () => {
+    authCtx.role = 'clerk';
     dispenseTaskFindFirstMock.mockResolvedValue({
       id: 'task_1',
       status: 'pending',
@@ -289,6 +290,22 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
       ],
     });
   });
+
+  it.each(['driver', 'external_viewer'] as const)(
+    'returns 403 before reading workbench data when %s lacks read permissions',
+    async (role) => {
+      authCtx.role = role;
+
+      const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'task_1' }) });
+
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'AUTH_FORBIDDEN',
+        message: '調剤ワークベンチの閲覧権限がありません',
+      });
+      expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('compares current intake with the previous same-case intake across cycles', async () => {
     const currentPrescribedDate = new Date('2026-06-10T00:00:00.000Z');
