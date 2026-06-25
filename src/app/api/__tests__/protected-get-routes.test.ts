@@ -694,6 +694,10 @@ describe('protected GET routes auth matrix', () => {
       expect(response).toBeDefined();
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(401);
+      if (route.name === 'prescription-intakes GET') {
+        expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+        expect(response.headers.get('Pragma')).toBe('no-cache');
+      }
     });
 
     it(`${route.name} returns 403 when role lacks permission`, async () => {
@@ -705,6 +709,10 @@ describe('protected GET routes auth matrix', () => {
       expect(response).toBeDefined();
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(403);
+      if (route.name === 'prescription-intakes GET') {
+        expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+        expect(response.headers.get('Pragma')).toBe('no-cache');
+      }
     });
 
     it(`${route.name} returns 200 when role has permission`, async () => {

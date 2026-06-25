@@ -132,6 +132,11 @@ function createGetRequest(url: string) {
   return new NextRequest(url);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/prescription-intakes POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1937,6 +1942,7 @@ describe('/api/prescription-intakes GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         cursor: { id: 'intake_2' },
@@ -1955,6 +1961,7 @@ describe('/api/prescription-intakes GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 26,
@@ -1977,6 +1984,7 @@ describe('/api/prescription-intakes GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -2000,6 +2008,7 @@ describe('/api/prescription-intakes GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '注意ポイントの絞り込みが不正です',
       details: {
@@ -2017,6 +2026,7 @@ describe('/api/prescription-intakes GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
     expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
   });
@@ -2028,6 +2038,92 @@ describe('/api/prescription-intakes GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['q', '?q=', { q: ['検索語を指定してください'] }],
+    ['blank q', '?q=%20%20', { q: ['検索語を指定してください'] }],
+    ['padded q', '?q=%20山田%20', { q: ['検索語の形式が不正です'] }],
+    ['overlong q', `?q=${'a'.repeat(101)}`, { q: ['検索語の形式が不正です'] }],
+    ['status', '?status=', { status: ['ステータスを指定してください'] }],
+    ['blank status', '?status=%20%20', { status: ['ステータスを指定してください'] }],
+    ['padded status', '?status=%20intake', { status: ['対応していないステータスです'] }],
+    ['source_type', '?source_type=', { source_type: ['受付ソース種別を指定してください'] }],
+    [
+      'blank source_type',
+      '?source_type=%20%20',
+      { source_type: ['受付ソース種別を指定してください'] },
+    ],
+    [
+      'padded source_type',
+      '?source_type=paper%20',
+      { source_type: ['対応していないソース種別です'] },
+    ],
+    ['care_tags', '?care_tags=', { care_tags: ['注意ポイントを指定してください'] }],
+    ['blank care_tags', '?care_tags=%20%20', { care_tags: ['注意ポイントを指定してください'] }],
+    ['padded care_tags', '?care_tags=%20narcotic', { care_tags: ['注意ポイントの形式が不正です'] }],
+    [
+      'empty care_tags item',
+      '?care_tags=narcotic,',
+      { care_tags: ['注意ポイントを指定してください'] },
+    ],
+    ['include_total', '?include_total=', { include_total: ['include_total を指定してください'] }],
+    [
+      'blank include_total',
+      '?include_total=%20%20',
+      { include_total: ['include_total を指定してください'] },
+    ],
+    [
+      'padded include_total',
+      '?include_total=%201',
+      { include_total: ['include_total は0または1を指定してください'] },
+    ],
+    [
+      'invalid include_total',
+      '?include_total=yes',
+      { include_total: ['include_total は0または1を指定してください'] },
+    ],
+  ])('rejects malformed explicit %s before querying intakes', async (_name, query, details) => {
+    const response = await GET(
+      createGetRequest(`http://localhost/api/prescription-intakes${query}`),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details,
+    });
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['q', '?q=山田&q=佐藤'],
+    ['status', '?status=intake&status=ready_to_dispense'],
+    ['source_type', '?source_type=paper&source_type=fax'],
+    ['care_tags', '?care_tags=narcotic&care_tags=cold_storage'],
+    ['include_total', '?include_total=1&include_total=0'],
+  ])('rejects duplicate %s query values before querying intakes', async (fieldName, query) => {
+    const response = await GET(
+      createGetRequest(`http://localhost/api/prescription-intakes${query}`),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        [fieldName]: [`${fieldName} は1つだけ指定してください`],
+      },
+    });
     expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
     expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
   });
@@ -2041,6 +2137,7 @@ describe('/api/prescription-intakes GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const findManyArgs = prescriptionIntakeFindManyMock.mock.calls[0]?.[0];
     expect(findManyArgs).toEqual(
       expect.objectContaining({
@@ -2118,6 +2215,7 @@ describe('/api/prescription-intakes GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const findManyArgs = prescriptionIntakeFindManyMock.mock.calls[0]?.[0];
     expect(findManyArgs).toEqual(
       expect.objectContaining({
