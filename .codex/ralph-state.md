@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-1508 JST
+
+- current task: implement Codex-owned `F-20260625-service-areas-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read hardening lane while Claude runs a services correctness scout.
+- files inspected: agmsg inbox/status for Claude's patient-MCS completion, services scout lane split, and this service-area lock grant; `git status --short --untracked-files=all`; `src/app/api/service-areas/route.ts`; `src/app/api/service-areas/route.test.ts`; direct callers in `src/app/(dashboard)/admin/service-areas/page.tsx` and `src/components/features/patients/patient-form.tsx`; gbrain `code_callers` / `code_blast` output for `src/app/api/service-areas/route.ts::GET`, which returned not-built/empty.
+- files changed: `src/app/api/service-areas/route.ts`, `src/app/api/service-areas/route.test.ts`, and this Ralph state entry.
+- bugs found: `/api/service-areas` returned every service-area row with `site` included and no `take`. The optional `site_id` query was passed through untrimmed, so whitespace-padded site filters missed valid rows and blank filters were treated as no filter instead of invalid input.
+- security risks found: reduced external-input risk by validating `site_id` before org-reference validation or DB access and returning a generic search-condition validation error for blank/invalid values. No auth/authz, tenant, RLS policy, DB schema, migration, PHI projection, audit logging, billing, deploy, or destructive operation changed.
+- performance issues found: bounded the service-area list query to a default `take: 100` with `limit` clamped to `1..200`, preserving org scope, valid site filtering, ordering, include shape, and response envelope.
+- validation commands: baseline focused `pnpm exec vitest run src/app/api/service-areas/route.test.ts --reporter=dot --testTimeout=30000`; post-change focused `pnpm exec vitest run src/app/api/service-areas/route.test.ts --reporter=dot --testTimeout=30000`; focused `pnpm exec eslint src/app/api/service-areas/route.ts src/app/api/service-areas/route.test.ts`; focused `pnpm exec prettier --check src/app/api/service-areas/route.ts src/app/api/service-areas/route.test.ts`; focused `git diff --check -- src/app/api/service-areas/route.ts src/app/api/service-areas/route.test.ts`; long-gate-locked `pnpm typecheck`.
+- validation results: baseline route Vitest passed `6/6`; final focused Vitest passed `9/9`; focused ESLint passed; focused Prettier passed; focused diff-check passed. Claude independently approved the diff, reran the focused suite `9/9`, verified the bound, blank rejection, caller compatibility, and no POST/schema/auth/RLS/billing/destructive change. Independent `pnpm typecheck` passed under local long-gate lock with `next typegen`, app `tsc`, and service-worker `tsc` all green. Tests now assert default `take: 100`, explicit `limit=5`, overly large limit clamping to `take: 200`, trimmed `site_id` reaching org-reference validation and Prisma, and blank `site_id` exiting before org-reference validation or DB access.
+- remaining work: stage and commit only the two route files plus `.codex/ralph-state.md`, notify Claude with the commit hash, and continue the backend hardening loop.
+- next action: drain agmsg before commit, inspect status, commit the approved slice with explicit pathspecs, and send `DONE`.
+
 ### 20260625-1500 JST
 
 - current task: implement Codex-owned `F-20260625-visit-vehicle-resources-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read hardening lane while Claude owns `src/server/services/patient-mcs.ts`.

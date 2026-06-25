@@ -76,7 +76,63 @@ describe('/api/service-areas', () => {
     const response = (await GET(createGetRequest('http://localhost/api/service-areas')))!;
 
     expect(response.status).toBe(200);
-    expect(serviceAreaFindManyMock).toHaveBeenCalled();
+    expect(serviceAreaFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+      },
+      orderBy: [{ site_id: 'asc' }, { name: 'asc' }],
+      take: 100,
+      include: {
+        site: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+  });
+
+  it('bounds service area list size and trims site filters', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/service-areas?site_id=%20site_1%20&limit=5'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', { site_id: 'site_1' });
+    expect(serviceAreaFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          site_id: 'site_1',
+        },
+        take: 5,
+      }),
+    );
+  });
+
+  it('clamps overly large service area list limits', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/service-areas?limit=9999'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(serviceAreaFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 200,
+      }),
+    );
+  });
+
+  it('rejects blank site filters before reference checks or DB access', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/service-areas?site_id=%20%20'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(serviceAreaFindManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects site filters outside the authenticated org', async () => {
