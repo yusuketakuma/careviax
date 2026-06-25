@@ -1279,8 +1279,11 @@ async function syncMedicationProfiles(
         existing.frequency !== line.frequency ||
         shouldRefreshDrugMasterId
       ) {
-        await prisma.medicationProfile.update({
-          where: { id: existing.id },
+        // テナント分離(二重防御): existing.id は org-scoped な findMany 由来だが、この sync は
+        // RLS 外の global prisma 書込みのため WHERE に org_id を明示する。単一行更新だが
+        // org_id を併用するため updateMany を使う(返り値 count は未使用、id 単独更新と挙動は等価)。
+        await prisma.medicationProfile.updateMany({
+          where: { id: existing.id, org_id: orgId },
           data: {
             ...(shouldRefreshDrugMasterId ? { drug_master_id: resolvedDrugMasterId } : {}),
             dose: line.dose,
@@ -1329,7 +1332,7 @@ async function syncMedicationProfiles(
 
   if (idsToDiscontinue.length > 0) {
     const result = await prisma.medicationProfile.updateMany({
-      where: { id: { in: idsToDiscontinue } },
+      where: { id: { in: idsToDiscontinue }, org_id: orgId },
       data: { is_current: false, end_date: new Date() },
     });
     discontinued = result.count;

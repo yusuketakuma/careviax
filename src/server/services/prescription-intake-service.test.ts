@@ -1137,14 +1137,16 @@ describe('createPrescriptionIntake', () => {
         hot_code: true,
       },
     });
-    expect(prismaMock.medicationProfile.update).toHaveBeenCalledWith({
-      where: { id: 'profile_1' },
+    // テナント分離(二重防御): 既存プロファイル更新も org_id を併用する updateMany 経由で、
+    // id 単独の update は使わない。WHERE に org_id が必須であることを pin する。
+    expect(prismaMock.medicationProfile.update).not.toHaveBeenCalled();
+    expect(prismaMock.medicationProfile.updateMany).toHaveBeenCalledWith({
+      where: { id: 'profile_1', org_id: 'org_1' },
       data: expect.objectContaining({
         drug_master_id: 'drug_master_amlodipine',
       }),
     });
     expect(prismaMock.medicationProfile.create).not.toHaveBeenCalled();
-    expect(prismaMock.medicationProfile.updateMany).not.toHaveBeenCalled();
     expect(result.profileSyncResult).toEqual({ created: 0, updated: 1, discontinued: 0 });
   });
 
@@ -1346,5 +1348,40 @@ describe('createPrescriptionIntake', () => {
     });
     if (!result.profileSyncResult) throw new Error('profile sync result is required');
     expect(result.profileSyncResult.created).toBe(3);
+  });
+
+  it('discontinues prescription profiles absent from the new intake with an org-scoped updateMany WHERE', async () => {
+    prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
+    // 旧処方プロファイル(処方由来)が今回の処方に含まれない → 中止対象。
+    prismaMock.medicationProfile.findMany.mockResolvedValue([
+      {
+        id: 'profile_old',
+        drug_master_id: null,
+        drug_name: '旧薬A',
+        dose: '1錠',
+        frequency: '1日1回',
+        source: 'prescription',
+      },
+    ]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([]);
+    prismaMock.medicationProfile.updateMany.mockResolvedValue({ count: 1 });
+
+    const result = await runPrescriptionIntakePostCreateHooks({
+      cycleId: 'cycle_1',
+      intakeId: 'intake_1',
+      patientId: 'patient_1',
+      orgId: 'org_1',
+      lines: [{ drug_name: '新薬B', drug_code: '9999999', dose: '1錠', frequency: '1日1回' }],
+      prescriberName: '処方医A',
+      sourceType: 'paper',
+    });
+
+    // テナント分離(二重防御): 中止(updateMany)の WHERE にも org_id が必須であることを pin する。
+    expect(prismaMock.medicationProfile.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['profile_old'] }, org_id: 'org_1' },
+      data: { is_current: false, end_date: expect.any(Date) },
+    });
+    if (!result.profileSyncResult) throw new Error('profile sync result is required');
+    expect(result.profileSyncResult.discontinued).toBe(1);
   });
 });
