@@ -54,6 +54,12 @@ describe('/api/meta/route-catalog GET', () => {
           path: '/api/patients',
         }),
         expect.objectContaining({
+          path: '/api/patients/check-duplicate',
+          methods: ['GET'],
+          permission: 'canVisit',
+          area: 'patients',
+        }),
+        expect.objectContaining({
           path: '/api/patients/:id/prescriptions/export',
           methods: ['GET'],
           permission: 'canVisit',

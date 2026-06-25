@@ -113,6 +113,7 @@ describe('routeCatalog', () => {
       '/api/patient-share-cases/:id/correction-requests',
       '/api/patient-share-cases/:id/patient-link',
       '/api/pharmacy-cooperation-message-threads',
+      '/api/patients/check-duplicate',
       '/api/patients/:id/prescriptions/export',
       '/api/interventions',
       '/api/residual-medications',

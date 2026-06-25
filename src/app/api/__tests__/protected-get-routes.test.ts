@@ -147,6 +147,7 @@ import { GET as medicationCyclesGet } from '../medication-cycles/route';
 import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
+import { GET as patientCheckDuplicateGet } from '../patients/check-duplicate/route';
 import { GET as patientGet } from '../patients/[id]/route';
 import { GET as patientSelfReportsGet } from '../patient-self-reports/route';
 import { GET as patientSelfReportGet } from '../patient-self-reports/[id]/route';
@@ -434,6 +435,17 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () =>
       patientsGet(
         createRequest('http://localhost/api/patients', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'patients/check-duplicate GET',
+    handler: () =>
+      patientCheckDuplicateGet(
+        createRequest(
+          'http://localhost/api/patients/check-duplicate?name=%E5%B1%B1%E7%94%B0&date_of_birth=1950-01-01&gender=male',
+          { 'x-org-id': 'org_1' },
+        ),
         emptyRouteContext,
       ),
   },
@@ -733,6 +745,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
         route.name === 'tasks GET' ||
+        route.name === 'patients/check-duplicate GET' ||
         route.name === 'first-visit-documents GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -756,6 +769,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
         route.name === 'tasks GET' ||
+        route.name === 'patients/check-duplicate GET' ||
         route.name === 'first-visit-documents GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
