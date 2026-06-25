@@ -71,6 +71,17 @@ function createRequest(date?: string) {
   return new NextRequest(url, { headers: { 'x-org-id': 'org_1' } });
 }
 
+function createRequestWithSearch(search: string) {
+  return new NextRequest(`http://localhost/api/visit-schedules/day-board${search}`, {
+    headers: { 'x-org-id': 'org_1' },
+  });
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-schedules/day-board', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -103,6 +114,7 @@ describe('/api/visit-schedules/day-board', () => {
   it('queries scheduled_date with the UTC-midnight range for the local date key', async () => {
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
 
     const where = visitScheduleFindManyMock.mock.calls.at(0)?.[0]?.where;
     const proposalWhere = proposalFindManyMock.mock.calls.at(0)?.[0]?.where;
@@ -144,6 +156,29 @@ describe('/api/visit-schedules/day-board', () => {
       gte: new Date('2026-06-20T00:00:00.000Z'),
       lt: new Date('2026-06-21T00:00:00.000Z'),
     });
+  });
+
+  it.each([
+    ['blank date', '?date=', { date: ['日付形式が不正です（YYYY-MM-DD）'] }],
+    ['padded date', '?date=%202026-06-20%20', { date: ['日付形式が不正です（YYYY-MM-DD）'] }],
+    [
+      'duplicate date',
+      '?date=2026-06-20&date=2026-06-21',
+      { date: ['date は1つだけ指定してください'] },
+    ],
+  ])('rejects %s before querying the day board', async (_name, search, details) => {
+    const response = (await GET(createRequestWithSearch(search), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'クエリパラメータが不正です',
+      details,
+    });
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
   });
 
   it('scopes audit/report workload and operational tasks to the current day board', async () => {

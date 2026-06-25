@@ -190,6 +190,7 @@ import { GET as visitRecordReflectedFieldsGet } from '../visit-records/[id]/refl
 import { GET as visitScheduleProposalsGet } from '../visit-schedule-proposals/route';
 import { GET as visitSchedulesGet } from '../visit-schedules/route';
 import { GET as visitScheduleGet } from '../visit-schedules/[id]/route';
+import { GET as visitSchedulesDayBoardGet } from '../visit-schedules/day-board/route';
 import { GET as visitsTodayPreparationGet } from '../visits/today-preparation/route';
 import { GET as visitPreparationBriefGet } from '../visit-preparations/[scheduleId]/brief/route';
 
@@ -760,6 +761,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'visit-schedules/day-board GET',
+    handler: () =>
+      visitSchedulesDayBoardGet(
+        createRequest('http://localhost/api/visit-schedules/day-board?date=2026-06-12', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
+      ),
+  },
+  {
     name: 'visits/today-preparation GET',
     handler: () =>
       visitsTodayPreparationGet(
@@ -877,6 +888,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET' ||
+        route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||
@@ -917,6 +929,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET' ||
+        route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||

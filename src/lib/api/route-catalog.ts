@@ -190,6 +190,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'schedules',
   },
   {
+    path: '/api/visit-schedules/day-board',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '日次訪問予定ボード取得',
+    area: 'schedules',
+  },
+  {
     path: '/api/visit-schedule-proposals',
     methods: ['GET', 'POST', 'PUT'],
     permission: 'canVisit',

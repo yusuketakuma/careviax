@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
@@ -101,6 +102,27 @@ type DayBoardManagementPlan = {
 const dayBoardQuerySchema = z.object({
   date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
 });
+
+const dayBoardSingleValueQueryNames = ['date'] as const satisfies readonly (keyof z.infer<
+  typeof dayBoardQuerySchema
+>)[];
+
+function findInvalidDayBoardQueryParams(searchParams: URLSearchParams) {
+  const fieldErrors: Record<string, string[]> = {};
+
+  for (const name of dayBoardSingleValueQueryNames) {
+    if (searchParams.getAll(name).length > 1) {
+      fieldErrors[name] = [`${name} は1つだけ指定してください`];
+    }
+  }
+
+  const rawDate = searchParams.get('date');
+  if (rawDate != null && rawDate !== rawDate.trim()) {
+    fieldErrors.date = ['日付形式が不正です（YYYY-MM-DD）'];
+  }
+
+  return Object.keys(fieldErrors).length > 0 ? fieldErrors : null;
+}
 
 // 日付キー生成・@db.Date 比較は date-boundary ヘルパーに統一(JST 当日取りこぼし防止)
 
@@ -445,9 +467,14 @@ function buildPreparationSummary(schedule: {
   };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
+    const invalidQueryParams = findInvalidDayBoardQueryParams(searchParams);
+    if (invalidQueryParams) {
+      return validationError('クエリパラメータが不正です', invalidQueryParams);
+    }
+
     const parsed = parseSearchParams(dayBoardQuerySchema, searchParams);
     if (!parsed.ok) {
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
@@ -947,3 +974,6 @@ export const GET = withAuthContext(
     message: '訪問予定の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

@@ -98,6 +98,13 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'patients',
         }),
         expect.objectContaining({
+          path: '/api/visit-schedules/day-board',
+          methods: ['GET'],
+          permission: 'canVisit',
+          description: '日次訪問予定ボード取得',
+          area: 'schedules',
+        }),
+        expect.objectContaining({
           path: '/api/visit-schedule-proposals',
           methods: ['GET', 'POST', 'PUT'],
           permission: 'canVisit',

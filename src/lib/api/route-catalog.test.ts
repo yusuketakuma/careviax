@@ -122,6 +122,7 @@ describe('routeCatalog', () => {
       '/api/residual-medications',
       '/api/dispense-tasks/:id/workbench',
       '/api/set-plans',
+      '/api/visit-schedules/day-board',
       '/api/visit-schedule-proposals',
       '/api/visits/today-preparation',
       '/api/dashboard/dispensing-stats',
