@@ -37,27 +37,24 @@ export const GET = withAuthContext(
     const { days } = parsed.data;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const audits = await prisma.dispenseAudit.findMany({
+    const reasonCounts = await prisma.dispenseAudit.groupBy({
+      by: ['reject_reason_code'],
       where: {
         org_id: ctx.orgId,
         result: 'rejected',
         audited_at: { gte: since },
       },
-      select: {
-        reject_reason_code: true,
-        reject_reason: true,
-        audited_at: true,
+      _count: {
+        id: true,
       },
-      orderBy: { audited_at: 'desc' },
     });
 
-    const totalRejected = audits.length;
+    const totalRejected = reasonCounts.reduce((total, row) => total + row._count.id, 0);
 
-    // Aggregate by code
     const byCode = new Map<string, number>();
-    for (const audit of audits) {
-      const code = audit.reject_reason_code ?? 'other';
-      byCode.set(code, (byCode.get(code) ?? 0) + 1);
+    for (const row of reasonCounts) {
+      const code = row.reject_reason_code ?? 'other';
+      byCode.set(code, (byCode.get(code) ?? 0) + row._count.id);
     }
 
     const breakdown = Array.from(byCode.entries())

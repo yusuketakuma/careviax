@@ -1,21 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withAuthContextMock, dispenseAuditFindManyMock } = vi.hoisted(() => ({
-  withAuthContextMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest,
-        ctx: { orgId: string; userId: string; role: 'admin' },
-        routeContext: { params: Promise<Record<string, never>> },
-      ) => Promise<Response>,
-    ) => {
-      return (req: NextRequest, routeContext = emptyRouteContext) =>
-        handler(req, { orgId: 'org_1', userId: 'admin_1', role: 'admin' }, routeContext);
-    },
-  ),
-  dispenseAuditFindManyMock: vi.fn(),
-}));
+const { withAuthContextMock, dispenseAuditFindManyMock, dispenseAuditGroupByMock } = vi.hoisted(
+  () => ({
+    withAuthContextMock: vi.fn(
+      (
+        handler: (
+          req: NextRequest,
+          ctx: { orgId: string; userId: string; role: 'admin' },
+          routeContext: { params: Promise<Record<string, never>> },
+        ) => Promise<Response>,
+      ) => {
+        return (req: NextRequest, routeContext = emptyRouteContext) =>
+          handler(req, { orgId: 'org_1', userId: 'admin_1', role: 'admin' }, routeContext);
+      },
+    ),
+    dispenseAuditFindManyMock: vi.fn(),
+    dispenseAuditGroupByMock: vi.fn(),
+  }),
+);
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 
@@ -27,6 +30,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     dispenseAudit: {
       findMany: dispenseAuditFindManyMock,
+      groupBy: dispenseAuditGroupByMock,
     },
   },
 }));
@@ -40,7 +44,7 @@ function createRequest(search = '?days=30') {
 }
 
 function getLastSinceDays() {
-  const call = dispenseAuditFindManyMock.mock.calls.at(-1)?.[0];
+  const call = dispenseAuditGroupByMock.mock.calls.at(-1)?.[0];
   const since = call?.where?.audited_at?.gte;
   if (!(since instanceof Date)) {
     throw new Error('audited_at.gte was not queried');
@@ -53,16 +57,14 @@ describe('/api/admin/reject-reason-stats GET', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-01T12:00:00.000Z'));
     vi.clearAllMocks();
-    dispenseAuditFindManyMock.mockResolvedValue([
+    dispenseAuditGroupByMock.mockResolvedValue([
       {
         reject_reason_code: 'drug_name_mismatch',
-        reject_reason: null,
-        audited_at: new Date('2026-05-31T00:00:00.000Z'),
+        _count: { id: 1 },
       },
       {
         reject_reason_code: null,
-        reject_reason: '自由記載',
-        audited_at: new Date('2026-05-30T00:00:00.000Z'),
+        _count: { id: 1 },
       },
     ]);
   });
@@ -76,19 +78,18 @@ describe('/api/admin/reject-reason-stats GET', () => {
 
     expect(response.status).toBe(200);
     expect(getLastSinceDays()).toBe(10);
-    expect(dispenseAuditFindManyMock).toHaveBeenCalledWith({
+    expect(dispenseAuditGroupByMock).toHaveBeenCalledWith({
+      by: ['reject_reason_code'],
       where: {
         org_id: 'org_1',
         result: 'rejected',
         audited_at: { gte: expect.any(Date) },
       },
-      select: {
-        reject_reason_code: true,
-        reject_reason: true,
-        audited_at: true,
+      _count: {
+        id: true,
       },
-      orderBy: { audited_at: 'desc' },
     });
+    expect(dispenseAuditFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       data: {
         total_rejected: 2,
@@ -136,6 +137,7 @@ describe('/api/admin/reject-reason-stats GET', () => {
         code: 'VALIDATION_ERROR',
         message: '入力値が不正です',
       });
+      expect(dispenseAuditGroupByMock).not.toHaveBeenCalled();
       expect(dispenseAuditFindManyMock).not.toHaveBeenCalled();
     },
   );

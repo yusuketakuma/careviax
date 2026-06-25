@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2041 JST
+
+- current task: continue Codex-only backend/API performance hardening by changing `/api/admin/reject-reason-stats` from row materialization to DB aggregation.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; `src/app/api/admin/reject-reason-stats/route.ts`; `src/app/api/admin/reject-reason-stats/route.test.ts`; `prisma/schema/prescription.prisma`; gbrain `code_blast` for `src/app/api/admin/reject-reason-stats/route.ts::GET`.
+- files changed: `src/app/api/admin/reject-reason-stats/route.ts`, `src/app/api/admin/reject-reason-stats/route.test.ts`, and this Ralph state entry.
+- bugs found: reject-reason stats read every matching rejected audit row for the period and aggregated counts in Node even though the response only needs per-`reject_reason_code` counts.
+- security risks found: no auth/authz, org scope, DB schema, migration, billing semantics, frontend, external send, or destructive behavior changed. Existing `canAuditDispense`, `org_id: ctx.orgId`, `result: 'rejected'`, `audited_at >= since`, validation behavior, response envelope, labels, and percentage calculation are preserved.
+- performance issues found: replaced `dispenseAudit.findMany` row materialization with `dispenseAudit.groupBy({ by: ['reject_reason_code'], _count: { id: true } })`, reducing DB payload and Node heap/CPU for large audit histories.
+- validation commands: baseline `pnpm exec vitest run src/app/api/admin/reject-reason-stats/route.test.ts --reporter=dot --testTimeout=30000`; post-change `pnpm exec vitest run src/app/api/admin/reject-reason-stats/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/admin/reject-reason-stats/route.ts src/app/api/admin/reject-reason-stats/route.test.ts`; `pnpm exec prettier --write src/app/api/admin/reject-reason-stats/route.test.ts`; `pnpm exec prettier --check src/app/api/admin/reject-reason-stats/route.ts src/app/api/admin/reject-reason-stats/route.test.ts`; `git diff --check -- src/app/api/admin/reject-reason-stats/route.ts src/app/api/admin/reject-reason-stats/route.test.ts`; long-gate `pnpm typecheck` rerun under token `01F94EC6-DAAF-4531-8F17-74CF3D1AF9DF`.
+- validation results: baseline reject-reason-stats Vitest passed `8/8`; post-change route Vitest passed `8/8`; focused ESLint passed; focused Prettier check passed after formatting the test; focused diff-check passed. An initial combined lock/typecheck wrapper used zsh's read-only `status` variable and failed after typecheck itself had completed; the lock was released, the command was rerun with `gate_exit`, `pnpm typecheck` passed with exit 0, and the local long-gate lock was released.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, then continue backend/API hardening.
+- next action: drain agmsg, inspect staged paths, and commit the reject-reason-stats aggregation slice.
+
 ### 20260625-2039 JST
 
 - current task: continue Codex-only backend/API hardening by fail-closing explicit blank `template_type` filters on `/api/templates`, aligning the behavior with existing blank `target_role` validation.
