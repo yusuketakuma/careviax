@@ -105,6 +105,42 @@ const DEFAULT_RISK_SUMMARY: Omit<PatientRiskSummary, 'patient_id' | 'patient_nam
   missing_management_plan: false,
 };
 
+function toPatientListContact(contact: PatientRow['contacts'][number]) {
+  return {
+    id: contact.id,
+    is_primary: contact.is_primary ?? null,
+    is_emergency_contact: contact.is_emergency_contact ?? null,
+  };
+}
+
+function toPatientListCareTeamLink(link: PatientRow['cases'][number]['care_team_links'][number]) {
+  return {
+    id: link.id,
+    role: link.role,
+    is_primary: link.is_primary ?? null,
+  };
+}
+
+function toPatientListCase(careCase: PatientRow['cases'][number]) {
+  return {
+    id: careCase.id,
+    status: careCase.status,
+    updated_at: careCase.updated_at,
+    primary_pharmacist_id: careCase.primary_pharmacist_id,
+    care_team_links: careCase.care_team_links.map(toPatientListCareTeamLink),
+  };
+}
+
+function toPatientListSchedulingPreference(preference: PatientRow['scheduling_preference']) {
+  if (!preference) return null;
+
+  return {
+    visit_before_contact_required: preference.visit_before_contact_required ?? null,
+    parking_available: preference.parking_available ?? null,
+    care_level: preference.care_level ?? null,
+  };
+}
+
 export function mapPatientListItem(
   patient: PatientRow,
   riskSummary: PatientRiskSummary | undefined,
@@ -116,12 +152,17 @@ export function mapPatientListItem(
   recentVisitThreshold: Date,
   patientShareSummary: PatientShareSummary = emptyPatientShareSummary(),
 ) {
-  const latestCase = patient.cases[0] ?? null;
+  const rawLatestCase = patient.cases[0] ?? null;
+  const cases = patient.cases.map(toPatientListCase);
+  const latestCase = cases[0] ?? null;
+  const contacts = patient.contacts.map(toPatientListContact);
   const primaryResidence = patient.residences[0] ?? null;
   const hasVisitConsent = patient.consents.length > 0;
   const hasEmergencyContact = patient.contacts.length > 0;
-  const hasPrimaryPhysician = (latestCase?.care_team_links.length ?? 0) > 0;
-  const hasFirstVisitDocument = latestCase ? deliveredFirstVisitCaseIds.has(latestCase.id) : false;
+  const hasPrimaryPhysician = (rawLatestCase?.care_team_links.length ?? 0) > 0;
+  const hasFirstVisitDocument = rawLatestCase
+    ? deliveredFirstVisitCaseIds.has(rawLatestCase.id)
+    : false;
   const facilityMode = primaryResidence?.building_id ? 'facility' : 'home';
 
   const risk: PatientRiskSummary = riskSummary ?? {
@@ -132,6 +173,9 @@ export function mapPatientListItem(
 
   return {
     ...patient,
+    contacts,
+    cases,
+    scheduling_preference: toPatientListSchedulingPreference(patient.scheduling_preference),
     phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
     medical_insurance_number: privacy.sensitiveFieldsMasked
       ? maskInsuranceNumber(patient.medical_insurance_number)

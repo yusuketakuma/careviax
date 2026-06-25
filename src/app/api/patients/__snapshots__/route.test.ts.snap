@@ -15,6 +15,8 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
           "care_team_links": [
             {
               "id": "link_1",
+              "is_primary": true,
+              "role": "physician",
             },
           ],
           "id": "case_1",
@@ -42,6 +44,8 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
       "contacts": [
         {
           "id": "contact_1",
+          "is_emergency_contact": true,
+          "is_primary": true,
         },
       ],
       "facility_mode": "facility",
@@ -52,6 +56,8 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
         "care_team_links": [
           {
             "id": "link_1",
+            "is_primary": true,
+            "role": "physician",
           },
         ],
         "id": "case_1",
@@ -109,6 +115,11 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
         ],
         "score": 5,
         "unresolved_self_reports": 0,
+      },
+      "scheduling_preference": {
+        "care_level": "care_2",
+        "parking_available": true,
+        "visit_before_contact_required": true,
       },
       "visit_schedules": [
         {

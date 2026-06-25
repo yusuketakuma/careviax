@@ -251,6 +251,13 @@ describe('/api/patients GET', () => {
         medical_insurance_number: 'med-001',
         care_insurance_number: null,
         billing_support_flag: true,
+        scheduling_preference: {
+          preferred_contact_name: '長女',
+          preferred_contact_phone: '03-2222-0000',
+          visit_before_contact_required: true,
+          parking_available: true,
+          care_level: 'care_2',
+        },
         residences: [
           {
             address: '東京都千代田区1-1-1',
@@ -259,7 +266,16 @@ describe('/api/patients GET', () => {
           },
         ],
         _count: { contacts: 1 },
-        contacts: [{ id: 'contact_1' }],
+        contacts: [
+          {
+            id: 'contact_1',
+            is_primary: true,
+            is_emergency_contact: true,
+            phone: '03-0000-0000',
+            email: 'family@example.test',
+            fax: '03-0000-9999',
+          },
+        ],
         conditions: [
           {
             id: 'condition_1',
@@ -274,7 +290,16 @@ describe('/api/patients GET', () => {
             status: 'active',
             updated_at: new Date('2026-03-27T09:00:00.000Z'),
             primary_pharmacist_id: 'user_1',
-            care_team_links: [{ id: 'link_1' }],
+            care_team_links: [
+              {
+                id: 'link_1',
+                role: 'physician',
+                phone: '03-1111-0000',
+                email: 'doctor@example.test',
+                fax: '03-1111-9999',
+                is_primary: true,
+              },
+            ],
           },
         ],
         consents: [{ id: 'consent_1' }],
@@ -289,6 +314,7 @@ describe('/api/patients GET', () => {
         medical_insurance_number: null,
         care_insurance_number: null,
         billing_support_flag: false,
+        scheduling_preference: null,
         residences: [
           {
             address: '東京都墨田区2-2-2',
@@ -410,7 +436,42 @@ describe('/api/patients GET', () => {
       data: Array<{
         id: string;
         facility_mode: 'facility' | 'home';
-        latest_case: { primary_pharmacist_name: string | null } | null;
+        contacts: Array<{
+          id: string;
+          is_primary: boolean | null;
+          is_emergency_contact: boolean | null;
+          phone?: string | null;
+          email?: string | null;
+          fax?: string | null;
+        }>;
+        cases: Array<{
+          care_team_links: Array<{
+            id: string;
+            role: string;
+            is_primary: boolean | null;
+            phone?: string | null;
+            email?: string | null;
+            fax?: string | null;
+          }>;
+        }>;
+        latest_case: {
+          primary_pharmacist_name: string | null;
+          care_team_links: Array<{
+            id: string;
+            role: string;
+            is_primary: boolean | null;
+            phone?: string | null;
+            email?: string | null;
+            fax?: string | null;
+          }>;
+        } | null;
+        scheduling_preference: {
+          preferred_contact_name?: string | null;
+          preferred_contact_phone?: string | null;
+          visit_before_contact_required: boolean | null;
+          parking_available: boolean | null;
+          care_level: string | null;
+        } | null;
         consent: { has_visit_medication_management: boolean };
         pharmacy_share: {
           status: 'none' | 'active';
@@ -448,6 +509,37 @@ describe('/api/patients GET', () => {
         level: 'watch',
       },
     });
+    expect(payload.data[0].contacts[0]).toEqual({
+      id: 'contact_1',
+      is_primary: true,
+      is_emergency_contact: true,
+    });
+    expect(payload.data[0].latest_case?.care_team_links[0]).toEqual({
+      id: 'link_1',
+      role: 'physician',
+      is_primary: true,
+    });
+    expect(payload.data[0].cases[0]?.care_team_links[0]).toEqual({
+      id: 'link_1',
+      role: 'physician',
+      is_primary: true,
+    });
+    expect(payload.data[0].scheduling_preference).toEqual({
+      visit_before_contact_required: true,
+      parking_available: true,
+      care_level: 'care_2',
+    });
+    expect(payload.data[0].scheduling_preference).not.toHaveProperty('preferred_contact_name');
+    expect(payload.data[0].scheduling_preference).not.toHaveProperty('preferred_contact_phone');
+    const serializedPayload = JSON.stringify(payload);
+    expect(serializedPayload).not.toContain('03-0000-0000');
+    expect(serializedPayload).not.toContain('family@example.test');
+    expect(serializedPayload).not.toContain('03-0000-9999');
+    expect(serializedPayload).not.toContain('03-1111-0000');
+    expect(serializedPayload).not.toContain('doctor@example.test');
+    expect(serializedPayload).not.toContain('03-1111-9999');
+    expect(serializedPayload).not.toContain('長女');
+    expect(serializedPayload).not.toContain('03-2222-0000');
     expect(payload.summary).toMatchObject({
       total: 1,
       facility_count: 1,
@@ -869,6 +961,148 @@ describe('/api/patients GET', () => {
       care_insurance_number: null,
     });
     expect(payload.summary.total).toBe(1);
+  });
+
+  it('uses raw contact channels for missing_contact filtering without exposing them', async () => {
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?foundation_issue=missing_contact'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      data: Array<{ id: string }>;
+      summary: { total: number };
+    };
+
+    expect(payload.data.map((patient) => patient.id)).toEqual(['patient_2']);
+    expect(payload.summary.total).toBe(1);
+    const serializedPayload = JSON.stringify(payload);
+    expect(serializedPayload).not.toContain('03-0000-0000');
+    expect(serializedPayload).not.toContain('family@example.test');
+    expect(serializedPayload).not.toContain('03-2222-0000');
+  });
+
+  it('uses raw care-team channels for missing_care_team filtering without exposing them', async () => {
+    patientFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'patient_1',
+        name: '青葉 花子',
+        name_kana: 'アオバ ハナコ',
+        birth_date: new Date('1948-05-20'),
+        gender: 'female',
+        phone: '090-0000-0001',
+        medical_insurance_number: 'med-001',
+        care_insurance_number: null,
+        billing_support_flag: true,
+        scheduling_preference: {
+          preferred_contact_name: null,
+          preferred_contact_phone: null,
+          visit_before_contact_required: false,
+          parking_available: true,
+          care_level: 'care_2',
+        },
+        residences: [
+          {
+            address: '東京都千代田区1-1-1',
+            building_id: 'facility_alpha',
+            unit_name: '201',
+          },
+        ],
+        _count: { contacts: 1 },
+        contacts: [
+          {
+            id: 'contact_1',
+            is_primary: true,
+            is_emergency_contact: true,
+            phone: '03-4444-0000',
+            email: null,
+            fax: null,
+          },
+        ],
+        conditions: [],
+        cases: [
+          {
+            id: 'case_1',
+            status: 'active',
+            updated_at: new Date('2026-03-27T09:00:00.000Z'),
+            primary_pharmacist_id: 'user_1',
+            care_team_links: [
+              {
+                id: 'link_physician',
+                role: 'physician',
+                phone: '03-5555-0001',
+                fax: '03-5555-1001',
+                email: 'doctor@example.test',
+                is_primary: true,
+              },
+              {
+                id: 'link_nurse',
+                role: 'nurse',
+                phone: '03-5555-0002',
+                fax: '03-5555-1002',
+                email: 'nurse@example.test',
+                is_primary: true,
+              },
+              {
+                id: 'link_cm',
+                role: 'care_manager',
+                phone: '03-5555-0003',
+                fax: '03-5555-1003',
+                email: 'cm@example.test',
+                is_primary: true,
+              },
+            ],
+          },
+        ],
+        consents: [{ id: 'consent_1' }],
+      },
+      {
+        id: 'patient_2',
+        name: '鈴木 次郎',
+        name_kana: 'スズキ ジロウ',
+        birth_date: new Date('1952-10-01'),
+        gender: 'male',
+        phone: null,
+        medical_insurance_number: null,
+        care_insurance_number: null,
+        billing_support_flag: false,
+        scheduling_preference: null,
+        residences: [],
+        _count: { contacts: 0 },
+        contacts: [],
+        conditions: [],
+        cases: [
+          {
+            id: 'case_2',
+            status: 'assessment',
+            updated_at: new Date('2026-03-20T09:00:00.000Z'),
+            primary_pharmacist_id: null,
+            care_team_links: [],
+          },
+        ],
+        consents: [],
+      },
+    ]);
+
+    const response = (await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/patients?foundation_issue=missing_care_team',
+      ),
+    ))!;
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      data: Array<{ id: string }>;
+      summary: { total: number };
+    };
+
+    expect(payload.data.map((patient) => patient.id)).toEqual(['patient_2']);
+    expect(payload.summary.total).toBe(1);
+    const serializedPayload = JSON.stringify(payload);
+    expect(serializedPayload).not.toContain('03-4444-0000');
+    expect(serializedPayload).not.toContain('03-5555-0001');
+    expect(serializedPayload).not.toContain('doctor@example.test');
+    expect(serializedPayload).not.toContain('03-5555-1003');
   });
 
   it('uses the database cursor when paginating filtered results', async () => {

@@ -299,7 +299,11 @@ function normalizePatientPaletteLimit(limit: number | undefined) {
   return Math.min(normalized, MAX_PATIENT_PALETTE_LIMIT);
 }
 
-function matchesPatientPostFilters(patient: MappedPatientListItem, filters: PatientListFilters) {
+function matchesPatientPostFilters(
+  patient: MappedPatientListItem,
+  filters: PatientListFilters,
+  rawPatient?: PatientRow,
+) {
   const latestCase = patient.latest_case;
   const latestVisitDate = patient.latest_visit?.visit_date ?? null;
 
@@ -393,27 +397,34 @@ function matchesPatientPostFilters(patient: MappedPatientListItem, filters: Pati
   }
 
   if (filters.foundation_issue) {
-    const preference = patient.scheduling_preference;
+    const rawPreference = rawPatient?.scheduling_preference ?? null;
+    const responsePreference = patient.scheduling_preference;
+    const contacts = rawPatient?.contacts ?? patient.contacts;
+    const careCases = rawPatient?.cases ?? patient.cases;
     const getContactReadiness = () =>
       buildPatientContactReadiness({
-        contacts: patient.contacts,
-        preferredContactName: preference?.preferred_contact_name,
-        preferredContactPhone: preference?.preferred_contact_phone,
-        visitBeforeContactRequired: preference?.visit_before_contact_required,
+        contacts,
+        preferredContactName: rawPreference?.preferred_contact_name,
+        preferredContactPhone: rawPreference?.preferred_contact_phone,
+        visitBeforeContactRequired:
+          rawPreference?.visit_before_contact_required ??
+          responsePreference?.visit_before_contact_required,
       });
     const getCareTeamReliability = () =>
       buildCareTeamReliabilitySummary({
-        contacts: patient.contacts,
-        careTeamLinks: selectPrimaryCareTeamCase(patient.cases)?.care_team_links ?? [],
+        contacts,
+        careTeamLinks: selectPrimaryCareTeamCase(careCases)?.care_team_links ?? [],
       });
-    const insuranceMissing = !patient.medical_insurance_number && !patient.care_insurance_number;
+    const insuranceMissing = rawPatient
+      ? !rawPatient.medical_insurance_number && !rawPatient.care_insurance_number
+      : !patient.medical_insurance_number && !patient.care_insurance_number;
 
     switch (filters.foundation_issue) {
       case 'needs_confirmation':
         if (
           getContactReadiness().ready &&
-          preference?.parking_available != null &&
-          preference?.care_level &&
+          (rawPreference?.parking_available ?? responsePreference?.parking_available) != null &&
+          (rawPreference?.care_level ?? responsePreference?.care_level) &&
           !insuranceMissing &&
           !getCareTeamReliability().needs_confirmation
         ) {
@@ -424,10 +435,12 @@ function matchesPatientPostFilters(patient: MappedPatientListItem, filters: Pati
         if (getContactReadiness().ready) return false;
         break;
       case 'missing_parking':
-        if (preference?.parking_available != null) return false;
+        if ((rawPreference?.parking_available ?? responsePreference?.parking_available) != null) {
+          return false;
+        }
         break;
       case 'missing_care_level':
-        if (preference?.care_level) return false;
+        if (rawPreference?.care_level ?? responsePreference?.care_level) return false;
         break;
       case 'missing_insurance':
         if (!insuranceMissing) return false;
@@ -632,7 +645,9 @@ async function collectFilteredPatients(args: {
     });
 
     filtered.push(
-      ...enriched.filter((patient) => matchesPatientPostFilters(patient, args.filters)),
+      ...enriched.filter((patient, index) =>
+        matchesPatientPostFilters(patient, args.filters, pageRows[index]),
+      ),
     );
   }
 
