@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { formatUtcDateKey } from '@/lib/date-key';
@@ -975,5 +976,13 @@ const authenticatedGET = withAuthContext(
   },
 );
 
-export const GET: typeof authenticatedGET = async (req, routeContext) =>
-  withSensitiveNoStore(await authenticatedGET(req, routeContext));
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<Record<string, string>> },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}

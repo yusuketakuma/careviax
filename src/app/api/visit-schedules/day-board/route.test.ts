@@ -181,6 +181,23 @@ describe('/api/visit-schedules/day-board', () => {
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('returns a fixed no-store 500 envelope without leaking the raw error when a read throws', async () => {
+    visitScheduleFindManyMock.mockRejectedValueOnce(new Error('raw day board read failure'));
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+    expect(JSON.stringify(payload)).not.toContain('raw day board read failure');
+    expect(payload).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+  });
+
   it('scopes audit/report workload and operational tasks to the current day board', async () => {
     const todaySchedule = {
       id: 'visit_today',
