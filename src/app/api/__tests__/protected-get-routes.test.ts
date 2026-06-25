@@ -133,6 +133,7 @@ import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
 import { GET as communicationRequestsExportGet } from '../communication-requests/export/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
+import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
 import { GET as dashboardCockpitGet } from '../dashboard/cockpit/route';
 import { GET as dashboardWorkflowGet } from '../dashboard/workflow/route';
 import { GET as dashboardMedicationDeadlinesGet } from '../dashboard/medication-deadlines/route';
@@ -321,6 +322,14 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () =>
       conferenceNotesGet(
         createRequest('http://localhost/api/conference-notes', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dashboard/clerk-support GET',
+    handler: () =>
+      dashboardClerkSupportGet(
+        createRequest('http://localhost/api/dashboard/clerk-support', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
       ),
   },
@@ -772,6 +781,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'cases GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||
+        route.name === 'dashboard/clerk-support GET' ||
         route.name === 'dashboard/cockpit GET' ||
         route.name === 'dashboard/workflow GET' ||
         route.name === 'dashboard/medication-deadlines GET' ||
@@ -805,6 +815,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'cases GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||
+        route.name === 'dashboard/clerk-support GET' ||
         route.name === 'dashboard/cockpit GET' ||
         route.name === 'dashboard/workflow GET' ||
         route.name === 'dashboard/medication-deadlines GET' ||

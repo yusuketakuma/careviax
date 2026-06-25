@@ -1,5 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
 import type { ClerkSupportResponse, ClerkSupportTask } from '@/types/clerk-support';
@@ -24,7 +25,7 @@ const PHARMACIST_CONSULT_ITEMS = [
   '算定できるかの判断',
 ];
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx) => {
     const now = new Date();
 
@@ -132,3 +133,6 @@ export const GET = withAuthContext(
     message: 'ダッシュボードの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

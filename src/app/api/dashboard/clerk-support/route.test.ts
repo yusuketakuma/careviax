@@ -48,6 +48,11 @@ function createRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/dashboard/clerk-support', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -77,6 +82,7 @@ describe('/api/dashboard/clerk-support', () => {
   it('aggregates the six clerk KPIs and a mixed task list', async () => {
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const json = await response.json();
 
     expect(json.data.kpis).toEqual({
@@ -103,6 +109,12 @@ describe('/api/dashboard/clerk-support', () => {
       }),
     ]);
     expect(json.data.tasks[1].href).not.toBe(`/schedules/proposals?detail=${HOSTILE_PROPOSAL_ID}`);
+    expect(
+      json.data.tasks.map((task: Record<string, unknown>) => Object.keys(task).sort()),
+    ).toEqual([
+      ['due_label', 'href', 'id', 'kind_label', 'next_action', 'patient_name'],
+      ['due_label', 'href', 'id', 'kind_label', 'next_action', 'patient_name'],
+    ]);
 
     expect(json.data.consult_items).toEqual([
       '処方内容の判断',

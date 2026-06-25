@@ -120,6 +120,7 @@ describe('routeCatalog', () => {
       '/api/residual-medications',
       '/api/set-plans',
       '/api/visit-schedule-proposals',
+      '/api/dashboard/clerk-support',
       '/api/dashboard/cockpit',
       '/api/dashboard/workflow',
       '/api/dashboard/medication-deadlines',
