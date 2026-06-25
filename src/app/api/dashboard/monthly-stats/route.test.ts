@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const { authMock, membershipFindFirstMock, patientFindManyMock, visitRecordGroupByMock } =
@@ -38,9 +38,18 @@ function createRequest(url: string, headers?: Record<string, string>) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/dashboard/monthly-stats GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('returns validation error for invalid month format', async () => {
@@ -55,6 +64,8 @@ describe('/api/dashboard/monthly-stats GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(visitRecordGroupByMock).not.toHaveBeenCalled();
   });
 
   it('rejects out-of-range month values', async () => {
@@ -69,6 +80,81 @@ describe('/api/dashboard/monthly-stats GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(visitRecordGroupByMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['blank month', 'http://localhost/api/dashboard/monthly-stats?month='],
+    ['padded month', 'http://localhost/api/dashboard/monthly-stats?month=%202026-03%20'],
+  ])('rejects %s before querying monthly visit stats', async (_label, url) => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+
+    const response = await GET(createRequest(url, { 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'month の形式が不正です（YYYY-MM）',
+    });
+    expect(visitRecordGroupByMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate month params before querying monthly visit stats', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+
+    const response = await GET(
+      createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-03&month=2026-04', {
+        'x-org-id': 'org_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'month の形式が不正です（YYYY-MM）',
+      details: {
+        month: ['month は1つだけ指定してください'],
+      },
+    });
+    expect(visitRecordGroupByMock).not.toHaveBeenCalled();
+  });
+
+  it('defaults to the current month when month is omitted', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 15, 12, 0, 0));
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+    visitRecordGroupByMock.mockResolvedValue([]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/dashboard/monthly-stats', { 'x-org-id': 'org_1' }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(visitRecordGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          visit_date: {
+            gte: new Date(2026, 3, 1),
+            lte: new Date(2026, 3, 30, 23, 59, 59, 999),
+          },
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      month: '2026-04',
+      summary: { total_patients: 0 },
+      patient_stats: [],
+    });
   });
 
   it('returns grouped monthly patient stats', async () => {
@@ -107,6 +193,7 @@ describe('/api/dashboard/monthly-stats GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const expectedMonthStart = new Date(2026, 2, 1);
     const expectedMonthEnd = new Date(2026, 2, 31, 23, 59, 59, 999);
     expect(visitRecordGroupByMock).toHaveBeenCalledWith({

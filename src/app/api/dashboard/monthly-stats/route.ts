@@ -1,6 +1,7 @@
 import { endOfMonth, startOfMonth } from 'date-fns';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 
 type MonthlyBucket = {
@@ -19,32 +20,55 @@ function formatMonthLabel(value: Date) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function parseMonthParam(value: string | null) {
-  if (!value) {
+type MonthParseResult =
+  | { ok: true; monthStart: Date; monthLabel: string }
+  | { ok: false; response: ReturnType<typeof validationError> };
+
+function parseMonthParam(searchParams: URLSearchParams): MonthParseResult {
+  const values = searchParams.getAll('month');
+  if (values.length === 0) {
     const monthStart = startOfMonth(new Date());
     return {
+      ok: true,
       monthStart,
       monthLabel: formatMonthLabel(monthStart),
     };
   }
-  if (!/^\d{4}-\d{2}$/.test(value)) return null;
+  if (values.length > 1) {
+    return {
+      ok: false,
+      response: validationError('month の形式が不正です（YYYY-MM）', {
+        month: ['month は1つだけ指定してください'],
+      }),
+    };
+  }
+
+  const value = values[0] ?? '';
+  if (!value || value.trim() !== value || !/^\d{4}-\d{2}$/.test(value)) {
+    return { ok: false, response: validationError('month の形式が不正です（YYYY-MM）') };
+  }
 
   const [year, month] = value.split('-').map(Number);
-  if (month < 1 || month > 12) return null;
+  if (month < 1 || month > 12) {
+    return { ok: false, response: validationError('month の形式が不正です（YYYY-MM）') };
+  }
   const parsed = new Date(year, month - 1, 1);
-  if (Number.isNaN(parsed.getTime())) return null;
+  if (Number.isNaN(parsed.getTime())) {
+    return { ok: false, response: validationError('month の形式が不正です（YYYY-MM）') };
+  }
   return {
+    ok: true,
     monthStart: startOfMonth(parsed),
     monthLabel: value,
   };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const parsedMonth = parseMonthParam(searchParams.get('month'));
-    if (!parsedMonth) {
-      return validationError('month の形式が不正です（YYYY-MM）');
+    const parsedMonth = parseMonthParam(searchParams);
+    if (!parsedMonth.ok) {
+      return parsedMonth.response;
     }
 
     const { monthStart, monthLabel } = parsedMonth;
@@ -145,3 +169,6 @@ export const GET = withAuthContext(
     message: 'ダッシュボードの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

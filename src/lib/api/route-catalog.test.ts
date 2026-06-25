@@ -123,6 +123,7 @@ describe('routeCatalog', () => {
       '/api/dashboard/cockpit',
       '/api/dashboard/workflow',
       '/api/dashboard/medication-deadlines',
+      '/api/dashboard/monthly-stats',
       '/api/visit-records/:id/handoff',
       '/api/visit-records/:id/reflected-fields',
       '/api/medication-issues',

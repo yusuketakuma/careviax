@@ -774,7 +774,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'set-plans GET' ||
         route.name === 'dashboard/cockpit GET' ||
         route.name === 'dashboard/workflow GET' ||
-        route.name === 'dashboard/medication-deadlines GET'
+        route.name === 'dashboard/medication-deadlines GET' ||
+        route.name === 'dashboard/monthly-stats GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -806,7 +807,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'set-plans GET' ||
         route.name === 'dashboard/cockpit GET' ||
         route.name === 'dashboard/workflow GET' ||
-        route.name === 'dashboard/medication-deadlines GET'
+        route.name === 'dashboard/medication-deadlines GET' ||
+        route.name === 'dashboard/monthly-stats GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
