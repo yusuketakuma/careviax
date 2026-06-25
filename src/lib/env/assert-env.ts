@@ -120,8 +120,18 @@ export function assertRuntimeTimezone(
     throw new Error(`Runtime timezone safety check failed: ${detail}`);
   }
 
-  // eslint has no no-console rule here; the secrets bootstrap (same startup
-  // phase) logs via console too. Keep this non-fatal and observable.
-  console.warn(`[env] ${detail}`);
+  // Non-fatal, but escalate severity in production so a UTC container's
+  // date-key/billing/day-boundary drift is not silently buried in logs.
+  // Fail-closed-by-default is deliberately NOT the default here: flipping it on
+  // would crash a not-yet-JST prod container on boot. That enforcement is gated
+  // behind ENFORCE_APP_TZ + the prod TZ env change (BLOCKED
+  // F-20260625-runtime-tz-prod-env, human approval). instrumentation.ts also
+  // reports the non-ok status to Sentry so the misconfig is alertable.
+  // (eslint has no no-console rule here; the secrets bootstrap logs the same way.)
+  if (isProductionEnv(env)) {
+    console.error(`[env] ${detail}`);
+  } else {
+    console.warn(`[env] ${detail}`);
+  }
   return status;
 }

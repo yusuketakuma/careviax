@@ -100,13 +100,17 @@ describe('assertRuntimeTimezone', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('warns (non-fatal) on a non-JST runtime when enforcement is off', () => {
+  it('escalates to console.error (non-fatal) on a non-JST production runtime when enforcement is off', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() =>
       assertRuntimeTimezone({ APP_ENV: 'production' }, { offsetMinutes: 0, resolvedName: 'UTC' }),
     ).not.toThrow();
-    expect(warn).toHaveBeenCalledOnce();
-    expect(warn.mock.calls[0]?.[0]).toMatch(/runtime timezone is not Asia\/Tokyo/);
+    // Production severity is escalated so the drift is not silently buried; the
+    // hard fail-closed stays gated behind ENFORCE_APP_TZ (BLOCKED prod TZ env).
+    expect(error).toHaveBeenCalledOnce();
+    expect(error.mock.calls[0]?.[0]).toMatch(/runtime timezone is not Asia\/Tokyo/);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('warns but does not throw outside production even with ENFORCE_APP_TZ', () => {
