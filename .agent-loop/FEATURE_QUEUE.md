@@ -607,3 +607,10 @@ Pattern B only（header swap のみ、小・低価値だが安全）:
 - [ ] facility-standards, operations-insights, staff-kpi-panel（**no co-located test** → 新規 test file 要）
 
 知見（本ラウンド）: (1) GET の dynamic 部が URLSearchParams query なら encodePathSegment 不要（path segment のみ encode）。(2) jest-dom matcher（toBeEnabled/toHaveTextContent）は未登録 → plain DOM assertion 規約（`.disabled`/`.textContent.toContain`）。(3) zsh は `${PIPESTATUS[0]}` が空 → gate exit は直接 `$?`。(4) 並列 build は原タスク実行中の重複起動で Next.js ロック衝突（"wait for the build to complete"）→ 単一実行厳守。
+
+### backend hardening follow-ups（2026-06-26, claude checker audit of d1c8b52b..c184c6ee 由来、いずれも non-blocking）
+
+監査で land 済み6コミットは全 PASS（差戻し理由なし）。以下は本セットの**回帰ではない**既存ギャップ/防御的補強。要 LOCK + maker/checker（implementation-only モード時は disjoint LOCK のみ）。
+
+- [ ] **harden-day-board-explicit-500**（owner: 未割当, **Low/defensive**, est S）: `GET /api/visit-schedules/day-board`（既に d1c8b52b で hardening 済み）は外側に明示 try/catch を持たず、500 no-store を `withAuthContext` 内部 catch→`internalError()` に依存。今は安全だが staff-workload/analytics/visit-records/management-plans が明示 try/catch を持つのと非対称。day-board は 500 no-store 専用テストも無い。将来 `withAuthContext` が rethrow 化すると 500 が裸（no-store 欠落）になり得る。明示 try/catch + 500 no-store テスト追加を推奨。evidence: claude audit, `src/lib/auth/context.ts:338-349`。
+- [ ] **harden-rls-session-unification-list-reads**（owner: 未割当, **Info/consistency**, est M）: `GET /api/management-plans` の list read と `/api/staff-workload`（全体）は bare `prisma.findMany` / `$queryRaw`（app層 `org_id` フィルタのみ、RLS session 変数未適用）。**commit 前からの既存状態**（git show 0b2eb86b 確認）で本セットの回帰ではないが、analytics/visit-records/care-reports が `withOrgContext` session var へ寄せた hardening 標準と不整合。defense-in-depth 統一候補。staff-workload は raw `$queryRaw` のため tx 移行は要注意（WHERE org_id 維持必須）。evidence: claude audit。
