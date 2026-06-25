@@ -794,6 +794,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dashboard/cockpit GET' ||
         route.name === 'dashboard/dispensing-stats GET' ||
         route.name === 'dashboard/workflow GET' ||
+        route.name === 'dashboard/overdue GET' ||
         route.name === 'dashboard/medication-deadlines GET' ||
         route.name === 'dashboard/monthly-stats GET'
       ) {
@@ -829,6 +830,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dashboard/cockpit GET' ||
         route.name === 'dashboard/dispensing-stats GET' ||
         route.name === 'dashboard/workflow GET' ||
+        route.name === 'dashboard/overdue GET' ||
         route.name === 'dashboard/medication-deadlines GET' ||
         route.name === 'dashboard/monthly-stats GET'
       ) {

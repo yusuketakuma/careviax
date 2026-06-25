@@ -606,7 +606,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
     path: '/api/dashboard/overdue',
     methods: ['GET'],
     permission: 'canViewDashboard',
-    description: '期限超過の訪問・報告・タスク一覧',
+    description: '期限超過の訪問・報告・タスク件数集計',
     area: 'dashboard',
   },
   {

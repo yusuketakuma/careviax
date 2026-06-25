@@ -19,6 +19,11 @@ function createRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/meta/route-catalog GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -40,6 +45,7 @@ describe('/api/meta/route-catalog GET', () => {
     }
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(requireAuthContextMock).toHaveBeenCalledWith(request, {
       permission: 'canAdmin',
       message: 'APIカタログの閲覧権限がありません',
@@ -111,6 +117,13 @@ describe('/api/meta/route-catalog GET', () => {
           path: '/api/dashboard/dispensing-stats',
           methods: ['GET'],
           permission: 'canViewDashboard',
+          area: 'dashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/dashboard/overdue',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          description: '期限超過の訪問・報告・タスク件数集計',
           area: 'dashboard',
         }),
         expect.objectContaining({
@@ -518,6 +531,7 @@ describe('/api/meta/route-catalog GET', () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({ code: 'AUTH_FORBIDDEN' });
   });
 });

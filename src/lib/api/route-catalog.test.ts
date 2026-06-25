@@ -121,6 +121,7 @@ describe('routeCatalog', () => {
       '/api/set-plans',
       '/api/visit-schedule-proposals',
       '/api/dashboard/dispensing-stats',
+      '/api/dashboard/overdue',
       '/api/dashboard/clerk-support',
       '/api/dashboard/cockpit',
       '/api/dashboard/workflow',

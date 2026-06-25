@@ -5,18 +5,16 @@ const {
   authMock,
   membershipFindFirstMock,
   careCaseFindManyMock,
-  visitScheduleFindManyMock,
-  careReportFindManyMock,
-  taskFindManyMock,
-  patientFindManyMock,
+  visitScheduleCountMock,
+  careReportCountMock,
+  taskCountMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
-  visitScheduleFindManyMock: vi.fn(),
-  careReportFindManyMock: vi.fn(),
-  taskFindManyMock: vi.fn(),
-  patientFindManyMock: vi.fn(),
+  visitScheduleCountMock: vi.fn(),
+  careReportCountMock: vi.fn(),
+  taskCountMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -32,16 +30,13 @@ vi.mock('@/lib/db/client', () => ({
       findMany: careCaseFindManyMock,
     },
     visitSchedule: {
-      findMany: visitScheduleFindManyMock,
+      count: visitScheduleCountMock,
     },
     careReport: {
-      findMany: careReportFindManyMock,
-    },
-    patient: {
-      findMany: patientFindManyMock,
+      count: careReportCountMock,
     },
     task: {
-      findMany: taskFindManyMock,
+      count: taskCountMock,
     },
   },
 }));
@@ -57,10 +52,18 @@ function createRequest(headers?: Record<string, string>) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/dashboard/overdue GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    visitScheduleCountMock.mockResolvedValue(1);
+    careReportCountMock.mockResolvedValue(1);
+    taskCountMock.mockResolvedValue(1);
   });
 
   it('returns 403 when the role lacks dashboard permission', async () => {
@@ -71,6 +74,7 @@ describe('/api/dashboard/overdue GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
     });
@@ -79,50 +83,12 @@ describe('/api/dashboard/overdue GET', () => {
   it('returns overdue dashboard buckets', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
-    visitScheduleFindManyMock.mockResolvedValue([
-      {
-        id: 'schedule_1',
-        scheduled_date: new Date('2026-03-20T00:00:00Z'),
-        schedule_status: 'planned',
-        case_: {
-          patient: {
-            id: 'patient_1',
-            name: '山田 太郎',
-          },
-        },
-      },
-    ]);
-    careReportFindManyMock.mockResolvedValue([
-      {
-        id: 'report_1',
-        patient_id: 'patient_1',
-        report_type: 'physician_report',
-        status: 'draft',
-        created_at: new Date('2026-03-20T00:00:00Z'),
-        updated_at: new Date('2026-03-21T00:00:00Z'),
-      },
-    ]);
-    patientFindManyMock.mockResolvedValue([
-      {
-        id: 'patient_1',
-        name: '山田 太郎',
-      },
-    ]);
-    taskFindManyMock.mockResolvedValue([
-      {
-        id: 'task_1',
-        task_type: 'visit_preparation',
-        title: '訪問準備が未完了です',
-        priority: 'high',
-        due_date: new Date('2026-03-21T00:00:00Z'),
-        sla_due_at: new Date('2026-03-21T00:00:00Z'),
-      },
-    ]);
 
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -138,26 +104,32 @@ describe('/api/dashboard/overdue GET', () => {
       },
       select: { id: true, patient_id: true },
     });
-    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+    expect(visitScheduleCountMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          org_id: 'org_1',
           case_id: { in: ['case_1'] },
         }),
       }),
     );
-    expect(careReportFindManyMock).toHaveBeenCalledWith(
+    expect(careReportCountMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          org_id: 'org_1',
           patient_id: { in: ['patient_1'] },
         }),
       }),
     );
-    expect(taskFindManyMock).toHaveBeenCalledWith(
+    expect(taskCountMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
+          org_id: 'org_1',
           AND: expect.arrayContaining([
             {
               OR: expect.arrayContaining([
+                {
+                  assigned_to: 'user_1',
+                },
                 {
                   related_entity_type: 'patient',
                   related_entity_id: { in: ['patient_1'] },
@@ -172,62 +144,55 @@ describe('/api/dashboard/overdue GET', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await response.json();
+    expect(json).toMatchObject({
       summary: {
         unrecorded_visits: 1,
         unsent_reports: 1,
         overdue_tasks: 1,
         total: 3,
       },
-      unrecorded_visits: [
-        expect.objectContaining({
-          patient_name: '山田 太郎',
-        }),
-      ],
-      unsent_reports: [
-        expect.objectContaining({
-          report_type: 'physician_report',
-        }),
-      ],
-      overdue_tasks: [
-        expect.objectContaining({
-          title: '訪問準備が未完了です',
-        }),
-      ],
     });
+    expect(json).not.toHaveProperty('unrecorded_visits');
+    expect(json).not.toHaveProperty('unsent_reports');
+    expect(json).not.toHaveProperty('overdue_tasks');
   });
 
-  it('returns empty buckets when a scoped user has no assigned patients or cases', async () => {
+  it('keeps directly assigned task scope when a scoped user has no assigned patients or cases', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
     careCaseFindManyMock.mockResolvedValue([]);
-    visitScheduleFindManyMock.mockResolvedValue([]);
-    careReportFindManyMock.mockResolvedValue([]);
-    taskFindManyMock.mockResolvedValue([]);
-    patientFindManyMock.mockResolvedValue([]);
+    visitScheduleCountMock.mockResolvedValue(0);
+    careReportCountMock.mockResolvedValue(0);
+    taskCountMock.mockResolvedValue(0);
 
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+    expectSensitiveNoStore(response);
+    expect(visitScheduleCountMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           case_id: { in: [] },
         }),
       }),
     );
-    expect(careReportFindManyMock).toHaveBeenCalledWith(
+    expect(careReportCountMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           patient_id: { in: [] },
         }),
       }),
     );
-    expect(taskFindManyMock).toHaveBeenCalledWith(
+    expect(taskCountMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          AND: expect.arrayContaining([{ id: { in: [] } }]),
+          AND: expect.arrayContaining([
+            {
+              OR: [{ assigned_to: 'user_1' }],
+            },
+          ]),
         }),
       }),
     );
@@ -238,9 +203,6 @@ describe('/api/dashboard/overdue GET', () => {
         overdue_tasks: 0,
         total: 0,
       },
-      unrecorded_visits: [],
-      unsent_reports: [],
-      overdue_tasks: [],
     });
   });
 });
