@@ -232,6 +232,37 @@ describe('/api/pca-pump-rentals', () => {
     expect(pcaPumpRentalFindManyMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['empty', 'http://localhost/api/pca-pump-rentals?institution_id='],
+    ['blank', 'http://localhost/api/pca-pump-rentals?institution_id=%20%20'],
+  ])('rejects %s institution filters before querying rentals', async (_label, url) => {
+    const response = await GET(createRequest(url));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '貸出先医療機関の指定が不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pcaPumpRentalFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('trims valid institution filters before querying rentals', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/pca-pump-rentals?institution_id=%20institution_1%20'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpRentalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          institution_id: 'institution_1',
+        },
+      }),
+    );
+  });
+
   it('creates a rental and marks the pump as rented in the same org transaction', async () => {
     pcaPumpRentalCreateMock.mockResolvedValue({
       ...rentalRecord,

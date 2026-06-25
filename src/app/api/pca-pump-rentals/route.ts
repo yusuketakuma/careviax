@@ -35,6 +35,21 @@ function parseReturnInspectionStatusParam(value: string | undefined) {
   return { ok: false as const };
 }
 
+function parseInstitutionIdFilter(searchParams: URLSearchParams) {
+  const rawInstitutionId = searchParams.get('institution_id');
+  if (rawInstitutionId === null) return { ok: true as const, institutionId: undefined };
+
+  const institutionId = rawInstitutionId.trim();
+  if (!institutionId) {
+    return {
+      ok: false as const,
+      response: validationError('貸出先医療機関の指定が不正です'),
+    };
+  }
+
+  return { ok: true as const, institutionId };
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const statusParam = req.nextUrl.searchParams.get('status')?.trim();
@@ -44,7 +59,8 @@ export const GET = withAuthContext(
     const parsedInspectionStatus = parseReturnInspectionStatusParam(inspectionStatusParam);
     if (!parsedInspectionStatus.ok) return validationError('返却検品状態の指定が不正です');
 
-    const institutionId = req.nextUrl.searchParams.get('institution_id')?.trim();
+    const parsedInstitutionId = parseInstitutionIdFilter(req.nextUrl.searchParams);
+    if (!parsedInstitutionId.ok) return parsedInstitutionId.response;
 
     const rentals = await withOrgContext(
       ctx.orgId,
@@ -57,7 +73,9 @@ export const GET = withAuthContext(
               : parsedStatus.status
                 ? { status: parsedStatus.status }
                 : {}),
-            ...(institutionId ? { institution_id: institutionId } : {}),
+            ...(parsedInstitutionId.institutionId
+              ? { institution_id: parsedInstitutionId.institutionId }
+              : {}),
             ...(parsedInspectionStatus.status
               ? { return_inspection_status: parsedInspectionStatus.status }
               : {}),

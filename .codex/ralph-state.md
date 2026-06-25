@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2032 JST
+
+- current task: continue Codex-only backend/API hardening by fail-closing explicit blank `institution_id` filters on `/api/pca-pump-rentals`, after taking over Claude-owned queue management per the user's instruction.
+- files inspected: agmsg inbox and handoff notification; `git status --short --untracked-files=all`; `.agent-loop/STATE.md`; `.agent-loop/FEATURE_QUEUE.md`; `.agent-loop/BLOCKED.md`; `.agent-loop/PATCH_INBOX.md`; `.agent-loop/SUBAGENT_JOBS.md`; `.agent-loop/research/dispense-results-patch-authz-20260625.md`; `src/app/api/pca-pump-rentals/route.ts`; `src/app/api/pca-pump-rentals/route.test.ts`; `src/lib/api/response.ts`; gbrain `code_blast` for `src/app/api/pca-pump-rentals/route.ts::GET`.
+- files changed: `src/app/api/pca-pump-rentals/route.ts`, `src/app/api/pca-pump-rentals/route.test.ts`, and this Ralph state entry.
+- bugs found: `GET /api/pca-pump-rentals?institution_id=` and whitespace-only variants were treated as no institution filter, widening an explicit institution-scoped request to the latest 100 org-wide PCA pump rentals.
+- security risks found: reduced operational broad-read risk for PCA pump rental lists by rejecting present-but-empty `institution_id` before opening the org-scoped DB transaction. Existing `canReport`, `org_id` scope, status/inspection filters, valid trimmed institution filters, response shape, POST create/audit behavior, and fixed `take: 100` remain unchanged. No auth/authz, DB schema, migration, billing, frontend, external send, or destructive behavior changed.
+- performance issues found: blank institution filters now return before DB access. Valid list queries keep the existing bounded `take: 100`.
+- validation commands: baseline `pnpm exec vitest run src/app/api/pca-pump-rentals/route.test.ts --reporter=dot --testTimeout=30000`; post-change `pnpm exec vitest run src/app/api/pca-pump-rentals/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/pca-pump-rentals/route.ts src/app/api/pca-pump-rentals/route.test.ts`; `pnpm exec prettier --check src/app/api/pca-pump-rentals/route.ts src/app/api/pca-pump-rentals/route.test.ts`; `git diff --check -- src/app/api/pca-pump-rentals/route.ts src/app/api/pca-pump-rentals/route.test.ts`; long-gate `pnpm typecheck` under token `871360A1-FFC7-4EE9-98CE-EE82DC41E61F`.
+- validation results: baseline PCA pump rentals Vitest passed `11/11`; post-change route Vitest passed `14/14`; focused ESLint passed; focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, then continue the Codex-only backend/API hardening queue.
+- next action: drain agmsg, inspect staged paths, and commit the PCA pump rentals institution filter slice.
+
 ### 20260625-1924 JST
 
 - current task: implement backend-only outbound webhook event prefiltering after Claude ACKed `src/server/services/outbound-webhook.ts`, `src/server/services/outbound-webhook.test.ts`, and this Ralph state file. The unapproved `dispense-results/[id]` authorization WIP was manually reverted before this work and is not part of the slice. After the user switched the loop to Codex-only operation, Codex completed the gate without waiting for further peer review.
