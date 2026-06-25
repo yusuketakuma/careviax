@@ -183,6 +183,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'visits',
   },
   {
+    path: '/api/residual-medications',
+    methods: ['GET', 'POST'],
+    permission: 'canVisit',
+    description: '残薬一覧取得と登録',
+    area: 'visits',
+  },
+  {
     path: '/api/pharmacy-visit-requests',
     methods: ['GET'],
     permission: 'canManagePatientSharing',
@@ -250,6 +257,27 @@ export const routeCatalog: RouteCatalogEntry[] = [
     methods: ['PATCH'],
     permission: 'canDispense',
     description: 'MedicationCycle の状態遷移',
+    area: 'prescriptions',
+  },
+  {
+    path: '/api/medication-issues',
+    methods: ['GET', 'POST'],
+    permission: 'canVisit',
+    description: '服薬課題一覧取得と作成',
+    area: 'prescriptions',
+  },
+  {
+    path: '/api/medication-issues/:id',
+    methods: ['PATCH'],
+    permission: 'canVisit',
+    description: '服薬課題更新',
+    area: 'prescriptions',
+  },
+  {
+    path: '/api/medication-profiles',
+    methods: ['GET', 'POST'],
+    permission: 'canVisit',
+    description: '薬剤プロファイル一覧取得と作成',
     area: 'prescriptions',
   },
   {
@@ -383,6 +411,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     methods: ['GET', 'PATCH'],
     permission: 'canReport',
     description: '連携依頼詳細取得と更新',
+    area: 'reports',
+  },
+  {
+    path: '/api/communication-events',
+    methods: ['GET', 'POST'],
+    permission: 'canReport',
+    description: '患者・ケース連携イベント一覧取得と作成',
     area: 'reports',
   },
   {

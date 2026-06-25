@@ -33,6 +33,43 @@ describe('routeCatalog', () => {
     );
   });
 
+  it('documents high-risk communication and medication routes with exact runtime methods', () => {
+    expect(routeCatalog).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: '/api/communication-events',
+          methods: ['GET', 'POST'],
+          permission: 'canReport',
+          area: 'reports',
+        }),
+        expect.objectContaining({
+          path: '/api/medication-issues',
+          methods: ['GET', 'POST'],
+          permission: 'canVisit',
+          area: 'prescriptions',
+        }),
+        expect.objectContaining({
+          path: '/api/medication-issues/:id',
+          methods: ['PATCH'],
+          permission: 'canVisit',
+          area: 'prescriptions',
+        }),
+        expect.objectContaining({
+          path: '/api/medication-profiles',
+          methods: ['GET', 'POST'],
+          permission: 'canVisit',
+          area: 'prescriptions',
+        }),
+        expect.objectContaining({
+          path: '/api/residual-medications',
+          methods: ['GET', 'POST'],
+          permission: 'canVisit',
+          area: 'visits',
+        }),
+      ]),
+    );
+  });
+
   it('keeps high-risk catalog entries aligned with concrete route templates', () => {
     const templatePaths = new Set(API_ROUTE_TEMPLATES);
     const catalogPaths = new Set(routeCatalog.map((entry) => entry.path));
@@ -54,6 +91,7 @@ describe('routeCatalog', () => {
       '/api/external-access/:token/self-report',
       '/api/patient-self-reports',
       '/api/patient-self-reports/:id',
+      '/api/communication-events',
       '/api/partner-pharmacies',
       '/api/patient-share-cases',
       '/api/patient-share-cases/:id',
@@ -65,6 +103,10 @@ describe('routeCatalog', () => {
       '/api/pharmacy-cooperation-message-threads',
       '/api/patients/:id/prescriptions/export',
       '/api/interventions',
+      '/api/residual-medications',
+      '/api/medication-issues',
+      '/api/medication-issues/:id',
+      '/api/medication-profiles',
       '/api/referrals',
       '/api/partner-visit-records',
       '/api/partner-visit-records/:id/physician-report-draft',
