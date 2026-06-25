@@ -1,11 +1,15 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+
+const DEFAULT_TEMPLATE_LIST_LIMIT = 100;
+const MAX_TEMPLATE_LIST_LIMIT = 200;
 
 const templateTypeSchema = z.enum([
   'care_report',
@@ -19,6 +23,8 @@ const templateTypeSchema = z.enum([
 ]);
 
 const templateFormatSchema = z.enum(['html', 'pdf']);
+
+const targetRoleQuerySchema = z.string().trim().min(1).max(100);
 
 const createTemplateSchema = z.object({
   name: z.string().trim().min(1, 'テンプレート名は必須です'),
@@ -40,8 +46,16 @@ export const GET = withAuthContext(
   async (req, authCtx) => {
     const { searchParams } = new URL(req.url);
     const templateTypeRaw = searchParams.get('template_type');
-    const targetRole = searchParams.get('target_role');
+    const targetRoleRaw = searchParams.get('target_role');
     const parsedType = templateTypeRaw ? templateTypeSchema.safeParse(templateTypeRaw) : null;
+    const parsedTargetRole =
+      targetRoleRaw === null ? null : targetRoleQuerySchema.safeParse(targetRoleRaw);
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_TEMPLATE_LIST_LIMIT,
+      1,
+      MAX_TEMPLATE_LIST_LIMIT,
+    );
 
     if (parsedType && !parsedType.success) {
       return validationError('クエリパラメータが不正です', {
@@ -49,11 +63,17 @@ export const GET = withAuthContext(
       });
     }
 
+    if (parsedTargetRole && !parsedTargetRole.success) {
+      return validationError('クエリパラメータが不正です', {
+        target_role: ['target_role が不正です'],
+      });
+    }
+
     const templates = await prisma.template.findMany({
       where: {
         org_id: authCtx.orgId,
         ...(parsedType?.success ? { template_type: parsedType.data } : {}),
-        ...(targetRole ? { target_role: targetRole } : {}),
+        ...(parsedTargetRole?.success ? { target_role: parsedTargetRole.data } : {}),
       },
       orderBy: [
         { is_default: 'desc' },
@@ -61,6 +81,7 @@ export const GET = withAuthContext(
         { version: 'desc' },
         { updated_at: 'desc' },
       ],
+      take: limit,
       select: {
         id: true,
         name: true,

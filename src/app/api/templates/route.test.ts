@@ -81,6 +81,43 @@ describe('/api/templates', () => {
           org_id: 'org_1',
           template_type: 'care_report',
         }),
+        take: 100,
+      }),
+    );
+  });
+
+  it('bounds template list size and trims target_role query filters', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/templates?template_type=contract_document&target_role=%20patient_family%20&limit=5',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(templateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          template_type: 'contract_document',
+          target_role: 'patient_family',
+        }),
+        take: 5,
+      }),
+    );
+  });
+
+  it('clamps overly large template list limits', async () => {
+    const response = await GET(createRequest('http://localhost/api/templates?limit=9999'), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(templateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 200,
       }),
     );
   });
@@ -226,5 +263,15 @@ describe('/api/templates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+  });
+
+  it('returns validation error for blank target_role query', async () => {
+    const response = await GET(createRequest('http://localhost/api/templates?target_role=%20%20'), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(templateFindManyMock).not.toHaveBeenCalled();
   });
 });
