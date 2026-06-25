@@ -81,6 +81,11 @@ function createMalformedJsonRequest(url: string) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/tasks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -117,8 +122,10 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(taskFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        select: expect.objectContaining({ id: true, task_type: true, title: true }),
         where: expect.objectContaining({
           OR: [
             { assigned_to: 'user_1' },
@@ -137,6 +144,10 @@ describe('/api/tasks', () => {
         }),
       }),
     );
+    const findManyInput = taskFindManyMock.mock.calls[0]?.[0];
+    expect(findManyInput.select).not.toHaveProperty('metadata');
+    expect(findManyInput.select).not.toHaveProperty('org_id');
+    expect(findManyInput.select).not.toHaveProperty('dedupe_key');
   });
 
   it('filters open tasks by multiple task types without weakening assignment scope', async () => {
@@ -180,6 +191,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskFindManyMock).not.toHaveBeenCalled();
   });
@@ -189,9 +201,58 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskFindManyMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      'duplicate task_type',
+      'http://localhost/api/tasks?task_type=visit_preparation&task_type=visit_demand',
+      { task_type: ['task_type は1つだけ指定してください'] },
+    ],
+    [
+      'blank task_types',
+      'http://localhost/api/tasks?task_types=',
+      { task_types: ['task_types には1件以上の種別を指定してください'] },
+    ],
+    [
+      'blank status',
+      'http://localhost/api/tasks?status=',
+      { status: ['ステータスを指定してください'] },
+    ],
+    [
+      'padded assigned_to',
+      'http://localhost/api/tasks?assigned_to=%20user_1',
+      { assigned_to: ['担当者IDの形式が不正です'] },
+    ],
+    [
+      'blank related_entity_type',
+      'http://localhost/api/tasks?related_entity_type=',
+      { related_entity_type: ['関連リソース種別を指定してください'] },
+    ],
+    [
+      'too long related_entity_id',
+      `http://localhost/api/tasks?related_entity_id=${'x'.repeat(192)}`,
+      { related_entity_id: ['関連リソースIDの形式が不正です'] },
+    ],
+  ])(
+    'rejects malformed %s filters before resolving assignment scope',
+    async (_name, url, details) => {
+      const response = await GET(createRequest(url));
+      if (!response) throw new Error('response is undefined');
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '検索条件が不正です',
+        details,
+      });
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(taskFindManyMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('filters tasks by priority and decorates assigned user names', async () => {
     taskFindManyMock.mockResolvedValueOnce([
@@ -233,6 +294,66 @@ describe('/api/tasks', () => {
       ],
       hasMore: false,
     });
+  });
+
+  it('adds sensitive no-store headers to auth failures', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_UNAUTHENTICATED', message: '認証が必要です' },
+        {
+          status: 401,
+        },
+      ),
+    });
+
+    const response = await GET(createRequest('http://localhost/api/tasks'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not expose internal task fields in list responses', async () => {
+    taskFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'task_1',
+        org_id: 'org_1',
+        task_type: 'patient_self_report_followup',
+        title: '患者A: 服薬の困りごと',
+        description: '折返し対応',
+        status: 'pending',
+        priority: 'high',
+        assigned_to: null,
+        due_date: null,
+        sla_due_at: null,
+        completed_at: null,
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+        created_at: '2026-06-25T00:00:00.000Z',
+        updated_at: '2026-06-25T00:00:00.000Z',
+        dedupe_key: 'patient-self-report:report_1',
+        metadata: { patient_note: 'free text' },
+      },
+    ]);
+
+    const response = await GET(createRequest('http://localhost/api/tasks?status=pending'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body.data[0]).toMatchObject({
+      id: 'task_1',
+      task_type: 'patient_self_report_followup',
+      related_entity_id: 'patient_1',
+      can_complete_inline: true,
+    });
+    expect(body.data[0]).not.toHaveProperty('org_id');
+    expect(body.data[0]).not.toHaveProperty('dedupe_key');
+    expect(body.data[0]).not.toHaveProperty('metadata');
+    expect(body.data[0]).not.toHaveProperty('updated_at');
   });
 
   it('paginates task results and returns the next cursor', async () => {
@@ -291,6 +412,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(userFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
@@ -354,6 +476,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskFindManyMock).not.toHaveBeenCalled();
   });
@@ -363,6 +486,7 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskFindManyMock).not.toHaveBeenCalled();
   });

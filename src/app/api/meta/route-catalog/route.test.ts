@@ -84,6 +84,24 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'dispensing',
         }),
         expect.objectContaining({
+          path: '/api/tasks',
+          methods: ['GET', 'POST'],
+          permission: 'canVisit',
+          area: 'dashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/tasks/:id',
+          methods: ['PATCH'],
+          permission: 'canVisit',
+          area: 'dashboard',
+        }),
+        expect.objectContaining({
+          path: '/api/tasks/bulk',
+          methods: ['POST'],
+          permission: 'canVisit',
+          area: 'dashboard',
+        }),
+        expect.objectContaining({
           path: '/api/patient-share-cases',
           methods: ['GET'],
           permission: 'canManagePatientSharing',

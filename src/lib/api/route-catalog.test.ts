@@ -135,6 +135,9 @@ describe('routeCatalog', () => {
       '/api/pharmacy-visit-requests/:id/decision',
       '/api/pharmacy-drug-stocks/export',
       '/api/pharmacy-drug-stocks/template',
+      '/api/tasks',
+      '/api/tasks/:id',
+      '/api/tasks/bulk',
     ] as const) {
       expect(catalogPaths.has(path)).toBe(true);
       expect(templatePaths.has(path)).toBe(true);

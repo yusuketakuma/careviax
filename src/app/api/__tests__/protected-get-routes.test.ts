@@ -161,6 +161,7 @@ import { GET as prescriptionIntakesGet } from '../prescription-intakes/route';
 import { GET as prescriptionIntakeGet } from '../prescription-intakes/[id]/route';
 import { GET as residualMedicationsGet } from '../residual-medications/route';
 import { GET as setPlansGet } from '../set-plans/route';
+import { GET as tasksGet } from '../tasks/route';
 import { GET as tracingReportsGet } from '../tracing-reports/route';
 import { GET as visitRecordsGet } from '../visit-records/route';
 import { GET as visitRecordGet } from '../visit-records/[id]/route';
@@ -551,6 +552,10 @@ const routes: Array<{ name: string; handler: Handler }> = [
       ),
   },
   {
+    name: 'tasks GET',
+    handler: () => tasksGet(createRequest('http://localhost/api/tasks', { 'x-org-id': 'org_1' })),
+  },
+  {
     name: 'tracing-reports GET',
     handler: () =>
       tracingReportsGet(
@@ -727,6 +732,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
+        route.name === 'tasks GET' ||
         route.name === 'first-visit-documents GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -749,6 +755,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
+        route.name === 'tasks GET' ||
         route.name === 'first-visit-documents GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');

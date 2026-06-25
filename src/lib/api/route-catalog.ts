@@ -589,6 +589,27 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'dashboard',
   },
   {
+    path: '/api/tasks',
+    methods: ['GET', 'POST'],
+    permission: 'canVisit',
+    description: '運用タスク一覧取得と作成',
+    area: 'dashboard',
+  },
+  {
+    path: '/api/tasks/:id',
+    methods: ['PATCH'],
+    permission: 'canVisit',
+    description: '運用タスク更新',
+    area: 'dashboard',
+  },
+  {
+    path: '/api/tasks/bulk',
+    methods: ['POST'],
+    permission: 'canVisit',
+    description: '運用タスク一括完了',
+    area: 'dashboard',
+  },
+  {
     path: '/api/drug-masters',
     methods: ['GET'],
     permission: 'canAdmin',
