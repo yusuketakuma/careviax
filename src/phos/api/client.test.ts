@@ -739,6 +739,25 @@ describe('createPhosApiClient', () => {
     );
   });
 
+  it('preserves canonical validation errors returned by the local PH-OS proxy', async () => {
+    const proxyError = {
+      request_id: '',
+      error_code: 'VALIDATION_ERROR',
+      message_key: 'api.error.query_too_long',
+      details: { max_query_length: 8192 },
+    } satisfies ErrorResponse;
+    const fetchImpl = vi.fn(async () => jsonResponse(proxyError, { status: 414 }));
+    const client = createPhosApiClient({
+      baseUrl: '/api/phos',
+      fetchImpl,
+    });
+
+    await expect(client.getCards({ limit: 10 })).rejects.toMatchObject({
+      status: 414,
+      response: proxyError,
+    } satisfies Partial<PhosApiError>);
+  });
+
   it('rejects non-proxy Next.js /api base URLs for PH-OS business operations', () => {
     expect(() => createPhosApiClient({ baseUrl: 'https://app.example.com/api' })).toThrow(
       'PH-OS business API must not use Next.js /api routes',

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2135 JST
+
+- current task: continue Codex-only backend/API security hardening by adding local query bounds to the `/api/phos/*` same-origin proxy before upstream forwarding.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; local Next.js Route Handlers guide `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`; `src/app/api/phos/[...path]/route.ts`; `src/app/api/phos/[...path]/route.test.ts`; `src/phos/api/client.ts`; `src/phos/api/client.test.ts`; `src/phos/api/types.ts`; `src/phos/backend/input-validation.ts`; `src/phos/contracts/phos_contracts.ts`; `src/phos/infra/api-gateway-routes.ts`; gbrain call-graph outputs; security and API-contract subagent reports.
+- files changed: `src/app/api/phos/[...path]/route.ts`, `src/app/api/phos/[...path]/route.test.ts`, `src/phos/api/client.test.ts`, and this Ralph state entry.
+- bugs found: the local PHOS proxy authenticated and catalog-checked requests, then copied all incoming query pairs to the upstream URL without aggregate length, param-count, per-key, per-value, or duplicate-key bounds.
+- security risks found: reduced authenticated resource-boundary/availability risk by rejecting oversized PHOS proxy query strings before constructing/fetching the upstream URL. The guard now caps encoded query length at 8192, param pairs at 32, encoded key length at 64, encoded value length at 2048, and rejects duplicate query keys because the typed PHOS client and backend query readers use single-value params. New local proxy validation errors use canonical PHOS `ErrorResponse` shape with no raw query values in details, so same-origin clients preserve the error instead of normalizing it to `INTERNAL_ERROR`. Existing auth token lookup, route catalog allowlist, upstream base URL normalization, forwarded header allowlist, redirect blocking, timeout, normal query forwarding, and response header allowlist are preserved.
+- performance issues found: oversized query requests now fail before upstream URL append/fetch and before pushing large request targets into the PHOS upstream/API Gateway path. Normal typed-client queries remain unchanged.
+- validation commands: `pnpm exec vitest run 'src/app/api/phos/[...path]/route.test.ts' src/phos/api/client.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/api/phos/[...path]/route.ts' 'src/app/api/phos/[...path]/route.test.ts' src/phos/api/client.test.ts`; `pnpm exec prettier --check 'src/app/api/phos/[...path]/route.ts' 'src/app/api/phos/[...path]/route.test.ts' src/phos/api/client.test.ts`; `git diff --check -- 'src/app/api/phos/[...path]/route.ts' 'src/app/api/phos/[...path]/route.test.ts' src/phos/api/client.test.ts`; long-gate `pnpm typecheck` under token `EE9DA61B-DEFD-4EF4-9136-5878F2BB2263`.
+- validation results: focused PHOS proxy/client Vitest passed `2` files / `55` tests; focused ESLint passed; focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released. Security reviewer rated the missing bound Medium and suggested 8192/32/64/2048; API-contract reviewer confirmed client compatibility and requested canonical local proxy errors plus duplicate-key rejection, both implemented.
+- remaining work: stage only the PHOS proxy/client test files plus this Ralph state entry, commit the slice, send `DONE` to agmsg, close reviewer subagents, and continue backend/API hardening. Leave untracked `.agent-loop/plans/*` untouched.
+- next action: drain agmsg, run final scoped Prettier/diff-check including this Ralph state entry, and commit the PHOS proxy query bounds slice.
+
 ### 20260625-2127 JST
 
 - current task: continue Codex-only patient-sharing/API contract hardening by fail-closing explicit blank `status` filters on `GET /api/partner-pharmacies`.

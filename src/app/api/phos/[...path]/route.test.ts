@@ -86,6 +86,93 @@ describe('/api/phos proxy', () => {
     expect(headers.get('cookie')).toBeNull();
   });
 
+  it('rejects oversized query strings before reaching the upstream API', async () => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(request(`http://localhost/api/phos/cards?q=${'a'.repeat(8193)}`), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+
+    expect(response.status).toBe(414);
+    await expect(response.json()).resolves.toMatchObject({
+      request_id: '',
+      error_code: 'VALIDATION_ERROR',
+      message_key: 'api.error.query_too_long',
+      details: { max_query_length: 8192 },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects excessive query parameter counts before reaching the upstream API', async () => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const query = Array.from({ length: 33 }, (_, index) => `p${index}=1`).join('&');
+
+    const response = await GET(request(`http://localhost/api/phos/cards?${query}`), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      message_key: 'api.error.validation.generic',
+      details: { field: 'query', max_param_count: 32 },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate query keys before reaching the upstream API', async () => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await GET(request('http://localhost/api/phos/cards?limit=1&limit=50'), {
+      params: Promise.resolve({ path: ['cards'] }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      message_key: 'api.error.validation.generic',
+      details: { field: 'limit', reason: 'duplicate_query_key' },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized query keys and values before reaching the upstream API', async () => {
+    getAuthAccessTokenMock.mockResolvedValue('server-access-token');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const longKeyResponse = await GET(
+      request(`http://localhost/api/phos/cards?${'k'.repeat(65)}=1`),
+      {
+        params: Promise.resolve({ path: ['cards'] }),
+      },
+    );
+    expect(longKeyResponse.status).toBe(400);
+    await expect(longKeyResponse.json()).resolves.toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'query_key', max_key_length: 64 },
+    });
+
+    const longValueResponse = await GET(
+      request(`http://localhost/api/phos/cards?cursor=${'v'.repeat(2049)}`),
+      {
+        params: Promise.resolve({ path: ['cards'] }),
+      },
+    );
+    expect(longValueResponse.status).toBe(400);
+    await expect(longValueResponse.json()).resolves.toMatchObject({
+      error_code: 'VALIDATION_ERROR',
+      details: { field: 'cursor', max_value_length: 2048 },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects unauthenticated requests before reaching the upstream API', async () => {
     getAuthAccessTokenMock.mockResolvedValue(undefined);
     const fetchMock = vi.fn();

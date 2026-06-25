@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthAccessToken } from '@/lib/auth/config';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import type { ErrorResponse } from '@/phos/contracts/phos_contracts';
 import { PHOS_API_ROUTES, type PhosApiRoute } from '@/phos/infra/api-gateway-routes';
 import { createFetchTimeout } from '@/server/services/fetch-timeout';
 
@@ -15,10 +16,37 @@ const FORWARDED_REQUEST_HEADERS = ['accept', 'content-type', 'idempotency-key', 
 const FORWARDED_RESPONSE_HEADERS = ['content-type', 'etag', 'last-modified', 'x-request-id'];
 const DEFAULT_PHOS_PROXY_UPSTREAM_TIMEOUT_MS = 15_000;
 const MAX_PHOS_PROXY_UPSTREAM_TIMEOUT_MS = 60_000;
+const MAX_PHOS_PROXY_QUERY_LENGTH = 8192;
+const MAX_PHOS_PROXY_QUERY_PARAM_COUNT = 32;
+const MAX_PHOS_PROXY_QUERY_KEY_LENGTH = 64;
+const MAX_PHOS_PROXY_QUERY_VALUE_LENGTH = 2048;
 
 function jsonError(status: number, code: string, message: string) {
   return NextResponse.json(
     { code, message },
+    {
+      status,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+        Pragma: 'no-cache',
+      },
+    },
+  );
+}
+
+function phosProxyValidationError(
+  request: NextRequest,
+  status: number,
+  messageKey: string,
+  details: Record<string, unknown>,
+) {
+  return NextResponse.json(
+    {
+      request_id: request.headers.get('x-correlation-id') ?? '',
+      error_code: 'VALIDATION_ERROR',
+      message_key: messageKey,
+      details,
+    } satisfies ErrorResponse,
     {
       status,
       headers: {
@@ -116,6 +144,52 @@ function buildResponseHeaders(upstreamHeaders: Headers): Headers {
   return headers;
 }
 
+function encodedComponentLength(value: string): number {
+  return encodeURIComponent(value).length;
+}
+
+function validateProxyQuery(request: NextRequest): Response | null {
+  const encodedQuery = request.nextUrl.searchParams.toString();
+  if (encodedQuery.length > MAX_PHOS_PROXY_QUERY_LENGTH) {
+    return phosProxyValidationError(request, 414, 'api.error.query_too_long', {
+      max_query_length: MAX_PHOS_PROXY_QUERY_LENGTH,
+    });
+  }
+
+  const seen = new Set<string>();
+  let paramCount = 0;
+  for (const [key, value] of request.nextUrl.searchParams.entries()) {
+    paramCount += 1;
+    if (paramCount > MAX_PHOS_PROXY_QUERY_PARAM_COUNT) {
+      return phosProxyValidationError(request, 400, 'api.error.validation.generic', {
+        field: 'query',
+        max_param_count: MAX_PHOS_PROXY_QUERY_PARAM_COUNT,
+      });
+    }
+    if (seen.has(key)) {
+      return phosProxyValidationError(request, 400, 'api.error.validation.generic', {
+        field: key,
+        reason: 'duplicate_query_key',
+      });
+    }
+    seen.add(key);
+    if (encodedComponentLength(key) > MAX_PHOS_PROXY_QUERY_KEY_LENGTH) {
+      return phosProxyValidationError(request, 400, 'api.error.validation.generic', {
+        field: 'query_key',
+        max_key_length: MAX_PHOS_PROXY_QUERY_KEY_LENGTH,
+      });
+    }
+    if (encodedComponentLength(value) > MAX_PHOS_PROXY_QUERY_VALUE_LENGTH) {
+      return phosProxyValidationError(request, 400, 'api.error.validation.generic', {
+        field: key,
+        max_value_length: MAX_PHOS_PROXY_QUERY_VALUE_LENGTH,
+      });
+    }
+  }
+
+  return null;
+}
+
 async function proxyPhosRequest(request: NextRequest, context: PhosProxyRouteContext) {
   const [{ path }, accessToken] = await Promise.all([context.params, getAuthAccessToken(request)]);
   if (!accessToken) {
@@ -126,6 +200,9 @@ async function proxyPhosRequest(request: NextRequest, context: PhosProxyRouteCon
   if (!proxyPath || !findCatalogRoute(request.method, proxyPath)) {
     return jsonError(404, 'PHOS_ROUTE_NOT_FOUND', 'PH-OS API route is not available');
   }
+
+  const queryError = validateProxyQuery(request);
+  if (queryError) return queryError;
 
   const upstreamBaseUrl = normalizeUpstreamBaseUrl();
   if (!upstreamBaseUrl) {
