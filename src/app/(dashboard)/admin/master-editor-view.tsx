@@ -56,11 +56,14 @@ export function MasterEditorView({
                   <button
                     key={category}
                     type="button"
+                    disabled
+                    aria-disabled="true"
                     className={[
                       'min-h-11 w-full rounded-xl border px-4 text-left text-base font-medium',
                       active
                         ? 'border-primary/20 bg-primary/10 text-primary'
-                        : 'border-border bg-background text-foreground',
+                        : 'border-border bg-muted/35 text-muted-foreground',
+                      'disabled:cursor-not-allowed disabled:opacity-80',
                     ].join(' ')}
                   >
                     {category}
@@ -79,10 +82,12 @@ export function MasterEditorView({
                 <button
                   key={name}
                   type="button"
-                  className="flex min-h-14 w-full items-center justify-between rounded-xl border border-border bg-background px-4 text-left"
+                  disabled
+                  aria-disabled="true"
+                  className="flex min-h-14 w-full cursor-not-allowed items-center justify-between rounded-xl border border-border bg-muted/30 px-4 text-left opacity-90"
                 >
                   <span className="font-bold text-foreground">{name}</span>
-                  <StateBadge role="done">有効</StateBadge>
+                  <StateBadge role="readonly">サンプル</StateBadge>
                 </button>
               ))}
             </div>
@@ -99,13 +104,29 @@ export function MasterEditorView({
                   className="grid items-center gap-4 text-sm font-bold text-muted-foreground sm:grid-cols-[120px_minmax(0,1fr)]"
                 >
                   <span>{field}</span>
-                  <Input className="h-11 rounded-xl" aria-label={field} />
+                  <Input
+                    className="h-11 rounded-xl"
+                    aria-label={field}
+                    aria-readonly="true"
+                    disabled
+                    readOnly
+                    placeholder="サンプル表示では編集できません"
+                  />
                 </label>
               ))}
             </div>
             <div className="flex justify-end pt-4">
-              <Button className="min-h-11 min-w-44">保存する</Button>
+              <Button
+                className="min-h-11 min-w-44"
+                disabled
+                aria-describedby="master-editor-save-note"
+              >
+                保存する
+              </Button>
             </div>
+            <p id="master-editor-save-note" className="text-right text-xs text-muted-foreground">
+              サンプル表示のため保存できません。
+            </p>
           </CardContent>
         </Card>
       </div>

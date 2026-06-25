@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-0918 JST
+
+- current task: implement Codex-owned `F-20260625-admin-master-editor-sample-affordance` after Claude `LOCK_GRANT`, covering the shared admin `MasterEditorView` used by `/admin/staff`, `/admin/facilities`, `/admin/external-professionals`, and `/admin/vehicles`.
+- files inspected: agmsg inbox/Claude coordination for `F-20260625-admin-master-editor-sample-affordance`; `git status --short --branch --untracked-files=all`; `docs/ui-ux-design-guidelines.md`; `src/app/(dashboard)/admin/master-editor-view.tsx`; `src/components/ui/state-badge.tsx`; `src/lib/constants/status-tokens.ts`; existing `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx` coverage for `MasterEditorView`; gbrain `code_callers` / `code_blast` output for `MasterEditorView`; and this Ralph state file.
+- files changed: `src/app/(dashboard)/admin/master-editor-view.tsx`, `src/app/(dashboard)/admin/master-editor-view.test.tsx`, and this Ralph state entry.
+- bugs found: `MasterEditorView` is an explicitly fixed sample UI, but its fabricated rows were displayed with `StateBadge role="done">有効</StateBadge`, category/row controls looked actionable, detail fields were editable, and the save button looked enabled. That made sample rows appear like active real data and implied edits could be saved even though the page states real data connection is not implemented.
+- security risks found: none introduced or changed. The patch is UI-only and does not change data loading, API routes, DB queries, auth/authz, RLS, audit logs, PHI projection, logging, secrets, billing/payment, deploy, or destructive behavior.
+- performance issues found: no runtime performance path changed. The patch changes sample-only affordances and adds focused tests.
+- validation commands: focused `pnpm exec vitest run 'src/app/(dashboard)/admin/master-editor-view.test.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`; focused `pnpm exec prettier --check 'src/app/(dashboard)/admin/master-editor-view.tsx' 'src/app/(dashboard)/admin/master-editor-view.test.tsx'`; focused `pnpm exec eslint 'src/app/(dashboard)/admin/master-editor-view.tsx' 'src/app/(dashboard)/admin/master-editor-view.test.tsx'`; focused `git diff --check` for the two master-editor files; long-gate-locked `pnpm typecheck`.
+- validation results: initial focused Vitest failed because the sample-row accessible name did not include a space between row label and badge text; the regex was corrected. Final focused Vitest passed `63/63`; focused Prettier, ESLint, and diff-check passed. Claude reported an older transient `toHaveAttribute` type error from the WIP, but the current file had already been corrected to `getAttribute`; `pnpm typecheck` then passed under local long-gate lock after `next typegen` and both TypeScript projects completed successfully. Claude independently approved the slice after reviewer-audit, confirming readonly/sample badge semantics, disabled/read-only affordances, UI-only scope, plain DOM matcher compliance, and mutation teeth.
+- remaining work: commit only the two master-editor files plus this ledger entry. Do not stage Claude-owned `master-hub-content` files or untracked `__teeth_tmp__` artifacts.
+- next action: drain agmsg, stage only the owned master-editor files plus `.codex/ralph-state.md`, commit the approved slice, notify Claude with the commit hash, then select the next non-conflicting left-menu/frequent UIUX slice.
+
 ### 20260625-0906 JST
 
 - current task: implement Codex-owned `F-20260625-handoff-incoming-empty-neutral` after Claude `LOCK_GRANT`, covering the left-menu `/handoff` incoming handoff empty state.
