@@ -233,6 +233,20 @@ describe('MasterHubContent', () => {
     expect(searchLink.getAttribute('href')).toBe('/admin/data-explorer');
   });
 
+  it('renders each master card title as a level-2 heading under the page h1 (no skipped level)', () => {
+    render(<MasterHubContent />);
+
+    // ページ見出しは h1「マスター」。
+    expect(screen.getByRole('heading', { level: 1, name: 'マスター' })).toBeTruthy();
+
+    // カードタイトルは h2（h1 直下で h2 を飛ばして h3 にしない）。
+    const cards = screen.getAllByTestId('master-hub-card');
+    const cardHeading = within(cards[0]).getByRole('heading', { level: 2 });
+    expect(cardHeading.textContent).toBe('医薬品マスター');
+    // teeth: カード内に h3 見出しは存在しない（h2 へ昇格済み）。
+    expect(within(cards[0]).queryByRole('heading', { level: 3 })).toBeNull();
+  });
+
   it('starts the master hub query even before the org store is hydrated', () => {
     useOrgIdMock.mockReturnValue('');
 

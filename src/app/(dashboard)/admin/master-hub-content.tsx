@@ -66,7 +66,8 @@ function MasterCard({ card }: { card: MasterHubCard }) {
       data-status={card.status}
     >
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-[15px] font-bold leading-6 text-foreground">{card.title}</h3>
+        {/* ページ h1「マスター」直下のカード見出し。h2 を飛ばさない（guideline 見出し階層）。 */}
+        <h2 className="text-[15px] font-bold leading-6 text-foreground">{card.title}</h2>
         <StateBadge role={STATUS_ROLE[card.status]} className="shrink-0">
           {statusBadgeLabel(card)}
         </StateBadge>
