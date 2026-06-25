@@ -973,7 +973,7 @@ export async function syncPatientMcsTimeline({
 
       if (existingLink?.mcs_project_id && existingLink.mcs_project_id !== scraped.mcsProjectId) {
         await tx.patientMcsMessage.deleteMany({
-          where: { link_id: link.id },
+          where: { link_id: link.id, org_id: orgId },
         });
         await txWithSummary.patientMcsSummary.deleteMany({
           where: { patient_id: patientId, org_id: orgId },
@@ -1031,6 +1031,7 @@ export async function syncPatientMcsTimeline({
         await tx.patientMcsMessage.deleteMany({
           where: {
             link_id: link.id,
+            org_id: orgId,
             source_message_id: { notIn: currentMessageIds },
           },
         });
