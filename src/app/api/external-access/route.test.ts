@@ -307,6 +307,31 @@ describe('/api/external-access GET', () => {
     });
   });
 
+  it.each([
+    ['empty patient_id', 'patient_id='],
+    ['blank patient_id', 'patient_id=%20%20'],
+  ])('rejects %s before grant visibility reads', async (_label, query) => {
+    currentRole.value = 'pharmacist';
+
+    const response = await GET(
+      createGetRequest(`http://localhost/api/external-access?${query}`),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { patient_id: ['患者IDを指定してください'] },
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(externalAccessGrantFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientSelfReportGroupByMock).not.toHaveBeenCalled();
+  });
+
   it('lists external access management metadata for a role allowed to send care reports', async () => {
     currentRole.value = 'pharmacist';
 

@@ -128,6 +128,21 @@ function optionalTrimmedSearchParam(value: string | null) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalTrimmedSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError('検索条件が不正です', { [name]: [message] })),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 function maskExternalAccessContact(value: string | null) {
   return maskContactValueForAudit(value, { phoneLeadingDigits: 3 });
 }
@@ -276,7 +291,13 @@ async function listExternalGrantsForContext(args: {
 export const GET = withAuthContext(
   async (req: NextRequest, ctx) => {
     const { searchParams } = new URL(req.url);
-    const patientId = optionalTrimmedSearchParam(searchParams.get('patient_id'));
+    const patientIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'patient_id',
+      '患者IDを指定してください',
+    );
+    if (!patientIdResult.ok) return patientIdResult.response;
+    const patientId = patientIdResult.value;
     const cursor = optionalTrimmedSearchParam(searchParams.get('cursor'));
     const grantPage = await listExternalGrantsForContext({
       orgId: ctx.orgId,
