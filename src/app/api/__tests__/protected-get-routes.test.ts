@@ -139,6 +139,7 @@ import { GET as billingCandidatesExportGet } from '../billing-candidates/export/
 import { GET as businessHolidaysGet } from '../business-holidays/route';
 import { GET as careReportsGet } from '../care-reports/route';
 import { GET as careReportGet } from '../care-reports/[id]/route';
+import { GET as careReportsAnalyticsGet } from '../care-reports/analytics/route';
 import { GET as casesGet } from '../cases/route';
 import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
@@ -299,6 +300,15 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       careReportGet(
         createRequest('http://localhost/api/care-reports/report_1', { 'x-org-id': 'org_1' }),
         { params: Promise.resolve({ id: 'report_1' }) },
+      ),
+  },
+  {
+    name: 'care-reports/analytics GET',
+    handler: () =>
+      careReportsAnalyticsGet(
+        createRequest('http://localhost/api/care-reports/analytics?overdue_days=7', {
+          'x-org-id': 'org_1',
+        }),
       ),
   },
   {
@@ -897,6 +907,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
+        route.name === 'care-reports/analytics GET' ||
         route.name === 'cases GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
@@ -939,6 +950,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
+        route.name === 'care-reports/analytics GET' ||
         route.name === 'cases GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||

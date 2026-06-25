@@ -124,6 +124,52 @@ describe('report-reminders service', () => {
       }),
     ]);
     expect(JSON.stringify(result.overdue_waiting)).not.toContain('doctor@example.com');
+    expect(deliveryRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          report: { org_id: 'org_1' },
+        }),
+      }),
+    );
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: { in: ['patient_1', 'patient_2', 'patient_3'] },
+        }),
+      }),
+    );
+  });
+
+  it('uses an injected scoped database client for analytics reads', async () => {
+    const scopedDb = {
+      deliveryRecord: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      patient: {
+        findMany: vi.fn(),
+      },
+    };
+
+    await getCareReportDeliveryAnalytics(
+      'org_1',
+      {
+        now: new Date('2026-03-12T00:00:00.000Z'),
+      },
+      scopedDb as never,
+    );
+
+    expect(scopedDb.deliveryRecord.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          report: { org_id: 'org_1' },
+        }),
+      }),
+    );
+    expect(scopedDb.patient.findMany).not.toHaveBeenCalled();
+    expect(deliveryRecordFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates deduplicated follow-up tasks for overdue response-waiting deliveries', async () => {

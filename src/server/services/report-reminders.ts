@@ -10,6 +10,8 @@ type Tx = {
   task: Pick<Prisma.TransactionClient['task'], 'create' | 'updateMany' | 'upsert'>;
 };
 
+type DeliveryAnalyticsDb = Pick<Prisma.TransactionClient, 'deliveryRecord' | 'patient'>;
+
 type DeliveryAnalyticsOptions = {
   months?: number;
   overdueDays?: number;
@@ -33,6 +35,7 @@ function maskDeliveryContact(value: string | null) {
 export async function getCareReportDeliveryAnalytics(
   orgId: string,
   options: DeliveryAnalyticsOptions = {},
+  db: DeliveryAnalyticsDb = prisma,
 ) {
   const now = options.now ?? new Date();
   const overdueDays = options.overdueDays ?? 7;
@@ -40,9 +43,10 @@ export async function getCareReportDeliveryAnalytics(
   const currentMonth = startOfMonth(now);
   const rangeStart = startOfMonth(subMonths(currentMonth, months - 1));
 
-  const deliveries = await prisma.deliveryRecord.findMany({
+  const deliveries = await db.deliveryRecord.findMany({
     where: {
       org_id: orgId,
+      report: { org_id: orgId },
       OR: [
         { created_at: { gte: rangeStart } },
         {
@@ -79,7 +83,7 @@ export async function getCareReportDeliveryAnalytics(
   const patients =
     patientIds.length === 0
       ? []
-      : await prisma.patient.findMany({
+      : await db.patient.findMany({
           where: {
             org_id: orgId,
             id: { in: patientIds },

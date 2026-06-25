@@ -97,6 +97,7 @@ describe('routeCatalog', () => {
       '/api/care-reports/:id',
       '/api/care-reports/:id/pdf',
       '/api/care-reports/:id/print-audit',
+      '/api/care-reports/analytics',
       '/api/communication-requests/export',
       '/api/external-access',
       '/api/external-access/:token',

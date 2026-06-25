@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requireAuthContextMock, getCareReportDeliveryAnalyticsMock } = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  getCareReportDeliveryAnalyticsMock: vi.fn(),
-}));
+const { requireAuthContextMock, getCareReportDeliveryAnalyticsMock, withOrgContextMock } =
+  vi.hoisted(() => ({
+    requireAuthContextMock: vi.fn(),
+    getCareReportDeliveryAnalyticsMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -14,10 +16,19 @@ vi.mock('@/server/services/report-reminders', () => ({
   getCareReportDeliveryAnalytics: getCareReportDeliveryAnalyticsMock,
 }));
 
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
 import { GET } from './route';
 
 function createRequest(url = 'http://localhost/api/care-reports/analytics') {
   return new NextRequest(url);
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/care-reports/analytics GET', () => {
@@ -30,6 +41,9 @@ describe('/api/care-reports/analytics GET', () => {
         role: 'pharmacist',
       },
     });
+    withOrgContextMock.mockImplementation((_orgId, callback) =>
+      callback({ __scopedTx: true } as never),
+    );
     getCareReportDeliveryAnalyticsMock.mockResolvedValue({
       summary: {
         current_month: '2026-03',
@@ -49,14 +63,26 @@ describe('/api/care-reports/analytics GET', () => {
 
   it('returns report delivery analytics with threshold parsing', async () => {
     const response = await GET(
-      createRequest('http://localhost/api/care-reports/analytics?overdue_days=%2010%20'),
+      createRequest('http://localhost/api/care-reports/analytics?overdue_days=10'),
     );
 
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');
     expect(ensuredResponse.status).toBe(200);
-    expect(getCareReportDeliveryAnalyticsMock).toHaveBeenCalledWith('org_1', {
-      overdueDays: 10,
+    expectSensitiveNoStore(ensuredResponse);
+    expect(getCareReportDeliveryAnalyticsMock).toHaveBeenCalledWith(
+      'org_1',
+      {
+        overdueDays: 10,
+      },
+      { __scopedTx: true },
+    );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
     });
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canSendCareReport',
@@ -79,6 +105,7 @@ describe('/api/care-reports/analytics GET', () => {
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');
     expect(ensuredResponse.status).toBe(400);
+    expectSensitiveNoStore(ensuredResponse);
     await expect(ensuredResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'クエリパラメータが不正です',
@@ -87,6 +114,34 @@ describe('/api/care-reports/analytics GET', () => {
       },
     });
     expect(getCareReportDeliveryAnalyticsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'padded overdue_days',
+      'http://localhost/api/care-reports/analytics?overdue_days=%2010%20',
+      { overdue_days: ['overdue_days は整数で指定してください'] },
+    ],
+    [
+      'duplicate overdue_days',
+      'http://localhost/api/care-reports/analytics?overdue_days=7&overdue_days=10',
+      { overdue_days: ['overdue_days は1つだけ指定してください'] },
+    ],
+  ])('rejects %s before loading analytics', async (_name, url, details) => {
+    const response = await GET(createRequest(url));
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(400);
+    expectSensitiveNoStore(ensuredResponse);
+    await expect(ensuredResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details,
+    });
+    expect(getCareReportDeliveryAnalyticsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('requires care report send permission before loading delivery contacts', async () => {
@@ -101,6 +156,26 @@ describe('/api/care-reports/analytics GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(getCareReportDeliveryAnalyticsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 envelope when analytics loading throws', async () => {
+    getCareReportDeliveryAnalyticsMock.mockRejectedValueOnce(
+      new Error('raw physician analytics failure'),
+    );
+
+    const response = await GET(createRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(payload)).not.toContain('raw physician analytics failure');
   });
 });
