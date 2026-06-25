@@ -596,6 +596,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'shifts',
   },
   {
+    path: '/api/dashboard/dispensing-stats',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '調剤ダッシュボード指標',
+    area: 'dashboard',
+  },
+  {
     path: '/api/dashboard/overdue',
     methods: ['GET'],
     permission: 'canViewDashboard',

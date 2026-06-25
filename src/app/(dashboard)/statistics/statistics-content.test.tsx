@@ -34,10 +34,6 @@ function dispensingSuccess() {
       pendingTasks: 5,
       auditPendingTasks: 2,
       completedToday: 7,
-      completedLast7Days: [
-        { date: '2026-06-14', count: 1 },
-        { date: '2026-06-15', count: 3 },
-      ],
     }),
     { status: 200 },
   );
@@ -187,7 +183,6 @@ describe('StatisticsContent', () => {
               pendingTasks: -5,
               auditPendingTasks: 2.5,
               completedToday: 7,
-              completedLast7Days: [{ date: '2026-06-15', count: -1 }],
             }),
             { status: 200 },
           ),
@@ -217,7 +212,6 @@ describe('StatisticsContent', () => {
                 pendingTasks: 5,
                 auditPendingTasks: 2,
                 completedToday: 7,
-                completedLast7Days: [],
               },
             }),
             { status: 200 },

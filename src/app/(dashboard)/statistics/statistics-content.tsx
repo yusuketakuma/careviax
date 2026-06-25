@@ -17,7 +17,7 @@ import {
 
 // V1 direct-fetch allowlist: the ONLY endpoint the hub fetches on load.
 // /api/dashboard/dispensing-stats is org-scoped (withAuthContext + org_id=ctx.orgId),
-// permission-gated (canViewDashboard), and returns counts/trend only (no PHI).
+// permission-gated (canViewDashboard), and returns aggregate counts only (no PHI).
 const DISPENSING_STATS_URL = '/api/dashboard/dispensing-stats';
 
 // NOTE: success() = NextResponse.json(data) (src/lib/api/response.ts) returns the RAW object,
@@ -30,7 +30,6 @@ const dispensingStatsSchema = z.object({
   pendingTasks: nonNegativeCount,
   auditPendingTasks: nonNegativeCount,
   completedToday: nonNegativeCount,
-  completedLast7Days: z.array(z.object({ date: z.string(), count: nonNegativeCount })),
 });
 
 type DispensingKpiResult =

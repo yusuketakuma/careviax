@@ -135,6 +135,7 @@ import { GET as communicationRequestsExportGet } from '../communication-requests
 import { GET as conferenceNotesGet } from '../conference-notes/route';
 import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
 import { GET as dashboardCockpitGet } from '../dashboard/cockpit/route';
+import { GET as dashboardDispensingStatsGet } from '../dashboard/dispensing-stats/route';
 import { GET as dashboardWorkflowGet } from '../dashboard/workflow/route';
 import { GET as dashboardMedicationDeadlinesGet } from '../dashboard/medication-deadlines/route';
 import { GET as dashboardMonthlyStatsGet } from '../dashboard/monthly-stats/route';
@@ -338,6 +339,14 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () =>
       dashboardCockpitGet(
         createRequest('http://localhost/api/dashboard/cockpit', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dashboard/dispensing-stats GET',
+    handler: () =>
+      dashboardDispensingStatsGet(
+        createRequest('http://localhost/api/dashboard/dispensing-stats', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
       ),
   },
@@ -783,6 +792,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'set-plans GET' ||
         route.name === 'dashboard/clerk-support GET' ||
         route.name === 'dashboard/cockpit GET' ||
+        route.name === 'dashboard/dispensing-stats GET' ||
         route.name === 'dashboard/workflow GET' ||
         route.name === 'dashboard/medication-deadlines GET' ||
         route.name === 'dashboard/monthly-stats GET'
@@ -817,6 +827,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'set-plans GET' ||
         route.name === 'dashboard/clerk-support GET' ||
         route.name === 'dashboard/cockpit GET' ||
+        route.name === 'dashboard/dispensing-stats GET' ||
         route.name === 'dashboard/workflow GET' ||
         route.name === 'dashboard/medication-deadlines GET' ||
         route.name === 'dashboard/monthly-stats GET'

@@ -1,13 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, dispenseTaskCountMock, dispenseTaskFindManyMock } =
-  vi.hoisted(() => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
-    dispenseTaskCountMock: vi.fn(),
-    dispenseTaskFindManyMock: vi.fn(),
-  }));
+const { authMock, membershipFindFirstMock, dispenseTaskCountMock } = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  dispenseTaskCountMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -20,7 +18,6 @@ vi.mock('@/lib/db/client', () => ({
     },
     dispenseTask: {
       count: dispenseTaskCountMock,
-      findMany: dispenseTaskFindManyMock,
     },
   },
 }));
@@ -36,6 +33,11 @@ function createRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/dashboard/dispensing-stats', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,20 +47,43 @@ describe('/api/dashboard/dispensing-stats', () => {
       .mockResolvedValueOnce(3)
       .mockResolvedValueOnce(2)
       .mockResolvedValueOnce(5);
-    dispenseTaskFindManyMock.mockResolvedValue([
-      { updated_at: new Date() },
-      { updated_at: new Date() },
-    ]);
   });
 
   it('returns dispensing dashboard metrics', async () => {
     const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    expectSensitiveNoStore(response);
+    const json = await response.json();
+    expect(json).toMatchObject({
       pendingTasks: 3,
       auditPendingTasks: 2,
       completedToday: 5,
+    });
+    expect(json).not.toHaveProperty('completedLast7Days');
+    expect(dispenseTaskCountMock).toHaveBeenCalledTimes(3);
+    expect(dispenseTaskCountMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        org_id: 'org_1',
+        status: 'pending',
+      },
+    });
+    expect(dispenseTaskCountMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        status: 'completed',
+        audits: { none: {} },
+      },
+    });
+    expect(dispenseTaskCountMock).toHaveBeenNthCalledWith(3, {
+      where: {
+        org_id: 'org_1',
+        status: 'completed',
+        updated_at: {
+          gte: expect.any(Date),
+          lte: expect.any(Date),
+        },
+      },
     });
   });
 });

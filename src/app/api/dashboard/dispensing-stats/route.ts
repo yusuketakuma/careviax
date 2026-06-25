@@ -1,9 +1,10 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
-import { subDays, startOfDay, endOfDay, format } from 'date-fns';
+import { startOfDay, endOfDay } from 'date-fns';
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx) => {
     const now = new Date();
     const todayStart = startOfDay(now);
@@ -37,40 +38,10 @@ export const GET = withAuthContext(
       }),
     ]);
 
-    // 直近7日の日別完了数
-    const sevenDaysAgo = startOfDay(subDays(now, 6));
-    const recentTasks = await prisma.dispenseTask.findMany({
-      where: {
-        org_id: ctx.orgId,
-        status: 'completed',
-        updated_at: { gte: sevenDaysAgo },
-      },
-      select: { updated_at: true },
-    });
-
-    // Group by date
-    const countsByDate: Record<string, number> = {};
-    for (let i = 6; i >= 0; i--) {
-      const d = subDays(now, i);
-      countsByDate[format(d, 'yyyy-MM-dd')] = 0;
-    }
-    for (const task of recentTasks) {
-      const dateKey = format(task.updated_at, 'yyyy-MM-dd');
-      if (dateKey in countsByDate) {
-        countsByDate[dateKey]++;
-      }
-    }
-
-    const completedLast7Days = Object.entries(countsByDate).map(([date, count]) => ({
-      date,
-      count,
-    }));
-
     return success({
       pendingTasks,
       auditPendingTasks: completedWithNoAudit,
       completedToday,
-      completedLast7Days,
     });
   },
   {
@@ -78,3 +49,6 @@ export const GET = withAuthContext(
     message: 'ダッシュボードの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));
