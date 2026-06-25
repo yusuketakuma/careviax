@@ -43,6 +43,12 @@ describe('routeCatalog', () => {
           area: 'reports',
         }),
         expect.objectContaining({
+          path: '/api/care-reports/today-workspace',
+          methods: ['GET'],
+          permission: 'canReport',
+          area: 'reports',
+        }),
+        expect.objectContaining({
           path: '/api/medication-issues',
           methods: ['GET', 'POST'],
           permission: 'canVisit',
@@ -110,6 +116,7 @@ describe('routeCatalog', () => {
       '/api/care-reports/:id/pdf',
       '/api/care-reports/:id/print-audit',
       '/api/care-reports/analytics',
+      '/api/care-reports/today-workspace',
       '/api/management-plans',
       '/api/management-plans/:id',
       '/api/communication-requests/export',

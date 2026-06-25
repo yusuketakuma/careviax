@@ -1,6 +1,8 @@
+import type { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
@@ -50,6 +52,11 @@ const OPEN_ISSUE_SEVERITY_RANK: Record<ReportOpenIssue['severity'], number> = {
 const dateQuerySchema = z.object({
   date: dateKeySchema('日付はYYYY-MM-DD形式で指定してください').optional(),
 });
+
+function findInvalidTodayWorkspaceQueryParams(searchParams: URLSearchParams) {
+  if (searchParams.getAll('date').length <= 1) return null;
+  return { date: ['date は1つだけ指定してください'] };
+}
 
 /** 報告種別 → 宛先を含む既定タイトル(content.title が無いときのフォールバック) */
 const REPORT_TYPE_FALLBACK_TITLES: Record<string, string> = {
@@ -382,9 +389,14 @@ function dedupeBillingCandidateIssues(
   });
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
+    const invalidQueryParams = findInvalidTodayWorkspaceQueryParams(searchParams);
+    if (invalidQueryParams) {
+      return validationError('クエリパラメータが不正です', invalidQueryParams);
+    }
+
     const parsed = dateQuerySchema.safeParse({
       date: searchParams.get('date') ?? undefined,
     });
@@ -849,7 +861,7 @@ export const GET = withAuthContext(
 
         return responseData;
       },
-      { maxWaitMs: 10_000, timeoutMs: 20_000 },
+      { maxWaitMs: 10_000, timeoutMs: 20_000, requestContext: ctx },
     );
 
     return success({ data });
@@ -859,3 +871,14 @@ export const GET = withAuthContext(
     message: '報告書の閲覧権限がありません',
   },
 );
+
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<Record<string, string>> },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}

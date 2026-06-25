@@ -140,6 +140,7 @@ import { GET as businessHolidaysGet } from '../business-holidays/route';
 import { GET as careReportsGet } from '../care-reports/route';
 import { GET as careReportGet } from '../care-reports/[id]/route';
 import { GET as careReportsAnalyticsGet } from '../care-reports/analytics/route';
+import { GET as careReportsTodayWorkspaceGet } from '../care-reports/today-workspace/route';
 import { GET as casesGet } from '../cases/route';
 import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
@@ -311,6 +312,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         createRequest('http://localhost/api/care-reports/analytics?overdue_days=7', {
           'x-org-id': 'org_1',
         }),
+      ),
+  },
+  {
+    name: 'care-reports/today-workspace GET',
+    handler: () =>
+      careReportsTodayWorkspaceGet(
+        createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-12', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
       ),
   },
   {
@@ -927,6 +938,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'care-reports/analytics GET' ||
+        route.name === 'care-reports/today-workspace GET' ||
         route.name === 'cases GET' ||
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||
@@ -973,6 +985,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'care-reports/analytics GET' ||
+        route.name === 'care-reports/today-workspace GET' ||
         route.name === 'cases GET' ||
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||

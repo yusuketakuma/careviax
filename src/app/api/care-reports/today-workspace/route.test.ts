@@ -35,6 +35,11 @@ function createRequest(url: string) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 type TxOverrides = {
   schedules?: unknown[];
   draftReports?: unknown[];
@@ -116,6 +121,7 @@ describe('/api/care-reports/today-workspace', () => {
     const req = createRequest('http://localhost/api/care-reports/today-workspace');
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(200);
+    expectSensitiveNoStore(res!);
     const json = await res!.json();
     expect(json.data.draft_rows).toEqual([]);
     expect(json.data.created_reports).toEqual([]);
@@ -127,6 +133,17 @@ describe('/api/care-reports/today-workspace', () => {
       created: 0,
       open_issues: 0,
     });
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      }),
+    );
   });
 
   it('builds draft rows with recipient labels, narcotic note and facility batching', async () => {
@@ -1273,12 +1290,51 @@ describe('/api/care-reports/today-workspace', () => {
     const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-6-11');
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(400);
+    expectSensitiveNoStore(res!);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 on impossible date params', async () => {
     const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-02-31');
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(400);
+    expectSensitiveNoStore(res!);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate date params before workspace reads', async () => {
+    const req = createRequest(
+      'http://localhost/api/care-reports/today-workspace?date=2026-06-11&date=2026-06-12',
+    );
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(400);
+    expectSensitiveNoStore(res!);
+    await expect(res!.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: { date: ['date は1つだけ指定してください'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store internal error when workspace reads fail', async () => {
+    withOrgContextMock.mockRejectedValue(new Error('database unavailable'));
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+
+    const res = await GET(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(500);
+    expectSensitiveNoStore(res!);
+    await expect(res!.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      }),
+    );
   });
 });
