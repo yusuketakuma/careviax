@@ -716,6 +716,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'prescription-intakes GET' ||
         route.name === 'medication-cycles GET' ||
         route.name === 'billing-candidates GET' ||
+        route.name === 'billing-candidates/export GET' ||
         route.name === 'first-visit-documents GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -736,6 +737,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'prescription-intakes GET' ||
         route.name === 'medication-cycles GET' ||
         route.name === 'billing-candidates GET' ||
+        route.name === 'billing-candidates/export GET' ||
         route.name === 'first-visit-documents GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');

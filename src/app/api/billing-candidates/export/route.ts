@@ -18,6 +18,7 @@ import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billin
 import { quotedCsvCell as csvCell } from '@/lib/csv/safe-csv';
 
 type ExportFormat = 'csv' | 'claims-xml';
+type ExportQueryName = 'billing_month' | 'patient_id' | 'billing_domain' | 'format' | 'preview';
 
 type ExportPreviewRecord = {
   billing_domain: string;
@@ -29,13 +30,145 @@ type ExportPreviewRecord = {
   source_snapshot: unknown;
 };
 
-function parseExportFormat(value: string | null): ExportFormat | null {
-  if (value === null || value === '') return 'csv';
+function readOptionalExportQueryValue(
+  searchParams: URLSearchParams,
+  name: ExportQueryName,
+  messages: { blank: string; invalid: string; maxLength?: number },
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', {
+          [name]: [`${name} は1つだけ指定してください`],
+        }),
+      ),
+    };
+  }
+
+  const value = values[0];
+  if (value.trim().length === 0) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', { [name]: [messages.blank] }),
+      ),
+    };
+  }
+  if (value !== value.trim() || value.length > (messages.maxLength ?? 100)) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', { [name]: [messages.invalid] }),
+      ),
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function parseExportFormat(value: string | undefined): ExportFormat | null {
+  if (value === undefined) return 'csv';
   return value === 'csv' || value === 'claims-xml' ? value : null;
 }
 
-function parsePreviewMode(value: string | null) {
-  return value === '1' || value === 'true';
+function parsePreviewMode(value: string | undefined) {
+  if (value === undefined) return false;
+  if (value === '1' || value === 'true') return true;
+  if (value === '0' || value === 'false') return false;
+  return null;
+}
+
+function parseExportFilters(searchParams: URLSearchParams) {
+  const billingMonthResult = readOptionalExportQueryValue(searchParams, 'billing_month', {
+    blank: BILLING_MONTH_FORMAT_MESSAGE,
+    invalid: BILLING_MONTH_FORMAT_MESSAGE,
+    maxLength: 10,
+  });
+  if (!billingMonthResult.ok) return billingMonthResult;
+
+  const patientResult = readOptionalExportQueryValue(searchParams, 'patient_id', {
+    blank: 'patient_id を指定してください',
+    invalid: 'patient_id の形式が不正です',
+    maxLength: 80,
+  });
+  if (!patientResult.ok) return patientResult;
+
+  const billingDomainResult = readOptionalExportQueryValue(searchParams, 'billing_domain', {
+    blank: 'billing_domain を指定してください',
+    invalid: BILLING_DOMAIN_ERROR_MESSAGE,
+    maxLength: 32,
+  });
+  if (!billingDomainResult.ok) return billingDomainResult;
+
+  const formatResult = readOptionalExportQueryValue(searchParams, 'format', {
+    blank: 'format は csv または claims-xml を指定してください',
+    invalid: 'format は csv または claims-xml を指定してください',
+    maxLength: 16,
+  });
+  if (!formatResult.ok) return formatResult;
+
+  const previewResult = readOptionalExportQueryValue(searchParams, 'preview', {
+    blank: 'preview は 0, 1, false, true のいずれかを指定してください',
+    invalid: 'preview は 0, 1, false, true のいずれかを指定してください',
+    maxLength: 5,
+  });
+  if (!previewResult.ok) return previewResult;
+
+  const parsedBillingMonth = billingMonthResult.value
+    ? parseStrictBillingMonth(billingMonthResult.value)
+    : null;
+  if (billingMonthResult.value && !parsedBillingMonth) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError(BILLING_MONTH_FORMAT_MESSAGE)),
+    };
+  }
+  if (!isSafeFilterId(patientResult.value ?? null)) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError('patient_id の形式が不正です')),
+    };
+  }
+
+  const requestedBillingDomain = parseOptionalBillingDomain(billingDomainResult.value);
+  if (requestedBillingDomain === null) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError(BILLING_DOMAIN_ERROR_MESSAGE)),
+    };
+  }
+
+  const exportFormat = parseExportFormat(formatResult.value);
+  if (exportFormat === null) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('format は csv または claims-xml を指定してください'),
+      ),
+    };
+  }
+
+  const preview = parsePreviewMode(previewResult.value);
+  if (preview === null) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('preview は 0, 1, false, true のいずれかを指定してください'),
+      ),
+    };
+  }
+
+  return {
+    ok: true as const,
+    parsedBillingMonth,
+    patientId: patientResult.value,
+    billingDomain: requestedBillingDomain ?? 'home_care',
+    exportFormat,
+    preview,
+  };
 }
 
 function filenamePrefixFor(billingDomain: string) {
@@ -124,31 +257,12 @@ function buildExportPreview(records: ExportPreviewRecord[]) {
   };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const billingMonth = searchParams.get('billing_month');
-    const patientId = searchParams.get('patient_id');
-    const requestedBillingDomain = parseOptionalBillingDomain(searchParams.get('billing_domain'));
-    const exportFormat = parseExportFormat(searchParams.get('format'));
-    const preview = parsePreviewMode(searchParams.get('preview'));
-
-    const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
-    if (billingMonth !== null && !parsedBillingMonth) {
-      return withSensitiveNoStore(validationError(BILLING_MONTH_FORMAT_MESSAGE));
-    }
-    if (!isSafeFilterId(patientId)) {
-      return withSensitiveNoStore(validationError('patient_id の形式が不正です'));
-    }
-    if (requestedBillingDomain === null) {
-      return withSensitiveNoStore(validationError(BILLING_DOMAIN_ERROR_MESSAGE));
-    }
-    if (exportFormat === null) {
-      return withSensitiveNoStore(
-        validationError('format は csv または claims-xml を指定してください'),
-      );
-    }
-    const billingDomain = requestedBillingDomain ?? 'home_care';
+    const filters = parseExportFilters(searchParams);
+    if (!filters.ok) return filters.response;
+    const { billingDomain, exportFormat, parsedBillingMonth, patientId, preview } = filters;
 
     if (preview) {
       const previewData = await withOrgContext(ctx.orgId, async (tx) => {
@@ -520,4 +634,10 @@ export const GET = withAuthContext(
     permission: 'canManageBilling',
     message: '請求候補のエクスポート権限がありません',
   },
+);
+
+export const GET: typeof authenticatedGET = Object.assign(
+  async (...args: Parameters<typeof authenticatedGET>) =>
+    withSensitiveNoStore(await authenticatedGET(...args)),
+  authenticatedGET,
 );

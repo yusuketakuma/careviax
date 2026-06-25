@@ -522,6 +522,128 @@ describe('/api/billing-candidates/export GET', () => {
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
 
+  it('treats explicit preview=false as a normal CSV export', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&preview=false',
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('content-type')).toContain('text/csv');
+    await expect(response.text()).resolves.toContain('patient_name');
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      txMock,
+      expect.objectContaining({ format: 'csv' }),
+    );
+  });
+
+  it.each([
+    [
+      'billing_month duplicate',
+      'billing_month=2026-03-01&billing_month=2026-04-01',
+      {
+        billing_month: ['billing_month は1つだけ指定してください'],
+      },
+    ],
+    ['patient_id', 'patient_id=', { patient_id: ['patient_id を指定してください'] }],
+    ['blank patient_id', 'patient_id=%20%20', { patient_id: ['patient_id を指定してください'] }],
+    [
+      'padded patient_id',
+      'patient_id=%20patient_1',
+      { patient_id: ['patient_id の形式が不正です'] },
+    ],
+    [
+      'patient_id duplicate',
+      'patient_id=patient_1&patient_id=patient_2',
+      { patient_id: ['patient_id は1つだけ指定してください'] },
+    ],
+    [
+      'billing_domain',
+      'billing_domain=',
+      { billing_domain: ['billing_domain を指定してください'] },
+    ],
+    [
+      'padded billing_domain',
+      'billing_domain=home_care%20',
+      { billing_domain: ['billing_domain は home_care または pca_rental を指定してください'] },
+    ],
+    [
+      'billing_domain duplicate',
+      'billing_domain=home_care&billing_domain=pca_rental',
+      { billing_domain: ['billing_domain は1つだけ指定してください'] },
+    ],
+    ['format', 'format=', { format: ['format は csv または claims-xml を指定してください'] }],
+    [
+      'padded format',
+      'format=csv%20',
+      { format: ['format は csv または claims-xml を指定してください'] },
+    ],
+    [
+      'format duplicate',
+      'format=csv&format=claims-xml',
+      { format: ['format は1つだけ指定してください'] },
+    ],
+    [
+      'preview',
+      'preview=',
+      { preview: ['preview は 0, 1, false, true のいずれかを指定してください'] },
+    ],
+    [
+      'padded preview',
+      'preview=true%20',
+      { preview: ['preview は 0, 1, false, true のいずれかを指定してください'] },
+    ],
+    [
+      'preview duplicate',
+      'preview=1&preview=0',
+      { preview: ['preview は1つだけ指定してください'] },
+    ],
+  ])('rejects malformed explicit %s before export side effects', async (_name, query, details) => {
+    const response = await GET(
+      createRequest(`http://localhost/api/billing-candidates/export?${query}`),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details,
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['unsupported format', 'format=json', 'format は csv または claims-xml を指定してください'],
+    [
+      'unsupported preview',
+      'preview=yes',
+      'preview は 0, 1, false, true のいずれかを指定してください',
+    ],
+  ])('rejects %s before export side effects', async (_name, query, message) => {
+    const response = await GET(
+      createRequest(`http://localhost/api/billing-candidates/export?${query}`),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message,
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
   it('exports empty source snapshot metadata for malformed source snapshots', async () => {
     txMock.billingCandidate.findMany.mockResolvedValueOnce([
       {
