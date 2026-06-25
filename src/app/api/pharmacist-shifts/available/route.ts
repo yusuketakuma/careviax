@@ -2,11 +2,15 @@ import type { Prisma } from '@prisma/client';
 
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import {
   availablePharmacistShiftQuerySchema,
   toShiftTimeValue,
 } from '@/lib/validations/pharmacist-shift';
+
+const DEFAULT_AVAILABLE_SHIFT_LIMIT = 500;
+const MAX_AVAILABLE_SHIFT_LIMIT = 500;
 
 export const GET = withAuthContext(
   async (req, ctx) => {
@@ -25,6 +29,12 @@ export const GET = withAuthContext(
     }
 
     const { date: dateKey, time_from: timeFrom, time_to: timeTo } = parsed.data;
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_AVAILABLE_SHIFT_LIMIT,
+      1,
+      MAX_AVAILABLE_SHIFT_LIMIT,
+    );
     const targetDate = new Date(dateKey);
     const timeWindowFilters: Prisma.PharmacistShiftWhereInput[] = [];
 
@@ -46,44 +56,46 @@ export const GET = withAuthContext(
       }
     }
 
+    const holidays = await prisma.businessHoliday.findMany({
+      where: {
+        org_id: ctx.orgId,
+        date: targetDate,
+        is_closed: true,
+      },
+      select: {
+        site_id: true,
+      },
+    });
+    const hasOrgWideClosure = holidays.some((holiday) => holiday.site_id == null);
+    if (hasOrgWideClosure) {
+      return success({ data: [], meta: { limit, has_more: false } });
+    }
+    const blockedSiteIds = [
+      ...new Set(
+        holidays
+          .map((holiday) => holiday.site_id)
+          .filter((siteId): siteId is string => siteId != null),
+      ),
+    ];
+
     const shifts = await prisma.pharmacistShift.findMany({
       where: {
         org_id: ctx.orgId,
         date: targetDate,
         available: true,
+        ...(blockedSiteIds.length > 0 ? { site_id: { notIn: blockedSiteIds } } : {}),
         ...(timeWindowFilters.length > 0 ? { AND: timeWindowFilters } : {}),
       },
       include: {
         user: { select: { id: true, name: true, name_kana: true } },
       },
       orderBy: { user: { name_kana: 'asc' } },
+      take: limit + 1,
     });
+    const hasMore = shifts.length > limit;
+    const availableShifts = shifts.slice(0, limit);
 
-    const holidays = await prisma.businessHoliday.findMany({
-      where: {
-        org_id: ctx.orgId,
-        date: targetDate,
-        is_closed: true,
-        OR: [
-          { site_id: null },
-          { site_id: { in: [...new Set(shifts.map((shift) => shift.site_id))] } },
-        ],
-      },
-      select: {
-        site_id: true,
-      },
-    });
-    const blockedSiteIds = new Set(
-      holidays
-        .map((holiday) => holiday.site_id)
-        .filter((siteId): siteId is string => siteId != null),
-    );
-    const hasOrgWideClosure = holidays.some((holiday) => holiday.site_id == null);
-    const availableShifts = hasOrgWideClosure
-      ? []
-      : shifts.filter((shift) => !blockedSiteIds.has(shift.site_id));
-
-    return success({ data: availableShifts });
+    return success({ data: availableShifts, meta: { limit, has_more: hasMore } });
   },
   {
     permission: 'canVisit',

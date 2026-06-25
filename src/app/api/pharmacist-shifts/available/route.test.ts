@@ -41,6 +41,18 @@ function createRequest(url: string) {
   return new NextRequest(url);
 }
 
+function createShift(id: string, siteId: string) {
+  return {
+    id,
+    site_id: siteId,
+    user: {
+      id: `user_${id}`,
+      name: `薬剤師 ${id}`,
+      name_kana: `ヤクザイシ ${id}`,
+    },
+  };
+}
+
 describe('/api/pharmacist-shifts/available GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,15 +64,6 @@ describe('/api/pharmacist-shifts/available GET', () => {
           id: 'user_1',
           name: '佐藤',
           name_kana: 'サトウ',
-        },
-      },
-      {
-        id: 'shift_2',
-        site_id: 'site_2',
-        user: {
-          id: 'user_2',
-          name: '鈴木',
-          name_kana: 'スズキ',
         },
       },
     ]);
@@ -79,11 +82,22 @@ describe('/api/pharmacist-shifts/available GET', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(businessHolidayFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        date: new Date('2026-04-20'),
+        is_closed: true,
+      },
+      select: {
+        site_id: true,
+      },
+    });
     expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
         date: new Date('2026-04-20'),
         available: true,
+        site_id: { notIn: ['site_2'] },
         AND: [
           {
             OR: [
@@ -103,6 +117,7 @@ describe('/api/pharmacist-shifts/available GET', () => {
         user: { select: { id: true, name: true, name_kana: true } },
       },
       orderBy: { user: { name_kana: 'asc' } },
+      take: 501,
     });
     await expect(response.json()).resolves.toMatchObject({
       data: [
@@ -110,7 +125,137 @@ describe('/api/pharmacist-shifts/available GET', () => {
           id: 'shift_1',
         },
       ],
+      meta: {
+        limit: 500,
+        has_more: false,
+      },
     });
+  });
+
+  it('uses an explicit limit plus one for the shift query', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-04-20&limit=2'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        limit: 2,
+        has_more: false,
+      },
+    });
+  });
+
+  it('excludes closed sites before take so open candidates can fill the limit', async () => {
+    businessHolidayFindManyMock.mockResolvedValueOnce([
+      {
+        site_id: 'closed_site',
+      },
+    ]);
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      createShift('shift_open_1', 'open_site_1'),
+      createShift('shift_open_2', 'open_site_2'),
+      createShift('shift_open_3', 'open_site_3'),
+    ]);
+
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-04-20&limit=2'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+      }),
+    );
+    expect(pharmacistShiftFindManyMock.mock.calls[0]?.[0]?.where).toMatchObject({
+      org_id: 'org_1',
+      date: new Date('2026-04-20'),
+      available: true,
+      site_id: { notIn: ['closed_site'] },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'shift_open_1' }, { id: 'shift_open_2' }],
+      meta: {
+        limit: 2,
+        has_more: true,
+      },
+    });
+  });
+
+  it('returns empty data without querying shifts when the org is closed for the date', async () => {
+    businessHolidayFindManyMock.mockResolvedValueOnce([{ site_id: null }]);
+
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-04-20&limit=2'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
+      meta: {
+        limit: 2,
+        has_more: false,
+      },
+    });
+  });
+
+  it('trims overflowing filtered shift results and reports has_more', async () => {
+    businessHolidayFindManyMock.mockResolvedValueOnce([]);
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      createShift('shift_1', 'site_1'),
+      createShift('shift_2', 'site_2'),
+      createShift('shift_3', 'site_3'),
+    ]);
+
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts/available?date=2026-04-20&limit=2'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+      }),
+    );
+    expect(pharmacistShiftFindManyMock.mock.calls[0]?.[0]?.where).toMatchObject({
+      org_id: 'org_1',
+      date: new Date('2026-04-20'),
+      available: true,
+    });
+    expect(pharmacistShiftFindManyMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('site_id');
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'shift_1' }, { id: 'shift_2' }],
+      meta: {
+        limit: 2,
+        has_more: true,
+      },
+    });
+  });
+
+  it.each([
+    ['9999', 501],
+    ['0', 2],
+    ['abc', 501],
+  ])('bounds malformed or out-of-range limit "%s" to take %i', async (limit, expectedTake) => {
+    const response = (await GET(
+      createRequest(
+        `http://localhost/api/pharmacist-shifts/available?date=2026-04-20&limit=${limit}`,
+      ),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: expectedTake,
+      }),
+    );
   });
 
   it('rejects missing or malformed date before querying shifts', async () => {
