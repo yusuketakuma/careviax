@@ -237,6 +237,7 @@ describe('/api/care-reports GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(careReportFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         select: expect.objectContaining({
@@ -800,6 +801,56 @@ describe('/api/care-reports GET', () => {
       }),
     );
   });
+
+  it.each([
+    ['view', '?view=', { view: ['表示形式を指定してください'] }],
+    ['blank view', '?view=%20%20', { view: ['表示形式を指定してください'] }],
+    ['patient_id', '?patient_id=', { patient_id: ['患者IDを指定してください'] }],
+    ['blank patient_id', '?patient_id=%20%20', { patient_id: ['患者IDを指定してください'] }],
+    ['visit_record_id', '?visit_record_id=', { visit_record_id: ['訪問記録IDを指定してください'] }],
+    [
+      'blank visit_record_id',
+      '?visit_record_id=%20%20',
+      { visit_record_id: ['訪問記録IDを指定してください'] },
+    ],
+    [
+      'include_content',
+      '?include_content=',
+      { include_content: ['本文取得指定を指定してください'] },
+    ],
+    ['blank status', '?status=%20%20', { status: ['ステータスを指定してください'] }],
+    ['report_type', '?report_type=', { report_type: ['報告書種別を指定してください'] }],
+    [
+      'delivery_status',
+      '?delivery_status=',
+      { delivery_status: ['送付ステータスを指定してください'] },
+    ],
+    ['recipient', '?recipient=', { recipient: ['送付先を指定してください'] }],
+    ['q', '?q=%20%20', { q: ['検索語を指定してください'] }],
+    ['keyword', '?keyword=', { keyword: ['本文検索語を指定してください'] }],
+    ['date_from', '?date_from=', { date_from: ['開始日を指定してください'] }],
+    ['date_to', '?date_to=%20%20', { date_to: ['終了日を指定してください'] }],
+    ['sent_from', '?sent_from=', { sent_from: ['送付開始日を指定してください'] }],
+    ['sent_to', '?sent_to=%20%20', { sent_to: ['送付終了日を指定してください'] }],
+  ])(
+    'rejects explicitly empty %s filters before querying reports',
+    async (_label, query, details) => {
+      const response = await getCareReports(
+        createAuthenticatedRequest(`http://localhost/api/care-reports${query}`),
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(careReportFindManyMock).not.toHaveBeenCalled();
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(deliveryRecordCountMock).not.toHaveBeenCalled();
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details,
+      });
+    },
+  );
 
   it('normalizes malformed billing context metadata while enriching reports', async () => {
     careReportFindManyMock.mockResolvedValueOnce([

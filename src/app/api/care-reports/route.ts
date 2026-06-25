@@ -2,6 +2,7 @@ import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, forbidden, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseOptionalBoundedIntegerParam, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
@@ -113,6 +114,45 @@ const careReportQuerySchema = z.object({
 
 function optionalTrimmedSearchParam(value: string | null) {
   return value?.trim() || undefined;
+}
+
+const careReportPresentQueryFields = [
+  ['view', '表示形式を指定してください'],
+  ['patient_id', '患者IDを指定してください'],
+  ['visit_record_id', '訪問記録IDを指定してください'],
+  ['include_content', '本文取得指定を指定してください'],
+  ['status', 'ステータスを指定してください'],
+  ['report_type', '報告書種別を指定してください'],
+  ['delivery_status', '送付ステータスを指定してください'],
+  ['recipient', '送付先を指定してください'],
+  ['q', '検索語を指定してください'],
+  ['keyword', '本文検索語を指定してください'],
+  ['date_from', '開始日を指定してください'],
+  ['date_to', '終了日を指定してください'],
+  ['sent_from', '送付開始日を指定してください'],
+  ['sent_to', '送付終了日を指定してください'],
+] as const;
+
+function readPresentOptionalSearchParams(searchParams: URLSearchParams) {
+  const values: Record<string, string | undefined> = {};
+  const fieldErrors: Record<string, string[]> = {};
+
+  for (const [name, message] of careReportPresentQueryFields) {
+    const value = optionalTrimmedSearchParam(searchParams.get(name));
+    if (searchParams.has(name) && !value) {
+      fieldErrors[name] = [message];
+    }
+    values[name] = value;
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', fieldErrors),
+    };
+  }
+
+  return { ok: true as const, values };
 }
 
 function parseCareReportPaletteLimit(value: string | null) {
@@ -425,24 +465,29 @@ export const GET = withAuthContext(
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
+    const presentQueryParams = readPresentOptionalSearchParams(searchParams);
+    if (!presentQueryParams.ok) return withSensitiveNoStore(presentQueryParams.response);
+    const queryParams = presentQueryParams.values;
     const parsedQuery = careReportQuerySchema.safeParse({
-      view: optionalTrimmedSearchParam(searchParams.get('view')),
-      patient_id: optionalTrimmedSearchParam(searchParams.get('patient_id')),
-      visit_record_id: optionalTrimmedSearchParam(searchParams.get('visit_record_id')),
-      include_content: optionalTrimmedSearchParam(searchParams.get('include_content')),
-      status: searchParams.get('status') ?? undefined,
-      report_type: searchParams.get('report_type') ?? undefined,
-      delivery_status: searchParams.get('delivery_status') ?? undefined,
-      recipient: optionalTrimmedSearchParam(searchParams.get('recipient')),
-      q: optionalTrimmedSearchParam(searchParams.get('q')),
-      keyword: optionalTrimmedSearchParam(searchParams.get('keyword')),
-      date_from: searchParams.get('date_from') ?? undefined,
-      date_to: searchParams.get('date_to') ?? undefined,
-      sent_from: searchParams.get('sent_from') ?? undefined,
-      sent_to: searchParams.get('sent_to') ?? undefined,
+      view: queryParams.view,
+      patient_id: queryParams.patient_id,
+      visit_record_id: queryParams.visit_record_id,
+      include_content: queryParams.include_content,
+      status: queryParams.status,
+      report_type: queryParams.report_type,
+      delivery_status: queryParams.delivery_status,
+      recipient: queryParams.recipient,
+      q: queryParams.q,
+      keyword: queryParams.keyword,
+      date_from: queryParams.date_from,
+      date_to: queryParams.date_to,
+      sent_from: queryParams.sent_from,
+      sent_to: queryParams.sent_to,
     });
     if (!parsedQuery.success) {
-      return validationError('検索条件が不正です', parsedQuery.error.flatten().fieldErrors);
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', parsedQuery.error.flatten().fieldErrors),
+      );
     }
 
     const {
@@ -464,7 +509,7 @@ export const GET = withAuthContext(
     const paletteLimit =
       view === 'palette' ? parseCareReportPaletteLimit(searchParams.get('limit')) : null;
     if (paletteLimit && !paletteLimit.ok) {
-      return paletteLimit.response;
+      return withSensitiveNoStore(paletteLimit.response);
     }
     if (view === 'palette') {
       const unsupportedPaletteFilters = findUnsupportedPaletteCareReportFilters({
@@ -478,15 +523,17 @@ export const GET = withAuthContext(
         sentTo: sentToRaw,
       });
       if (unsupportedPaletteFilters.length > 0) {
-        return validationError(
-          'palette 表示では対応していない検索条件です',
-          Object.fromEntries(
-            unsupportedPaletteFilters.map((key) => [
-              key,
-              [
-                'palette 表示では q/limit/patient_id/status/report_type/date_from/date_to のみ指定できます',
-              ],
-            ]),
+        return withSensitiveNoStore(
+          validationError(
+            'palette 表示では対応していない検索条件です',
+            Object.fromEntries(
+              unsupportedPaletteFilters.map((key) => [
+                key,
+                [
+                  'palette 表示では q/limit/patient_id/status/report_type/date_from/date_to のみ指定できます',
+                ],
+              ]),
+            ),
           ),
         );
       }
@@ -495,12 +542,14 @@ export const GET = withAuthContext(
     const sentTo = sentToRaw ? new Date(`${sentToRaw}T23:59:59.999Z`) : null;
     const canOutputReport = canOutputCareReport(ctx.role);
     if (keyword && !canOutputReport) {
-      return forbidden('報告書本文検索の権限がありません');
+      return withSensitiveNoStore(forbidden('報告書本文検索の権限がありません'));
     }
     if (keyword && cursor) {
-      return validationError('報告書本文検索ではカーソルページングを利用できません', {
-        cursor: ['本文検索ではカーソルを指定できません'],
-      });
+      return withSensitiveNoStore(
+        validationError('報告書本文検索ではカーソルページングを利用できません', {
+          cursor: ['本文検索ではカーソルを指定できません'],
+        }),
+      );
     }
 
     const resolvedPaletteLimit =
@@ -550,22 +599,26 @@ export const GET = withAuthContext(
         : matchingPatients.map((patient) => patient.id);
     if (query && matchedPatientIds.length === 0 && !keyword) {
       if (view === 'palette') {
-        return success({
-          data: [],
-          hasMore: false,
-        });
+        return withSensitiveNoStore(
+          success({
+            data: [],
+            hasMore: false,
+          }),
+        );
       }
 
-      return success({
-        data: [],
-        hasMore: false,
-        nextCursor: undefined,
-        deliverySummary: {
-          pending_delivery_count: 0,
-          failed_delivery_count: 0,
-          by_status: {},
-        },
-      });
+      return withSensitiveNoStore(
+        success({
+          data: [],
+          hasMore: false,
+          nextCursor: undefined,
+          deliverySummary: {
+            pending_delivery_count: 0,
+            failed_delivery_count: 0,
+            by_status: {},
+          },
+        }),
+      );
     }
 
     const accessScope = await getCareReportAccessScope(prisma, ctx.orgId, ctx);
@@ -646,19 +699,21 @@ export const GET = withAuthContext(
               });
       const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
-      return success({
-        data: dataRows.map((report) => ({
-          id: report.id,
-          report_type: report.report_type,
-          status: report.status,
-          created_at: report.created_at,
-          patient_id: report.patient_id,
-          patient: patientNameById.has(report.patient_id)
-            ? { name: patientNameById.get(report.patient_id)! }
-            : null,
-        })),
-        hasMore,
-      });
+      return withSensitiveNoStore(
+        success({
+          data: dataRows.map((report) => ({
+            id: report.id,
+            report_type: report.report_type,
+            status: report.status,
+            created_at: report.created_at,
+            patient_id: report.patient_id,
+            patient: patientNameById.has(report.patient_id)
+              ? { name: patientNameById.get(report.patient_id)! }
+              : null,
+          })),
+          hasMore,
+        }),
+      );
     }
 
     const canUseDbPagination = !keyword;
@@ -671,9 +726,11 @@ export const GET = withAuthContext(
           })
         : null;
     if (canUseDbPagination && cursor && !cursorReport) {
-      return validationError('ページカーソルが不正です', {
-        cursor: ['カーソルが見つかりません'],
-      });
+      return withSensitiveNoStore(
+        validationError('ページカーソルが不正です', {
+          cursor: ['カーソルが見つかりません'],
+        }),
+      );
     }
     const listWhere = cursorReport
       ? appendCareReportWhereAnd(where, buildCareReportCursorWhere(cursorReport))
@@ -772,7 +829,7 @@ export const GET = withAuthContext(
       ? await buildDeliverySummaryForWhere(where)
       : buildDeliverySummary(filteredData);
 
-    return success({ data, hasMore, nextCursor, deliverySummary });
+    return withSensitiveNoStore(success({ data, hasMore, nextCursor, deliverySummary }));
   },
   {
     permission: 'canReport',
