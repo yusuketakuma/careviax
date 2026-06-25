@@ -93,6 +93,8 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
     patientFieldRevision: { findMany: vi.fn().mockResolvedValue([]) },
     jahisSupplementalRecord: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findMany: vi.fn().mockResolvedValue([]) },
+    // first_visit_document の操作履歴は ROW_NUMBER() window query (raw SQL) で取得する。
+    $queryRaw: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
 }
@@ -3948,52 +3950,51 @@ describe('getPatientDocumentsData', () => {
           },
         ]),
       },
-      auditLog: {
-        findMany: vi.fn().mockResolvedValue([
-          {
-            id: 'audit_1',
-            actor_id: 'user_1',
-            action: 'first_visit_document.replaced',
-            target_id: 'doc_1',
-            changes: {
-              document_action: {
-                action: 'replaced',
-                document_type: 'contract',
-                template_name: '居宅療養管理指導契約書 2026年版',
-                template_version: 'v1.1',
-                storage_location: 'store',
-                contract_date: '2026-06-10',
-                explanation_date: '2026-06-10',
-                explanation_staff_name: '佐藤薬剤師',
-                signer_type: 'family',
-                signer_name: '山田 花子',
-                signer_relationship: '長女',
-                reason: '署名者を長女へ訂正',
-                note: '本人同席',
-              },
+      // per-document 履歴は raw SQL window query 経由。$queryRaw が window の結果(<=5/文書)を返す。
+      $queryRaw: vi.fn().mockResolvedValue([
+        {
+          id: 'audit_1',
+          actor_id: 'user_1',
+          action: 'first_visit_document.replaced',
+          target_id: 'doc_1',
+          changes: {
+            document_action: {
+              action: 'replaced',
+              document_type: 'contract',
+              template_name: '居宅療養管理指導契約書 2026年版',
+              template_version: 'v1.1',
+              storage_location: 'store',
+              contract_date: '2026-06-10',
+              explanation_date: '2026-06-10',
+              explanation_staff_name: '佐藤薬剤師',
+              signer_type: 'family',
+              signer_name: '山田 花子',
+              signer_relationship: '長女',
+              reason: '署名者を長女へ訂正',
+              note: '本人同席',
             },
-            created_at: new Date('2026-06-17T00:00:00.000Z'),
           },
-          {
-            id: 'audit_print_1',
-            actor_id: 'user_1',
-            action: 'first_visit_document.printed',
-            target_id: 'doc_1',
-            changes: {
-              document_action: {
-                action: 'printed',
-                document_type: 'contract',
-                template_name: '居宅療養管理指導契約書 2026年版',
-                template_version: 'v1.1',
-                print_batch_id: 'print_20260616T013000Z_batch1',
-                storage_location: 'store',
-                note: '印刷ハブから一括印刷',
-              },
+          created_at: new Date('2026-06-17T00:00:00.000Z'),
+        },
+        {
+          id: 'audit_print_1',
+          actor_id: 'user_1',
+          action: 'first_visit_document.printed',
+          target_id: 'doc_1',
+          changes: {
+            document_action: {
+              action: 'printed',
+              document_type: 'contract',
+              template_name: '居宅療養管理指導契約書 2026年版',
+              template_version: 'v1.1',
+              print_batch_id: 'print_20260616T013000Z_batch1',
+              storage_location: 'store',
+              note: '印刷ハブから一括印刷',
             },
-            created_at: new Date('2026-06-16T00:00:00.000Z'),
           },
-        ]),
-      },
+          created_at: new Date('2026-06-16T00:00:00.000Z'),
+        },
+      ]),
     });
 
     const result = await getPatientDocumentsData(
@@ -4005,6 +4006,24 @@ describe('getPatientDocumentsData', () => {
         userId: 'user_1',
       },
     );
+
+    // teeth: per-document 履歴は ROW_NUMBER() window query で文書ごと直近5件に bound する。
+    // グローバル take:30 へ戻すと文書数が多いとき一部文書の履歴が欠落するため、query 構造を pin。
+    const queryRawMock = db.$queryRaw as ReturnType<typeof vi.fn>;
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    const querySql = (queryRawMock.mock.calls[0][0] as string[]).join('?');
+    expect(querySql).toContain(
+      'ROW_NUMBER() OVER (PARTITION BY target_id ORDER BY created_at DESC)',
+    );
+    // cap は厳密に 5(rn <= 50 等の緩みを弾く word-boundary)。
+    expect(querySql).toMatch(/rn\s*<=\s*5\b/);
+    expect(querySql).toContain("target_type = 'first_visit_document'");
+    // org_id 述語を SQL テキストでも pin(bind 値の位置照合と二重で tenant scope を担保)。
+    expect(querySql).toContain('org_id = ');
+    // bind 変数(injection 不可): org_id と documentIds 配列。
+    const queryValues = queryRawMock.mock.calls[0].slice(1);
+    expect(queryValues[0]).toBe('org_1');
+    expect(queryValues[1]).toEqual(expect.arrayContaining(['doc_1']));
 
     expect(result?.patient).toEqual({
       id: 'patient_1',

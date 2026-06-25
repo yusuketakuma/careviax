@@ -81,21 +81,6 @@ type PrintReadinessCheck = {
   action_label: string;
 };
 
-type DbClientWithAuditLog = DbClient & {
-  auditLog?: {
-    findMany(args: unknown): Promise<
-      Array<{
-        id: string;
-        actor_id: string;
-        action: string;
-        target_id: string;
-        changes: Prisma.JsonValue | null;
-        created_at: Date;
-      }>
-    >;
-  };
-};
-
 const FIRST_VISIT_TEMPLATE_TYPES = [
   { document_type: 'contract', template_type: 'contract_document', label: '契約書' },
   {
@@ -589,27 +574,39 @@ export async function getPatientDocumentsData(db: DbClient, args: DetailArgs) {
     }),
   ]);
   const documentIds = firstVisitDocuments.map((item) => item.id);
+  // 文書ごとの直近5件の操作履歴。従来のグローバル take:30 だと対象文書が多い場合に
+  // 30件が一部文書へ偏り、他文書の履歴が欠落していた(per-document top-5 を満たせない)。
+  // ROW_NUMBER() で文書(target_id)ごとに直近5件へ絞る window query にし、全文書で確実に
+  // 最大5件を取得する。Prisma の distinct は in-memory で per-group 制限にならないため
+  // parameterized raw SQL を使う(org_id / documentIds は bind 変数で injection 不可、
+  // target_type / action prefix は静的リテラル)。
+  const hasQueryRaw = typeof (db as { $queryRaw?: unknown }).$queryRaw === 'function';
   const auditLogs =
-    documentIds.length === 0 || !('auditLog' in db) || !db.auditLog?.findMany
+    documentIds.length === 0 || !hasQueryRaw
       ? []
-      : await (db as DbClientWithAuditLog).auditLog!.findMany({
-          where: {
-            org_id: args.orgId,
-            target_type: 'first_visit_document',
-            target_id: { in: documentIds },
-            action: { startsWith: 'first_visit_document.' },
-          },
-          orderBy: [{ created_at: 'desc' }],
-          take: 30,
-          select: {
-            id: true,
-            actor_id: true,
-            action: true,
-            target_id: true,
-            changes: true,
-            created_at: true,
-          },
-        });
+      : await (db as typeof prisma).$queryRaw<
+          Array<{
+            id: string;
+            actor_id: string;
+            action: string;
+            target_id: string;
+            changes: Prisma.JsonValue | null;
+            created_at: Date;
+          }>
+        >`
+          SELECT id, actor_id, action, target_id, changes, created_at
+          FROM (
+            SELECT id, actor_id, action, target_id, changes, created_at,
+                   ROW_NUMBER() OVER (PARTITION BY target_id ORDER BY created_at DESC) AS rn
+            FROM "AuditLog"
+            WHERE org_id = ${args.orgId}
+              AND target_type = 'first_visit_document'
+              AND target_id = ANY(${documentIds}::text[])
+              AND action LIKE 'first_visit_document.%'
+          ) ranked
+          WHERE rn <= 5
+          ORDER BY target_id, created_at DESC
+        `;
   const historyByDocumentId = new Map<string, FirstVisitDocumentHistoryItem[]>();
   for (const log of auditLogs) {
     const list = historyByDocumentId.get(log.target_id) ?? [];
