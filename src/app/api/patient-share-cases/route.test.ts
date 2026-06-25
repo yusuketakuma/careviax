@@ -59,7 +59,11 @@ function createPostRequest(body: unknown) {
   });
 }
 
-describe('/api/patient-share-cases POST', () => {
+function createGetRequest(query = '') {
+  return new NextRequest(`http://localhost/api/patient-share-cases${query}`);
+}
+
+describe('/api/patient-share-cases', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     pharmacyPartnershipFindFirstMock.mockResolvedValue({
@@ -241,6 +245,126 @@ describe('/api/patient-share-cases POST', () => {
     );
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('山田 花子');
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
+  });
+
+  it('lists share cases without optional predicates when filters and view context are omitted', async () => {
+    const response = await GET(createGetRequest('?limit=8'));
+
+    expect(response.status).toBe(200);
+    const where = patientShareCaseFindManyMock.mock.calls[0]?.[0]?.where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+      }),
+    );
+    expect(where).not.toHaveProperty('status');
+    expect(where).not.toHaveProperty('partnership_id');
+    expect(where).not.toHaveProperty('base_patient_id');
+    expect(patientShareCaseFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 9,
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        patientId: undefined,
+        changes: expect.objectContaining({
+          target_screen: 'patient_share_cases_api',
+          filters: expect.objectContaining({
+            status: null,
+            has_partnership_id: false,
+            has_base_patient_id: false,
+            limit: 8,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('trims and applies valid filters and view context', async () => {
+    const response = await GET(
+      createGetRequest(
+        '?status=%20active%20&partnership_id=%20partnership_1%20&base_patient_id=%20patient_1%20&view_context=%20pharmacy_cooperation_workflow%20',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const where = patientShareCaseFindManyMock.mock.calls[0]?.[0]?.where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+        status: 'active',
+        partnership_id: 'partnership_1',
+        base_patient_id: 'patient_1',
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        patientId: 'patient_1',
+        changes: expect.objectContaining({
+          target_screen: 'pharmacy_cooperation_workflow',
+          filters: expect.objectContaining({
+            status: 'active',
+            has_partnership_id: true,
+            has_base_patient_id: true,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    ['?status=', 'status', 'ステータスを指定してください'],
+    ['?status=%20%20', 'status', 'ステータスを指定してください'],
+    ['?partnership_id=', 'partnership_id', '薬局間連携IDを指定してください'],
+    ['?base_patient_id=%20%20', 'base_patient_id', '患者IDを指定してください'],
+    ['?view_context=', 'view_context', '閲覧画面を指定してください'],
+  ])(
+    'rejects blank query "%s" before loading or auditing share cases',
+    async (query, field, message) => {
+      const response = await GET(createGetRequest(query));
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: { [field]: [message] },
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(patientShareCaseFindManyMock).not.toHaveBeenCalled();
+      expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects unsupported status and view context values before loading share cases', async () => {
+    const unsupportedStatusResponse = await GET(createGetRequest('?status=archived'));
+
+    expect(unsupportedStatusResponse.status).toBe(400);
+    await expect(unsupportedStatusResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: { status: ['対応していないステータスです'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+
+    const unsupportedViewResponse = await GET(createGetRequest('?view_context=unknown'));
+
+    expect(unsupportedViewResponse.status).toBe(400);
+    await expect(unsupportedViewResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: { view_context: ['対応していない閲覧画面です'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('creates a consent-pending share case with a pending patient link and patient snapshot', async () => {

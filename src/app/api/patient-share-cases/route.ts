@@ -94,6 +94,21 @@ function optionalSearchParam(value: string | null) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError('検索条件が不正です', { [name]: [message] })),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 function optionalDate(value: string | null | undefined) {
   return value ? utcDateFromLocalKey(value) : null;
 }
@@ -160,7 +175,13 @@ export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
-    const rawStatus = optionalSearchParam(searchParams.get('status'));
+    const rawStatusResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      'ステータスを指定してください',
+    );
+    if (!rawStatusResult.ok) return rawStatusResult.response;
+    const rawStatus = rawStatusResult.value;
     const status = rawStatus ? shareCaseStatusSchema.safeParse(rawStatus) : null;
     if (status && !status.success) {
       return withSensitiveNoStore(
@@ -170,9 +191,27 @@ export const GET = withAuthContext(
       );
     }
 
-    const partnershipId = optionalSearchParam(searchParams.get('partnership_id'));
-    const basePatientId = optionalSearchParam(searchParams.get('base_patient_id'));
-    const rawViewContext = optionalSearchParam(searchParams.get('view_context'));
+    const partnershipIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'partnership_id',
+      '薬局間連携IDを指定してください',
+    );
+    if (!partnershipIdResult.ok) return partnershipIdResult.response;
+    const basePatientIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'base_patient_id',
+      '患者IDを指定してください',
+    );
+    if (!basePatientIdResult.ok) return basePatientIdResult.response;
+    const rawViewContextResult = readPresentOptionalSearchParam(
+      searchParams,
+      'view_context',
+      '閲覧画面を指定してください',
+    );
+    if (!rawViewContextResult.ok) return rawViewContextResult.response;
+    const partnershipId = partnershipIdResult.value;
+    const basePatientId = basePatientIdResult.value;
+    const rawViewContext = rawViewContextResult.value;
     const viewContext = viewContextSchema.safeParse(rawViewContext ?? undefined);
     if (!viewContext.success) {
       return withSensitiveNoStore(
