@@ -250,9 +250,9 @@ function UrgentNowSection({
   return (
     <section aria-labelledby="dashboard-urgent-now-heading" data-testid="dashboard-urgent-now">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 id="dashboard-urgent-now-heading" className="text-base font-bold text-foreground">
+        <h2 id="dashboard-urgent-now-heading" className="text-base font-bold text-foreground">
           今すぐ対応
-        </h3>
+        </h2>
         <p className="text-xs text-muted-foreground">
           期限と待ち解除だけがここに並びます・緊急度順
         </p>
@@ -318,9 +318,9 @@ function TodayFlowSection({
       data-testid="dashboard-today-flow"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <h3 id="dashboard-today-flow-heading" className="text-base font-bold text-foreground">
+        <h2 id="dashboard-today-flow-heading" className="text-base font-bold text-foreground">
           今日の流れ
-        </h3>
+        </h2>
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
           <Lock className="size-3 text-chart-2" aria-hidden="true" />
           訪問は動かせない固定点・デスク作業はその間を流れます
@@ -406,9 +406,9 @@ function ProcessNowSection({ statusCounts }: { statusCounts: Record<string, numb
       data-testid="dashboard-process-now"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <h3 id="dashboard-process-now-heading" className="text-base font-bold text-foreground">
+        <h2 id="dashboard-process-now-heading" className="text-base font-bold text-foreground">
           工程の今
-        </h3>
+        </h2>
         <p className="text-xs text-muted-foreground">チーム全体の仕掛かり</p>
         <Link href="/handoff" className="ml-auto text-sm font-medium text-primary hover:underline">
           → ハンドオフで再配分
@@ -483,9 +483,9 @@ function TeamCapacityCard({
       data-testid="dashboard-team-capacity"
     >
       <div className="flex flex-wrap items-baseline gap-2">
-        <h3 id="dashboard-team-capacity-heading" className="text-base font-bold text-foreground">
+        <h2 id="dashboard-team-capacity-heading" className="text-base font-bold text-foreground">
           チームの余白
-        </h3>
+        </h2>
         <p className="text-xs text-muted-foreground">残り時間</p>
       </div>
       <ul className="mt-3 space-y-3" role="list">

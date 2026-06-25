@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-0856 JST
+
+- current task: implement Codex-owned `F-20260625-dashboard-heading-hierarchy` after Claude `LOCK_GRANT`, covering the left-menu `/dashboard` cockpit heading hierarchy.
+- files inspected: agmsg inbox/Claude coordination for `F-20260625-dashboard-heading-hierarchy`; `git status --short --branch --untracked-files=all`; `docs/ui-ux-design-guidelines.md`; `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`; `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`; gbrain `code_callers` / `code_blast` outputs for `DashboardCockpit`, `UrgentNowSection`, `TodayFlowSection`, `ProcessNowSection`, and `TeamCapacityCard`; and this Ralph state file.
+- files changed: `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`, `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`, and this Ralph state entry.
+- bugs found: the dashboard had a correct visible `h1` but its four major cockpit sections (`今すぐ対応`, `今日の流れ`, `工程の今`, `チームの余白`) were rendered as `h3`, skipping the PH-OS guideline's large-group `h2` level and weakening assistive-technology heading navigation.
+- security risks found: none introduced or changed. The patch is semantic markup and test-only, with no data, API, auth/authz, RLS, audit log, PHI projection, logging, secrets, billing/payment, deploy, or destructive behavior changes.
+- performance issues found: no runtime performance path changed. The patch changes four heading tags and adds role/level assertions only.
+- validation commands: focused baseline/post-change `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`; focused `pnpm exec prettier --check 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`; focused `pnpm exec eslint 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`; focused `git diff --check` for the two dashboard files; long-gate-locked `pnpm typecheck`; authenticated Playwright MCP DOM smoke on `http://localhost:3012/dashboard`.
+- validation results: dashboard baseline test passed `14/14` before edit; post-change focused Vitest passed `14/14`; focused Prettier, ESLint, and diff-check passed; `pnpm typecheck` passed under local long-gate lock after `next typegen` and both TypeScript projects completed successfully. Browser smoke reached `/dashboard`, reported the live heading sequence as `h1 ダッシュボード` followed by four `h2` sections with existing ids, `bodyOverflow: false`, console errors `0`, and one unrelated dev preload warning. Claude independently approved the slice after reviewer-audit, including mutation teeth that reverting representative `h2` headings to `h3` makes the level assertions fail.
+- remaining work: commit only the two dashboard files plus this ledger entry. Do not stage unrelated files. Non-blocking follow-up: the visible dashboard `h1` still differs from the guideline preference for an `sr-only` page-level `h1`; leave that for a separate planned slice.
+- next action: drain agmsg, stage only the owned dashboard files plus `.codex/ralph-state.md`, commit the approved semantic-only slice, notify Claude with the commit hash, then select the next non-conflicting left-menu/frequent UIUX slice.
+
 ### 20260625-0846 JST
 
 - current task: implement Codex-owned `F-20260625-prescriptions-false-empty-mobile` after Claude `LOCK_GRANT`, covering the left-menu `/prescriptions` high-frequency intake workspace.

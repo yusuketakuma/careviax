@@ -269,6 +269,7 @@ describe('DashboardCockpit', () => {
     render(<DashboardCockpit />);
 
     const section = screen.getByTestId('dashboard-urgent-now');
+    expect(within(section).getByRole('heading', { name: '今すぐ対応', level: 2 })).toBeTruthy();
     expect(within(section).getByText('今すぐ対応')).toBeTruthy();
     expect(within(section).getByText('表示 2/6件')).toBeTruthy();
     expect(within(section).getByText('全6件のうち、期限が近い2件を表示しています。')).toBeTruthy();
@@ -311,6 +312,7 @@ describe('DashboardCockpit', () => {
     render(<DashboardCockpit />);
 
     const section = screen.getByTestId('dashboard-today-flow');
+    expect(within(section).getByRole('heading', { name: '今日の流れ', level: 2 })).toBeTruthy();
     expect(within(section).getByText('今日の流れ')).toBeTruthy();
     expect(within(section).getByText('監査 6件(麻薬を先頭)')).toBeTruthy();
     expect(within(section).getByText('伊藤様')).toBeTruthy();
@@ -325,6 +327,7 @@ describe('DashboardCockpit', () => {
     render(<DashboardCockpit />);
 
     const section = screen.getByTestId('dashboard-process-now');
+    expect(within(section).getByRole('heading', { name: '工程の今', level: 2 })).toBeTruthy();
     for (const label of [
       '取込',
       '入力',
@@ -353,6 +356,7 @@ describe('DashboardCockpit', () => {
     render(<DashboardCockpit />);
 
     const section = screen.getByTestId('dashboard-team-capacity');
+    expect(within(section).getByRole('heading', { name: 'チームの余白', level: 2 })).toBeTruthy();
     expect(within(section).getByText('チームの余白')).toBeTruthy();
     expect(within(section).getByText('山田(薬)')).toBeTruthy();
     expect(within(section).getByText(/余白 11分/)).toBeTruthy();
