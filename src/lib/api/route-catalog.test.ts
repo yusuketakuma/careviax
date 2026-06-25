@@ -52,6 +52,8 @@ describe('routeCatalog', () => {
       '/api/external-access',
       '/api/external-access/:token',
       '/api/external-access/:token/self-report',
+      '/api/patient-self-reports',
+      '/api/patient-self-reports/:id',
       '/api/partner-pharmacies',
       '/api/patient-share-cases',
       '/api/patient-share-cases/:id',

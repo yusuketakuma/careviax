@@ -351,6 +351,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'reports',
   },
   {
+    path: '/api/patient-self-reports',
+    methods: ['GET', 'POST'],
+    permission: 'canReport',
+    description: '患者自己申告一覧取得と登録',
+    area: 'reports',
+  },
+  {
+    path: '/api/patient-self-reports/:id',
+    methods: ['GET', 'PATCH'],
+    permission: 'canReport',
+    description: '患者自己申告詳細取得と更新',
+    area: 'reports',
+  },
+  {
     path: '/api/communication-requests',
     methods: ['GET', 'POST'],
     permission: 'canReport',

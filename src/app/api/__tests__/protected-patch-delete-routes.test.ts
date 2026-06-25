@@ -93,6 +93,7 @@ vi.mock('@/lib/db/rls', () => ({
 import { PATCH as casePatch } from '../cases/[id]/route';
 import { PATCH as caseTransitionPatch } from '../cases/[id]/transition/route';
 import { PATCH as careReportPatch } from '../care-reports/[id]/route';
+import { PATCH as patientSelfReportPatch } from '../patient-self-reports/[id]/route';
 import { PATCH as communicationRequestPatch } from '../communication-requests/[id]/route';
 import { PATCH as inquiryRecordPatch } from '../inquiry-records/[id]/route';
 import { PATCH as medicationCycleTransitionPatch } from '../medication-cycles/[id]/transition/route';
@@ -151,6 +152,18 @@ const permissionRoutes: RouteEntry[] = [
           'http://localhost/api/care-reports/report_1',
           { 'x-org-id': 'org_1' },
           { expected_updated_at: '2026-06-18T00:00:00.000Z' },
+        ),
+        { params: Promise.resolve({ id: 'report_1' }) },
+      ),
+  },
+  {
+    name: 'patient-self-reports/[id] PATCH',
+    handler: () =>
+      patientSelfReportPatch(
+        createRequest(
+          'http://localhost/api/patient-self-reports/report_1',
+          { 'x-org-id': 'org_1' },
+          { status: 'resolved', updated_at: '2026-06-18T00:00:00.000Z' },
         ),
         { params: Promise.resolve({ id: 'report_1' }) },
       ),

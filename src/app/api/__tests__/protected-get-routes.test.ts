@@ -122,6 +122,8 @@ import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
 import { GET as patientGet } from '../patients/[id]/route';
+import { GET as patientSelfReportsGet } from '../patient-self-reports/route';
+import { GET as patientSelfReportGet } from '../patient-self-reports/[id]/route';
 import { GET as patientVisitBriefGet } from '../patients/[id]/visit-brief/route';
 import { GET as patientVisitRecordsPdfGet } from '../patients/[id]/visit-records/pdf/route';
 import { GET as pharmacistsGet } from '../pharmacists/route';
@@ -380,6 +382,24 @@ const routes: Array<{ name: string; handler: Handler }> = [
       patientGet(
         createRequest('http://localhost/api/patients/patient_1', { 'x-org-id': 'org_1' }),
         { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
+    name: 'patient-self-reports GET',
+    handler: () =>
+      patientSelfReportsGet(
+        createRequest('http://localhost/api/patient-self-reports', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'patient-self-reports/[id] GET',
+    handler: () =>
+      patientSelfReportGet(
+        createRequest('http://localhost/api/patient-self-reports/report_1', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'report_1' }) },
       ),
   },
   {

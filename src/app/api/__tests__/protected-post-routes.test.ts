@@ -43,6 +43,7 @@ import { POST as communicationRequestsPost } from '../communication-requests/rou
 import { POST as communicationRequestResolveFollowupPost } from '../communication-requests/[id]/resolve-followup/route';
 import { POST as conferenceNotesPost } from '../conference-notes/route';
 import { POST as careReportsPost } from '../care-reports/route';
+import { POST as patientSelfReportsPost } from '../patient-self-reports/route';
 import { POST as tracingReportsPost } from '../tracing-reports/route';
 import { POST as visitSchedulesPost } from '../visit-schedules/route';
 import { POST as visitSchedulesGeneratePost } from '../visit-schedules/generate/route';
@@ -110,6 +111,10 @@ const routes: RouteEntry[] = [
   },
   { name: 'conference-notes POST', handler: (req) => conferenceNotesPost(req, emptyRouteContext) },
   { name: 'care-reports POST', handler: (req) => careReportsPost(req, emptyRouteContext) },
+  {
+    name: 'patient-self-reports POST',
+    handler: (req) => patientSelfReportsPost(req, emptyRouteContext),
+  },
   { name: 'tracing-reports POST', handler: (req) => tracingReportsPost(req, emptyRouteContext) },
   { name: 'visit-schedules POST', handler: (req) => visitSchedulesPost(req, emptyRouteContext) },
   {
