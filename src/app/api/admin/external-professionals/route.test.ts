@@ -78,33 +78,37 @@ function createMalformedJsonAuthRequest() {
   });
 }
 
+function createExternalProfessionalFixture(id: string, name = '訪問 看護') {
+  return {
+    id,
+    profession_type: 'nurse',
+    name,
+    facility_id: 'facility_1',
+    facility: { name: 'さくら荘' },
+    organization_name: 'あおば訪看',
+    department: null,
+    phone: null,
+    email: null,
+    fax: null,
+    preferred_contact_method: null,
+    preferred_contact_time: null,
+    last_contacted_at: null,
+    last_success_channel: null,
+    address: null,
+    notes: null,
+    _count: {
+      care_team_links: 2,
+    },
+    created_at: new Date('2026-03-28T00:00:00.000Z'),
+    updated_at: new Date('2026-03-28T00:00:00.000Z'),
+  };
+}
+
 describe('/api/admin/external-professionals', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     externalProfessionalFindManyMock.mockResolvedValue([
-      {
-        id: 'external_1',
-        profession_type: 'nurse',
-        name: '訪問 看護',
-        facility_id: 'facility_1',
-        facility: { name: 'さくら荘' },
-        organization_name: 'あおば訪看',
-        department: null,
-        phone: null,
-        email: null,
-        fax: null,
-        preferred_contact_method: null,
-        preferred_contact_time: null,
-        last_contacted_at: null,
-        last_success_channel: null,
-        address: null,
-        notes: null,
-        _count: {
-          care_team_links: 2,
-        },
-        created_at: new Date('2026-03-28T00:00:00.000Z'),
-        updated_at: new Date('2026-03-28T00:00:00.000Z'),
-      },
+      createExternalProfessionalFixture('external_1'),
     ]);
     externalProfessionalCreateMock.mockResolvedValue({
       id: 'external_2',
@@ -168,6 +172,7 @@ describe('/api/admin/external-professionals', () => {
         },
       },
       orderBy: [{ profession_type: 'asc' }, { name: 'asc' }],
+      take: 501,
     });
     await expect(response.json()).resolves.toMatchObject({
       data: [
@@ -177,7 +182,91 @@ describe('/api/admin/external-professionals', () => {
           patient_count: 2,
         },
       ],
+      meta: {
+        limit: 500,
+        has_more: false,
+      },
     });
+  });
+
+  it('preserves the complete full selector list when q is absent', async () => {
+    externalProfessionalFindManyMock.mockResolvedValue([
+      createExternalProfessionalFixture('external_1', '訪問 看護'),
+      createExternalProfessionalFixture('external_2', '山田 ケアマネ'),
+    ]);
+
+    const response = (await GET(
+      createAuthRequest('http://localhost/api/admin/external-professionals'),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(200);
+    const query = externalProfessionalFindManyMock.mock.calls[0]?.[0];
+    expect(query).toMatchObject({
+      where: { org_id: 'org_1' },
+      include: expect.any(Object),
+      orderBy: [{ profession_type: 'asc' }, { name: 'asc' }],
+    });
+    expect(query).not.toHaveProperty('take');
+    const body = await response.json();
+    expect(body.data).toHaveLength(2);
+    expect(body).not.toHaveProperty('meta');
+  });
+
+  it('treats blank q as an unfiltered full-list request', async () => {
+    const response = (await GET(
+      createAuthRequest('http://localhost/api/admin/external-professionals?q=%20%20'),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(externalProfessionalFindManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
+    await expect(response.json()).resolves.not.toHaveProperty('meta');
+  });
+
+  it('trims q-filtered results and reports has_more', async () => {
+    externalProfessionalFindManyMock.mockResolvedValue([
+      createExternalProfessionalFixture('external_1', '訪問 看護'),
+      createExternalProfessionalFixture('external_2', '訪看 ステーション'),
+      createExternalProfessionalFixture('external_3', '訪看 連携室'),
+    ]);
+
+    const response = (await GET(
+      createAuthRequest('http://localhost/api/admin/external-professionals?q=訪看&limit=2'),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(externalProfessionalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'external_1' }, { id: 'external_2' }],
+      meta: {
+        limit: 2,
+        has_more: true,
+      },
+    });
+  });
+
+  it.each([
+    ['9999', 501],
+    ['0', 2],
+    ['abc', 501],
+  ])('bounds q-filtered limit "%s" to take %i', async (limit, expectedTake) => {
+    const response = (await GET(
+      createAuthRequest(`http://localhost/api/admin/external-professionals?q=訪看&limit=${limit}`),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(externalProfessionalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: expectedTake,
+      }),
+    );
   });
 
   it('creates an external professional master row', async () => {

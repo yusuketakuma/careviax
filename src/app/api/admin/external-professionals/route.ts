@@ -1,4 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -9,6 +10,9 @@ import {
   contactMethodSchema,
   professionTypeSchema,
 } from '@/lib/validations/external-professional';
+
+const DEFAULT_EXTERNAL_PROFESSIONAL_SEARCH_LIMIT = 500;
+const MAX_EXTERNAL_PROFESSIONAL_SEARCH_LIMIT = 500;
 
 function toResponse(item: {
   id: string;
@@ -47,7 +51,14 @@ function toResponse(item: {
 
 export const GET = withAuthContext(
   async (req, ctx) => {
-    const query = req.nextUrl.searchParams.get('q')?.trim();
+    const queryParam = req.nextUrl.searchParams.get('q')?.trim();
+    const query = queryParam && queryParam.length > 0 ? queryParam : undefined;
+    const limit = parseBoundedInteger(
+      req.nextUrl.searchParams.get('limit'),
+      DEFAULT_EXTERNAL_PROFESSIONAL_SEARCH_LIMIT,
+      1,
+      MAX_EXTERNAL_PROFESSIONAL_SEARCH_LIMIT,
+    );
     const facilityId = req.nextUrl.searchParams.get('facility_id')?.trim();
     const professionType = professionTypeSchema.safeParse(
       req.nextUrl.searchParams.get('profession_type')?.trim(),
@@ -85,9 +96,17 @@ export const GET = withAuthContext(
         },
       },
       orderBy: [{ profession_type: 'asc' }, { name: 'asc' }],
+      ...(query ? { take: limit + 1 } : {}),
     });
 
-    return success({ data: items.map(toResponse) });
+    if (!query) {
+      return success({ data: items.map(toResponse) });
+    }
+
+    return success({
+      data: items.slice(0, limit).map(toResponse),
+      meta: { limit, has_more: items.length > limit },
+    });
   },
   {
     permission: 'canReport',
