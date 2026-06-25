@@ -42,12 +42,38 @@ function parseEffectiveDate(value?: string) {
   return value ? new Date(`${value}T00:00:00.000Z`) : undefined;
 }
 
+function parseTemplateTypeFilter(searchParams: URLSearchParams) {
+  const rawTemplateType = searchParams.get('template_type');
+  if (rawTemplateType === null) return { ok: true as const, data: undefined };
+
+  const templateType = rawTemplateType.trim();
+  if (!templateType) {
+    return {
+      ok: false as const,
+      response: validationError('クエリパラメータが不正です', {
+        template_type: ['template_type が不正です'],
+      }),
+    };
+  }
+
+  const parsedTemplateType = templateTypeSchema.safeParse(templateType);
+  if (!parsedTemplateType.success) {
+    return {
+      ok: false as const,
+      response: validationError('クエリパラメータが不正です', {
+        template_type: ['template_type が不正です'],
+      }),
+    };
+  }
+
+  return { ok: true as const, data: parsedTemplateType.data };
+}
+
 export const GET = withAuthContext(
   async (req, authCtx) => {
     const { searchParams } = new URL(req.url);
-    const templateTypeRaw = searchParams.get('template_type');
     const targetRoleRaw = searchParams.get('target_role');
-    const parsedType = templateTypeRaw ? templateTypeSchema.safeParse(templateTypeRaw) : null;
+    const parsedTemplateType = parseTemplateTypeFilter(searchParams);
     const parsedTargetRole =
       targetRoleRaw === null ? null : targetRoleQuerySchema.safeParse(targetRoleRaw);
     const limit = parseBoundedInteger(
@@ -57,11 +83,7 @@ export const GET = withAuthContext(
       MAX_TEMPLATE_LIST_LIMIT,
     );
 
-    if (parsedType && !parsedType.success) {
-      return validationError('クエリパラメータが不正です', {
-        template_type: ['template_type が不正です'],
-      });
-    }
+    if (!parsedTemplateType.ok) return parsedTemplateType.response;
 
     if (parsedTargetRole && !parsedTargetRole.success) {
       return validationError('クエリパラメータが不正です', {
@@ -72,7 +94,7 @@ export const GET = withAuthContext(
     const templates = await prisma.template.findMany({
       where: {
         org_id: authCtx.orgId,
-        ...(parsedType?.success ? { template_type: parsedType.data } : {}),
+        ...(parsedTemplateType.data ? { template_type: parsedTemplateType.data } : {}),
         ...(parsedTargetRole?.success ? { target_role: parsedTargetRole.data } : {}),
       },
       orderBy: [

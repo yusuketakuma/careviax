@@ -86,6 +86,24 @@ describe('/api/templates', () => {
     );
   });
 
+  it('trims template_type query filters before listing templates', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/templates?template_type=%20care_report%20'),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(templateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          template_type: 'care_report',
+        }),
+      }),
+    );
+  });
+
   it('bounds template list size and trims target_role query filters', async () => {
     const response = await GET(
       createRequest(
@@ -263,6 +281,24 @@ describe('/api/templates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(templateFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['empty', 'http://localhost/api/templates?template_type='],
+    ['blank', 'http://localhost/api/templates?template_type=%20%20'],
+  ])('returns validation error for %s template_type query', async (_label, url) => {
+    const response = await GET(createRequest(url), { params: Promise.resolve({}) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        template_type: ['template_type が不正です'],
+      },
+    });
+    expect(templateFindManyMock).not.toHaveBeenCalled();
   });
 
   it('returns validation error for blank target_role query', async () => {

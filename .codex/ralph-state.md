@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2039 JST
+
+- current task: continue Codex-only backend/API hardening by fail-closing explicit blank `template_type` filters on `/api/templates`, aligning the behavior with existing blank `target_role` validation.
+- files inspected: local Next.js Route Handlers guide `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`; agmsg inbox; `git status --short --untracked-files=all`; `src/app/api/templates/route.ts`; `src/app/api/templates/route.test.ts`; gbrain `code_blast` for `src/app/api/templates/route.ts::GET`.
+- files changed: `src/app/api/templates/route.ts`, `src/app/api/templates/route.test.ts`, and this Ralph state entry.
+- bugs found: `GET /api/templates?template_type=` and whitespace-only variants were treated as an omitted filter because the route parsed `template_type` through a truthy check, widening an explicit type-scoped request to all template types.
+- security risks found: reduced admin broad-read risk for content-bearing document templates by rejecting present-but-empty or malformed `template_type` values before querying Prisma. Existing `canAdmin`, org scope, bounded `take`, target-role validation, valid trimmed filters, response shape, and POST behavior are preserved. No auth/authz permission semantics, DB schema, migration, billing, frontend, external send, or destructive behavior changed.
+- performance issues found: blank `template_type` filters now return before DB access. Valid list queries keep the existing bounded `take`.
+- validation commands: baseline `pnpm exec vitest run src/app/api/templates/route.test.ts --reporter=dot --testTimeout=30000`; post-change `pnpm exec vitest run src/app/api/templates/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/templates/route.ts src/app/api/templates/route.test.ts`; `pnpm exec prettier --check src/app/api/templates/route.ts src/app/api/templates/route.test.ts`; `git diff --check -- src/app/api/templates/route.ts src/app/api/templates/route.test.ts`; long-gate `pnpm typecheck` under token `7BB9C997-CA6B-4F73-846E-5866C9D81B57`.
+- validation results: baseline templates route Vitest passed `10/10`; post-change route Vitest passed `13/13`; focused ESLint passed; focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, then continue backend/API hardening.
+- next action: drain agmsg, inspect staged paths, and commit the templates template_type filter slice.
+
 ### 20260625-2035 JST
 
 - current task: continue Codex-only backend/API security hardening by sanitizing `POST /api/care-reports/generate-from-visit` 404 responses so service internal IDs and taxonomy are not echoed to clients.
