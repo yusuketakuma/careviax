@@ -92,6 +92,7 @@ describe('/api/visit-vehicle-resources', () => {
         available: true,
       },
       orderBy: [{ site_id: 'asc' }, { label: 'asc' }],
+      take: 100,
       include: {
         site: {
           select: {
@@ -101,6 +102,50 @@ describe('/api/visit-vehicle-resources', () => {
         },
       },
     });
+  });
+
+  it('bounds vehicle resource list size when a limit is provided', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/visit-vehicle-resources?available=true&limit=5'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitVehicleResourceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          available: true,
+        },
+        take: 5,
+      }),
+    );
+  });
+
+  it('clamps overly large vehicle resource list limits', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/visit-vehicle-resources?limit=9999'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitVehicleResourceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 200,
+      }),
+    );
+  });
+
+  it('rejects blank site filters before reference checks or DB access', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/visit-vehicle-resources?site_id=%20%20'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitVehicleResourceFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates a vehicle resource with normalized optional fields', async () => {

@@ -1,4 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
@@ -7,6 +8,9 @@ import {
   createVisitVehicleResourceSchema,
   visitVehicleResourceQuerySchema,
 } from '@/lib/validations/visit-vehicle-resource';
+
+const DEFAULT_VISIT_VEHICLE_RESOURCE_LIMIT = 100;
+const MAX_VISIT_VEHICLE_RESOURCE_LIMIT = 200;
 
 export const GET = withAuthContext(
   async (req, ctx) => {
@@ -18,6 +22,12 @@ export const GET = withAuthContext(
     if (!parsed.success) {
       return validationError('検索条件が不正です', parsed.error.flatten().fieldErrors);
     }
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_VISIT_VEHICLE_RESOURCE_LIMIT,
+      1,
+      MAX_VISIT_VEHICLE_RESOURCE_LIMIT,
+    );
 
     if (parsed.data.site_id) {
       const refResult = await validateOrgReferences(ctx.orgId, { site_id: parsed.data.site_id });
@@ -32,6 +42,7 @@ export const GET = withAuthContext(
           ...(parsed.data.available !== undefined ? { available: parsed.data.available } : {}),
         },
         orderBy: [{ site_id: 'asc' }, { label: 'asc' }],
+        take: limit,
         include: {
           site: {
             select: {

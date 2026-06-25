@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-1500 JST
+
+- current task: implement Codex-owned `F-20260625-visit-vehicle-resources-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read hardening lane while Claude owns `src/server/services/patient-mcs.ts`.
+- files inspected: agmsg inbox/status for Claude's §15 billing-evidence escalation commit, Claude's `patient-mcs` lock request/grant, and this vehicle-resource lock grant; `git status --short --untracked-files=all`; `src/app/api/visit-vehicle-resources/route.ts`; `src/app/api/visit-vehicle-resources/route.test.ts`; `src/lib/validations/visit-vehicle-resource.ts`; direct callers in schedule proposal/planner UI files; gbrain `code_callers` / `code_blast` output for `src/app/api/visit-vehicle-resources/route.ts::GET`, which returned not-built/empty.
+- files changed: `src/app/api/visit-vehicle-resources/route.ts`, `src/app/api/visit-vehicle-resources/route.test.ts`, and this Ralph state entry.
+- bugs found: `/api/visit-vehicle-resources` returned every matching vehicle resource with `site` included and no `take`. The existing schema already rejected blank `site_id`, but that early-reject behavior was not locked by tests.
+- security risks found: no auth/authz, tenant, RLS policy, DB schema, migration, PHI projection, audit logging, billing, deploy, or destructive operation changed. Existing `site_id` org-reference validation and `available` parsing are preserved; tests now assert blank `site_id` does not reach reference validation or DB access.
+- performance issues found: bounded the vehicle-resource list query to a default `take: 100` with `limit` clamped to `1..200`, preserving existing org scope, filters, ordering, include shape, and response envelope for valid calls.
+- validation commands: baseline focused `pnpm exec vitest run src/app/api/visit-vehicle-resources/route.test.ts --reporter=dot --testTimeout=30000`; post-change focused `pnpm exec vitest run src/app/api/visit-vehicle-resources/route.test.ts --reporter=dot --testTimeout=30000`; focused `pnpm exec eslint src/app/api/visit-vehicle-resources/route.ts src/app/api/visit-vehicle-resources/route.test.ts`; focused `pnpm exec prettier --check src/app/api/visit-vehicle-resources/route.ts src/app/api/visit-vehicle-resources/route.test.ts`; focused `git diff --check -- src/app/api/visit-vehicle-resources/route.ts src/app/api/visit-vehicle-resources/route.test.ts`; peer long-gate combined `pnpm typecheck` run by Claude over this vehicle-resource diff plus Claude's disjoint patient-MCS draft.
+- validation results: baseline route Vitest passed `4/4`; final focused Vitest passed `7/7`; focused ESLint passed; focused Prettier passed; focused diff-check passed. Claude independently approved the diff, reran the focused suite `7/7`, verified the bound, existing query validation/ref-check preservation, and no POST/schema/auth/RLS/billing/destructive change, and reported combined `pnpm typecheck` green. Tests now assert default `take: 100`, explicit `limit=5`, overly large limit clamping to `take: 200`, existing `site_id`/`available` filters remain in the Prisma query, and blank `site_id` exits before org-reference validation or DB access.
+- remaining work: stage and commit only the two route files plus `.codex/ralph-state.md`, notify Claude with the commit hash, and continue the backend hardening loop.
+- next action: drain agmsg before commit, inspect status, commit the approved slice with explicit pathspecs, and send `DONE`.
+
 ### 20260625-1453 JST
 
 - current task: implement Codex-owned `F-20260625-document-delivery-rules-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read hardening lane while Claude scouts `src/server/services/**`.
