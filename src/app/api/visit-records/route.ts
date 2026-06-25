@@ -79,10 +79,21 @@ const visitRecordListQuerySchema = z
     ).optional(),
     date_from: strictDateKeyQueryParam().optional(),
     date_to: strictDateKeyQueryParam().optional(),
+    include_history_summary: strictBooleanQueryParam(
+      'include_history_summary は true または false で指定してください',
+    ).optional(),
+    include_attachments: strictBooleanQueryParam(
+      'include_attachments は true または false で指定してください',
+    ).optional(),
+    view: strictViewQueryParam().optional(),
   })
   .refine((value) => !value.date_from || !value.date_to || value.date_to >= value.date_from, {
     path: ['date_to'],
     message: 'date_to は date_from 以降を指定してください',
+  })
+  .refine((value) => value.view !== 'evidence_gallery' || value.include_attachments === true, {
+    path: ['view'],
+    message: 'view=evidence_gallery は include_attachments=true と一緒に指定してください',
   });
 
 function strictIdQueryParam(blankMessage: string, formatMessage: string) {
@@ -106,11 +117,38 @@ function strictDateKeyQueryParam() {
   });
 }
 
+function strictBooleanQueryParam(message: string) {
+  return z.string().transform((value, ctx) => {
+    if (value !== 'true' && value !== 'false') {
+      ctx.addIssue({ code: 'custom', message });
+      return z.NEVER;
+    }
+
+    return value === 'true';
+  });
+}
+
+function strictViewQueryParam() {
+  return z.string().superRefine((value, ctx) => {
+    if (value !== 'evidence_gallery') {
+      ctx.addIssue({ code: 'custom', message: 'view は evidence_gallery を指定してください' });
+    }
+  });
+}
+
 function readVisitRecordListQueryValues(searchParams: URLSearchParams) {
   const values: Record<string, string | undefined> = {};
   const fieldErrors: Record<string, string[]> = {};
 
-  for (const name of ['patient_id', 'pharmacist_id', 'date_from', 'date_to'] as const) {
+  for (const name of [
+    'patient_id',
+    'pharmacist_id',
+    'date_from',
+    'date_to',
+    'include_history_summary',
+    'include_attachments',
+    'view',
+  ] as const) {
     const allValues = searchParams.getAll(name);
     if (allValues.length === 0) continue;
     if (allValues.length > 1) {
@@ -720,10 +758,10 @@ export const GET = withAuthContext(
     const pharmacistId = parsedQuery.data.pharmacist_id;
     const dateFrom = parsedQuery.data.date_from;
     const dateTo = parsedQuery.data.date_to;
-    const includeHistorySummary = searchParams.get('include_history_summary') === 'true';
-    const includeAttachments = searchParams.get('include_attachments') === 'true';
+    const includeHistorySummary = parsedQuery.data.include_history_summary ?? false;
+    const includeAttachments = parsedQuery.data.include_attachments ?? false;
     const isEvidenceGalleryView =
-      includeAttachments && searchParams.get('view') === 'evidence_gallery';
+      includeAttachments && parsedQuery.data.view === 'evidence_gallery';
     const assignmentWhere = buildVisitRecordScheduleAssignmentWhere(ctx);
 
     const where: Prisma.VisitRecordWhereInput = {

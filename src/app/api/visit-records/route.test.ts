@@ -341,6 +341,83 @@ describe('/api/visit-records GET', () => {
     },
   );
 
+  it.each([
+    [
+      'include_history_summary=',
+      'include_history_summary',
+      'include_history_summary は true または false で指定してください',
+    ],
+    [
+      'include_history_summary=true%20',
+      'include_history_summary',
+      'include_history_summary は true または false で指定してください',
+    ],
+    [
+      'include_attachments=yes',
+      'include_attachments',
+      'include_attachments は true または false で指定してください',
+    ],
+    [
+      'include_attachments=%20true',
+      'include_attachments',
+      'include_attachments は true または false で指定してください',
+    ],
+    ['view=', 'view', 'view は evidence_gallery を指定してください'],
+    ['view=%20evidence_gallery', 'view', 'view は evidence_gallery を指定してください'],
+    ['view=summary', 'view', 'view は evidence_gallery を指定してください'],
+    [
+      'view=evidence_gallery',
+      'view',
+      'view=evidence_gallery は include_attachments=true と一緒に指定してください',
+    ],
+    [
+      'include_attachments=false&view=evidence_gallery',
+      'view',
+      'view=evidence_gallery は include_attachments=true と一緒に指定してください',
+    ],
+  ])(
+    'rejects invalid view mode query "%s" before loading visit records',
+    async (query, fieldName, message) => {
+      const response = await GET(createGetRequest(`http://localhost/api/visit-records?${query}`));
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+      expect(queryRawMock).not.toHaveBeenCalled();
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          [fieldName]: [message],
+        },
+      });
+    },
+  );
+
+  it.each([
+    ['include_history_summary=true&include_history_summary=false', 'include_history_summary'],
+    ['include_attachments=true&include_attachments=false', 'include_attachments'],
+    ['include_attachments=true&include_attachments=true', 'include_attachments'],
+    ['view=evidence_gallery&view=summary', 'view'],
+  ])(
+    'rejects duplicate view mode query "%s" before loading visit records',
+    async (query, fieldName) => {
+      const response = await GET(createGetRequest(`http://localhost/api/visit-records?${query}`));
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+      expect(queryRawMock).not.toHaveBeenCalled();
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          [fieldName]: [`${fieldName} は1つだけ指定してください`],
+        },
+      });
+    },
+  );
+
   it('returns patient context and history summaries so visit pages can check patient-level past records', async () => {
     queryRawMock.mockReset();
     visitRecordFindManyMock.mockResolvedValue([
