@@ -17,6 +17,7 @@ import {
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ErrorState } from '@/components/ui/error-state';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import {
@@ -188,8 +189,16 @@ export function CalendarView() {
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
 
-  const { data: schedules = [], isLoading } = useMonthSchedules(orgId, year, month);
+  const {
+    data: schedules = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useMonthSchedules(orgId, year, month);
   const isCalendarLoading = isBootstrappingOrg || isLoading;
+  // 取得失敗は空月表示(false-empty)に潰さず、再読み込み導線つきの ErrorState を出す。
+  // org bootstrap 中(orgId 未確定)は loading 扱いで error にしない。
+  const isCalendarError = isError && !isBootstrappingOrg;
 
   // Build calendar grid: Mon–Sun weeks covering the full month
   const monthStart = startOfMonth(currentMonth);
@@ -311,6 +320,16 @@ export function CalendarView() {
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted-foreground">読み込み中...</p>
           </div>
+        ) : isCalendarError ? (
+          <div className="px-4 py-12">
+            <ErrorState
+              variant="server"
+              size="inline"
+              title="スケジュールを取得できませんでした"
+              description="通信状態を確認し、再読み込みしてください。"
+              action={{ label: '再読み込み', onClick: () => void refetch() }}
+            />
+          </div>
         ) : (
           <div className="grid grid-cols-7">
             {days.map((day) => {
@@ -390,8 +409,8 @@ export function CalendarView() {
         )}
       </div>
 
-      {/* Day detail panel */}
-      {selectedDate && (
+      {/* Day detail panel（取得失敗時は誤った「予定なし」を出さない） */}
+      {selectedDate && !isCalendarError && (
         <DayPanel
           date={selectedDate}
           schedules={selectedSchedules}
