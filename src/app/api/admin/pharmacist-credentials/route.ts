@@ -1,4 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -7,8 +8,19 @@ import { withOrgContext } from '@/lib/db/rls';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createPharmacistCredentialSchema } from '@/lib/validations/pharmacist-credential';
 
+const DEFAULT_PHARMACIST_CREDENTIAL_LIMIT = 100;
+const MAX_PHARMACIST_CREDENTIAL_LIMIT = 200;
+
 export const GET = withAuthContext(
-  async (_req, ctx) => {
+  async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_PHARMACIST_CREDENTIAL_LIMIT,
+      1,
+      MAX_PHARMACIST_CREDENTIAL_LIMIT,
+    );
+
     const credentials = await prisma.pharmacistCredential.findMany({
       where: {
         org_id: ctx.orgId,
@@ -29,6 +41,7 @@ export const GET = withAuthContext(
         },
       },
       orderBy: [{ expiry_date: 'asc' }, { created_at: 'desc' }],
+      take: limit,
     });
 
     const pharmacistIds = credentials.map((item) => item.user.id);

@@ -55,7 +55,11 @@ const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(headers?: Record<string, string>) {
-  return new NextRequest('http://localhost/api/admin/pharmacist-credentials', {
+  return createGetRequest('', headers);
+}
+
+function createGetRequest(search = '', headers?: Record<string, string>) {
+  return new NextRequest(`http://localhost/api/admin/pharmacist-credentials${search}`, {
     headers,
   });
 }
@@ -155,19 +159,63 @@ describe('/api/admin/pharmacist-credentials GET', () => {
       },
     ]);
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const response = await GET(createGetRequest('?limit=5', { 'x-org-id': 'org_1' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          org_id: 'org_1',
-          pharmacist_id: { in: ['user_2'] },
-          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-        }),
-      }),
-    );
+    expect(pharmacistCredentialFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+        certification_type: true,
+        certification_number: true,
+        issued_date: true,
+        expiry_date: true,
+        tenure_years: true,
+        weekly_work_hours: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: [{ expiry_date: 'asc' }, { created_at: 'desc' }],
+      take: 5,
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        pharmacist_id: { in: ['user_2'] },
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        case_: {
+          patient: {
+            consents: {
+              some: {
+                org_id: 'org_1',
+                is_active: true,
+                revoked_date: null,
+              },
+            },
+          },
+        },
+      },
+      select: {
+        pharmacist_id: true,
+        case_: {
+          select: {
+            patient: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -178,6 +226,35 @@ describe('/api/admin/pharmacist-credentials GET', () => {
           consented_patients: [{ id: 'patient_1', name: '田中 花子' }],
         }),
       ],
+    });
+  });
+
+  it.each([
+    ['', 100],
+    ['?limit=200', 200],
+    ['?limit=9999', 200],
+    ['?limit=0', 1],
+    ['?limit=abc', 100],
+  ])('bounds pharmacist credential list size for "%s"', async (search, expectedTake) => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    pharmacistCredentialFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(createGetRequest(search, { 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(pharmacistCredentialFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+        },
+        take: expectedTake,
+      }),
+    );
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
     });
   });
 
