@@ -110,3 +110,13 @@ Buckets: GATED_ESCALATE = §15 (billing/算定・schema migration・RLS cross-or
 ### Remaining minor (non-§15, low ROI — open backlog)
 
 - patient-detail-workspace:182-184 batchResolveNames fail-soft (P2; needs log-not-swallow care). patient-detail-foundation:410-427 ordering tiebreaker (P3). dispense-workbench-shared:485 Number.EPSILON (P3). handoff-board route is_active (P2, codex/routes).
+
+## Minor-item closeout (2026-06-25)
+
+- `879d1c19` patient-detail minor hardening: (P2) buildPatientWorkspace batchResolveNames now fail-soft (.catch → safe log + empty Map, no 500), matching patient-detail.ts precedent; (P3) patientInsurance.findMany +{id:'asc'} deterministic tiebreaker. reviewer-audit APPROVED (PHI-safe log, teeth 3/3).
+- **FALSE POSITIVE** `src/lib/dispensing/dispense-workbench-shared.ts:485` (P3 Number.EPSILON): re-analysis — `Math.abs(perDose - rounded) > Number.EPSILON` correctly detects "perDose is not exactly a 3-decimal value" (= uneven per-dose that needs pharmacist verification, gating 「時点量を処方原本で確認」). The suggested 0.01 tolerance would STOP flagging slightly-uneven doses (e.g. 0.833/time) that genuinely need a check — it would break intent. EPSILON is correct here. No change.
+- **HANDED TO codex (route)** `src/app/api/handoff-board/items/route.ts:100-106` (P2): recipient_user_id validation should add is_active:true. Routes lane → codex.
+
+### Net result
+
+All confirmed non-§15 findings are now resolved (claude services/lib + codex routes), closed as FP, or escalated to BLOCKED.md (§15). No open claude-owned actionable items remain.
