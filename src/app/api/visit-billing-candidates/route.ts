@@ -34,6 +34,21 @@ function optionalSearchParam(value: string | null) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError('検索条件が不正です', { [name]: [message] })),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 function optionalBodyString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
@@ -126,9 +141,13 @@ export const GET = withAuthContext(
       return withSensitiveNoStore(validationError(BILLING_MONTH_FORMAT_MESSAGE));
     }
 
-    const statusResult = validateVisitBillingStatus(
-      optionalSearchParam(searchParams.get('status')),
+    const rawStatusResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      'ステータスを指定してください',
     );
+    if (!rawStatusResult.ok) return rawStatusResult.response;
+    const statusResult = validateVisitBillingStatus(rawStatusResult.value);
     if (!statusResult.ok) {
       return withSensitiveNoStore(
         validationError('検索条件が不正です', {
@@ -136,8 +155,20 @@ export const GET = withAuthContext(
         }),
       );
     }
-    const shareCaseId = optionalSearchParam(searchParams.get('share_case_id'));
-    const partnerPharmacyId = optionalSearchParam(searchParams.get('partner_pharmacy_id'));
+    const shareCaseIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'share_case_id',
+      '患者共有ケースIDを指定してください',
+    );
+    if (!shareCaseIdResult.ok) return shareCaseIdResult.response;
+    const partnerPharmacyIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'partner_pharmacy_id',
+      '協力薬局IDを指定してください',
+    );
+    if (!partnerPharmacyIdResult.ok) return partnerPharmacyIdResult.response;
+    const shareCaseId = shareCaseIdResult.value;
+    const partnerPharmacyId = partnerPharmacyIdResult.value;
 
     const rows = await withOrgContext(ctx.orgId, (tx) =>
       tx.visitBillingCandidate.findMany({

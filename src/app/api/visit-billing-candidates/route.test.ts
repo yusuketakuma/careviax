@@ -46,9 +46,10 @@ vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
 
-import { POST as rawPOST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
@@ -57,6 +58,10 @@ function createRequest(body: unknown) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+function createGetRequest(query = '') {
+  return new NextRequest(`http://localhost/api/visit-billing-candidates${query}`);
 }
 
 function confirmedPartnerRecord(overrides: Partial<Record<string, unknown>> = {}) {
@@ -83,6 +88,89 @@ function confirmedPartnerRecord(overrides: Partial<Record<string, unknown>> = {}
     ...overrides,
   };
 }
+
+describe('/api/visit-billing-candidates GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    visitBillingCandidateFindManyMock.mockResolvedValue([]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitBillingCandidate: {
+          findMany: visitBillingCandidateFindManyMock,
+        },
+      }),
+    );
+  });
+
+  it.each([
+    ['status', '?billing_month=2026-06-01&status=', { status: ['ステータスを指定してください'] }],
+    [
+      'blank status',
+      '?billing_month=2026-06-01&status=%20%20',
+      { status: ['ステータスを指定してください'] },
+    ],
+    [
+      'share_case_id',
+      '?billing_month=2026-06-01&share_case_id=',
+      { share_case_id: ['患者共有ケースIDを指定してください'] },
+    ],
+    [
+      'blank share_case_id',
+      '?billing_month=2026-06-01&share_case_id=%20%20',
+      { share_case_id: ['患者共有ケースIDを指定してください'] },
+    ],
+    [
+      'partner_pharmacy_id',
+      '?billing_month=2026-06-01&partner_pharmacy_id=',
+      { partner_pharmacy_id: ['協力薬局IDを指定してください'] },
+    ],
+    [
+      'blank partner_pharmacy_id',
+      '?billing_month=2026-06-01&partner_pharmacy_id=%20%20',
+      { partner_pharmacy_id: ['協力薬局IDを指定してください'] },
+    ],
+  ])('rejects explicitly empty %s filters before DB reads', async (_label, query, details) => {
+    const response = await GET(createGetRequest(query));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details,
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank billing months before DB reads', async () => {
+    const response = await GET(createGetRequest('?billing_month='));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('trims valid share case and partner pharmacy filters', async () => {
+    const response = await GET(
+      createGetRequest(
+        '?billing_month=2026-06-01&share_case_id=%20share_case_1%20&partner_pharmacy_id=%20partner_pharmacy_1%20',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(visitBillingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          partner_visit_record: {
+            share_case_id: 'share_case_1',
+            owner_partner_pharmacy_id: 'partner_pharmacy_1',
+          },
+        }),
+      }),
+    );
+  });
+});
 
 describe('/api/visit-billing-candidates POST', () => {
   beforeEach(() => {
