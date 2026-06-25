@@ -1,5 +1,6 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -8,6 +9,8 @@ import { serializePcaPump, toPcaPumpDateKey } from '@/server/services/pca-pump-s
 
 const pumpStatuses = ['available', 'rented', 'maintenance', 'retired'] as const;
 type PumpStatus = (typeof pumpStatuses)[number];
+const DEFAULT_PCA_PUMP_SEARCH_LIMIT = 500;
+const MAX_PCA_PUMP_SEARCH_LIMIT = 500;
 
 function parsePumpStatusParam(value: string | undefined) {
   if (!value || value === 'all') return { ok: true as const, status: undefined };
@@ -19,7 +22,14 @@ function parsePumpStatusParam(value: string | undefined) {
 
 export const GET = withAuthContext(
   async (req, ctx) => {
-    const query = req.nextUrl.searchParams.get('q')?.trim();
+    const queryParam = req.nextUrl.searchParams.get('q')?.trim();
+    const query = queryParam && queryParam.length > 0 ? queryParam : undefined;
+    const limit = parseBoundedInteger(
+      req.nextUrl.searchParams.get('limit'),
+      DEFAULT_PCA_PUMP_SEARCH_LIMIT,
+      1,
+      MAX_PCA_PUMP_SEARCH_LIMIT,
+    );
     const statusParam = req.nextUrl.searchParams.get('status')?.trim();
     const parsedStatus = parsePumpStatusParam(statusParam);
     if (!parsedStatus.ok) return validationError('PCAポンプ状態の指定が不正です');
@@ -66,11 +76,19 @@ export const GET = withAuthContext(
             },
           },
           orderBy: [{ status: 'asc' }, { asset_code: 'asc' }],
+          ...(query ? { take: limit + 1 } : {}),
         }),
       { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
     );
 
-    return success({ data: pumps.map(serializePcaPump) });
+    if (!query) {
+      return success({ data: pumps.map(serializePcaPump) });
+    }
+
+    return success({
+      data: pumps.slice(0, limit).map(serializePcaPump),
+      meta: { limit, has_more: pumps.length > limit },
+    });
   },
   {
     permission: 'canReport',

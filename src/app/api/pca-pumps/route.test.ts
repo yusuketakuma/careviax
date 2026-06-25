@@ -72,6 +72,14 @@ const pumpRecord = {
   rentals: [],
 };
 
+function createPumpRecord(id: string, assetCode: string) {
+  return {
+    ...pumpRecord,
+    id,
+    asset_code: assetCode,
+  };
+}
+
 describe('/api/pca-pumps GET', () => {
   const originalTimeZone = process.env.TZ;
 
@@ -121,9 +129,91 @@ describe('/api/pca-pumps GET', () => {
         },
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: [{ id: 'pump_1', asset_code: 'PCA-001', maintenance_due_at: null }],
     });
+    expect(body).not.toHaveProperty('meta');
+    expect(pcaPumpFindManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
+  });
+
+  it('treats blank q as an unfiltered full ledger request', async () => {
+    const response = await GET(createRequest('http://localhost/api/pca-pumps?q=%20%20'));
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpFindManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
+    await expect(response.json()).resolves.not.toHaveProperty('meta');
+  });
+
+  it('bounds q-filtered pump searches after DB filters', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/pca-pumps?q=CADD&status=available'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          status: 'available',
+          OR: [
+            { asset_code: { contains: 'CADD', mode: 'insensitive' } },
+            { serial_number: { contains: 'CADD', mode: 'insensitive' } },
+            { model_name: { contains: 'CADD', mode: 'insensitive' } },
+            { manufacturer: { contains: 'CADD', mode: 'insensitive' } },
+          ],
+        },
+        orderBy: [{ status: 'asc' }, { asset_code: 'asc' }],
+        take: 501,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        limit: 500,
+        has_more: false,
+      },
+    });
+  });
+
+  it('trims q-filtered pump searches and reports has_more', async () => {
+    pcaPumpFindManyMock.mockResolvedValue([
+      createPumpRecord('pump_1', 'PCA-001'),
+      createPumpRecord('pump_2', 'PCA-002'),
+      createPumpRecord('pump_3', 'PCA-003'),
+    ]);
+
+    const response = await GET(createRequest('http://localhost/api/pca-pumps?q=PCA&limit=2'));
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'pump_1' }, { id: 'pump_2' }],
+      meta: {
+        limit: 2,
+        has_more: true,
+      },
+    });
+  });
+
+  it.each([
+    ['9999', 501],
+    ['0', 2],
+    ['abc', 501],
+  ])('bounds q-filtered limit "%s" to take %i', async (limit, expectedTake) => {
+    const response = await GET(
+      createRequest(`http://localhost/api/pca-pumps?q=PCA&limit=${limit}`),
+    );
+
+    expect(response.status).toBe(200);
+    expect(pcaPumpFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: expectedTake,
+      }),
+    );
   });
 
   it('serializes pump maintenance dates by the local pharmacy calendar day', async () => {
