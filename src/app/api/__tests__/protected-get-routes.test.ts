@@ -140,7 +140,6 @@ import { GET as visitRecordPdfGet } from '../visit-records/[id]/pdf/route';
 import { GET as visitScheduleProposalsGet } from '../visit-schedule-proposals/route';
 import { GET as visitSchedulesGet } from '../visit-schedules/route';
 import { GET as visitScheduleGet } from '../visit-schedules/[id]/route';
-import { GET as visitSchedulesTodayGet } from '../visit-schedules/today/route';
 import { GET as visitPreparationBriefGet } from '../visit-preparations/[scheduleId]/brief/route';
 
 type Handler = () => Promise<Response | undefined>;
@@ -525,14 +524,6 @@ const routes: Array<{ name: string; handler: Handler }> = [
       visitScheduleGet(
         createRequest('http://localhost/api/visit-schedules/schedule_1', { 'x-org-id': 'org_1' }),
         { params: Promise.resolve({ id: 'schedule_1' }) },
-      ),
-  },
-  {
-    name: 'visit-schedules/today GET',
-    handler: () =>
-      visitSchedulesTodayGet(
-        createRequest('http://localhost/api/visit-schedules/today', { 'x-org-id': 'org_1' }),
-        emptyRouteContext,
       ),
   },
   {

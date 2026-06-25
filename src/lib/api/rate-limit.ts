@@ -799,7 +799,6 @@ export const API_ROUTE_TEMPLATES = [
   '/api/visit-schedules/generate',
   '/api/visit-schedules/reorder',
   '/api/visit-schedules/day-board',
-  '/api/visit-schedules/today',
   '/api/visits/today-preparation',
   '/api/workflow-exceptions/:id',
 ] as const;
