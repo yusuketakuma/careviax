@@ -710,6 +710,7 @@ async function dispatchToEndpoint(
     try {
       response = await fetch(registration.url, {
         method: 'POST',
+        redirect: 'manual',
         headers: {
           'Content-Type': 'application/json',
           'X-PH-OS-Event': payload.event,

@@ -268,6 +268,63 @@ describe('outbound-webhook', () => {
     expect(JSON.stringify(webhookDeliveryUpsertMock.mock.calls)).not.toContain('super-secret');
   });
 
+  it('does not follow webhook redirects after validating the registered URL', async () => {
+    webhookRegistrationFindManyMock.mockResolvedValue([
+      {
+        id: 'webhook_redirect',
+        org_id: 'org_1',
+        url: 'https://hooks.example.com/patient',
+        secret: 'secret_1',
+        events: ['patient.created'],
+        is_active: true,
+        created_at: new Date('2026-04-05T00:00:00.000Z'),
+      },
+    ]);
+    lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
+    fetchMock.mockResolvedValue({
+      status: 302,
+      ok: false,
+      headers: new Headers({ location: 'http://169.254.169.254/latest/meta-data/' }),
+    });
+
+    const result = await dispatchWebhookEventForOrg('org_1', 'patient.created', {
+      patientId: 'patient_1',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://hooks.example.com/patient',
+      expect.objectContaining({
+        method: 'POST',
+        redirect: 'manual',
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'http://169.254.169.254/latest/meta-data/',
+      expect.anything(),
+    );
+    expect(webhookDeliveryUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'failed',
+          status_code: 302,
+          error: null,
+          attempt_count: { increment: 1 },
+        }),
+      }),
+    );
+    expect(result).toMatchObject([
+      {
+        webhookId: 'webhook_redirect',
+        event: 'patient.created',
+        statusCode: 302,
+        success: false,
+      },
+    ]);
+    expect(JSON.stringify(webhookDeliveryUpdateMock.mock.calls)).not.toContain('169.254.169.254');
+    expect(JSON.stringify(result)).not.toContain('169.254.169.254');
+  });
+
   it('uses an unrefed cleanup timer for outbound webhook delivery requests', async () => {
     webhookRegistrationFindManyMock.mockResolvedValue([
       {
