@@ -6,19 +6,20 @@ import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-acce
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import {
-  success,
-  validationError,
-  notFound,
   conflict,
   forbiddenResponse,
+  internalError,
+  notFound,
+  success,
+  validationError,
 } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
   updateVisitRecordSchema,
   type VisitRecordAttachmentRefInput,
 } from '@/lib/validations/visit-record';
-import { prisma } from '@/lib/db/client';
 import {
   getMissingHomeVisit2026CompletionItems,
   isHomeVisit2026CompletionOutcome,
@@ -103,7 +104,7 @@ async function resolveVisitRecordAttachments(
   return resolved;
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録の閲覧権限がありません',
@@ -115,85 +116,100 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('訪問記録IDが不正です');
 
-  const record = await prisma.visitRecord.findFirst({
-    where: { id, org_id: ctx.orgId },
-    include: {
-      schedule: {
-        select: {
-          id: true,
-          case_id: true,
-          site_id: true,
-          pharmacist_id: true,
-          visit_type: true,
-          scheduled_date: true,
-          recurrence_rule: true,
-          time_window_start: true,
-          time_window_end: true,
-          case_: {
+  return withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const record = await tx.visitRecord.findFirst({
+        where: { id, org_id: ctx.orgId },
+        include: {
+          schedule: {
             select: {
-              primary_pharmacist_id: true,
-              backup_pharmacist_id: true,
+              id: true,
+              case_id: true,
+              site_id: true,
+              pharmacist_id: true,
+              visit_type: true,
+              scheduled_date: true,
+              recurrence_rule: true,
+              time_window_start: true,
+              time_window_end: true,
+              case_: {
+                select: {
+                  primary_pharmacist_id: true,
+                  backup_pharmacist_id: true,
+                },
+              },
             },
           },
         },
-      },
+      });
+
+      if (!record) return notFound('訪問記録が見つかりません');
+      if (!canAccessVisitScheduleAssignment(ctx, record.schedule)) {
+        return forbiddenResponse('この訪問記録を閲覧する権限がありません');
+      }
+
+      const caseId = record.schedule?.case_id ?? null;
+      const patientId = record.patient_id;
+      const [latestAudit, activeCase, patientSchedulePref] = await Promise.all([
+        tx.auditLog.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            target_type: 'visit_record',
+            target_id: id,
+          },
+          orderBy: { created_at: 'desc' },
+          select: {
+            actor_id: true,
+          },
+        }),
+        caseId
+          ? tx.careCase.findFirst({
+              where: { id: caseId, org_id: ctx.orgId },
+              select: { required_visit_support: true },
+            })
+          : Promise.resolve(null),
+        tx.patientSchedulePreference.findFirst({
+          where: { patient_id: patientId, org_id: ctx.orgId },
+          select: { visit_before_contact_required: true },
+        }),
+      ]);
+
+      const userIds = Array.from(
+        new Set([record.pharmacist_id, latestAudit?.actor_id].filter(Boolean) as string[]),
+      );
+      const userById = await batchResolveNames(tx, ctx.orgId, userIds);
+
+      const intakeData = getHomeVisitIntake(activeCase?.required_visit_support ?? null);
+      const visitBeforeContactRequired = patientSchedulePref?.visit_before_contact_required ?? null;
+      const baselineContext = buildBaselineContext(intakeData, visitBeforeContactRequired);
+
+      const publicRecord = { ...record };
+      delete (publicRecord as { patient_state_snapshot?: unknown }).patient_state_snapshot;
+      delete (publicRecord as { visit_geo_log?: unknown }).visit_geo_log;
+
+      return success({
+        ...publicRecord,
+        attachments: parseStoredVisitRecordAttachments(record.attachments),
+        pharmacist_name: userById.get(record.pharmacist_id) ?? null,
+        last_modified_by_id: latestAudit?.actor_id ?? record.pharmacist_id,
+        last_modified_by_name:
+          (latestAudit?.actor_id ? userById.get(latestAudit.actor_id) : null) ??
+          userById.get(record.pharmacist_id) ??
+          null,
+        baseline_context: baselineContext,
+      });
     },
-  });
-
-  if (!record) return notFound('訪問記録が見つかりません');
-  if (!canAccessVisitScheduleAssignment(ctx, record.schedule)) {
-    return forbiddenResponse('この訪問記録を閲覧する権限がありません');
-  }
-
-  const caseId = record.schedule?.case_id ?? null;
-  const patientId = record.patient_id;
-  const [latestAudit, activeCase, patientSchedulePref] = await Promise.all([
-    prisma.auditLog.findFirst({
-      where: {
-        org_id: ctx.orgId,
-        target_type: 'visit_record',
-        target_id: id,
-      },
-      orderBy: { created_at: 'desc' },
-      select: {
-        actor_id: true,
-      },
-    }),
-    caseId
-      ? prisma.careCase.findFirst({
-          where: { id: caseId, org_id: ctx.orgId },
-          select: { required_visit_support: true },
-        })
-      : Promise.resolve(null),
-    prisma.patientSchedulePreference.findFirst({
-      where: { patient_id: patientId, org_id: ctx.orgId },
-      select: { visit_before_contact_required: true },
-    }),
-  ]);
-
-  const userIds = Array.from(
-    new Set([record.pharmacist_id, latestAudit?.actor_id].filter(Boolean) as string[]),
+    { requestContext: ctx },
   );
-  const userById = await batchResolveNames(prisma, ctx.orgId, userIds);
+}
 
-  const intakeData = getHomeVisitIntake(activeCase?.required_visit_support ?? null);
-  const visitBeforeContactRequired = patientSchedulePref?.visit_before_contact_required ?? null;
-  const baselineContext = buildBaselineContext(intakeData, visitBeforeContactRequired);
-
-  const publicRecord = { ...record };
-  delete (publicRecord as { patient_state_snapshot?: unknown }).patient_state_snapshot;
-
-  return success({
-    ...publicRecord,
-    attachments: parseStoredVisitRecordAttachments(record.attachments),
-    pharmacist_name: userById.get(record.pharmacist_id) ?? null,
-    last_modified_by_id: latestAudit?.actor_id ?? record.pharmacist_id,
-    last_modified_by_name:
-      (latestAudit?.actor_id ? userById.get(latestAudit.actor_id) : null) ??
-      userById.get(record.pharmacist_id) ??
-      null,
-    baseline_context: baselineContext,
-  });
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

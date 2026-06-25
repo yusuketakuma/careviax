@@ -107,6 +107,11 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-records/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -173,6 +178,18 @@ describe('/api/visit-records/[id]', () => {
           findMany: visitRecordFindManyMock,
           updateMany: visitRecordUpdateManyMock,
         },
+        auditLog: {
+          findFirst: auditLogFindFirstMock,
+        },
+        user: {
+          findMany: userFindManyMock,
+        },
+        careCase: {
+          findFirst: careCaseFindFirstMock,
+        },
+        patientSchedulePreference: {
+          findFirst: patientSchedulePreferenceFindFirstMock,
+        },
         medicationCycle: {
           findMany: medicationCycleFindManyMock,
         },
@@ -190,7 +207,8 @@ describe('/api/visit-records/[id]', () => {
   });
 
   it('returns visit record attachments as a normalized list', async () => {
-    visitRecordFindFirstMock.mockResolvedValue({
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
       org_id: 'org_1',
       schedule_id: 'schedule_1',
@@ -224,6 +242,8 @@ describe('/api/visit-records/[id]', () => {
           kind: 'photo',
         },
       ],
+      patient_state_snapshot: { previous_visit: 'sensitive snapshot' },
+      visit_geo_log: { started_at: { lat: 35.6812, lng: 139.7671 } },
       schedule: {
         id: 'schedule_1',
         case_id: 'case_1',
@@ -247,7 +267,9 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
       id: 'visit_1',
       attachments: [
         {
@@ -259,6 +281,18 @@ describe('/api/visit-records/[id]', () => {
         },
       ],
     });
+    expect(body).not.toHaveProperty('patient_state_snapshot');
+    expect(body).not.toHaveProperty('visit_geo_log');
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+        }),
+      }),
+    );
   });
 
   it('rejects blank visit record ids before loading visit details', async () => {
@@ -268,18 +302,110 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '訪問記録IDが不正です',
     });
-    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(txVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns not found with no-store when the visit record is missing', async () => {
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'missing' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '訪問記録が見つかりません',
+    });
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns forbidden with no-store when the schedule assignment is inaccessible', async () => {
+    txVisitRecordFindFirstMock.mockReset();
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'driver',
+      },
+    });
+    txVisitRecordFindFirstMock.mockResolvedValue({
+      id: 'visit_1',
+      org_id: 'org_1',
+      schedule_id: 'schedule_1',
+      patient_id: 'patient_1',
+      pharmacist_id: 'user_other',
+      attachments: [],
+      schedule: {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        site_id: null,
+        pharmacist_id: 'user_other',
+        visit_type: 'home_visit',
+        scheduled_date: new Date('2026-03-28T00:00:00.000Z'),
+        recurrence_rule: null,
+        time_window_start: null,
+        time_window_end: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      },
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: 'この訪問記録を閲覧する権限がありません',
+    });
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store internal error when visit record loading fails', async () => {
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock.mockRejectedValue(new Error('database leaked stack'));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'visit_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
     expect(auditLogFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(patientSchedulePreferenceFindFirstMock).not.toHaveBeenCalled();
   });
 
   it('allows an org-wide pharmacist to read a visit record on another schedule assignment', async () => {
-    visitRecordFindFirstMock.mockResolvedValue({
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
       org_id: 'org_1',
       schedule_id: 'schedule_1',
@@ -325,6 +451,7 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({ id: 'visit_1' });
     expect(auditLogFindFirstMock).toHaveBeenCalled();
   });
@@ -817,7 +944,8 @@ describe('/api/visit-records/[id]', () => {
   });
 
   it('includes baseline_context with care_level, adl_level, dementia_level from intake data', async () => {
-    visitRecordFindFirstMock.mockResolvedValue({
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
       org_id: 'org_1',
       schedule_id: 'schedule_1',
