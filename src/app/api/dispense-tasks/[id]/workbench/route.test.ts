@@ -105,6 +105,11 @@ function createInterruptRequest(body: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/dispense-tasks/[id]/workbench POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -246,6 +251,7 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
     const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'task_1' }) });
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       intake: {
         id: 'intake_1',
@@ -299,6 +305,7 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
       const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'task_1' }) });
 
       expect(response.status).toBe(403);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'AUTH_FORBIDDEN',
         message: '調剤ワークベンチの閲覧権限がありません',
@@ -306,6 +313,31 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
       expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
     },
   );
+
+  it('returns no-store on invalid task id', async () => {
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: ' ' }) });
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '調剤タスクIDが不正です',
+    });
+    expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store when the task is not found', async () => {
+    dispenseTaskFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'task_1' }) });
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: 'タスクが見つかりません',
+    });
+  });
 
   it('compares current intake with the previous same-case intake across cycles', async () => {
     const currentPrescribedDate = new Date('2026-06-10T00:00:00.000Z');
@@ -394,6 +426,7 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
     const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'task_1' }) });
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       previous_intake: { prescribed_date: '2026-05-27' },
       comparison: [

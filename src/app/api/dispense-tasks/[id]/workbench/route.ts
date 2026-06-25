@@ -4,6 +4,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, forbidden } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -53,7 +54,7 @@ function doseFrequencyLabel(line: { dose: string; frequency: string }): string {
 
 // ── GET: ワークベンチ projection ──
 
-export const GET = withAuthContext(async (_req, ctx, { params }) => {
+const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
   if (
     !hasPermission(ctx.role, 'canDispense') &&
     !hasPermission(ctx.role, 'canAuditDispense') &&
@@ -483,6 +484,9 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
     stock_check_date_label: latestStock ? format(latestStock.updated_at, 'M/d') : null,
   });
 });
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));
 
 // ── POST: 中断(理由必須)──
 

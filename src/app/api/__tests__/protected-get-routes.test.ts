@@ -143,6 +143,7 @@ import { GET as dashboardOverdueGet } from '../dashboard/overdue/route';
 import { GET as dispenseAuditsGet } from '../dispense-audits/route';
 import { GET as dispenseQueueGet } from '../dispense-queue/route';
 import { GET as dispenseTasksGet } from '../dispense-tasks/route';
+import { GET as dispenseTaskWorkbenchGet } from '../dispense-tasks/[id]/workbench/route';
 import { GET as firstVisitDocumentsGet } from '../first-visit-documents/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
 import { GET as interventionsGet } from '../interventions/route';
@@ -185,7 +186,7 @@ function createRequest(url: string, headers?: Record<string, string>) {
   return new NextRequest(url, { headers });
 }
 
-const routes: Array<{ name: string; handler: Handler }> = [
+const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void }> = [
   {
     name: 'audit-logs GET',
     handler: () =>
@@ -408,6 +409,48 @@ const routes: Array<{ name: string; handler: Handler }> = [
       dispenseTasksGet(
         createRequest('http://localhost/api/dispense-tasks', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dispense-tasks/[id]/workbench GET',
+    setupSuccess: () => {
+      prismaMock.patientLabObservation.findFirst.mockResolvedValueOnce(null);
+      prismaMock.visitSchedule.findFirst.mockResolvedValueOnce(null);
+      prismaMock.dispenseTask.count.mockResolvedValueOnce(0);
+      prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
+      prismaMock.dispenseTask.findFirst.mockResolvedValueOnce({
+        id: 'task_1',
+        status: 'pending',
+        priority: 'normal',
+        due_date: null,
+        results: [],
+        cycle: {
+          id: 'cycle_1',
+          overall_status: 'ready_to_dispense',
+          version: 1,
+          case_id: 'case_1',
+          case_: {
+            id: 'case_1',
+            patient: {
+              id: 'patient_1',
+              name: '患者A',
+              allergy_info: null,
+              scheduling_preference: null,
+              conditions: [],
+            },
+          },
+          inquiries: [],
+          packaging_groups: [],
+          prescription_intakes: [],
+        },
+      });
+    },
+    handler: () =>
+      dispenseTaskWorkbenchGet(
+        createRequest('http://localhost/api/dispense-tasks/task_1/workbench', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'task_1' }) },
       ),
   },
   {
@@ -782,6 +825,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
+        route.name === 'dispense-tasks/[id]/workbench GET' ||
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
@@ -818,6 +862,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
+        route.name === 'dispense-tasks/[id]/workbench GET' ||
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
@@ -842,6 +887,7 @@ describe('protected GET routes auth matrix', () => {
     it(`${route.name} returns 200 when role has permission`, async () => {
       authMock.mockResolvedValue({ user: { id: 'user_1' } });
       prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
+      route.setupSuccess?.();
 
       const response = await route.handler();
 

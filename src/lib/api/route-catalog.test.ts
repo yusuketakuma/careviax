@@ -118,6 +118,7 @@ describe('routeCatalog', () => {
       '/api/patients/:id/prescriptions/export',
       '/api/interventions',
       '/api/residual-medications',
+      '/api/dispense-tasks/:id/workbench',
       '/api/set-plans',
       '/api/visit-schedule-proposals',
       '/api/dashboard/dispensing-stats',

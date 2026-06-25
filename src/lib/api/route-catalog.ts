@@ -351,6 +351,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'dispensing',
   },
   {
+    path: '/api/dispense-tasks/:id/workbench',
+    methods: ['GET'],
+    permission: 'purpose-based',
+    description: '調剤・鑑査ワークベンチ詳細取得',
+    area: 'dispensing',
+  },
+  {
+    path: '/api/dispense-tasks/:id/workbench',
+    methods: ['POST'],
+    permission: 'canDispense',
+    description: '調剤ワークベンチ中断登録',
+    area: 'dispensing',
+  },
+  {
     path: '/api/set-plans',
     methods: ['GET', 'POST'],
     permission: 'canSet',

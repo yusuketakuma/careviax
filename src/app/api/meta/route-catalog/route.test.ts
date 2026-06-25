@@ -108,6 +108,20 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'dispensing',
         }),
         expect.objectContaining({
+          path: '/api/dispense-tasks/:id/workbench',
+          methods: ['GET'],
+          permission: 'purpose-based',
+          description: '調剤・鑑査ワークベンチ詳細取得',
+          area: 'dispensing',
+        }),
+        expect.objectContaining({
+          path: '/api/dispense-tasks/:id/workbench',
+          methods: ['POST'],
+          permission: 'canDispense',
+          description: '調剤ワークベンチ中断登録',
+          area: 'dispensing',
+        }),
+        expect.objectContaining({
           path: '/api/set-plans',
           methods: ['GET', 'POST'],
           permission: 'canSet',
