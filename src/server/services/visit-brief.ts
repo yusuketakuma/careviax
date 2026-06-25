@@ -17,6 +17,7 @@ import { buildPatientStateSnapshot } from '@/server/services/patient-state-snaps
 import { diffPatientStateSnapshots } from '@/server/services/visit-brief-patient-diff';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { SET_METHOD_LABELS } from '@/lib/dispensing/set-methods';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { readJahisSupplementalDetails } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import type {
   VisitBrief,
@@ -314,11 +315,12 @@ const SET_AUDIT_LABELS: Record<string, string> = {
   rejected: '差戻し',
 };
 
+// facility acceptance_time_from/to are @db.Time() values (stored as a UTC
+// 1970-01-01 date). Format them through the shared UTC-based helper so the
+// clock time is not shifted by the server's local timezone. Using getHours()
+// here (local tz) renders the wrong time on a non-UTC server (e.g. JST +9).
 function timeToHHMM(value: Date | null | undefined): string | null {
-  if (!value) return null;
-  const h = String(value.getHours()).padStart(2, '0');
-  const m = String(value.getMinutes()).padStart(2, '0');
-  return `${h}:${m}`;
+  return timeDateToString(value) ?? null;
 }
 
 async function listJahisSupplementalRecordsForBrief(
