@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2057 JST
+
+- current task: continue Codex-only backend/API performance hardening by honoring explicit `limit` queries on `GET /api/pharmacist-shifts` without changing no-limit callers.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; local Next.js Route Handlers guide `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`; `src/app/api/pharmacist-shifts/route.ts`; `src/app/api/pharmacist-shifts/route.test.ts`; `src/lib/validations/pharmacist-shift.ts`; `src/lib/api/pagination.ts`; admin shifts and weekly optimizer callers; gbrain `code_blast` and `code_callers` for `src/app/api/pharmacist-shifts/route.ts::GET`; performance-auditor subagent report for ignored `limit=400`.
+- files changed: `src/app/api/pharmacist-shifts/route.ts`, `src/app/api/pharmacist-shifts/route.test.ts`, and this Ralph state entry.
+- bugs found: admin shifts callers send `limit=400`, but the API ignored that query parameter and materialized every matching pharmacist-shift row with `user` and `site` includes.
+- security risks found: no auth/authz, org scope, assignment scope, DB schema, migration, billing, frontend, external send, or destructive behavior changed. Existing `canVisit`, query validation, date/user/site filters, include projection, sort order, POST validation/upsert behavior, and no-limit response compatibility are preserved.
+- performance issues found: explicit `limit` requests now apply `take: limit + 1` to `prisma.pharmacistShift.findMany`, trim the payload to `limit`, and return additive `meta: { limit, has_more }`. Requests without `limit` keep the previous no-`take`, no-`meta` behavior for weekly optimizer/full-range callers.
+- validation commands: `pnpm exec vitest run src/app/api/pharmacist-shifts/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/pharmacist-shifts/route.ts src/app/api/pharmacist-shifts/route.test.ts`; `pnpm exec prettier --write src/app/api/pharmacist-shifts/route.ts`; `pnpm exec prettier --check src/app/api/pharmacist-shifts/route.ts src/app/api/pharmacist-shifts/route.test.ts`; `git diff --check -- src/app/api/pharmacist-shifts/route.ts src/app/api/pharmacist-shifts/route.test.ts`; long-gate `pnpm typecheck` under token `F7D6F648-EF83-4548-B35B-AD2E9B24EC83`.
+- validation results: focused pharmacist-shifts route Vitest passed `14/14`; protected GET catalog Vitest passed `129/129`; focused ESLint passed; initial Prettier check flagged `src/app/api/pharmacist-shifts/route.ts`, then Prettier write was applied and focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, then continue with the next backend/API candidate.
+- next action: drain agmsg, inspect staged paths, and commit the pharmacist-shifts explicit limit slice.
+
 ### 20260625-2054 JST
 
 - current task: continue Codex-only backend/API hardening by fail-closing explicit blank `site_id` filters on `/api/pharmacists`, while preserving valid trimmed site filtering and existing collaborator/list behavior.

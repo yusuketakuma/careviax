@@ -1,5 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { prisma } from '@/lib/db/client';
@@ -10,6 +11,9 @@ import {
   toShiftTimeValue,
 } from '@/lib/validations/pharmacist-shift';
 
+const DEFAULT_PHARMACIST_SHIFT_LIMIT = 400;
+const MAX_PHARMACIST_SHIFT_LIMIT = 500;
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -18,6 +22,16 @@ export const GET = withAuthContext(
     const dateTo = searchParams.get('date_to');
     const userId = searchParams.get('user_id');
     const siteId = searchParams.get('site_id');
+    const rawLimit = searchParams.get('limit');
+    const limit =
+      rawLimit === null
+        ? undefined
+        : parseBoundedInteger(
+            rawLimit,
+            DEFAULT_PHARMACIST_SHIFT_LIMIT,
+            1,
+            MAX_PHARMACIST_SHIFT_LIMIT,
+          );
 
     const parsed = pharmacistShiftQuerySchema.safeParse({
       ...(month !== null ? { month } : {}),
@@ -57,13 +71,20 @@ export const GET = withAuthContext(
         ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
       },
       orderBy: [{ date: 'asc' }, { available_from: 'asc' }],
+      ...(limit === undefined ? {} : { take: limit + 1 }),
       include: {
         user: { select: { id: true, name: true, name_kana: true } },
         site: { select: { id: true, name: true } },
       },
     });
 
-    return success({ data: shifts });
+    const hasMore = limit === undefined ? false : shifts.length > limit;
+    const data = limit === undefined ? shifts : shifts.slice(0, limit);
+
+    return success({
+      data,
+      ...(limit === undefined ? {} : { meta: { limit, has_more: hasMore } }),
+    });
   },
   {
     permission: 'canVisit',

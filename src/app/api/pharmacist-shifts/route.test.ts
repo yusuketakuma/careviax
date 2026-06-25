@@ -97,6 +97,52 @@ describe('/api/pharmacist-shifts', () => {
         site: { select: { id: true, name: true } },
       },
     });
+    await expect(response.json()).resolves.not.toHaveProperty('meta');
+  });
+
+  it('honors explicit limit queries with overflow metadata', async () => {
+    pharmacistShiftFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 401 }, (_, index) => ({ id: `shift_${index}` })),
+    );
+
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts?month=2026-04-01&limit=400'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 401,
+      }),
+    );
+    const body = await response.json();
+    expect(body.data).toHaveLength(400);
+    expect(body.data.at(-1)).toEqual({ id: 'shift_399' });
+    expect(JSON.stringify(body)).not.toContain('shift_400');
+    expect(body.meta).toEqual({ limit: 400, has_more: true });
+  });
+
+  it.each([
+    ['9999', 501, 500],
+    ['0', 2, 1],
+    ['abc', 401, 400],
+  ])('bounds explicit limit=%s to take %i', async (rawLimit, expectedTake, expectedLimit) => {
+    const response = (await GET(
+      createRequest(`http://localhost/api/pharmacist-shifts?month=2026-04-01&limit=${rawLimit}`),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: expectedTake,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        limit: expectedLimit,
+        has_more: false,
+      },
+    });
   });
 
   it('rejects invalid month filters before querying shifts', async () => {
