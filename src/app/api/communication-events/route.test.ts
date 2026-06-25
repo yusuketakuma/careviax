@@ -145,6 +145,8 @@ describe('/api/communication-events', () => {
     const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(communicationEventFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -162,6 +164,58 @@ describe('/api/communication-events', () => {
       attachments: true,
     });
   });
+
+  it.each([
+    ['patient_id=', 'patient_id', '患者IDを指定してください'],
+    ['patient_id=%20patient_1', 'patient_id', '患者IDの形式が不正です'],
+    [`patient_id=${'a'.repeat(101)}`, 'patient_id', '患者IDの形式が不正です'],
+    ['event_type=%20%20', 'event_type', 'イベントタイプを指定してください'],
+    ['event_type=fax%20', 'event_type', 'イベントタイプの形式が不正です'],
+    [`event_type=${'a'.repeat(101)}`, 'event_type', 'イベントタイプの形式が不正です'],
+  ])(
+    'rejects blank or padded communication event filter query "%s" before assignment scope',
+    async (query, fieldName, message) => {
+      const response = (await GET(createGetRequest(query)))!;
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: {
+          [fieldName]: [message],
+        },
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(communicationEventFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['patient_id=patient_1&patient_id=patient_2', 'patient_id'],
+    ['event_type=fax&event_type=', 'event_type'],
+  ])(
+    'rejects duplicate communication event filter query "%s" before assignment scope',
+    async (query, fieldName) => {
+      const response = (await GET(createGetRequest(query)))!;
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: {
+          [fieldName]: [`${fieldName} は1つだけ指定してください`],
+        },
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(communicationEventFindManyMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('lets an org-wide role create an event for any in-org case without assignment scoping', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);

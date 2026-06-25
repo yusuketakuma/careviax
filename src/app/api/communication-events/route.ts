@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -56,6 +57,72 @@ type AttachmentValidationSuccess = {
 };
 
 const COMMUNICATION_ATTACHMENT_PURPOSES = new Set(['prescription', 'report', 'visit-photo']);
+
+function readStrictOptionalCommunicationEventFilter(
+  searchParams: URLSearchParams,
+  name: 'patient_id' | 'event_type',
+  messages: { blank: string; invalid: string },
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
+    };
+  }
+
+  const value = values[0];
+  if (value.trim().length === 0) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.blank] },
+    };
+  }
+
+  if (value !== value.trim() || value.length > 100) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.invalid] },
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function parseCommunicationEventListFilters(searchParams: URLSearchParams) {
+  const patientResult = readStrictOptionalCommunicationEventFilter(searchParams, 'patient_id', {
+    blank: '患者IDを指定してください',
+    invalid: '患者IDの形式が不正です',
+  });
+  if (!patientResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', patientResult.fieldErrors),
+      ),
+    };
+  }
+
+  const eventTypeResult = readStrictOptionalCommunicationEventFilter(searchParams, 'event_type', {
+    blank: 'イベントタイプを指定してください',
+    invalid: 'イベントタイプの形式が不正です',
+  });
+  if (!eventTypeResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', eventTypeResult.fieldErrors),
+      ),
+    };
+  }
+
+  return {
+    ok: true as const,
+    patientId: patientResult.value,
+    eventType: eventTypeResult.value,
+  };
+}
 
 function uniqueAttachmentRefs(refs: CommunicationEventAttachmentRef[]) {
   const seen = new Set<string>();
@@ -223,9 +290,10 @@ export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
+    const filters = parseCommunicationEventListFilters(searchParams);
+    if (!filters.ok) return filters.response;
 
-    const patientId = searchParams.get('patient_id') ?? undefined;
-    const eventType = searchParams.get('event_type') ?? undefined;
+    const { patientId, eventType } = filters;
 
     const assignmentWhere = await buildCommunicationEventAssignmentWhere({
       db: prisma,
@@ -264,7 +332,7 @@ export const GET = withAuthContext(
       },
     });
 
-    return success(buildCursorPage(events, limit, (event) => event.id));
+    return withSensitiveNoStore(success(buildCursorPage(events, limit, (event) => event.id)));
   },
   {
     permission: 'canReport',
