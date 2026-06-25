@@ -73,16 +73,55 @@ const createCommunicationRequestSchema = z.object({
   due_date: optionalDateSchema,
 });
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalTrimmedSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
+    const statusResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      'ステータスを指定してください',
+    );
+    if (!statusResult.ok) return statusResult.response;
+    const patientIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'patient_id',
+      '患者IDを指定してください',
+    );
+    if (!patientIdResult.ok) return patientIdResult.response;
+    const relatedEntityTypeResult = readPresentOptionalSearchParam(
+      searchParams,
+      'related_entity_type',
+      '関連種別を指定してください',
+    );
+    if (!relatedEntityTypeResult.ok) return relatedEntityTypeResult.response;
+    const relatedEntityIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'related_entity_id',
+      '関連IDを指定してください',
+    );
+    if (!relatedEntityIdResult.ok) return relatedEntityIdResult.response;
 
     const parsedQuery = communicationRequestQuerySchema.safeParse({
-      status: optionalTrimmedSearchParam(searchParams.get('status')),
-      patient_id: optionalTrimmedSearchParam(searchParams.get('patient_id')),
-      related_entity_type: optionalTrimmedSearchParam(searchParams.get('related_entity_type')),
-      related_entity_id: optionalTrimmedSearchParam(searchParams.get('related_entity_id')),
+      status: statusResult.value,
+      patient_id: patientIdResult.value,
+      related_entity_type: relatedEntityTypeResult.value,
+      related_entity_id: relatedEntityIdResult.value,
     });
     if (!parsedQuery.success) {
       return validationError('検索条件が不正です', parsedQuery.error.flatten().fieldErrors);

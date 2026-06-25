@@ -233,6 +233,44 @@ describe('/api/communication-requests', () => {
     );
   });
 
+  it.each([
+    ['status', '?status=', { status: ['ステータスを指定してください'] }],
+    ['blank status', '?status=%20%20', { status: ['ステータスを指定してください'] }],
+    ['patient_id', '?patient_id=', { patient_id: ['患者IDを指定してください'] }],
+    ['blank patient_id', '?patient_id=%20%20', { patient_id: ['患者IDを指定してください'] }],
+    [
+      'related_entity_type',
+      '?related_entity_type=',
+      { related_entity_type: ['関連種別を指定してください'] },
+    ],
+    [
+      'blank related_entity_type',
+      '?related_entity_type=%20%20',
+      { related_entity_type: ['関連種別を指定してください'] },
+    ],
+    [
+      'related_entity_id',
+      '?related_entity_id=',
+      { related_entity_id: ['関連IDを指定してください'] },
+    ],
+    [
+      'blank related_entity_id',
+      '?related_entity_id=%20%20',
+      { related_entity_id: ['関連IDを指定してください'] },
+    ],
+  ])('rejects explicitly empty %s filters before listing', async (_label, query, details) => {
+    const response = (await GET(createGetRequest(query)))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details,
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns 400 for an invalid status filter', async () => {
     const response = (await GET(createGetRequest('?status=foo')))!;
 
