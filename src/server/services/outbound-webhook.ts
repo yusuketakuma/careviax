@@ -337,10 +337,10 @@ function toWebhookRegistration(record: {
   };
 }
 
-async function loadWebhookRegistrationsForOrg(orgId: string) {
+async function loadWebhookRegistrationsForOrg(orgId: string, event: WebhookEventType) {
   const { prisma } = await import('@/lib/db/client');
   const records = await prisma.webhookRegistration.findMany({
-    where: { org_id: orgId, is_active: true },
+    where: { org_id: orgId, is_active: true, events: { has: event } },
     select: {
       id: true,
       org_id: true,
@@ -840,7 +840,7 @@ export async function dispatchWebhookEventForOrg(
   event: WebhookEventType,
   data: Record<string, unknown>,
 ) {
-  const registrations = await loadWebhookRegistrationsForOrg(orgId);
+  const registrations = await loadWebhookRegistrationsForOrg(orgId, event);
   return dispatchWebhookEvent(registrations, event, orgId, data);
 }
 

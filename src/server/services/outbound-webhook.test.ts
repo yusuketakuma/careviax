@@ -174,7 +174,7 @@ describe('outbound-webhook', () => {
     });
 
     expect(webhookRegistrationFindManyMock).toHaveBeenCalledWith({
-      where: { org_id: 'org_1', is_active: true },
+      where: { org_id: 'org_1', is_active: true, events: { has: 'patient.created' } },
       select: {
         id: true,
         org_id: true,
@@ -202,6 +202,8 @@ describe('outbound-webhook', () => {
         }),
       }),
     );
+    expect(webhookDeliveryUpsertMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(webhookDeliveryUpsertMock.mock.calls)).not.toContain('webhook_2');
     expect(webhookDeliveryUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -499,6 +501,10 @@ describe('outbound-webhook', () => {
         success: true,
       },
     ]);
+    expect(webhookDeliveryUpsertMock).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(webhookDeliveryUpsertMock.mock.calls)).not.toContain(
+      'webhook_unsupported_only',
+    );
   });
 
   it('persists blocked webhook destinations without dispatching HTTP requests', async () => {
