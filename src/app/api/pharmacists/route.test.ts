@@ -171,6 +171,39 @@ describe('/api/pharmacists GET', () => {
     );
   });
 
+  it.each(['?site_id=', '?site_id=%20%20'])(
+    'rejects blank site_id filters before listing memberships for query "%s"',
+    async (query) => {
+      const response = await GET(createGetRequest(query));
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'クエリパラメータが不正です',
+        details: {
+          site_id: ['site_id が不正です'],
+        },
+      });
+      expect(membershipFindManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleGroupByMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('trims valid site_id filters before listing memberships', async () => {
+    const response = await GET(createGetRequest('?site_id=%20site_1%20'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(membershipFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          site_id: 'site_1',
+        }),
+      }),
+    );
+  });
+
   it('includes suspended staff in collaborator mode for admin management screens', async () => {
     const response = await GET(createGetRequest('?include_collaborators=true'));
 

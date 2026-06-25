@@ -33,7 +33,13 @@ function dedupePharmacistsByUserId<T extends { id: string }>(items: T[]) {
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const siteId = searchParams.get('site_id');
+    const rawSiteId = searchParams.get('site_id');
+    const siteId = rawSiteId?.trim() ?? null;
+    if (searchParams.has('site_id') && !siteId) {
+      return validationError('クエリパラメータが不正です', {
+        site_id: ['site_id が不正です'],
+      });
+    }
     const includeCollaborators = searchParams.get('include_collaborators') === 'true';
     const limit = parseBoundedInteger(
       searchParams.get('limit'),

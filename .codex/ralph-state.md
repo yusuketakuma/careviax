@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2054 JST
+
+- current task: continue Codex-only backend/API hardening by fail-closing explicit blank `site_id` filters on `/api/pharmacists`, while preserving valid trimmed site filtering and existing collaborator/list behavior.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; local Next.js Route Handlers guide `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`; `src/app/api/pharmacists/route.ts`; `src/app/api/pharmacists/route.test.ts`; direct `/api/pharmacists` callers; gbrain `code_blast` and `code_callers` for `src/app/api/pharmacists/route.ts::GET`; API-contract subagent report for the blank `site_id` behavior.
+- files changed: `src/app/api/pharmacists/route.ts`, `src/app/api/pharmacists/route.test.ts`, and this Ralph state entry.
+- bugs found: `GET /api/pharmacists?site_id=` treated an explicitly present empty site filter as no filter, widening the request to the org-wide pharmacist list; whitespace-only variants were not normalized consistently with valid site filters.
+- security risks found: reduced broad-read risk for staff/pharmacist lists by rejecting present-but-empty `site_id` before membership queries. Existing `canVisit`, collaborator admin/owner guard, org scope, active-role filters, valid trimmed `site_id` behavior, `limit` behavior, monthly visit count aggregation, response shape, and POST behavior are preserved. No auth/authz permission semantics, DB schema, migration, billing, frontend, external send, or destructive behavior changed.
+- performance issues found: blank `site_id` filters now return before `membership.findMany` and before monthly `visitSchedule.groupBy`. Valid requests keep the existing bounded `take`.
+- validation commands: `pnpm exec vitest run src/app/api/pharmacists/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts`; `pnpm exec prettier --check src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts`; `git diff --check -- src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts`; long-gate `pnpm typecheck` under token `A25083F5-ABA3-4710-9244-696442B5F448`.
+- validation results: focused pharmacists route Vitest passed `19/19`; protected GET catalog Vitest passed `129/129`; focused ESLint passed; focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, then continue with the next backend/API candidate.
+- next action: drain agmsg, inspect staged paths, and commit the pharmacists blank site filter slice.
+
 ### 20260625-2044 JST
 
 - current task: continue Codex-only backend/API contract hardening by making `/api/admin/webhooks` bounded GET responses fail-visible with additive pagination metadata.
