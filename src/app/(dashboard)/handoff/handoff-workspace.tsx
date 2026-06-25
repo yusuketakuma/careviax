@@ -1045,12 +1045,13 @@ export function HandoffWorkspace() {
                   私に来た
                 </h2>
                 {incomingItems.length === 0 ? (
-                  <p
-                    className="mt-3 rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2.5 text-sm font-semibold text-state-done"
+                  <div
+                    role="status"
+                    className="mt-3 rounded-md border border-border/70 bg-muted/30 px-3 py-2.5 text-sm font-medium text-muted-foreground"
                     data-testid="handoff-incoming-empty"
                   >
-                    なし — 受け取り待ちはありません
-                  </p>
+                    受け取り待ちの仕事はありません
+                  </div>
                 ) : (
                   <div className="mt-3 space-y-2">
                     {incomingItems.map((item) => (

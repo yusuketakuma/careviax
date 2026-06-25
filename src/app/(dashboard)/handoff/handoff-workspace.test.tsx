@@ -283,10 +283,12 @@ describe('HandoffWorkspace', () => {
     expect(screen.getByText('→ 報告・共有へ')).toBeTruthy();
     expect(screen.getByText('状況を聞く')).toBeTruthy();
 
-    // 私に来た: 0 件は緑の empty バー + チームルール注記
-    expect(screen.getByTestId('handoff-incoming-empty').textContent).toBe(
-      'なし — 受け取り待ちはありません',
-    );
+    // 私に来た: 0 件は done(緑) success 表現ではなく neutral な空状態 + チームルール注記
+    const incomingEmpty = screen.getByTestId('handoff-incoming-empty');
+    expect(incomingEmpty.getAttribute('role')).toBe('status');
+    expect(incomingEmpty.textContent).toBe('受け取り待ちの仕事はありません');
+    expect(incomingEmpty.className).not.toContain('state-done');
+    expect(incomingEmpty.className).toContain('text-muted-foreground');
     expect(
       screen.getByText(/口頭やメモではなくハンドオフで渡すのがチームのルールです/),
     ).toBeTruthy();

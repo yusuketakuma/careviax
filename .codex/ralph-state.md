@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-0906 JST
+
+- current task: implement Codex-owned `F-20260625-handoff-incoming-empty-neutral` after Claude `LOCK_GRANT`, covering the left-menu `/handoff` incoming handoff empty state.
+- files inspected: agmsg inbox/Claude coordination for `F-20260625-handoff-incoming-empty-neutral`; `git status --short --branch --untracked-files=all`; `docs/ui-ux-design-guidelines.md`; `ops/MAINUI_RESEARCH_SYNTHESIS.json`; `src/app/(dashboard)/handoff/handoff-workspace.tsx`; `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`; gbrain `code_callers` / `code_blast` output for `HandoffWorkspace`; and this Ralph state file.
+- files changed: `src/app/(dashboard)/handoff/handoff-workspace.tsx`, `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`, and this Ralph state entry.
+- bugs found: the `/handoff` incoming queue rendered a successful-zero state as a green `state-done` success bar (`なし — 受け取り待ちはありません`). That conflated "nothing assigned to me" with a completed/done state and contradicted the PH-OS state-color guidance to reserve done/green for actual completion.
+- security risks found: none introduced or changed. The patch is UI-only and does not change data loading, recipient routing, API routes, DB queries, auth/authz, RLS, audit logs, PHI projection, logging, secrets, billing/payment, deploy, or destructive behavior.
+- performance issues found: no runtime performance path changed. The patch changes one empty-state element and assertions only.
+- validation commands: focused `pnpm exec vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' --reporter=dot --testTimeout=30000`; focused `pnpm exec prettier --check 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`; focused `pnpm exec eslint 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`; focused `git diff --check` for the two handoff files; long-gate-locked `pnpm typecheck`.
+- validation results: focused HandoffWorkspace Vitest passed `13/13` with pre-existing React act warnings in several tests; focused Prettier, ESLint, and diff-check passed; `pnpm typecheck` passed under local long-gate lock after `next typegen` and both TypeScript projects completed successfully. Claude independently approved the slice after reviewer-audit, confirming neutral state-token alignment, incoming list/team rule preservation, UI-only scope, and mutation teeth for role/status and `state-done` regression.
+- remaining work: commit only the two handoff files plus this ledger entry.
+- next action: drain agmsg, stage only the owned handoff files plus `.codex/ralph-state.md`, commit the approved slice, notify Claude with the commit hash, then select the next non-conflicting left-menu/frequent UIUX slice.
+
 ### 20260625-0856 JST
 
 - current task: implement Codex-owned `F-20260625-dashboard-heading-hierarchy` after Claude `LOCK_GRANT`, covering the left-menu `/dashboard` cockpit heading hierarchy.
