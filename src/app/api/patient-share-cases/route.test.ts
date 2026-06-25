@@ -258,21 +258,23 @@ describe('/api/patient-share-cases', () => {
       expect.objectContaining({
         action: 'patient_share_cases_viewed',
         targetType: 'PatientShareCase',
-        targetId: 'share_case_1',
+        targetId: 'patient_share_cases',
         patientId: undefined,
         changes: expect.objectContaining({
           target_screen: 'pharmacy_cooperation_workflow',
           viewer_role: 'pharmacist',
           viewed_count: 1,
-          share_case_ids: ['share_case_1'],
-          base_patient_ids: ['patient_1'],
-          base_site_ids: ['site_1'],
-          partner_pharmacy_ids: ['partner_pharmacy_1'],
+          share_case_count: 1,
+          base_patient_count: 1,
+          base_site_count: 1,
+          partner_pharmacy_count: 1,
         }),
       }),
     );
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('山田 花子');
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('patient_1');
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('partner_pharmacy_1');
   });
 
   it('lists share cases without optional predicates when filters and view context are omitted', async () => {

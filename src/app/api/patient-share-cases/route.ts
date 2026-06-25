@@ -255,23 +255,22 @@ export const GET = withAuthContext(
         },
       });
 
+      const visibleRows = result.slice(0, limit);
       await createAuditLogEntry(tx, ctx, {
         action: 'patient_share_cases_viewed',
         targetType: 'PatientShareCase',
-        targetId: result[0]?.id ?? 'patient_share_cases',
+        targetId: 'patient_share_cases',
         patientId: basePatientId,
         changes: {
           target_screen: viewContext.data,
           viewer_role: ctx.role,
-          viewed_count: Math.min(result.length, limit),
-          share_case_ids: result.slice(0, limit).map((row) => row.id),
-          base_patient_ids: result.slice(0, limit).map((row) => row.base_patient_id),
-          base_site_ids: [
-            ...new Set(result.slice(0, limit).map((row) => row.partnership.base_site_id)),
-          ],
-          partner_pharmacy_ids: [
-            ...new Set(result.slice(0, limit).map((row) => row.partnership.partner_pharmacy.id)),
-          ],
+          viewed_count: visibleRows.length,
+          share_case_count: visibleRows.length,
+          base_patient_count: new Set(visibleRows.map((row) => row.base_patient_id)).size,
+          base_site_count: new Set(visibleRows.map((row) => row.partnership.base_site_id)).size,
+          partner_pharmacy_count: new Set(
+            visibleRows.map((row) => row.partnership.partner_pharmacy.id),
+          ).size,
           filters: {
             status: status?.data ?? null,
             has_partnership_id: Boolean(partnershipId),

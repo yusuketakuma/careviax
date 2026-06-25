@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2200 JST
+
+- current task: follow up on the patient-share-cases privacy review by minimizing `patient_share_cases_viewed` audit payloads for list views.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; `src/app/api/patient-share-cases/route.ts`; `src/app/api/patient-share-cases/route.test.ts`; `src/lib/audit-log.ts`; `src/app/api/audit-logs/export/route.ts`; the prior patient-share-cases privacy reviewer finding; local validation output for the patient-share-cases and protected-route suites.
+- files changed: `src/app/api/patient-share-cases/route.ts`, `src/app/api/patient-share-cases/route.test.ts`, and this Ralph state entry.
+- bugs found: `GET /api/patient-share-cases` wrote page-level share-case, base-patient, base-site, and partner-pharmacy id arrays into `patient_share_cases_viewed` audit `changes`, and used the first returned share case as the aggregate list-view `targetId`. Unfiltered list views therefore persisted row-level identifiers unrelated to a single target and exposed those identifiers through audit-log consumers.
+- security risks found: reduced privacy/audit-minimization risk by replacing row id arrays with count-only fields and using the stable aggregate `targetId: patient_share_cases` for list-view audits. Patient-specific filtered views still set `patientId` from the validated `base_patient_id`; query validation, `canManagePatientSharing`, org scoping, no-store headers, response redaction, POST create behavior, schema, migrations, frontend, external send, and destructive operations are unchanged.
+- performance issues found: no DB query shape changed. The route now reuses the already-fetched visible page rows to compute small `Set` counts, and the persisted audit JSON is smaller.
+- validation commands: `pnpm exec vitest run src/app/api/patient-share-cases/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/app/api/patient-share-cases/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts`; `pnpm exec prettier --write src/app/api/patient-share-cases/route.test.ts`; `pnpm exec prettier --check src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts`; `git diff --check -- src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts`; long-gate `pnpm typecheck` under token `314CA8D5-9DA0-4299-A875-10A3D465A7FF`.
+- validation results: focused patient-share-cases route Vitest passed `1` file / `27` tests before and after formatting; patient-share-cases plus protected GET route suites passed `2` files / `156` tests; protected POST route matrix passed `1` file / `97` tests with the known webhook org-dispatch stderr; focused ESLint passed; initial Prettier check flagged the route test, then Prettier write was applied and focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released.
+- remaining work: run final scoped Prettier/diff-check including this Ralph state entry, drain agmsg, stage only the patient-share-cases route/test plus this Ralph state entry, commit the slice, send `DONE`, and continue Codex-only backend/API/security hardening. Leave untracked `.agent-loop/plans/*` untouched.
+- next action: drain agmsg, run final checks, and commit the patient-share-case audit minimization slice.
+
 ### 20260625-2156 JST
 
 - current task: follow up on the patient-share-cases privacy review by tightening `GET /api/patient-share-cases` from visit-only access to patient-sharing management access.
