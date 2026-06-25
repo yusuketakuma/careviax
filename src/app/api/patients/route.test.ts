@@ -55,10 +55,19 @@ vi.mock('@/lib/auth/context', () => ({
   ) => {
     withAuthContextMock.mockImplementation(handler);
     return (
-      req: NextRequest & { orgId?: string; userId?: string; role?: string },
+      req: NextRequest & {
+        orgId?: string;
+        userId?: string;
+        role?: string;
+        authResponse?: Response;
+      },
       routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
-    ) =>
-      handler(
+    ) => {
+      if (req.authResponse) {
+        return Promise.resolve(req.authResponse);
+      }
+
+      return handler(
         req,
         {
           orgId: req.orgId ?? 'org_1',
@@ -67,6 +76,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -121,6 +131,7 @@ type AuthenticatedTestRequest = NextRequest & {
   orgId: string;
   userId: string;
   role: string;
+  authResponse?: Response;
 };
 
 function createAuthenticatedRequest(
@@ -133,6 +144,15 @@ function createAuthenticatedRequest(
   },
 ): AuthenticatedTestRequest {
   return Object.assign(new NextRequest(url, init), auth);
+}
+
+function createAuthFailureRequest(status: 401 | 403) {
+  return Object.assign(new NextRequest('http://localhost/api/patients?view=match&q=青葉'), {
+    authResponse: Response.json(
+      { code: status === 401 ? 'UNAUTHORIZED' : 'FORBIDDEN', message: '認証エラー' },
+      { status },
+    ),
+  }) as AuthenticatedTestRequest;
 }
 
 function createJsonRequest(body: unknown, auth?: { orgId: string; userId: string; role: string }) {
@@ -614,6 +634,9 @@ describe('/api/patients GET', () => {
     });
     expect(patientFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+        }),
         take: 2,
         select: {
           id: true,
@@ -756,6 +779,147 @@ describe('/api/patients GET', () => {
     expect(body.data[0]).not.toHaveProperty('pharmacy_share');
     expect(body.data[0]).not.toHaveProperty('readiness');
   });
+
+  it.each([401, 403] as const)(
+    'adds no-store headers to patient auth failure %s',
+    async (status) => {
+      const response = (await GET(createAuthFailureRequest(status)))!;
+
+      expect(response.status).toBe(status);
+      expectSensitiveNoStore(response);
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(queryRawMock).not.toHaveBeenCalled();
+      expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('returns bounded patient match summaries for QR and prescription patient lookup', async () => {
+    patientFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'patient_1',
+        name: '青葉 花子',
+        name_kana: 'アオバ ハナコ',
+        birth_date: new Date('1948-05-20'),
+        gender: 'female',
+        phone: '090-0000-0001',
+        medical_insurance_number: 'MED-SECRET-1',
+        care_insurance_number: 'CARE-SECRET-1',
+        residences: [{ address: '東京都千代田区1-1-1' }],
+        contacts: [{ phone: '03-0000-0000', email: 'family@example.test' }],
+        conditions: [{ name: '糖尿病', is_primary: true }],
+        cases: [{ care_team_links: [{ phone: '03-1111-0000', fax: '03-1111-9999' }] }],
+      },
+      {
+        id: 'patient_2',
+        name: '青葉 次郎',
+        name_kana: 'アオバ ジロウ',
+        birth_date: new Date('1952-10-01'),
+        gender: 'male',
+        phone: '090-0000-0002',
+        contacts: [],
+        conditions: [],
+        cases: [],
+      },
+    ]);
+
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?view=match&q=青葉&limit=1'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'patient_1',
+          name: '青葉 花子',
+          name_kana: 'アオバ ハナコ',
+          birth_date: '1948-05-20',
+          gender: 'female',
+        },
+      ],
+      hasMore: true,
+    });
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+        }),
+        take: 2,
+        select: {
+          id: true,
+          name: true,
+          name_kana: true,
+          birth_date: true,
+          gender: true,
+        },
+      }),
+    );
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
+    expect(patientShareCaseFindManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentFindManyMock).not.toHaveBeenCalled();
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('090-0000-0001');
+    expect(serialized).not.toContain('MED-SECRET-1');
+    expect(serialized).not.toContain('CARE-SECRET-1');
+    expect(serialized).not.toContain('東京都千代田区');
+    expect(serialized).not.toContain('family@example.test');
+    expect(serialized).not.toContain('03-1111-0000');
+    expect(body.data[0]).not.toHaveProperty('contacts');
+    expect(body.data[0]).not.toHaveProperty('conditions');
+    expect(body.data[0]).not.toHaveProperty('cases');
+    expect(body.data[0]).not.toHaveProperty('risk_summary');
+    expect(body.data[0]).not.toHaveProperty('pharmacy_share');
+    expect(body.data[0]).not.toHaveProperty('readiness');
+  });
+
+  it.each([
+    {
+      url: 'http://localhost/api/patients?view=match',
+      details: { q: ['match 表示では q を指定してください'] },
+    },
+    {
+      url: 'http://localhost/api/patients?view=match&q=',
+      details: { q: ['match 表示では q を指定してください'] },
+    },
+    {
+      url: 'http://localhost/api/patients?view=match&q=青葉&limit=51',
+      details: { limit: ['match 表示では limit は 1〜50 の整数で指定してください'] },
+    },
+    {
+      url: 'http://localhost/api/patients?view=match&q=青葉&limit=1e2',
+      details: { limit: ['limit は整数で指定してください'] },
+    },
+    {
+      url: 'http://localhost/api/patients?view=match&q=青葉&risk_level=watch',
+      details: { risk_level: ['match 表示では q/limit/sort/order のみ指定できます'] },
+    },
+    {
+      url: 'http://localhost/api/patients?view=match&view=palette&q=青葉',
+      details: { view: ['view は1つだけ指定してください'] },
+    },
+  ])(
+    'rejects invalid match patient search query $url before DB access',
+    async ({ url, details }) => {
+      vi.clearAllMocks();
+
+      const response = (await GET(createAuthenticatedRequest(url)))!;
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details,
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(queryRawMock).not.toHaveBeenCalled();
+      expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
+      expect(patientShareCaseFindManyMock).not.toHaveBeenCalled();
+      expect(firstVisitDocumentFindManyMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects full-list-only filters in palette patient search before querying patients', async () => {
     const response = (await GET(

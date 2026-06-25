@@ -133,7 +133,7 @@ export default function QRScanPage() {
           return;
         }
 
-        const res = await fetch(`/api/patients?q=${encodeURIComponent(q)}&limit=10`, {
+        const res = await fetch(`/api/patients?view=match&q=${encodeURIComponent(q)}&limit=10`, {
           headers: orgId ? { 'x-org-id': orgId } : undefined,
         });
         if (!res.ok) throw new Error('患者検索に失敗しました');

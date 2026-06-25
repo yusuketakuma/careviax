@@ -31,6 +31,11 @@ describe('QRScanPage accessibility status contract', () => {
     expect(SOURCE).toContain('siteId,');
   });
 
+  it('uses the minimal patient match view for QR patient lookup', () => {
+    expect(SOURCE).toContain('/api/patients?view=match&q=');
+    expect(SOURCE).toContain('&limit=10');
+  });
+
   it('stops the ZXing continuous-decode controls when the camera is torn down', () => {
     // decodeFromVideoElement returns IScannerControls; it must be retained and stopped
     // so the decode loop and its callback do not leak after stopCamera / unmount.

@@ -626,7 +626,7 @@ export function PrescriptionIntakeForm() {
   const { data: patientsData } = useQuery({
     queryKey: ['patients-search', orgId, debouncedPatientSearch],
     queryFn: async () => {
-      const params = new URLSearchParams({ limit: '10' });
+      const params = new URLSearchParams({ view: 'match', limit: '10' });
       if (debouncedPatientSearch) params.set('q', debouncedPatientSearch);
       return fetchOrgJson<{ data: PatientOption[] }>({
         url: `/api/patients?${params}`,

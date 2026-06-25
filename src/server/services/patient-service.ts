@@ -21,7 +21,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { parseCaseStatusList } from '@/lib/patient/case-status';
 import { createPatientSchema } from '@/lib/validations/patient';
-import { formatDateKey } from '@/lib/date-key';
+import { formatDateKey, formatUtcDateKey } from '@/lib/date-key';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import type { z } from 'zod';
 import {
@@ -44,7 +44,7 @@ const DEFAULT_PATIENT_PALETTE_LIMIT = 8;
 const MAX_PATIENT_PALETTE_LIMIT = 50;
 
 export type PatientListFilters = {
-  view?: 'palette' | 'search';
+  view?: 'palette' | 'search' | 'match';
   q?: string;
   cursor?: string;
   limit?: number;
@@ -802,6 +802,42 @@ export async function listPatientSearchResultSummaries(
       visit_schedules: (patient.cases[0]?.visit_schedules ?? []).map((schedule) => ({
         scheduled_date: schedule.scheduled_date,
       })),
+    })),
+    hasMore,
+  };
+}
+
+export async function listPatientMatchSummaries(
+  prisma: PrismaClient,
+  orgId: string,
+  filters: PatientListFilters,
+  accessContext?: VisitScheduleAccessContext,
+) {
+  const limit = normalizePatientPaletteLimit(filters.limit);
+  const baseWhere = buildDbWhere(orgId, filters);
+  const where = accessContext ? applyPatientAssignmentWhere(baseWhere, accessContext) : baseWhere;
+  const rows = await prisma.patient.findMany({
+    where,
+    orderBy: buildPatientOrderBy(filters),
+    take: limit + 1,
+    select: {
+      id: true,
+      name: true,
+      name_kana: true,
+      birth_date: true,
+      gender: true,
+    },
+  });
+  const hasMore = rows.length > limit;
+  const dataRows = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    data: dataRows.map((patient) => ({
+      id: patient.id,
+      name: patient.name,
+      name_kana: patient.name_kana,
+      birth_date: formatUtcDateKey(patient.birth_date),
+      gender: patient.gender,
     })),
     hasMore,
   };

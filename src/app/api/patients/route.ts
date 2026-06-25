@@ -14,6 +14,7 @@ import {
 } from '@/lib/patient/facility-reference';
 import {
   listPatients,
+  listPatientMatchSummaries,
   listPatientPaletteSearchSummaries,
   listPatientSearchResultSummaries,
   createPatientWithIntake,
@@ -42,7 +43,7 @@ const caseStatusQuerySchema = z
   });
 
 const patientListQuerySchema = z.object({
-  view: z.enum(['palette', 'search']).optional(),
+  view: z.enum(['palette', 'search', 'match']).optional(),
   q: z.string().trim().optional(),
   cursor: z.string().trim().optional(),
   limit: optionalBoundedIntegerSearchParam('limit', 1, 500),
@@ -135,13 +136,26 @@ function findUnsupportedMinimalPatientFilters(filters: z.infer<typeof patientLis
   return unsupportedKeys.filter((key) => filters[key] !== undefined);
 }
 
-function validatePatientMinimalViewLimit(view: 'palette' | 'search', limit: number | undefined) {
+function validatePatientMinimalViewLimit(
+  view: 'palette' | 'search' | 'match',
+  limit: number | undefined,
+) {
   if (limit === undefined || limit <= 50) {
     return null;
   }
 
   return validationError('limit は 1〜50 の整数で指定してください', {
     limit: [`${view} 表示では limit は 1〜50 の整数で指定してください`],
+  });
+}
+
+function validatePatientMatchQuery(query: string | undefined) {
+  if (query !== undefined && query.trim().length > 0) {
+    return null;
+  }
+
+  return validationError('match 表示では q を指定してください', {
+    q: ['match 表示では q を指定してください'],
   });
 }
 
@@ -200,6 +214,34 @@ const authenticatedGET = withAuthContext(
         return limitValidationResponse;
       }
       const result = await listPatientSearchResultSummaries(prisma, ctx.orgId, parsed.data, {
+        userId: ctx.userId,
+        role: ctx.role,
+      });
+      return success(result);
+    }
+
+    if (parsed.data.view === 'match') {
+      const unsupportedMatchFilters = findUnsupportedMinimalPatientFilters(parsed.data);
+      if (unsupportedMatchFilters.length > 0) {
+        return validationError(
+          'match 表示では対応していない検索条件です',
+          Object.fromEntries(
+            unsupportedMatchFilters.map((key) => [
+              key,
+              ['match 表示では q/limit/sort/order のみ指定できます'],
+            ]),
+          ),
+        );
+      }
+      const limitValidationResponse = validatePatientMinimalViewLimit('match', parsed.data.limit);
+      if (limitValidationResponse) {
+        return limitValidationResponse;
+      }
+      const queryValidationResponse = validatePatientMatchQuery(parsed.data.q);
+      if (queryValidationResponse) {
+        return queryValidationResponse;
+      }
+      const result = await listPatientMatchSummaries(prisma, ctx.orgId, parsed.data, {
         userId: ctx.userId,
         role: ctx.role,
       });

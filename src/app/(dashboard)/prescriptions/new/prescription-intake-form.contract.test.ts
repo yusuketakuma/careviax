@@ -70,6 +70,12 @@ describe('PrescriptionIntakeForm previous prescription safety contract', () => {
     expect(SOURCE).toContain('enabled: !!orgId && !!selectedPatientId && !!selectedCaseId');
   });
 
+  it('uses the minimal patient match view for typeahead identity lookup', () => {
+    expect(SOURCE).toContain("new URLSearchParams({ view: 'match', limit: '10' })");
+    expect(SOURCE).toContain('type PatientOption');
+    expect(SOURCE).toContain('birth_date?: string | null');
+  });
+
   it('submits facility batch patient identity snapshots without exposing residence addresses', () => {
     expect(SOURCE).toContain('type PatientIdentitySnapshot');
     expect(SOURCE).toContain('patient_identity_snapshot: PatientIdentitySnapshot');
