@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { conflict, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { caseStatusSchema } from '@/lib/patient/case-status';
@@ -79,6 +80,40 @@ const patientListQuerySchema = z.object({
     .optional(),
 });
 
+const patientListSingleValueQueryNames = [
+  'view',
+  'q',
+  'cursor',
+  'limit',
+  'sort',
+  'order',
+  'facility_mode',
+  'consent_status',
+  'risk_level',
+  'last_visit',
+  'case_status',
+  'primary_pharmacist_id',
+  'building_id',
+  'billing_support',
+  'payer_basis',
+  'last_visit_from',
+  'last_visit_to',
+  'readiness_issue',
+  'foundation_issue',
+] as const satisfies readonly (keyof z.infer<typeof patientListQuerySchema>)[];
+
+function findDuplicatePatientListQueryParams(searchParams: URLSearchParams) {
+  const fieldErrors: Record<string, string[]> = {};
+
+  for (const name of patientListSingleValueQueryNames) {
+    if (searchParams.getAll(name).length > 1) {
+      fieldErrors[name] = [`${name} は1つだけ指定してください`];
+    }
+  }
+
+  return Object.keys(fieldErrors).length > 0 ? fieldErrors : null;
+}
+
 function findUnsupportedMinimalPatientFilters(filters: z.infer<typeof patientListQuerySchema>) {
   const unsupportedKeys = [
     'cursor',
@@ -110,9 +145,14 @@ function validatePatientMinimalViewLimit(view: 'palette' | 'search', limit: numb
   });
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
+    const duplicateFieldErrors = findDuplicatePatientListQueryParams(searchParams);
+    if (duplicateFieldErrors) {
+      return validationError('クエリパラメータが不正です', duplicateFieldErrors);
+    }
+
     const parsed = parseSearchParams(patientListQuerySchema, searchParams);
     if (!parsed.ok) {
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
@@ -177,6 +217,9 @@ export const GET = withAuthContext(
     message: '患者情報の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));
 
 export const POST = withAuthContext(
   async (req, ctx) => {

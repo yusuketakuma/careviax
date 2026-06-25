@@ -745,6 +745,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
         route.name === 'tasks GET' ||
+        route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'first-visit-documents GET'
       ) {
@@ -769,6 +770,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
         route.name === 'tasks GET' ||
+        route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'first-visit-documents GET'
       ) {

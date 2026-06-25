@@ -159,6 +159,11 @@ function createMalformedJsonRequest(auth?: { orgId: string; userId: string; role
   );
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -379,6 +384,7 @@ describe('/api/patients GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -455,6 +461,22 @@ describe('/api/patients GET', () => {
     expect(payload).toMatchSnapshot();
   });
 
+  it('preserves legacy unknown query keys while validating known patient filters', async () => {
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?per_page=5&q=青葉'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+        }),
+      }),
+    );
+  });
+
   it('returns a bounded minimal patient projection for palette search', async () => {
     patientFindManyMock.mockResolvedValueOnce([
       {
@@ -486,6 +508,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toEqual({
       data: [
@@ -569,6 +592,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toEqual({
       data: [
@@ -649,6 +673,7 @@ describe('/api/patients GET', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'palette 表示では対応していない検索条件です',
@@ -656,6 +681,26 @@ describe('/api/patients GET', () => {
         risk_level: ['palette 表示では q/limit/sort/order のみ指定できます'],
       },
     });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate patient list query keys before reaching patient filtering', async () => {
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?q=青葉&q=鈴木'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+
+    const payload = (await response.json()) as {
+      code: string;
+      details?: { q?: string[] };
+    };
+
+    expect(payload.code).toBe('VALIDATION_ERROR');
+    expect(payload.details?.q).toEqual(['q は1つだけ指定してください']);
     expect(patientFindManyMock).not.toHaveBeenCalled();
     expect(queryRawMock).not.toHaveBeenCalled();
     expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
