@@ -1,11 +1,12 @@
-import { withAuthContext } from '@/lib/auth/context';
+import { type AuthRouteContext, withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { z } from 'zod';
+import type { NextRequest } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
 import {
@@ -19,6 +20,7 @@ import {
   optionalTrimmedStringSchema,
   requiredTrimmedStringSchema,
 } from '@/lib/validations/tracing-report';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 const createTracingReportSchema = z.object({
   patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
@@ -33,8 +35,19 @@ function readPresentOptionalSearchParam(
   name: string,
   message: string,
 ) {
-  const value = optionalTrimmedSearchParam(searchParams.get(name));
-  if (searchParams.has(name) && !value) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', {
+        [name]: [`${name} は1つだけ指定してください`],
+      }),
+    };
+  }
+
+  const value = optionalTrimmedSearchParam(values[0] ?? null);
+  if (!value) {
     return {
       ok: false as const,
       response: validationError('検索条件が不正です', { [name]: [message] }),
@@ -43,7 +56,10 @@ function readPresentOptionalSearchParam(
   return { ok: true as const, value };
 }
 
+type TracingReportAccessDb = Pick<Prisma.TransactionClient, 'careCase'>;
+
 async function buildTracingReportAccessWhere(
+  db: TracingReportAccessDb,
   ctx: VisitScheduleAccessContext & { orgId: string },
 ): Promise<Prisma.TracingReportWhereInput | null> {
   if (canBypassVisitScheduleAssignmentAccess(ctx)) return null;
@@ -51,7 +67,7 @@ async function buildTracingReportAccessWhere(
   const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
   if (!caseAssignmentWhere) return null;
 
-  const accessibleCases = await prisma.careCase.findMany({
+  const accessibleCases = await db.careCase.findMany({
     where: {
       org_id: ctx.orgId,
       AND: [caseAssignmentWhere],
@@ -93,7 +109,7 @@ async function canAttachMedicationIssue(args: {
   return issue !== null;
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
@@ -119,58 +135,79 @@ export const GET = withAuthContext(
       });
     }
     const status = parsedStatus.data;
-    const accessWhere = await buildTracingReportAccessWhere(ctx);
 
-    const where: Prisma.TracingReportWhereInput = {
-      org_id: ctx.orgId,
-      ...(accessWhere ?? {}),
-      ...(patientId ? { patient_id: patientId } : {}),
-      ...(status ? { status } : {}),
-    };
+    return withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const accessWhere = await buildTracingReportAccessWhere(tx, ctx);
 
-    const reports = await prisma.tracingReport.findMany({
-      where,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      select: {
-        id: true,
-        org_id: true,
-        patient_id: true,
-        case_id: true,
-        issue_id: true,
-        content: true,
-        status: true,
-        sent_to_physician: true,
-        sent_at: true,
-        acknowledged_at: true,
-        pdf_url: true,
-        created_at: true,
-        updated_at: true,
+        const where: Prisma.TracingReportWhereInput = {
+          org_id: ctx.orgId,
+          ...(accessWhere ?? {}),
+          ...(patientId ? { patient_id: patientId } : {}),
+          ...(status ? { status } : {}),
+        };
+
+        const reports = await tx.tracingReport.findMany({
+          where,
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true,
+            org_id: true,
+            patient_id: true,
+            case_id: true,
+            issue_id: true,
+            content: true,
+            status: true,
+            sent_to_physician: true,
+            sent_at: true,
+            acknowledged_at: true,
+            pdf_url: true,
+            created_at: true,
+            updated_at: true,
+          },
+        });
+
+        const page = buildCursorPage(reports, limit, (report) => report.id);
+        const rawData = page.data;
+
+        const patientIds = [...new Set(rawData.map((r) => r.patient_id))];
+        const patients =
+          patientIds.length > 0
+            ? await tx.patient.findMany({
+                where: { org_id: ctx.orgId, id: { in: patientIds } },
+                select: { id: true, name: true },
+              })
+            : [];
+        const patientNameById = new Map(patients.map((p) => [p.id, p.name]));
+
+        const data = rawData.map((r) => ({
+          ...r,
+          patient_name: patientNameById.get(r.patient_id) ?? null,
+        }));
+        return success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor });
       },
-    });
-
-    const page = buildCursorPage(reports, limit, (report) => report.id);
-    const rawData = page.data;
-
-    const patientIds = [...new Set(rawData.map((r) => r.patient_id))];
-    const patients = await prisma.patient.findMany({
-      where: { org_id: ctx.orgId, id: { in: patientIds } },
-      select: { id: true, name: true },
-    });
-    const patientNameById = new Map(patients.map((p) => [p.id, p.name]));
-
-    const data = rawData.map((r) => ({
-      ...r,
-      patient_name: patientNameById.get(r.patient_id) ?? null,
-    }));
-    return success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor });
+      { requestContext: ctx },
+    );
   },
   {
     permission: 'canReport',
     message: 'トレーシングレポートの閲覧権限がありません',
   },
 );
+
+export async function GET(
+  req: NextRequest,
+  routeContext: AuthRouteContext<Record<string, string>>,
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}
 
 export const POST = withAuthContext(
   async (req, ctx) => {

@@ -83,6 +83,11 @@ function createMalformedJsonRequest(url: string) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/tracing-reports', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -100,7 +105,14 @@ describe('/api/tracing-reports', () => {
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        careCase: {
+          findMany: careCaseFindManyMock,
+        },
+        patient: {
+          findMany: patientFindManyMock,
+        },
         tracingReport: {
+          findMany: tracingReportFindManyMock,
           create: tracingReportCreateMock,
         },
       }),
@@ -115,6 +127,14 @@ describe('/api/tracing-reports', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(tracingReportFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
@@ -146,6 +166,7 @@ describe('/api/tracing-reports', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -158,12 +179,34 @@ describe('/api/tracing-reports', () => {
     expect(patientFindManyMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['patient_id', 'patient_id=patient_1&patient_id=patient_2'],
+    ['status', 'status=draft&status=sent'],
+  ])('rejects duplicate %s filters before report lookup', async (fieldName, query) => {
+    const response = (await GET(createRequest(`http://localhost/api/tracing-reports?${query}`)))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        [fieldName]: [`${fieldName} は1つだけ指定してください`],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(tracingReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects blank status filters before report lookup', async () => {
     const response = (await GET(
       createRequest('http://localhost/api/tracing-reports?status=%20%20%20'),
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -182,6 +225,7 @@ describe('/api/tracing-reports', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'status が不正です',
@@ -192,6 +236,19 @@ describe('/api/tracing-reports', () => {
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(tracingReportFindManyMock).not.toHaveBeenCalled();
     expect(patientFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed sensitive no-store 500 when scoped report loading fails', async () => {
+    withOrgContextMock.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const response = (await GET(createRequest('http://localhost/api/tracing-reports')))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
   });
 
   it('creates a tracing report', async () => {
