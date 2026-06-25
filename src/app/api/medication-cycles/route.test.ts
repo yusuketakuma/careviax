@@ -66,6 +66,11 @@ function createMalformedJsonPostRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/medication-cycles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -102,8 +107,12 @@ describe('/api/medication-cycles', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        select: {
+          id: true,
+        },
         where: expect.objectContaining({
           org_id: 'org_1',
           overall_status: 'dispensing',
@@ -112,6 +121,52 @@ describe('/api/medication-cycles', () => {
         }),
       }),
     );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'cycle_1' }],
+      hasMore: false,
+      totalCount: 1,
+    });
+  });
+
+  it('returns only the cycle id needed by consumers', async () => {
+    medicationCycleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'cycle_minimal_1',
+        case_id: 'case_private',
+        patient_id: 'patient_private',
+        overall_status: 'dispensing',
+        created_at: new Date('2026-06-01T00:00:00.000Z'),
+        prescription_intakes: [
+          {
+            id: 'intake_private',
+            source_type: 'paper',
+            prescribed_date: new Date('2026-06-01T00:00:00.000Z'),
+            prescriber_name: '医師A',
+          },
+        ],
+      },
+    ]);
+
+    const response = (await GET(
+      createGetRequest('http://localhost/api/medication-cycles?patient_id=patient_1&limit=1'),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          id: true,
+        },
+      }),
+    );
+    const body = await response.json();
+    expect(body.data).toEqual([{ id: 'cycle_minimal_1' }]);
+    expect(body.data[0]).not.toHaveProperty('patient_id');
+    expect(body.data[0]).not.toHaveProperty('case_id');
+    expect(body.data[0]).not.toHaveProperty('overall_status');
+    expect(body.data[0]).not.toHaveProperty('prescription_intakes');
   });
 
   it('rejects unsupported status filters before querying cycles', async () => {
@@ -121,6 +176,63 @@ describe('/api/medication-cycles', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleCountMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['status', '?status=', { status: ['ステータスを指定してください'] }],
+    ['blank status', '?status=%20%20', { status: ['ステータスを指定してください'] }],
+    ['padded status', '?status=%20dispensing', { status: ['対応していないステータスです'] }],
+    ['case_id', '?case_id=', { case_id: ['ケースIDを指定してください'] }],
+    ['blank case_id', '?case_id=%20%20', { case_id: ['ケースIDを指定してください'] }],
+    ['padded case_id', '?case_id=case_1%20', { case_id: ['ケースIDの形式が不正です'] }],
+    ['overlong case_id', `?case_id=${'c'.repeat(101)}`, { case_id: ['ケースIDの形式が不正です'] }],
+    ['patient_id', '?patient_id=', { patient_id: ['患者IDを指定してください'] }],
+    ['blank patient_id', '?patient_id=%20%20', { patient_id: ['患者IDを指定してください'] }],
+    ['padded patient_id', '?patient_id=%20patient_1', { patient_id: ['患者IDの形式が不正です'] }],
+    [
+      'overlong patient_id',
+      `?patient_id=${'p'.repeat(101)}`,
+      { patient_id: ['患者IDの形式が不正です'] },
+    ],
+  ])('rejects malformed explicit %s before querying cycles', async (_name, query, details) => {
+    const response = (await GET(
+      createGetRequest(`http://localhost/api/medication-cycles${query}`),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details,
+    });
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleCountMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['status', '?status=dispensing&status=ready_to_dispense'],
+    ['case_id', '?case_id=case_1&case_id=case_2'],
+    ['patient_id', '?patient_id=patient_1&patient_id=patient_2'],
+  ])('rejects duplicate %s query values before querying cycles', async (fieldName, query) => {
+    const response = (await GET(
+      createGetRequest(`http://localhost/api/medication-cycles${query}`),
+      { params: Promise.resolve({}) },
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        [fieldName]: [`${fieldName} は1つだけ指定してください`],
+      },
+    });
     expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
     expect(medicationCycleCountMock).not.toHaveBeenCalled();
   });
@@ -134,6 +246,7 @@ describe('/api/medication-cycles', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         skip: 0,

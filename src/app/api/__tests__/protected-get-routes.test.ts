@@ -141,6 +141,7 @@ import { GET as dispenseAuditsGet } from '../dispense-audits/route';
 import { GET as dispenseQueueGet } from '../dispense-queue/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
 import { GET as interventionsGet } from '../interventions/route';
+import { GET as medicationCyclesGet } from '../medication-cycles/route';
 import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
@@ -382,6 +383,14 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () =>
       interventionsGet(
         createRequest('http://localhost/api/interventions', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'medication-cycles GET',
+    handler: () =>
+      medicationCyclesGet(
+        createRequest('http://localhost/api/medication-cycles', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
       ),
   },
@@ -694,7 +703,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response).toBeDefined();
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(401);
-      if (route.name === 'prescription-intakes GET') {
+      if (route.name === 'prescription-intakes GET' || route.name === 'medication-cycles GET') {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
       }
@@ -709,7 +718,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response).toBeDefined();
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(403);
-      if (route.name === 'prescription-intakes GET') {
+      if (route.name === 'prescription-intakes GET' || route.name === 'medication-cycles GET') {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
       }

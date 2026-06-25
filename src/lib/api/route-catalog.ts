@@ -267,6 +267,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'prescriptions',
   },
   {
+    path: '/api/medication-cycles',
+    methods: ['GET', 'POST'],
+    permission: 'canDispense',
+    description: '服薬サイクル一覧取得と作成',
+    area: 'prescriptions',
+  },
+  {
     path: '/api/medication-cycles/:id/transition',
     methods: ['PATCH'],
     permission: 'canDispense',
