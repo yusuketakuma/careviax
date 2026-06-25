@@ -193,15 +193,48 @@ describe('trackPatientStatusChanges', () => {
         }),
       }),
     );
-    for (const call of db.visitSchedule.findMany.mock.calls) {
-      expect(call[0]).toEqual(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            case_: { patient_id: { in: [rawPatientId] } },
-          }),
+    // perf: 訪問の所属判定は visitSchedule を全件取得せず、careCase 側の some(EXISTS)で問い合わせる。
+    // visitSchedule.findMany を使うと患者あたりの訪問件数ぶん行が膨らむため、呼ばれてはならない。
+    expect(db.visitSchedule.findMany).not.toHaveBeenCalled();
+    // completed 訪問の所属(EXISTS)が patient で絞り込まれ、patient_id だけを select すること。
+    expect(db.careCase.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: { in: [rawPatientId] },
+          visit_schedules: {
+            some: expect.objectContaining({ org_id: 'org_1', schedule_status: 'completed' }),
+          },
         }),
-      );
-    }
+        select: { patient_id: true },
+      }),
+    );
+    // 予定(gte)/期限切れ(lt)の所属クエリも some(EXISTS)で問い合わせる。
+    expect(db.careCase.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: { in: [rawPatientId] },
+          visit_schedules: {
+            some: expect.objectContaining({
+              org_id: 'org_1',
+              scheduled_date: expect.objectContaining({ gte: expect.anything() }),
+            }),
+          },
+        }),
+      }),
+    );
+    expect(db.careCase.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          patient_id: { in: [rawPatientId] },
+          visit_schedules: {
+            some: expect.objectContaining({
+              org_id: 'org_1',
+              scheduled_date: expect.objectContaining({ lt: expect.anything() }),
+            }),
+          },
+        }),
+      }),
+    );
     expect(db.medicationCycle.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -238,25 +271,23 @@ describe('trackPatientStatusChanges', () => {
       },
     ]);
     const db = {
-      careCase: { findMany: vi.fn().mockResolvedValue([]) },
-      visitSchedule: {
+      careCase: {
+        // overdue 所属クエリ(visit_schedules.some.scheduled_date < today)に該当患者を返す。
         findMany: vi
           .fn()
           .mockImplementation(
             (args: {
-              where?: { schedule_status?: unknown; scheduled_date?: { lt?: unknown } };
+              where?: { visit_schedules?: { some?: { scheduled_date?: { lt?: unknown } } } };
             }) => {
-              // overdueVisits query: planned-ish status + scheduled_date < today
-              const status = args?.where?.schedule_status;
-              const isOverdueQuery =
-                args?.where?.scheduled_date && 'lt' in (args.where.scheduled_date as object);
-              if (status && typeof status === 'object' && isOverdueQuery) {
-                return Promise.resolve([{ case_: { patient_id: 'patient_1' } }]);
+              const some = args?.where?.visit_schedules?.some;
+              if (some?.scheduled_date && 'lt' in (some.scheduled_date as object)) {
+                return Promise.resolve([{ patient_id: 'patient_1' }]);
               }
               return Promise.resolve([]);
             },
           ),
       },
+      visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       auditLog: {
         // previous status 'attention' is in the trigger's `from` list for overdue_visit
@@ -380,16 +411,21 @@ describe('trackPatientStatusChanges', () => {
       },
     ]);
     const db = {
-      careCase: { findMany: vi.fn().mockResolvedValue([]) },
-      visitSchedule: {
-        // completed visit so we don't fall into 'new'/'first_visit_soon'
-        findMany: vi.fn().mockImplementation((args: { where?: { schedule_status?: unknown } }) => {
-          if (args?.where?.schedule_status === 'completed') {
-            return Promise.resolve([{ case_: { patient_id: 'patient_1' } }]);
-          }
-          return Promise.resolve([]);
-        }),
+      careCase: {
+        // completed 所属クエリ(visit_schedules.some.schedule_status==='completed')に該当患者を返す。
+        // これで 'new'/'first_visit_soon' に落ちず medication_change を検証できる。
+        findMany: vi
+          .fn()
+          .mockImplementation(
+            (args: { where?: { visit_schedules?: { some?: { schedule_status?: unknown } } } }) => {
+              if (args?.where?.visit_schedules?.some?.schedule_status === 'completed') {
+                return Promise.resolve([{ patient_id: 'patient_1' }]);
+              }
+              return Promise.resolve([]);
+            },
+          ),
       },
+      visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
       medicationCycle: {
         // recent (within 7d) non-intake cycle drives hasRecentMedChange -> 'medication_change'
         findMany: vi.fn().mockResolvedValue([
@@ -434,15 +470,20 @@ describe('trackPatientStatusChanges', () => {
       },
     ]);
     const db = {
-      careCase: { findMany: vi.fn().mockResolvedValue([]) },
-      visitSchedule: {
-        findMany: vi.fn().mockImplementation((args: { where?: { schedule_status?: unknown } }) => {
-          if (args?.where?.schedule_status === 'completed') {
-            return Promise.resolve([{ case_: { patient_id: 'patient_1' } }]);
-          }
-          return Promise.resolve([]);
-        }),
+      careCase: {
+        // completed 所属クエリに該当患者を返し、low-risk が 'stable' に落ちることを検証する。
+        findMany: vi
+          .fn()
+          .mockImplementation(
+            (args: { where?: { visit_schedules?: { some?: { schedule_status?: unknown } } } }) => {
+              if (args?.where?.visit_schedules?.some?.schedule_status === 'completed') {
+                return Promise.resolve([{ patient_id: 'patient_1' }]);
+              }
+              return Promise.resolve([]);
+            },
+          ),
       },
+      visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       auditLog: {
         findMany: vi.fn().mockResolvedValue([]),

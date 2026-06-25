@@ -123,62 +123,81 @@ export async function trackPatientStatusChanges(
   const today = utcDateFromLocalKey(localDateKey());
 
   // Fetch supplemental data for status derivation
-  const [cases, lastVisits, nextVisits, overdueVisits, recentCycles] = await Promise.all([
-    db.careCase.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: { in: patientIds },
-        status: { in: ['assessment', 'active', 'on_hold'] },
-      },
-      select: { patient_id: true, status: true },
-      orderBy: { created_at: 'desc' },
-    }),
-    db.visitSchedule.findMany({
-      where: {
-        org_id: args.orgId,
-        schedule_status: 'completed',
-        case_: { patient_id: { in: patientIds } },
-      },
-      orderBy: { scheduled_date: 'desc' },
-      select: { case_: { select: { patient_id: true } } },
-    }),
-    db.visitSchedule.findMany({
-      where: {
-        org_id: args.orgId,
-        scheduled_date: { gte: today },
-        schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
-        case_: { patient_id: { in: patientIds } },
-      },
-      select: { case_: { select: { patient_id: true } } },
-    }),
-    db.visitSchedule.findMany({
-      where: {
-        org_id: args.orgId,
-        scheduled_date: { lt: today },
-        schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
-        case_: { patient_id: { in: patientIds } },
-      },
-      select: { case_: { select: { patient_id: true } } },
-    }),
-    db.medicationCycle.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: { in: patientIds },
-        overall_status: { notIn: ['cancelled'] },
-      },
-      orderBy: { created_at: 'desc' },
-      select: { patient_id: true, exception_status: true, created_at: true, overall_status: true },
-    }),
-  ]);
+  const [cases, completedVisitCases, upcomingVisitCases, overdueVisitCases, recentCycles] =
+    await Promise.all([
+      db.careCase.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: { in: patientIds },
+          status: { in: ['assessment', 'active', 'on_hold'] },
+        },
+        select: { patient_id: true, status: true },
+        orderBy: { created_at: 'desc' },
+      }),
+      // 訪問の有無は「該当 case が条件を満たす訪問を 1 件でも持つか」という所属判定にしか
+      // 使わない。visitSchedule を全件取得して JS で Set 化すると患者あたりの訪問件数に比例して
+      // 行数が膨らむ(最大 500 患者 × daily job で数千行になり得る)。careCase 側の some(EXISTS)で
+      // 患者単位の所属だけを問い合わせ、DB が返す行を該当 case のみ(<= 患者数)に絞る。
+      db.careCase.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: { in: patientIds },
+          visit_schedules: { some: { org_id: args.orgId, schedule_status: 'completed' } },
+        },
+        select: { patient_id: true },
+      }),
+      db.careCase.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: { in: patientIds },
+          visit_schedules: {
+            some: {
+              org_id: args.orgId,
+              scheduled_date: { gte: today },
+              schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
+            },
+          },
+        },
+        select: { patient_id: true },
+      }),
+      db.careCase.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: { in: patientIds },
+          visit_schedules: {
+            some: {
+              org_id: args.orgId,
+              scheduled_date: { lt: today },
+              schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
+            },
+          },
+        },
+        select: { patient_id: true },
+      }),
+      db.medicationCycle.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: { in: patientIds },
+          overall_status: { notIn: ['cancelled'] },
+        },
+        orderBy: { created_at: 'desc' },
+        select: {
+          patient_id: true,
+          exception_status: true,
+          created_at: true,
+          overall_status: true,
+        },
+      }),
+    ]);
 
   // Build lookup sets
   const caseStatusMap = new Map<string, string>();
   for (const c of cases) {
     if (!caseStatusMap.has(c.patient_id)) caseStatusMap.set(c.patient_id, c.status);
   }
-  const completedVisitSet = new Set(lastVisits.map((v) => v.case_.patient_id));
-  const nextVisitSet = new Set(nextVisits.map((v) => v.case_.patient_id));
-  const overdueSet = new Set(overdueVisits.map((v) => v.case_.patient_id));
+  const completedVisitSet = new Set(completedVisitCases.map((c) => c.patient_id));
+  const nextVisitSet = new Set(upcomingVisitCases.map((c) => c.patient_id));
+  const overdueSet = new Set(overdueVisitCases.map((c) => c.patient_id));
   const exceptionMap = new Map<string, string>();
   // created_at(DateTime, 実時刻)比較用: 従来どおりローカル深夜基準
   const sevenDaysAgo = new Date();
