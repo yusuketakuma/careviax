@@ -316,6 +316,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'dispensing',
   },
   {
+    path: '/api/dispense-tasks',
+    methods: ['GET'],
+    permission: 'purpose-based',
+    description: '調剤タスク一覧取得（調剤・鑑査・レポート権限）',
+    area: 'dispensing',
+  },
+  {
+    path: '/api/dispense-tasks',
+    methods: ['POST'],
+    permission: 'canDispense',
+    description: '調剤タスク作成',
+    area: 'dispensing',
+  },
+  {
     path: '/api/dispense-results',
     methods: ['POST'],
     permission: 'canDispense',

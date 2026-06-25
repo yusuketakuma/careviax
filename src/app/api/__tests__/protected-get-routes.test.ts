@@ -139,6 +139,7 @@ import { GET as dashboardMonthlyStatsGet } from '../dashboard/monthly-stats/rout
 import { GET as dashboardOverdueGet } from '../dashboard/overdue/route';
 import { GET as dispenseAuditsGet } from '../dispense-audits/route';
 import { GET as dispenseQueueGet } from '../dispense-queue/route';
+import { GET as dispenseTasksGet } from '../dispense-tasks/route';
 import { GET as firstVisitDocumentsGet } from '../first-visit-documents/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
 import { GET as interventionsGet } from '../interventions/route';
@@ -368,6 +369,14 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () =>
       dispenseQueueGet(
         createRequest('http://localhost/api/dispense-queue', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dispense-tasks GET',
+    handler: () =>
+      dispenseTasksGet(
+        createRequest('http://localhost/api/dispense-tasks', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
       ),
   },
@@ -717,6 +726,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'medication-cycles GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
+        route.name === 'dispense-tasks GET' ||
         route.name === 'first-visit-documents GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -738,6 +748,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'medication-cycles GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
+        route.name === 'dispense-tasks GET' ||
         route.name === 'first-visit-documents GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');

@@ -3,6 +3,7 @@ import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
@@ -24,6 +25,94 @@ const createDispenseTaskSchema = z.object({
     .optional(),
   assigned_to: z.string().optional(),
 });
+
+const dispenseTaskStatusSchema = z.enum(['pending', 'in_progress', 'completed']);
+type DispenseTaskQueryName = 'status' | 'cycle_id' | 'assigned_to';
+
+function readStrictOptionalDispenseTaskFilter(
+  searchParams: URLSearchParams,
+  name: DispenseTaskQueryName,
+  messages: { blank: string; invalid: string },
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
+    };
+  }
+
+  const value = values[0];
+  if (value.trim().length === 0) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.blank] },
+    };
+  }
+  if (value !== value.trim() || value.length > 100) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.invalid] },
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function parseDispenseTaskListFilters(searchParams: URLSearchParams) {
+  const statusResult = readStrictOptionalDispenseTaskFilter(searchParams, 'status', {
+    blank: 'ステータスを指定してください',
+    invalid: '対応していないステータスです',
+  });
+  if (!statusResult.ok) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', statusResult.fieldErrors),
+    };
+  }
+
+  const cycleResult = readStrictOptionalDispenseTaskFilter(searchParams, 'cycle_id', {
+    blank: 'サイクルIDを指定してください',
+    invalid: 'サイクルIDの形式が不正です',
+  });
+  if (!cycleResult.ok) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', cycleResult.fieldErrors),
+    };
+  }
+
+  const assignedToResult = readStrictOptionalDispenseTaskFilter(searchParams, 'assigned_to', {
+    blank: '担当者IDを指定してください',
+    invalid: '担当者IDの形式が不正です',
+  });
+  if (!assignedToResult.ok) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', assignedToResult.fieldErrors),
+    };
+  }
+
+  const statusFilter = statusResult.value
+    ? dispenseTaskStatusSchema.safeParse(statusResult.value)
+    : null;
+  if (statusFilter && !statusFilter.success) {
+    return {
+      ok: false as const,
+      response: validationError('調剤タスクステータスが不正です', {
+        status: ['対応していないステータスです'],
+      }),
+    };
+  }
+
+  return {
+    ok: true as const,
+    status: statusFilter?.data,
+    cycleId: cycleResult.value,
+    assignedTo: assignedToResult.value,
+  };
+}
 
 const cycleInclude = {
   cycle: {
@@ -47,7 +136,7 @@ const cycleInclude = {
   },
 } as const;
 
-export const GET = withAuthContext(async (req, ctx) => {
+const authenticatedGET = withAuthContext(async (req, ctx) => {
   if (
     !hasPermission(ctx.role, 'canDispense') &&
     !hasPermission(ctx.role, 'canAuditDispense') &&
@@ -59,16 +148,16 @@ export const GET = withAuthContext(async (req, ctx) => {
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
 
-  const status = searchParams.get('status') ?? undefined;
-  const cycle_id = searchParams.get('cycle_id') ?? undefined;
-  const assigned_to = searchParams.get('assigned_to') ?? undefined;
+  const filters = parseDispenseTaskListFilters(searchParams);
+  if (!filters.ok) return filters.response;
+
   const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
   const where = {
     org_id: ctx.orgId,
-    ...(status ? { status } : {}),
-    ...(cycle_id ? { cycle_id } : {}),
-    ...(assigned_to ? { assigned_to } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.cycleId ? { cycle_id: filters.cycleId } : {}),
+    ...(filters.assignedTo ? { assigned_to: filters.assignedTo } : {}),
     ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
   };
 
@@ -82,6 +171,9 @@ export const GET = withAuthContext(async (req, ctx) => {
 
   return success(buildCursorPage(tasks, limit, (task) => task.id));
 });
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));
 
 export const POST = withAuthContext(
   async (req, ctx) => {

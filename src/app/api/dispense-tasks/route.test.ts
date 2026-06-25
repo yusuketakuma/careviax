@@ -84,6 +84,11 @@ function createGetRequest(url = 'http://localhost/api/dispense-tasks') {
   return new NextRequest(url);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/dispense-tasks GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -93,11 +98,14 @@ describe('/api/dispense-tasks GET', () => {
 
   it('scopes collection reads to assigned medication cycles', async () => {
     const response = await GET(
-      createGetRequest('http://localhost/api/dispense-tasks?status=pending&cycle_id=cycle_1'),
+      createGetRequest(
+        'http://localhost/api/dispense-tasks?status=pending&cycle_id=cycle_1&assigned_to=user_1',
+      ),
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
@@ -105,6 +113,7 @@ describe('/api/dispense-tasks GET', () => {
           org_id: 'org_1',
           status: 'pending',
           cycle_id: 'cycle_1',
+          assigned_to: 'user_1',
         },
       }),
     );
@@ -148,6 +157,33 @@ describe('/api/dispense-tasks GET', () => {
     );
   });
 
+  it('keeps cursor pagination shape and Prisma cursor semantics stable', async () => {
+    dispenseTaskFindManyMock.mockResolvedValue([
+      { id: 'task_1', cycle_id: 'cycle_1', status: 'pending' },
+      { id: 'task_2', cycle_id: 'cycle_1', status: 'pending' },
+    ]);
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/dispense-tasks?limit=1&cursor=task_0'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+        cursor: { id: 'task_0' },
+        skip: 1,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'task_1' }],
+      hasMore: true,
+      nextCursor: 'task_1',
+    });
+  });
+
   it.each(['driver', 'external_viewer'] as const)(
     'forbids %s before reading dispense tasks',
     async (role) => {
@@ -159,12 +195,62 @@ describe('/api/dispense-tasks GET', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(403);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         message: '調剤タスクの閲覧権限がありません',
       });
       expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    [
+      'duplicate status',
+      'http://localhost/api/dispense-tasks?status=pending&status=completed',
+      { status: ['status は1つだけ指定してください'] },
+    ],
+    [
+      'blank cycle_id',
+      'http://localhost/api/dispense-tasks?cycle_id=',
+      { cycle_id: ['サイクルIDを指定してください'] },
+    ],
+    [
+      'padded assigned_to',
+      'http://localhost/api/dispense-tasks?assigned_to=%20user_1',
+      { assigned_to: ['担当者IDの形式が不正です'] },
+    ],
+  ])(
+    'rejects malformed %s filters before reading dispense tasks',
+    async (_caseName, url, details) => {
+      const response = await GET(createGetRequest(url));
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '検索条件が不正です',
+        details,
+      });
+      expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects unsupported status filters before reading dispense tasks', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/dispense-tasks?status=cancelled'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤タスクステータスが不正です',
+      details: {
+        status: ['対応していないステータスです'],
+      },
+    });
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('/api/dispense-tasks POST', () => {
