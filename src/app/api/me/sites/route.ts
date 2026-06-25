@@ -1,8 +1,19 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 
-export const GET = withAuthContext(async (_req, ctx) => {
+const DEFAULT_ME_SITE_LIMIT = 500;
+const MAX_ME_SITE_LIMIT = 500;
+
+export const GET = withAuthContext(async (req, ctx) => {
+  const { searchParams } = new URL(req.url);
+  const limit = parseBoundedInteger(
+    searchParams.get('limit'),
+    DEFAULT_ME_SITE_LIMIT,
+    1,
+    MAX_ME_SITE_LIMIT,
+  );
   const today = new Date();
   const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const tomorrowDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
@@ -28,9 +39,12 @@ export const GET = withAuthContext(async (_req, ctx) => {
       is_regional_support: true,
     },
     orderBy: { name: 'asc' },
+    take: limit + 1,
   });
+  const hasMore = sites.length > limit;
+  const returnedSites = sites.slice(0, limit);
 
-  const siteIds = sites.map((s) => s.id);
+  const siteIds = returnedSites.map((s) => s.id);
 
   // Count today's non-cancelled visit schedules per site
   const visitCounts = await prisma.visitSchedule.groupBy({
@@ -52,7 +66,7 @@ export const GET = withAuthContext(async (_req, ctx) => {
     select: { default_site_id: true },
   });
 
-  const result = sites.map((site) => ({
+  const result = returnedSites.map((site) => ({
     id: site.id,
     name: site.name,
     todays_visit_count: countBySiteId.get(site.id) ?? 0,
@@ -61,5 +75,5 @@ export const GET = withAuthContext(async (_req, ctx) => {
     is_current: user?.default_site_id === site.id,
   }));
 
-  return success({ data: result });
+  return success({ data: result, meta: { limit, has_more: hasMore } });
 });
