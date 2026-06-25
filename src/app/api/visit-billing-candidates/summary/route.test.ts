@@ -91,6 +91,7 @@ describe('/api/visit-billing-candidates/summary GET', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(partnerVisitRecordCountMock).toHaveBeenNthCalledWith(1, {
       where: {
         org_id: 'org_1',
@@ -150,10 +151,46 @@ describe('/api/visit-billing-candidates/summary GET', () => {
     });
   });
 
+  it.each([
+    [
+      'share_case_id',
+      '?billing_month=2026-06-01&share_case_id=',
+      { share_case_id: ['患者共有ケースIDを指定してください'] },
+    ],
+    [
+      'blank share_case_id',
+      '?billing_month=2026-06-01&share_case_id=%20%20',
+      { share_case_id: ['患者共有ケースIDを指定してください'] },
+    ],
+    [
+      'partner_pharmacy_id',
+      '?billing_month=2026-06-01&partner_pharmacy_id=',
+      { partner_pharmacy_id: ['協力薬局IDを指定してください'] },
+    ],
+    [
+      'blank partner_pharmacy_id',
+      '?billing_month=2026-06-01&partner_pharmacy_id=%20%20',
+      { partner_pharmacy_id: ['協力薬局IDを指定してください'] },
+    ],
+  ])('rejects explicitly empty %s filters before DB reads', async (_label, query, details) => {
+    const response = await GET(createRequest(query));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details,
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordCountMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid billing months before transaction side effects', async () => {
     const response = await GET(createRequest('?billing_month=2026-06-15'));
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(partnerVisitRecordCountMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateFindManyMock).not.toHaveBeenCalled();

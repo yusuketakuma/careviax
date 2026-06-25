@@ -1,5 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { validationError, success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -10,6 +11,21 @@ import {
 function optionalSearchParam(value: string | null) {
   const trimmed = value?.trim() ?? '';
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError('検索条件が不正です', { [name]: [message] })),
+    };
+  }
+  return { ok: true as const, value };
 }
 
 function readAmountSnapshot(value: unknown) {
@@ -26,12 +42,25 @@ export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const billingMonthInput = searchParams.get('billing_month');
-    if (!billingMonthInput) return validationError('billing_month は必須です');
+    if (!billingMonthInput)
+      return withSensitiveNoStore(validationError('billing_month は必須です'));
     const billingMonth = parseStrictBillingMonth(billingMonthInput);
-    if (!billingMonth) return validationError(BILLING_MONTH_FORMAT_MESSAGE);
+    if (!billingMonth) return withSensitiveNoStore(validationError(BILLING_MONTH_FORMAT_MESSAGE));
 
-    const shareCaseId = optionalSearchParam(searchParams.get('share_case_id'));
-    const partnerPharmacyId = optionalSearchParam(searchParams.get('partner_pharmacy_id'));
+    const shareCaseIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'share_case_id',
+      '患者共有ケースIDを指定してください',
+    );
+    if (!shareCaseIdResult.ok) return shareCaseIdResult.response;
+    const partnerPharmacyIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'partner_pharmacy_id',
+      '協力薬局IDを指定してください',
+    );
+    if (!partnerPharmacyIdResult.ok) return partnerPharmacyIdResult.response;
+    const shareCaseId = shareCaseIdResult.value;
+    const partnerPharmacyId = partnerPharmacyIdResult.value;
     const recordFilter =
       shareCaseId || partnerPharmacyId
         ? {
@@ -122,7 +151,7 @@ export const GET = withAuthContext(
       };
     });
 
-    return success(result);
+    return withSensitiveNoStore(success(result));
   },
   {
     permission: 'canManageBilling',
