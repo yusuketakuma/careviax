@@ -102,6 +102,12 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'dispensing',
         }),
         expect.objectContaining({
+          path: '/api/set-plans',
+          methods: ['GET', 'POST'],
+          permission: 'canSet',
+          area: 'dispensing',
+        }),
+        expect.objectContaining({
           path: '/api/tasks',
           methods: ['GET', 'POST'],
           permission: 'canVisit',

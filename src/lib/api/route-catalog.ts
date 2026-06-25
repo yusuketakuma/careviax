@@ -351,6 +351,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'dispensing',
   },
   {
+    path: '/api/set-plans',
+    methods: ['GET', 'POST'],
+    permission: 'canSet',
+    description: 'セット計画一覧取得と作成',
+    area: 'dispensing',
+  },
+  {
     path: '/api/dispense-results',
     methods: ['POST'],
     permission: 'canDispense',

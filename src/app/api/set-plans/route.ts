@@ -4,6 +4,7 @@ import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, conflict } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { buildSetPlanPackagingSummary } from '@/lib/dispensing/set-plan-packaging';
 import {
@@ -57,21 +58,68 @@ class SetPlanRollback extends Error {
   }
 }
 
+type SetPlanListQuery =
+  | { ok: true; cycleId: string | undefined; patientId: string | undefined }
+  | { ok: false; response: ReturnType<typeof validationError> };
+
+function readSingleSetPlanQueryValue(
+  searchParams: URLSearchParams,
+  name: 'cycle_id' | 'patient_id',
+  message: string,
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', {
+        [name]: [`${name} は1つだけ指定してください`],
+      }),
+    };
+  }
+
+  const rawValue = values[0] ?? '';
+  const value = rawValue.trim();
+  if (!value || value !== rawValue || value.length > 100) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function parseSetPlanListQuery(searchParams: URLSearchParams): SetPlanListQuery {
+  const cycleResult = readSingleSetPlanQueryValue(searchParams, 'cycle_id', 'cycle_id が不正です');
+  if (!cycleResult.ok) return cycleResult;
+
+  const patientResult = readSingleSetPlanQueryValue(
+    searchParams,
+    'patient_id',
+    'patient_id が不正です',
+  );
+  if (!patientResult.ok) return patientResult;
+
+  return { ok: true, cycleId: cycleResult.value, patientId: patientResult.value };
+}
+
 function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
-    const cycleId = searchParams.get('cycle_id') ?? undefined;
-    const patientId = searchParams.get('patient_id') ?? undefined;
+    const query = parseSetPlanListQuery(searchParams);
+    if (!query.ok) return query.response;
+
     const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
 
     const where = {
       org_id: ctx.orgId,
-      ...(cycleId ? { cycle_id: cycleId } : {}),
-      ...(patientId ? { cycle: { patient_id: patientId } } : {}),
+      ...(query.cycleId ? { cycle_id: query.cycleId } : {}),
+      ...(query.patientId ? { cycle: { patient_id: query.patientId } } : {}),
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     };
 
@@ -130,6 +178,9 @@ export const GET = withAuthContext(
     message: 'セット計画の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));
 
 export const POST = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {

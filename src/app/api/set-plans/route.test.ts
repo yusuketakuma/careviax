@@ -68,6 +68,11 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createMalformedPostRequest() {
   return new NextRequest('http://localhost/api/set-plans', {
     method: 'POST',
@@ -132,6 +137,7 @@ describe('/api/set-plans', () => {
     const response = (await GET(createRequest('http://localhost/api/set-plans?cycle_id=cycle_1')))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(setPlanFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -150,6 +156,7 @@ describe('/api/set-plans', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(setPlanFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -167,6 +174,7 @@ describe('/api/set-plans', () => {
     const response = (await GET(createRequest('http://localhost/api/set-plans?cycle_id=cycle_1')))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({ data: [{ id: 'plan_1' }] });
     expect(setPlanFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -176,6 +184,53 @@ describe('/api/set-plans', () => {
         },
       }),
     );
+  });
+
+  it.each([
+    ['cycle_id=', 'cycle_id', 'cycle_id が不正です'],
+    ['cycle_id=%20cycle_1%20', 'cycle_id', 'cycle_id が不正です'],
+    [`cycle_id=${'a'.repeat(101)}`, 'cycle_id', 'cycle_id が不正です'],
+    ['patient_id=', 'patient_id', 'patient_id が不正です'],
+    ['patient_id=%20patient_1', 'patient_id', 'patient_id が不正です'],
+    [`patient_id=${'a'.repeat(101)}`, 'patient_id', 'patient_id が不正です'],
+  ])(
+    'rejects blank or malformed set-plan filter query "%s" before DB access',
+    async (query, fieldName, message) => {
+      const response = (await GET(createRequest(`http://localhost/api/set-plans?${query}`)))!;
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: {
+          [fieldName]: [message],
+        },
+      });
+      expect(setPlanFindManyMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(setPlanCreateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['cycle_id=cycle_1&cycle_id=cycle_2', 'cycle_id'],
+    ['patient_id=patient_1&patient_id=patient_2', 'patient_id'],
+  ])('rejects duplicate set-plan filter query "%s" before DB access', async (query, fieldName) => {
+    const response = (await GET(createRequest(`http://localhost/api/set-plans?${query}`)))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        [fieldName]: [`${fieldName} は1つだけ指定してください`],
+      },
+    });
+    expect(setPlanFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setPlanCreateMock).not.toHaveBeenCalled();
   });
 
   it('creates a set plan and advances the cycle into setting', async () => {
