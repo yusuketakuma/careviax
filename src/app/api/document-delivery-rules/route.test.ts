@@ -25,7 +25,9 @@ import { GET, POST } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
-function createRequest(body?: unknown) {
+const documentDeliveryRulesUrl = 'http://localhost/api/document-delivery-rules';
+
+function createRequest(body?: unknown, url = documentDeliveryRulesUrl) {
   const init: NextRequestInit = {
     method: body === undefined ? 'GET' : 'POST',
     headers: body === undefined ? undefined : { 'content-type': 'application/json' },
@@ -33,7 +35,7 @@ function createRequest(body?: unknown) {
   if (body !== undefined) {
     init.body = JSON.stringify(body);
   }
-  return new NextRequest('http://localhost/api/document-delivery-rules', init);
+  return new NextRequest(url, init);
 }
 
 function createMalformedJsonPostRequest() {
@@ -70,7 +72,55 @@ describe('/api/document-delivery-rules', () => {
     const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
-    expect(documentDeliveryRuleFindManyMock).toHaveBeenCalled();
+    expect(documentDeliveryRuleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+      },
+      orderBy: [{ document_type: 'asc' }, { target_role: 'asc' }, { updated_at: 'desc' }],
+      take: 100,
+    });
+  });
+
+  it('bounds list size and trims document_type query filters', async () => {
+    const response = (await GET(
+      createRequest(
+        undefined,
+        `${documentDeliveryRulesUrl}?document_type=%20care_report%20&limit=5`,
+      ),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(documentDeliveryRuleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        document_type: 'care_report',
+      },
+      orderBy: [{ document_type: 'asc' }, { target_role: 'asc' }, { updated_at: 'desc' }],
+      take: 5,
+    });
+  });
+
+  it('clamps overly large list limits', async () => {
+    const response = (await GET(
+      createRequest(undefined, `${documentDeliveryRulesUrl}?limit=9999`),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(documentDeliveryRuleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 200,
+      }),
+    );
+  });
+
+  it('rejects blank document_type query filters before opening an org context', async () => {
+    const response = (await GET(
+      createRequest(undefined, `${documentDeliveryRulesUrl}?document_type=%20%20`),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(documentDeliveryRuleFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates a document delivery rule', async () => {

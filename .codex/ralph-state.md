@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-1453 JST
+
+- current task: implement Codex-owned `F-20260625-document-delivery-rules-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read hardening lane while Claude scouts `src/server/services/**`.
+- files inspected: agmsg inbox/status for the templates completion, Claude's services-scout lane split, and this lock grant; `git status --short --untracked-files=all`; `src/app/api/document-delivery-rules/route.ts`; `src/app/api/document-delivery-rules/route.test.ts`; direct callers in `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`; gbrain `code_callers` / `code_blast` output for `src/app/api/document-delivery-rules/route.ts::GET`, which returned not-built/empty.
+- files changed: `src/app/api/document-delivery-rules/route.ts`, `src/app/api/document-delivery-rules/route.test.ts`, and this Ralph state entry.
+- bugs found: `/api/document-delivery-rules` returned every delivery rule row for the org with no `take`, and the optional `document_type` query was passed through untrimmed. Whitespace-padded filters missed valid rows, and blank filters were treated as no filter instead of invalid input.
+- security risks found: reduced external-input risk by validating `document_type` before opening the org-scoped DB context and returning a generic query-parameter validation error for blank/invalid values. No auth/authz, tenant scope, RLS policy, DB schema, migration, PHI projection, audit logging, billing, deploy, or destructive operation changed.
+- performance issues found: bounded the delivery-rule list query to a default `take: 100` with `limit` clamped to `1..200`, preserving existing ordering, response envelope, org scope, and valid `document_type` filtering semantics.
+- validation commands: baseline focused `pnpm exec vitest run src/app/api/document-delivery-rules/route.test.ts --reporter=dot --testTimeout=30000`; post-change focused `pnpm exec vitest run src/app/api/document-delivery-rules/route.test.ts --reporter=dot --testTimeout=30000`; focused `pnpm exec eslint src/app/api/document-delivery-rules/route.ts src/app/api/document-delivery-rules/route.test.ts`; focused `pnpm exec prettier --check src/app/api/document-delivery-rules/route.ts src/app/api/document-delivery-rules/route.test.ts`; focused `git diff --check -- src/app/api/document-delivery-rules/route.ts src/app/api/document-delivery-rules/route.test.ts`; long-gate-locked `pnpm typecheck`.
+- validation results: baseline route Vitest passed `4/4`; final focused Vitest passed `7/7`; focused ESLint passed; focused Prettier initially flagged route.test formatting, `pnpm exec prettier --write` was applied to the two owned files, and final Prettier check passed; focused diff-check passed. Claude independently approved the diff, reran the focused suite `7/7`, verified the bound, blank rejection, caller compatibility, and no schema/auth/RLS-policy/billing/destructive change. Independent `pnpm typecheck` passed under local long-gate lock with `next typegen`, app `tsc`, and service-worker `tsc` all green. Tests now assert default `take: 100`, explicit `limit=5`, overly large limit clamping to `take: 200`, trimmed `document_type`, and no org-context/DB call for blank `document_type`.
+- remaining work: stage and commit only the two route files plus `.codex/ralph-state.md`, notify Claude with the commit hash, and continue the backend hardening loop.
+- next action: drain agmsg before commit, inspect status, commit the approved slice with explicit pathspecs, and send `DONE`.
+
 ### 20260625-1446 JST
 
 - current task: implement Codex-owned `F-20260625-api-templates-bounded-list` after Claude `LOCK_GRANT`, covering `/api/templates` backend/API bounded-read hardening while avoiding UI, schema, auth, RLS, billing, and Claude-owned `visit-brief` files.

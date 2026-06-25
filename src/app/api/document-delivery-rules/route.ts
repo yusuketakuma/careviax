@@ -1,12 +1,18 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 
+const DEFAULT_DOCUMENT_DELIVERY_RULE_LIMIT = 100;
+const MAX_DOCUMENT_DELIVERY_RULE_LIMIT = 200;
+
 const deliveryChannelSchema = z.enum(['email', 'fax', 'mcs']);
+
+const documentTypeQuerySchema = z.string().trim().min(1).max(64);
 
 const createDocumentDeliveryRuleSchema = z.object({
   document_type: z.string().trim().min(1, 'document_type は必須です'),
@@ -22,15 +28,30 @@ export async function GET(req: NextRequest) {
   const { ctx } = authResult;
 
   const { searchParams } = new URL(req.url);
-  const documentType = searchParams.get('document_type');
+  const documentTypeRaw = searchParams.get('document_type');
+  const parsedDocumentType =
+    documentTypeRaw === null ? null : documentTypeQuerySchema.safeParse(documentTypeRaw);
+  const limit = parseBoundedInteger(
+    searchParams.get('limit'),
+    DEFAULT_DOCUMENT_DELIVERY_RULE_LIMIT,
+    1,
+    MAX_DOCUMENT_DELIVERY_RULE_LIMIT,
+  );
+
+  if (parsedDocumentType && !parsedDocumentType.success) {
+    return validationError('クエリパラメータが不正です', {
+      document_type: ['document_type が不正です'],
+    });
+  }
 
   const rules = await withOrgContext(ctx.orgId, (tx) =>
     tx.documentDeliveryRule.findMany({
       where: {
         org_id: ctx.orgId,
-        ...(documentType ? { document_type: documentType } : {}),
+        ...(parsedDocumentType?.success ? { document_type: parsedDocumentType.data } : {}),
       },
       orderBy: [{ document_type: 'asc' }, { target_role: 'asc' }, { updated_at: 'desc' }],
+      take: limit,
     }),
   );
 
