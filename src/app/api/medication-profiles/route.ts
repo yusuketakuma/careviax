@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { createMedicationProfileSchema } from '@/lib/validations/medication';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -9,15 +10,91 @@ import { buildPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { canAccessPatient } from '@/server/services/patient-access';
 import type { Prisma } from '@prisma/client';
 
+function readStrictOptionalPatientFilter(searchParams: URLSearchParams) {
+  const values = searchParams.getAll('patient_id');
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      fieldErrors: { patient_id: ['patient_id は1つだけ指定してください'] },
+    };
+  }
+
+  const value = values[0];
+  if (value.trim().length === 0) {
+    return {
+      ok: false as const,
+      fieldErrors: { patient_id: ['患者IDを指定してください'] },
+    };
+  }
+
+  if (value !== value.trim() || value.length > 100) {
+    return {
+      ok: false as const,
+      fieldErrors: { patient_id: ['患者IDの形式が不正です'] },
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function readStrictOptionalCurrentFilter(searchParams: URLSearchParams) {
+  const values = searchParams.getAll('is_current');
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      fieldErrors: { is_current: ['is_current は1つだけ指定してください'] },
+    };
+  }
+
+  const value = values[0];
+  if (value !== 'true' && value !== 'false') {
+    return {
+      ok: false as const,
+      fieldErrors: { is_current: ['is_current は true または false で指定してください'] },
+    };
+  }
+
+  return { ok: true as const, value: value === 'true' };
+}
+
+function parseMedicationProfileListFilters(searchParams: URLSearchParams) {
+  const patientResult = readStrictOptionalPatientFilter(searchParams);
+  if (!patientResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', patientResult.fieldErrors),
+      ),
+    };
+  }
+
+  const currentResult = readStrictOptionalCurrentFilter(searchParams);
+  if (!currentResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', currentResult.fieldErrors),
+      ),
+    };
+  }
+
+  return {
+    ok: true as const,
+    patientId: patientResult.value,
+    isCurrent: currentResult.value,
+  };
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
+    const filters = parseMedicationProfileListFilters(searchParams);
+    if (!filters.ok) return filters.response;
 
-    const patientId = searchParams.get('patient_id') ?? undefined;
-    const isCurrentParam = searchParams.get('is_current');
-    const isCurrent =
-      isCurrentParam === 'true' ? true : isCurrentParam === 'false' ? false : undefined;
+    const { patientId, isCurrent } = filters;
 
     const accessContext = { userId: ctx.userId, role: ctx.role };
     if (
@@ -29,7 +106,7 @@ export const GET = withAuthContext(
         accessContext,
       }))
     ) {
-      return success({ data: [], hasMore: false, nextCursor: undefined });
+      return withSensitiveNoStore(success({ data: [], hasMore: false, nextCursor: undefined }));
     }
 
     const patientAssignmentWhere = buildPatientAssignmentWhere(accessContext);
@@ -63,7 +140,7 @@ export const GET = withAuthContext(
       },
     });
 
-    return success(buildCursorPage(profiles, limit, (profile) => profile.id));
+    return withSensitiveNoStore(success(buildCursorPage(profiles, limit, (profile) => profile.id)));
   },
   {
     permission: 'canVisit',

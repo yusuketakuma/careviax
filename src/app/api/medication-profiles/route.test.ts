@@ -99,6 +99,8 @@ describe('/api/medication-profiles', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'patient_1',
@@ -127,6 +129,8 @@ describe('/api/medication-profiles', () => {
     const response = (await GET(createGetRequest('?patient_id=patient_2'), emptyRouteContext))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: [],
       hasMore: false,
@@ -135,6 +139,60 @@ describe('/api/medication-profiles', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationProfileCreateMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['patient_id=', 'patient_id', '患者IDを指定してください'],
+    ['patient_id=%20patient_1', 'patient_id', '患者IDの形式が不正です'],
+    [`patient_id=${'a'.repeat(101)}`, 'patient_id', '患者IDの形式が不正です'],
+    ['is_current=', 'is_current', 'is_current は true または false で指定してください'],
+    ['is_current=yes', 'is_current', 'is_current は true または false で指定してください'],
+    ['is_current=true%20', 'is_current', 'is_current は true または false で指定してください'],
+  ])(
+    'rejects blank or malformed medication profile filter query "%s" before DB access',
+    async (query, fieldName, message) => {
+      const response = (await GET(createGetRequest(`?${query}`), emptyRouteContext))!;
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: {
+          [fieldName]: [message],
+        },
+      });
+      expect(patientFindFirstMock).not.toHaveBeenCalled();
+      expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['patient_id=patient_1&patient_id=patient_2', 'patient_id'],
+    ['is_current=true&is_current=false', 'is_current'],
+  ])(
+    'rejects duplicate medication profile filter query "%s" before DB access',
+    async (query, fieldName) => {
+      const response = (await GET(createGetRequest(`?${query}`), emptyRouteContext))!;
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: {
+          [fieldName]: [`${fieldName} は1つだけ指定してください`],
+        },
+      });
+      expect(patientFindFirstMock).not.toHaveBeenCalled();
+      expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('creates a medication profile with normalized dates', async () => {
     const response = (await POST(
