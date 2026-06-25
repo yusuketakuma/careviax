@@ -2,10 +2,12 @@ import { addDays, differenceInCalendarDays } from 'date-fns';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { conflict, forbiddenResponse, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { formatDateKey } from '@/lib/date-key';
+import { isValidDateKey } from '@/lib/validations/date-key';
 import {
   createVisitRecordSchema,
   type CreateVisitRecordInput,
@@ -41,6 +43,7 @@ import {
   syncVisitRecordLabObservations,
 } from '@/server/services/visit-record-derived-data';
 import { validatePreviousVisitReuseSource } from '@/server/services/visit-record-source-validation';
+import { z } from 'zod';
 
 const scheduleStatusByOutcome: Record<
   CreateVisitRecordInput['outcome_status'],
@@ -66,6 +69,84 @@ const firstVisitDocumentOutcomes = new Set<CreateVisitRecordInput['outcome_statu
   'revisit_needed',
   'delivery_only',
 ]);
+
+const visitRecordListQuerySchema = z
+  .object({
+    patient_id: strictIdQueryParam('患者IDを指定してください', '患者IDの形式が不正です').optional(),
+    pharmacist_id: strictIdQueryParam(
+      '薬剤師IDを指定してください',
+      '薬剤師IDの形式が不正です',
+    ).optional(),
+    date_from: strictDateKeyQueryParam().optional(),
+    date_to: strictDateKeyQueryParam().optional(),
+  })
+  .refine((value) => !value.date_from || !value.date_to || value.date_to >= value.date_from, {
+    path: ['date_to'],
+    message: 'date_to は date_from 以降を指定してください',
+  });
+
+function strictIdQueryParam(blankMessage: string, formatMessage: string) {
+  return z.string().superRefine((value, ctx) => {
+    if (value.trim().length === 0) {
+      ctx.addIssue({ code: 'custom', message: blankMessage });
+      return;
+    }
+
+    if (value !== value.trim() || value.length > 100) {
+      ctx.addIssue({ code: 'custom', message: formatMessage });
+    }
+  });
+}
+
+function strictDateKeyQueryParam() {
+  return z.string().superRefine((value, ctx) => {
+    if (value.trim().length === 0 || value !== value.trim() || !isValidDateKey(value)) {
+      ctx.addIssue({ code: 'custom', message: '日付形式が不正です（YYYY-MM-DD）' });
+    }
+  });
+}
+
+function readVisitRecordListQueryValues(searchParams: URLSearchParams) {
+  const values: Record<string, string | undefined> = {};
+  const fieldErrors: Record<string, string[]> = {};
+
+  for (const name of ['patient_id', 'pharmacist_id', 'date_from', 'date_to'] as const) {
+    const allValues = searchParams.getAll(name);
+    if (allValues.length === 0) continue;
+    if (allValues.length > 1) {
+      fieldErrors[name] = [`${name} は1つだけ指定してください`];
+      continue;
+    }
+    values[name] = allValues[0];
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError('検索条件が不正です', fieldErrors)),
+    };
+  }
+
+  return { ok: true as const, values };
+}
+
+function parseVisitRecordListQuery(searchParams: URLSearchParams) {
+  const queryValues = readVisitRecordListQueryValues(searchParams);
+  if (!queryValues.ok) return queryValues;
+
+  const parsed = visitRecordListQuerySchema.safeParse(queryValues.values);
+
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', parsed.error.flatten().fieldErrors),
+      ),
+    };
+  }
+
+  return { ok: true as const, data: parsed.data };
+}
 
 function safeHandoffExtractionWarningContext(visitRecordId: string, cause: unknown) {
   return {
@@ -632,11 +713,13 @@ export const GET = withAuthContext(
     const { cursor, limit } = parsePaginationParams(searchParams);
     const keysetCursor = decodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, cursor);
     const keysetWhere = buildVisitRecordKeysetWhere(keysetCursor);
+    const parsedQuery = parseVisitRecordListQuery(searchParams);
+    if (!parsedQuery.ok) return parsedQuery.response;
 
-    const patientId = searchParams.get('patient_id') ?? undefined;
-    const pharmacistId = searchParams.get('pharmacist_id') ?? undefined;
-    const dateFrom = searchParams.get('date_from') ?? undefined;
-    const dateTo = searchParams.get('date_to') ?? undefined;
+    const patientId = parsedQuery.data.patient_id;
+    const pharmacistId = parsedQuery.data.pharmacist_id;
+    const dateFrom = parsedQuery.data.date_from;
+    const dateTo = parsedQuery.data.date_to;
     const includeHistorySummary = searchParams.get('include_history_summary') === 'true';
     const includeAttachments = searchParams.get('include_attachments') === 'true';
     const isEvidenceGalleryView =
@@ -742,11 +825,15 @@ export const GET = withAuthContext(
         }));
     const nextCursor = hasMore ? pageRecords[pageRecords.length - 1] : null;
 
-    return success({
-      data,
-      hasMore,
-      nextCursor: nextCursor ? encodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, nextCursor) : undefined,
-    });
+    return withSensitiveNoStore(
+      success({
+        data,
+        hasMore,
+        nextCursor: nextCursor
+          ? encodeKeysetCursor(VISIT_RECORD_CURSOR_KEYS, nextCursor)
+          : undefined,
+      }),
+    );
   },
   {
     permission: 'canVisit',

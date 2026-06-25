@@ -266,6 +266,81 @@ describe('/api/visit-records GET', () => {
     ]);
   });
 
+  it.each([
+    ['patient_id=', 'patient_id', '患者IDを指定してください'],
+    ['patient_id=%20patient_1%20', 'patient_id', '患者IDの形式が不正です'],
+    ['pharmacist_id=%20%20', 'pharmacist_id', '薬剤師IDを指定してください'],
+    ['pharmacist_id=%20pharmacist_1', 'pharmacist_id', '薬剤師IDの形式が不正です'],
+    ['date_from=', 'date_from', '日付形式が不正です（YYYY-MM-DD）'],
+    ['date_from=%202026-04-20', 'date_from', '日付形式が不正です（YYYY-MM-DD）'],
+    ['date_to=%20', 'date_to', '日付形式が不正です（YYYY-MM-DD）'],
+  ])(
+    'rejects blank present filter query "%s" before loading visit records',
+    async (query, fieldName, message) => {
+      const response = await GET(createGetRequest(`http://localhost/api/visit-records?${query}`));
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          [fieldName]: [message],
+        },
+      });
+    },
+  );
+
+  it.each([
+    ['patient_id=patient_1&patient_id=', 'patient_id'],
+    ['pharmacist_id=pharmacist_1&pharmacist_id=other', 'pharmacist_id'],
+    ['date_from=2026-04-01&date_from=2026-04-02', 'date_from'],
+    ['date_to=2026-04-20&date_to=invalid', 'date_to'],
+  ])(
+    'rejects duplicate filter query "%s" before loading visit records',
+    async (query, fieldName) => {
+      const response = await GET(createGetRequest(`http://localhost/api/visit-records?${query}`));
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          [fieldName]: [`${fieldName} は1つだけ指定してください`],
+        },
+      });
+    },
+  );
+
+  it.each([
+    ['date_from=2026-02-31', 'date_from', '日付形式が不正です（YYYY-MM-DD）'],
+    ['date_to=invalid', 'date_to', '日付形式が不正です（YYYY-MM-DD）'],
+    [
+      'date_from=2026-04-21&date_to=2026-04-20',
+      'date_to',
+      'date_to は date_from 以降を指定してください',
+    ],
+  ])(
+    'rejects invalid date filter query "%s" before loading visit records',
+    async (query, fieldName, message) => {
+      const response = await GET(createGetRequest(`http://localhost/api/visit-records?${query}`));
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          [fieldName]: [message],
+        },
+      });
+    },
+  );
+
   it('returns patient context and history summaries so visit pages can check patient-level past records', async () => {
     queryRawMock.mockReset();
     visitRecordFindManyMock.mockResolvedValue([
@@ -346,6 +421,8 @@ describe('/api/visit-records GET', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(visitRecordFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
