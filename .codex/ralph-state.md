@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2107 JST
+
+- current task: continue Codex-only backend/API export hardening by validating `date_from` / `date_to` on patient visit-record list PDF export before builder and audit side effects.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; local Next.js Route Handlers guide `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`; `src/app/api/patients/[id]/visit-records/pdf/route.ts`; `src/app/api/patients/[id]/visit-records/pdf/route.test.ts`; `src/server/services/pdf-documents.tsx`; `src/app/api/business-holidays/route.ts`; `src/lib/validations/date-key.ts`; `src/lib/api/pdf-response.ts`; gbrain `code_blast` and `code_callers` for `src/app/api/patients/[id]/visit-records/pdf/route.ts::GET`; security-auditor report for malformed date handling.
+- files changed: `src/app/api/patients/[id]/visit-records/pdf/route.ts`, `src/app/api/patients/[id]/visit-records/pdf/route.test.ts`, and this Ralph state entry.
+- bugs found: malformed `date_from` / `date_to` values were passed to the PDF builder and either ignored (`oops`) or exposed to JS date normalization (`2026-02-31`), which could widen or shift the exported visit-record range while audit filters kept the raw invalid values.
+- security risks found: reduced patient export boundary risk by validating present date filters with strict `dateKeySchema` and rejecting reversed ranges before PDF generation or export-audit writes. Existing `canVisit`, patient id validation, builder access context, PDF response shape, audit target/format, not-found behavior, and 500 redaction are preserved. No auth/authz permission semantics, RLS, DB schema, migration, billing, frontend, external send, or destructive behavior changed.
+- performance issues found: invalid date requests now return before PDF rendering and audit writes. Valid requests are unchanged except trimmed canonical date strings are passed to the builder and audit filters.
+- validation commands: `pnpm exec vitest run 'src/app/api/patients/[id]/visit-records/pdf/route.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/app/api/__tests__/pdf-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/api/patients/[id]/visit-records/pdf/route.ts' 'src/app/api/patients/[id]/visit-records/pdf/route.test.ts'`; `pnpm exec prettier --write 'src/app/api/patients/[id]/visit-records/pdf/route.ts' 'src/app/api/patients/[id]/visit-records/pdf/route.test.ts'`; `pnpm exec prettier --check 'src/app/api/patients/[id]/visit-records/pdf/route.ts' 'src/app/api/patients/[id]/visit-records/pdf/route.test.ts'`; `git diff --check -- 'src/app/api/patients/[id]/visit-records/pdf/route.ts' 'src/app/api/patients/[id]/visit-records/pdf/route.test.ts'`; long-gate `pnpm typecheck` under token `80379679-7153-4A21-886F-9F699977DC73`.
+- validation results: focused patient visit-records PDF route Vitest passed `7/7`; PDF route catalog Vitest passed `10/10`; focused ESLint passed; initial Prettier check flagged the route and test, then Prettier write was applied and focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, then continue with the next backend/API candidate.
+- next action: drain agmsg, inspect staged paths, and commit the patient visit-records PDF date validation slice.
+
 ### 20260625-2104 JST
 
 - current task: continue Codex-only backend/API privacy hardening by fail-closing explicit blank inquiry-record filters, adding sensitive no-store headers, and honoring explicit `limit` without truncating no-limit callers.
