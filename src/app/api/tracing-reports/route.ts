@@ -28,6 +28,21 @@ const createTracingReportSchema = z.object({
   sent_to_physician: optionalTrimmedStringSchema,
 });
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalTrimmedSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 async function buildTracingReportAccessWhere(
   ctx: VisitScheduleAccessContext & { orgId: string },
 ): Promise<Prisma.TracingReportWhereInput | null> {
@@ -83,8 +98,20 @@ export const GET = withAuthContext(
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
-    const patientId = optionalTrimmedSearchParam(searchParams.get('patient_id'));
-    const statusParam = optionalTrimmedSearchParam(searchParams.get('status'));
+    const patientIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'patient_id',
+      '患者IDを指定してください',
+    );
+    if (!patientIdResult.ok) return patientIdResult.response;
+    const statusParamResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      'ステータスを指定してください',
+    );
+    if (!statusParamResult.ok) return statusParamResult.response;
+    const patientId = patientIdResult.value;
+    const statusParam = statusParamResult.value;
     const parsedStatus = optionalTracingReportStatusSchema.safeParse(statusParam);
     if (!parsedStatus.success) {
       return validationError('status が不正です', {

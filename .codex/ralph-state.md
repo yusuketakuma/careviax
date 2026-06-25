@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2227 JST
+
+- current task: continue Codex-only clinical/API hardening by fail-closing explicit blank `patient_id` and `status` filters on `GET /api/tracing-reports`.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; `src/app/api/tracing-reports/route.ts`; `src/app/api/tracing-reports/route.test.ts`; tracing-report route-catalog/protected-route references; gbrain call-graph output; code-mapper subagent report.
+- files changed: `src/app/api/tracing-reports/route.ts`, `src/app/api/tracing-reports/route.test.ts`, and this Ralph state entry.
+- bugs found: `GET /api/tracing-reports?patient_id=` and blank `status` treated explicitly present blank filters as omitted filters, widening a user-intended patient/status-scoped tracing-report query to the caller's accessible report list.
+- security risks found: reduced clinical report overfetch risk by rejecting present-but-empty patient/status filters before assignment-scope reads, tracing-report reads, or patient-name enrichment. Existing `canReport`, assignment access scoping, omitted-filter list behavior, valid trimmed filters, unsupported-status 400 behavior, cursor pagination, POST create validation/access checks, schema, migrations, frontend, external send, and destructive operations are unchanged.
+- performance issues found: blank filter requests now return before assignment/report/patient DB reads. Valid and omitted-filter requests keep the existing `limit + 1` cursor-page query behavior.
+- validation commands: baseline `pnpm exec vitest run src/app/api/tracing-reports/route.test.ts --reporter=dot --testTimeout=30000`; post-change `pnpm exec vitest run src/app/api/tracing-reports/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/app/api/tracing-reports/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/tracing-reports/route.ts src/app/api/tracing-reports/route.test.ts`; `pnpm exec prettier --check src/app/api/tracing-reports/route.ts src/app/api/tracing-reports/route.test.ts`; `git diff --check -- src/app/api/tracing-reports/route.ts src/app/api/tracing-reports/route.test.ts`; long-gate `pnpm typecheck` under token `E159C2B1-518A-4533-B202-24A9894C887A`.
+- validation results: baseline focused tracing-report route Vitest passed `1` file / `11` tests; post-change focused route Vitest passed `1` file / `12` tests; tracing-reports plus protected GET route suites passed `2` files / `141` tests; protected POST route matrix passed `1` file / `97` tests with the known webhook org-dispatch stderr; focused ESLint passed; focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released. The only typecheck output was the pre-existing Node engine warning for current `v24.14.0` versus required `24.16.0`.
+- remaining work: run final scoped Prettier/diff-check including this Ralph state entry, drain agmsg, stage only the tracing-reports route/test plus this Ralph state entry, commit the slice, send `DONE`, then continue with P1 communication-requests/care-reports blank-filter candidates. Leave untracked `.agent-loop/plans/*` untouched.
+- next action: drain agmsg, run final checks, and commit the tracing-reports blank filter fail-close slice.
+
 ### 20260625-2224 JST
 
 - current task: continue Codex-only privacy/API hardening by fail-closing explicit blank `patient_id` filters on `GET /api/external-access`.

@@ -140,20 +140,40 @@ describe('/api/tracing-reports', () => {
     );
   });
 
-  it('ignores blank optional search filters before report lookup', async () => {
+  it('rejects blank optional search filters before report lookup', async () => {
     const response = (await GET(
       createRequest('http://localhost/api/tracing-reports?patient_id=%20%20%20&status=%20%20%20'),
     ))!;
 
-    expect(response.status).toBe(200);
-    expect(tracingReportFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.not.objectContaining({
-          patient_id: expect.anything(),
-          status: expect.anything(),
-        }),
-      }),
-    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        patient_id: ['患者IDを指定してください'],
+      },
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(tracingReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank status filters before report lookup', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/tracing-reports?status=%20%20%20'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        status: ['ステータスを指定してください'],
+      },
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(tracingReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects an unsupported status filter before report or assignment reads', async () => {
