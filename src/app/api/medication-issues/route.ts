@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import {
   createMedicationIssueSchema,
@@ -20,6 +21,84 @@ import {
   listAccessiblePatientIds,
 } from '@/server/services/patient-access';
 import type { Prisma } from '@prisma/client';
+
+function readStrictOptionalMedicationIssueFilter(
+  searchParams: URLSearchParams,
+  name: 'patient_id' | 'case_id' | 'status',
+  messages: { blank: string; invalid?: string },
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
+    };
+  }
+
+  const value = values[0];
+  if (value.trim().length === 0) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.blank] },
+    };
+  }
+
+  if (value !== value.trim() || value.length > 100) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.invalid ?? messages.blank] },
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function parseMedicationIssueListFilters(searchParams: URLSearchParams) {
+  const patientResult = readStrictOptionalMedicationIssueFilter(searchParams, 'patient_id', {
+    blank: '患者IDを指定してください',
+    invalid: '患者IDの形式が不正です',
+  });
+  if (!patientResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', patientResult.fieldErrors),
+      ),
+    };
+  }
+
+  const caseResult = readStrictOptionalMedicationIssueFilter(searchParams, 'case_id', {
+    blank: 'ケースIDを指定してください',
+    invalid: 'ケースIDの形式が不正です',
+  });
+  if (!caseResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError('検索条件が不正です', caseResult.fieldErrors)),
+    };
+  }
+
+  const statusResult = readStrictOptionalMedicationIssueFilter(searchParams, 'status', {
+    blank: 'ステータスを指定してください',
+    invalid: '対応していないステータスです',
+  });
+  if (!statusResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', statusResult.fieldErrors),
+      ),
+    };
+  }
+
+  return {
+    ok: true as const,
+    patientId: patientResult.value,
+    caseId: caseResult.value,
+    statusParam: statusResult.value,
+  };
+}
 
 async function buildMedicationIssueAssignmentWhere(args: {
   orgId: string;
@@ -80,15 +159,17 @@ export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
+    const filters = parseMedicationIssueListFilters(searchParams);
+    if (!filters.ok) return filters.response;
 
-    const patientId = searchParams.get('patient_id') ?? undefined;
-    const caseId = searchParams.get('case_id') ?? undefined;
-    const statusParam = searchParams.get('status') ?? undefined;
+    const { patientId, caseId, statusParam } = filters;
     const status = statusParam ? medicationIssueStatusSchema.safeParse(statusParam) : null;
     if (status && !status.success) {
-      return validationError('服薬課題ステータスが不正です', {
-        status: ['対応していないステータスです'],
-      });
+      return withSensitiveNoStore(
+        validationError('服薬課題ステータスが不正です', {
+          status: ['対応していないステータスです'],
+        }),
+      );
     }
 
     if (patientId && caseId) {
@@ -96,7 +177,7 @@ export const GET = withAuthContext(
         patient_id: patientId,
         case_id: caseId,
       });
-      if (!refResult.ok) return refResult.response;
+      if (!refResult.ok) return withSensitiveNoStore(refResult.response);
     }
 
     const accessContext = { userId: ctx.userId, role: ctx.role };
@@ -109,7 +190,7 @@ export const GET = withAuthContext(
         accessContext,
       }))
     ) {
-      return success({ data: [], hasMore: false, nextCursor: undefined });
+      return withSensitiveNoStore(success({ data: [], hasMore: false, nextCursor: undefined }));
     }
 
     const assignmentWhere = await buildMedicationIssueAssignmentWhere({
@@ -152,7 +233,7 @@ export const GET = withAuthContext(
     const data = hasMore ? issues.slice(0, limit) : issues;
     const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-    return success({ data, hasMore, nextCursor });
+    return withSensitiveNoStore(success({ data, hasMore, nextCursor }));
   },
   {
     permission: 'canVisit',

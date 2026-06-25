@@ -114,6 +114,8 @@ describe('/api/medication-issues', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(medicationIssueFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -133,6 +135,8 @@ describe('/api/medication-issues', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: [],
       hasMore: false,
@@ -142,12 +146,75 @@ describe('/api/medication-issues', () => {
     expect(medicationIssueCreateMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['patient_id=', 'patient_id', '患者IDを指定してください'],
+    ['patient_id=%20patient_1', 'patient_id', '患者IDの形式が不正です'],
+    ['case_id=%20%20', 'case_id', 'ケースIDを指定してください'],
+    ['case_id=case_1%20', 'case_id', 'ケースIDの形式が不正です'],
+    ['status=', 'status', 'ステータスを指定してください'],
+    ['status=%20open', 'status', '対応していないステータスです'],
+  ])(
+    'rejects blank or padded medication issue filter query "%s" before scope resolution',
+    async (query, fieldName, message) => {
+      const response = (await GET(
+        createRequest(`http://localhost/api/medication-issues?${query}`),
+      ))!;
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: {
+          [fieldName]: [message],
+        },
+      });
+      expect(patientFindFirstMock).not.toHaveBeenCalled();
+      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(medicationIssueFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['patient_id=patient_1&patient_id=patient_2', 'patient_id'],
+    ['case_id=case_1&case_id=', 'case_id'],
+    ['status=open&status=resolved', 'status'],
+  ])(
+    'rejects duplicate medication issue filter query "%s" before scope resolution',
+    async (query, fieldName) => {
+      const response = (await GET(
+        createRequest(`http://localhost/api/medication-issues?${query}`),
+      ))!;
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: {
+          [fieldName]: [`${fieldName} は1つだけ指定してください`],
+        },
+      });
+      expect(patientFindFirstMock).not.toHaveBeenCalled();
+      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(medicationIssueFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects an invalid status filter before resolving assignment scope', async () => {
     const response = (await GET(
       createRequest('http://localhost/api/medication-issues?status=archived'),
     ))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -155,6 +222,8 @@ describe('/api/medication-issues', () => {
       },
     });
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(patientFindManyMock).not.toHaveBeenCalled();
     expect(medicationIssueFindManyMock).not.toHaveBeenCalled();
   });
