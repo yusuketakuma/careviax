@@ -708,6 +708,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'dashboard',
   },
   {
+    path: '/api/staff-workload',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: 'スタッフ別業務量ボード取得',
+    area: 'dashboard',
+  },
+  {
     path: '/api/drug-masters',
     methods: ['GET'],
     permission: 'canAdmin',

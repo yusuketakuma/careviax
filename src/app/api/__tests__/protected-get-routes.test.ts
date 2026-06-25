@@ -180,6 +180,7 @@ import { GET as prescriptionIntakesGet } from '../prescription-intakes/route';
 import { GET as prescriptionIntakeGet } from '../prescription-intakes/[id]/route';
 import { GET as residualMedicationsGet } from '../residual-medications/route';
 import { GET as setPlansGet } from '../set-plans/route';
+import { GET as staffWorkloadGet } from '../staff-workload/route';
 import { GET as tasksGet } from '../tasks/route';
 import { GET as tracingReportsGet } from '../tracing-reports/route';
 import { GET as visitRecordsGet } from '../visit-records/route';
@@ -681,6 +682,15 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'staff-workload GET',
+    handler: () =>
+      staffWorkloadGet(
+        createRequest('http://localhost/api/staff-workload?date=2026-06-12', {
+          'x-org-id': 'org_1',
+        }),
+      ),
+  },
+  {
     name: 'tasks GET',
     handler: () => tasksGet(createRequest('http://localhost/api/tasks', { 'x-org-id': 'org_1' })),
   },
@@ -892,6 +902,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||
+        route.name === 'staff-workload GET' ||
         route.name === 'dashboard/clerk-support GET' ||
         route.name === 'dashboard/cockpit GET' ||
         route.name === 'dashboard/dispensing-stats GET' ||
@@ -933,6 +944,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||
+        route.name === 'staff-workload GET' ||
         route.name === 'dashboard/clerk-support GET' ||
         route.name === 'dashboard/cockpit GET' ||
         route.name === 'dashboard/dispensing-stats GET' ||

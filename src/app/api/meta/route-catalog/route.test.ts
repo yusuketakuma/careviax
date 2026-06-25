@@ -217,6 +217,13 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'dashboard',
         }),
         expect.objectContaining({
+          path: '/api/staff-workload',
+          methods: ['GET'],
+          permission: 'canVisit',
+          description: 'スタッフ別業務量ボード取得',
+          area: 'dashboard',
+        }),
+        expect.objectContaining({
           path: '/api/patient-share-cases',
           methods: ['GET'],
           permission: 'canManagePatientSharing',

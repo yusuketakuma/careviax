@@ -151,6 +151,7 @@ describe('routeCatalog', () => {
       '/api/pharmacy-visit-requests/:id/decision',
       '/api/pharmacy-drug-stocks/export',
       '/api/pharmacy-drug-stocks/template',
+      '/api/staff-workload',
       '/api/tasks',
       '/api/tasks/:id',
       '/api/tasks/bulk',

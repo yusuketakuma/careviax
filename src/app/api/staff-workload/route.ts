@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { memberRoleLabel } from '@/lib/auth/member-roles';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -15,29 +16,44 @@ const STAFF_ROLES = [
   'clerk',
   'driver',
 ] as const;
-const RECENT_TASK_LIMIT_PER_STAFF = 4;
+const RECENT_TASK_PREVIEW_LIMIT_PER_STAFF = 2;
+const RECENT_VISIT_PREVIEW_LIMIT_PER_STAFF = 2;
 
 const querySchema = z.object({
   date: dateKeySchema('date は YYYY-MM-DD で指定してください').optional(),
 });
 
+const staffWorkloadSingleValueQueryNames = ['date'] as const satisfies readonly (keyof z.infer<
+  typeof querySchema
+>)[];
+
+function findInvalidStaffWorkloadQueryParams(searchParams: URLSearchParams) {
+  const fieldErrors: Record<string, string[]> = {};
+
+  for (const name of staffWorkloadSingleValueQueryNames) {
+    if (searchParams.getAll(name).length > 1) {
+      fieldErrors[name] = [`${name} は1つだけ指定してください`];
+    }
+  }
+
+  const rawDate = searchParams.get('date');
+  if (rawDate != null && rawDate !== rawDate.trim()) {
+    fieldErrors.date = ['date は YYYY-MM-DD で指定してください'];
+  }
+
+  return Object.keys(fieldErrors).length > 0 ? fieldErrors : null;
+}
+
 type OpenTask = {
   id: string;
   title: string;
-  task_type: string;
-  priority: string;
-  status: string;
-  due_date: string | null;
-  sla_due_at: string | null;
 };
 
-type RecentOpenTaskRow = Omit<OpenTask, 'due_date' | 'sla_due_at'> & {
+type RecentOpenTaskRow = OpenTask & {
   assigned_to: string | null;
-  due_date: Date | null;
-  sla_due_at: Date | null;
 };
 
-export async function GET(req: NextRequest) {
+async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: 'スタッフ業務量の閲覧権限がありません',
@@ -45,7 +61,13 @@ export async function GET(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
-  const parsed = querySchema.safeParse(Object.fromEntries(new URL(req.url).searchParams));
+  const searchParams = new URL(req.url).searchParams;
+  const invalidQueryParams = findInvalidStaffWorkloadQueryParams(searchParams);
+  if (invalidQueryParams) {
+    return validationError('入力値が不正です', invalidQueryParams);
+  }
+
+  const parsed = querySchema.safeParse(Object.fromEntries(searchParams));
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
@@ -84,17 +106,16 @@ export async function GET(req: NextRequest) {
       _count: { id: true },
     }),
     prisma.$queryRaw<RecentOpenTaskRow[]>`
-      SELECT id, assigned_to, title, task_type, priority, status, due_date, sla_due_at
+      SELECT id, assigned_to, title
       FROM (
         SELECT
           id,
           assigned_to,
           title,
-          task_type,
-          priority,
-          status,
           due_date,
           sla_due_at,
+          priority,
+          created_at,
           ROW_NUMBER() OVER (
             PARTITION BY assigned_to
             ORDER BY
@@ -108,7 +129,7 @@ export async function GET(req: NextRequest) {
           AND assigned_to = ANY(${staffIds}::text[])
           AND status IN ('pending', 'in_progress')
       ) ranked
-      WHERE rn <= ${RECENT_TASK_LIMIT_PER_STAFF}
+      WHERE rn <= ${RECENT_TASK_PREVIEW_LIMIT_PER_STAFF}
       ORDER BY assigned_to ASC, rn ASC
     `,
     prisma.visitSchedule.findMany({
@@ -121,10 +142,6 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         pharmacist_id: true,
-        visit_type: true,
-        schedule_status: true,
-        time_window_start: true,
-        time_window_end: true,
         case_: { select: { patient: { select: { name: true } } } },
       },
       orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
@@ -160,15 +177,10 @@ export async function GET(req: NextRequest) {
   for (const task of openTasks) {
     if (!task.assigned_to) continue;
     const items = tasksByUser.get(task.assigned_to) ?? [];
-    if (items.length >= RECENT_TASK_LIMIT_PER_STAFF) continue;
+    if (items.length >= RECENT_TASK_PREVIEW_LIMIT_PER_STAFF) continue;
     items.push({
       id: task.id,
       title: task.title,
-      task_type: task.task_type,
-      priority: task.priority,
-      status: task.status,
-      due_date: task.due_date?.toISOString() ?? null,
-      sla_due_at: task.sla_due_at?.toISOString() ?? null,
     });
     tasksByUser.set(task.assigned_to, items);
   }
@@ -194,13 +206,9 @@ export async function GET(req: NextRequest) {
         today_visit_count: todayVisitCount,
         dispense_task_count: dispenseTaskCount,
         workload_score: todayVisitCount * 3 + dispenseTaskCount * 2 + openTaskCount,
-        visits: staffVisits.slice(0, 3).map((visit) => ({
+        visits: staffVisits.slice(0, RECENT_VISIT_PREVIEW_LIMIT_PER_STAFF).map((visit) => ({
           id: visit.id,
           patient_name: visit.case_.patient.name,
-          visit_type: visit.visit_type,
-          schedule_status: visit.schedule_status,
-          time_start: visit.time_window_start?.toISOString() ?? null,
-          time_end: visit.time_window_end?.toISOString() ?? null,
         })),
         open_tasks: tasksByUser.get(membership.user.id) ?? [],
       };
@@ -212,4 +220,12 @@ export async function GET(req: NextRequest) {
     });
 
   return success({ data, date: dateKey });
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
 }

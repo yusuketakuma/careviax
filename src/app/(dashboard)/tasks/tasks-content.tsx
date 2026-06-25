@@ -100,19 +100,10 @@ type StaffWorkload = {
   visits: Array<{
     id: string;
     patient_name: string;
-    visit_type: string;
-    schedule_status: string;
-    time_start: string | null;
-    time_end: string | null;
   }>;
   open_tasks: Array<{
     id: string;
     title: string;
-    task_type: string;
-    priority: string;
-    status: string;
-    due_date: string | null;
-    sla_due_at: string | null;
   }>;
 };
 

@@ -48,6 +48,11 @@ function createRequest(url: string) {
   return new NextRequest(url);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/staff-workload', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -156,6 +161,7 @@ describe('/api/staff-workload', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(membershipFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -175,6 +181,11 @@ describe('/api/staff-workload', () => {
             lt: new Date('2026-06-16T00:00:00.000Z'),
           },
         }),
+        select: {
+          id: true,
+          pharmacist_id: true,
+          case_: { select: { patient: { select: { name: true } } } },
+        },
       }),
     );
     expect(taskFindManyMock).not.toHaveBeenCalled();
@@ -191,8 +202,9 @@ describe('/api/staff-workload', () => {
     expect(queryText).toContain('WHERE rn <=');
     expect(orgId).toBe('org_1');
     expect(assignedStaffIds).toEqual(['user_a', 'user_b']);
-    expect(limit).toBe(4);
-    await expect(response.json()).resolves.toMatchObject({
+    expect(limit).toBe(2);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       date: '2026-06-15',
       data: [
         {
@@ -203,12 +215,10 @@ describe('/api/staff-workload', () => {
           today_visit_count: 1,
           dispense_task_count: 3,
           open_tasks: [
-            { title: '鈴木さんの監査をしてほしい' },
-            { title: '訪問前の確認' },
-            { title: '残薬連絡' },
-            { title: '報告書確認' },
+            { id: 'task_1', title: '鈴木さんの監査をしてほしい' },
+            { id: 'task_2', title: '訪問前の確認' },
           ],
-          visits: [{ patient_name: '田中 花子' }],
+          visits: [{ id: 'visit_1', patient_name: '田中 花子' }],
         },
         {
           id: 'user_b',
@@ -219,6 +229,9 @@ describe('/api/staff-workload', () => {
         },
       ],
     });
+    expect(payload.data[0].open_tasks).toHaveLength(2);
+    expect(Object.keys(payload.data[0].open_tasks[0]).sort()).toEqual(['id', 'title']);
+    expect(Object.keys(payload.data[0].visits[0]).sort()).toEqual(['id', 'patient_name']);
   });
 
   it('rejects invalid date filters before querying staff', async () => {
@@ -228,6 +241,7 @@ describe('/api/staff-workload', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(membershipFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -238,6 +252,49 @@ describe('/api/staff-workload', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(membershipFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'padded date',
+      'http://localhost/api/staff-workload?date=%202026-06-15%20',
+      { date: ['date は YYYY-MM-DD で指定してください'] },
+    ],
+    [
+      'duplicate date',
+      'http://localhost/api/staff-workload?date=2026-06-15&date=2026-06-16',
+      { date: ['date は1つだけ指定してください'] },
+    ],
+  ])('rejects %s before querying staff', async (_name, url, details) => {
+    const response = await GET(createRequest(url));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details,
+    });
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 envelope when workload reads throw', async () => {
+    membershipFindManyMock.mockRejectedValueOnce(new Error('raw patient workload failure'));
+
+    const response = await GET(
+      createRequest('http://localhost/api/staff-workload?date=2026-06-15'),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(payload)).not.toContain('raw patient workload failure');
   });
 });
