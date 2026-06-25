@@ -45,9 +45,10 @@ function makeDb(previousStatusLogs: Array<{ target_id: string; changes: unknown 
       findMany: vi.fn().mockResolvedValue([]),
     },
     auditLog: {
-      findMany: vi.fn().mockResolvedValue(previousStatusLogs),
       create: vi.fn().mockResolvedValue({}),
     },
+    // 直近ステータス変更は ROW_NUMBER() window query(raw SQL)で取得する。
+    $queryRaw: vi.fn().mockResolvedValue(previousStatusLogs),
     notification: {
       create: vi.fn().mockResolvedValue({}),
       createMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -242,13 +243,20 @@ describe('trackPatientStatusChanges', () => {
         }),
       }),
     );
-    expect(db.auditLog.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          target_id: { in: [rawPatientId] },
-        }),
-      }),
+    // 直近ステータスは ROW_NUMBER() window query(raw SQL)で患者ごと直近5件に bound する。
+    const queryRawMock = db.$queryRaw as ReturnType<typeof vi.fn>;
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    const querySql = (queryRawMock.mock.calls[0][0] as string[]).join('?');
+    expect(querySql).toContain(
+      'ROW_NUMBER() OVER (PARTITION BY target_id ORDER BY created_at DESC)',
     );
+    expect(querySql).toMatch(/rn\s*<=\s*5\b/);
+    expect(querySql).toContain("action = 'patient_status_change'");
+    expect(querySql).toContain('org_id = ');
+    // bind 変数(injection 不可): org_id と patientIds 配列。生の patient id がそのまま bind される。
+    const queryValues = queryRawMock.mock.calls[0].slice(1);
+    expect(queryValues[0]).toBe('org_1');
+    expect(queryValues[1]).toEqual([rawPatientId]);
     expect(db.notification.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: [
@@ -290,12 +298,12 @@ describe('trackPatientStatusChanges', () => {
       visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       auditLog: {
-        // previous status 'attention' is in the trigger's `from` list for overdue_visit
-        findMany: vi
-          .fn()
-          .mockResolvedValue([{ target_id: 'patient_1', changes: { to: 'attention' } }]),
         create: vi.fn().mockResolvedValue({}),
       },
+      // previous status 'attention' is in the trigger's `from` list for overdue_visit
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValue([{ target_id: 'patient_1', changes: { to: 'attention' } }]),
       notification: {
         create: vi.fn().mockResolvedValue({}),
         createMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -359,11 +367,11 @@ describe('trackPatientStatusChanges', () => {
         ]),
       },
       auditLog: {
-        findMany: vi
-          .fn()
-          .mockResolvedValue([{ target_id: 'patient_1', changes: { to: 'hospitalized' } }]),
         create: vi.fn().mockResolvedValue({}),
       },
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValue([{ target_id: 'patient_1', changes: { to: 'hospitalized' } }]),
       notification: {
         create: vi.fn().mockResolvedValue({}),
         createMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -438,9 +446,9 @@ describe('trackPatientStatusChanges', () => {
         ]),
       },
       auditLog: {
-        findMany: vi.fn().mockResolvedValue([]),
         create: vi.fn().mockResolvedValue({}),
       },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       notification: {
         create: vi.fn().mockResolvedValue({}),
         createMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -486,9 +494,9 @@ describe('trackPatientStatusChanges', () => {
       visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
       medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
       auditLog: {
-        findMany: vi.fn().mockResolvedValue([]),
         create: vi.fn().mockResolvedValue({}),
       },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       notification: {
         create: vi.fn().mockResolvedValue({}),
         createMany: vi.fn().mockResolvedValue({ count: 1 }),

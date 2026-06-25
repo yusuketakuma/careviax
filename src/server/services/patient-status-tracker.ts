@@ -214,16 +214,28 @@ export async function trackPatientStatusChanges(
   }
 
   // Get previous status from the most recent audit log
-  const previousStatusLogs = await db.auditLog.findMany({
-    where: {
-      org_id: args.orgId,
-      action: 'patient_status_change',
-      target_type: 'patient',
-      target_id: { in: patientIds },
-    },
-    orderBy: { created_at: 'desc' },
-    select: { target_id: true, changes: true },
-  });
+  // 各患者の直近ステータス変更ログ。患者ごとに全件取得して JS で最新を拾うと、ステータス
+  // 変更履歴の蓄積に比例して行数が膨らむ。ROW_NUMBER() で患者(target_id)ごと直近5件へ絞る
+  // window query にして取得行を bound する。最新ログが malformed のとき有効な次点へ
+  // フォールバックする下流ロジックを保つため、DISTINCT ON(1件)ではなく上位5件を取得する。
+  // Prisma の distinct は in-memory で per-group 制限にならないため parameterized raw SQL を使う
+  // (org_id / patientIds は bind 変数で injection 不可、action / target_type は静的リテラル)。
+  const previousStatusLogs = await (db as typeof prisma).$queryRaw<
+    Array<{ target_id: string; changes: Prisma.JsonValue | null }>
+  >`
+    SELECT target_id, changes
+    FROM (
+      SELECT target_id, changes,
+             ROW_NUMBER() OVER (PARTITION BY target_id ORDER BY created_at DESC) AS rn
+      FROM "AuditLog"
+      WHERE org_id = ${args.orgId}
+        AND action = 'patient_status_change'
+        AND target_type = 'patient'
+        AND target_id = ANY(${patientIds}::text[])
+    ) ranked
+    WHERE rn <= 5
+    ORDER BY target_id, created_at DESC
+  `;
 
   const previousStatusMap = new Map<string, PatientStatusIcon>();
   for (const log of previousStatusLogs) {
