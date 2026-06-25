@@ -20,6 +20,15 @@ Handed to codex to harden (standard pattern, generous default):
 11. pharmacist-shifts/available — date scoped (generous)
 12. handoff-board — single-day scoped (generous)
 
+### A#5 drug-alert-rules — verification (2026-06-25, claude): SAFE, un-deferred
+A#5 was provisionally deferred pending a drug-safety completeness check. Verified: the CDS alert
+engine `src/server/cds/checker.ts` queries `prisma.drugAlertRule.findMany` DIRECTLY and independently
+(lines 340 configuredRules / 785 allergyRules / 954 highRiskRules / 1205 pimRules, each `rule_type`-filtered)
+— it does NOT call GET `/api/drug-alert-rules`. The GET route (`route.ts:45`) is the admin alert-rules
+tuning LIST UI only. Bounding the GET with a GENEROUS default (200 / max 500) drops no safety check.
+**HARD CONSTRAINT:** do NOT add `take` to checker.ts's findMany calls — the engine must read every rule
+for completeness; only the admin GET route is bounded.
+
 ### Excluded from A
 - **Already bounded (SKIP, no churn):** comments (`COMMENT_THREAD_LIMIT=100`), conference-notes (cursor via `parsePaginationParams`).
 - **Downgraded A→DEFER:** admin/external-professionals — has a `q` search (`contains`); a naive `take` could drop search matches (same completeness risk as care-reports). Needs cursor or generous-with-note; do not naive-bound.
