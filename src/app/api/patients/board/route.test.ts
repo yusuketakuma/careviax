@@ -38,6 +38,11 @@ function createRequest(search = '?scope=all') {
   return new NextRequest(`http://localhost/api/patients/board${search}`);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function buildPatientRow(scheduledDate: Date) {
   return {
     id: 'patient_1',
@@ -138,6 +143,7 @@ describe('/api/patients/board', () => {
 
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
 
     const select = patientFindManyMock.mock.calls[0][0].select;
     const scheduleWhere = select.cases.select.visit_schedules.where;
@@ -518,7 +524,34 @@ describe('/api/patients/board', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'クエリパラメータが不正です',
+    });
     expect(patientFindManyMock).not.toHaveBeenCalled();
     expect(patientCountMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['scope', '?scope=mine&scope=all', { scope: ['scope は1つだけ指定してください'] }],
+    [
+      'foundation_issue',
+      '?scope=all&foundation_issue=missing_contact&foundation_issue=missing_care_team',
+      { foundation_issue: ['foundation_issue は1つだけ指定してください'] },
+    ],
+  ])(
+    'rejects duplicate board query parameter %s before querying patients',
+    async (_name, search, details) => {
+      const response = (await GET(createRequest(search), { params: Promise.resolve({}) }))!;
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        message: 'クエリパラメータが不正です',
+        details,
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(patientCountMock).not.toHaveBeenCalled();
+    },
+  );
 });

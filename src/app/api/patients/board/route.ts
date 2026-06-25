@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { formatUtcDateKey } from '@/lib/date-key';
@@ -47,6 +48,23 @@ const boardQuerySchema = z.object({
     .enum(['needs_confirmation', 'missing_contact', 'missing_care_team'])
     .optional(),
 });
+
+const boardSingleValueQueryNames = [
+  'scope',
+  'foundation_issue',
+] as const satisfies readonly (keyof z.infer<typeof boardQuerySchema>)[];
+
+function findDuplicateBoardQueryParams(searchParams: URLSearchParams) {
+  const fieldErrors: Record<string, string[]> = {};
+
+  for (const name of boardSingleValueQueryNames) {
+    if (searchParams.getAll(name).length > 1) {
+      fieldErrors[name] = [`${name} は1つだけ指定してください`];
+    }
+  }
+
+  return Object.keys(fieldErrors).length > 0 ? fieldErrors : null;
+}
 
 const ACTIVE_SCHEDULE_STATUSES = [
   'planned',
@@ -473,9 +491,14 @@ function matchesFoundationIssue(
   return true;
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
+    const duplicateFieldErrors = findDuplicateBoardQueryParams(searchParams);
+    if (duplicateFieldErrors) {
+      return validationError('クエリパラメータが不正です', duplicateFieldErrors);
+    }
+
     const parsed = parseSearchParams(boardQuerySchema, searchParams);
     if (!parsed.ok) {
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
@@ -763,3 +786,6 @@ export const GET = withAuthContext(
     message: '患者情報の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

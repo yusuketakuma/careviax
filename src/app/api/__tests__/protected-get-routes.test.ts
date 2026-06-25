@@ -162,6 +162,7 @@ import { GET as medicationCyclesGet } from '../medication-cycles/route';
 import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
+import { GET as patientsBoardGet } from '../patients/board/route';
 import { GET as patientCheckDuplicateGet } from '../patients/check-duplicate/route';
 import { GET as patientGet } from '../patients/[id]/route';
 import { GET as patientOverviewGet } from '../patients/[id]/overview/route';
@@ -522,6 +523,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'patients/board GET',
+    handler: () =>
+      patientsBoardGet(
+        createRequest('http://localhost/api/patients/board?scope=all', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
     name: 'patients/check-duplicate GET',
     handler: () =>
       patientCheckDuplicateGet(
@@ -853,6 +862,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dispense-tasks/[id]/workbench GET' ||
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
+        route.name === 'patients/board GET' ||
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -891,6 +901,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dispense-tasks/[id]/workbench GET' ||
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
+        route.name === 'patients/board GET' ||
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||

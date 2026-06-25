@@ -50,6 +50,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'patients',
   },
   {
+    path: '/api/patients/board',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '患者ボード一覧・対応状況集計取得',
+    area: 'patients',
+  },
+  {
     path: '/api/patients/check-duplicate',
     methods: ['GET'],
     permission: 'canVisit',

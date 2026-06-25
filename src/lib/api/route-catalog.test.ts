@@ -114,6 +114,7 @@ describe('routeCatalog', () => {
       '/api/patient-share-cases/:id/patient-link',
       '/api/pharmacy-cooperation-message-threads',
       '/api/patients/check-duplicate',
+      '/api/patients/board',
       '/api/patients/:id/overview',
       '/api/patients/:id/prescriptions',
       '/api/patients/:id/prescriptions/export',
