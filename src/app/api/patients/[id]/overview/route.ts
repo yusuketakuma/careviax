@@ -1,10 +1,11 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { getPatientOverview } from '@/server/services/patient-detail';
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -25,3 +26,6 @@ export const GET = withAuthContext(
     message: '患者情報の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

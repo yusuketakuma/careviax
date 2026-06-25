@@ -12,6 +12,7 @@ const {
   buildPatientVisitRecordsPdfMock,
   buildVisitRecordPdfMock,
   buildPharmacyInvoiceDocumentPdfMock,
+  getPatientOverviewMock,
 } = vi.hoisted(() => {
   const createRecord = () => ({
     id: 'entity_1',
@@ -90,6 +91,7 @@ const {
     buildPatientVisitRecordsPdfMock: vi.fn(),
     buildVisitRecordPdfMock: vi.fn(),
     buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
+    getPatientOverviewMock: vi.fn(),
   };
 });
 
@@ -119,6 +121,15 @@ vi.mock('@/server/services/pdf-documents', () => ({
 vi.mock('@/server/services/pdf-pharmacy-invoice', () => ({
   buildPharmacyInvoiceDocumentPdf: buildPharmacyInvoiceDocumentPdfMock,
 }));
+
+vi.mock('@/server/services/patient-detail', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/patient-detail')>();
+
+  return {
+    ...actual,
+    getPatientOverview: getPatientOverviewMock,
+  };
+});
 
 import { GET as auditLogsGet } from '../audit-logs/route';
 import { GET as auditLogsExportGet } from '../audit-logs/export/route';
@@ -153,6 +164,7 @@ import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
 import { GET as patientCheckDuplicateGet } from '../patients/check-duplicate/route';
 import { GET as patientGet } from '../patients/[id]/route';
+import { GET as patientOverviewGet } from '../patients/[id]/overview/route';
 import { GET as patientPrescriptionsGet } from '../patients/[id]/prescriptions/route';
 import { GET as patientSelfReportsGet } from '../patient-self-reports/route';
 import { GET as patientSelfReportGet } from '../patient-self-reports/[id]/route';
@@ -529,6 +541,19 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'patients/[id]/overview GET',
+    setupSuccess: () => {
+      getPatientOverviewMock.mockResolvedValueOnce({ id: 'patient_1', name: '患者A' });
+    },
+    handler: () =>
+      patientOverviewGet(
+        createRequest('http://localhost/api/patients/patient_1/overview', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
     name: 'patients/[id]/prescriptions GET',
     handler: () =>
       patientPrescriptionsGet(
@@ -829,6 +854,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
+        route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET' ||
@@ -866,6 +892,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
+        route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET' ||

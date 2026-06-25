@@ -217,6 +217,11 @@ function expectNoServiceCalls() {
   }
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('patient detail slice routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -249,7 +254,59 @@ describe('patient detail slice routes', () => {
       },
     );
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({ id: 'patient_1' });
+  });
+
+  it('returns no-store for invalid patient overview ids', async () => {
+    const response = await overviewGet(
+      createRequest('http://localhost/api/patients/%20%20/overview'),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(getPatientOverviewMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store when the patient overview is not found', async () => {
+    getPatientOverviewMock.mockResolvedValue(null);
+
+    const response = await overviewGet(
+      createRequest('http://localhost/api/patients/patient_1/overview'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '患者が見つかりません',
+    });
+  });
+
+  it('returns no-store when patient overview auth rejects', async () => {
+    authRejectionMock.mockImplementation(() =>
+      Response.json({ code: 'AUTH_FORBIDDEN', message: 'forbidden' }, { status: 403 }),
+    );
+
+    const response = await overviewGet(
+      createRequest('http://localhost/api/patients/patient_1/overview'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(getPatientOverviewMock).not.toHaveBeenCalled();
   });
 
   it('returns patient visits data', async () => {
