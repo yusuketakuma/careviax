@@ -14,6 +14,43 @@ import {
 const DEFAULT_EXTERNAL_PROFESSIONAL_SEARCH_LIMIT = 500;
 const MAX_EXTERNAL_PROFESSIONAL_SEARCH_LIMIT = 500;
 
+function parseOptionalEnumFilter<T>(
+  searchParams: URLSearchParams,
+  fieldName: string,
+  schema: { safeParse: (value: string) => { success: true; data: T } | { success: false } },
+) {
+  const rawValue = searchParams.get(fieldName);
+  if (rawValue === null) return { ok: true as const, data: undefined };
+
+  const trimmedValue = rawValue.trim();
+  if (!trimmedValue) return { ok: true as const, data: undefined };
+
+  const parsed = schema.safeParse(trimmedValue);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [fieldName]: ['不正な値です'] }),
+    };
+  }
+
+  return { ok: true as const, data: parsed.data };
+}
+
+function parseFacilityIdFilter(searchParams: URLSearchParams) {
+  const rawValue = searchParams.get('facility_id');
+  if (rawValue === null) return { ok: true as const, data: undefined };
+
+  const trimmedValue = rawValue.trim();
+  if (!trimmedValue) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { facility_id: ['施設IDが不正です'] }),
+    };
+  }
+
+  return { ok: true as const, data: trimmedValue };
+}
+
 function toResponse(item: {
   id: string;
   profession_type: string;
@@ -59,20 +96,31 @@ export const GET = withAuthContext(
       1,
       MAX_EXTERNAL_PROFESSIONAL_SEARCH_LIMIT,
     );
-    const facilityId = req.nextUrl.searchParams.get('facility_id')?.trim();
-    const professionType = professionTypeSchema.safeParse(
-      req.nextUrl.searchParams.get('profession_type')?.trim(),
-    ).data;
-    const preferredContactMethod = contactMethodSchema.safeParse(
-      req.nextUrl.searchParams.get('preferred_contact_method')?.trim(),
-    ).data;
+    const parsedFacilityId = parseFacilityIdFilter(req.nextUrl.searchParams);
+    if (!parsedFacilityId.ok) return parsedFacilityId.response;
+
+    const parsedProfessionType = parseOptionalEnumFilter(
+      req.nextUrl.searchParams,
+      'profession_type',
+      professionTypeSchema,
+    );
+    if (!parsedProfessionType.ok) return parsedProfessionType.response;
+
+    const parsedPreferredContactMethod = parseOptionalEnumFilter(
+      req.nextUrl.searchParams,
+      'preferred_contact_method',
+      contactMethodSchema,
+    );
+    if (!parsedPreferredContactMethod.ok) return parsedPreferredContactMethod.response;
 
     const items = await prisma.externalProfessional.findMany({
       where: {
         org_id: ctx.orgId,
-        ...(professionType ? { profession_type: professionType } : {}),
-        ...(facilityId ? { facility_id: facilityId } : {}),
-        ...(preferredContactMethod ? { preferred_contact_method: preferredContactMethod } : {}),
+        ...(parsedProfessionType.data ? { profession_type: parsedProfessionType.data } : {}),
+        ...(parsedFacilityId.data ? { facility_id: parsedFacilityId.data } : {}),
+        ...(parsedPreferredContactMethod.data
+          ? { preferred_contact_method: parsedPreferredContactMethod.data }
+          : {}),
         ...(query
           ? {
               OR: [

@@ -224,6 +224,109 @@ describe('/api/admin/external-professionals', () => {
     await expect(response.json()).resolves.not.toHaveProperty('meta');
   });
 
+  it('rejects invalid profession_type before querying external professionals', async () => {
+    const response = (await GET(
+      createAuthRequest(
+        'http://localhost/api/admin/external-professionals?profession_type=invalid',
+      ),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        profession_type: ['不正な値です'],
+      },
+    });
+    expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects trimmed invalid profession_type before querying external professionals', async () => {
+    const response = (await GET(
+      createAuthRequest(
+        'http://localhost/api/admin/external-professionals?profession_type=%20invalid%20',
+      ),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        profession_type: ['不正な値です'],
+      },
+    });
+    expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid preferred_contact_method before querying external professionals', async () => {
+    const response = (await GET(
+      createAuthRequest(
+        'http://localhost/api/admin/external-professionals?preferred_contact_method=ph_os_share',
+      ),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        preferred_contact_method: ['不正な値です'],
+      },
+    });
+    expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank facility_id before querying external professionals', async () => {
+    const response = (await GET(
+      createAuthRequest('http://localhost/api/admin/external-professionals?facility_id=%20%20'),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        facility_id: ['施設IDが不正です'],
+      },
+    });
+    expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('applies valid trimmed filters without q pagination metadata', async () => {
+    const response = (await GET(
+      createAuthRequest(
+        'http://localhost/api/admin/external-professionals?profession_type=%20nurse%20&facility_id=%20facility_1%20&preferred_contact_method=%20phone%20',
+      ),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(externalProfessionalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        profession_type: 'nurse',
+        facility_id: 'facility_1',
+        preferred_contact_method: 'phone',
+      },
+      include: {
+        facility: {
+          select: {
+            name: true,
+          },
+        },
+        _count: {
+          select: {
+            care_team_links: true,
+          },
+        },
+      },
+      orderBy: [{ profession_type: 'asc' }, { name: 'asc' }],
+    });
+    await expect(response.json()).resolves.not.toHaveProperty('meta');
+  });
+
   it('trims q-filtered results and reports has_more', async () => {
     externalProfessionalFindManyMock.mockResolvedValue([
       createExternalProfessionalFixture('external_1', '訪問 看護'),
