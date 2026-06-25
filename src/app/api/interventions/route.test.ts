@@ -119,6 +119,8 @@ describe('/api/interventions', () => {
       ))!;
 
       expect(response.status).toBe(200);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
       expect(patientFindFirstMock).toHaveBeenCalledWith({
         where: {
           id: 'patient_1',
@@ -137,6 +139,58 @@ describe('/api/interventions', () => {
       const body = await response.json();
       expect(body.data).toHaveLength(1);
     });
+
+    it.each([
+      ['patient_id=', 'patient_id', '患者IDを指定してください'],
+      ['patient_id=%20patient_1', 'patient_id', '患者IDの形式が不正です'],
+      [`patient_id=${'a'.repeat(101)}`, 'patient_id', '患者IDの形式が不正です'],
+      ['issue_id=%20%20', 'issue_id', '服薬課題IDを指定してください'],
+      ['issue_id=issue_1%20', 'issue_id', '服薬課題IDの形式が不正です'],
+      [`issue_id=${'a'.repeat(101)}`, 'issue_id', '服薬課題IDの形式が不正です'],
+    ])(
+      'rejects blank or malformed intervention filter query "%s" before scope resolution',
+      async (query, fieldName, message) => {
+        const response = (await GET(createRequest(`http://localhost/api/interventions?${query}`)))!;
+
+        expect(response.status).toBe(400);
+        expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+        expect(response.headers.get('Pragma')).toBe('no-cache');
+        await expect(response.json()).resolves.toMatchObject({
+          code: 'VALIDATION_ERROR',
+          message: '検索条件が不正です',
+          details: {
+            [fieldName]: [message],
+          },
+        });
+        expect(patientFindFirstMock).not.toHaveBeenCalled();
+        expect(patientFindManyMock).not.toHaveBeenCalled();
+        expect(interventionFindManyMock).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['patient_id=patient_1&patient_id=patient_2', 'patient_id'],
+      ['issue_id=issue_1&issue_id=', 'issue_id'],
+    ])(
+      'rejects duplicate intervention filter query "%s" before scope resolution',
+      async (query, fieldName) => {
+        const response = (await GET(createRequest(`http://localhost/api/interventions?${query}`)))!;
+
+        expect(response.status).toBe(400);
+        expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+        expect(response.headers.get('Pragma')).toBe('no-cache');
+        await expect(response.json()).resolves.toMatchObject({
+          code: 'VALIDATION_ERROR',
+          message: '検索条件が不正です',
+          details: {
+            [fieldName]: [`${fieldName} は1つだけ指定してください`],
+          },
+        });
+        expect(patientFindFirstMock).not.toHaveBeenCalled();
+        expect(patientFindManyMock).not.toHaveBeenCalled();
+        expect(interventionFindManyMock).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('POST', () => {

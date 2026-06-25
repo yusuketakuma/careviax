@@ -176,6 +176,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'visits',
   },
   {
+    path: '/api/interventions',
+    methods: ['GET', 'POST'],
+    permission: 'canVisit',
+    description: '介入記録一覧取得と作成',
+    area: 'visits',
+  },
+  {
     path: '/api/pharmacy-visit-requests',
     methods: ['GET'],
     permission: 'canManagePatientSharing',

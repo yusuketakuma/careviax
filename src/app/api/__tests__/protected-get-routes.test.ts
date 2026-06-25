@@ -118,6 +118,7 @@ import { GET as dashboardOverdueGet } from '../dashboard/overdue/route';
 import { GET as dispenseAuditsGet } from '../dispense-audits/route';
 import { GET as dispenseQueueGet } from '../dispense-queue/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
+import { GET as interventionsGet } from '../interventions/route';
 import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
@@ -349,6 +350,14 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () =>
       inquiryRecordsGet(
         createRequest('http://localhost/api/inquiry-records', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'interventions GET',
+    handler: () =>
+      interventionsGet(
+        createRequest('http://localhost/api/interventions', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
       ),
   },

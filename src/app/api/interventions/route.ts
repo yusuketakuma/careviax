@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { createInterventionSchema } from '@/lib/validations/intervention';
@@ -11,6 +12,72 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import { canAccessPatient, listAccessiblePatientIds } from '@/server/services/patient-access';
 import type { Prisma } from '@prisma/client';
+
+function readStrictOptionalInterventionFilter(
+  searchParams: URLSearchParams,
+  name: 'patient_id' | 'issue_id',
+  messages: { blank: string; invalid: string },
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
+    };
+  }
+
+  const value = values[0];
+  if (value.trim().length === 0) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.blank] },
+    };
+  }
+
+  if (value !== value.trim() || value.length > 100) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.invalid] },
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function parseInterventionListFilters(searchParams: URLSearchParams) {
+  const patientResult = readStrictOptionalInterventionFilter(searchParams, 'patient_id', {
+    blank: '患者IDを指定してください',
+    invalid: '患者IDの形式が不正です',
+  });
+  if (!patientResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', patientResult.fieldErrors),
+      ),
+    };
+  }
+
+  const issueResult = readStrictOptionalInterventionFilter(searchParams, 'issue_id', {
+    blank: '服薬課題IDを指定してください',
+    invalid: '服薬課題IDの形式が不正です',
+  });
+  if (!issueResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('検索条件が不正です', issueResult.fieldErrors),
+      ),
+    };
+  }
+
+  return {
+    ok: true as const,
+    patientId: patientResult.value,
+    issueId: issueResult.value,
+  };
+}
 
 async function buildInterventionAssignmentWhere(args: {
   orgId: string;
@@ -62,9 +129,10 @@ export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
+    const filters = parseInterventionListFilters(searchParams);
+    if (!filters.ok) return filters.response;
 
-    const patientId = searchParams.get('patient_id') ?? undefined;
-    const issueId = searchParams.get('issue_id') ?? undefined;
+    const { patientId, issueId } = filters;
 
     const assignmentWhere = await buildInterventionAssignmentWhere({
       orgId: ctx.orgId,
@@ -99,7 +167,9 @@ export const GET = withAuthContext(
       },
     });
 
-    return success(buildCursorPage(interventions, limit, (intervention) => intervention.id));
+    return withSensitiveNoStore(
+      success(buildCursorPage(interventions, limit, (intervention) => intervention.id)),
+    );
   },
   {
     permission: 'canVisit',
