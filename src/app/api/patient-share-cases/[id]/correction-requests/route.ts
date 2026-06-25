@@ -45,6 +45,21 @@ function optionalSearchParam(value: string | null) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 export const GET = withAuthContext<{ id: string }>(
   async (req, ctx, { params }) => {
     const { id: rawId } = await params;
@@ -53,7 +68,13 @@ export const GET = withAuthContext<{ id: string }>(
 
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
-    const rawStatus = optionalSearchParam(searchParams.get('status'));
+    const rawStatusResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      'ステータスを指定してください',
+    );
+    if (!rawStatusResult.ok) return rawStatusResult.response;
+    const rawStatus = rawStatusResult.value;
     const status = rawStatus ? correctionStatusSchema.safeParse(rawStatus) : null;
     if (status && !status.success) {
       return validationError('検索条件が不正です', {

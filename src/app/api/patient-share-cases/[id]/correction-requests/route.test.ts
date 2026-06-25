@@ -55,9 +55,9 @@ import {
 
 const routeContext = { params: Promise.resolve({ id: 'share_case_1' }) };
 
-function createGetRequest() {
+function createGetRequest(query = '') {
   return new NextRequest(
-    'http://localhost/api/patient-share-cases/share_case_1/correction-requests',
+    `http://localhost/api/patient-share-cases/share_case_1/correction-requests${query}`,
     {
       method: 'GET',
     },
@@ -198,6 +198,45 @@ describe('/api/patient-share-cases/[id]/correction-requests POST', () => {
           viewed_count: 1,
           correction_request_ids: ['correction_1'],
           statuses: ['open'],
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    ['empty status', '?status='],
+    ['blank status', '?status=%20%20'],
+  ])('rejects explicitly %s filters before transaction side effects', async (_label, query) => {
+    const response = await rawGET(createGetRequest(query), routeContext);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { status: ['ステータスを指定してください'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(correctionRequestFindManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('trims valid status filters', async () => {
+    const response = await rawGET(createGetRequest('?status=%20open%20'), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(correctionRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'open',
+        }),
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        changes: expect.objectContaining({
+          has_status_filter: true,
         }),
       }),
     );
