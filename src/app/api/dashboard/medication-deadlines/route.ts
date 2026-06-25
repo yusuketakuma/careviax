@@ -1,40 +1,114 @@
-import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
-import {
-  boundedIntegerSearchParam,
-  optionalBlankableBoundedIntegerSearchParam,
-  parseSearchParams,
-} from '@/lib/api/validation';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 const DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS = 7;
 const MAX_MEDICATION_DEADLINE_WITHIN_DAYS = 365;
 
-const medicationDeadlineQuerySchema = z.object({
-  within_days: boundedIntegerSearchParam(
+type MedicationDeadlineQuery = {
+  withinDays: number;
+  limit?: number;
+  query: string | null;
+};
+
+type QueryParseResult =
+  | { ok: true; data: MedicationDeadlineQuery }
+  | { ok: false; response: ReturnType<typeof validationError> };
+
+function parseSingleSearchParam(params: URLSearchParams, field: string) {
+  const values = params.getAll(field);
+  if (values.length === 0) return { ok: true as const, value: null };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      message: `${field} は1つだけ指定してください`,
+    };
+  }
+  return { ok: true as const, value: values[0] ?? '' };
+}
+
+function parseExactIntegerParam(
+  params: URLSearchParams,
+  field: string,
+  min: number,
+  max: number,
+  defaultValue?: number,
+) {
+  const parsed = parseSingleSearchParam(params, field);
+  if (!parsed.ok) return parsed;
+  if (parsed.value === null) return { ok: true as const, value: defaultValue };
+  if (!/^-?\d+$/.test(parsed.value)) {
+    return {
+      ok: false as const,
+      message: `${field} は整数で指定してください`,
+    };
+  }
+  const value = Number(parsed.value);
+  if (value < min || value > max) {
+    return {
+      ok: false as const,
+      message: `${field} は${min}以上${max}以下で指定してください`,
+    };
+  }
+  return { ok: true as const, value };
+}
+
+function parseMedicationDeadlineQuery(params: URLSearchParams): QueryParseResult {
+  const fieldErrors: Record<string, string[]> = {};
+  const withinDays = parseExactIntegerParam(
+    params,
     'within_days',
     0,
     MAX_MEDICATION_DEADLINE_WITHIN_DAYS,
     DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS,
-  ),
-  limit: optionalBlankableBoundedIntegerSearchParam('limit', 1, 50),
-  q: z.preprocess(
-    (value) => (typeof value === 'string' ? value.trim() : value),
-    z.string().max(100).optional(),
-  ),
-});
+  );
+  if (!withinDays.ok) fieldErrors.within_days = [withinDays.message];
 
-export const GET = withAuthContext(
+  const limit = parseExactIntegerParam(params, 'limit', 1, 50);
+  if (!limit.ok) fieldErrors.limit = [limit.message];
+
+  const q = parseSingleSearchParam(params, 'q');
+  let query: string | null = null;
+  if (!q.ok) {
+    fieldErrors.q = [q.message];
+  } else if (q.value !== null) {
+    const trimmed = q.value.trim();
+    if (!trimmed || trimmed !== q.value) {
+      fieldErrors.q = ['q が不正です'];
+    } else if (q.value.length > 100) {
+      fieldErrors.q = ['q は100文字以内で指定してください'];
+    } else {
+      query = q.value;
+    }
+  }
+
+  if (Object.keys(fieldErrors).length > 0) {
+    return {
+      ok: false,
+      response: validationError('クエリパラメータが不正です', fieldErrors),
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      withinDays: withinDays.value ?? DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS,
+      limit: limit.value,
+      query,
+    },
+  };
+}
+
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const parsed = parseSearchParams(medicationDeadlineQuerySchema, searchParams);
+    const parsed = parseMedicationDeadlineQuery(searchParams);
     if (!parsed.ok) {
-      return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+      return parsed.response;
     }
-    const withinDays = parsed.data.within_days;
-    const query = parsed.data.q || null;
+    const { withinDays, query, limit } = parsed.data;
 
     // medication_end_date(@db.Date)は UTC 深夜で保存されるため UTC 深夜境界で比較する
     const today = utcDateFromLocalKey(localDateKey());
@@ -67,7 +141,7 @@ export const GET = withAuthContext(
           : {}),
       },
       orderBy: { medication_end_date: 'asc' },
-      take: parsed.data.limit,
+      take: limit,
       select: {
         id: true,
         case_id: true,
@@ -109,3 +183,6 @@ export const GET = withAuthContext(
     message: 'ダッシュボードの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

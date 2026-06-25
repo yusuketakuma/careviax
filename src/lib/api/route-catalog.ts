@@ -624,6 +624,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'dashboard',
   },
   {
+    path: '/api/dashboard/medication-deadlines',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '服薬終了日が近い訪問予定一覧',
+    area: 'dashboard',
+  },
+  {
     path: '/api/tasks',
     methods: ['GET', 'POST'],
     permission: 'canVisit',
