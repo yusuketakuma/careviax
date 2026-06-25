@@ -44,7 +44,13 @@ export const GET = withAuthContext(
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const q = optionalSearchParam(searchParams.get('q'));
-    const rawStatus = optionalSearchParam(searchParams.get('status'));
+    const rawStatusParam = searchParams.get('status');
+    const rawStatus = optionalSearchParam(rawStatusParam);
+    if (searchParams.has('status') && !rawStatus) {
+      return validationError('検索条件が不正です', {
+        status: ['ステータスを指定してください'],
+      });
+    }
     const status = rawStatus ? partnerPharmacyStatusSchema.safeParse(rawStatus) : null;
     if (status && !status.success) {
       return validationError('検索条件が不正です', {

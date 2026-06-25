@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2127 JST
+
+- current task: continue Codex-only patient-sharing/API contract hardening by fail-closing explicit blank `status` filters on `GET /api/partner-pharmacies`.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; `src/app/api/partner-pharmacies/route.ts`; `src/app/api/partner-pharmacies/route.test.ts`; `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`; `src/lib/pharmacy-cooperation/api-contracts.ts`; `src/lib/api/route-catalog.ts`; `prisma/schema/pharmacy-partnership.prisma`; gbrain query/call-graph outputs; API-contract and privacy subagent reports.
+- files changed: `src/app/api/partner-pharmacies/route.ts`, `src/app/api/partner-pharmacies/route.test.ts`, and this Ralph state entry.
+- bugs found: `GET /api/partner-pharmacies?status=` and whitespace-only variants normalized the explicitly present filter to `undefined`, so the route omitted the status predicate and returned the full org-scoped partner-pharmacy list.
+- security risks found: reduced least-privilege/overfetch risk on patient-sharing cooperation master data by rejecting present-but-empty `status` before `withOrgContext` and before `partnerPharmacy.findMany`. Existing `canVisit`, `org_id` scoping, omitted-status all-status behavior, valid trimmed status filters, invalid-status 400 behavior, cursor pagination, POST create/audit behavior, schema, migrations, frontend, external send, and destructive operations are unchanged.
+- performance issues found: blank `status` filters now return before DB access. Valid and omitted-status requests keep the existing `limit + 1` cursor-page query behavior.
+- validation commands: `pnpm exec vitest run src/app/api/partner-pharmacies/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/partner-pharmacies/route.ts src/app/api/partner-pharmacies/route.test.ts`; `pnpm exec prettier --write src/app/api/partner-pharmacies/route.ts src/app/api/partner-pharmacies/route.test.ts`; `pnpm exec prettier --check src/app/api/partner-pharmacies/route.ts src/app/api/partner-pharmacies/route.test.ts`; `git diff --check -- src/app/api/partner-pharmacies/route.ts src/app/api/partner-pharmacies/route.test.ts`; `pnpm exec vitest run src/app/api/partner-pharmacies/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts --reporter=dot --testTimeout=30000`; long-gate `pnpm typecheck` under token `D829DD6F-474D-41F7-8E08-B84AD3D5891A`.
+- validation results: focused partner-pharmacies route Vitest passed `7/7`; focused ESLint passed; initial Prettier check flagged the route test, then Prettier write was applied and focused Prettier check passed; focused diff-check passed; partner-pharmacies plus protected GET route suites passed `136/136`; protected POST route matrix passed `97/97`; `pnpm typecheck` passed and the local long-gate lock was released. API-contract and privacy reviewers confirmed the issue and the low-compatibility-risk fail-closed fix direction.
+- remaining work: stage only the partner-pharmacies route/test plus this Ralph state entry, commit the slice, send `DONE` to agmsg, and continue backend/API/security hardening. Leave untracked `.agent-loop/plans/*` untouched.
+- next action: drain agmsg, run final scoped Prettier/diff-check including this Ralph state entry, and commit the partner-pharmacies blank status fail-close slice.
+
 ### 20260625-2122 JST
 
 - current task: continue Codex-only privacy/security hardening by redacting raw visit handoff extraction failure details from persistent state, manual extraction API responses, GET handoff responses, and background logs.
