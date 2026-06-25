@@ -29,6 +29,25 @@ tuning LIST UI only. Bounding the GET with a GENEROUS default (200 / max 500) dr
 **HARD CONSTRAINT:** do NOT add `take` to checker.ts's findMany calls — the engine must read every rule
 for completeness; only the admin GET route is bounded.
 
+### Post-implementation re-triage (2026-06-25, claude checker): A#10 + A#12 DEFERRED to B
+After landing A#1-A#9 + A#11 (generous bound + take=limit+1 + additive `meta.has_more`), the last two
+were re-examined and found NOT safe for a naive backend-only cap under the frontend freeze (frozen
+consumers cannot paginate on `has_more`):
+- **A#10 pharmacist-shifts → DEFER (B-completeness).** GET is date-RANGE scoped (`month` or
+  `date_from..date_to`); with NO date params it has NO date filter = ALL org shifts ever. A monthly
+  calendar consumer on a large org (e.g. 100 pharmacists × 30 days ≈ 3000 rows) would exceed a 500 cap,
+  silently dropping shifts. Needs cursor/per-day design, not a cap.
+- **A#12 handoff-board → DEFER (B-aggregate-adjacent).** The boundable list is the nested `board.items`
+  (`handoffBoardInclude`), but those items feed client-side aggregates `outgoingCount`/`incomingCount`
+  (route.ts); a `take` on the include would corrupt those counts. Single-day so small in practice, but
+  not a clean naive bound. The monthly `handoffItem.count` is already a count (not a take target).
+- **A#7 pharmacy-sites → landed (safe):** org master list (<50/org), two `pharmacySite.findMany`
+  branches (route.ts:14 + :53) both bounded; per-site nested sub-selects key per returned site.
+
+New item discovered during the sweep: **prescriber-institutions** (q-search list) — boundable with
+take=limit+1 + has_more ONLY IF `q` is a DB-level `where` filter (else a cap drops search matches; same
+caveat that downgraded admin/external-professionals). Verify q is DB-level before landing.
+
 ### Excluded from A
 - **Already bounded (SKIP, no churn):** comments (`COMMENT_THREAD_LIMIT=100`), conference-notes (cursor via `parsePaginationParams`).
 - **Downgraded A→DEFER:** admin/external-professionals — has a `q` search (`contains`); a naive `take` could drop search matches (same completeness risk as care-reports). Needs cursor or generous-with-note; do not naive-bound.
