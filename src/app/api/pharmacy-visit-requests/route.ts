@@ -75,6 +75,21 @@ function optionalSearchParam(value: string | null) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 function optionalJson(value: unknown) {
   return value === undefined ? undefined : toPrismaJsonInput(value);
 }
@@ -226,7 +241,13 @@ export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
-    const rawStatus = optionalSearchParam(searchParams.get('status'));
+    const rawStatusResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      'ステータスを指定してください',
+    );
+    if (!rawStatusResult.ok) return rawStatusResult.response;
+    const rawStatus = rawStatusResult.value;
     const status = rawStatus ? visitRequestStatusSchema.safeParse(rawStatus) : null;
     if (status && !status.success) {
       return validationError('検索条件が不正です', {
@@ -234,8 +255,20 @@ export const GET = withAuthContext(
       });
     }
 
-    const shareCaseId = optionalSearchParam(searchParams.get('share_case_id'));
-    const partnerPharmacyId = optionalSearchParam(searchParams.get('partner_pharmacy_id'));
+    const shareCaseIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'share_case_id',
+      '患者共有ケースIDを指定してください',
+    );
+    if (!shareCaseIdResult.ok) return shareCaseIdResult.response;
+    const partnerPharmacyIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'partner_pharmacy_id',
+      '協力薬局IDを指定してください',
+    );
+    if (!partnerPharmacyIdResult.ok) return partnerPharmacyIdResult.response;
+    const shareCaseId = shareCaseIdResult.value;
+    const partnerPharmacyId = partnerPharmacyIdResult.value;
     const now = new Date();
 
     const rows = await withOrgContext(ctx.orgId, (tx) =>
