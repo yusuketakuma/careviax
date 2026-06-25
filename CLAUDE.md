@@ -63,19 +63,19 @@
 - Prisma の `$executeRaw` でセッション変数をセット、その後通常クエリ
 - RLS はアプリ層フィルタとの二重防御（defense-in-depth）
 
-## Tech Stack (versions pinned 2026-03-25)
+## Tech Stack (versions pinned 2026-06-25)
 
 ### Frontend
 
-- `next@16.2.1` (App Router)
-- `react@19.2.4` / `react-dom@19.2.4`
-- `typescript@6.0.2`
-- `tailwindcss@4.2.2` (CSS-first config)
+- `next@16.2.9` (App Router)
+- `react@19.2.7` / `react-dom@19.2.7`
+- `typescript@6.0.3`
+- `tailwindcss@4.3.0` (CSS-first config)
 - `shadcn/ui` (latest)
-- `@tanstack/react-query@5.95.2`
-- `zustand@5.0.12`
-- `@serwist/next@9.5.7` / `serwist@9.5.7` — PWA
-- `dexie@4.3.0` — オフライン (IndexedDB)
+- `@tanstack/react-query@5.101.0`
+- `zustand@5.0.14`
+- `@serwist/next@9.5.11` / `serwist@9.5.11` — PWA
+- `dexie@4.4.3` — オフライン (IndexedDB)
 
 ### 医薬品マスタ（全て無料取得）
 
@@ -91,12 +91,13 @@
 
 ### Backend / Data Access
 
-- `prisma@7.5.0` / `@prisma/client@7.5.0` — ORM + RLS連携
-- `zod@4.3.6` — バリデーション
+- `prisma@7.8.0` / `@prisma/client@7.8.0` — ORM + RLS連携
+- `zod@4.4.3` — バリデーション
+- `@sentry/nextjs@10.60.0` — エラー監視
 - `@aws-sdk/client-cognito-identity-provider` — Cognito認証
 - `@aws-sdk/client-s3` / `@aws-sdk/s3-request-presigner` — S3操作
 - `@aws-sdk/client-ses` — メール送信
-- `next-auth@5` (Auth.js) — Cognito連携のセッション管理
+- `next-auth@4.24.14` — Cognito連携のセッション管理
 
 ### QR Code
 
@@ -118,11 +119,11 @@
 ### Dev Tools
 
 - `pnpm` — パッケージマネージャ
-- `eslint@10.1.0` — flat config
-- `prettier@3.8.1`
-- `vitest@4.1.1` — ユニットテスト
-- `@playwright/test@1.58.2` — E2E
-- `date-fns@4.1.0` — 日付（日本語ロケール）
+- `eslint@9.39.4` — flat config
+- `prettier@3.8.4`
+- `vitest@4.1.9` / `@vitest/coverage-v8@4.1.9` — ユニットテスト
+- `@playwright/test@1.60.0` — E2E
+- `date-fns@4.4.0` — 日付（日本語ロケール）
 
 ## Language
 
