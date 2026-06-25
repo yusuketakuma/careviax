@@ -26,6 +26,8 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/visit-handoff', () => ({
   confirmHandoff: confirmHandoffMock,
+  VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE:
+    '申し送り抽出に失敗しました。時間をおいて再実行してください',
 }));
 
 import { GET, PUT } from './route';
@@ -129,7 +131,7 @@ describe('/api/visit-records/[id]/handoff', () => {
       expect(res!.status).toBe(404);
     });
 
-    it('returns extraction status even when handoff data is not yet available', async () => {
+    it('returns redacted extraction status even when handoff data is not yet available', async () => {
       visitRecordFindFirstMock.mockResolvedValue({
         id: 'vr_1',
         structured_soap: null,
@@ -140,7 +142,7 @@ describe('/api/visit-records/[id]/handoff', () => {
         last_attempted_at: new Date('2026-04-01T00:00:00.000Z'),
         last_succeeded_at: null,
         last_failed_at: new Date('2026-04-01T00:00:30.000Z'),
-        error_message: 'model timeout',
+        error_message: 'patient=田中太郎 SOAP=服薬状況 token=secret',
         retryable: true,
         source_visit_record_version: 2,
         source_visit_record_updated_at: new Date('2026-04-01T00:00:00.000Z'),
@@ -149,15 +151,20 @@ describe('/api/visit-records/[id]/handoff', () => {
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(200);
-      await expect(res!.json()).resolves.toMatchObject({
+      const payload = await res!.json();
+      expect(payload).toMatchObject({
         data: null,
         extraction: {
           status: 'failed',
           retry_count: 2,
-          error_message: 'model timeout',
+          error_message: '申し送り抽出に失敗しました。時間をおいて再実行してください',
           retryable: true,
         },
       });
+      const payloadText = JSON.stringify(payload);
+      expect(payloadText).not.toContain('田中太郎');
+      expect(payloadText).not.toContain('SOAP=服薬状況');
+      expect(payloadText).not.toContain('token=secret');
     });
   });
 

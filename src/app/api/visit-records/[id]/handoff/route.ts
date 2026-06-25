@@ -5,7 +5,10 @@ import { success, validationError, notFound, error } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
-import { confirmHandoff } from '@/server/services/visit-handoff';
+import {
+  confirmHandoff,
+  VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
+} from '@/server/services/visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
 
 const confirmHandoffSchema = z.object({
@@ -110,7 +113,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         last_attempted_at: handoffExtraction.last_attempted_at?.toISOString() ?? null,
         last_succeeded_at: handoffExtraction.last_succeeded_at?.toISOString() ?? null,
         last_failed_at: handoffExtraction.last_failed_at?.toISOString() ?? null,
-        error_message: handoffExtraction.error_message,
+        error_message:
+          handoffExtraction.status === 'failed' ? VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE : null,
         retryable: handoffExtraction.retryable,
         source_visit_record_version: handoffExtraction.source_visit_record_version,
         source_visit_record_updated_at:

@@ -67,6 +67,13 @@ const firstVisitDocumentOutcomes = new Set<CreateVisitRecordInput['outcome_statu
   'delivery_only',
 ]);
 
+function safeHandoffExtractionWarningContext(visitRecordId: string, cause: unknown) {
+  return {
+    visit_record_id: visitRecordId,
+    error_name: cause instanceof Error ? cause.name : typeof cause,
+  };
+}
+
 const FIRST_VISIT_DOCUMENT_TEMPLATE_TYPES = [
   'contract_document',
   'important_matters',
@@ -1504,7 +1511,10 @@ export const POST = withAuthContext(
         expectedVersion: result.handoffExtraction.expectedVersion,
         requestContext,
       }).catch((cause) => {
-        console.warn('[visit-records] handoff extraction failed', cause);
+        console.warn(
+          '[visit-records] handoff extraction failed',
+          safeHandoffExtractionWarningContext(result.record.id, cause),
+        );
       });
     }
 

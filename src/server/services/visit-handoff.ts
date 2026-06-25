@@ -10,6 +10,9 @@ import { upsertOperationalTask, resolveOperationalTasks } from './operational-ta
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
+export const VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE =
+  '申し送り抽出に失敗しました。時間をおいて再実行してください';
+
 export class VisitHandoffStaleRecordError extends Error {
   constructor(visitRecordId: string) {
     super(`Visit record ${visitRecordId} changed before handoff extraction could be saved`);
@@ -87,7 +90,6 @@ export async function markHandoffExtractionFailed(
     orgId: string;
     visitRecordId: string;
     expectedVersion?: number | null;
-    message: string;
     requestContext?: RequestAuthContext;
   },
 ): Promise<boolean> {
@@ -97,7 +99,7 @@ export async function markHandoffExtractionFailed(
     expectedVersion: args.expectedVersion,
     requestContext: args.requestContext,
     status: 'failed',
-    message: args.message,
+    message: VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
   });
 }
 
@@ -149,12 +151,10 @@ export async function processHandoffExtraction(
       previousHandoff: structuredSoap.handoff ?? null,
     });
   } catch (cause) {
-    const message = cause instanceof Error ? cause.message : 'AI抽出に失敗しました';
     await markHandoffExtractionFailed(_db, {
       orgId,
       visitRecordId,
       expectedVersion: args.expectedVersion,
-      message,
       requestContext,
     });
     throw cause;
@@ -219,12 +219,10 @@ export async function processHandoffExtraction(
     });
   } catch (cause) {
     if (cause instanceof VisitHandoffStaleRecordError) throw cause;
-    const message = cause instanceof Error ? cause.message : 'AI抽出結果の保存に失敗しました';
     await markHandoffExtractionFailed(_db, {
       orgId,
       visitRecordId,
       expectedVersion: args.expectedVersion,
-      message,
       requestContext,
     });
     throw cause;

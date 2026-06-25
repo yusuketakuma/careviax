@@ -5,6 +5,7 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import {
   processHandoffExtraction,
+  VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
   VisitHandoffStaleRecordError,
 } from '@/server/services/visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
@@ -67,7 +68,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         '訪問記録が更新されています。再読み込みしてから申し送り抽出をやり直してください',
       );
     }
-    const message = cause instanceof Error ? cause.message : 'AI抽出に失敗しました';
-    return error('extraction_failed', message, 500);
+    return error('extraction_failed', VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE, 500, {
+      extraction: { status: 'failed', retryable: true },
+    });
   }
 }

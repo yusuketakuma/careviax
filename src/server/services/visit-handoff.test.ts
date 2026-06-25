@@ -29,7 +29,11 @@ vi.mock('./operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
-import { processHandoffExtraction, confirmHandoff } from './visit-handoff';
+import {
+  processHandoffExtraction,
+  confirmHandoff,
+  VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
+} from './visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
 
 const baseSoap: StructuredSoap = {
@@ -208,7 +212,7 @@ describe('processHandoffExtraction', () => {
   });
 
   it('persists a retryable failed extraction state without touching VisitRecord when AI extraction fails', async () => {
-    extractHandoffFromSoapMock.mockRejectedValue(new Error('model timeout'));
+    extractHandoffFromSoapMock.mockRejectedValue(new Error('model timeout with patient SOAP text'));
 
     const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
       structured_soap: baseSoap,
@@ -246,7 +250,7 @@ describe('processHandoffExtraction', () => {
         soapPlan: '継続処方',
         expectedVersion: 2,
       }),
-    ).rejects.toThrow('model timeout');
+    ).rejects.toThrow('model timeout with patient SOAP text');
 
     expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(visitHandoffExtractionUpsertMock).toHaveBeenLastCalledWith(
@@ -254,12 +258,87 @@ describe('processHandoffExtraction', () => {
         update: expect.objectContaining({
           status: 'failed',
           retry_count: { increment: 1 },
-          error_message: 'model timeout',
+          error_message: VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
           retryable: true,
         }),
       }),
     );
+    expect(visitHandoffExtractionUpsertMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          error_message: 'model timeout with patient SOAP text',
+        }),
+      }),
+    );
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('persists a generic retryable failed state when saving extracted handoff fails', async () => {
+    extractHandoffFromSoapMock.mockResolvedValue({
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '急変リスクあり',
+      confidence: 0.85,
+      extracted_at: '2026-04-01T00:00:00Z',
+    });
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      structured_soap: baseSoap,
+      schedule_id: 'schedule-1',
+      version: 2,
+      updated_at: new Date('2026-04-01T01:00:00Z'),
+    });
+    const visitRecordUpdateManyMock = vi
+      .fn()
+      .mockRejectedValue(new Error('patient=田中太郎 SOAP=服薬状況 token=secret'));
+    const visitHandoffExtractionUpsertMock = vi.fn().mockResolvedValue({});
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          visitHandoffExtraction: {
+            upsert: visitHandoffExtractionUpsertMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof processHandoffExtraction>[0];
+    await expect(
+      processHandoffExtraction(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        patientId: 'p-1',
+        patientName: '田中太郎',
+        structuredSoap: baseSoap,
+        soapAssessment: '状態安定',
+        soapPlan: '継続処方',
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow('patient=田中太郎 SOAP=服薬状況 token=secret');
+
+    expect(visitHandoffExtractionUpsertMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: 'failed',
+          retry_count: { increment: 1 },
+          error_message: VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
+          retryable: true,
+        }),
+      }),
+    );
+    expect(visitHandoffExtractionUpsertMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          error_message: 'patient=田中太郎 SOAP=服薬状況 token=secret',
+        }),
+      }),
+    );
   });
 
   it('does not persist or enqueue confirmation when the visit record changed after extraction started', async () => {

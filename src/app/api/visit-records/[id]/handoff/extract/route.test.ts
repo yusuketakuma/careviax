@@ -28,6 +28,8 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/visit-handoff', () => ({
   processHandoffExtraction: processHandoffExtractionMock,
+  VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE:
+    '申し送り抽出に失敗しました。時間をおいて再実行してください',
   VisitHandoffStaleRecordError: VisitHandoffStaleRecordErrorMock,
 }));
 
@@ -134,5 +136,36 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
       code: 'WORKFLOW_CONFLICT',
       message: '訪問記録が更新されています。再読み込みしてから申し送り抽出をやり直してください',
     });
+  });
+
+  it('returns a generic extraction error without exposing raw failure details', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr_1',
+      patient_id: 'patient_1',
+      soap_assessment: 'assessment',
+      soap_plan: 'plan',
+      structured_soap: { subjective: {}, objective: {} },
+      version: 2,
+    });
+    patientFindFirstMock.mockResolvedValue({ name: 'Taro' });
+    processHandoffExtractionMock.mockRejectedValue(
+      new Error('patient=田中太郎 SOAP=服薬状況 token=secret'),
+    );
+
+    const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
+    const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+    expect(res!.status).toBe(500);
+    const payload = await res!.json();
+    expect(payload).toMatchObject({
+      code: 'extraction_failed',
+      message: '申し送り抽出に失敗しました。時間をおいて再実行してください',
+      details: {
+        extraction: { status: 'failed', retryable: true },
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain('田中太郎');
+    expect(JSON.stringify(payload)).not.toContain('SOAP=服薬状況');
+    expect(JSON.stringify(payload)).not.toContain('token=secret');
   });
 });
