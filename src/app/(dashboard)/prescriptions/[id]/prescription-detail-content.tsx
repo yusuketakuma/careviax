@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
+import { ErrorState } from '@/components/ui/error-state';
 import { Separator } from '@/components/ui/separator';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
@@ -152,7 +153,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
   const orgId = useOrgId();
   const router = useRouter();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['prescription-intake-detail', orgId, intakeId],
     queryFn: async () => {
       const res = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
@@ -165,14 +166,17 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
   });
 
   if (error) {
+    // 取得失敗は再読み込み導線つきの共有 ErrorState で出す（従来のインライン box + 戻るのみを置換）。
     return (
       <PageScaffold>
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          処方受付の読み込みに失敗しました。
-          <Button variant="link" size="sm" onClick={() => router.back()} className="ml-2">
-            戻る
-          </Button>
-        </div>
+        <ErrorState
+          variant="server"
+          size="page"
+          title="処方受付を取得できませんでした"
+          description="通信状態を確認し、再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: () => void refetch() }}
+          secondaryAction={{ label: '戻る', onClick: () => router.back() }}
+        />
       </PageScaffold>
     );
   }

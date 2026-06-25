@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PrescriptionDetailContent } from './prescription-detail-content';
@@ -147,6 +147,25 @@ describe('PrescriptionDetailContent', () => {
     );
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
     expect(fetchMock.mock.calls[0]?.[0]).not.toContain('%25');
+  });
+
+  it('renders a retryable error state with reload + back when the detail fetch fails', () => {
+    const refetchMock = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('処方受付の取得に失敗しました'),
+      refetch: refetchMock,
+    });
+
+    render(<PrescriptionDetailContent intakeId="intake_1" />);
+
+    expect(screen.getByText('処方受付を取得できませんでした')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '戻る' })).toBeTruthy();
+    // retry 導線(共有 ErrorState の再読み込み)が refetch を呼ぶ。
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 
   it.each(['.', '..'])(
