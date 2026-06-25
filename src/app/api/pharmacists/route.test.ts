@@ -153,6 +153,24 @@ describe('/api/pharmacists GET', () => {
     });
   });
 
+  it.each([
+    ['', 500],
+    ['?limit=5', 5],
+    ['?limit=9999', 500],
+    ['?limit=0', 1],
+    ['?limit=abc', 500],
+  ])('bounds membership list limit for query "%s"', async (query, expectedTake) => {
+    const response = await GET(createGetRequest(query));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(membershipFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: expectedTake,
+      }),
+    );
+  });
+
   it('includes suspended staff in collaborator mode for admin management screens', async () => {
     const response = await GET(createGetRequest('?include_collaborators=true'));
 
@@ -163,6 +181,7 @@ describe('/api/pharmacists GET', () => {
         where: expect.objectContaining({
           org_id: 'org_1',
         }),
+        take: 500,
       }),
     );
     expect(membershipFindManyMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('is_active');
@@ -191,6 +210,13 @@ describe('/api/pharmacists GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(visitScheduleGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          pharmacist_id: { in: ['user_1'] },
+        }),
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({

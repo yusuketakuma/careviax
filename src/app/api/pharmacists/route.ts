@@ -3,6 +3,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { forbiddenResponse, success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import {
   MANAGEABLE_MEMBER_ROLES,
   isOperationalMemberRole,
@@ -15,6 +16,9 @@ import { withOrgContext } from '@/lib/db/rls';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { createPharmacistSchema } from '@/lib/validations/pharmacist';
 import { deleteCognitoUser, inviteCognitoUser } from '@/server/services/cognito-admin';
+
+const DEFAULT_PHARMACIST_LIST_LIMIT = 500;
+const MAX_PHARMACIST_LIST_LIMIT = 500;
 
 function dedupePharmacistsByUserId<T extends { id: string }>(items: T[]) {
   const uniqueItems = new Map<string, T>();
@@ -31,6 +35,12 @@ export const GET = withAuthContext(
     const { searchParams } = new URL(req.url);
     const siteId = searchParams.get('site_id');
     const includeCollaborators = searchParams.get('include_collaborators') === 'true';
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_PHARMACIST_LIST_LIMIT,
+      1,
+      MAX_PHARMACIST_LIST_LIMIT,
+    );
     if (includeCollaborators && ctx.role !== 'owner' && ctx.role !== 'admin') {
       return forbiddenResponse('スタッフ管理一覧の閲覧権限がありません');
     }
@@ -90,6 +100,7 @@ export const GET = withAuthContext(
         },
       },
       orderBy: [{ user: { name_kana: 'asc' } }],
+      take: limit,
     });
 
     const pharmacistIds = pharmacists.map((membership) => membership.user.id);
