@@ -176,6 +176,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'visits',
   },
   {
+    path: '/api/visit-records/:id/reflected-fields',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '訪問記録から患者正本へ反映された項目変更一覧',
+    area: 'visits',
+  },
+  {
     path: '/api/visit-records/:id/pdf',
     methods: ['GET'],
     permission: 'canVisit',

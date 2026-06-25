@@ -23,6 +23,7 @@ const baseRow = {
   old_value: 'care_2',
   new_value: 'care_4',
   source: 'patient_detail_edit',
+  patient_id: 'p1',
   source_visit_record_id: null,
   change_reason: null,
   importance: 'normal',
@@ -181,7 +182,7 @@ describe('listPatientFieldRevisions', () => {
 });
 
 describe('listFieldRevisionsBySourceVisitRecord', () => {
-  it('source_visit_record_id でフィルタし、整形・氏名解決して返す', async () => {
+  it('source_visit_record_id と patient_id でフィルタし、整形・氏名解決して返す', async () => {
     const { db, findMany } = createDb(
       [{ ...baseRow, source: 'visit_record', source_visit_record_id: 'vr_1' }],
       [{ id: 'user_u', name: '田中' }],
@@ -189,12 +190,17 @@ describe('listFieldRevisionsBySourceVisitRecord', () => {
 
     const result = await listFieldRevisionsBySourceVisitRecord(db, {
       orgId: 'org_1',
+      patientId: 'p1',
       sourceVisitRecordId: 'vr_1',
     });
 
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ org_id: 'org_1', source_visit_record_id: 'vr_1' }),
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'p1',
+          source_visit_record_id: 'vr_1',
+        }),
       }),
     );
     expect(result[0]).toMatchObject({
@@ -203,5 +209,45 @@ describe('listFieldRevisionsBySourceVisitRecord', () => {
       source_visit_record_id: 'vr_1',
       updated_by_name: '田中',
     });
+  });
+
+  it('同じ source_visit_record_id でも別患者の反映履歴は返さない', async () => {
+    const rows = [
+      {
+        ...baseRow,
+        id: 'rev_same_patient',
+        patient_id: 'p1',
+        source: 'visit_record',
+        source_visit_record_id: 'vr_1',
+      },
+      {
+        ...baseRow,
+        id: 'rev_other_patient',
+        patient_id: 'p2',
+        source: 'visit_record',
+        source_visit_record_id: 'vr_1',
+      },
+    ];
+    const findMany = vi.fn().mockImplementation(async (query) => {
+      return rows.filter(
+        (row) =>
+          row.patient_id === query.where.patient_id &&
+          row.source_visit_record_id === query.where.source_visit_record_id,
+      );
+    });
+    const db = {
+      patientFieldRevision: { findMany },
+      user: { findMany: vi.fn().mockResolvedValue([{ id: 'user_u', name: '田中' }]) },
+    } as unknown as Parameters<typeof listFieldRevisionsBySourceVisitRecord>[0];
+
+    const result = await listFieldRevisionsBySourceVisitRecord(db, {
+      orgId: 'org_1',
+      patientId: 'p1',
+      sourceVisitRecordId: 'vr_1',
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('rev_same_patient');
+    expect(JSON.stringify(result)).not.toContain('rev_other_patient');
   });
 });

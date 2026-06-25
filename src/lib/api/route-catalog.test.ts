@@ -72,6 +72,12 @@ describe('routeCatalog', () => {
           permission: 'canVisit',
           area: 'visits',
         }),
+        expect.objectContaining({
+          path: '/api/visit-records/:id/reflected-fields',
+          methods: ['GET'],
+          permission: 'canVisit',
+          area: 'visits',
+        }),
       ]),
     );
   });
@@ -111,6 +117,7 @@ describe('routeCatalog', () => {
       '/api/interventions',
       '/api/residual-medications',
       '/api/visit-records/:id/handoff',
+      '/api/visit-records/:id/reflected-fields',
       '/api/medication-issues',
       '/api/medication-issues/:id',
       '/api/medication-profiles',

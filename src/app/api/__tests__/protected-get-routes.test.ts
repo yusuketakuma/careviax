@@ -163,6 +163,7 @@ import { GET as visitRecordsGet } from '../visit-records/route';
 import { GET as visitRecordGet } from '../visit-records/[id]/route';
 import { GET as visitRecordHandoffGet } from '../visit-records/[id]/handoff/route';
 import { GET as visitRecordPdfGet } from '../visit-records/[id]/pdf/route';
+import { GET as visitRecordReflectedFieldsGet } from '../visit-records/[id]/reflected-fields/route';
 import { GET as visitScheduleProposalsGet } from '../visit-schedule-proposals/route';
 import { GET as visitSchedulesGet } from '../visit-schedules/route';
 import { GET as visitScheduleGet } from '../visit-schedules/[id]/route';
@@ -561,6 +562,16 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () =>
       visitRecordPdfGet(
         createRequest('http://localhost/api/visit-records/record_1/pdf', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'record_1' }) },
+      ),
+  },
+  {
+    name: 'visit-records/[id]/reflected-fields GET',
+    handler: () =>
+      visitRecordReflectedFieldsGet(
+        createRequest('http://localhost/api/visit-records/record_1/reflected-fields', {
+          'x-org-id': 'org_1',
+        }),
         { params: Promise.resolve({ id: 'record_1' }) },
       ),
   },

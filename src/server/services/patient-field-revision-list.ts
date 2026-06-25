@@ -211,6 +211,7 @@ export async function listPatientFieldRevisionMetadata(
 
 interface BySourceVisitRecordArgs {
   orgId: string;
+  patientId: string;
   sourceVisitRecordId: string;
   limit?: number;
 }
@@ -226,6 +227,7 @@ export async function listFieldRevisionsBySourceVisitRecord(
   const rows = await db.patientFieldRevision.findMany({
     where: {
       org_id: args.orgId,
+      patient_id: args.patientId,
       source_visit_record_id: args.sourceVisitRecordId,
     },
     orderBy: [{ created_at: 'desc' }],
