@@ -77,6 +77,11 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/first-visit-documents', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -149,6 +154,7 @@ describe('/api/first-visit-documents', () => {
       ))!;
 
       expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
       // org-wide ロール(pharmacist)は担当割当をバイパスするため、
       // アクセス可能ケースの絞り込み(careCase.findMany)は行われず、
       // 取得 where には case_id フィルタが付かない(org + patient のみ)。
@@ -165,6 +171,81 @@ describe('/api/first-visit-documents', () => {
       const body = await response.json();
       expect(body.data).toHaveLength(1);
     });
+
+    it('returns 200 with a valid case filter', async () => {
+      const response = (await GET(
+        createRequest(
+          'http://localhost/api/first-visit-documents?patient_id=patient_1&case_id=case_1',
+        ),
+      ))!;
+
+      expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
+      expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: 'case_1',
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+        },
+        select: { id: true },
+      });
+      expect(firstVisitDocumentFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            org_id: 'org_1',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+          },
+        }),
+      );
+    });
+
+    it.each([
+      ['patient_id', 'patient_id=', { patient_id: ['patient_id を指定してください'] }],
+      ['blank patient_id', 'patient_id=%20%20', { patient_id: ['patient_id を指定してください'] }],
+      [
+        'padded patient_id',
+        'patient_id=%20patient_1',
+        { patient_id: ['patient_id の形式が不正です'] },
+      ],
+      [
+        'overlong patient_id',
+        `patient_id=${'p'.repeat(101)}`,
+        { patient_id: ['patient_id の形式が不正です'] },
+      ],
+      [
+        'duplicate patient_id',
+        'patient_id=patient_1&patient_id=patient_2',
+        { patient_id: ['patient_id は1つだけ指定してください'] },
+      ],
+      ['case_id', 'case_id=', { case_id: ['case_id を指定してください'] }],
+      ['blank case_id', 'case_id=%20%20', { case_id: ['case_id を指定してください'] }],
+      ['padded case_id', 'case_id=case_1%20', { case_id: ['case_id の形式が不正です'] }],
+      ['overlong case_id', `case_id=${'c'.repeat(101)}`, { case_id: ['case_id の形式が不正です'] }],
+      [
+        'duplicate case_id',
+        'case_id=case_1&case_id=case_2',
+        { case_id: ['case_id は1つだけ指定してください'] },
+      ],
+    ])(
+      'rejects malformed explicit %s on read before scope resolution',
+      async (_name, query, details) => {
+        const response = (await GET(
+          createRequest(`http://localhost/api/first-visit-documents?${query}`),
+        ))!;
+
+        expect(response.status).toBe(400);
+        expectSensitiveNoStore(response);
+        await expect(response.json()).resolves.toMatchObject({
+          code: 'VALIDATION_ERROR',
+          message: '検索条件が不正です',
+          details,
+        });
+        expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+        expect(careCaseFindManyMock).not.toHaveBeenCalled();
+        expect(firstVisitDocumentFindManyMock).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('POST', () => {

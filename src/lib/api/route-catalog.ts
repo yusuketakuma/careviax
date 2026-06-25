@@ -50,6 +50,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'prescriptions',
   },
   {
+    path: '/api/first-visit-documents',
+    methods: ['GET', 'POST'],
+    permission: 'canVisit',
+    description: '初回訪問文書・緊急連絡先・交付記録の一覧取得と作成',
+    area: 'patients',
+  },
+  {
     path: '/api/patient-share-cases',
     methods: ['GET'],
     permission: 'canManagePatientSharing',

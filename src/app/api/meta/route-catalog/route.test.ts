@@ -60,6 +60,12 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'prescriptions',
         }),
         expect.objectContaining({
+          path: '/api/first-visit-documents',
+          methods: ['GET', 'POST'],
+          permission: 'canVisit',
+          area: 'patients',
+        }),
+        expect.objectContaining({
           path: '/api/medication-cycles',
           methods: ['GET', 'POST'],
           permission: 'canDispense',

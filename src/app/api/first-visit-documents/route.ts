@@ -2,6 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { createFirstVisitDocumentSchema } from '@/lib/validations/first-visit-document';
@@ -52,6 +53,62 @@ function relationLabelForDocument(relation: string) {
   return labels[relation] ?? relation;
 }
 
+type FirstVisitDocumentFilterName = 'patient_id' | 'case_id';
+
+function readOptionalFirstVisitDocumentFilter(
+  searchParams: URLSearchParams,
+  name: FirstVisitDocumentFilterName,
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
+    };
+  }
+
+  const value = values[0];
+  if (value.trim().length === 0) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [`${name} を指定してください`] },
+    };
+  }
+  if (value !== value.trim() || value.length > 100) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [`${name} の形式が不正です`] },
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function parseFirstVisitDocumentListFilters(searchParams: URLSearchParams) {
+  const patientResult = readOptionalFirstVisitDocumentFilter(searchParams, 'patient_id');
+  if (!patientResult.ok) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', patientResult.fieldErrors),
+    };
+  }
+
+  const caseResult = readOptionalFirstVisitDocumentFilter(searchParams, 'case_id');
+  if (!caseResult.ok) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', caseResult.fieldErrors),
+    };
+  }
+
+  return {
+    ok: true as const,
+    patientId: patientResult.value,
+    caseId: caseResult.value,
+  };
+}
+
 async function buildFirstVisitDocumentAssignmentWhere(args: {
   orgId: string;
   patientId?: string;
@@ -88,25 +145,25 @@ async function buildFirstVisitDocumentAssignmentWhere(args: {
   return { case_id: { in: caseIds } };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
-    const patientId = searchParams.get('patient_id') ?? undefined;
-    const caseId = searchParams.get('case_id') ?? undefined;
+    const filters = parseFirstVisitDocumentListFilters(searchParams);
+    if (!filters.ok) return filters.response;
 
     const assignmentWhere = await buildFirstVisitDocumentAssignmentWhere({
       orgId: ctx.orgId,
-      patientId,
-      caseId,
+      patientId: filters.patientId,
+      caseId: filters.caseId,
       accessContext: ctx,
     });
 
     const where = {
       org_id: ctx.orgId,
-      ...(patientId ? { patient_id: patientId } : {}),
-      ...(caseId ? { case_id: caseId } : {}),
+      ...(filters.patientId ? { patient_id: filters.patientId } : {}),
+      ...(filters.caseId ? { case_id: filters.caseId } : {}),
       ...assignmentWhere,
     };
 
@@ -135,6 +192,12 @@ export const GET = withAuthContext(
     permission: 'canVisit',
     message: '初回文書の閲覧権限がありません',
   },
+);
+
+export const GET: typeof authenticatedGET = Object.assign(
+  async (...args: Parameters<typeof authenticatedGET>) =>
+    withSensitiveNoStore(await authenticatedGET(...args)),
+  authenticatedGET,
 );
 
 export const POST = withAuthContext(
