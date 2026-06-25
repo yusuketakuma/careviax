@@ -3753,3 +3753,16 @@ Backup directory:
 - validation results: baseline route Vitest passed 1 file / 2 tests; final route Vitest passed 1 file / 3 tests; scoped ESLint passed; scoped Prettier passed after formatting; scoped diff-check passed; `pnpm typecheck` passed under long-gate lock token `98646C62-95CA-43CE-84D3-116B4E24A777`. Claude granted the lock; no final verdict or request-changes message arrived after repeated inbox drains and a ping, so this non-§15 config/resource-list slice is being committed with all gates green.
 - remaining work: stage only the two facility-standards files plus this Ralph entry, commit the slice, send `DONE` to Claude, and handle any delayed reviewer finding as a follow-up patch.
 - next action: commit F-20260625-admin-facility-standards-bounded-list, then request the A-list #3 `admin/pharmacist-credentials` lock before editing it.
+
+### 20260625-1730 JST
+
+- current task: A#4 admin/webhooks bounded GET list under confirmed Claude batch GRANT.
+- files inspected: agmsg inbox/delivery state, `src/app/api/admin/webhooks/route.ts`, `src/app/api/admin/webhooks/route.test.ts`, `src/lib/api/pagination.ts`, adjacent bounded admin route/test examples, gbrain GET blast output, current git status, and this Ralph state file.
+- files changed: `src/app/api/admin/webhooks/route.ts`, `src/app/api/admin/webhooks/route.test.ts`, and this Ralph state entry.
+- bugs found: the admin webhooks GET list returned the full org-scoped webhook registration list without a protective list bound.
+- security risks found: no auth, org scoping, secret projection, POST URL safety, encryption, audit, or response envelope behavior changed. The existing `canAdmin`, `withOrgContext(ctx.orgId)`, `where: { org_id: ctx.orgId }`, redacted public mapping, and tests proving query-token/legacy-secret non-echo remain intact.
+- performance issues found: bounded the webhook registration list query with `take`, defaulting to 100 and clamping to 1..200, reducing accidental full-org config-list reads.
+- validation commands: focused `pnpm exec vitest run src/app/api/admin/webhooks/route.test.ts --reporter=dot --testTimeout=30000`; scoped `pnpm exec eslint src/app/api/admin/webhooks/route.ts src/app/api/admin/webhooks/route.test.ts`; scoped `pnpm exec prettier --check src/app/api/admin/webhooks/route.ts src/app/api/admin/webhooks/route.test.ts`; scoped `git diff --check -- src/app/api/admin/webhooks/route.ts src/app/api/admin/webhooks/route.test.ts .codex/ralph-state.md`; long-gate `pnpm typecheck`.
+- validation results: focused admin webhooks route Vitest passed 1 file / 14 tests; scoped ESLint passed; scoped Prettier passed; scoped diff-check passed. First `pnpm typecheck` failed on unrelated peer-owned `src/lib/env/assert-env.ts` missing timezone constants; Claude later ACKed ownership and fixed that file. Retry `pnpm typecheck` passed under long-gate lock token `F18D354E-EA7E-42F9-9AD6-F16FAB8CEE4A`.
+- remaining work: stage only the two admin-webhooks files plus this Ralph entry, commit the slice, send `DONE` to Claude, and leave peer-owned `src/lib/env/assert-env.ts` plus untracked plan files unstaged.
+- next action: commit F-20260625-admin-webhooks-bounded-list, then continue A-list after deferring unsafe silent-cap candidates (`drug-alert-rules`, `me/sites`) unless Claude revises the scope.

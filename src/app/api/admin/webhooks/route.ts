@@ -1,4 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { compatibilityError, success, validationCompatibilityError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -18,6 +19,9 @@ const createWebhookSchema = z.object({
   events: z.array(z.enum(WEBHOOK_EVENT_TYPES)).min(1, 'イベントを1件以上選択してください'),
 });
 
+const DEFAULT_WEBHOOK_REGISTRATION_LIMIT = 100;
+const MAX_WEBHOOK_REGISTRATION_LIMIT = 200;
+
 function generateWebhookSecret(): string {
   return randomBytes(32).toString('hex');
 }
@@ -27,11 +31,20 @@ function toPublicWebhookRegistration<T extends { url: string }>(registration: T)
 }
 
 export const GET = withAuthContext(
-  async (_req, ctx) => {
+  async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_WEBHOOK_REGISTRATION_LIMIT,
+      1,
+      MAX_WEBHOOK_REGISTRATION_LIMIT,
+    );
+
     const registrations = await withOrgContext(ctx.orgId, async (tx) => {
       return tx.webhookRegistration.findMany({
         where: { org_id: ctx.orgId },
         orderBy: { created_at: 'desc' },
+        take: limit,
         select: {
           id: true,
           url: true,

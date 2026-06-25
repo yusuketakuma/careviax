@@ -71,6 +71,15 @@ function createRequest(method: 'GET' | 'POST', body?: unknown) {
   return new NextRequest('http://localhost/api/admin/webhooks', init);
 }
 
+function createGetRequest(search = '') {
+  return new NextRequest(`http://localhost/api/admin/webhooks${search}`, {
+    method: 'GET',
+    headers: {
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
 function createMalformedJsonRequest() {
   return new NextRequest('http://localhost/api/admin/webhooks', {
     method: 'POST',
@@ -141,7 +150,7 @@ describe('/api/admin/webhooks', () => {
   });
 
   it('returns webhook registrations without exposing secrets', async () => {
-    const response = await GET(createRequest('GET'), emptyRouteContext);
+    const response = await GET(createGetRequest('?limit=5'), emptyRouteContext);
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -156,6 +165,7 @@ describe('/api/admin/webhooks', () => {
         created_at: true,
         updated_at: true,
       },
+      take: 5,
     });
     const body = await response.json();
     expect(body).toMatchObject({
@@ -167,6 +177,26 @@ describe('/api/admin/webhooks', () => {
       ],
     });
     expect(JSON.stringify(body)).not.toContain('list-secret');
+  });
+
+  it.each([
+    ['', 100],
+    ['?limit=200', 200],
+    ['?limit=9999', 200],
+    ['?limit=0', 1],
+    ['?limit=abc', 100],
+  ])('bounds webhook registration list size for "%s"', async (search, expectedTake) => {
+    const response = await GET(createGetRequest(search), emptyRouteContext);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(webhookRegistrationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1' },
+        orderBy: { created_at: 'desc' },
+        take: expectedTake,
+      }),
+    );
   });
 
   it('does not echo malformed legacy webhook URLs in list responses', async () => {
@@ -181,7 +211,7 @@ describe('/api/admin/webhooks', () => {
       },
     ]);
 
-    const response = await GET(createRequest('GET'), emptyRouteContext);
+    const response = await GET(createGetRequest(), emptyRouteContext);
 
     expect(response.status).toBe(200);
     const body = await response.json();
