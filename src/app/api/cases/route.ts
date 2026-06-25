@@ -2,7 +2,8 @@ import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { createCaseSchema } from '@/lib/validations/case';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { parseOptionalBoundedIntegerParam } from '@/lib/api/pagination';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { CASE_STATUSES } from '@/lib/patient/case-status';
@@ -13,39 +14,158 @@ import {
 import { z } from 'zod';
 
 const caseStatusSchema = z.enum(CASE_STATUSES);
+const DEFAULT_CASE_LIST_LIMIT = 50;
+const MAX_CASE_LIST_LIMIT = 100;
+const MAX_CASE_LIST_FILTER_LENGTH = 100;
 
-export const GET = withAuthContext(
+type CaseListQuery =
+  | {
+      ok: true;
+      cursor: string | undefined;
+      limit: number;
+      patientId: string | undefined;
+      status: z.infer<typeof caseStatusSchema> | undefined;
+      query: string;
+    }
+  | { ok: false; response: ReturnType<typeof validationError> };
+
+function readSingleCaseListQueryValue(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+  options: { allowPadded?: boolean; maxLength?: number } = {},
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', {
+        [name]: [`${name} は1つだけ指定してください`],
+      }),
+    };
+  }
+
+  const rawValue = values[0] ?? '';
+  const value = rawValue.trim();
+  if (!value) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  if (!options.allowPadded && value !== rawValue) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  if (options.maxLength && value.length > options.maxLength) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function parseCaseListQuery(searchParams: URLSearchParams): CaseListQuery {
+  const cursorResult = readSingleCaseListQueryValue(searchParams, 'cursor', 'cursor が不正です', {
+    maxLength: MAX_CASE_LIST_FILTER_LENGTH,
+  });
+  if (!cursorResult.ok) return cursorResult;
+
+  const limitValues = searchParams.getAll('limit');
+  if (limitValues.length > 1) {
+    return {
+      ok: false,
+      response: validationError('検索条件が不正です', {
+        limit: ['limit は1つだけ指定してください'],
+      }),
+    };
+  }
+  const limitResult = parseOptionalBoundedIntegerParam(
+    limitValues[0] ?? null,
+    1,
+    MAX_CASE_LIST_LIMIT,
+  );
+  if (!limitResult.ok) {
+    return {
+      ok: false,
+      response: validationError('検索条件が不正です', {
+        limit: [`limit は 1〜${MAX_CASE_LIST_LIMIT} の整数で指定してください`],
+      }),
+    };
+  }
+
+  const patientResult = readSingleCaseListQueryValue(
+    searchParams,
+    'patient_id',
+    'patient_id が不正です',
+    { maxLength: MAX_CASE_LIST_FILTER_LENGTH },
+  );
+  if (!patientResult.ok) return patientResult;
+
+  const statusResult = readSingleCaseListQueryValue(
+    searchParams,
+    'status',
+    'ケースステータスが不正です',
+    { maxLength: MAX_CASE_LIST_FILTER_LENGTH },
+  );
+  if (!statusResult.ok) return statusResult;
+  const parsedStatus = statusResult.value ? caseStatusSchema.safeParse(statusResult.value) : null;
+  if (parsedStatus && !parsedStatus.success) {
+    return {
+      ok: false,
+      response: validationError('ケースステータスが不正です', {
+        status: ['対応していないステータスです'],
+      }),
+    };
+  }
+
+  const queryResult = readSingleCaseListQueryValue(searchParams, 'q', 'q が不正です', {
+    allowPadded: true,
+    maxLength: MAX_CASE_LIST_FILTER_LENGTH,
+  });
+  if (!queryResult.ok) return queryResult;
+
+  return {
+    ok: true,
+    cursor: cursorResult.value,
+    limit: limitResult.value ?? DEFAULT_CASE_LIST_LIMIT,
+    patientId: patientResult.value,
+    status: parsedStatus?.data,
+    query: queryResult.value ?? '',
+  };
+}
+
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const { cursor, limit } = parsePaginationParams(searchParams);
-    const patientId = searchParams.get('patient_id') ?? undefined;
-    const statusParam = searchParams.get('status') ?? undefined;
-    const status = statusParam ? caseStatusSchema.safeParse(statusParam) : null;
-    if (status && !status.success) {
-      return validationError('ケースステータスが不正です', {
-        status: ['対応していないステータスです'],
-      });
+    const query = parseCaseListQuery(searchParams);
+    if (!query.ok) {
+      return query.response;
     }
-    const query = searchParams.get('q')?.trim() ?? '';
 
     const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
 
     const cases = await prisma.careCase.findMany({
       where: {
         org_id: ctx.orgId,
-        ...(patientId ? { patient_id: patientId } : {}),
-        ...(status ? { status: status.data } : {}),
+        ...(query.patientId ? { patient_id: query.patientId } : {}),
+        ...(query.status ? { status: query.status } : {}),
         ...(caseAssignmentWhere ? { AND: [caseAssignmentWhere] } : {}),
-        ...(query
+        ...(query.query
           ? {
               patient: {
-                OR: [{ name: { contains: query } }, { name_kana: { contains: query } }],
+                OR: [{ name: { contains: query.query } }, { name_kana: { contains: query.query } }],
               },
             }
           : {}),
       },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       orderBy: { updated_at: 'desc' },
       include: {
         patient: {
@@ -91,8 +211,8 @@ export const GET = withAuthContext(
       pharmacists.map((pharmacist) => [pharmacist.id, pharmacist.name]),
     );
 
-    const hasMore = cases.length > limit;
-    const data = (hasMore ? cases.slice(0, limit) : cases).map((careCase) => ({
+    const hasMore = cases.length > query.limit;
+    const data = (hasMore ? cases.slice(0, query.limit) : cases).map((careCase) => ({
       ...careCase,
       primary_pharmacist_name: careCase.primary_pharmacist_id
         ? (pharmacistNameById.get(careCase.primary_pharmacist_id) ?? null)
@@ -107,6 +227,9 @@ export const GET = withAuthContext(
     message: 'ケースの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));
 
 export const POST = withAuthContext(
   async (req, ctx) => {

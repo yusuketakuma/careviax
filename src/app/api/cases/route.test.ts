@@ -70,6 +70,11 @@ function createMalformedPostRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/cases', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -116,13 +121,18 @@ describe('/api/cases', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           org_id: 'org_1',
           patient_id: 'patient_1',
           status: 'active',
+          patient: {
+            OR: [{ name: { contains: '患者' } }, { name_kana: { contains: '患者' } }],
+          },
         }),
+        take: 51,
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
@@ -142,6 +152,61 @@ describe('/api/cases', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      url: 'http://localhost/api/cases?patient_id=',
+      details: { patient_id: ['patient_id が不正です'] },
+    },
+    {
+      url: 'http://localhost/api/cases?patient_id=%20patient_1%20',
+      details: { patient_id: ['patient_id が不正です'] },
+    },
+    {
+      url: 'http://localhost/api/cases?patient_id=patient_1&patient_id=patient_2',
+      details: { patient_id: ['patient_id は1つだけ指定してください'] },
+    },
+    {
+      url: 'http://localhost/api/cases?status=',
+      details: { status: ['ケースステータスが不正です'] },
+    },
+    {
+      url: 'http://localhost/api/cases?status=active&status=assessment',
+      details: { status: ['status は1つだけ指定してください'] },
+    },
+    {
+      url: 'http://localhost/api/cases?q=',
+      details: { q: ['q が不正です'] },
+    },
+    {
+      url: 'http://localhost/api/cases?limit=1e2',
+      details: { limit: ['limit は 1〜100 の整数で指定してください'] },
+    },
+    {
+      url: 'http://localhost/api/cases?limit=101',
+      details: { limit: ['limit は 1〜100 の整数で指定してください'] },
+    },
+    {
+      url: 'http://localhost/api/cases?limit=20&limit=50',
+      details: { limit: ['limit は1つだけ指定してください'] },
+    },
+    {
+      url: 'http://localhost/api/cases?cursor=',
+      details: { cursor: ['cursor が不正です'] },
+    },
+  ])('rejects invalid list query $url before querying cases', async ({ url, details }) => {
+    const response = (await GET(createRequest(url), emptyRouteContext))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details,
+    });
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(userFindManyMock).not.toHaveBeenCalled();
   });

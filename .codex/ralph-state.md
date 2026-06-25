@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-0206 JST
+
+- current task: continue Codex-only backend/API/privacy hardening by adding sensitive no-store coverage and strict explicit query validation to `GET /api/cases`.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; `src/app/api/cases/route.ts`; `src/app/api/cases/route.test.ts`; `src/app/api/__tests__/protected-get-routes.test.ts`; `src/lib/api/pagination.ts`; `/api/cases` callers in prescription intake, QR drafts, schedule proposal, weekly optimizer, and patient cases-tab screens; route catalog entry; gbrain call-graph output; code-mapper report; privacy reviewer report.
+- files changed: `src/app/api/cases/route.ts`, `src/app/api/cases/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `GET /api/cases` returned patient case list data with patient name/kana/residence/location and pharmacist names without sensitive no-store headers, accepted explicit blank `patient_id`, `status`, `q`, and `cursor` as omitted filters or empty search, collapsed duplicate query keys via first-value semantics, and accepted malformed/oversized `limit` through the pagination fallback path instead of rejecting before DB access.
+- security risks found: reduced patient/case PHI cache and query-broadening risk by wrapping exported GET responses so 200/400/401/403 carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`; malformed explicit filters now fail before `careCase.findMany` and pharmacist enrichment. Existing `canVisit`, org scoping, `buildCareCaseAssignmentWhere(ctx)`, valid caller query shapes, POST create behavior, schema, migrations, external sends, and destructive operations are unchanged.
+- performance issues found: malformed case-list requests now return before case and user DB reads. Valid requests keep the existing query/include shape and `limit + 1` pagination behavior.
+- validation commands: `pnpm prettier --write src/app/api/cases/route.ts src/app/api/cases/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm vitest run src/app/api/cases/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; focused `pnpm eslint src/app/api/cases/route.ts src/app/api/cases/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; focused `pnpm prettier --check src/app/api/cases/route.ts src/app/api/cases/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; focused `git diff --check -- src/app/api/cases/route.ts src/app/api/cases/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; long-gate `pnpm typecheck` under token `6ACEA125-D284-4021-BC86-2EB17CDD9C93`.
+- validation results: focused cases/protected GET Vitest passed `2` files / `175` tests; focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed. Initial `pnpm typecheck` failed because the internal validation union widened `withAuthContext` to `Response`; narrowing the false branch to `ReturnType<typeof validationError>` fixed the type-only issue, and rerun `pnpm typecheck` passed. Privacy reviewer found no blocking issues.
+- remaining work: run final scoped status/diff review, drain agmsg, stage only the cases route/test, protected GET matrix, and progress ledgers, commit the slice, send `DONE`, close the completed reviewer, then continue with code-mapper's top candidate `GET /api/patients/:id/prescriptions`.
+- next action: final review/commit for the cases GET no-store and strict-query hardening slice.
+
 ### 20260626-0154 JST
 
 - current task: continue Codex-only backend/API/privacy/performance hardening by adding a minimal `GET /api/patients?view=match` search response and routing QR scan plus prescription patient typeahead away from the full patient-list endpoint.

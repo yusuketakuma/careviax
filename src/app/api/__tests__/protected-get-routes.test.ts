@@ -747,7 +747,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
-        route.name === 'first-visit-documents GET'
+        route.name === 'first-visit-documents GET' ||
+        route.name === 'cases GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -772,7 +773,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
-        route.name === 'first-visit-documents GET'
+        route.name === 'first-visit-documents GET' ||
+        route.name === 'cases GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
