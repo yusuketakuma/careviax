@@ -44,6 +44,11 @@ function createGetRequest(patientId: string, query = '') {
   );
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/[id]/prescriptions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -81,6 +86,7 @@ describe('/api/patients/[id]/prescriptions', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -105,6 +111,7 @@ describe('/api/patients/[id]/prescriptions', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -234,6 +241,7 @@ describe('/api/patients/[id]/prescriptions', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       patient: expect.objectContaining({ id: 'patient_1' }),
@@ -250,6 +258,7 @@ describe('/api/patients/[id]/prescriptions', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -257,6 +266,38 @@ describe('/api/patients/[id]/prescriptions', () => {
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      query: 'limit=5&case_id=',
+      details: { case_id: ['case_id が不正です'] },
+    },
+    {
+      query: 'limit=5&case_id=%20case_1%20',
+      details: { case_id: ['case_id が不正です'] },
+    },
+    {
+      query: 'limit=5&case_id=case_1&case_id=case_2',
+      details: { case_id: ['case_id は1つだけ指定してください'] },
+    },
+  ])(
+    'rejects invalid case_id query $query before loading prescriptions',
+    async ({ query, details }) => {
+      const response = (await GET(createGetRequest('patient_1', query), {
+        params: Promise.resolve({ id: 'patient_1' }),
+      }))!;
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details,
+      });
+      expect(patientFindFirstMock).not.toHaveBeenCalled();
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('uses keyset cursor conditions after the first page', async () => {
     const keysetCursor = Buffer.from(

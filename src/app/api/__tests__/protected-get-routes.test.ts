@@ -149,6 +149,7 @@ import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
 import { GET as patientCheckDuplicateGet } from '../patients/check-duplicate/route';
 import { GET as patientGet } from '../patients/[id]/route';
+import { GET as patientPrescriptionsGet } from '../patients/[id]/prescriptions/route';
 import { GET as patientSelfReportsGet } from '../patient-self-reports/route';
 import { GET as patientSelfReportGet } from '../patient-self-reports/[id]/route';
 import { GET as patientVisitBriefGet } from '../patients/[id]/visit-brief/route';
@@ -458,6 +459,16 @@ const routes: Array<{ name: string; handler: Handler }> = [
       ),
   },
   {
+    name: 'patients/[id]/prescriptions GET',
+    handler: () =>
+      patientPrescriptionsGet(
+        createRequest('http://localhost/api/patients/patient_1/prescriptions?limit=5', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
     name: 'patient-self-reports GET',
     handler: () =>
       patientSelfReportsGet(
@@ -747,6 +758,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
+        route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET'
       ) {
@@ -773,6 +785,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
         route.name === 'patients/check-duplicate GET' ||
+        route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET'
       ) {

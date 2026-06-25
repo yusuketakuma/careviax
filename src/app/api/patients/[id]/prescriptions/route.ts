@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, notFound, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { decodeKeysetCursor, encodeKeysetCursor } from '@/lib/api/keyset-cursor';
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -57,8 +58,34 @@ const CHANGE_LABELS: Record<DiffReviewChangeType, string> = {
   unchanged: '変化なし',
 };
 
-function optionalTrimmedSearchParam(value: string | null) {
-  return value?.trim() || undefined;
+function readOptionalCaseIdFilter(
+  searchParams: URLSearchParams,
+):
+  | { ok: true; value: string | undefined }
+  | { ok: false; response: ReturnType<typeof validationError> } {
+  const values = searchParams.getAll('case_id');
+  if (values.length === 0) return { ok: true, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false,
+      response: validationError('検索条件が不正です', {
+        case_id: ['case_id は1つだけ指定してください'],
+      }),
+    };
+  }
+
+  const rawValue = values[0] ?? '';
+  const value = rawValue.trim();
+  if (!value || value !== rawValue) {
+    return {
+      ok: false,
+      response: validationError('検索条件が不正です', {
+        case_id: ['case_id が不正です'],
+      }),
+    };
+  }
+
+  return { ok: true, value };
 }
 
 /** dose / frequency / days を 1 行ラベルへ。例: 「4mg 朝食後 28日」 */
@@ -212,7 +239,7 @@ function buildKeysetWhere(
   };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id: rawPatientId } = await params;
     const patientId = normalizeRequiredRouteParam(rawPatientId);
@@ -220,7 +247,9 @@ export const GET = withAuthContext(
 
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
-    const caseId = optionalTrimmedSearchParam(searchParams.get('case_id'));
+    const caseFilter = readOptionalCaseIdFilter(searchParams);
+    if (!caseFilter.ok) return caseFilter.response;
+    const caseId = caseFilter.value;
     const keysetWhere = buildKeysetWhere(
       decodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, cursor),
     );
@@ -345,3 +374,6 @@ export const GET = withAuthContext(
     message: '患者処方履歴の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

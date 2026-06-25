@@ -50,6 +50,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'patients',
   },
   {
+    path: '/api/patients/:id/prescriptions',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '患者別処方履歴と処方差分レビュー取得',
+    area: 'prescriptions',
+  },
+  {
     path: '/api/patients/:id/prescriptions/export',
     methods: ['GET'],
     permission: 'canVisit',
