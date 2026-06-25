@@ -197,6 +197,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'schedules',
   },
   {
+    path: '/api/visits/today-preparation',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '本日の訪問準備ボード取得',
+    area: 'visits',
+  },
+  {
     path: '/api/visit-records',
     methods: ['GET', 'POST'],
     permission: 'canVisit',

@@ -42,6 +42,11 @@ function createRequest() {
   return new NextRequest('http://localhost/api/visits/today-preparation');
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function buildSchedule(overrides: Record<string, unknown> = {}) {
   return {
     id: 'schedule_1',
@@ -165,6 +170,7 @@ describe('/api/visits/today-preparation', () => {
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const json = await response.json();
     expect(json.data.cards).toEqual([]);
     expect(json.data.visit_count).toBe(0);

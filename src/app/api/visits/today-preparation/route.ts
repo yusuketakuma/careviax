@@ -1,5 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
@@ -418,7 +419,7 @@ function deriveFacilityVisitCard(
   };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx) => {
     const now = new Date();
     // scheduled_date(@db.Date)との比較は「ローカル日付キーの UTC 深夜 Date」で行う
@@ -674,3 +675,6 @@ export const GET = withAuthContext(
     message: '本日の訪問準備の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));

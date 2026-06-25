@@ -190,6 +190,7 @@ import { GET as visitRecordReflectedFieldsGet } from '../visit-records/[id]/refl
 import { GET as visitScheduleProposalsGet } from '../visit-schedule-proposals/route';
 import { GET as visitSchedulesGet } from '../visit-schedules/route';
 import { GET as visitScheduleGet } from '../visit-schedules/[id]/route';
+import { GET as visitsTodayPreparationGet } from '../visits/today-preparation/route';
 import { GET as visitPreparationBriefGet } from '../visit-preparations/[scheduleId]/brief/route';
 
 type Handler = () => Promise<Response | undefined>;
@@ -759,6 +760,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'visits/today-preparation GET',
+    handler: () =>
+      visitsTodayPreparationGet(
+        createRequest('http://localhost/api/visits/today-preparation', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
     name: 'visit-preparations/[scheduleId]/brief GET',
     handler: () =>
       visitPreparationBriefGet(
@@ -868,6 +877,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET' ||
+        route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||
         route.name === 'dashboard/clerk-support GET' ||
@@ -907,6 +917,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET' ||
+        route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||
         route.name === 'dashboard/clerk-support GET' ||

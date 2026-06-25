@@ -123,6 +123,7 @@ describe('routeCatalog', () => {
       '/api/dispense-tasks/:id/workbench',
       '/api/set-plans',
       '/api/visit-schedule-proposals',
+      '/api/visits/today-preparation',
       '/api/dashboard/dispensing-stats',
       '/api/dashboard/overdue',
       '/api/dashboard/clerk-support',
