@@ -105,10 +105,15 @@ describe('/api/visit-schedules/day-board', () => {
     expect(response.status).toBe(200);
 
     const where = visitScheduleFindManyMock.mock.calls.at(0)?.[0]?.where;
+    const proposalWhere = proposalFindManyMock.mock.calls.at(0)?.[0]?.where;
     const select = visitScheduleFindManyMock.mock.calls.at(0)?.[0]?.select;
     // ローカル 2026-06-12 → UTC midnight 範囲。ローカル深夜(6/11T15:00Z)を渡すと
     // Prisma の @db.Date 切り捨てで前日扱いになり、当日訪問が全件こぼれる(回帰防止)
     expect(where?.scheduled_date).toEqual({
+      gte: new Date('2026-06-12T00:00:00.000Z'),
+      lt: new Date('2026-06-13T00:00:00.000Z'),
+    });
+    expect(proposalWhere?.proposed_date).toEqual({
       gte: new Date('2026-06-12T00:00:00.000Z'),
       lt: new Date('2026-06-13T00:00:00.000Z'),
     });

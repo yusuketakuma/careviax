@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-1017 JST
+
+- current task: implement Codex-owned `F-20260625-day-board-proposal-date-upper-bound` after Claude `LOCK_GRANT`, covering backend audit P1 for `/api/visit-schedules/day-board`.
+- files inspected: agmsg inbox/history for Claude's backend audit handoff and day-board lock grant; `.agent-loop/research/workflow-findings-20260625.md`; `git status --short --branch --untracked-files=all`; `src/app/api/visit-schedules/day-board/route.ts`; `src/app/api/visit-schedules/day-board/route.test.ts`; gbrain `code_callers` and `code_blast` output for `src/app/api/visit-schedules/day-board/route.ts::GET`.
+- files changed: `src/app/api/visit-schedules/day-board/route.ts`, `src/app/api/visit-schedules/day-board/route.test.ts`, and this Ralph state entry.
+- bugs found: the day-board pending proposal query filtered `proposed_date` with only `gte: dayStart`, so future proposals could be pulled indefinitely into a single day's board until the global proposal limit was reached.
+- security risks found: no auth/authz, tenant, PHI projection, response shape, DB schema, migration, billing, deploy, or destructive behavior changed. The existing `org_id: ctx.orgId`, allowed proposal statuses, ordering, limit, and selected fields stay unchanged.
+- performance issues found: bounded the pending proposal query to the requested day with `lt: dayEnd`, reducing avoidable future-row reads and preventing future proposals from crowding out same-day proposals.
+- validation commands: focused `pnpm exec vitest run src/app/api/visit-schedules/day-board/route.test.ts --reporter=dot --testTimeout=30000`; focused `pnpm exec eslint src/app/api/visit-schedules/day-board/route.ts src/app/api/visit-schedules/day-board/route.test.ts`; focused `pnpm exec prettier --check src/app/api/visit-schedules/day-board/route.ts src/app/api/visit-schedules/day-board/route.test.ts`; focused `git diff --check` for the two day-board files; long-gate `pnpm typecheck` is pending until Claude releases the current peer long-gate lock.
+- validation results: focused day-board Vitest passed `11/11`; focused ESLint passed; focused Prettier passed; focused diff-check passed. Test coverage now asserts the pending proposal query uses the same UTC day range as scheduled visits: `{ gte: dayStart, lt: dayEnd }`.
+- remaining work: wait for Claude's current long-gate release, run `pnpm typecheck` under our long-gate lock, send `READY_FOR_REVIEW`, and commit only the two day-board files plus `.codex/ralph-state.md` after Claude approval.
+- next action: drain agmsg for peer long-gate release, run locked typecheck, then request Claude review.
+
 ### 20260625-0959 JST
 
 - current task: implement Codex-owned `F-20260625-staff-workload-recent-tasks-batch` after Claude `LOCK_GRANT`, covering `/api/staff-workload` route-level performance without frontend, schema, migration, service, or auth changes.

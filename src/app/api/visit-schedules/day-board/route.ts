@@ -544,7 +544,7 @@ export const GET = withAuthContext(
           where: {
             org_id: ctx.orgId,
             proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
-            proposed_date: { gte: dayStart },
+            proposed_date: { gte: dayStart, lt: dayEnd },
           },
           orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
           take: PENDING_PROPOSAL_LIMIT,
