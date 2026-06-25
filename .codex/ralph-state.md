@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-1722 JST
+
+- current task: implement Codex-owned `F-20260625-packaging-methods-bounded-list` (A#6) after Claude's parallel `LOCK_GRANT`, continuing the A-list bounded-read hardening sweep after committing A#3.
+- files inspected: agmsg inbox/history for the A#6 grant and no-conflict state; `git status --short --untracked-files=all`; `.agent-loop/research/unbounded-get-triage-20260625.md`; `src/app/api/packaging-methods/route.ts`; `src/app/api/packaging-methods/route.test.ts`; direct caller `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx`; `src/lib/api/pagination.ts`; gbrain `code_callers` / `code_blast` output for `src/app/api/packaging-methods/route.ts::GET`, where the route call graph was not built but direct file references confirmed a small route/test/UI surface; code-mapper report for A#4-A#6 ranking A#6 as the lowest-risk next implementation.
+- files changed: `src/app/api/packaging-methods/route.ts`, `src/app/api/packaging-methods/route.test.ts`, and this Ralph state entry.
+- bugs found: `/api/packaging-methods` returned every packaging method master row for the org with no protective `take`, even though the admin UI consumes it as a finite master list.
+- security risks found: no auth/authz, tenant, RLS policy, DB schema, migration, PHI projection, audit logging, billing, external call, deploy, or destructive behavior changed. GET remains `canVisit`, POST remains `canAdmin`, org scoping and the narrow select projection are preserved, and create/audit behavior is untouched.
+- performance issues found: bounded the packaging method list query to default `take: 100` with `limit` clamped to `1..200`, preserving org scope, sort order, response envelope, and selected fields.
+- validation commands: baseline focused `pnpm exec vitest run src/app/api/packaging-methods/route.test.ts --reporter=dot --testTimeout=30000`; post-change focused `pnpm exec vitest run src/app/api/packaging-methods/route.test.ts --reporter=dot --testTimeout=30000`; focused `pnpm exec eslint src/app/api/packaging-methods/route.ts src/app/api/packaging-methods/route.test.ts`; focused `pnpm exec prettier --check src/app/api/packaging-methods/route.ts src/app/api/packaging-methods/route.test.ts`; focused `git diff --check -- src/app/api/packaging-methods/route.ts src/app/api/packaging-methods/route.test.ts`; long-gate-locked `pnpm typecheck`.
+- validation results: baseline route Vitest passed `4/4`; final route Vitest passed `9/9`; focused ESLint passed; focused Prettier passed; focused diff-check passed; `pnpm typecheck` passed under local long-gate token `A746C194-48A8-496F-AA05-D3E2B5BE028E` after `next typegen`, app `tsc`, and service-worker `tsc` completed successfully. Tests now assert explicit `limit=5`, default `take: 100`, max clamp `limit=9999 -> 200`, min clamp `limit=0 -> 1`, malformed fallback `limit=abc -> 100`, and preservation of the org filter, sort order, select projection, and `{ data }` response envelope.
+- remaining work: stage and commit only the two route files plus `.codex/ralph-state.md`, then notify Claude with the commit hash and continue the A-list queue.
+- next action: drain agmsg before commit, inspect status, commit the owned A#6 slice, and send `DONE`.
+
 ### 20260625-1718 JST
 
 - current task: implement Codex-owned `F-20260625-admin-pharmacist-credentials-bounded-list` (A#3) after Claude `LOCK_GRANT`, continuing the safe A-list bounded-read hardening sweep and prioritizing the PHI-overfetching pharmacist credential endpoint over lower-risk A#6.

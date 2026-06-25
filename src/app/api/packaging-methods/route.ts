@@ -1,4 +1,5 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -6,8 +7,19 @@ import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { createPackagingMethodSchema } from '@/lib/validations/packaging-method';
 
+const DEFAULT_PACKAGING_METHOD_LIMIT = 100;
+const MAX_PACKAGING_METHOD_LIMIT = 200;
+
 export const GET = withAuthContext(
-  async (_req, ctx) => {
+  async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_PACKAGING_METHOD_LIMIT,
+      1,
+      MAX_PACKAGING_METHOD_LIMIT,
+    );
+
     const methods = await prisma.packagingMethodMaster.findMany({
       where: {
         org_id: ctx.orgId,
@@ -23,6 +35,7 @@ export const GET = withAuthContext(
         created_at: true,
         updated_at: true,
       },
+      take: limit,
     });
 
     return success({ data: methods });

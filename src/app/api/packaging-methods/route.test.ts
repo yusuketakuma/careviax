@@ -45,7 +45,11 @@ const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
 function createRequest(init?: NextRequestInit) {
-  return new NextRequest('http://localhost/api/packaging-methods', init);
+  return createGetRequest('', init);
+}
+
+function createGetRequest(search = '', init?: NextRequestInit) {
+  return new NextRequest(`http://localhost/api/packaging-methods${search}`, init);
 }
 
 function createMalformedJsonPostRequest() {
@@ -91,11 +95,53 @@ describe('/api/packaging-methods', () => {
   });
 
   it('lists packaging methods', async () => {
-    const response = (await GET(createRequest()))!;
+    const response = (await GET(createGetRequest('?limit=5')))!;
 
     expect(response.status).toBe(200);
+    expect(packagingMethodFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+      },
+      orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        icon_key: true,
+        sort_order: true,
+        is_active: true,
+        created_at: true,
+        updated_at: true,
+      },
+      take: 5,
+    });
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'method_1', name: '一包化' }],
+    });
+  });
+
+  it.each([
+    ['', 100],
+    ['?limit=200', 200],
+    ['?limit=9999', 200],
+    ['?limit=0', 1],
+    ['?limit=abc', 100],
+  ])('bounds packaging method list size for "%s"', async (search, expectedTake) => {
+    packagingMethodFindManyMock.mockResolvedValue([]);
+
+    const response = (await GET(createGetRequest(search)))!;
+
+    expect(response.status).toBe(200);
+    expect(packagingMethodFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+        },
+        take: expectedTake,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
     });
   });
 
