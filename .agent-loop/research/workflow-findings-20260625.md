@@ -120,3 +120,20 @@ Buckets: GATED_ESCALATE = §15 (billing/算定・schema migration・RLS cross-or
 ### Net result
 
 All confirmed non-§15 findings are now resolved (claude services/lib + codex routes), closed as FP, or escalated to BLOCKED.md (§15). No open claude-owned actionable items remain.
+
+## Routes findings — final resolution (2026-06-25, codex maker / claude checker)
+
+- **land** QR null-mismatch `dd30e0fa`; care-reports case-org recheck `beffa3c7`; handoff recipient is_active `a920f6c5`; day-board #4 shift-capacity idle `9ced29ff` (codex logic + @db.Time UTC fix; claude added the no-shift→480 fallback test + landed).
+- **FP** admin/organizations #2 (canAdmin is the primary guard before the owner check); management-plans/[id] #7 (findFirst already filters org_id + assignment); day-board facility_label #5 (FE groups by facility_batch_id, NOT facility_label — collision premise false; residual is a cosmetic "施設施設" double-prefix that is FE-coupled + minor).
+- **defer** day-board #3 @db.Time→HH:mm (`b0c37f62`): would break schedule-team-board.helpers.ts minutesOfDayIso/formatTimeOfDay which parse via new Date(); requires a coordinated FE update → GPT-5.6 frontend phase.
+
+## Option-A consolidation — honest scoping conclusion
+
+After mapping the schedule/visit/dashboard surface (recon) the "big simplification" is shallower than it first appeared:
+
+- The 4 "today visit window" reads (day-board, cockpit, today-preparation, visit-schedules/today) genuinely DIFFER by select + status-filter + assignment-scope — they are not mergeable into one query. The date-range helpers (utcDateFromLocalKey/addUtcDays) are ALREADY shared.
+- `audit_pending_count` looks duplicated but day-board (cycle-scoped completed audit tasks) and cockpit (case-scoped hold/unaudited) compute DIFFERENT things on purpose — unifying would be wrong.
+- Folding cockpit's rail into day-board would cross canVisit↔canViewDashboard + lose cockpit's serverCache/scope = a god-BFF, i.e. complexity hidden in one route, not simplification.
+- The ONE genuine cleanup: `visit-schedules/today` is UI-dead (no production fetch; only its own test + the generic protected-get-routes coverage test + route-catalog + rate-limit reference it). Removing it = -1 route + -1 duplicate query, but it is a registered PUBLIC GET endpoint → external-consumer risk → needs human OK before deletion.
+
+Net: the schedule APIs are reasonably factored; a large consolidation would add complexity. Recommended action is limited to optionally removing the dead `visit-schedules/today` route (pending confirmation it has no external consumer).
