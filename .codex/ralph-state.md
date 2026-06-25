@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2104 JST
+
+- current task: continue Codex-only backend/API privacy hardening by fail-closing explicit blank inquiry-record filters, adding sensitive no-store headers, and honoring explicit `limit` without truncating no-limit callers.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; local Next.js Route Handlers guide `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`; `src/app/api/inquiry-records/route.ts`; `src/app/api/inquiry-records/route.test.ts`; `src/lib/api/pagination.ts`; `src/lib/api/sensitive-response.ts`; direct `/api/inquiry-records` callers; protected GET catalog; gbrain `code_blast` and `code_callers` for `src/app/api/inquiry-records/route.ts::GET`; security-auditor, privacy-compliance, and medical-safety reviewer reports.
+- files changed: `src/app/api/inquiry-records/route.ts`, `src/app/api/inquiry-records/route.test.ts`, and this Ralph state entry.
+- bugs found: `GET /api/inquiry-records?patient_id=` and `?cycle_id=` treated explicitly blank clinical filters as omitted filters, widening the request to the org/assignment-scoped inquiry list. `status=` had the same explicit-empty ambiguity. The route also returned clinical inquiry content without sensitive no-store headers, and offered no bounded path for callers that want a capped list.
+- security risks found: reduced PHI/clinical-content overfetch risk by rejecting present-but-empty `patient_id`, `cycle_id`, and `status` before DB access; added `withSensitiveNoStore` to 200 and validation-error responses. Existing `canVisit`, `org_id`, `buildMedicationCycleAssignmentWhere(ctx)`, status semantics, selected clinical fields, and POST side effects are preserved. No auth/authz permission semantics, RLS, DB schema, migration, billing, frontend, external send, or destructive behavior changed.
+- performance issues found: explicit `limit` requests now apply `take: limit + 1`, trim the response to `limit`, and return additive `meta: { limit, has_more }`. After medical-safety review, no-limit calls intentionally keep the previous no-`take`, no-`meta` full-list behavior to avoid silently hiding older patient inquiry records from existing UI callers.
+- validation commands: `pnpm exec vitest run src/app/api/inquiry-records/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/inquiry-records/route.ts src/app/api/inquiry-records/route.test.ts`; `pnpm exec prettier --check src/app/api/inquiry-records/route.ts src/app/api/inquiry-records/route.test.ts`; `git diff --check -- src/app/api/inquiry-records/route.ts src/app/api/inquiry-records/route.test.ts`; long-gate `pnpm typecheck` under token `7CD5B00A-3B2A-468A-9A2D-4BA93FD05221`.
+- validation results: focused inquiry-records route Vitest passed `17/17`; protected GET catalog Vitest passed `129/129`; focused ESLint passed; focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, then continue with the next backend/API candidate.
+- next action: drain agmsg, inspect staged paths, and commit the inquiry-records privacy hardening slice.
+
 ### 20260625-2057 JST
 
 - current task: continue Codex-only backend/API performance hardening by honoring explicit `limit` queries on `GET /api/pharmacist-shifts` without changing no-limit callers.

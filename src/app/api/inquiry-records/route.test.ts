@@ -96,6 +96,61 @@ describe('/api/inquiry-records GET', () => {
         orderBy: { inquired_at: 'desc' },
       }),
     );
+    expect(inquiryRecordFindManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
+    await expect(response.json()).resolves.not.toHaveProperty('meta');
+  });
+
+  it('trims patient and cycle filters before querying inquiry records', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/inquiry-records?patient_id=%20patient_1%20&cycle_id=%20cycle_1%20',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(inquiryRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          cycle_id: 'cycle_1',
+          cycle: {
+            patient_id: 'patient_1',
+          },
+        },
+      }),
+    );
+  });
+
+  it('returns clinical inquiry content with no-store headers', async () => {
+    const response = await GET(createRequest('http://localhost/api/inquiry-records'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+  });
+
+  it.each([
+    ['patient_id', 'patient_id は空にできません'],
+    ['cycle_id', 'cycle_id は空にできません'],
+    ['status', 'status は空にできません'],
+  ])('rejects blank %s filters before querying inquiry records', async (fieldName, message) => {
+    const response = await GET(
+      createRequest(`http://localhost/api/inquiry-records?${fieldName}=%20%20`),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      message: '検索条件が不正です',
+      details: {
+        [fieldName]: [message],
+      },
+    });
+    expect(inquiryRecordFindManyMock).not.toHaveBeenCalled();
   });
 
   it('filters unresolved and resolved inquiry records with explicit status contracts', async () => {
@@ -113,6 +168,7 @@ describe('/api/inquiry-records GET', () => {
         },
       }),
     );
+    expect(inquiryRecordFindManyMock.mock.calls.at(-1)?.[0]).not.toHaveProperty('take');
 
     const resolvedResponse = await GET(
       createRequest('http://localhost/api/inquiry-records?status=resolved'),
@@ -128,6 +184,48 @@ describe('/api/inquiry-records GET', () => {
         },
       }),
     );
+    expect(inquiryRecordFindManyMock.mock.calls.at(-1)?.[0]).not.toHaveProperty('take');
+  });
+
+  it('returns overflow metadata while keeping the extra inquiry record out of the response body', async () => {
+    inquiryRecordFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 3 }, (_, index) => ({ id: `inquiry_${index}` })),
+    );
+
+    const response = await GET(createRequest('http://localhost/api/inquiry-records?limit=2'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(inquiryRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+      }),
+    );
+    const body = await response.json();
+    expect(body.data).toEqual([{ id: 'inquiry_0' }, { id: 'inquiry_1' }]);
+    expect(JSON.stringify(body)).not.toContain('inquiry_2');
+    expect(body.meta).toEqual({ limit: 2, has_more: true });
+  });
+
+  it.each([
+    ['9999', 501, 500],
+    ['0', 2, 1],
+    ['abc', 501, 500],
+  ])('bounds limit=%s to take %i', async (rawLimit, expectedTake, expectedLimit) => {
+    const response = await GET(
+      createRequest(`http://localhost/api/inquiry-records?limit=${rawLimit}`),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(inquiryRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: expectedTake,
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      meta: { limit: expectedLimit, has_more: false },
+    });
   });
 
   it('rejects invalid status filters before querying inquiry records', async () => {
@@ -137,6 +235,8 @@ describe('/api/inquiry-records GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       message: '検索条件が不正です',
       details: {

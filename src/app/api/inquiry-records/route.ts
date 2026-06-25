@@ -1,8 +1,10 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createInquiryRecordSchema } from '@/lib/validations/prescription';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
@@ -10,22 +12,61 @@ import type { Prisma } from '@prisma/client';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 
-function optionalSearchParam(value: string | null) {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
+const DEFAULT_INQUIRY_RECORD_LIMIT = 500;
+const MAX_INQUIRY_RECORD_LIMIT = 500;
+
+function readOptionalSearchParam(searchParams: URLSearchParams, fieldName: string) {
+  if (!searchParams.has(fieldName)) return { value: undefined as string | undefined };
+
+  const value = searchParams.get(fieldName)?.trim() ?? '';
+  if (!value) {
+    return {
+      value: undefined,
+      error: `${fieldName} は空にできません`,
+    };
+  }
+
+  return { value };
 }
 
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const cycleId = optionalSearchParam(searchParams.get('cycle_id'));
-    const patientId = optionalSearchParam(searchParams.get('patient_id'));
-    const status = optionalSearchParam(searchParams.get('status'));
-    if (status && status !== 'unresolved' && status !== 'resolved') {
-      return validationError('検索条件が不正です', {
-        status: ['status は resolved または unresolved を指定してください'],
-      });
+    const cycleIdParam = readOptionalSearchParam(searchParams, 'cycle_id');
+    if (cycleIdParam.error) {
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', { cycle_id: [cycleIdParam.error] }),
+      );
     }
+    const patientIdParam = readOptionalSearchParam(searchParams, 'patient_id');
+    if (patientIdParam.error) {
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', { patient_id: [patientIdParam.error] }),
+      );
+    }
+    const statusParam = readOptionalSearchParam(searchParams, 'status');
+    if (statusParam.error) {
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', { status: [statusParam.error] }),
+      );
+    }
+    const cycleId = cycleIdParam.value;
+    const patientId = patientIdParam.value;
+    const status = statusParam.value;
+    if (status && status !== 'unresolved' && status !== 'resolved') {
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', {
+          status: ['status は resolved または unresolved を指定してください'],
+        }),
+      );
+    }
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_INQUIRY_RECORD_LIMIT,
+      1,
+      MAX_INQUIRY_RECORD_LIMIT,
+    );
+    const shouldLimit = searchParams.has('limit');
 
     const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
     const cycleFilters: Prisma.MedicationCycleWhereInput[] = [
@@ -50,6 +91,7 @@ export const GET = withAuthContext(
     const records = await prisma.inquiryRecord.findMany({
       where,
       orderBy: { inquired_at: 'desc' },
+      ...(shouldLimit ? { take: limit + 1 } : {}),
       select: {
         id: true,
         cycle_id: true,
@@ -75,7 +117,15 @@ export const GET = withAuthContext(
       },
     });
 
-    return success({ data: records });
+    const hasMore = shouldLimit && records.length > limit;
+    const data = shouldLimit && hasMore ? records.slice(0, limit) : records;
+
+    return withSensitiveNoStore(
+      success({
+        data,
+        ...(shouldLimit ? { meta: { limit, has_more: hasMore } } : {}),
+      }),
+    );
   },
   {
     permission: 'canVisit',
