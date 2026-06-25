@@ -7,16 +7,26 @@ export type DeliveryRuleSuggestion = {
   fallback_channels: string[];
 };
 
+type DocumentDeliveryRuleDb = {
+  documentDeliveryRule?: {
+    findFirst?: (
+      args: Parameters<typeof prisma.documentDeliveryRule.findFirst>[0],
+    ) => ReturnType<typeof prisma.documentDeliveryRule.findFirst>;
+  };
+};
+
 export async function resolveDocumentDeliveryRule(args: {
   orgId: string;
   documentType: string;
   targetRole: string;
+  db?: DocumentDeliveryRuleDb;
 }): Promise<DeliveryRuleSuggestion | null> {
-  if (typeof prisma.documentDeliveryRule?.findFirst !== 'function') {
+  const db = args.db ?? prisma;
+  if (typeof db.documentDeliveryRule?.findFirst !== 'function') {
     return null;
   }
 
-  const rule = await prisma.documentDeliveryRule.findFirst({
+  const rule = await db.documentDeliveryRule.findFirst({
     where: {
       org_id: args.orgId,
       document_type: args.documentType,

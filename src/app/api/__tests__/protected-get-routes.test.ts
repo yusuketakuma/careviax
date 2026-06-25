@@ -937,6 +937,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
+        route.name === 'care-reports/[id] GET' ||
         route.name === 'care-reports/analytics GET' ||
         route.name === 'care-reports/today-workspace GET' ||
         route.name === 'cases GET' ||
@@ -984,6 +985,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
+        route.name === 'care-reports/[id] GET' ||
         route.name === 'care-reports/analytics GET' ||
         route.name === 'care-reports/today-workspace GET' ||
         route.name === 'cases GET' ||

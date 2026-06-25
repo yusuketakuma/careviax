@@ -6,6 +6,7 @@ const {
   careReportFindFirstMock,
   careReportUpdateManyMock,
   auditLogCreateMock,
+  documentDeliveryRuleFindFirstMock,
   patientFindFirstMock,
   visitRecordFindFirstMock,
   withOrgContextMock,
@@ -18,6 +19,7 @@ const {
   careReportFindFirstMock: vi.fn(),
   careReportUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  documentDeliveryRuleFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -41,6 +43,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitRecord: {
       findFirst: visitRecordFindFirstMock,
+    },
+    documentDeliveryRule: {
+      findFirst: documentDeliveryRuleFindFirstMock,
     },
   },
 }));
@@ -152,6 +157,7 @@ describe('care-reports/[id] route', () => {
       id: 'visit_record_1',
       visit_date: new Date('2026-03-29T09:00:00.000Z'),
     });
+    documentDeliveryRuleFindFirstMock.mockResolvedValue(null);
     careReportUpdateManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -161,6 +167,15 @@ describe('care-reports/[id] route', () => {
         },
         auditLog: {
           create: auditLogCreateMock,
+        },
+        documentDeliveryRule: {
+          findFirst: documentDeliveryRuleFindFirstMock,
+        },
+        patient: {
+          findFirst: patientFindFirstMock,
+        },
+        visitRecord: {
+          findFirst: visitRecordFindFirstMock,
         },
       }),
     );
@@ -201,6 +216,13 @@ describe('care-reports/[id] route', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+    });
     expect(findLatestPrescriberInstitutionSuggestionMock).toHaveBeenCalledWith(
       expect.anything(),
       'org_1',
@@ -247,6 +269,22 @@ describe('care-reports/[id] route', () => {
       },
     });
     expect(payload.data).not.toHaveProperty('org_id');
+  });
+
+  it('returns a fixed sensitive no-store 500 when scoped report loading fails', async () => {
+    withOrgContextMock.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
   });
 
   it('returns report action permissions for the current role without widening view access', async () => {

@@ -4,6 +4,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import {
   conflict,
   forbiddenResponse,
+  internalError,
   success,
   validationError,
   notFound,
@@ -79,7 +80,7 @@ const updateCareReportSchema = z.object({
   template_id: z.string().optional(),
 });
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: '報告書の閲覧権限がありません',
@@ -95,164 +96,181 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const canLoadEditableContent = permissions.can_edit || permissions.can_send;
   const canLoadDeliverySupport = permissions.can_send;
 
-  const report = await prisma.careReport.findFirst({
-    where: { id, org_id: ctx.orgId },
-    select: {
-      id: true,
-      patient_id: true,
-      case_id: true,
-      visit_record_id: true,
-      report_type: true,
-      status: true,
-      content: canLoadEditableContent,
-      template_id: true,
-      pdf_url: true,
-      created_by: true,
-      created_at: true,
-      updated_at: true,
-      delivery_records: {
+  return withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const report = await tx.careReport.findFirst({
+        where: { id, org_id: ctx.orgId },
         select: {
           id: true,
-          channel: true,
-          recipient_name: true,
-          recipient_contact: true,
+          patient_id: true,
+          case_id: true,
+          visit_record_id: true,
+          report_type: true,
           status: true,
-          sent_at: true,
+          content: canLoadEditableContent,
+          template_id: true,
+          pdf_url: true,
+          created_by: true,
           created_at: true,
+          updated_at: true,
+          delivery_records: {
+            select: {
+              id: true,
+              channel: true,
+              recipient_name: true,
+              recipient_contact: true,
+              status: true,
+              sent_at: true,
+              created_at: true,
+            },
+            orderBy: { created_at: 'desc' },
+          },
+          case_: {
+            select: { required_visit_support: true },
+          },
         },
-        orderBy: { created_at: 'desc' },
-      },
-      case_: {
-        select: { required_visit_support: true },
-      },
+      });
+
+      if (!report) return sensitiveResponse(notFound('報告書が見つかりません'));
+      if (
+        !(await canAccessCareReportSource(tx, ctx.orgId, ctx, {
+          patientId: report.patient_id,
+          caseId: report.case_id,
+          visitRecordId: report.visit_record_id,
+        }))
+      ) {
+        return sensitiveResponse(await forbiddenResponse('この報告書を閲覧する権限がありません'));
+      }
+
+      // case_id がある場合は intake baseline context を付加してUIでの表示に利用する
+      const intakeBaselineContext = getHomeVisitIntake(
+        report.case_?.required_visit_support ?? null,
+      );
+      const canLoadPatientContext = permissions.can_view_patient;
+
+      const [patientSummary, visitSummary] = await Promise.all([
+        canLoadPatientContext
+          ? tx.patient.findFirst({
+              where: { id: report.patient_id, org_id: ctx.orgId },
+              select: {
+                id: true,
+                name: true,
+                name_kana: true,
+                birth_date: true,
+              },
+            })
+          : Promise.resolve(null),
+        canLoadPatientContext && report.visit_record_id
+          ? tx.visitRecord.findFirst({
+              where: {
+                id: report.visit_record_id,
+                org_id: ctx.orgId,
+                patient_id: report.patient_id,
+              },
+              select: {
+                id: true,
+                visit_date: true,
+              },
+            })
+          : Promise.resolve(null),
+      ]);
+      const prescriberInstitutionSuggestion = canLoadDeliverySupport
+        ? await findLatestPrescriberInstitutionSuggestion(tx, ctx.orgId, {
+            caseId: report.case_id,
+            patientId: report.patient_id,
+          })
+        : null;
+      const externalProfessionalSuggestions = canLoadDeliverySupport
+        ? await findExternalProfessionalSuggestions(tx, ctx.orgId, {
+            caseId: report.case_id,
+            patientId: report.patient_id,
+          })
+        : [];
+      const prescriberInstitutionStats =
+        prescriberInstitutionSuggestion != null
+          ? await getChannelStatsByName(tx, ctx.orgId, [prescriberInstitutionSuggestion.name])
+          : new Map();
+      const deliveryRuleSuggestion = canLoadDeliverySupport
+        ? await resolveDocumentDeliveryRule({
+            db: tx,
+            orgId: ctx.orgId,
+            documentType: 'care_report',
+            targetRole: inferCareReportTargetRole(report.report_type),
+          })
+        : null;
+
+      const reportData = Object.fromEntries(
+        Object.entries(report).filter(
+          ([key]) => key !== 'case_' && key !== 'org_id' && key !== 'content',
+        ),
+      );
+      const reportResponseData = {
+        ...reportData,
+        ...(canLoadEditableContent ? { content: report.content } : {}),
+        pdf_url: permissions.can_send ? report.pdf_url : null,
+      };
+
+      return sensitiveResponse(
+        success({
+          data: {
+            ...reportResponseData,
+            delivery_records: (report.delivery_records ?? []).map((record) => ({
+              ...record,
+              recipient_contact: canLoadDeliverySupport ? record.recipient_contact : null,
+            })),
+            patient_summary: patientSummary
+              ? {
+                  id: patientSummary.id,
+                  name: patientSummary.name,
+                  name_kana: patientSummary.name_kana,
+                  birth_date: toDateOnlyString(patientSummary.birth_date),
+                }
+              : null,
+            visit_summary: visitSummary
+              ? {
+                  id: visitSummary.id,
+                  visit_date: visitSummary.visit_date.toISOString(),
+                }
+              : null,
+            intake_baseline_context: intakeBaselineContext,
+            permissions,
+            delivery_rule_suggestion: deliveryRuleSuggestion,
+            external_professional_suggestions: externalProfessionalSuggestions.map((item) => ({
+              ...item,
+              last_contacted_at: item.last_contacted_at?.toISOString() ?? null,
+            })),
+            prescriber_institution_suggestion: prescriberInstitutionSuggestion
+              ? {
+                  ...prescriberInstitutionSuggestion,
+                  recommended_channels: getRecommendedChannels({
+                    phone: prescriberInstitutionSuggestion.phone,
+                    fax: prescriberInstitutionSuggestion.fax,
+                    address: prescriberInstitutionSuggestion.address,
+                    stats: prescriberInstitutionStats.get(prescriberInstitutionSuggestion.name),
+                  }),
+                  contact_reliability: buildCareTeamContactChannelReadiness({
+                    role: 'physician',
+                    phone: prescriberInstitutionSuggestion.phone,
+                    fax: prescriberInstitutionSuggestion.fax,
+                  }),
+                  prescribed_date: prescriberInstitutionSuggestion.prescribed_date.toISOString(),
+                }
+              : null,
+          },
+        }),
+      );
     },
-  });
+    { requestContext: ctx },
+  );
+}
 
-  if (!report) return sensitiveResponse(notFound('報告書が見つかりません'));
-  if (
-    !(await canAccessCareReportSource(prisma, ctx.orgId, ctx, {
-      patientId: report.patient_id,
-      caseId: report.case_id,
-      visitRecordId: report.visit_record_id,
-    }))
-  ) {
-    return sensitiveResponse(await forbiddenResponse('この報告書を閲覧する権限がありません'));
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return sensitiveResponse(await authenticatedGET(req, routeContext));
+  } catch {
+    return sensitiveResponse(internalError());
   }
-
-  // case_id がある場合は intake baseline context を付加してUIでの表示に利用する
-  const intakeBaselineContext = getHomeVisitIntake(report.case_?.required_visit_support ?? null);
-  const canLoadPatientContext = permissions.can_view_patient;
-
-  const [patientSummary, visitSummary] = await Promise.all([
-    canLoadPatientContext
-      ? prisma.patient.findFirst({
-          where: { id: report.patient_id, org_id: ctx.orgId },
-          select: {
-            id: true,
-            name: true,
-            name_kana: true,
-            birth_date: true,
-          },
-        })
-      : Promise.resolve(null),
-    canLoadPatientContext && report.visit_record_id
-      ? prisma.visitRecord.findFirst({
-          where: {
-            id: report.visit_record_id,
-            org_id: ctx.orgId,
-            patient_id: report.patient_id,
-          },
-          select: {
-            id: true,
-            visit_date: true,
-          },
-        })
-      : Promise.resolve(null),
-  ]);
-  const prescriberInstitutionSuggestion = canLoadDeliverySupport
-    ? await findLatestPrescriberInstitutionSuggestion(prisma, ctx.orgId, {
-        caseId: report.case_id,
-        patientId: report.patient_id,
-      })
-    : null;
-  const externalProfessionalSuggestions = canLoadDeliverySupport
-    ? await findExternalProfessionalSuggestions(prisma, ctx.orgId, {
-        caseId: report.case_id,
-        patientId: report.patient_id,
-      })
-    : [];
-  const prescriberInstitutionStats =
-    prescriberInstitutionSuggestion != null
-      ? await getChannelStatsByName(prisma, ctx.orgId, [prescriberInstitutionSuggestion.name])
-      : new Map();
-  const deliveryRuleSuggestion = canLoadDeliverySupport
-    ? await resolveDocumentDeliveryRule({
-        orgId: ctx.orgId,
-        documentType: 'care_report',
-        targetRole: inferCareReportTargetRole(report.report_type),
-      })
-    : null;
-
-  const reportData = Object.fromEntries(
-    Object.entries(report).filter(
-      ([key]) => key !== 'case_' && key !== 'org_id' && key !== 'content',
-    ),
-  );
-  const reportResponseData = {
-    ...reportData,
-    ...(canLoadEditableContent ? { content: report.content } : {}),
-    pdf_url: permissions.can_send ? report.pdf_url : null,
-  };
-
-  return sensitiveResponse(
-    success({
-      data: {
-        ...reportResponseData,
-        delivery_records: (report.delivery_records ?? []).map((record) => ({
-          ...record,
-          recipient_contact: canLoadDeliverySupport ? record.recipient_contact : null,
-        })),
-        patient_summary: patientSummary
-          ? {
-              id: patientSummary.id,
-              name: patientSummary.name,
-              name_kana: patientSummary.name_kana,
-              birth_date: toDateOnlyString(patientSummary.birth_date),
-            }
-          : null,
-        visit_summary: visitSummary
-          ? {
-              id: visitSummary.id,
-              visit_date: visitSummary.visit_date.toISOString(),
-            }
-          : null,
-        intake_baseline_context: intakeBaselineContext,
-        permissions,
-        delivery_rule_suggestion: deliveryRuleSuggestion,
-        external_professional_suggestions: externalProfessionalSuggestions.map((item) => ({
-          ...item,
-          last_contacted_at: item.last_contacted_at?.toISOString() ?? null,
-        })),
-        prescriber_institution_suggestion: prescriberInstitutionSuggestion
-          ? {
-              ...prescriberInstitutionSuggestion,
-              recommended_channels: getRecommendedChannels({
-                phone: prescriberInstitutionSuggestion.phone,
-                fax: prescriberInstitutionSuggestion.fax,
-                address: prescriberInstitutionSuggestion.address,
-                stats: prescriberInstitutionStats.get(prescriberInstitutionSuggestion.name),
-              }),
-              contact_reliability: buildCareTeamContactChannelReadiness({
-                role: 'physician',
-                phone: prescriberInstitutionSuggestion.phone,
-                fax: prescriberInstitutionSuggestion.fax,
-              }),
-              prescribed_date: prescriberInstitutionSuggestion.prescribed_date.toISOString(),
-            }
-          : null,
-      },
-    }),
-  );
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
