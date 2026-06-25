@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-1527 JST
+
+- current task: implement Codex-owned `F-20260625-saved-views-bounded-list` after Claude `LOCK_GRANT`, continuing the user-directed bounded-list sweep.
+- files inspected: agmsg inbox/status for notification-rules completion, Claude's queue sanity guidance, and this saved-views lock grant; `git status --short --untracked-files=all`; `src/app/api/saved-views/route.ts`; `src/app/api/saved-views/route.test.ts`; direct caller in `src/app/(dashboard)/views/saved-views-content.tsx`; gbrain `code_callers` / `code_blast` output for `src/app/api/saved-views/route.ts::GET`, which returned not-built/empty; read-only mapper output identifying this endpoint as a low-risk candidate.
+- files changed: `src/app/api/saved-views/route.ts`, `src/app/api/saved-views/route.test.ts`, and this Ralph state entry.
+- bugs found: `/api/saved-views` returned every owned or shared saved view matching the scope with no `take`, so a user/org with many saved views could receive an unbounded list.
+- security risks found: no auth/authz, tenant scope, RLS policy, DB schema, migration, PHI projection, audit logging, billing, deploy, or destructive operation changed. The owned/shared visibility `where` clause remains unchanged: same org plus current user or shared views.
+- performance issues found: bounded the saved-view list query to a default `take: 100` with `limit` clamped to `1..200`, preserving scope validation, visibility where clause, ordering, response envelope, and POST/audit behavior.
+- validation commands: baseline focused `pnpm exec vitest run src/app/api/saved-views/route.test.ts --reporter=dot --testTimeout=30000`; post-change focused `pnpm exec vitest run src/app/api/saved-views/route.test.ts --reporter=dot --testTimeout=30000`; focused `pnpm exec eslint src/app/api/saved-views/route.ts src/app/api/saved-views/route.test.ts`; focused `pnpm exec prettier --check src/app/api/saved-views/route.ts src/app/api/saved-views/route.test.ts`; focused `git diff --check -- src/app/api/saved-views/route.ts src/app/api/saved-views/route.test.ts`; long-gate-locked `pnpm typecheck`.
+- validation results: baseline route Vitest passed `9/9`; final focused Vitest passed `11/11`; focused ESLint passed; focused Prettier passed; focused diff-check passed. Claude independently approved the diff, reran the focused suite `11/11`, verified the bound, preserved visibility where clause, scope validation, ordering, response envelope, and untouched POST/audit behavior. Independent `pnpm typecheck` passed under local long-gate lock with `next typegen`, app `tsc`, and service-worker `tsc` all green. Tests now assert default `take: 100`, explicit `limit=5`, overly large limit clamping to `take: 200`, and preservation of the owned/shared visibility where clause.
+- remaining work: stage and commit only the two route files plus `.codex/ralph-state.md`, notify Claude with the commit hash, and continue the bounded-list queue.
+- next action: drain agmsg before commit, inspect status, commit the approved slice with explicit pathspecs, and send `DONE`.
+
 ### 20260625-1522 JST
 
 - current task: implement Codex-owned `F-20260625-notification-rules-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read sweep requested by the user while Claude stays in checker mode.

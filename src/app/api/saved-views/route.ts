@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withOrgContext } from '@/lib/db/rls';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -26,6 +27,9 @@ import {
 /** filters/sort は画面側が解釈する不透明な JSON。plain object のみ許容する。 */
 const opaqueObjectSchema = z.record(z.string(), z.unknown());
 
+const DEFAULT_SAVED_VIEW_LIMIT = 100;
+const MAX_SAVED_VIEW_LIMIT = 200;
+
 const createSavedViewSchema = z.object({
   name: z.string().trim().min(1, '名前を入力してください').max(100),
   scope: z.enum(SAVED_VIEW_SCOPES),
@@ -41,6 +45,12 @@ export const GET = withAuthContext(async (req, ctx) => {
   if (scopeParam && !isSavedViewScope(scopeParam)) {
     return validationError('scope が不正です');
   }
+  const limit = parseBoundedInteger(
+    searchParams.get('limit'),
+    DEFAULT_SAVED_VIEW_LIMIT,
+    1,
+    MAX_SAVED_VIEW_LIMIT,
+  );
 
   const views = await prisma.savedView.findMany({
     where: {
@@ -50,6 +60,7 @@ export const GET = withAuthContext(async (req, ctx) => {
       OR: [{ user_id: ctx.userId }, { is_shared: true }],
     },
     orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }],
+    take: limit,
   });
 
   return success({ data: views.map((view) => toSavedViewRecord(view, ctx.userId)) });

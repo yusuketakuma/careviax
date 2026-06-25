@@ -130,6 +130,7 @@ describe('/api/saved-views', () => {
         OR: [{ user_id: 'user_1' }, { is_shared: true }],
       },
       orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }],
+      take: 100,
     });
     await expect(response.json()).resolves.toMatchObject({
       data: [
@@ -137,6 +138,40 @@ describe('/api/saved-views', () => {
         { id: 'view_2', isOwner: false, isShared: true },
       ],
     });
+  });
+
+  it('bounds saved view list size when a limit is provided', async () => {
+    prismaMock.savedView.findMany.mockResolvedValue([buildSavedView()]);
+
+    const response = await GET(
+      createRequest('/api/saved-views?scope=schedules&limit=5'),
+      emptyParams,
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.savedView.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          scope: 'schedules',
+          OR: [{ user_id: 'user_1' }, { is_shared: true }],
+        },
+        take: 5,
+      }),
+    );
+  });
+
+  it('clamps overly large saved view list limits', async () => {
+    prismaMock.savedView.findMany.mockResolvedValue([buildSavedView()]);
+
+    const response = await GET(createRequest('/api/saved-views?limit=9999'), emptyParams);
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.savedView.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 200,
+      }),
+    );
   });
 
   it('rejects invalid list scope before querying saved views', async () => {
