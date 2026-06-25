@@ -5,12 +5,14 @@ const {
   withOrgContextMock,
   baseSiteFindFirstMock,
   partnerPharmacyFindFirstMock,
+  pharmacyPartnershipFindManyMock,
   pharmacyPartnershipCreateMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   baseSiteFindFirstMock: vi.fn(),
   partnerPharmacyFindFirstMock: vi.fn(),
+  pharmacyPartnershipFindManyMock: vi.fn(),
   pharmacyPartnershipCreateMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
@@ -38,19 +40,115 @@ vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
 
-import { POST as rawPOST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 import { pharmacyPartnershipRowSchema } from '@/lib/pharmacy-cooperation/api-contracts';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
-function createRequest(body: unknown) {
+function createGetRequest(query = '') {
+  return new NextRequest(`http://localhost/api/pharmacy-partnerships${query}`, {
+    headers: { 'x-org-id': 'org_1' },
+  });
+}
+
+function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/pharmacy-partnerships', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
 }
+
+describe('/api/pharmacy-partnerships GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    pharmacyPartnershipFindManyMock.mockResolvedValue([
+      {
+        id: 'partnership_1',
+        status: 'active',
+        base_site_id: 'site_1',
+        partner_pharmacy_id: 'partner_pharmacy_1',
+        updated_at: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        pharmacyPartnership: {
+          findMany: pharmacyPartnershipFindManyMock,
+        },
+      }),
+    );
+  });
+
+  it('lists partnerships without optional predicates when filters are omitted', async () => {
+    const response = await GET(createGetRequest('?limit=20'));
+
+    expect(response.status).toBe(200);
+    expect(pharmacyPartnershipFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { org_id: 'org_1' },
+        take: 21,
+      }),
+    );
+  });
+
+  it('trims and applies valid status and id filters', async () => {
+    const response = await GET(
+      createGetRequest(
+        '?status=%20active%20&base_site_id=%20site_1%20&partner_pharmacy_id=%20partner_pharmacy_1%20&limit=20',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(pharmacyPartnershipFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          status: 'active',
+          base_site_id: 'site_1',
+          partner_pharmacy_id: 'partner_pharmacy_1',
+        },
+        take: 21,
+      }),
+    );
+  });
+
+  it.each([
+    ['?status=', 'status', 'ステータスを指定してください'],
+    ['?status=%20%20', 'status', 'ステータスを指定してください'],
+    ['?base_site_id=', 'base_site_id', '基準薬局店舗IDを指定してください'],
+    ['?partner_pharmacy_id=%20%20', 'partner_pharmacy_id', '協力薬局IDを指定してください'],
+  ])(
+    'rejects blank filter query "%s" before loading partnerships',
+    async (query, field, message) => {
+      const response = await GET(createGetRequest(query));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: { [field]: [message] },
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(pharmacyPartnershipFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects unsupported status values before loading partnerships', async () => {
+    const response = await GET(createGetRequest('?status=deleted'));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: { status: ['対応していないステータスです'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacyPartnershipFindManyMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('/api/pharmacy-partnerships POST', () => {
   beforeEach(() => {
@@ -77,6 +175,7 @@ describe('/api/pharmacy-partnerships POST', () => {
           findFirst: partnerPharmacyFindFirstMock,
         },
         pharmacyPartnership: {
+          findMany: pharmacyPartnershipFindManyMock,
           create: pharmacyPartnershipCreateMock,
         },
       }),
@@ -85,7 +184,7 @@ describe('/api/pharmacy-partnerships POST', () => {
 
   it('creates a draft partnership after validating base site and partner pharmacy', async () => {
     const response = await POST(
-      createRequest({
+      createPostRequest({
         base_site_id: ' site_1 ',
         partner_pharmacy_id: ' partner_pharmacy_1 ',
         available_services: ['home_visit'],
@@ -138,7 +237,7 @@ describe('/api/pharmacy-partnerships POST', () => {
     });
 
     const response = await POST(
-      createRequest({
+      createPostRequest({
         base_site_id: 'site_1',
         partner_pharmacy_id: 'partner_pharmacy_1',
       }),
