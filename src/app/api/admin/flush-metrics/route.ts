@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { error } from '@/lib/api/response';
 import { flushPerformanceMetricsToCloudWatch } from '@/lib/utils/performance';
+import { logger } from '@/lib/utils/logger';
 
 /**
  * POST /api/admin/flush-metrics
@@ -16,7 +17,15 @@ export const POST = withAuthContext(
       await flushPerformanceMetricsToCloudWatch();
       return NextResponse.json({ ok: true, flushed_at: new Date().toISOString() });
     } catch (err) {
-      console.error('[admin:flush-metrics]', err);
+      logger.error(
+        {
+          event: 'admin.flush_metrics_failed',
+          jobType: 'flush-metrics',
+          operation: 'flush_metrics',
+          code: 'EXTERNAL_JOB_FAILED',
+        },
+        err,
+      );
       return error('EXTERNAL_JOB_FAILED', 'メトリクスのフラッシュに失敗しました', 500);
     }
   },

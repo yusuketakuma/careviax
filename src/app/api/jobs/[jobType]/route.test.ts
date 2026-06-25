@@ -236,6 +236,47 @@ describe('/api/jobs/[jobType] POST', () => {
     });
   });
 
+  it('logs job failures without dumping provider details', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      authMock.mockResolvedValue(null);
+      checkMedicationDeadlinesMock.mockRejectedValueOnce(new Error('job provider secret detail'));
+
+      const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+        params: Promise.resolve({ jobType: 'daily-medication-check' }),
+      });
+
+      expect(response.status).toBe(500);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        code: 'EXTERNAL_JOB_FAILED',
+        message: 'ジョブの実行に失敗しました',
+      });
+      expect(JSON.stringify(body)).not.toContain('job provider secret detail');
+      expect(checkMedicationDeadlinesMock).toHaveBeenCalledOnce();
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0]).toHaveLength(1);
+      const logEntry = JSON.parse(String(consoleErrorSpy.mock.calls[0]?.[0])) as Record<
+        string,
+        unknown
+      >;
+      expect(logEntry).toMatchObject({
+        level: 'error',
+        message: 'job.run_failed',
+        event: 'job.run_failed',
+        jobType: 'daily-medication-check',
+        operation: 'run_job',
+        code: 'EXTERNAL_JOB_FAILED',
+        error_name: 'Error',
+      });
+      expect(JSON.stringify(logEntry)).not.toContain('job provider secret detail');
+      expect(logEntry).not.toHaveProperty('stack');
+      expect(logEntry).not.toHaveProperty('error_message');
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it('rejects blank job types before running a handler', async () => {
     authMock.mockResolvedValue(null);
 

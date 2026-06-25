@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { success, error } from '@/lib/api/response';
 import { requireApiKeyOrAuthContext } from '@/lib/auth/context';
 import { flushPerformanceMetricsToCloudWatch } from '@/lib/utils/performance';
+import { logger } from '@/lib/utils/logger';
 
 /**
  * POST /api/jobs/flush-metrics
@@ -26,7 +27,15 @@ export async function POST(req: NextRequest) {
       flushed_at: new Date().toISOString(),
     }) as NextResponse;
   } catch (err) {
-    console.error('[job:flush-metrics]', err);
+    logger.error(
+      {
+        event: 'job.flush_metrics_failed',
+        jobType: 'flush-metrics',
+        operation: 'flush_metrics',
+        code: 'EXTERNAL_JOB_FAILED',
+      },
+      err,
+    );
     return error('EXTERNAL_JOB_FAILED', 'ジョブの実行に失敗しました', 500) as NextResponse;
   }
 }

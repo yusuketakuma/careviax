@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, error, validationError } from '@/lib/api/response';
 import { requireApiKeyOrAuthContext } from '@/lib/auth/context';
+import { logger } from '@/lib/utils/logger';
 import {
   checkMedicationDeadlines,
   checkRefillPrescriptions,
@@ -142,7 +143,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ job
     }
     return success({ jobType, ...result }) as NextResponse;
   } catch (err) {
-    console.error(`[job:${jobType}]`, err);
+    logger.error(
+      {
+        event: 'job.run_failed',
+        jobType,
+        operation: 'run_job',
+        code: 'EXTERNAL_JOB_FAILED',
+      },
+      err,
+    );
     return error('EXTERNAL_JOB_FAILED', 'ジョブの実行に失敗しました', 500) as NextResponse;
   }
 }

@@ -67,18 +67,38 @@ describe('/api/jobs/flush-metrics POST', () => {
 
   it('returns a generic 500 response without provider details when flushing fails', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    flushMetricsMock.mockRejectedValueOnce(new Error('cloudwatch provider secret detail'));
+    try {
+      flushMetricsMock.mockRejectedValueOnce(new Error('cloudwatch provider secret detail'));
 
-    const response = await POST(createRequest({ authorization: 'Bearer job-secret' }));
+      const response = await POST(createRequest({ authorization: 'Bearer job-secret' }));
 
-    expect(response.status).toBe(500);
-    const body = await response.json();
-    expect(body).toMatchObject({
-      code: 'EXTERNAL_JOB_FAILED',
-      message: 'ジョブの実行に失敗しました',
-    });
-    expect(JSON.stringify(body)).not.toContain('cloudwatch provider secret detail');
-    expect(consoleErrorSpy).toHaveBeenCalledWith('[job:flush-metrics]', expect.any(Error));
-    consoleErrorSpy.mockRestore();
+      expect(response.status).toBe(500);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        code: 'EXTERNAL_JOB_FAILED',
+        message: 'ジョブの実行に失敗しました',
+      });
+      expect(JSON.stringify(body)).not.toContain('cloudwatch provider secret detail');
+      expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+      expect(consoleErrorSpy.mock.calls[0]).toHaveLength(1);
+      const logEntry = JSON.parse(String(consoleErrorSpy.mock.calls[0]?.[0])) as Record<
+        string,
+        unknown
+      >;
+      expect(logEntry).toMatchObject({
+        level: 'error',
+        message: 'job.flush_metrics_failed',
+        event: 'job.flush_metrics_failed',
+        jobType: 'flush-metrics',
+        operation: 'flush_metrics',
+        code: 'EXTERNAL_JOB_FAILED',
+        error_name: 'Error',
+      });
+      expect(JSON.stringify(logEntry)).not.toContain('cloudwatch provider secret detail');
+      expect(logEntry).not.toHaveProperty('stack');
+      expect(logEntry).not.toHaveProperty('error_message');
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });
