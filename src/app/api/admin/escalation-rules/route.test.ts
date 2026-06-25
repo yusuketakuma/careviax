@@ -40,6 +40,13 @@ function createRequest(method: 'GET' | 'POST', headers?: Record<string, string>,
   });
 }
 
+function createGetRequest(search = '', headers?: Record<string, string>) {
+  return new NextRequest(`http://localhost/api/admin/escalation-rules${search}`, {
+    method: 'GET',
+    headers,
+  });
+}
+
 function createMalformedJsonPostRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/admin/escalation-rules', {
     method: 'POST',
@@ -72,21 +79,62 @@ describe('/api/admin/escalation-rules', () => {
       },
     ]);
 
-    const response = await GET(createRequest('GET', { 'x-org-id': 'org_1' }), emptyRouteContext);
+    const response = await GET(
+      createGetRequest('?limit=5', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    await expect(response.json()).resolves.toEqual({
       data: [
-        expect.objectContaining({
+        {
           id: 'rule_1',
           trigger_type: 'workflow_exception_unresolved',
+          condition: { threshold_hours: 12, severity: 'high' },
           action: 'admin_alert',
           notify_role: 'admin',
           is_active: true,
-        }),
+          created_at: '2026-03-28T00:00:00.000Z',
+          updated_at: '2026-03-28T01:00:00.000Z',
+        },
       ],
     });
+    expect(escalationRuleFindManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
+      orderBy: [{ is_active: 'desc' }, { created_at: 'desc' }],
+      take: 5,
+    });
+  });
+
+  it('uses a default list bound and clamps overly large limits', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    escalationRuleFindManyMock.mockResolvedValue([]);
+
+    const defaultResponse = await GET(
+      createGetRequest('', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
+    if (!defaultResponse) throw new Error('defaultResponse is required');
+    expect(defaultResponse.status).toBe(200);
+    expect(escalationRuleFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 100,
+      }),
+    );
+
+    const clampedResponse = await GET(
+      createGetRequest('?limit=9999', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
+    if (!clampedResponse) throw new Error('clampedResponse is required');
+    expect(clampedResponse.status).toBe(200);
+    expect(escalationRuleFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 200,
+      }),
+    );
   });
 
   it('creates an escalation rule', async () => {

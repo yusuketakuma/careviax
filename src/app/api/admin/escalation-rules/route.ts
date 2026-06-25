@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
@@ -6,15 +7,27 @@ import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { createEscalationRuleSchema } from '@/lib/validations/escalation-rule';
 
+const DEFAULT_ESCALATION_RULE_LIMIT = 100;
+const MAX_ESCALATION_RULE_LIMIT = 200;
+
 function serializeCondition(value: Prisma.JsonValue) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
 export const GET = withAuthContext(
-  async (_req, ctx) => {
+  async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_ESCALATION_RULE_LIMIT,
+      1,
+      MAX_ESCALATION_RULE_LIMIT,
+    );
+
     const rules = await prisma.escalationRule.findMany({
       where: { org_id: ctx.orgId },
       orderBy: [{ is_active: 'desc' }, { created_at: 'desc' }],
+      take: limit,
     });
 
     return success({
