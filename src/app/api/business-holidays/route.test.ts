@@ -8,6 +8,7 @@ const {
   auditLogCreateMock,
   validateOrgReferencesMock,
   withOrgContextMock,
+  withAuthContextOptions,
 } = vi.hoisted(() => ({
   businessHolidayFindManyMock: vi.fn(),
   businessHolidayFindFirstMock: vi.fn(),
@@ -15,10 +16,12 @@ const {
   auditLogCreateMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  withAuthContextOptions: [] as unknown[],
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
+  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>, options?: unknown) => {
+    withAuthContextOptions.push(options);
     return (req: NextRequest, routeContext?: unknown) =>
       handler(
         req,
@@ -99,9 +102,93 @@ describe('/api/business-holidays', () => {
   });
 
   it('lists business holidays', async () => {
-    const response = (await GET(createGetRequest('?site_id=site_1')))!;
+    const response = (await GET(
+      createGetRequest('?date_from=2026-03-01&date_to=2026-03-31&site_id=%20site_1%20&limit=5'),
+    ))!;
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: [{ id: 'holiday_1', name: '祝日' }],
+    });
+    expect(withAuthContextOptions).toContainEqual(
+      expect.objectContaining({
+        permission: 'canAdmin',
+        message: '休日設定の閲覧権限がありません',
+      }),
+    );
+    expect(businessHolidayFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        date: {
+          gte: new Date('2026-03-01'),
+          lte: new Date('2026-03-31'),
+        },
+        site_id: 'site_1',
+      },
+      include: {
+        site: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: [{ date: 'asc' }],
+      take: 5,
+    });
+  });
+
+  it('uses a default list bound and clamps overly large limits', async () => {
+    const defaultResponse = (await GET(createGetRequest()))!;
+    expect(defaultResponse.status).toBe(200);
+    expect(businessHolidayFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 100,
+      }),
+    );
+
+    const clampedResponse = (await GET(createGetRequest('?limit=9999')))!;
+    expect(clampedResponse.status).toBe(200);
+    expect(businessHolidayFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 400,
+      }),
+    );
+  });
+
+  it('rejects invalid date range filters before querying holidays', async () => {
+    const response = (await GET(createGetRequest('?date_from=2026-02-31')))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        date_from: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(businessHolidayFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed date ranges before querying holidays', async () => {
+    const response = (await GET(createGetRequest('?date_from=2026-04-20&date_to=2026-04-01')))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        date_to: ['date_to は date_from 以降を指定してください'],
+      },
+    });
+    expect(businessHolidayFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank site filters before querying holidays', async () => {
+    const response = (await GET(createGetRequest('?site_id=%20%20')))!;
+
+    expect(response.status).toBe(400);
+    expect(businessHolidayFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates a business holiday and records an audit log', async () => {

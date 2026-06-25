@@ -1,31 +1,59 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createBusinessHolidaySchema } from '@/lib/validations/business-holiday';
+import { dateKeySchema } from '@/lib/validations/date-key';
+import { z } from 'zod';
+
+const DEFAULT_BUSINESS_HOLIDAY_LIMIT = 100;
+const MAX_BUSINESS_HOLIDAY_LIMIT = 400;
+
+const businessHolidayQuerySchema = z
+  .object({
+    date_from: dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
+    date_to: dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
+    site_id: z.string().trim().min(1, 'site_id が不正です').max(100).optional(),
+  })
+  .refine((value) => !value.date_from || !value.date_to || value.date_to >= value.date_from, {
+    path: ['date_to'],
+    message: 'date_to は date_from 以降を指定してください',
+  });
 
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const dateFrom = searchParams.get('date_from');
-    const dateTo = searchParams.get('date_to');
-    const siteId = searchParams.get('site_id');
+    const parsed = businessHolidayQuerySchema.safeParse({
+      ...(searchParams.has('date_from') ? { date_from: searchParams.get('date_from') } : {}),
+      ...(searchParams.has('date_to') ? { date_to: searchParams.get('date_to') } : {}),
+      ...(searchParams.has('site_id') ? { site_id: searchParams.get('site_id') } : {}),
+    });
+    if (!parsed.success) {
+      return validationError('検索条件が不正です', parsed.error.flatten().fieldErrors);
+    }
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_BUSINESS_HOLIDAY_LIMIT,
+      1,
+      MAX_BUSINESS_HOLIDAY_LIMIT,
+    );
 
     const holidays = await prisma.businessHoliday.findMany({
       where: {
         org_id: ctx.orgId,
-        ...(dateFrom || dateTo
+        ...(parsed.data.date_from || parsed.data.date_to
           ? {
               date: {
-                ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-                ...(dateTo ? { lte: new Date(dateTo) } : {}),
+                ...(parsed.data.date_from ? { gte: new Date(parsed.data.date_from) } : {}),
+                ...(parsed.data.date_to ? { lte: new Date(parsed.data.date_to) } : {}),
               },
             }
           : {}),
-        ...(siteId ? { site_id: siteId } : {}),
+        ...(parsed.data.site_id ? { site_id: parsed.data.site_id } : {}),
       },
       include: {
         site: {
@@ -36,6 +64,7 @@ export const GET = withAuthContext(
         },
       },
       orderBy: [{ date: 'asc' }],
+      take: limit,
     });
 
     return success({ data: holidays });
