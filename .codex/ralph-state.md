@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2114 JST
+
+- current task: continue Codex-only backend/API contract hardening by making `/api/admin/uat-feedback` fixed-list truncation fail-visible with overflow metadata.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; `src/app/api/admin/uat-feedback/route.ts`; `src/app/api/admin/uat-feedback/route.test.ts`; `src/app/(dashboard)/admin/uat/uat-content.tsx`; adjacent bounded GET routes using `take: limit + 1`; gbrain search/refs/call-graph outputs for `uatFeedback.findMany`; API-contract subagent report.
+- files changed: `src/app/api/admin/uat-feedback/route.ts`, `src/app/api/admin/uat-feedback/route.test.ts`, and this Ralph state entry.
+- bugs found: `GET /api/admin/uat-feedback` capped the admin UAT feedback list at 100 rows but returned only `{ data }`, so an org with 101+ rows silently hid older feedback while the UI label implied the saved feedback list was complete.
+- security risks found: no auth, role guard, org scoping, POST/create behavior, PHI projection, DB schema, migration, frontend, external send, or destructive behavior changed. The existing `canAdmin` guard and `where: { org_id: ctx.orgId }` scope are preserved; the new overflow test confirms the 101st row is not returned.
+- performance issues found: the route now fetches `100 + 1` rows to compute `meta.has_more` honestly while keeping the response payload capped at 100. This is a one-row overhead in exchange for preventing silent truncation.
+- validation commands: `pnpm exec vitest run 'src/app/api/admin/uat-feedback/route.test.ts'`; `pnpm exec vitest run 'src/app/api/__tests__/protected-get-routes.test.ts'`; `pnpm exec eslint 'src/app/api/admin/uat-feedback/route.ts' 'src/app/api/admin/uat-feedback/route.test.ts'`; `pnpm exec prettier --check 'src/app/api/admin/uat-feedback/route.ts' 'src/app/api/admin/uat-feedback/route.test.ts'`; `git diff --check -- 'src/app/api/admin/uat-feedback/route.ts' 'src/app/api/admin/uat-feedback/route.test.ts'`; long-gate `pnpm typecheck` under token `74C070C5-DD45-4474-A404-16E8C69B83D0`.
+- validation results: focused admin UAT feedback route Vitest passed `5/5`; protected GET catalog Vitest passed `129/129`; focused ESLint passed; focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released. API-contract reviewer confirmed the diff is the minimal safe fix, with only a future full-pagination note.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, send `DONE` to agmsg, then move to the handoff extraction raw-error redaction finding.
+- next action: drain agmsg, inspect staged paths, and commit the admin UAT feedback overflow metadata slice.
+
 ### 20260625-2107 JST
 
 - current task: continue Codex-only backend/API export hardening by validating `date_from` / `date_to` on patient visit-record list PDF export before builder and audit side effects.

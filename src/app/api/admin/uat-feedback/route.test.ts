@@ -7,6 +7,44 @@ const { feedbackFindManyMock, feedbackCreateMock } = vi.hoisted(() => ({
 }));
 
 const emptyRouteContext = { params: Promise.resolve({}) };
+type UatFeedbackRow = {
+  id: string;
+  org_id: string;
+  submitted_by: string;
+  priority: string;
+  status: string;
+  owner_user_id: string | null;
+  feedback: string;
+  checklist_progress: string | null;
+  checked_items: string[] | null;
+  source: string | null;
+  linked_work_item: string | null;
+  due_date: Date | null;
+  resolved_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+function buildFeedbackRow(overrides: Partial<UatFeedbackRow> = {}): UatFeedbackRow {
+  return {
+    id: 'feedback_1',
+    org_id: 'org_1',
+    submitted_by: 'user_1',
+    priority: 'high',
+    status: 'open',
+    owner_user_id: null,
+    feedback: '訪問後の戻る導線を改善したい',
+    checklist_progress: '4/7',
+    checked_items: ['flow_patient_to_report'],
+    source: 'pilot_pharmacy',
+    linked_work_item: null,
+    due_date: null,
+    resolved_at: null,
+    created_at: new Date('2026-03-28T12:00:00.000Z'),
+    updated_at: new Date('2026-03-28T12:00:00.000Z'),
+    ...overrides,
+  };
+}
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (
@@ -59,25 +97,7 @@ function createMalformedJsonAuthRequest() {
 describe('/api/admin/uat-feedback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    feedbackFindManyMock.mockResolvedValue([
-      {
-        id: 'feedback_1',
-        org_id: 'org_1',
-        submitted_by: 'user_1',
-        priority: 'high',
-        status: 'open',
-        owner_user_id: null,
-        feedback: '訪問後の戻る導線を改善したい',
-        checklist_progress: '4/7',
-        checked_items: ['flow_patient_to_report'],
-        source: 'pilot_pharmacy',
-        linked_work_item: null,
-        due_date: null,
-        resolved_at: null,
-        created_at: new Date('2026-03-28T12:00:00.000Z'),
-        updated_at: new Date('2026-03-28T12:00:00.000Z'),
-      },
-    ]);
+    feedbackFindManyMock.mockResolvedValue([buildFeedbackRow()]);
     feedbackCreateMock.mockResolvedValue({
       id: 'feedback_2',
       org_id: 'org_1',
@@ -105,8 +125,40 @@ describe('/api/admin/uat-feedback', () => {
     expect(feedbackFindManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1' },
       orderBy: [{ created_at: 'desc' }],
-      take: 100,
+      take: 101,
     });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'feedback_1',
+          checked_items: ['flow_patient_to_report'],
+          created_at: '2026-03-28T12:00:00.000Z',
+          updated_at: '2026-03-28T12:00:00.000Z',
+        },
+      ],
+      meta: { limit: 100, has_more: false },
+    });
+  });
+
+  it('reports overflow without returning more than the fixed list limit', async () => {
+    feedbackFindManyMock.mockResolvedValue(
+      Array.from({ length: 101 }, (_, index) =>
+        buildFeedbackRow({
+          id: `feedback_${index + 1}`,
+          created_at: new Date(`2026-03-28T12:${String(index % 60).padStart(2, '0')}:00.000Z`),
+          updated_at: new Date(`2026-03-28T12:${String(index % 60).padStart(2, '0')}:00.000Z`),
+        }),
+      ),
+    );
+
+    const response = await GET(createAuthRequest(), emptyRouteContext);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data).toHaveLength(100);
+    expect(payload.data.at(-1).id).toBe('feedback_100');
+    expect(payload.meta).toEqual({ limit: 100, has_more: true });
   });
 
   it('stores feedback with checklist state', async () => {

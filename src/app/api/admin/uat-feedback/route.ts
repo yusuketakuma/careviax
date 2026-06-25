@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { z } from 'zod';
 
 const uatStatusSchema = z.enum(['open', 'triaged', 'in_progress', 'resolved', 'deferred']);
+const UAT_FEEDBACK_LIST_LIMIT = 100;
 
 const createUatFeedbackSchema = z.object({
   priority: z.enum(['critical', 'high', 'medium', 'low']),
@@ -22,11 +23,12 @@ export const GET = withAuthContext(
         org_id: ctx.orgId,
       },
       orderBy: [{ created_at: 'desc' }],
-      take: 100,
+      take: UAT_FEEDBACK_LIST_LIMIT + 1,
     });
+    const hasMore = feedback.length > UAT_FEEDBACK_LIST_LIMIT;
 
     return success({
-      data: feedback.map((item) => ({
+      data: feedback.slice(0, UAT_FEEDBACK_LIST_LIMIT).map((item) => ({
         ...item,
         checked_items: Array.isArray(item.checked_items) ? item.checked_items : [],
         due_date: item.due_date?.toISOString() ?? null,
@@ -34,6 +36,7 @@ export const GET = withAuthContext(
         created_at: item.created_at.toISOString(),
         updated_at: item.updated_at.toISOString(),
       })),
+      meta: { limit: UAT_FEEDBACK_LIST_LIMIT, has_more: hasMore },
     });
   },
   {
