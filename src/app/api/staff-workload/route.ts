@@ -4,7 +4,6 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { memberRoleLabel } from '@/lib/auth/member-roles';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { mapWithConcurrency } from '@/lib/utils/concurrency';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dateKeySchema } from '@/lib/validations/date-key';
 
@@ -17,7 +16,6 @@ const STAFF_ROLES = [
   'driver',
 ] as const;
 const RECENT_TASK_LIMIT_PER_STAFF = 4;
-const RECENT_TASK_QUERY_CONCURRENCY = 4;
 
 const querySchema = z.object({
   date: dateKeySchema('date は YYYY-MM-DD で指定してください').optional(),
@@ -31,6 +29,12 @@ type OpenTask = {
   status: string;
   due_date: string | null;
   sla_due_at: string | null;
+};
+
+type RecentOpenTaskRow = Omit<OpenTask, 'due_date' | 'sla_due_at'> & {
+  assigned_to: string | null;
+  due_date: Date | null;
+  sla_due_at: Date | null;
 };
 
 export async function GET(req: NextRequest) {
@@ -69,7 +73,7 @@ export async function GET(req: NextRequest) {
     return success({ data: [], date: dateKey });
   }
 
-  const [openTaskGroups, recentTaskLists, visits, dispenseTaskGroups] = await Promise.all([
+  const [openTaskGroups, openTasks, visits, dispenseTaskGroups] = await Promise.all([
     prisma.task.groupBy({
       by: ['assigned_to'],
       where: {
@@ -79,32 +83,34 @@ export async function GET(req: NextRequest) {
       },
       _count: { id: true },
     }),
-    mapWithConcurrency(staffIds, RECENT_TASK_QUERY_CONCURRENCY, (staffId) =>
-      prisma.task.findMany({
-        where: {
-          org_id: ctx.orgId,
-          assigned_to: staffId,
-          status: { in: ['pending', 'in_progress'] },
-        },
-        orderBy: [
-          { sla_due_at: 'asc' },
-          { due_date: 'asc' },
-          { priority: 'asc' },
-          { created_at: 'desc' },
-        ],
-        take: RECENT_TASK_LIMIT_PER_STAFF,
-        select: {
-          id: true,
-          assigned_to: true,
-          title: true,
-          task_type: true,
-          priority: true,
-          status: true,
-          due_date: true,
-          sla_due_at: true,
-        },
-      }),
-    ),
+    prisma.$queryRaw<RecentOpenTaskRow[]>`
+      SELECT id, assigned_to, title, task_type, priority, status, due_date, sla_due_at
+      FROM (
+        SELECT
+          id,
+          assigned_to,
+          title,
+          task_type,
+          priority,
+          status,
+          due_date,
+          sla_due_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY assigned_to
+            ORDER BY
+              sla_due_at ASC NULLS LAST,
+              due_date ASC NULLS LAST,
+              priority ASC,
+              created_at DESC
+          ) AS rn
+        FROM "Task"
+        WHERE org_id = ${ctx.orgId}
+          AND assigned_to = ANY(${staffIds}::text[])
+          AND status IN ('pending', 'in_progress')
+      ) ranked
+      WHERE rn <= ${RECENT_TASK_LIMIT_PER_STAFF}
+      ORDER BY assigned_to ASC, rn ASC
+    `,
     prisma.visitSchedule.findMany({
       where: {
         org_id: ctx.orgId,
@@ -133,7 +139,6 @@ export async function GET(req: NextRequest) {
       _count: { id: true },
     }),
   ]);
-  const openTasks = recentTaskLists.flat();
 
   const openTaskCountByUser = new Map(
     openTaskGroups
