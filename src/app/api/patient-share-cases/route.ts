@@ -293,7 +293,7 @@ export const GET = withAuthContext(
     );
   },
   {
-    permission: 'canVisit',
+    permission: 'canManagePatientSharing',
     message: '患者共有ケースの閲覧権限がありません',
   },
 );

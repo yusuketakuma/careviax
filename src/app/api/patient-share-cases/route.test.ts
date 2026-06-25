@@ -22,18 +22,44 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
+  withAuthContext: (
+    handler: (...args: unknown[]) => Promise<Response>,
+    options?: { permission?: string; message?: string },
+  ) => {
+    return (req: NextRequest, routeContext?: unknown) => {
+      const role = req.headers.get('x-role') ?? 'pharmacist';
+      const canManagePatientSharing = ['owner', 'admin', 'pharmacist'].includes(role);
+      const canVisit = canManagePatientSharing || role === 'pharmacist_trainee';
+      const allowed =
+        !options?.permission ||
+        (options.permission === 'canManagePatientSharing'
+          ? canManagePatientSharing
+          : options.permission === 'canVisit'
+            ? canVisit
+            : true);
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({
+            code: 'AUTH_FORBIDDEN',
+            message: options?.message ?? '権限がありません',
+          }),
+          {
+            status: 403,
+            headers: { 'content-type': 'application/json' },
+          },
+        );
+      }
+      return handler(
         req,
         {
           orgId: 'org_1',
           userId: 'user_1',
-          role: 'pharmacist',
+          role,
           actorSiteId: 'site_1',
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -59,8 +85,10 @@ function createPostRequest(body: unknown) {
   });
 }
 
-function createGetRequest(query = '') {
-  return new NextRequest(`http://localhost/api/patient-share-cases${query}`);
+function createGetRequest(query = '', role = 'pharmacist') {
+  return new NextRequest(`http://localhost/api/patient-share-cases${query}`, {
+    headers: { 'x-role': role },
+  });
 }
 
 describe('/api/patient-share-cases', () => {
@@ -281,6 +309,19 @@ describe('/api/patient-share-cases', () => {
         }),
       }),
     );
+  });
+
+  it('rejects visit-only roles before loading or auditing share cases', async () => {
+    const response = await GET(createGetRequest('?limit=8', 'pharmacist_trainee'));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '患者共有ケースの閲覧権限がありません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareCaseFindManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('trims and applies valid filters and view context', async () => {

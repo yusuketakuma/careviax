@@ -52,7 +52,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
   {
     path: '/api/patient-share-cases',
     methods: ['GET'],
-    permission: 'canVisit',
+    permission: 'canManagePatientSharing',
     description: '薬局間連携の患者共有ケース一覧取得',
     area: 'patients',
   },
