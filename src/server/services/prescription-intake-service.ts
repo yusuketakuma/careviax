@@ -1254,6 +1254,7 @@ async function syncMedicationProfiles(
     }
   }
   const incomingKeys = new Set<string>();
+  const profilesToCreate: Prisma.MedicationProfileCreateManyInput[] = [];
 
   // 新規処方の各行を upsert
   for (const line of intakeLines) {
@@ -1293,23 +1294,28 @@ async function syncMedicationProfiles(
         updated++;
       }
     } else {
-      // 新規プロファイル作成
-      await prisma.medicationProfile.create({
-        data: {
-          org_id: orgId,
-          patient_id: patientId,
-          drug_name: line.drug_name,
-          drug_master_id: resolvedDrugMasterId,
-          dose: line.dose,
-          frequency: line.frequency,
-          prescriber: prescriberName,
-          start_date: startDate,
-          is_current: true,
-          source: sourceType === 'qr_scan' ? 'qr_scan' : 'prescription',
-        },
+      // 新規プロファイル作成。在宅の多剤併用では新規行が多数になり得るため、行ごとの
+      // create(N 回の round-trip)を避け、ループ後に createMany で一括挿入する。
+      // 各行は独立した新規プロファイルで相互依存しない。
+      profilesToCreate.push({
+        org_id: orgId,
+        patient_id: patientId,
+        drug_name: line.drug_name,
+        drug_master_id: resolvedDrugMasterId,
+        dose: line.dose,
+        frequency: line.frequency,
+        prescriber: prescriberName,
+        start_date: startDate,
+        is_current: true,
+        source: sourceType === 'qr_scan' ? 'qr_scan' : 'prescription',
       });
       created++;
     }
+  }
+
+  // 新規プロファイルは多剤併用でも 1 回の挿入で済むよう一括作成する。
+  if (profilesToCreate.length > 0) {
+    await prisma.medicationProfile.createMany({ data: profilesToCreate });
   }
 
   // 今回の処方に含まれない既存プロファイルを中止扱い（一括更新）

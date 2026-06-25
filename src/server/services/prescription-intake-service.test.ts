@@ -19,6 +19,7 @@ const {
     medicationProfile: {
       findMany: vi.fn(),
       create: vi.fn(),
+      createMany: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
     },
@@ -1290,5 +1291,60 @@ describe('createPrescriptionIntake', () => {
     );
     if (!result.profileSyncResult) throw new Error('profile sync result is required');
     expect(result.profileSyncResult.discontinued).toBe(0);
+  });
+
+  it('batches multiple new medication profiles into a single createMany (polypharmacy intake)', async () => {
+    // 既存プロファイルなし → 全行が新規作成パス。在宅の多剤併用を想定して 3 行を渡す。
+    prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
+    prismaMock.medicationProfile.findMany.mockResolvedValue([]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([]);
+
+    const result = await runPrescriptionIntakePostCreateHooks({
+      cycleId: 'cycle_1',
+      intakeId: 'intake_1',
+      patientId: 'patient_1',
+      orgId: 'org_1',
+      lines: [
+        {
+          drug_name: 'アムロジピン錠5mg',
+          drug_code: '2149001',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+        },
+        {
+          drug_name: 'ロスバスタチン錠2.5mg',
+          drug_code: '2189017',
+          dose: '1錠',
+          frequency: '1日1回夕食後',
+        },
+        {
+          drug_name: 'メトホルミン錠250mg',
+          drug_code: '3962005',
+          dose: '2錠',
+          frequency: '1日2回朝夕食後',
+        },
+      ],
+      prescriberName: '処方医A',
+      sourceType: 'paper',
+    });
+
+    // perf: 行ごとの create(N 回の round-trip)ではなく、1 回の createMany にまとめること。
+    expect(prismaMock.medicationProfile.create).not.toHaveBeenCalled();
+    expect(prismaMock.medicationProfile.createMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.medicationProfile.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          drug_name: 'アムロジピン錠5mg',
+          is_current: true,
+          source: 'prescription',
+        }),
+        expect.objectContaining({ drug_name: 'ロスバスタチン錠2.5mg' }),
+        expect.objectContaining({ drug_name: 'メトホルミン錠250mg' }),
+      ],
+    });
+    if (!result.profileSyncResult) throw new Error('profile sync result is required');
+    expect(result.profileSyncResult.created).toBe(3);
   });
 });
