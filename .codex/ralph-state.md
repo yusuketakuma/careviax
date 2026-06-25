@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-1755 JST
+
+- current task: implement user-requested A#5 bounded admin GET list for `/api/drug-alert-rules`, limited to `src/app/api/drug-alert-rules/route.ts`, `src/app/api/drug-alert-rules/route.test.ts`, and this Ralph state file.
+- files inspected: agmsg identity/delivery/inbox and Claude ACK for A#5 no-conflict; `git status --short --untracked-files=all`; `.codex/ralph-state.md`; `src/app/api/drug-alert-rules/route.ts`; `src/app/api/drug-alert-rules/route.test.ts`; `src/lib/api/pagination.ts`; nearby bounded-list patterns in `src/app/api/notification-rules/route.ts` and `src/app/api/packaging-methods/route.ts`; gbrain query result for drug-alert-rules/CDS context; gbrain `code_blast` and `code_callers` output for `src/app/api/drug-alert-rules/route.ts::GET`.
+- files changed: `src/app/api/drug-alert-rules/route.ts`, `src/app/api/drug-alert-rules/route.test.ts`, and this Ralph state entry.
+- bugs found: admin GET `/api/drug-alert-rules` returned all org/global alert rules with no protective `take`, even though this endpoint is a list route.
+- security risks found: reduced bounded-read/data-exposure risk for the admin list only. `requireAuthContext` with `canAdmin`, unsupported `alert_type` early validation before DB access, org/global scope `OR: [{ org_id: ctx.orgId }, { org_id: null }]`, ordering, success envelope, and POST behavior are preserved. No auth/authz, RLS, DB schema, migration, audit, external send, frontend, or destructive behavior changed. The CDS safety engine path and `src/server/cds/checker.ts` remain untouched, so engine rule reads stay unbounded as required.
+- performance issues found: added default `take: 200` with `limit` clamped to `1..500` on the admin route `tx.drugAlertRule.findMany` call only, bounding response size while preserving valid `alert_type` filtering.
+- validation commands: `pnpm exec vitest run src/app/api/drug-alert-rules/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/drug-alert-rules/route.ts src/app/api/drug-alert-rules/route.test.ts`; `pnpm exec prettier --check src/app/api/drug-alert-rules/route.ts src/app/api/drug-alert-rules/route.test.ts .codex/ralph-state.md`; `git diff --check -- src/app/api/drug-alert-rules/route.ts src/app/api/drug-alert-rules/route.test.ts .codex/ralph-state.md`; long-gate `pnpm typecheck`.
+- validation results: focused Vitest passed `10/10`; focused ESLint passed; focused Prettier check passed; focused write-scope diff-check passed. Tests assert default `take: 200`, explicit `limit=5`, large clamp `limit=9999 -> 500`, low clamp `limit=0 -> 1`, malformed fallback `limit=abc -> 200`, valid `alert_type` where preservation with `take: 5`, and unsupported `alert_type` returning `400` before `findMany`. `pnpm typecheck` passed under long-gate token `E7444540-6227-4DBD-B1CF-0A550321E5BE`. Claude reviewed A#5 as PASS, and medical-safety reviewer separately confirmed no CDS regression.
+- remaining work: stage only the two drug-alert-rules files plus this Ralph entry, commit the slice, and send `DONE` to Claude.
+- next action: commit F-20260625-drug-alert-rules-bounded-list, then choose the next backend-safe remaining A-list item.
+
 ### 20260625-1722 JST
 
 - current task: implement Codex-owned `F-20260625-packaging-methods-bounded-list` (A#6) after Claude's parallel `LOCK_GRANT`, continuing the A-list bounded-read hardening sweep after committing A#3.

@@ -76,6 +76,37 @@ describe('/api/drug-alert-rules', () => {
         OR: [{ org_id: 'org_1' }, { org_id: null }],
       },
       orderBy: [{ alert_type: 'asc' }, { org_id: 'desc' }, { updated_at: 'desc' }],
+      take: 200,
+    });
+  });
+
+  it.each([
+    ['?limit=5', 5],
+    ['?limit=9999', 500],
+    ['?limit=0', 1],
+    ['?limit=abc', 200],
+  ])('bounds alert rule list limit %s to %d', async (search, expectedTake) => {
+    const response = (await GET(createGetRequest(search)))!;
+
+    expect(response.status).toBe(200);
+    expect(drugAlertRuleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: expectedTake,
+      }),
+    );
+  });
+
+  it('preserves valid alert_type filters when applying the list limit', async () => {
+    const response = (await GET(createGetRequest('?alert_type=interaction&limit=5')))!;
+
+    expect(response.status).toBe(200);
+    expect(drugAlertRuleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        alert_type: 'interaction',
+        OR: [{ org_id: 'org_1' }, { org_id: null }],
+      },
+      orderBy: [{ alert_type: 'asc' }, { org_id: 'desc' }, { updated_at: 'desc' }],
+      take: 5,
     });
   });
 

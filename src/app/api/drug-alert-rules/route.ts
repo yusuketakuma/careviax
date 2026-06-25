@@ -1,10 +1,14 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+
+const DEFAULT_DRUG_ALERT_RULE_LIMIT = 200;
+const MAX_DRUG_ALERT_RULE_LIMIT = 500;
 
 const alertTypeSchema = z.enum([
   'interaction',
@@ -40,6 +44,12 @@ export async function GET(req: NextRequest) {
       alert_type: ['対応していないアラート種別です'],
     });
   }
+  const limit = parseBoundedInteger(
+    searchParams.get('limit'),
+    DEFAULT_DRUG_ALERT_RULE_LIMIT,
+    1,
+    MAX_DRUG_ALERT_RULE_LIMIT,
+  );
 
   const rules = await withOrgContext(ctx.orgId, (tx) =>
     tx.drugAlertRule.findMany({
@@ -48,6 +58,7 @@ export async function GET(req: NextRequest) {
         OR: [{ org_id: ctx.orgId }, { org_id: null }],
       },
       orderBy: [{ alert_type: 'asc' }, { org_id: 'desc' }, { updated_at: 'desc' }],
+      take: limit,
     }),
   );
 
