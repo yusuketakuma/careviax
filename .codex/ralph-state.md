@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-1513 JST
+
+- current task: implement Codex-owned `F-20260625-pharmacist-shift-templates-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read hardening lane after Claude's services scout found no safe auto-fixable issue.
+- files inspected: agmsg inbox/status for Claude's services scout conclusion, service-areas completion confirmation, and this pharmacist-shift lock grant; `git status --short --untracked-files=all`; `src/app/api/pharmacist-shift-templates/route.ts`; `src/app/api/pharmacist-shift-templates/route.test.ts`; direct caller in `src/app/(dashboard)/admin/shifts/shifts-content.tsx`; gbrain `code_callers` / `code_blast` output for `src/app/api/pharmacist-shift-templates/route.ts::GET`, which returned not-built/empty.
+- files changed: `src/app/api/pharmacist-shift-templates/route.ts`, `src/app/api/pharmacist-shift-templates/route.test.ts`, and this Ralph state entry.
+- bugs found: `/api/pharmacist-shift-templates` returned every shift template row with `site` and `user` included and no `take`. The optional `user_id` query was passed through untrimmed, so whitespace-padded filters missed valid rows and blank filters were treated as no filter instead of invalid input.
+- security risks found: reduced external-input risk by validating `user_id` before DB access and returning a generic query-parameter validation error for blank/invalid values. No auth/authz, tenant scope, RLS policy, DB schema, migration, PHI projection, audit logging, billing, deploy, or destructive operation changed.
+- performance issues found: bounded the shift-template list query to a default `take: 100` with `limit` clamped to `1..200`, preserving org scope, valid user filtering, ordering, include shape, and response envelope. POST/upsert behavior is unchanged.
+- validation commands: baseline focused `pnpm exec vitest run src/app/api/pharmacist-shift-templates/route.test.ts --reporter=dot --testTimeout=30000`; post-change focused `pnpm exec vitest run src/app/api/pharmacist-shift-templates/route.test.ts --reporter=dot --testTimeout=30000`; focused `pnpm exec eslint src/app/api/pharmacist-shift-templates/route.ts src/app/api/pharmacist-shift-templates/route.test.ts`; focused `pnpm exec prettier --check src/app/api/pharmacist-shift-templates/route.ts src/app/api/pharmacist-shift-templates/route.test.ts`; focused `git diff --check -- src/app/api/pharmacist-shift-templates/route.ts src/app/api/pharmacist-shift-templates/route.test.ts`; long-gate-locked `pnpm typecheck`.
+- validation results: baseline route Vitest passed `4/4`; final focused Vitest passed `7/7`; focused ESLint passed; focused Prettier passed; focused diff-check passed. Claude independently approved the diff, reran the focused suite `7/7`, verified the bound, blank rejection, caller compatibility, and no POST/schema/auth/RLS/billing/destructive change. Independent `pnpm typecheck` passed under local long-gate lock with `next typegen`, app `tsc`, and service-worker `tsc` all green. Tests now assert default `take: 100`, explicit `limit=5`, overly large limit clamping to `take: 200`, trimmed `user_id` reaching Prisma, and blank `user_id` exiting before DB access.
+- remaining work: stage and commit only the two route files plus `.codex/ralph-state.md`, notify Claude with the commit hash, and continue the backend hardening loop.
+- next action: drain agmsg before commit, inspect status, commit the approved slice with explicit pathspecs, and send `DONE`.
+
 ### 20260625-1508 JST
 
 - current task: implement Codex-owned `F-20260625-service-areas-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read hardening lane while Claude runs a services correctness scout.

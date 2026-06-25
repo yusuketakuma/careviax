@@ -1,11 +1,18 @@
 import { NextRequest } from 'next/server';
+import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { upsertShiftTemplateSchema } from '@/lib/validations/pharmacist-shift-template';
+
+const DEFAULT_SHIFT_TEMPLATE_LIMIT = 100;
+const MAX_SHIFT_TEMPLATE_LIMIT = 200;
+
+const userIdQuerySchema = z.string().trim().min(1).max(100);
 
 function toTimeValue(value?: string) {
   return value ? new Date(`1970-01-01T${value}`) : null;
@@ -20,14 +27,28 @@ export async function GET(req: NextRequest) {
   const { ctx } = authResult;
 
   const { searchParams } = new URL(req.url);
-  const userId = searchParams.get('user_id') ?? undefined;
+  const userIdRaw = searchParams.get('user_id');
+  const parsedUserId = userIdRaw === null ? null : userIdQuerySchema.safeParse(userIdRaw);
+  const limit = parseBoundedInteger(
+    searchParams.get('limit'),
+    DEFAULT_SHIFT_TEMPLATE_LIMIT,
+    1,
+    MAX_SHIFT_TEMPLATE_LIMIT,
+  );
+
+  if (parsedUserId && !parsedUserId.success) {
+    return validationError('クエリパラメータが不正です', {
+      user_id: ['user_id が不正です'],
+    });
+  }
 
   const templates = await prisma.pharmacistShiftTemplate.findMany({
     where: {
       org_id: ctx.orgId,
-      ...(userId ? { user_id: userId } : {}),
+      ...(parsedUserId?.success ? { user_id: parsedUserId.data } : {}),
     },
     orderBy: [{ user_id: 'asc' }, { weekday: 'asc' }],
+    take: limit,
     include: {
       site: {
         select: { id: true, name: true },

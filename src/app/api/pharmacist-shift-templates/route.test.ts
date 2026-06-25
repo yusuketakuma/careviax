@@ -69,7 +69,7 @@ describe('/api/pharmacist-shift-templates', () => {
 
   it('lists shift templates filtered by pharmacist', async () => {
     const response = (await GET(
-      createRequest('http://localhost/api/pharmacist-shift-templates?user_id=user_2'),
+      createRequest('http://localhost/api/pharmacist-shift-templates?user_id=%20user_2%20'),
     ))!;
 
     expect(response.status).toBe(200);
@@ -79,11 +79,50 @@ describe('/api/pharmacist-shift-templates', () => {
         user_id: 'user_2',
       },
       orderBy: [{ user_id: 'asc' }, { weekday: 'asc' }],
+      take: 100,
       include: {
         site: { select: { id: true, name: true } },
         user: { select: { id: true, name: true } },
       },
     });
+  });
+
+  it('bounds shift template list size when a limit is provided', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shift-templates?limit=5'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftTemplateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+        },
+        take: 5,
+      }),
+    );
+  });
+
+  it('clamps overly large shift template list limits', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shift-templates?limit=9999'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacistShiftTemplateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 200,
+      }),
+    );
+  });
+
+  it('rejects blank pharmacist filters before DB access', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shift-templates?user_id=%20%20'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(pharmacistShiftTemplateFindManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object template payloads before reference checks or upsert', async () => {
