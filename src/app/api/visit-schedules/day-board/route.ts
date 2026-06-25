@@ -6,6 +6,7 @@ import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { timeDateToMinutes } from '@/lib/visits/time-of-day';
 import type {
   DayBoardPendingProposal,
   DayBoardStaff,
@@ -39,9 +40,11 @@ import {
 const STAFF_ROW_LIMIT = 6;
 const PENDING_PROPOSAL_LIMIT = 3;
 const OPERATIONAL_TASK_LIMIT = 24;
-/** 余白試算: 勤務帯 9:00-18:00 から昼休みを除いた基準分 */
-const WORKDAY_MINUTES = 9 * 60;
-const LUNCH_MINUTES = 60;
+/** 余白試算: シフト未登録時は 9:00-18:00 とみなす */
+const DEFAULT_WORKDAY_START_MINUTES = 9 * 60;
+const DEFAULT_WORKDAY_END_MINUTES = 18 * 60;
+const LUNCH_START_MINUTES = 12 * 60;
+const LUNCH_END_MINUTES = 13 * 60;
 const TRAVEL_MINUTES_PER_VISIT = 30;
 const DEFAULT_VISIT_MINUTES = 60;
 
@@ -141,8 +144,33 @@ function serializeOperationalTask(task: {
 }
 
 function minutesOfTimeValue(value: Date | null): number | null {
-  if (!value) return null;
-  return value.getHours() * 60 + value.getMinutes();
+  return timeDateToMinutes(value);
+}
+
+function workdayAvailableMinutes(startMinutes: number, endMinutes: number): number {
+  if (endMinutes <= startMinutes) return 0;
+  const lunchOverlapMinutes = Math.max(
+    0,
+    Math.min(endMinutes, LUNCH_END_MINUTES) - Math.max(startMinutes, LUNCH_START_MINUTES),
+  );
+  return Math.max(0, endMinutes - startMinutes - lunchOverlapMinutes);
+}
+
+function shiftAvailableMinutes(
+  shift:
+    | {
+        available: boolean;
+        available_from: Date | null;
+        available_to: Date | null;
+      }
+    | null
+    | undefined,
+): number {
+  if (shift?.available === false) return 0;
+  const startMinutes =
+    minutesOfTimeValue(shift?.available_from ?? null) ?? DEFAULT_WORKDAY_START_MINUTES;
+  const endMinutes = minutesOfTimeValue(shift?.available_to ?? null) ?? DEFAULT_WORKDAY_END_MINUTES;
+  return workdayAvailableMinutes(startMinutes, endMinutes);
 }
 
 /** 訪問の占有分(時間未設定は既定 60 分)。 */
@@ -433,7 +461,7 @@ export const GET = withAuthContext(
     const dayStart = utcDateFromLocalKey(dateKey);
     const dayEnd = addUtcDays(dayStart, 1);
 
-    const [memberships, schedules, openTaskGroups, unavailableShifts, vehicleResources, proposals] =
+    const [memberships, schedules, openTaskGroups, pharmacistShifts, vehicleResources, proposals] =
       await Promise.all([
         prisma.membership.findMany({
           where: {
@@ -521,9 +549,13 @@ export const GET = withAuthContext(
           where: {
             org_id: ctx.orgId,
             date: { gte: dayStart, lt: dayEnd },
-            available: false,
           },
-          select: { user_id: true },
+          select: {
+            user_id: true,
+            available: true,
+            available_from: true,
+            available_to: true,
+          },
         }),
         prisma.visitVehicleResource.findMany({
           where: {
@@ -651,7 +683,10 @@ export const GET = withAuthContext(
 
     // 同一ユーザーの重複 membership を除去しつつ、訪問のある担当者を優先して行数を絞る。
     // 当日シフトで不在(available=false)のメンバーはボードに出さない(デザイン 03: 休みはレーン非表示)
-    const unavailableUserIds = new Set(unavailableShifts.map((shift) => shift.user_id));
+    const shiftByUserId = new Map(pharmacistShifts.map((shift) => [shift.user_id, shift]));
+    const unavailableUserIds = new Set(
+      pharmacistShifts.filter((shift) => !shift.available).map((shift) => shift.user_id),
+    );
     const seenUserIds = new Set<string>();
     const staffAll: DayBoardStaff[] = [];
     for (const membership of memberships) {
@@ -743,7 +778,10 @@ export const GET = withAuthContext(
           TRAVEL_MINUTES_PER_VISIT,
         0,
       );
-      const idleBefore = Math.max(0, WORKDAY_MINUTES - LUNCH_MINUTES - occupied);
+      const shiftMinutes = shiftAvailableMinutes(
+        shiftByUserId.get(proposal.proposed_pharmacist_id),
+      );
+      const idleBefore = Math.max(0, shiftMinutes - occupied);
       const proposalMinutes =
         visitOccupiedMinutes(proposal.time_window_start, proposal.time_window_end) +
         TRAVEL_MINUTES_PER_VISIT;

@@ -310,7 +310,9 @@ describe('/api/visit-schedules/day-board', () => {
       { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },
       { role: 'clerk', user: { id: 'user_4', name: '田中 真' } },
     ]);
-    pharmacistShiftFindManyMock.mockResolvedValue([{ user_id: 'user_4' }]);
+    pharmacistShiftFindManyMock.mockResolvedValue([
+      { user_id: 'user_4', available: false, available_from: null, available_to: null },
+    ]);
 
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
     expect(response.status).toBe(200);
@@ -318,14 +320,19 @@ describe('/api/visit-schedules/day-board', () => {
 
     expect(json.data.staff.map((member: { id: string }) => member.id)).toEqual(['user_1']);
     const shiftWhere = pharmacistShiftFindManyMock.mock.calls.at(0)?.[0]?.where;
-    expect(shiftWhere?.available).toBe(false);
     expect(shiftWhere?.date).toEqual({
       gte: new Date('2026-06-12T00:00:00.000Z'),
       lt: new Date('2026-06-13T00:00:00.000Z'),
     });
+    expect(pharmacistShiftFindManyMock.mock.calls.at(0)?.[0]?.select).toEqual({
+      user_id: true,
+      available: true,
+      available_from: true,
+      available_to: true,
+    });
   });
 
-  it('compares proposal impact ranges with the stored UTC date values', async () => {
+  it('compares proposal impact ranges with the stored UTC date values and pharmacist shift capacity', async () => {
     proposalFindManyMock.mockResolvedValue([
       {
         id: 'proposal_1',
@@ -339,6 +346,14 @@ describe('/api/visit-schedules/day-board', () => {
         case_: { patient: { name: '鈴木 修' } },
       },
     ]);
+    pharmacistShiftFindManyMock.mockResolvedValue([
+      {
+        user_id: 'user_1',
+        available: true,
+        available_from: new Date(Date.UTC(1970, 0, 1, 10, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 15, 0)),
+      },
+    ]);
     visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
       {
         pharmacist_id: 'user_1',
@@ -348,7 +363,7 @@ describe('/api/visit-schedules/day-board', () => {
       },
     ]);
 
-    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    const response = (await GET(createRequest('2026-06-13'), { params: Promise.resolve({}) }))!;
     expect(response.status).toBe(200);
     const json = await response.json();
 
@@ -360,8 +375,78 @@ describe('/api/visit-schedules/day-board', () => {
 
     const proposal = json.data.pending_proposals[0];
     // 同日訪問 1 件(60分 + 移動30分)が余白試算に乗る = UTC 日付キー同士の一致が機能
-    expect(proposal.idle_before_minutes).toBe(480 - 90);
+    // 10:00-15:00 シフトから昼休み 60 分を差し引いた 240 分が基準
+    expect(proposal.idle_before_minutes).toBe(240 - 90);
+    expect(proposal.idle_after_minutes).toBe(240 - 90 - 90);
     expect(proposal.proposed_date).toBe('2026-06-13');
+  });
+
+  it('reports zero proposal idle minutes when the proposed pharmacist is shift-unavailable', async () => {
+    proposalFindManyMock.mockResolvedValue([
+      {
+        id: 'proposal_off',
+        visit_type: 'regular',
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+        proposed_date: new Date('2026-06-13T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 10, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 11, 0)),
+        proposed_pharmacist_id: 'user_1',
+        case_: { patient: { name: '鈴木 修' } },
+      },
+    ]);
+    pharmacistShiftFindManyMock.mockResolvedValue([
+      { user_id: 'user_1', available: false, available_from: null, available_to: null },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    const response = (await GET(createRequest('2026-06-13'), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(json.data.pending_proposals).toEqual([
+      expect.objectContaining({
+        id: 'proposal_off',
+        idle_before_minutes: 0,
+        idle_after_minutes: 0,
+      }),
+    ]);
+  });
+
+  it('falls back to a 9-18 workday for the idle estimate when the proposed pharmacist has no shift row', async () => {
+    proposalFindManyMock.mockResolvedValue([
+      {
+        id: 'proposal_noshift',
+        visit_type: 'regular',
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+        proposed_date: new Date('2026-06-13T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        case_: { patient: { name: '鈴木 修' } },
+      },
+    ]);
+    // user_1 にシフト行なし → 既定 9:00-18:00 から昼休み 60 分を引いた 480 分を基準にする
+    // (旧 WORKDAY_MINUTES - LUNCH_MINUTES と同値の fallback を保持していることを pin する)
+    pharmacistShiftFindManyMock.mockResolvedValue([]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-06-13T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+      },
+    ]);
+
+    const response = (await GET(createRequest('2026-06-13'), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    const proposal = json.data.pending_proposals[0];
+    // 同日訪問 1 件(60分 + 移動30分 = 90)を 480 分から引く。fallback を消すと 0 基準になり RED。
+    expect(proposal.idle_before_minutes).toBe(480 - 90);
+    expect(proposal.idle_after_minutes).toBe(480 - 90 - 90);
   });
 
   it('loads latest pending proposal callback logs in one query', async () => {
