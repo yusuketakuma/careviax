@@ -279,11 +279,9 @@ function findQrDraftLineMismatches(
     ];
 
     for (const comparison of comparisons) {
-      if (
-        comparison.draftValue != null &&
-        normalizeLineComparableValue(comparison.requestValue) !==
-          normalizeLineComparableValue(comparison.draftValue)
-      ) {
+      const requestValue = normalizeLineComparableValue(comparison.requestValue);
+      const draftValue = normalizeLineComparableValue(comparison.draftValue);
+      if (requestValue !== draftValue) {
         mismatches.push(`line_${index + 1}_${comparison.key}`);
       }
     }

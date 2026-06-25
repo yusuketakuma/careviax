@@ -1236,6 +1236,104 @@ describe('/api/prescription-intakes POST', () => {
     expect(intakeCreateMock).not.toHaveBeenCalled();
     expect(supplementalUpdateManyMock).not.toHaveBeenCalled();
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects QR draft imports when submitted optional line values are absent from the draft', async () => {
+    const qrDraftClaimMock = vi.fn();
+    const intakeCreateMock = vi.fn();
+    const supplementalUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'draft_qr',
+            status: 'pending',
+            patient_id: 'patient_qr',
+            parsed_data: {
+              patientName: '山田 太郎',
+              patientNameKana: 'ヤマダ タロウ',
+              patientBirthdate: '1950-03-15',
+              patientGender: 'male',
+              lines: [
+                {
+                  drugName: 'アムロジピン錠5mg',
+                  dose: '1錠',
+                  frequency: '1日1回朝食後',
+                  days: 14,
+                },
+              ],
+            },
+          }),
+          updateMany: qrDraftClaimMock,
+          update: vi.fn(),
+        },
+        jahisSupplementalRecord: {
+          updateMany: supplementalUpdateManyMock,
+        },
+        careCase: {
+          findFirst: vi.fn(),
+        },
+        medicationCycle: {
+          create: vi.fn(),
+          findFirst: vi.fn(),
+          updateMany: vi.fn(),
+        },
+        cycleTransitionLog: {
+          create: vi.fn(),
+        },
+        workflowException: {
+          findFirst: vi.fn(),
+          create: vi.fn(),
+        },
+        prescriptionIntake: {
+          create: intakeCreateMock,
+        },
+        inquiryRecord: {
+          count: vi.fn(),
+        },
+        dispenseTask: {
+          findFirst: vi.fn(),
+          create: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_qr',
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'qr_scan',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'QR下書きの処方明細と送信された処方明細が一致しません',
+      details: {
+        mismatches: ['line_1_drug_code'],
+      },
+    });
+    expect(qrDraftClaimMock).not.toHaveBeenCalled();
+    expect(intakeCreateMock).not.toHaveBeenCalled();
+    expect(supplementalUpdateManyMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
