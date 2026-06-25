@@ -897,6 +897,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'files',
   },
   {
+    path: '/api/management-plans',
+    methods: ['GET', 'POST'],
+    permission: 'canVisit',
+    description: '管理計画書一覧取得・作成',
+    area: 'patients',
+  },
+  {
+    path: '/api/management-plans/:id',
+    methods: ['GET', 'PATCH'],
+    permission: 'canVisit',
+    description: '管理計画書詳細取得・更新',
+    area: 'patients',
+  },
+  {
     path: '/api/management-plans/:id/pdf',
     methods: ['GET'],
     permission: 'canVisit',

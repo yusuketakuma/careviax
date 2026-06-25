@@ -159,6 +159,8 @@ import { GET as dispenseTaskWorkbenchGet } from '../dispense-tasks/[id]/workbenc
 import { GET as firstVisitDocumentsGet } from '../first-visit-documents/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
 import { GET as interventionsGet } from '../interventions/route';
+import { GET as managementPlansGet } from '../management-plans/route';
+import { GET as managementPlanGet } from '../management-plans/[id]/route';
 import { GET as medicationCyclesGet } from '../medication-cycles/route';
 import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
@@ -501,6 +503,23 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       interventionsGet(
         createRequest('http://localhost/api/interventions', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'management-plans GET',
+    handler: () =>
+      managementPlansGet(
+        createRequest('http://localhost/api/management-plans?case_id=case_1', {
+          'x-org-id': 'org_1',
+        }),
+      ),
+  },
+  {
+    name: 'management-plans/[id] GET',
+    handler: () =>
+      managementPlanGet(
+        createRequest('http://localhost/api/management-plans/plan_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'plan_1' }) },
       ),
   },
   {
@@ -909,6 +928,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'first-visit-documents GET' ||
         route.name === 'care-reports/analytics GET' ||
         route.name === 'cases GET' ||
+        route.name === 'management-plans GET' ||
+        route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-schedule-proposals GET' ||
@@ -952,6 +973,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'first-visit-documents GET' ||
         route.name === 'care-reports/analytics GET' ||
         route.name === 'cases GET' ||
+        route.name === 'management-plans GET' ||
+        route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-schedule-proposals GET' ||

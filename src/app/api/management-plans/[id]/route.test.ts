@@ -71,6 +71,11 @@ function createMalformedJsonPatchRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/management-plans/[id]', () => {
   const originalTimezone = process.env.TZ;
 
@@ -150,6 +155,7 @@ describe('/api/management-plans/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'plan_1',
@@ -169,6 +175,7 @@ describe('/api/management-plans/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '管理計画書IDが不正です',
@@ -178,6 +185,38 @@ describe('/api/management-plans/[id]', () => {
     expect(managementPlanUpdateManyMock).not.toHaveBeenCalled();
     expect(scheduleManagementPlanReviewAlertMock).not.toHaveBeenCalled();
     expect(resolveManagementPlanReviewAlertMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store when the management plan is not found on GET', async () => {
+    managementPlanFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'plan_missing' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '管理計画書が見つかりません',
+    });
+  });
+
+  it('returns a fixed no-store 500 envelope when loading a management plan throws', async () => {
+    managementPlanFindFirstMock.mockRejectedValueOnce(new Error('raw plan detail failure'));
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(payload)).not.toContain('raw plan detail failure');
   });
 
   it('rejects blank management plan ids before parsing or loading the plan on PATCH', async () => {

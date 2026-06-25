@@ -6,7 +6,8 @@ import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { formatDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import {
   isManagementPlanDateRangeValid,
@@ -28,7 +29,7 @@ function dateOnlyString(value: Date | string | null | undefined) {
   return formatDateKey(value);
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '管理計画書の閲覧権限がありません',
@@ -51,6 +52,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (!plan) return notFound('管理計画書が見つかりません');
   return success({ data: plan });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

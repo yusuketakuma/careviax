@@ -5,7 +5,8 @@ import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { createManagementPlanSchema } from '@/lib/validations/management-plan';
 
@@ -18,7 +19,12 @@ function readOptionalTrimmedSearchParam(value: string | null): OptionalTrimmedSe
   return { value: trimmed };
 }
 
-export async function GET(req: NextRequest) {
+function findInvalidManagementPlanListQueryParams(searchParams: URLSearchParams) {
+  if (searchParams.getAll('case_id').length <= 1) return null;
+  return { case_id: ['case_id は1つだけ指定してください'] };
+}
+
+async function authenticatedGET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '管理計画書の閲覧権限がありません',
@@ -27,6 +33,11 @@ export async function GET(req: NextRequest) {
   const { ctx } = authResult;
 
   const { searchParams } = new URL(req.url);
+  const invalidQueryParams = findInvalidManagementPlanListQueryParams(searchParams);
+  if (invalidQueryParams) {
+    return validationError('クエリパラメータが不正です', invalidQueryParams);
+  }
+
   const caseIdResult = readOptionalTrimmedSearchParam(searchParams.get('case_id'));
   if ('error' in caseIdResult) return validationError(caseIdResult.error);
   const caseId = caseIdResult.value;
@@ -42,6 +53,14 @@ export async function GET(req: NextRequest) {
   });
 
   return success({ data: plans });
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function POST(req: NextRequest) {

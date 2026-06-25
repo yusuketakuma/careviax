@@ -63,6 +63,11 @@ function createMalformedJsonPostRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/management-plans', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -100,6 +105,7 @@ describe('/api/management-plans', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(managementPlanFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -115,11 +121,44 @@ describe('/api/management-plans', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'case_id は空にできません',
     });
     expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate case filters before listing management plans', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/management-plans?case_id=case_1&case_id=case_2'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: {
+        case_id: ['case_id は1つだけ指定してください'],
+      },
+    });
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 envelope when listing management plans throws', async () => {
+    managementPlanFindManyMock.mockRejectedValueOnce(new Error('raw management plan failure'));
+
+    const response = (await GET(createGetRequest('http://localhost/api/management-plans')))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+    expect(payload).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(payload)).not.toContain('raw management plan failure');
   });
 
   it('denies management plan creation for a case not in the org before write', async () => {
