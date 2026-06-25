@@ -44,7 +44,7 @@ export const GET = withAuthContext(
       return tx.webhookRegistration.findMany({
         where: { org_id: ctx.orgId },
         orderBy: { created_at: 'desc' },
-        take: limit,
+        take: limit + 1,
         select: {
           id: true,
           url: true,
@@ -57,7 +57,13 @@ export const GET = withAuthContext(
       });
     });
 
-    return success({ data: registrations.map(toPublicWebhookRegistration) });
+    return success({
+      data: registrations.slice(0, limit).map(toPublicWebhookRegistration),
+      meta: {
+        limit,
+        has_more: registrations.length > limit,
+      },
+    });
   },
   { permission: 'canAdmin', message: 'Webhook 設定の閲覧権限がありません' },
 );

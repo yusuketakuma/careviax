@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2044 JST
+
+- current task: continue Codex-only backend/API contract hardening by making `/api/admin/webhooks` bounded GET responses fail-visible with additive pagination metadata.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; `src/app/api/admin/webhooks/route.ts`; `src/app/api/admin/webhooks/route.test.ts`; references to `/api/admin/webhooks`; gbrain `code_blast` for `src/app/api/admin/webhooks/route.ts::GET`.
+- files changed: `src/app/api/admin/webhooks/route.ts`, `src/app/api/admin/webhooks/route.test.ts`, and this Ralph state entry.
+- bugs found: the webhook registration list had a bounded `take` but returned only `{ data }`, so callers could not tell when registrations were silently truncated.
+- security risks found: no auth/authz, org scope, secret storage, webhook URL validation, encryption, audit log, DB schema, migration, frontend, external send, or destructive behavior changed. Existing `canAdmin`, org-scoped query, secret exclusion, URL redaction, POST behavior, and compatibility error envelopes are preserved. The new overflow test also proves the extra fetched row is not returned and its URL token is not echoed.
+- performance issues found: the query now fetches `limit + 1` rows instead of exactly `limit` so `has_more` can be computed honestly. Response payload remains capped at `limit`.
+- validation commands: baseline `pnpm exec vitest run src/app/api/admin/webhooks/route.test.ts --reporter=dot --testTimeout=30000`; post-change `pnpm exec vitest run src/app/api/admin/webhooks/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/admin/webhooks/route.ts src/app/api/admin/webhooks/route.test.ts`; `pnpm exec prettier --check src/app/api/admin/webhooks/route.ts src/app/api/admin/webhooks/route.test.ts`; `git diff --check -- src/app/api/admin/webhooks/route.ts src/app/api/admin/webhooks/route.test.ts`; long-gate `pnpm typecheck` under token `B145A160-EED2-4B39-8105-C632D7FE1D11`.
+- validation results: baseline admin webhooks route Vitest passed `14/14`; post-change route Vitest passed `15/15`; focused ESLint passed; focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, then continue backend/API hardening.
+- next action: drain agmsg, inspect staged paths, and commit the admin webhooks metadata slice.
+
 ### 20260625-2041 JST
 
 - current task: continue Codex-only backend/API performance hardening by changing `/api/admin/reject-reason-stats` from row materialization to DB aggregation.

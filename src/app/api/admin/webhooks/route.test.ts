@@ -165,7 +165,7 @@ describe('/api/admin/webhooks', () => {
         created_at: true,
         updated_at: true,
       },
-      take: 5,
+      take: 6,
     });
     const body = await response.json();
     expect(body).toMatchObject({
@@ -175,16 +175,20 @@ describe('/api/admin/webhooks', () => {
           url: 'https://partner.example.com/hooks/careviax',
         }),
       ],
+      meta: {
+        limit: 5,
+        has_more: false,
+      },
     });
     expect(JSON.stringify(body)).not.toContain('list-secret');
   });
 
   it.each([
-    ['', 100],
-    ['?limit=200', 200],
-    ['?limit=9999', 200],
-    ['?limit=0', 1],
-    ['?limit=abc', 100],
+    ['', 101],
+    ['?limit=200', 201],
+    ['?limit=9999', 201],
+    ['?limit=0', 2],
+    ['?limit=abc', 101],
   ])('bounds webhook registration list size for "%s"', async (search, expectedTake) => {
     const response = await GET(createGetRequest(search), emptyRouteContext);
 
@@ -197,6 +201,54 @@ describe('/api/admin/webhooks', () => {
         take: expectedTake,
       }),
     );
+  });
+
+  it('reports has_more without returning the extra registration', async () => {
+    webhookRegistrationFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'webhook_1',
+        url: 'https://partner.example.com/hooks/one?token=first-secret#ignored',
+        events: ['patient.created'],
+        is_active: true,
+        created_at: new Date('2026-05-01T00:00:00.000Z'),
+        updated_at: new Date('2026-05-01T00:00:00.000Z'),
+      },
+      {
+        id: 'webhook_2',
+        url: 'https://partner.example.com/hooks/two?token=second-secret#ignored',
+        events: ['billing.exported'],
+        is_active: true,
+        created_at: new Date('2026-04-01T00:00:00.000Z'),
+        updated_at: new Date('2026-04-01T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(createGetRequest('?limit=1'), emptyRouteContext);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(webhookRegistrationFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+      }),
+    );
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [
+        {
+          id: 'webhook_1',
+          url: 'https://partner.example.com/hooks/one',
+        },
+      ],
+      meta: {
+        limit: 1,
+        has_more: true,
+      },
+    });
+    expect(body.data).toHaveLength(1);
+    expect(JSON.stringify(body)).not.toContain('webhook_2');
+    expect(JSON.stringify(body)).not.toContain('first-secret');
+    expect(JSON.stringify(body)).not.toContain('second-secret');
   });
 
   it('does not echo malformed legacy webhook URLs in list responses', async () => {
