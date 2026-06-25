@@ -109,7 +109,7 @@ describe('/api/pharmacy-invoices GET', () => {
   it('lists pharmacy invoices with safe operational fields and no-store headers', async () => {
     const response = await GET(
       createGetRequest(
-        'http://localhost/api/pharmacy-invoices?billing_month=2026-06-01&document_kind=invoice&status=draft',
+        'http://localhost/api/pharmacy-invoices?billing_month=2026-06-01&document_kind=invoice&status=draft&contract_id=%20contract_1%20',
       ),
     );
 
@@ -122,6 +122,7 @@ describe('/api/pharmacy-invoices GET', () => {
           billing_month: new Date('2026-06-01T00:00:00.000Z'),
           document_kind: 'invoice',
           status: 'draft',
+          contract_id: 'contract_1',
         }),
         select: expect.not.objectContaining({
           snapshot: expect.anything(),
@@ -145,6 +146,41 @@ describe('/api/pharmacy-invoices GET', () => {
       ],
     });
   });
+
+  it.each([
+    ['status', 'status=', { status: ['ステータスを指定してください'] }],
+    ['blank status', 'status=%20%20', { status: ['ステータスを指定してください'] }],
+    ['document_kind', 'document_kind=', { document_kind: ['文書種別を指定してください'] }],
+    [
+      'blank document_kind',
+      'document_kind=%20%20',
+      { document_kind: ['文書種別を指定してください'] },
+    ],
+    ['billing_month', 'billing_month=', { billing_month: ['請求月を指定してください'] }],
+    [
+      'blank billing_month',
+      'billing_month=%20%20',
+      { billing_month: ['請求月を指定してください'] },
+    ],
+    ['contract_id', 'contract_id=', { contract_id: ['契約IDを指定してください'] }],
+    ['blank contract_id', 'contract_id=%20%20', { contract_id: ['契約IDを指定してください'] }],
+  ])(
+    'rejects explicitly empty %s filters before database access',
+    async (_label, query, details) => {
+      const response = await GET(
+        createGetRequest(`http://localhost/api/pharmacy-invoices?${query}`),
+      );
+
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details,
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(pharmacyInvoiceFindManyMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects invalid list filters before database access', async () => {
     const response = await GET(

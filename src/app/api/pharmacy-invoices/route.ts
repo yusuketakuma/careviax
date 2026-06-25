@@ -39,6 +39,21 @@ function optionalSearchParam(value: string | null) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError('検索条件が不正です', { [name]: [message] })),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 function toDateKey(value: Date | null) {
   return formatNullableUtcDateKey(value);
 }
@@ -61,7 +76,13 @@ export const GET = withAuthContext(
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
 
-    const rawStatus = optionalSearchParam(searchParams.get('status'));
+    const rawStatusResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      'ステータスを指定してください',
+    );
+    if (!rawStatusResult.ok) return rawStatusResult.response;
+    const rawStatus = rawStatusResult.value;
     const status = rawStatus ? invoiceStatusSchema.safeParse(rawStatus) : null;
     if (status && !status.success) {
       return withSensitiveNoStore(
@@ -71,7 +92,13 @@ export const GET = withAuthContext(
       );
     }
 
-    const rawDocumentKind = optionalSearchParam(searchParams.get('document_kind'));
+    const rawDocumentKindResult = readPresentOptionalSearchParam(
+      searchParams,
+      'document_kind',
+      '文書種別を指定してください',
+    );
+    if (!rawDocumentKindResult.ok) return rawDocumentKindResult.response;
+    const rawDocumentKind = rawDocumentKindResult.value;
     const documentKind = rawDocumentKind ? documentKindSchema.safeParse(rawDocumentKind) : null;
     if (documentKind && !documentKind.success) {
       return withSensitiveNoStore(
@@ -81,13 +108,25 @@ export const GET = withAuthContext(
       );
     }
 
-    const rawBillingMonth = optionalSearchParam(searchParams.get('billing_month'));
+    const rawBillingMonthResult = readPresentOptionalSearchParam(
+      searchParams,
+      'billing_month',
+      '請求月を指定してください',
+    );
+    if (!rawBillingMonthResult.ok) return rawBillingMonthResult.response;
+    const rawBillingMonth = rawBillingMonthResult.value;
     const billingMonth = rawBillingMonth ? parseStrictBillingMonth(rawBillingMonth) : null;
     if (rawBillingMonth && !billingMonth) {
       return withSensitiveNoStore(validationError(BILLING_MONTH_FORMAT_MESSAGE));
     }
 
-    const contractId = optionalSearchParam(searchParams.get('contract_id'));
+    const contractIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'contract_id',
+      '契約IDを指定してください',
+    );
+    if (!contractIdResult.ok) return contractIdResult.response;
+    const contractId = contractIdResult.value;
     const rows = await withOrgContext(ctx.orgId, (tx) =>
       tx.pharmacyInvoice.findMany({
         where: {
