@@ -187,7 +187,7 @@ describe('/api/handoff-board/items', () => {
     expect(json.data.id).toBe('item_transfer');
 
     expect(userFindFirstMock).toHaveBeenCalledWith({
-      where: { id: 'user_2', org_id: 'org_1' },
+      where: { id: 'user_2', org_id: 'org_1', is_active: true },
       select: { id: true },
     });
     expect(itemCreateMock).toHaveBeenCalledWith(
@@ -236,6 +236,32 @@ describe('/api/handoff-board/items', () => {
     expect(res!.status).toBe(400);
     await expect(res!.json()).resolves.toMatchObject({
       message: '宛先ユーザーが見つかりません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an inactive recipient user before transaction side effects', async () => {
+    handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
+    userFindFirstMock.mockResolvedValueOnce(null);
+
+    const req = createRequest('http://localhost/api/handoff-board/items', {
+      board_id: 'board_1',
+      content: 'セット先行準備(施設GH)',
+      recipient_user_id: 'inactive_user',
+      recipient_label: '退職済みユーザー',
+      scope: '数量セットまで',
+      rationale: '判断WIPが目安超過のため',
+      deadline: '2026-06-11T08:00:00.000Z',
+    });
+    const res = await POST(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(400);
+    await expect(res!.json()).resolves.toMatchObject({
+      message: '宛先ユーザーが見つかりません',
+    });
+    expect(userFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'inactive_user', org_id: 'org_1', is_active: true },
+      select: { id: true },
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });

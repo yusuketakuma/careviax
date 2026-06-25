@@ -99,7 +99,7 @@ export const POST = withAuthContext(
 
     if (parsed.data.recipient_user_id) {
       const recipient = await prisma.user.findFirst({
-        where: { id: parsed.data.recipient_user_id, org_id: ctx.orgId },
+        where: { id: parsed.data.recipient_user_id, org_id: ctx.orgId, is_active: true },
         select: { id: true },
       });
       if (!recipient) return validationError('宛先ユーザーが見つかりません');
