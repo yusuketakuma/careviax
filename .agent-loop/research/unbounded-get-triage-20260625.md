@@ -41,8 +41,13 @@ consumers cannot paginate on `has_more`):
   (`handoffBoardInclude`), but those items feed client-side aggregates `outgoingCount`/`incomingCount`
   (route.ts); a `take` on the include would corrupt those counts. Single-day so small in practice, but
   not a clean naive bound. The monthly `handoffItem.count` is already a count (not a take target).
-- **A#7 pharmacy-sites → landed (safe):** org master list (<50/org), two `pharmacySite.findMany`
-  branches (route.ts:14 + :53) both bounded; per-site nested sub-selects key per returned site.
+- **A#7 pharmacy-sites → DEFER (B-completeness, corrected).** NOT landed (an earlier draft of this
+  doc wrongly said "landed" — it was never implemented). pharmacy-sites is a small org master (<50/org)
+  but it feeds a site selector + resource_map summary that need the full set (same class as the
+  prescriber-institutions PCA Select). Because the table is tiny a bound gives ~zero perf benefit while
+  adding a silent-cap completeness risk under the frontend freeze (frozen selectors cannot paginate on
+  `has_more`). Deferred. If ever bounded, use the prescriber-institutions conditional pattern (bound only
+  a q-search path; keep the unfiltered selector load fully unbounded).
 
 New item discovered during the sweep: **prescriber-institutions** (q-search list) — boundable with
 take=limit+1 + has_more ONLY IF `q` is a DB-level `where` filter (else a cap drops search matches; same
