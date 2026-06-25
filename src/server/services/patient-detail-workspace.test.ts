@@ -10,6 +10,12 @@ vi.mock('@/lib/utils/name-resolver', () => ({
   batchResolveNames: batchResolveNamesMock,
 }));
 
+const loggerErrorMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
 import { buildPatientWorkspace } from './patient-detail-workspace';
 
 function buildDb(cycle: unknown) {
@@ -393,5 +399,51 @@ describe('buildPatientWorkspace', () => {
       start: previousLine.start_date,
       end: previousLine.end_date,
     });
+  });
+
+  it('keeps building the workspace when actor-name resolution fails (fail-soft, no 500)', async () => {
+    const cycle = {
+      id: 'cycle_1',
+      case_id: 'case_1',
+      overall_status: 'dispensed',
+      exception_status: null,
+      prescription_intakes: [],
+      set_plans: [],
+      workflow_exceptions: [],
+      transition_logs: [
+        {
+          id: 'transition_1',
+          from_status: 'dispensing',
+          to_status: 'dispensed',
+          actor_id: 'user_audit',
+          created_at: new Date(2026, 5, 12, 9, 0),
+        },
+      ],
+      inquiries: [],
+      dispense_tasks: [],
+    };
+    const db = buildDb(cycle);
+    // 名前解決が失敗(DB エラー等)しても workspace 全体を 500 にしない。
+    batchResolveNamesMock.mockRejectedValue(new Error('name lookup failed'));
+
+    const result = await buildPatientWorkspace(
+      db as unknown as Parameters<typeof buildPatientWorkspace>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        caseIds: ['case_1'],
+        allergyInfo: null,
+        conditions: [],
+        swallowingRoute: null,
+      },
+    );
+
+    // teeth: 名前解決失敗でも null(=500 相当)にならず workspace が構築される。
+    expect(result).not.toBeNull();
+    // 失敗は握り潰さず安全な構造化ログに記録する(PHI 非出力の event のみ)。
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'patient_detail_workspace_actor_names_failed' }),
+      expect.any(Error),
+    );
   });
 });

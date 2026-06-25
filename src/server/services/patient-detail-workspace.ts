@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/client';
 import { getCycleWorkspaceAction } from '@/lib/prescription/cycle-workspace';
 import { detectMedicationChanges } from '@/lib/prescription/medication-diff';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
+import { logger } from '@/lib/utils/logger';
 import {
   buildAllergyLabel,
   buildCautionLabels,
@@ -181,7 +182,12 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
     }),
     batchResolveNames(db as typeof prisma, args.orgId, [
       ...new Set(cycle.transition_logs.map((log) => log.actor_id)),
-    ]),
+    ]).catch((error) => {
+      // 名前解決の失敗で workspace 全体を 500 にしない(patient-detail.ts の fail-soft に整合)。
+      // actor 名は解決できないが他のパネルは表示する。安全な構造化ログのみ(PHI 非出力)。
+      logger.error({ event: 'patient_detail_workspace_actor_names_failed' }, error);
+      return new Map<string, string>();
+    }),
   ]);
 
   const [currentIntake] = cycle.prescription_intakes;

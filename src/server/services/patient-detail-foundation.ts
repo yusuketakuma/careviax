@@ -413,7 +413,8 @@ export async function buildPatientFoundationData(
         patient_id: args.patientId,
         is_active: true,
       },
-      orderBy: [{ insurance_type: 'asc' }, { valid_until: 'asc' }],
+      // id を最終 tiebreaker に。insurance_type + valid_until が同値でも順序を決定的にする。
+      orderBy: [{ insurance_type: 'asc' }, { valid_until: 'asc' }, { id: 'asc' }],
       select: {
         insurance_type: true,
         application_status: true,
