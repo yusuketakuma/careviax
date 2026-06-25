@@ -1,7 +1,11 @@
 import { z } from 'zod';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+
+const DEFAULT_FACILITY_STANDARD_LIMIT = 100;
+const MAX_FACILITY_STANDARD_LIMIT = 200;
 
 const requirementsStatusSchema = z.record(z.string(), z.unknown());
 
@@ -12,7 +16,15 @@ function readRequirementsStatus(value: unknown): Record<string, unknown> | null 
 }
 
 export const GET = withAuthContext(
-  async (_req, ctx) => {
+  async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const limit = parseBoundedInteger(
+      searchParams.get('limit'),
+      DEFAULT_FACILITY_STANDARD_LIMIT,
+      1,
+      MAX_FACILITY_STANDARD_LIMIT,
+    );
+
     const standards = await prisma.facilityStandardRegistration.findMany({
       where: {
         org_id: ctx.orgId,
@@ -33,6 +45,7 @@ export const GET = withAuthContext(
         },
       },
       orderBy: [{ expiry_date: 'asc' }, { filed_date: 'desc' }],
+      take: limit,
     });
 
     return success({

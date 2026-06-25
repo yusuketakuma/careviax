@@ -30,6 +30,10 @@ function createRequest(headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/admin/facility-standards', { headers });
 }
 
+function createGetRequest(search = '', headers?: Record<string, string>) {
+  return new NextRequest(`http://localhost/api/admin/facility-standards${search}`, { headers });
+}
+
 describe('/api/admin/facility-standards GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,7 +87,10 @@ describe('/api/admin/facility-standards GET', () => {
       },
     ]);
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
+    const response = await GET(
+      createGetRequest('?limit=5', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
@@ -107,5 +114,44 @@ describe('/api/admin/facility-standards GET', () => {
         }),
       ],
     });
+    expect(facilityStandardFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+        },
+        orderBy: [{ expiry_date: 'asc' }, { filed_date: 'desc' }],
+        take: 5,
+      }),
+    );
+  });
+
+  it('uses a default list bound and clamps overly large limits', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    facilityStandardFindManyMock.mockResolvedValue([]);
+
+    const defaultResponse = await GET(
+      createGetRequest('', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
+    if (!defaultResponse) throw new Error('defaultResponse is required');
+    expect(defaultResponse.status).toBe(200);
+    expect(facilityStandardFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 100,
+      }),
+    );
+
+    const clampedResponse = await GET(
+      createGetRequest('?limit=9999', { 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    );
+    if (!clampedResponse) throw new Error('clampedResponse is required');
+    expect(clampedResponse.status).toBe(200);
+    expect(facilityStandardFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 200,
+      }),
+    );
   });
 });
