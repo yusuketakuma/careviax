@@ -477,6 +477,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'reports',
   },
   {
+    path: '/api/billing-candidates',
+    methods: ['GET', 'POST'],
+    permission: 'canManageBilling',
+    description: '請求候補一覧取得と月次生成',
+    area: 'billing',
+  },
+  {
     path: '/api/billing-candidates/export',
     methods: ['GET'],
     permission: 'canManageBilling',

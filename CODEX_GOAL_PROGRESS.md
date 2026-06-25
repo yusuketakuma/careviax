@@ -17,6 +17,9 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Claude has approved D2 backend bulkification after `/api/tasks/bulk` route-catalog registration.
 - Claude currently owns Slice B and has locked `src/lib/auth/context.ts`, `src/lib/api/response.ts`, and `src/lib/api/performance.ts`; Codex will not edit those files while the lock is active.
 - The worktree is intentionally dirty from concurrent Claude/Codex slices. Preserve unrelated changes and do not revert user/Claude edits.
+- 2026-06-26 JST operational override: the user switched to Codex-only operation because Claude is unstable. Codex now owns all pending Claude-assigned work unless the user explicitly re-enables Claude; continue draining/sending agmsg only as trace/coordination hygiene, not as a blocking dependency on Claude ACKs.
+- 2026-06-26 JST scope override: defer broad frontend/UI/UX updates until the GPT-5.6 frontend-capability release. Current autonomous loop should prioritize backend, DB, API, code correctness, security hardening, performance, validation, and progress ledgers; only touch frontend callers when needed to verify backend/API compatibility.
+- Current backend/API slice: `GET /api/billing-candidates` hardening is implemented with strict query validation, sensitive no-store wrapping, explicit DB/response projection, sanitized `source_snapshot`, route-catalog coverage, focused tests, API-contract review PASS, privacy review PASS, and full typecheck PASS. Commit is being prepared as a Codex-owned backend slice.
 
 ### 2026-06-22 JST - Medical UI Gate Stabilization Continuation
 

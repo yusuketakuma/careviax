@@ -276,6 +276,12 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'reports',
         }),
         expect.objectContaining({
+          path: '/api/billing-candidates',
+          methods: ['GET', 'POST'],
+          permission: 'canManageBilling',
+          area: 'billing',
+        }),
+        expect.objectContaining({
           path: '/api/billing-candidates/export',
           methods: ['GET'],
           permission: 'canManageBilling',

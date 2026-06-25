@@ -106,6 +106,11 @@ function createGetRequest(url: string) {
   return new NextRequest(url);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/billing-candidates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -201,8 +206,27 @@ describe('/api/billing-candidates', () => {
     if (!response) throw new Error('response is required');
     const resolvedResponse = response as Response;
     expect(resolvedResponse.status).toBe(200);
+    expectSensitiveNoStore(resolvedResponse);
     expect(billingCandidateFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        select: {
+          id: true,
+          patient_id: true,
+          billing_domain: true,
+          billing_target_type: true,
+          billing_target_id: true,
+          billing_target_name: true,
+          billing_month: true,
+          billing_code: true,
+          billing_name: true,
+          points: true,
+          quantity: true,
+          calculation_breakdown: true,
+          status: true,
+          exclusion_reason: true,
+          source_snapshot: true,
+          updated_at: true,
+        },
         where: expect.objectContaining({
           org_id: 'org_1',
           billing_month: new Date('2026-03-01T00:00:00.000Z'),
@@ -265,6 +289,7 @@ describe('/api/billing-candidates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [
         {
@@ -290,10 +315,28 @@ describe('/api/billing-candidates', () => {
         status: 'candidate',
         source_snapshot: {
           source_type: 'pca_pump_rental',
+          source_entity_id: 'rental_private',
+          source_note: 'PCAポンプレンタルの医療機関向け請求候補',
           billing_target: {
             type: 'institution',
             id: 'institution_1',
             name: 'みなと病院',
+            institution_code: 'private_institution_code',
+          },
+          pca_rental: {
+            rental_id: 'rental_private',
+            pump_id: 'pump_private',
+            pump_asset_code: 'asset_private',
+            pump_model_name: 'CADD Legacy',
+            pump_serial_number: 'serial_private',
+            contact_name: '担当者A',
+          },
+          validation_layers: {
+            evidence: {
+              label: 'PCA貸出台帳',
+              state: 'passed',
+              message: '貸出期間と請求予定額を確認済み',
+            },
           },
         },
       },
@@ -304,8 +347,10 @@ describe('/api/billing-candidates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientFindManyMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: [
         {
           id: 'candidate_pca_rental',
@@ -314,9 +359,24 @@ describe('/api/billing-candidates', () => {
           billing_target_type: 'institution',
           billing_target_id: 'institution_1',
           billing_target_label: 'みなと病院',
+          source_snapshot: {
+            source_type: 'pca_pump_rental',
+            source_note: 'PCAポンプレンタルの医療機関向け請求候補',
+            validation_layers: {
+              evidence: {
+                label: 'PCA貸出台帳',
+              },
+            },
+          },
         },
       ],
     });
+    expect(body.data[0].source_snapshot).not.toHaveProperty('billing_target');
+    expect(body.data[0].source_snapshot).not.toHaveProperty('pca_rental');
+    expect(body.data[0].source_snapshot).not.toHaveProperty('source_entity_id');
+    expect(JSON.stringify(body.data[0])).not.toContain('serial_private');
+    expect(JSON.stringify(body.data[0])).not.toContain('private_institution_code');
+    expect(JSON.stringify(body.data[0])).not.toContain('担当者A');
   });
 
   it.each([
@@ -335,6 +395,90 @@ describe('/api/billing-candidates', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(workbenchSummaryMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'billing_month duplicate',
+      'billing_month=2026-03-01&billing_month=2026-04-01',
+      {
+        billing_month: ['billing_month は1つだけ指定してください'],
+      },
+    ],
+    ['patient_id', 'patient_id=', { patient_id: ['患者IDを指定してください'] }],
+    ['blank patient_id', 'patient_id=%20%20', { patient_id: ['患者IDを指定してください'] }],
+    ['padded patient_id', 'patient_id=%20patient_1', { patient_id: ['患者IDの形式が不正です'] }],
+    [
+      'overlong patient_id',
+      `patient_id=${'p'.repeat(101)}`,
+      { patient_id: ['患者IDの形式が不正です'] },
+    ],
+    ['status', 'status=', { status: ['ステータスを指定してください'] }],
+    ['blank status', 'status=%20%20', { status: ['ステータスを指定してください'] }],
+    ['padded status', 'status=confirmed%20', { status: ['対応していないステータスです'] }],
+    [
+      'status duplicate',
+      'status=confirmed&status=excluded',
+      { status: ['status は1つだけ指定してください'] },
+    ],
+    [
+      'billing_domain',
+      'billing_domain=',
+      { billing_domain: ['billing_domain を指定してください'] },
+    ],
+    [
+      'blank billing_domain',
+      'billing_domain=%20%20',
+      { billing_domain: ['billing_domain を指定してください'] },
+    ],
+    [
+      'padded billing_domain',
+      'billing_domain=home_care%20',
+      { billing_domain: ['billing_domain は home_care または pca_rental を指定してください'] },
+    ],
+    [
+      'billing_domain duplicate',
+      'billing_domain=home_care&billing_domain=pca_rental',
+      { billing_domain: ['billing_domain は1つだけ指定してください'] },
+    ],
+  ])('rejects malformed explicit %s on read before org context', async (_name, query, details) => {
+    const response = await GET(
+      createGetRequest(`http://localhost/api/billing-candidates?${query}`),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details,
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(workbenchSummaryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported status filters on read before org context', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/billing-candidates?status=voided'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '請求候補ステータスが不正です',
+      details: {
+        status: ['対応していないステータスです'],
+      },
+    });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
     expect(workbenchSummaryMock).not.toHaveBeenCalled();
