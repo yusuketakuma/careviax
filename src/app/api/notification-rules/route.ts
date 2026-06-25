@@ -2,10 +2,14 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { Prisma } from '@prisma/client';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { success, validationError } from '@/lib/api/response';
+
+const DEFAULT_NOTIFICATION_RULE_LIMIT = 100;
+const MAX_NOTIFICATION_RULE_LIMIT = 200;
 
 const createRuleSchema = z.object({
   event_type: z.string().min(1),
@@ -23,10 +27,19 @@ export async function GET(req: NextRequest) {
   if ('response' in authResult) return authResult.response;
   const { ctx } = authResult;
 
+  const { searchParams } = new URL(req.url);
+  const limit = parseBoundedInteger(
+    searchParams.get('limit'),
+    DEFAULT_NOTIFICATION_RULE_LIMIT,
+    1,
+    MAX_NOTIFICATION_RULE_LIMIT,
+  );
+
   const rules = await withOrgContext(ctx.orgId, (tx) =>
     tx.notificationRule.findMany({
       where: { org_id: ctx.orgId },
       orderBy: { created_at: 'desc' },
+      take: limit,
     }),
   );
 

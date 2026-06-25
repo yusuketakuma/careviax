@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-1522 JST
+
+- current task: implement Codex-owned `F-20260625-notification-rules-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read sweep requested by the user while Claude stays in checker mode.
+- files inspected: agmsg inbox/status for Claude's bounded-list sweep directive, queue sanity request, and this notification-rules lock grant; `git status --short --untracked-files=all`; `src/app/api/notification-rules/route.ts`; `src/app/api/notification-rules/route.test.ts`; direct caller in `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`; gbrain `code_callers` / `code_blast` output for `src/app/api/notification-rules/route.ts::GET`, which returned not-built/empty; read-only mapper output identifying the same endpoint as the next low-risk candidate.
+- files changed: `src/app/api/notification-rules/route.ts`, `src/app/api/notification-rules/route.test.ts`, and this Ralph state entry.
+- bugs found: `/api/notification-rules` returned every notification rule row for the org with no `take`, even though the admin notification-settings UI only needs a finite configuration list.
+- security risks found: no auth/authz, tenant scope, RLS policy, DB schema, migration, PHI projection, audit logging, billing, deploy, or destructive operation changed. Existing admin permission and org scope are preserved.
+- performance issues found: bounded the notification-rule list query to a default `take: 100` with `limit` clamped to `1..200`, preserving org scope, ordering, response envelope, and POST/create behavior.
+- validation commands: baseline focused `pnpm exec vitest run src/app/api/notification-rules/route.test.ts --reporter=dot --testTimeout=30000`; post-change focused `pnpm exec vitest run src/app/api/notification-rules/route.test.ts --reporter=dot --testTimeout=30000`; focused `pnpm exec eslint src/app/api/notification-rules/route.ts src/app/api/notification-rules/route.test.ts`; focused `pnpm exec prettier --check src/app/api/notification-rules/route.ts src/app/api/notification-rules/route.test.ts`; focused `git diff --check -- src/app/api/notification-rules/route.ts src/app/api/notification-rules/route.test.ts`; long-gate-locked `pnpm typecheck`.
+- validation results: baseline route Vitest passed `4/4`; final focused Vitest passed `6/6`; focused ESLint passed; focused Prettier initially flagged route.test formatting, `pnpm exec prettier --write` was applied to the two owned files, and final Prettier check passed; focused diff-check passed. Claude independently approved the diff, reran the focused suite `6/6`, verified the bound and preserved canAdmin/org/order/envelope/POST behavior. Independent `pnpm typecheck` passed under local long-gate lock with `next typegen`, app `tsc`, and service-worker `tsc` all green. Tests now assert default `take: 100`, explicit `limit=5`, overly large limit clamping to `take: 200`, and unchanged org scope/orderBy.
+- remaining work: stage and commit only the two route files plus `.codex/ralph-state.md`, notify Claude with the commit hash, and continue the bounded-list queue.
+- next action: drain agmsg before commit, inspect status, commit the approved slice with explicit pathspecs, and send `DONE`.
+
 ### 20260625-1513 JST
 
 - current task: implement Codex-owned `F-20260625-pharmacist-shift-templates-bounded-list` after Claude `LOCK_GRANT`, continuing the API-route bounded-read hardening lane after Claude's services scout found no safe auto-fixable issue.

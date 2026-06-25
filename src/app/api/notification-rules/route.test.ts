@@ -25,8 +25,8 @@ import { GET, POST } from './route';
 
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
-function createGetRequest() {
-  return new NextRequest('http://localhost/api/notification-rules');
+function createGetRequest(url = 'http://localhost/api/notification-rules') {
+  return new NextRequest(url);
 }
 
 function createPostRequest(body: unknown) {
@@ -71,7 +71,37 @@ describe('/api/notification-rules', () => {
     const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
-    expect(notificationRuleFindManyMock).toHaveBeenCalled();
+    expect(notificationRuleFindManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+  });
+
+  it('bounds notification rule list size when a limit is provided', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/notification-rules?limit=5'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(notificationRuleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 5,
+      }),
+    );
+  });
+
+  it('clamps overly large notification rule list limits', async () => {
+    const response = (await GET(
+      createGetRequest('http://localhost/api/notification-rules?limit=9999'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(notificationRuleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 200,
+      }),
+    );
   });
 
   it('creates a notification rule', async () => {
