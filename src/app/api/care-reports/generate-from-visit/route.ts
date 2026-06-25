@@ -72,7 +72,7 @@ export const POST = withAuthContext(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('not found')) {
-        return notFound(message);
+        return notFound('報告書生成に必要な情報が見つかりません');
       }
       if (message.includes('not accessible')) {
         return forbiddenResponse('この訪問記録から報告書を生成する権限がありません');

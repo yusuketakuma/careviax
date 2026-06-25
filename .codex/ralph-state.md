@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260625-2035 JST
+
+- current task: continue Codex-only backend/API security hardening by sanitizing `POST /api/care-reports/generate-from-visit` 404 responses so service internal IDs and taxonomy are not echoed to clients.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; `src/app/api/care-reports/generate-from-visit/route.ts`; `src/app/api/care-reports/generate-from-visit/route.test.ts`; `src/server/services/report-generator.ts`; gbrain `code_blast` for `src/app/api/care-reports/generate-from-visit/route.ts::POST`.
+- files changed: `src/app/api/care-reports/generate-from-visit/route.ts`, `src/app/api/care-reports/generate-from-visit/route.test.ts`, and this Ralph state entry.
+- bugs found: generator `not found` errors such as `VisitSchedule not found for schedule_id: ...` or `Patient not found: ...` were passed directly into the route `notFound(message)` response, exposing internal related IDs and service taxonomy in a user-visible 404 body.
+- security risks found: reduced error-message information leakage by returning a fixed 404 message `報告書生成に必要な情報が見つかりません` for all generator not-found errors. Existing `canAuthorReport`, request validation, forbidden assignment response, domain validation errors, optimistic-concurrency conflict responses, success shape, and report generation behavior are unchanged. No auth/authz permission semantics, DB schema, migration, billing, frontend, or destructive behavior changed.
+- performance issues found: none changed; this is an error-surface hardening.
+- validation commands: `pnpm exec vitest run src/app/api/care-reports/generate-from-visit/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/care-reports/generate-from-visit/route.ts src/app/api/care-reports/generate-from-visit/route.test.ts`; `pnpm exec prettier --check src/app/api/care-reports/generate-from-visit/route.ts src/app/api/care-reports/generate-from-visit/route.test.ts`; `git diff --check -- src/app/api/care-reports/generate-from-visit/route.ts src/app/api/care-reports/generate-from-visit/route.test.ts`; long-gate `pnpm typecheck` under token `057CC9D1-088F-432E-A5D3-FF3FB2263E33`.
+- validation results: focused generate-from-visit route Vitest passed `15/15`; focused ESLint passed; focused Prettier check passed; focused diff-check passed; `pnpm typecheck` passed and the local long-gate lock was released.
+- remaining work: stage only the route/test plus this Ralph state entry, commit the slice, then continue backend/API hardening.
+- next action: drain agmsg, inspect staged paths, and commit the generate-from-visit error redaction slice.
+
 ### 20260625-2032 JST
 
 - current task: continue Codex-only backend/API hardening by fail-closing explicit blank `institution_id` filters on `/api/pca-pump-rentals`, after taking over Claude-owned queue management per the user's instruction.

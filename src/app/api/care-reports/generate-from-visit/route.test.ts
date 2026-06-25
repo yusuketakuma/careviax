@@ -245,7 +245,9 @@ describe('/api/care-reports/generate-from-visit', () => {
   });
 
   it('returns 404 when the visit record is missing', async () => {
-    generateReportsFromVisitMock.mockRejectedValue(new Error('visit record not found'));
+    generateReportsFromVisitMock.mockRejectedValue(
+      new Error('VisitSchedule not found for schedule_id: schedule_secret'),
+    );
 
     const response = (await POST(
       createGenerateFromVisitRequest({
@@ -255,6 +257,13 @@ describe('/api/care-reports/generate-from-visit', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '報告書生成に必要な情報が見つかりません',
+    });
+    expect(JSON.stringify(body)).not.toContain('schedule_secret');
+    expect(JSON.stringify(body)).not.toContain('VisitSchedule');
   });
 
   it('returns 403 when the caller cannot access the visit record assignment', async () => {
