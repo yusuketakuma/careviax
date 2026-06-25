@@ -101,6 +101,8 @@ describe('/api/residual-medications', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(visitRecordFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -120,6 +122,62 @@ describe('/api/residual-medications', () => {
     });
   });
 
+  it.each([
+    ['patient_id=', 'patient_id', '患者IDを指定してください'],
+    ['patient_id=%20patient_1', 'patient_id', '患者IDの形式が不正です'],
+    ['visit_record_id=%20%20', 'visit_record_id', '訪問記録IDを指定してください'],
+    ['visit_record_id=visit_1%20', 'visit_record_id', '訪問記録IDの形式が不正です'],
+  ])(
+    'rejects blank or padded residual medication filter query "%s" before DB access',
+    async (query, fieldName, message) => {
+      const response = await GET(
+        createRequest(`http://localhost/api/residual-medications?${query}`),
+        emptyRouteContext,
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          [fieldName]: [message],
+        },
+      });
+      expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(residualMedicationFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['patient_id=patient_1&patient_id=patient_2', 'patient_id'],
+    ['visit_record_id=visit_1&visit_record_id=', 'visit_record_id'],
+  ])(
+    'rejects duplicate residual medication filter query "%s" before DB access',
+    async (query, fieldName) => {
+      const response = await GET(
+        createRequest(`http://localhost/api/residual-medications?${query}`),
+        emptyRouteContext,
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          [fieldName]: [`${fieldName} は1つだけ指定してください`],
+        },
+      });
+      expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(residualMedicationFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects malformed residual medication limits before visit record lookup', async () => {
     visitRecordFindManyMock.mockResolvedValue([{ id: 'visit_1' }]);
 
@@ -130,6 +188,8 @@ describe('/api/residual-medications', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'クエリパラメータが不正です',
@@ -150,6 +210,8 @@ describe('/api/residual-medications', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(visitRecordFindManyMock).not.toHaveBeenCalled();
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(residualMedicationFindManyMock).not.toHaveBeenCalled();
@@ -180,6 +242,8 @@ describe('/api/residual-medications', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: [],
     });
@@ -196,6 +260,8 @@ describe('/api/residual-medications', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: [],
     });

@@ -3,6 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { buildVisitRecordScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { z } from 'zod';
@@ -14,14 +15,84 @@ const residualMedicationQuerySchema = z.object({
   limit: optionalBoundedIntegerSearchParam('limit', 1, MAX_RESIDUAL_MEDICATION_LIMIT),
 });
 
+function readStrictOptionalIdFilter(
+  searchParams: URLSearchParams,
+  name: 'visit_record_id' | 'patient_id',
+  messages: { blank: string; invalid: string },
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: undefined };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [`${name} は1つだけ指定してください`] },
+    };
+  }
+
+  const value = values[0];
+  if (value.trim().length === 0) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.blank] },
+    };
+  }
+
+  if (value !== value.trim() || value.length > 100) {
+    return {
+      ok: false as const,
+      fieldErrors: { [name]: [messages.invalid] },
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
+function parseResidualMedicationFilters(searchParams: URLSearchParams) {
+  const visitRecordResult = readStrictOptionalIdFilter(searchParams, 'visit_record_id', {
+    blank: '訪問記録IDを指定してください',
+    invalid: '訪問記録IDの形式が不正です',
+  });
+  if (!visitRecordResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('クエリパラメータが不正です', visitRecordResult.fieldErrors),
+      ),
+    };
+  }
+
+  const patientResult = readStrictOptionalIdFilter(searchParams, 'patient_id', {
+    blank: '患者IDを指定してください',
+    invalid: '患者IDの形式が不正です',
+  });
+  if (!patientResult.ok) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(
+        validationError('クエリパラメータが不正です', patientResult.fieldErrors),
+      ),
+    };
+  }
+
+  return {
+    ok: true as const,
+    visitRecordId: visitRecordResult.value,
+    patientId: patientResult.value,
+  };
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const visitRecordId = searchParams.get('visit_record_id') ?? undefined;
-    const patientId = searchParams.get('patient_id') ?? undefined;
+    const filters = parseResidualMedicationFilters(searchParams);
+    if (!filters.ok) return filters.response;
+
+    const { visitRecordId, patientId } = filters;
     const parsed = parseSearchParams(residualMedicationQuerySchema, searchParams);
     if (!parsed.ok) {
-      return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+      return withSensitiveNoStore(
+        validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors),
+      );
     }
     const take = parsed.data.limit;
 
@@ -40,7 +111,7 @@ export const GET = withAuthContext(
         select: { id: true },
       });
 
-      if (!visitRecord) return success({ data: [] });
+      if (!visitRecord) return withSensitiveNoStore(success({ data: [] }));
       patientVisitRecordIds = [visitRecord.id];
     }
 
@@ -56,7 +127,7 @@ export const GET = withAuthContext(
 
       patientVisitRecordIds = visitRecords.map((record) => record.id);
       if (patientVisitRecordIds.length === 0) {
-        return success({ data: [] });
+        return withSensitiveNoStore(success({ data: [] }));
       }
     } else if (!visitRecordId && visitRecordAssignmentWhere) {
       const visitRecords = await prisma.visitRecord.findMany({
@@ -69,7 +140,7 @@ export const GET = withAuthContext(
 
       patientVisitRecordIds = visitRecords.map((record) => record.id);
       if (patientVisitRecordIds.length === 0) {
-        return success({ data: [] });
+        return withSensitiveNoStore(success({ data: [] }));
       }
     }
 
@@ -86,7 +157,7 @@ export const GET = withAuthContext(
       ...(take !== undefined ? { take } : {}),
     });
 
-    return success({ data: records });
+    return withSensitiveNoStore(success({ data: records }));
   },
   {
     permission: 'canVisit',
