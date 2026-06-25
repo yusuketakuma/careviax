@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { serverCache } from '@/lib/utils/server-cache';
 
@@ -192,6 +192,11 @@ const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest(headers?: Record<string, string>, search = '') {
   return new NextRequest(`http://localhost/api/dashboard/workflow${search}`, { headers });
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/dashboard/workflow GET', () => {
@@ -498,6 +503,10 @@ describe('/api/dashboard/workflow GET', () => {
     patientCountMock.mockResolvedValue(1);
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('returns 401 when unauthenticated', async () => {
     authMock.mockResolvedValue(null);
 
@@ -505,6 +514,7 @@ describe('/api/dashboard/workflow GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
   });
 
   it('returns unified workflow/workbench data', async () => {
@@ -515,6 +525,7 @@ describe('/api/dashboard/workflow GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
 
     const payload = await response.json();
 
@@ -816,6 +827,7 @@ describe('/api/dashboard/workflow GET', () => {
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=phase'));
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const payload = await response.json();
 
     expect(payload.data).toMatchObject({
@@ -869,6 +881,7 @@ describe('/api/dashboard/workflow GET', () => {
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=realtime'));
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const payload = await response.json();
 
     expect(payload.data).toMatchObject({
@@ -908,6 +921,7 @@ describe('/api/dashboard/workflow GET', () => {
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=performance'));
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const payload = await response.json();
 
     expect(payload.data).toMatchObject({
@@ -940,16 +954,64 @@ describe('/api/dashboard/workflow GET', () => {
     expect(firstVisitDocumentCountMock).not.toHaveBeenCalled();
   });
 
-  it('falls back unknown workflow views to the full dashboard aggregate', async () => {
+  it('accepts an explicit full workflow view as the full dashboard aggregate', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
-    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=unknown'));
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=full'));
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(communicationQueueMock).toHaveBeenCalled();
     expect(patientRiskQueueMock).toHaveBeenCalled();
     expect(billingPreviewBatchMock).toHaveBeenCalled();
+  });
+
+  it.each(['?view=', '?view=%20phase', '?view=phase%20', '?view=unknown'])(
+    'rejects malformed workflow view "%s" before cache or dashboard aggregate reads',
+    async (search) => {
+      authMock.mockResolvedValue({ user: { id: 'user_1' } });
+      membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+      const cacheGetSpy = vi.spyOn(serverCache, 'get');
+
+      const response = await GET(createRequest({ 'x-org-id': 'org_1' }, search));
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: { view: ['view が不正です'] },
+      });
+      expect(cacheGetSpy).not.toHaveBeenCalled();
+      expect(careCaseFindManyMock).not.toHaveBeenCalled();
+      expect(cycleGroupByMock).not.toHaveBeenCalled();
+      expect(communicationQueueMock).not.toHaveBeenCalled();
+      expect(patientRiskQueueMock).not.toHaveBeenCalled();
+      expect(billingPreviewBatchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects duplicate workflow view before cache or dashboard aggregate reads', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    const cacheGetSpy = vi.spyOn(serverCache, 'get');
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=phase&view=realtime'));
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: { view: ['view は1つだけ指定してください'] },
+    });
+    expect(cacheGetSpy).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(cycleGroupByMock).not.toHaveBeenCalled();
+    expect(communicationQueueMock).not.toHaveBeenCalled();
+    expect(patientRiskQueueMock).not.toHaveBeenCalled();
+    expect(billingPreviewBatchMock).not.toHaveBeenCalled();
   });
 
   it('keeps role-specific inbox state out of cross-role cache hits', async () => {
