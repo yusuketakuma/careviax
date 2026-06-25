@@ -67,6 +67,10 @@ function createPostRequest(body: unknown) {
   });
 }
 
+function createGetRequest(query = '') {
+  return new NextRequest(`http://localhost/api/pharmacy-cooperation-message-threads${query}`);
+}
+
 describe('/api/pharmacy-cooperation-message-threads', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -174,11 +178,7 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
   });
 
   it('lists patient-share-case threads through active share-case access and writes a compact read audit', async () => {
-    const response = await GET(
-      new NextRequest(
-        'http://localhost/api/pharmacy-cooperation-message-threads?share_case_id=share_case_1',
-      ),
-    );
+    const response = await GET(createGetRequest('?share_case_id=share_case_1'));
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toContain('no-store');
@@ -222,6 +222,64 @@ describe('/api/pharmacy-cooperation-message-threads', () => {
 
     const body = JSON.stringify(await response.json());
     expect(body).toContain('患者名 山田花子');
+  });
+
+  it.each([
+    ['share_case_id', '?share_case_id=', { share_case_id: ['患者共有ケースIDを指定してください'] }],
+    [
+      'blank share_case_id',
+      '?share_case_id=%20%20&visit_request_id=visit_request_1',
+      { share_case_id: ['患者共有ケースIDを指定してください'] },
+    ],
+    [
+      'visit_request_id',
+      '?share_case_id=share_case_1&visit_request_id=',
+      { visit_request_id: ['訪問依頼IDを指定してください'] },
+    ],
+    [
+      'blank visit_request_id',
+      '?share_case_id=share_case_1&visit_request_id=%20%20',
+      { visit_request_id: ['訪問依頼IDを指定してください'] },
+    ],
+  ])('rejects explicitly empty %s filters before DB reads', async (_label, query, details) => {
+    const response = await GET(createGetRequest(query));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toContain('no-store');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details,
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(threadFindManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('trims valid share-case and visit-request filters before resolving context', async () => {
+    const response = await GET(
+      createGetRequest('?share_case_id=%20share_case_1%20&visit_request_id=%20visit_request_1%20'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(pharmacyVisitRequestFindFirstMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: 'visit_request_1',
+        org_id: 'org_1',
+        share_case_id: 'share_case_1',
+      }),
+      select: expect.any(Object),
+    });
+    expect(threadFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          share_case_id: 'share_case_1',
+          visit_request_id: 'visit_request_1',
+        },
+      }),
+    );
   });
 
   it('creates a visit-request message with safe audit and notification content', async () => {

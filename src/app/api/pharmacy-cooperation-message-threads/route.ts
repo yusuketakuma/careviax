@@ -52,6 +52,21 @@ function optionalSearchParam(value: string | null) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: withSensitiveNoStore(validationError('検索条件が不正です', { [name]: [message] })),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 function buildMessageLink(context: MessageContext) {
   const params = new URLSearchParams({ share_case_id: context.shareCaseId });
   if (context.visitRequestId) params.set('visit_request_id', context.visitRequestId);
@@ -202,8 +217,20 @@ export const GET = withAuthContext(
       1,
       MAX_MESSAGE_LIMIT,
     );
-    const shareCaseId = optionalSearchParam(searchParams.get('share_case_id'));
-    const visitRequestId = optionalSearchParam(searchParams.get('visit_request_id'));
+    const shareCaseIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'share_case_id',
+      '患者共有ケースIDを指定してください',
+    );
+    if (!shareCaseIdResult.ok) return shareCaseIdResult.response;
+    const visitRequestIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'visit_request_id',
+      '訪問依頼IDを指定してください',
+    );
+    if (!visitRequestIdResult.ok) return visitRequestIdResult.response;
+    const shareCaseId = shareCaseIdResult.value;
+    const visitRequestId = visitRequestIdResult.value;
     const now = new Date();
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
