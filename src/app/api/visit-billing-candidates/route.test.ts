@@ -103,6 +103,7 @@ describe('/api/visit-billing-candidates POST', () => {
       ],
     });
     visitBillingCandidateFindUniqueMock.mockResolvedValue(null);
+    visitBillingCandidateFindManyMock.mockResolvedValue([]);
     visitBillingCandidateCreateMock.mockResolvedValue({
       id: 'visit_billing_candidate_1',
       billing_status: 'candidate',
@@ -164,15 +165,15 @@ describe('/api/visit-billing-candidates POST', () => {
         }),
       }),
     );
-    expect(visitBillingCandidateFindUniqueMock).toHaveBeenCalledWith({
+    expect(visitBillingCandidateFindManyMock).toHaveBeenCalledTimes(1);
+    expect(visitBillingCandidateFindManyMock).toHaveBeenCalledWith({
       where: {
-        org_id_partner_visit_record_id: {
-          org_id: 'org_1',
-          partner_visit_record_id: 'partner_visit_record_1',
-        },
+        org_id: 'org_1',
+        partner_visit_record_id: { in: ['partner_visit_record_1'] },
       },
       select: {
         id: true,
+        partner_visit_record_id: true,
         billing_status: true,
         invoice_items: {
           select: { id: true },
@@ -180,6 +181,7 @@ describe('/api/visit-billing-candidates POST', () => {
         },
       },
     });
+    expect(visitBillingCandidateFindUniqueMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -227,6 +229,54 @@ describe('/api/visit-billing-candidates POST', () => {
       excluded_count: 0,
       skipped_locked_count: 0,
       candidate_ids_truncated: false,
+    });
+  });
+
+  it('batch-loads existing candidates once for multiple confirmed records', async () => {
+    partnerVisitRecordFindManyMock.mockResolvedValue([
+      confirmedPartnerRecord(),
+      confirmedPartnerRecord({
+        id: 'partner_visit_record_2',
+        visit_request: {
+          id: 'visit_request_2',
+          status: 'confirmed',
+          contract_version_id: 'contract_version_1',
+        },
+      }),
+    ]);
+    visitBillingCandidateCreateMock
+      .mockResolvedValueOnce({
+        id: 'visit_billing_candidate_1',
+        billing_status: 'candidate',
+        is_billable: true,
+      })
+      .mockResolvedValueOnce({
+        id: 'visit_billing_candidate_2',
+        billing_status: 'candidate',
+        is_billable: true,
+      });
+
+    const response = await POST(createRequest({ billing_month: '2026-06-01' }));
+
+    expect(response.status).toBe(200);
+    expect(visitBillingCandidateFindManyMock).toHaveBeenCalledTimes(1);
+    expect(visitBillingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          partner_visit_record_id: {
+            in: ['partner_visit_record_1', 'partner_visit_record_2'],
+          },
+        },
+      }),
+    );
+    expect(visitBillingCandidateFindUniqueMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateCreateMock).toHaveBeenCalledTimes(2);
+    await expect(response.json()).resolves.toMatchObject({
+      generated_candidates: 2,
+      billable_count: 2,
+      skipped_locked_count: 0,
+      candidate_ids: ['visit_billing_candidate_1', 'visit_billing_candidate_2'],
     });
   });
 
@@ -317,7 +367,32 @@ describe('/api/visit-billing-candidates POST', () => {
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
+  it('does not preflight existing candidates when no confirmed records match', async () => {
+    partnerVisitRecordFindManyMock.mockResolvedValue([]);
+
+    const response = await POST(createRequest({ billing_month: '2026-06-01' }));
+
+    expect(response.status).toBe(200);
+    expect(visitBillingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateFindUniqueMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateCreateMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateUpdateMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      scanned_confirmed_records: 0,
+      generated_candidates: 0,
+      candidate_ids: [],
+    });
+  });
+
   it('does not mutate confirmed or invoice-linked candidates during regeneration', async () => {
+    visitBillingCandidateFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_billing_candidate_locked',
+        partner_visit_record_id: 'partner_visit_record_1',
+        billing_status: 'invoiced',
+        invoice_items: [{ id: 'invoice_item_1' }],
+      },
+    ]);
     visitBillingCandidateFindUniqueMock.mockResolvedValue({
       id: 'visit_billing_candidate_locked',
       billing_status: 'invoiced',
@@ -329,6 +404,7 @@ describe('/api/visit-billing-candidates POST', () => {
     expect(response.status).toBe(200);
     expect(visitBillingCandidateCreateMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateUpdateMock).not.toHaveBeenCalled();
+    expect(visitBillingCandidateFindUniqueMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -346,7 +422,7 @@ describe('/api/visit-billing-candidates POST', () => {
   });
 
   it('reuses a concurrently created candidate when create hits the unique constraint', async () => {
-    visitBillingCandidateFindUniqueMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+    visitBillingCandidateFindUniqueMock.mockResolvedValueOnce({
       id: 'visit_billing_candidate_concurrent',
       billing_status: 'candidate',
       invoice_items: [],
@@ -361,8 +437,33 @@ describe('/api/visit-billing-candidates POST', () => {
     const response = await POST(createRequest({ billing_month: '2026-06-01' }));
 
     expect(response.status).toBe(200);
+    expect(visitBillingCandidateFindManyMock).toHaveBeenCalledTimes(1);
+    expect(visitBillingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          partner_visit_record_id: { in: ['partner_visit_record_1'] },
+        },
+      }),
+    );
     expect(visitBillingCandidateCreateMock).toHaveBeenCalledTimes(1);
-    expect(visitBillingCandidateFindUniqueMock).toHaveBeenCalledTimes(2);
+    expect(visitBillingCandidateFindUniqueMock).toHaveBeenCalledTimes(1);
+    expect(visitBillingCandidateFindUniqueMock).toHaveBeenCalledWith({
+      where: {
+        org_id_partner_visit_record_id: {
+          org_id: 'org_1',
+          partner_visit_record_id: 'partner_visit_record_1',
+        },
+      },
+      select: {
+        id: true,
+        billing_status: true,
+        invoice_items: {
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
     expect(visitBillingCandidateUpdateMock).toHaveBeenCalledWith({
       where: { id_org_id: { id: 'visit_billing_candidate_concurrent', org_id: 'org_1' } },
       data: expect.objectContaining({

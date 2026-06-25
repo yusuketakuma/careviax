@@ -247,6 +247,28 @@ export const POST = withAuthContext(
       let billableCount = 0;
       let excludedCount = 0;
       let skippedLockedCount = 0;
+      const recordIds = records.map((record) => record.id);
+      const existingCandidates =
+        recordIds.length === 0
+          ? []
+          : await tx.visitBillingCandidate.findMany({
+              where: {
+                org_id: ctx.orgId,
+                partner_visit_record_id: { in: recordIds },
+              },
+              select: {
+                id: true,
+                partner_visit_record_id: true,
+                billing_status: true,
+                invoice_items: {
+                  select: { id: true },
+                  take: 1,
+                },
+              },
+            });
+      const existingCandidatesByRecordId = new Map(
+        existingCandidates.map((candidate) => [candidate.partner_visit_record_id, candidate]),
+      );
 
       for (const record of records) {
         const contractVersion = await tx.pharmacyContractVersion.findFirst({
@@ -314,22 +336,7 @@ export const POST = withAuthContext(
           exclusion_reason: blockers.length > 0 ? blockers.join(',') : null,
           amount_snapshot: toPrismaJsonInput(amountSnapshot),
         };
-        const existingCandidate = await tx.visitBillingCandidate.findUnique({
-          where: {
-            org_id_partner_visit_record_id: {
-              org_id: candidateKey.org_id,
-              partner_visit_record_id: candidateKey.partner_visit_record_id,
-            },
-          },
-          select: {
-            id: true,
-            billing_status: true,
-            invoice_items: {
-              select: { id: true },
-              take: 1,
-            },
-          },
-        });
+        const existingCandidate = existingCandidatesByRecordId.get(record.id);
 
         let candidate;
         if (existingCandidate) {
