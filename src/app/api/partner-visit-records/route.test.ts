@@ -62,7 +62,11 @@ function createRequest(body: unknown) {
   });
 }
 
-describe('/api/partner-visit-records POST', () => {
+function createGetRequest(query = '') {
+  return new NextRequest(`http://localhost/api/partner-visit-records${query}`);
+}
+
+describe('/api/partner-visit-records', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     pharmacyVisitRequestFindFirstMock.mockResolvedValue({
@@ -194,6 +198,76 @@ describe('/api/partner-visit-records POST', () => {
     expect(responseText).not.toContain('山田花子');
     expect(responseText).not.toContain('飲み忘れ');
     expect(responseText).not.toContain('A薬');
+  });
+
+  it('lists records without optional predicates when filters are omitted', async () => {
+    const response = await GET(createGetRequest('?limit=8'));
+
+    expect(response.status).toBe(200);
+    const where = partnerVisitRecordFindManyMock.mock.calls[0]?.[0]?.where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+      }),
+    );
+    expect(where).not.toHaveProperty('status');
+    expect(where).not.toHaveProperty('visit_request_id');
+    expect(where).not.toHaveProperty('share_case_id');
+    expect(partnerVisitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 9,
+      }),
+    );
+  });
+
+  it('trims and applies valid status and id filters', async () => {
+    const response = await GET(
+      createGetRequest(
+        '?status=%20submitted%20&visit_request_id=%20visit_request_1%20&share_case_id=%20share_case_1%20',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const where = partnerVisitRecordFindManyMock.mock.calls[0]?.[0]?.where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+        status: 'submitted',
+        visit_request_id: 'visit_request_1',
+        share_case_id: 'share_case_1',
+      }),
+    );
+  });
+
+  it.each([
+    ['?status=', 'status', 'ステータスを指定してください'],
+    ['?status=%20%20', 'status', 'ステータスを指定してください'],
+    ['?visit_request_id=', 'visit_request_id', '訪問依頼IDを指定してください'],
+    ['?share_case_id=%20%20', 'share_case_id', '患者共有ケースIDを指定してください'],
+  ])('rejects blank filter query "%s" before loading records', async (query, field, message) => {
+    const response = await GET(createGetRequest(query));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: { [field]: [message] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported status values before loading records', async () => {
+    const response = await GET(createGetRequest('?status=deleted'));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: { status: ['対応していないステータスです'] },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordFindManyMock).not.toHaveBeenCalled();
   });
 
   it('creates a partner-owned draft record for an accepted request without auditing clinical content', async () => {

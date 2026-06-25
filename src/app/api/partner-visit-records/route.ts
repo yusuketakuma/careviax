@@ -49,6 +49,21 @@ function optionalSearchParam(value: string | null) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 function optionalJson(value: unknown) {
   return value === undefined ? undefined : toPrismaJsonInput(value);
 }
@@ -86,7 +101,13 @@ export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
-    const rawStatus = optionalSearchParam(searchParams.get('status'));
+    const rawStatusResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      'ステータスを指定してください',
+    );
+    if (!rawStatusResult.ok) return rawStatusResult.response;
+    const rawStatus = rawStatusResult.value;
     const status = rawStatus ? partnerVisitRecordStatusSchema.safeParse(rawStatus) : null;
     if (status && !status.success) {
       return validationError('検索条件が不正です', {
@@ -94,8 +115,20 @@ export const GET = withAuthContext(
       });
     }
 
-    const visitRequestId = optionalSearchParam(searchParams.get('visit_request_id'));
-    const shareCaseId = optionalSearchParam(searchParams.get('share_case_id'));
+    const visitRequestIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'visit_request_id',
+      '訪問依頼IDを指定してください',
+    );
+    if (!visitRequestIdResult.ok) return visitRequestIdResult.response;
+    const shareCaseIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'share_case_id',
+      '患者共有ケースIDを指定してください',
+    );
+    if (!shareCaseIdResult.ok) return shareCaseIdResult.response;
+    const visitRequestId = visitRequestIdResult.value;
+    const shareCaseId = shareCaseIdResult.value;
     const now = new Date();
 
     const rows = await withOrgContext(ctx.orgId, (tx) =>
