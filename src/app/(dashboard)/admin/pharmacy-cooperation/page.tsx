@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import { Suspense } from 'react';
-import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { Loading } from '@/components/ui/loading';
 import { PharmacyCooperationSetupContent } from './pharmacy-cooperation-setup-content';
@@ -12,9 +12,7 @@ export const metadata: Metadata = {
 export default function PharmacyCooperationSetupPage() {
   return (
     <PageScaffold>
-      <WorkflowPageIntro
-        backHref="/admin"
-        backLabel="マスターへ戻る"
+      <AdminPageHeader
         eyebrow="Pharmacy Cooperation Setup"
         title="薬局間協力設定"
         description="協力薬局、薬局間連携、契約を登録し、協力訪問と月次請求の前提データを整えます。"
