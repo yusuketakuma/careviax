@@ -123,6 +123,27 @@ describe('/api/pharmacy-contracts POST', () => {
     expect(pharmacyContractFindManyMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['status', '?status=', { status: ['ステータスを指定してください'] }],
+    ['blank status', '?status=%20%20', { status: ['ステータスを指定してください'] }],
+    ['partnership_id', '?partnership_id=', { partnership_id: ['薬局間連携IDを指定してください'] }],
+    [
+      'blank partnership_id',
+      '?partnership_id=%20%20',
+      { partnership_id: ['薬局間連携IDを指定してください'] },
+    ],
+  ])('rejects explicitly empty %s filters before DB reads', async (_label, query, details) => {
+    const response = await GET(createGetRequest(query));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details,
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacyContractFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('accepts v0.2 terminal contract status filters', async () => {
     const response = await GET(createGetRequest('?status=terminated'));
 
@@ -130,6 +151,19 @@ describe('/api/pharmacy-contracts POST', () => {
     expect(pharmacyContractFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: 'terminated' }),
+      }),
+    );
+  });
+
+  it('trims valid partnership filters', async () => {
+    const response = await GET(createGetRequest('?partnership_id=%20partnership_1%20'));
+
+    expect(response.status).toBe(200);
+    expect(pharmacyContractFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          partnership_id: 'partnership_1',
+        }),
       }),
     );
   });
