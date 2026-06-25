@@ -33,7 +33,7 @@ describe('routeCatalog', () => {
     );
   });
 
-  it('documents high-risk communication and medication routes with exact runtime methods', () => {
+  it('documents high-risk communication, medication, and visit routes with exact runtime methods', () => {
     expect(routeCatalog).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -63,6 +63,12 @@ describe('routeCatalog', () => {
         expect.objectContaining({
           path: '/api/residual-medications',
           methods: ['GET', 'POST'],
+          permission: 'canVisit',
+          area: 'visits',
+        }),
+        expect.objectContaining({
+          path: '/api/visit-records/:id/handoff',
+          methods: ['GET', 'PUT'],
           permission: 'canVisit',
           area: 'visits',
         }),
@@ -104,6 +110,7 @@ describe('routeCatalog', () => {
       '/api/patients/:id/prescriptions/export',
       '/api/interventions',
       '/api/residual-medications',
+      '/api/visit-records/:id/handoff',
       '/api/medication-issues',
       '/api/medication-issues/:id',
       '/api/medication-profiles',

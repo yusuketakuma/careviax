@@ -169,6 +169,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'visits',
   },
   {
+    path: '/api/visit-records/:id/handoff',
+    methods: ['GET', 'PUT'],
+    permission: 'canVisit',
+    description: '訪問記録の申し送り取得と確定',
+    area: 'visits',
+  },
+  {
     path: '/api/visit-records/:id/pdf',
     methods: ['GET'],
     permission: 'canVisit',

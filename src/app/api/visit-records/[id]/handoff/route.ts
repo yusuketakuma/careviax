@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
-import { success, validationError, notFound, error } from '@/lib/api/response';
+import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
+import { success, validationError, notFound, error, forbiddenResponse } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
@@ -22,32 +24,52 @@ const confirmHandoffSchema = z.object({
     .optional(),
 });
 
+const visitRecordHandoffSelect = {
+  id: true,
+  structured_soap: true,
+  schedule: {
+    select: {
+      pharmacist_id: true,
+      case_: {
+        select: {
+          primary_pharmacist_id: true,
+          backup_pharmacist_id: true,
+        },
+      },
+    },
+  },
+} as const;
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録の更新権限がありません',
   });
-  if ('response' in authResult) return authResult.response;
+  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
   const ctx = authResult.ctx;
 
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('訪問記録IDが不正です');
+  if (!id) return withSensitiveNoStore(validationError('訪問記録IDが不正です'));
 
   const payload = await readJsonObjectRequestBody(req);
-  if (!payload) return validationError('リクエストボディが不正です');
+  if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
 
   const parsed = confirmHandoffSchema.safeParse(payload);
   if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    return withSensitiveNoStore(
+      validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+    );
   }
 
-  // Verify visit record exists and belongs to org
   const record = await prisma.visitRecord.findFirst({
     where: { id, org_id: ctx.orgId },
-    select: { id: true, structured_soap: true },
+    select: visitRecordHandoffSelect,
   });
-  if (!record) return notFound('訪問記録が見つかりません');
+  if (!record) return withSensitiveNoStore(notFound('訪問記録が見つかりません'));
+  if (!canAccessVisitScheduleAssignment(ctx, record.schedule)) {
+    return withSensitiveNoStore(await forbiddenResponse('この訪問記録を更新する権限がありません'));
+  }
 
   const { edits } = parsed.data;
 
@@ -59,12 +81,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       edits,
       requestContext: ctx,
     });
-    return success(handoff);
+    return withSensitiveNoStore(success(handoff));
   } catch (cause) {
     if (cause instanceof Error && cause.message.includes('No handoff found')) {
-      return notFound('引継ぎデータが見つかりません。AI抽出が完了していない可能性があります');
+      return withSensitiveNoStore(
+        notFound('引継ぎデータが見つかりません。AI抽出が完了していない可能性があります'),
+      );
     }
-    return error('internal_error', '引継ぎの確定処理に失敗しました', 500);
+    return withSensitiveNoStore(error('internal_error', '引継ぎの確定処理に失敗しました', 500));
   }
 }
 
@@ -73,17 +97,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     permission: 'canVisit',
     message: '訪問記録の閲覧権限がありません',
   });
-  if ('response' in authResult) return authResult.response;
+  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
   const ctx = authResult.ctx;
 
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('訪問記録IDが不正です');
+  if (!id) return withSensitiveNoStore(validationError('訪問記録IDが不正です'));
   const record = await prisma.visitRecord.findFirst({
     where: { id, org_id: ctx.orgId },
-    select: { id: true, structured_soap: true },
+    select: visitRecordHandoffSelect,
   });
-  if (!record) return notFound('訪問記録が見つかりません');
+  if (!record) return withSensitiveNoStore(notFound('訪問記録が見つかりません'));
+  if (!canAccessVisitScheduleAssignment(ctx, record.schedule)) {
+    return withSensitiveNoStore(await forbiddenResponse('この訪問記録を閲覧する権限がありません'));
+  }
+
   const handoffExtraction = await prisma.visitHandoffExtraction.findUnique({
     where: { visit_record_id: id },
     select: {
@@ -122,11 +150,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       }
     : null;
   if (!handoff && !extraction) {
-    return notFound('引継ぎデータが見つかりません');
+    return withSensitiveNoStore(notFound('引継ぎデータが見つかりません'));
   }
 
-  return success({
-    data: handoff,
-    extraction,
-  });
+  return withSensitiveNoStore(
+    success({
+      data: handoff,
+      extraction,
+    }),
+  );
 }

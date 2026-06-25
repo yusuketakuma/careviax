@@ -22,16 +22,38 @@ const {
     line_id: 'line_1',
     patient_id: 'patient_1',
     case_id: 'case_1',
+    structured_soap: {
+      handoff: {
+        next_check_items: ['確認事項'],
+        ongoing_monitoring: [],
+      },
+    },
+    schedule: {
+      pharmacist_id: 'user_1',
+      case_: {
+        primary_pharmacist_id: 'user_1',
+        backup_pharmacist_id: null,
+      },
+    },
     case_: {
       patient_id: 'patient_1',
     },
     role: 'admin',
     _count: { id: 0 },
+    retry_count: 0,
+    last_attempted_at: null,
+    last_succeeded_at: null,
+    last_failed_at: null,
+    error_message: null,
+    retryable: false,
+    source_visit_record_version: 1,
+    source_visit_record_updated_at: new Date('2026-06-18T00:00:00.000Z'),
   });
 
   const createModel = () => ({
     findMany: vi.fn().mockResolvedValue([]),
     findFirst: vi.fn().mockResolvedValue(createRecord()),
+    findUnique: vi.fn().mockResolvedValue(createRecord()),
     count: vi.fn().mockResolvedValue(0),
     groupBy: vi.fn().mockResolvedValue([]),
     update: vi.fn().mockResolvedValue(createRecord()),
@@ -139,6 +161,7 @@ import { GET as setPlansGet } from '../set-plans/route';
 import { GET as tracingReportsGet } from '../tracing-reports/route';
 import { GET as visitRecordsGet } from '../visit-records/route';
 import { GET as visitRecordGet } from '../visit-records/[id]/route';
+import { GET as visitRecordHandoffGet } from '../visit-records/[id]/handoff/route';
 import { GET as visitRecordPdfGet } from '../visit-records/[id]/pdf/route';
 import { GET as visitScheduleProposalsGet } from '../visit-schedule-proposals/route';
 import { GET as visitSchedulesGet } from '../visit-schedules/route';
@@ -520,6 +543,16 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () =>
       visitRecordGet(
         createRequest('http://localhost/api/visit-records/record_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'record_1' }) },
+      ),
+  },
+  {
+    name: 'visit-records/[id]/handoff GET',
+    handler: () =>
+      visitRecordHandoffGet(
+        createRequest('http://localhost/api/visit-records/record_1/handoff', {
+          'x-org-id': 'org_1',
+        }),
         { params: Promise.resolve({ id: 'record_1' }) },
       ),
   },

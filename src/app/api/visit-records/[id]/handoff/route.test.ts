@@ -3,11 +3,13 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  canAccessVisitScheduleAssignmentMock,
   visitRecordFindFirstMock,
   visitHandoffExtractionFindUniqueMock,
   confirmHandoffMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  canAccessVisitScheduleAssignmentMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   visitHandoffExtractionFindUniqueMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
@@ -15,6 +17,10 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/visit-schedule-access', () => ({
+  canAccessVisitScheduleAssignment: canAccessVisitScheduleAssignmentMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -61,17 +67,45 @@ const authCtx = {
   },
 };
 
+const accessibleSchedule = {
+  pharmacist_id: 'user_1',
+  case_: {
+    primary_pharmacist_id: 'user_1',
+    backup_pharmacist_id: null,
+  },
+};
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-records/[id]/handoff', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue(authCtx);
+    canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
     visitHandoffExtractionFindUniqueMock.mockResolvedValue(null);
   });
 
   describe('GET', () => {
+    it('adds no-store headers to auth failures', async () => {
+      requireAuthContextMock.mockResolvedValue({
+        response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 }),
+      });
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
+      const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(403);
+      expectSensitiveNoStore(res!);
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    });
+
     it('returns 200 with handoff data', async () => {
       visitRecordFindFirstMock.mockResolvedValue({
         id: 'vr_1',
+        schedule: accessibleSchedule,
         structured_soap: {
           handoff: { next_check_items: ['item1'], ongoing_monitoring: [] },
         },
@@ -91,6 +125,11 @@ describe('/api/visit-records/[id]/handoff', () => {
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(200);
+      expectSensitiveNoStore(res!);
+      expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
+        authCtx.ctx,
+        accessibleSchedule,
+      );
       const json = await res!.json();
       expect(json.data.next_check_items).toEqual(['item1']);
       expect(json.extraction).toMatchObject({
@@ -105,11 +144,13 @@ describe('/api/visit-records/[id]/handoff', () => {
       const res = await GET(req, { params: Promise.resolve({ id: '   ' }) });
 
       expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
       await expect(res!.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '訪問記録IDが不正です',
       });
       expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 when record not found', async () => {
@@ -118,22 +159,49 @@ describe('/api/visit-records/[id]/handoff', () => {
       const req = createRequest('http://localhost/api/visit-records/missing/handoff');
       const res = await GET(req, { params: Promise.resolve({ id: 'missing' }) });
       expect(res!.status).toBe(404);
+      expectSensitiveNoStore(res!);
+      expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 before reading extraction state when assignment access is denied', async () => {
+      canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
+      visitRecordFindFirstMock.mockResolvedValue({
+        id: 'vr_1',
+        schedule: accessibleSchedule,
+        structured_soap: {
+          handoff: { next_check_items: ['item1'], ongoing_monitoring: [] },
+        },
+      });
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
+      const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(403);
+      expectSensitiveNoStore(res!);
+      expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
+        authCtx.ctx,
+        accessibleSchedule,
+      );
+      expect(visitHandoffExtractionFindUniqueMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 when no handoff data', async () => {
       visitRecordFindFirstMock.mockResolvedValue({
         id: 'vr_1',
+        schedule: accessibleSchedule,
         structured_soap: null,
       });
 
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(404);
+      expectSensitiveNoStore(res!);
     });
 
     it('returns redacted extraction status even when handoff data is not yet available', async () => {
       visitRecordFindFirstMock.mockResolvedValue({
         id: 'vr_1',
+        schedule: accessibleSchedule,
         structured_soap: null,
       });
       visitHandoffExtractionFindUniqueMock.mockResolvedValue({
@@ -151,6 +219,7 @@ describe('/api/visit-records/[id]/handoff', () => {
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(200);
+      expectSensitiveNoStore(res!);
       const payload = await res!.json();
       expect(payload).toMatchObject({
         data: null,
@@ -169,9 +238,26 @@ describe('/api/visit-records/[id]/handoff', () => {
   });
 
   describe('PUT', () => {
+    it('adds no-store headers to auth failures', async () => {
+      requireAuthContextMock.mockResolvedValue({
+        response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 }),
+      });
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(403);
+      expectSensitiveNoStore(res!);
+      expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
     it('returns 200 on valid handoff confirmation', async () => {
       visitRecordFindFirstMock.mockResolvedValue({
         id: 'vr_1',
+        schedule: accessibleSchedule,
         structured_soap: { handoff: {} },
       });
       const handoffResult = { confirmed: true, confirmed_by: 'user_1' };
@@ -182,6 +268,11 @@ describe('/api/visit-records/[id]/handoff', () => {
       });
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(200);
+      expectSensitiveNoStore(res!);
+      expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
+        authCtx.ctx,
+        accessibleSchedule,
+      );
     });
 
     it('rejects blank visit record ids before confirming handoff data', async () => {
@@ -192,11 +283,13 @@ describe('/api/visit-records/[id]/handoff', () => {
       const res = await PUT(req, { params: Promise.resolve({ id: '   ' }) });
 
       expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
       await expect(res!.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '訪問記録IDが不正です',
       });
       expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
       expect(confirmHandoffMock).not.toHaveBeenCalled();
     });
 
@@ -204,6 +297,7 @@ describe('/api/visit-records/[id]/handoff', () => {
       const req = createMalformedJsonRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
       await expect(res!.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: 'リクエストボディが不正です',
@@ -218,6 +312,7 @@ describe('/api/visit-records/[id]/handoff', () => {
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
 
       expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
       await expect(res!.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: 'リクエストボディが不正です',
@@ -234,11 +329,34 @@ describe('/api/visit-records/[id]/handoff', () => {
       const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
 
       expect(res!.status).toBe(400);
+      expectSensitiveNoStore(res!);
       await expect(res!.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '入力値が不正です',
       });
       expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+      expect(confirmHandoffMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 before confirming handoff data when assignment access is denied', async () => {
+      canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
+      visitRecordFindFirstMock.mockResolvedValue({
+        id: 'vr_1',
+        schedule: accessibleSchedule,
+        structured_soap: { handoff: {} },
+      });
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff', {
+        confirmed: true,
+      });
+      const res = await PUT(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(403);
+      expectSensitiveNoStore(res!);
+      expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
+        authCtx.ctx,
+        accessibleSchedule,
+      );
       expect(confirmHandoffMock).not.toHaveBeenCalled();
     });
   });
