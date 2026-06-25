@@ -64,6 +64,11 @@ function createMalformedJsonPostRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function expectNoRawSelfReportAuditFields(changes: Record<string, unknown>) {
   for (const field of [
     'reported_by_name',
@@ -144,6 +149,7 @@ describe('/api/patient-self-reports', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -179,6 +185,7 @@ describe('/api/patient-self-reports', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -205,6 +212,7 @@ describe('/api/patient-self-reports', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [],
       hasMore: false,
@@ -212,12 +220,37 @@ describe('/api/patient-self-reports', () => {
     expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['patient_id', '?patient_id=', { patient_id: ['患者IDを指定してください'] }],
+    ['blank patient_id', '?patient_id=%20%20', { patient_id: ['患者IDを指定してください'] }],
+    ['status', '?status=', { status: ['ステータスを指定してください'] }],
+    ['blank status', '?status=%20%20', { status: ['ステータスを指定してください'] }],
+  ])(
+    'rejects explicitly empty %s filters before resolving accessible patients',
+    async (_label, query, details) => {
+      const response = (await GET(createGetRequest(query), {
+        params: Promise.resolve({}),
+      }))!;
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details,
+      });
+      expect(patientFindManyMock).not.toHaveBeenCalled();
+      expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects an invalid status filter before resolving accessible patients', async () => {
     const response = (await GET(createGetRequest('?status=archived'), {
       params: Promise.resolve({}),
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -243,6 +276,7 @@ describe('/api/patient-self-reports', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'patient_1',
@@ -323,6 +357,7 @@ describe('/api/patient-self-reports', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
         reported_by_name: null,
@@ -342,6 +377,7 @@ describe('/api/patient-self-reports', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -358,6 +394,7 @@ describe('/api/patient-self-reports', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -381,6 +418,7 @@ describe('/api/patient-self-reports', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -408,6 +446,7 @@ describe('/api/patient-self-reports', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

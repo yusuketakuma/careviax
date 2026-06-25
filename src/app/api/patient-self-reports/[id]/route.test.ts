@@ -75,6 +75,11 @@ function createMalformedJsonPatchRequest(reportId: string) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function mockSelfReportDetail() {
   patientSelfReportFindFirstMock
     .mockResolvedValueOnce({
@@ -189,6 +194,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientSelfReportTxFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'report_1',
@@ -276,6 +282,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -293,6 +300,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -311,10 +319,37 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
         updated_at: expect.any(Array),
+      },
+    });
+    expect(patientSelfReportFindFirstMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSelfReportUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects no-op patch payloads before loading the self report', async () => {
+    const response = (await PATCH(
+      createPatchRequest('report_1', {
+        updated_at: CURRENT_UPDATED_AT,
+      }),
+      {
+        params: Promise.resolve({ id: 'report_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '更新する項目を指定してください',
+      details: {
+        body: ['更新する項目を指定してください'],
       },
     });
     expect(patientSelfReportFindFirstMock).not.toHaveBeenCalled();
@@ -336,6 +371,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -355,6 +391,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     });
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者自己申告IDが不正です',
     });
@@ -371,6 +408,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者自己申告IDが不正です',
     });
@@ -393,6 +431,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     });
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_NOT_FOUND',
     });
@@ -408,6 +447,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     });
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
         reported_by_name: '家族A',
@@ -432,6 +472,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     });
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
         reported_by_name: null,
@@ -459,6 +500,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(patientSelfReportUpdateMock).not.toHaveBeenCalled();
     expect(patientSelfReportUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -478,6 +520,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: expect.objectContaining({
         reported_by_name: null,
@@ -505,6 +548,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message:
@@ -546,6 +590,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message:
@@ -571,6 +616,7 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message:

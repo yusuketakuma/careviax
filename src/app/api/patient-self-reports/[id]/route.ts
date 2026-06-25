@@ -1,5 +1,6 @@
 import { withAuthContext, requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -30,23 +31,25 @@ const SELF_REPORT_CONFLICT_MESSAGE =
 
 class PatientSelfReportConflictError extends Error {}
 
+const sensitiveResponse = withSensitiveNoStore;
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: '患者自己申告の閲覧権限がありません',
   });
-  if ('response' in authResult) return authResult.response;
+  if ('response' in authResult) return sensitiveResponse(authResult.response);
   const ctx = authResult.ctx;
 
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('患者自己申告IDが不正です');
+  if (!id) return sensitiveResponse(validationError('患者自己申告IDが不正です'));
 
   const reportRef = await prisma.patientSelfReport.findFirst({
     where: { id, org_id: ctx.orgId },
     select: { id: true, patient_id: true },
   });
-  if (!reportRef) return notFound('患者自己申告が見つかりません');
+  if (!reportRef) return sensitiveResponse(notFound('患者自己申告が見つかりません'));
 
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
@@ -58,41 +61,52 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ),
     select: { id: true },
   });
-  if (!patient) return notFound('患者自己申告が見つかりません');
+  if (!patient) return sensitiveResponse(notFound('患者自己申告が見つかりません'));
 
   const report = await prisma.patientSelfReport.findFirst({
     where: { id: reportRef.id, org_id: ctx.orgId },
     select: patientSelfReportResponseSelect,
   });
-  if (!report) return notFound('患者自己申告が見つかりません');
+  if (!report) return sensitiveResponse(notFound('患者自己申告が見つかりません'));
 
   const privacy = getPatientPrivacyFlags(ctx.role);
-  return success({
-    data: serializePatientSelfReport(report, privacy),
-  });
+  return sensitiveResponse(
+    success({
+      data: serializePatientSelfReport(report, privacy),
+    }),
+  );
 }
 
 export const PATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     const { id: rawId } = await routeContext.params;
     const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('患者自己申告IDが不正です');
+    if (!id) return sensitiveResponse(validationError('患者自己申告IDが不正です'));
 
     const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+    if (!payload) return sensitiveResponse(validationError('リクエストボディが不正です'));
 
     const parsed = patchSelfReportSchema.safeParse(payload);
     if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+      return sensitiveResponse(
+        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+      );
     }
     const { updated_at: expectedUpdatedAtRaw, ...patchData } = parsed.data;
+    if (Object.keys(patchData).length === 0) {
+      return sensitiveResponse(
+        validationError('更新する項目を指定してください', {
+          body: ['更新する項目を指定してください'],
+        }),
+      );
+    }
     const expectedUpdatedAt = new Date(expectedUpdatedAtRaw);
 
     const existing = await prisma.patientSelfReport.findFirst({
       where: { id, org_id: ctx.orgId },
       select: { id: true, patient_id: true, triaged_at: true, updated_at: true },
     });
-    if (!existing) return notFound('患者自己申告が見つかりません');
+    if (!existing) return sensitiveResponse(notFound('患者自己申告が見つかりません'));
 
     const patient = await prisma.patient.findFirst({
       where: applyPatientAssignmentWhere(
@@ -104,7 +118,7 @@ export const PATCH = withAuthContext<{ id: string }>(
       ),
       select: { id: true },
     });
-    if (!patient) return notFound('患者自己申告が見つかりません');
+    if (!patient) return sensitiveResponse(notFound('患者自己申告が見つかりません'));
 
     const updated = await withOrgContext(
       ctx.orgId,
@@ -184,10 +198,10 @@ export const PATCH = withAuthContext<{ id: string }>(
       throw error;
     });
 
-    if ('error' in updated) return conflict(SELF_REPORT_CONFLICT_MESSAGE);
+    if ('error' in updated) return sensitiveResponse(conflict(SELF_REPORT_CONFLICT_MESSAGE));
 
     const privacy = getPatientPrivacyFlags(ctx.role);
-    return success({ data: serializePatientSelfReport(updated, privacy) });
+    return sensitiveResponse(success({ data: serializePatientSelfReport(updated, privacy) }));
   },
   {
     permission: 'canReport',

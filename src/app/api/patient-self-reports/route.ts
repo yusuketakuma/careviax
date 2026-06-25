@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
@@ -42,17 +43,46 @@ function optionalTrimmedSearchParam(value: string | null) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function readPresentOptionalSearchParam(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+) {
+  const value = optionalTrimmedSearchParam(searchParams.get(name));
+  if (searchParams.has(name) && !value) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  return { ok: true as const, value };
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
-    const patientId = optionalTrimmedSearchParam(searchParams.get('patient_id'));
-    const statusParam = searchParams.get('status') ?? undefined;
+    const patientIdResult = readPresentOptionalSearchParam(
+      searchParams,
+      'patient_id',
+      '患者IDを指定してください',
+    );
+    if (!patientIdResult.ok) return withSensitiveNoStore(patientIdResult.response);
+    const statusResult = readPresentOptionalSearchParam(
+      searchParams,
+      'status',
+      'ステータスを指定してください',
+    );
+    if (!statusResult.ok) return withSensitiveNoStore(statusResult.response);
+    const patientId = patientIdResult.value;
+    const statusParam = statusResult.value;
     const status = statusParam ? selfReportStatusSchema.safeParse(statusParam) : null;
     if (status && !status.success) {
-      return validationError('患者自己申告ステータスが不正です', {
-        status: ['対応していないステータスです'],
-      });
+      return withSensitiveNoStore(
+        validationError('患者自己申告ステータスが不正です', {
+          status: ['対応していないステータスです'],
+        }),
+      );
     }
 
     const accessiblePatients = await prisma.patient.findMany({
@@ -73,7 +103,7 @@ export const GET = withAuthContext(
     const accessiblePatientIds = accessiblePatients.map((patient) => patient.id);
 
     if (accessiblePatientIds.length === 0) {
-      return success({ data: [], hasMore: false, nextCursor: undefined });
+      return withSensitiveNoStore(success({ data: [], hasMore: false, nextCursor: undefined }));
     }
 
     const reports = await prisma.patientSelfReport.findMany({
@@ -95,7 +125,7 @@ export const GET = withAuthContext(
     );
     const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-    return success({ data, hasMore, nextCursor });
+    return withSensitiveNoStore(success({ data, hasMore, nextCursor }));
   },
   {
     permission: 'canReport',
@@ -106,11 +136,13 @@ export const GET = withAuthContext(
 export const POST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+    if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
 
     const parsed = createSelfReportSchema.safeParse(payload);
     if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+      return withSensitiveNoStore(
+        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+      );
     }
 
     const patient = await prisma.patient.findFirst({
@@ -123,7 +155,7 @@ export const POST = withAuthContext(
       ),
       select: { id: true },
     });
-    if (!patient) return notFound('患者が見つかりません');
+    if (!patient) return withSensitiveNoStore(notFound('患者が見つかりません'));
 
     const created = await withOrgContext(ctx.orgId, async (tx) => {
       const report = await tx.patientSelfReport.create({
@@ -161,7 +193,9 @@ export const POST = withAuthContext(
     });
 
     const privacy = getPatientPrivacyFlags(ctx.role);
-    return success({ data: serializePatientSelfReport(created, privacy) }, 201);
+    return withSensitiveNoStore(
+      success({ data: serializePatientSelfReport(created, privacy) }, 201),
+    );
   },
   {
     permission: 'canReport',
