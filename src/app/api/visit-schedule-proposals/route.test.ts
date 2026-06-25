@@ -149,6 +149,11 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createMalformedJsonPostRequest() {
   return new NextRequest('http://localhost/api/visit-schedule-proposals', {
     method: 'POST',
@@ -346,6 +351,7 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toMatchObject({
       data: [
@@ -429,8 +435,12 @@ describe('/api/visit-schedule-proposals', () => {
   });
 
   it('filters proposals by patient_id when provided', async () => {
-    await GET(createRequest('http://localhost/api/visit-schedule-proposals?patient_id=patient_1'));
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedule-proposals?patient_id=patient_1'),
+    ))!;
 
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -445,12 +455,14 @@ describe('/api/visit-schedule-proposals', () => {
   });
 
   it('filters proposals for global search without changing the unbounded list default', async () => {
-    await GET(
+    const response = (await GET(
       createRequest(
         'http://localhost/api/visit-schedule-proposals?q=田中&status=patient_contact_pending&pharmacist_id=user_2&limit=8',
       ),
-    );
+    ))!;
 
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -519,6 +531,7 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toEqual({
       data: [
@@ -589,6 +602,7 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'status が不正です',
@@ -603,6 +617,7 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'limit は 1〜50 の整数で指定してください',
@@ -617,6 +632,7 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'date_from の日付形式が不正です（YYYY-MM-DD）',
@@ -624,6 +640,73 @@ describe('/api/visit-schedule-proposals', () => {
     expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
     expect(userFindManyMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['case_id=', 'case_id', 'case_id が不正です'],
+    ['case_id=%20case_1%20', 'case_id', 'case_id が不正です'],
+    ['patient_id=', 'patient_id', 'patient_id が不正です'],
+    ['patient_id=%20patient_1', 'patient_id', 'patient_id が不正です'],
+    ['pharmacist_id=', 'pharmacist_id', 'pharmacist_id が不正です'],
+    ['pharmacist_id=user_2%20', 'pharmacist_id', 'pharmacist_id が不正です'],
+    ['status=%20patient_contact_pending', 'status', 'status が不正です'],
+    ['date_from=', 'date_from', 'date_from の日付形式が不正です（YYYY-MM-DD）'],
+    ['date_to=%202026-04-03', 'date_to', 'date_to の日付形式が不正です（YYYY-MM-DD）'],
+    ['q=', 'q', 'q が不正です'],
+    ['q=%20%20', 'q', 'q が不正です'],
+    ['q=%20田中%20', 'q', 'q が不正です'],
+    ['limit=', 'limit', 'limit が不正です'],
+    ['view=%20palette', 'view', 'view が不正です'],
+  ])(
+    'rejects blank or malformed proposal filter query "%s" before querying proposals',
+    async (query, fieldName, message) => {
+      const response = (await GET(
+        createRequest(`http://localhost/api/visit-schedule-proposals?${query}`),
+      ))!;
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: {
+          [fieldName]: [message],
+        },
+      });
+      expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
+      expect(userFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['case_id=case_1&case_id=case_2', 'case_id'],
+    ['patient_id=patient_1&patient_id=patient_2', 'patient_id'],
+    ['status=patient_contact_pending&status=proposed', 'status'],
+    ['pharmacist_id=user_1&pharmacist_id=user_2', 'pharmacist_id'],
+    ['date_from=2026-04-01&date_from=2026-04-02', 'date_from'],
+    ['date_to=2026-04-03&date_to=2026-04-04', 'date_to'],
+    ['q=田中&q=佐藤', 'q'],
+    ['limit=8&limit=9', 'limit'],
+    ['view=palette&view=palette', 'view'],
+  ])(
+    'rejects duplicate proposal filter query "%s" before querying proposals',
+    async (query, fieldName) => {
+      const response = (await GET(
+        createRequest(`http://localhost/api/visit-schedule-proposals?${query}`),
+      ))!;
+
+      expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '検索条件が不正です',
+        details: {
+          [fieldName]: [`${fieldName} は1つだけ指定してください`],
+        },
+      });
+      expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
+      expect(userFindManyMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('creates proposal drafts and supersedes open proposals', async () => {
     const response = (await POST(

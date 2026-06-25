@@ -7,6 +7,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -133,8 +134,58 @@ type GenerateProposalFingerprintInput = {
   specialCapEligible?: boolean;
 };
 
+type ProposalListQuery =
+  | {
+      ok: true;
+      caseId: string | null;
+      patientId: string | null;
+      status: z.infer<typeof proposalStatusSchema> | null;
+      dateFrom: string | null;
+      dateTo: string | null;
+      pharmacistId: string | null;
+      query: string | null;
+      limit: number | undefined;
+      view: 'palette' | null;
+    }
+  | { ok: false; response: ReturnType<typeof validationError> };
+
+function readSingleProposalQueryValue(
+  searchParams: URLSearchParams,
+  name: string,
+  message: string,
+  options: { allowPadded?: boolean; maxLength?: number } = {},
+) {
+  const values = searchParams.getAll(name);
+  if (values.length === 0) return { ok: true as const, value: null };
+  if (values.length > 1) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', {
+        [name]: [`${name} は1つだけ指定してください`],
+      }),
+    };
+  }
+
+  const rawValue = values[0] ?? '';
+  const value = rawValue.trim();
+  if (!value || (!options.allowPadded && value !== rawValue)) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+  if (options.maxLength && value.length > options.maxLength) {
+    return {
+      ok: false as const,
+      response: validationError('検索条件が不正です', { [name]: [message] }),
+    };
+  }
+
+  return { ok: true as const, value };
+}
+
 function parseProposalDateQuery(value: string | null, fieldName: 'date_from' | 'date_to') {
-  if (value == null) {
+  if (value === null) {
     return { ok: true as const, value: null };
   }
 
@@ -150,7 +201,7 @@ function parseProposalDateQuery(value: string | null, fieldName: 'date_from' | '
 }
 
 function parseProposalLimitQuery(value: string | null) {
-  if (value == null) {
+  if (value === null) {
     return { ok: true as const, value: undefined };
   }
 
@@ -163,6 +214,87 @@ function parseProposalLimitQuery(value: string | null) {
   }
 
   return { ok: true as const, value: parsed.data };
+}
+
+function parseProposalListQuery(searchParams: URLSearchParams): ProposalListQuery {
+  const caseResult = readSingleProposalQueryValue(searchParams, 'case_id', 'case_id が不正です', {
+    maxLength: 100,
+  });
+  if (!caseResult.ok) return caseResult;
+
+  const patientResult = readSingleProposalQueryValue(
+    searchParams,
+    'patient_id',
+    'patient_id が不正です',
+    { maxLength: 100 },
+  );
+  if (!patientResult.ok) return patientResult;
+
+  const statusResult = readSingleProposalQueryValue(searchParams, 'status', 'status が不正です', {
+    maxLength: 100,
+  });
+  if (!statusResult.ok) return statusResult;
+  const parsedStatus = statusResult.value
+    ? proposalStatusSchema.safeParse(statusResult.value)
+    : null;
+  if (parsedStatus && !parsedStatus.success) {
+    return { ok: false, response: validationError('status が不正です') };
+  }
+
+  const dateFromResult = readSingleProposalQueryValue(
+    searchParams,
+    'date_from',
+    'date_from の日付形式が不正です（YYYY-MM-DD）',
+  );
+  if (!dateFromResult.ok) return dateFromResult;
+  const parsedDateFrom = parseProposalDateQuery(dateFromResult.value, 'date_from');
+  if (!parsedDateFrom.ok) return parsedDateFrom;
+
+  const dateToResult = readSingleProposalQueryValue(
+    searchParams,
+    'date_to',
+    'date_to の日付形式が不正です（YYYY-MM-DD）',
+  );
+  if (!dateToResult.ok) return dateToResult;
+  const parsedDateTo = parseProposalDateQuery(dateToResult.value, 'date_to');
+  if (!parsedDateTo.ok) return parsedDateTo;
+
+  const pharmacistResult = readSingleProposalQueryValue(
+    searchParams,
+    'pharmacist_id',
+    'pharmacist_id が不正です',
+    { maxLength: 100 },
+  );
+  if (!pharmacistResult.ok) return pharmacistResult;
+
+  const queryResult = readSingleProposalQueryValue(searchParams, 'q', 'q が不正です', {
+    maxLength: 100,
+  });
+  if (!queryResult.ok) return queryResult;
+
+  const limitResult = readSingleProposalQueryValue(searchParams, 'limit', 'limit が不正です');
+  if (!limitResult.ok) return limitResult;
+  const parsedLimit = parseProposalLimitQuery(limitResult.value);
+  if (!parsedLimit.ok) return parsedLimit;
+
+  const viewResult = readSingleProposalQueryValue(searchParams, 'view', 'view が不正です');
+  if (!viewResult.ok) return viewResult;
+  if (viewResult.value !== null && viewResult.value !== 'palette') {
+    return { ok: false, response: validationError('view が不正です') };
+  }
+
+  return {
+    ok: true,
+    caseId: caseResult.value,
+    patientId: patientResult.value,
+    status: parsedStatus?.data ?? null,
+    dateFrom: parsedDateFrom.value,
+    dateTo: parsedDateTo.value,
+    pharmacistId: pharmacistResult.value,
+    query: queryResult.value,
+    limit: parsedLimit.value,
+    view: viewResult.value,
+  };
 }
 
 /**
@@ -301,45 +433,23 @@ function dedupeBillingAlerts(alerts: BillingRequirementAlert[]) {
   });
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
-    const caseId = searchParams.get('case_id');
-    const patientId = searchParams.get('patient_id');
-    const status = searchParams.get('status');
-    const dateFrom = searchParams.get('date_from');
-    const dateTo = searchParams.get('date_to');
-    const pharmacistId = searchParams.get('pharmacist_id')?.trim() || null;
-    const query = searchParams.get('q')?.trim() || null;
-    const limit = searchParams.get('limit');
-    const view = searchParams.get('view')?.trim() || null;
+    const query = parseProposalListQuery(searchParams);
     const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
 
-    if (view !== null && view !== 'palette') {
-      return validationError('view が不正です');
-    }
-
-    const parsedStatus = status ? proposalStatusSchema.safeParse(status) : null;
-    if (parsedStatus && !parsedStatus.success) {
-      return validationError('status が不正です');
-    }
-
-    const parsedDateFrom = parseProposalDateQuery(dateFrom, 'date_from');
-    if (!parsedDateFrom.ok) return parsedDateFrom.response;
-    const parsedDateTo = parseProposalDateQuery(dateTo, 'date_to');
-    if (!parsedDateTo.ok) return parsedDateTo.response;
-    const parsedLimit = parseProposalLimitQuery(limit);
-    if (!parsedLimit.ok) return parsedLimit.response;
+    if (!query.ok) return query.response;
 
     const caseRelationWhere: Prisma.CareCaseWhereInput = {};
-    if (patientId) {
-      caseRelationWhere.patient_id = patientId;
+    if (query.patientId) {
+      caseRelationWhere.patient_id = query.patientId;
     }
-    if (query) {
+    if (query.query) {
       caseRelationWhere.patient = {
         is: {
           name: {
-            contains: query,
+            contains: query.query,
             mode: 'insensitive',
           },
         },
@@ -348,23 +458,23 @@ export const GET = withAuthContext(
 
     const proposalWhere: Prisma.VisitScheduleProposalWhereInput = {
       org_id: ctx.orgId,
-      ...(caseId ? { case_id: caseId } : {}),
+      ...(query.caseId ? { case_id: query.caseId } : {}),
       ...(Object.keys(caseRelationWhere).length > 0 ? { case_: { is: caseRelationWhere } } : {}),
-      ...(pharmacistId ? { proposed_pharmacist_id: pharmacistId } : {}),
-      ...(parsedStatus ? { proposal_status: parsedStatus.data } : {}),
-      ...(dateFrom || dateTo
+      ...(query.pharmacistId ? { proposed_pharmacist_id: query.pharmacistId } : {}),
+      ...(query.status ? { proposal_status: query.status } : {}),
+      ...(query.dateFrom || query.dateTo
         ? {
             proposed_date: {
-              ...(parsedDateFrom.value ? { gte: new Date(parsedDateFrom.value) } : {}),
-              ...(parsedDateTo.value ? { lte: new Date(parsedDateTo.value) } : {}),
+              ...(query.dateFrom ? { gte: new Date(query.dateFrom) } : {}),
+              ...(query.dateTo ? { lte: new Date(query.dateTo) } : {}),
             },
           }
         : {}),
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     };
 
-    if (view === 'palette') {
-      const paletteLimit = parsedLimit.value ?? 8;
+    if (query.view === 'palette') {
+      const paletteLimit = query.limit ?? 8;
       const proposals = await prisma.visitScheduleProposal.findMany({
         where: proposalWhere,
         select: {
@@ -512,7 +622,7 @@ export const GET = withAuthContext(
         },
       },
       orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
-      take: parsedLimit.value,
+      take: query.limit,
     });
 
     const pharmacistIds = Array.from(
@@ -548,6 +658,9 @@ export const GET = withAuthContext(
     message: '訪問候補の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));
 
 export const POST = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
