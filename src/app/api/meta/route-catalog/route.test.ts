@@ -108,6 +108,12 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'dispensing',
         }),
         expect.objectContaining({
+          path: '/api/dashboard/cockpit',
+          methods: ['GET'],
+          permission: 'canViewDashboard',
+          area: 'dashboard',
+        }),
+        expect.objectContaining({
           path: '/api/tasks',
           methods: ['GET', 'POST'],
           permission: 'canVisit',

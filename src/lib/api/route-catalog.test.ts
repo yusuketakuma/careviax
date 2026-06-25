@@ -120,6 +120,7 @@ describe('routeCatalog', () => {
       '/api/residual-medications',
       '/api/set-plans',
       '/api/visit-schedule-proposals',
+      '/api/dashboard/cockpit',
       '/api/visit-records/:id/handoff',
       '/api/visit-records/:id/reflected-fields',
       '/api/medication-issues',

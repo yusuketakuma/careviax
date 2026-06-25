@@ -62,6 +62,11 @@ function createRequest(search = '') {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function buildAuditTask(args: {
   id: string;
   priority?: string;
@@ -175,6 +180,7 @@ describe('/api/dashboard/cockpit', () => {
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const json = await response.json();
 
     expect(json.data.cycle_status_counts).toEqual({
@@ -264,6 +270,7 @@ describe('/api/dashboard/cockpit', () => {
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: { cycle_status_counts: { audit_pending: 1 } },
     });
@@ -279,6 +286,7 @@ describe('/api/dashboard/cockpit', () => {
     const response = (await GET(createRequest('?scope=mine'), { params: Promise.resolve({}) }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const json = await response.json();
     expect(json.data.scope).toEqual({
       requested: 'mine',
@@ -305,6 +313,7 @@ describe('/api/dashboard/cockpit', () => {
     const response = (await GET(createRequest('?scope=team'), { params: Promise.resolve({}) }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const json = await response.json();
     expect(json.data.scope).toEqual({
       requested: 'team',
@@ -315,6 +324,13 @@ describe('/api/dashboard/cockpit', () => {
 
     const auditWhere = dispenseTaskFindManyMock.mock.calls.at(-1)?.[0]?.where;
     expect(auditWhere?.cycle).toEqual({ case_id: { in: ['case_1'] } });
+    expect(serverCacheSetMock).toHaveBeenCalledWith(
+      expect.stringContaining('cockpit:org_1:pharmacist:user_1:2026-06-12:mine'),
+      expect.objectContaining({
+        scope: { requested: 'team', applied: 'mine', can_view_team: false },
+      }),
+      15_000,
+    );
   });
 
   it('JST でも scheduled_date(@db.Date)は UTC レンジ、created_at(DateTime)はローカル深夜で比較する', async () => {
@@ -326,6 +342,7 @@ describe('/api/dashboard/cockpit', () => {
 
       const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
       expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
 
       const visitWhere = visitScheduleFindManyMock.mock.calls.at(-1)?.[0]?.where;
       expect(visitWhere?.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
@@ -350,6 +367,7 @@ describe('/api/dashboard/cockpit', () => {
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).toHaveBeenCalled();
 
     const cycleWhere = medicationCycleGroupByMock.mock.calls.at(-1)?.[0]?.where;
@@ -360,5 +378,48 @@ describe('/api/dashboard/cockpit', () => {
 
     const visitWhere = visitScheduleFindManyMock.mock.calls.at(-1)?.[0]?.where;
     expect(visitWhere?.case_id).toEqual({ in: ['case_1'] });
+  });
+
+  it.each([
+    ['?scope=', 'scope が不正です'],
+    ['?scope=%20team', 'scope が不正です'],
+    ['?scope=mine%20', 'scope が不正です'],
+    ['?scope=all', 'scope が不正です'],
+  ])('rejects malformed scope query "%s" before cache or DB reads', async (search, message) => {
+    const response = (await GET(createRequest(search), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        scope: [message],
+      },
+    });
+    expect(serverCacheGetMock).not.toHaveBeenCalled();
+    expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate scope query before cache or DB reads', async () => {
+    const response = (await GET(createRequest('?scope=mine&scope=team'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '検索条件が不正です',
+      details: {
+        scope: ['scope は1つだけ指定してください'],
+      },
+    });
+    expect(serverCacheGetMock).not.toHaveBeenCalled();
+    expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
   });
 });

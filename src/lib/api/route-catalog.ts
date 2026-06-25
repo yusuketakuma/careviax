@@ -603,6 +603,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'dashboard',
   },
   {
+    path: '/api/dashboard/cockpit',
+    methods: ['GET'],
+    permission: 'canViewDashboard',
+    description: '運用コックピット集計',
+    area: 'dashboard',
+  },
+  {
     path: '/api/dashboard/monthly-stats',
     methods: ['GET'],
     permission: 'canViewDashboard',

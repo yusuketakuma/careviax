@@ -133,6 +133,7 @@ import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
 import { GET as communicationRequestsExportGet } from '../communication-requests/export/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
+import { GET as dashboardCockpitGet } from '../dashboard/cockpit/route';
 import { GET as dashboardWorkflowGet } from '../dashboard/workflow/route';
 import { GET as dashboardMedicationDeadlinesGet } from '../dashboard/medication-deadlines/route';
 import { GET as dashboardMonthlyStatsGet } from '../dashboard/monthly-stats/route';
@@ -320,6 +321,14 @@ const routes: Array<{ name: string; handler: Handler }> = [
     handler: () =>
       conferenceNotesGet(
         createRequest('http://localhost/api/conference-notes', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dashboard/cockpit GET',
+    handler: () =>
+      dashboardCockpitGet(
+        createRequest('http://localhost/api/dashboard/cockpit', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
       ),
   },
@@ -762,7 +771,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET' ||
         route.name === 'visit-schedule-proposals GET' ||
-        route.name === 'set-plans GET'
+        route.name === 'set-plans GET' ||
+        route.name === 'dashboard/cockpit GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -791,7 +801,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'first-visit-documents GET' ||
         route.name === 'cases GET' ||
         route.name === 'visit-schedule-proposals GET' ||
-        route.name === 'set-plans GET'
+        route.name === 'set-plans GET' ||
+        route.name === 'dashboard/cockpit GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');

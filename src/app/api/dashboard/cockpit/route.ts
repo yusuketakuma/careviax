@@ -1,6 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { COCKPIT_CACHE_TTL_MS } from '@/lib/constants/workflow';
-import { success } from '@/lib/api/response';
+import { success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
@@ -36,10 +37,32 @@ const AUDIT_QUEUE_FETCH_LIMIT = 30;
 const AUDIT_QUEUE_RESPONSE_LIMIT = 5;
 const BLOCKED_REASONS_LIMIT = 3;
 
-function parseDashboardScope(req: Request): DashboardCockpitScope | null {
-  const scope = new URL(req.url).searchParams.get('scope');
-  if (scope === 'mine' || scope === 'team') return scope;
-  return null;
+type DashboardScopeQuery =
+  | { ok: true; scope: DashboardCockpitScope | null }
+  | { ok: false; response: ReturnType<typeof validationError> };
+
+function parseDashboardScope(req: Request): DashboardScopeQuery {
+  const values = new URL(req.url).searchParams.getAll('scope');
+  if (values.length === 0) return { ok: true, scope: null };
+  if (values.length > 1) {
+    return {
+      ok: false,
+      response: validationError('検索条件が不正です', {
+        scope: ['scope は1つだけ指定してください'],
+      }),
+    };
+  }
+
+  const rawValue = values[0] ?? '';
+  const scope = rawValue.trim();
+  if (!scope || scope !== rawValue || (scope !== 'mine' && scope !== 'team')) {
+    return {
+      ok: false,
+      response: validationError('検索条件が不正です', { scope: ['scope が不正です'] }),
+    };
+  }
+
+  return { ok: true, scope };
 }
 
 const TASK_PRIORITY_WEIGHT: Record<string, number> = {
@@ -97,10 +120,13 @@ function compareAuditQueueItems(left: CockpitAuditQueueItem, right: CockpitAudit
   return (left.waiting_since ?? '').localeCompare(right.waiting_since ?? '');
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const now = new Date();
-    const requestedScope = parseDashboardScope(req);
+    const scopeQuery = parseDashboardScope(req);
+    if (!scopeQuery.ok) return scopeQuery.response;
+
+    const requestedScope = scopeQuery.scope;
     const canViewTeam = canViewAllDashboardWork(ctx);
     const appliedScope: DashboardCockpitScope =
       requestedScope === 'team'
@@ -353,3 +379,6 @@ export const GET = withAuthContext(
     message: 'ダッシュボードの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) =>
+  withSensitiveNoStore(await authenticatedGET(req, routeContext));
