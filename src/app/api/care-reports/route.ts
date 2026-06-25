@@ -831,11 +831,14 @@ export const POST = withAuthContext(
 
     if (resolvedCaseId) {
       const careCase = await prisma.careCase.findFirst({
-        where: { id: resolvedCaseId, org_id: ctx.orgId },
+        where: { id: resolvedCaseId, org_id: ctx.orgId, patient_id: parsed.data.patient_id },
         select: { required_visit_support: true },
       });
+      if (!careCase) {
+        return validationError('ケースが患者に紐付いていません');
+      }
 
-      const intake = getHomeVisitIntake(careCase?.required_visit_support) ?? undefined;
+      const intake = getHomeVisitIntake(careCase.required_visit_support) ?? undefined;
 
       if (intake) {
         enrichedContent = { ...enrichedContent, baseline_context: buildBaselineContext(intake) };

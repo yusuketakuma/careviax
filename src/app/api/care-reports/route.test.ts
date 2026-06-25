@@ -1199,6 +1199,33 @@ describe('/api/care-reports POST', () => {
     expect(careReportCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects reports when the resolved case no longer belongs to the org before creation', async () => {
+    careCaseFindFirstMock.mockResolvedValueOnce({ id: 'case_1' }).mockResolvedValueOnce(null);
+
+    const response = await createCareReport(
+      createPostRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        report_type: 'care_manager_report',
+        content: {},
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'ケースが患者に紐付いていません',
+    });
+    expect(careCaseFindFirstMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { id: 'case_1', org_id: 'org_1', patient_id: 'patient_1' },
+      }),
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects reports for a visit record that does not belong to the selected case', async () => {
     visitRecordFindFirstMock.mockResolvedValueOnce({
       id: 'visit_1',
