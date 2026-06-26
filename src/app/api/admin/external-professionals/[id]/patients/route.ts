@@ -1,9 +1,11 @@
-import { notFound, success } from '@/lib/api/response';
+import { NextRequest } from 'next/server';
+import { internalError, notFound, success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 
-export const GET = withAuthContext<{ id: string }>(
+const authenticatedGET = withAuthContext<{ id: string }>(
   async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
     const assignmentWhere = buildCareCaseAssignmentWhere({ userId: ctx.userId, role: ctx.role });
@@ -64,3 +66,16 @@ export const GET = withAuthContext<{ id: string }>(
     message: '担当患者一覧の閲覧権限がありません',
   },
 );
+
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<Record<string, string>> },
+) {
+  try {
+    return withSensitiveNoStore(
+      await authenticatedGET(req, routeContext as AuthRouteContext<{ id: string }>),
+    );
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}

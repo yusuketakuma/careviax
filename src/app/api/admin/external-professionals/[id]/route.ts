@@ -1,4 +1,6 @@
-import { notFound, success, validationError } from '@/lib/api/response';
+import { NextRequest } from 'next/server';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
@@ -41,7 +43,7 @@ function toResponse(item: {
   };
 }
 
-export const GET = withAuthContext<{ id: string }>(
+const authenticatedGET = withAuthContext<{ id: string }>(
   async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
 
@@ -69,6 +71,17 @@ export const GET = withAuthContext<{ id: string }>(
     message: '他職種マスターの閲覧権限がありません',
   },
 );
+
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<Record<string, string>> },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}
 
 export const PATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {

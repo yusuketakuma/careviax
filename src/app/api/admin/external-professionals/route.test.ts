@@ -148,6 +148,8 @@ describe('/api/admin/external-professionals', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(externalProfessionalFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',

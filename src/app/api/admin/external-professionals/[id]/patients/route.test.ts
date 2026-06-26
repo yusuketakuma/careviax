@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  externalProfessionalFindFirstMock,
-  careTeamLinkFindManyMock,
-} = vi.hoisted(() => ({
+const { externalProfessionalFindFirstMock, careTeamLinkFindManyMock } = vi.hoisted(() => ({
   externalProfessionalFindFirstMock: vi.fn(),
   careTeamLinkFindManyMock: vi.fn(),
 }));
@@ -60,6 +57,8 @@ describe('/api/admin/external-professionals/[id]/patients', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(careTeamLinkFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -100,5 +99,23 @@ describe('/api/admin/external-professionals/[id]/patients', () => {
         },
       ],
     });
+  });
+
+  it('returns a sanitized 500 with no-store headers when a query throws', async () => {
+    careTeamLinkFindManyMock.mockRejectedValueOnce(
+      new Error('raw external-professionals patients read failure'),
+    );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'external_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+
+    const body = await response.json();
+    expect(JSON.stringify(body)).not.toContain('raw external-professionals patients read failure');
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
   });
 });

@@ -94,9 +94,29 @@ describe('/api/admin/facilities/[id]/contacts', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'contact_1', name: '相談員A' }],
     });
+  });
+
+  it('returns a sanitized 500 with no-store headers when the contacts read fails', async () => {
+    facilityContactFindManyMock.mockRejectedValueOnce(
+      new Error('raw facilities contacts read failure'),
+    );
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('raw facilities contacts read failure');
   });
 
   it('replaces facility contacts', async () => {
