@@ -300,7 +300,7 @@ export function MainWorkflowCompactNav({
                     <Link
                       href={step.href}
                       className={cn(
-                        'inline-flex min-h-[44px] min-w-[44px] items-center truncate rounded-md px-1.5 py-1 text-sm font-semibold transition-colors hover:text-primary md:min-h-9 md:min-w-0',
+                        'inline-flex min-h-[44px] min-w-[44px] items-center truncate rounded-md px-1.5 py-1 text-sm font-semibold transition-colors hover:text-primary',
                         isActive ? 'text-primary' : 'text-foreground',
                       )}
                     >

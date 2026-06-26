@@ -73,7 +73,7 @@ export function HelpPopover({
         aria-describedby={isOpen ? tooltipId : undefined}
         aria-expanded={isOpen}
         aria-label={buttonLabel ?? `${title}の説明`}
-        className="inline-flex size-11 items-center justify-center rounded-full border border-border/70 bg-background text-sm font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/[0.06] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:size-8"
+        className="inline-flex size-11 items-center justify-center rounded-full border border-border/70 bg-background text-sm font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/[0.06] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onBlur={() => setIsOpen(false)}
         onClick={() => setIsOpen((current) => !current)}
         onMouseEnter={() => setIsOpen(true)}

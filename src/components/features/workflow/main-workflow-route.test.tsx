@@ -56,6 +56,10 @@ describe('MainWorkflowCompactNav', () => {
     expect(links[0]?.getAttribute('href')).toBe('/prescriptions');
     expect(links[5]?.getAttribute('href')).toBe('/schedules');
     expect(links[7]?.getAttribute('href')).toBe('/reports');
+    expect(Array.from(links).every((link) => link.className.includes('min-h-[44px]'))).toBe(true);
+    expect(Array.from(links).every((link) => link.className.includes('min-w-[44px]'))).toBe(true);
+    expect(Array.from(links).some((link) => link.className.includes('md:min-h-9'))).toBe(false);
+    expect(Array.from(links).some((link) => link.className.includes('md:min-w-0'))).toBe(false);
 
     expect(
       Array.from(nav.querySelectorAll('ol span')).filter((el) => el.textContent === '現在地'),
