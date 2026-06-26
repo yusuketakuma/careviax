@@ -17,6 +17,7 @@ export default function PharmacySitesPage() {
         title="薬局情報管理"
         description="薬局の基本情報・届出フラグ・保険算定設定を管理します。"
         shortcuts={getAdminPharmacySitesShortcutLinks()}
+        supportingContent={null}
       />
 
       <Suspense fallback={<Loading />}>

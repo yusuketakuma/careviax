@@ -127,6 +127,23 @@ describe('PharmacySitesContent', () => {
     expect(screen.getByLabelText('FAX')).toBeTruthy();
   });
 
+  it('keeps pharmacy site primary actions at the PH-OS 44px target size', async () => {
+    renderContent();
+
+    expect(
+      (await screen.findByRole('button', { name: '本店の薬局情報を編集' })).className,
+    ).toContain('h-11');
+    expect(
+      (await screen.findByRole('button', { name: '本店の薬局情報を編集' })).className,
+    ).toContain('sm:h-11');
+    expect(screen.getByRole('button', { name: '本店の保険設定を開く' }).className).toContain(
+      'h-11',
+    );
+    expect(screen.getByRole('button', { name: '本店の保険設定を開く' }).className).toContain(
+      'sm:h-11',
+    );
+  });
+
   it('associates visible labels with insurance config fields', async () => {
     renderContent();
 
@@ -152,6 +169,23 @@ describe('PharmacySitesContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '医療保険 2024の保険設定を削除' }));
 
     expect(screen.getByText(/医療保険 2024の保険設定を削除します/)).toBeTruthy();
+  });
+
+  it('keeps insurance config sheet actions at the PH-OS 44px target size', async () => {
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を開く' }));
+
+    for (const name of [
+      '本店の保険設定を追加',
+      '医療保険 2024から2026設定を作成',
+      '医療保険 2024の保険設定を編集',
+      '医療保険 2024の保険設定を削除',
+    ]) {
+      const button = await screen.findByRole('button', { name });
+      expect(button.className).toContain('h-11');
+      expect(button.className).toContain('sm:h-11');
+    }
   });
 
   it('blocks insurance config ranges that end before the effective date', async () => {

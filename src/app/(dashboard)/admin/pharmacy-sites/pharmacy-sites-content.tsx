@@ -358,13 +358,14 @@ export function PharmacySitesContent() {
       ) : (
         sites.map((site) => (
           <Card key={site.id}>
-            <CardHeader className="flex flex-row items-start justify-between">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <CardTitle className="text-base">{site.name}</CardTitle>
                 <div className="mt-1 text-sm text-muted-foreground">{site.address}</div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
+                  className="h-11 sm:h-11 sm:min-h-[44px]"
                   size="sm"
                   variant="outline"
                   aria-label={`${site.name}の薬局情報を編集`}
@@ -373,6 +374,7 @@ export function PharmacySitesContent() {
                   編集
                 </Button>
                 <Button
+                  className="h-11 sm:h-11 sm:min-h-[44px]"
                   size="sm"
                   variant="secondary"
                   aria-label={`${site.name}の保険設定を開く`}
@@ -522,6 +524,7 @@ export function PharmacySitesContent() {
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">登録済み設定</div>
               <Button
+                className="h-11 sm:h-11 sm:min-h-[44px]"
                 size="sm"
                 aria-label={`${configSite?.name ?? '薬局'}の保険設定を追加`}
                 onClick={() => {
@@ -556,7 +559,7 @@ export function PharmacySitesContent() {
             ) : (
               configs.map((config) => (
                 <Card key={config.id}>
-                  <CardContent className="flex items-start justify-between">
+                  <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="flex items-center gap-2">
                         <Badge variant="outline">
@@ -576,6 +579,7 @@ export function PharmacySitesContent() {
                         config.revision_code === '2024' &&
                         !has2026Config(config.insurance_type) && (
                           <Button
+                            className="h-11 sm:h-11 sm:min-h-[44px]"
                             size="sm"
                             variant="secondary"
                             aria-label={`${getInsuranceConfigTargetLabel(config)}から2026設定を作成`}
@@ -585,6 +589,7 @@ export function PharmacySitesContent() {
                           </Button>
                         )}
                       <Button
+                        className="h-11 sm:h-11 sm:min-h-[44px]"
                         size="sm"
                         variant="outline"
                         aria-label={`${getInsuranceConfigTargetLabel(config)}の保険設定を編集`}
@@ -593,6 +598,7 @@ export function PharmacySitesContent() {
                         編集
                       </Button>
                       <Button
+                        className="h-11 sm:h-11 sm:min-h-[44px]"
                         size="sm"
                         variant="destructive"
                         aria-label={`${getInsuranceConfigTargetLabel(config)}の保険設定を削除`}
