@@ -645,7 +645,10 @@ export function PharmacySitesContent() {
                         disabled={!!editingConfigId}
                       >
                         <SelectTrigger id="insurance-config-type">
-                          <SelectValue />
+                          <SelectValue>
+                            {INSURANCE_TYPE_LABELS[configForm.insurance_type] ??
+                              configForm.insurance_type}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="medical">医療保険</SelectItem>
@@ -674,7 +677,9 @@ export function PharmacySitesContent() {
                         disabled={!!editingConfigId}
                       >
                         <SelectTrigger id="insurance-config-revision">
-                          <SelectValue />
+                          <SelectValue>
+                            {configForm.revision_label || configForm.revision_code}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {getAvailableRevisions(configForm.insurance_type).map((rev) => (

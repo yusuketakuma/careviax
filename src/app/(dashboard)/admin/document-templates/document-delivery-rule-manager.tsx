@@ -195,7 +195,7 @@ export function DocumentDeliveryRuleManager() {
               }
             >
               <SelectTrigger id="delivery-document-type">
-                <SelectValue />
+                <SelectValue>{documentTypeLabel(form.documentType)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {DOCUMENT_TYPE_OPTIONS.map((option) => (
@@ -216,7 +216,7 @@ export function DocumentDeliveryRuleManager() {
               }
             >
               <SelectTrigger id="delivery-target-role">
-                <SelectValue />
+                <SelectValue>{targetRoleLabel(form.targetRole)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {TARGET_ROLE_OPTIONS.map((option) => (
@@ -237,7 +237,7 @@ export function DocumentDeliveryRuleManager() {
               }
             >
               <SelectTrigger id="delivery-channel">
-                <SelectValue />
+                <SelectValue>{CHANNEL_LABELS[form.channel]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(CHANNEL_LABELS).map(([value, label]) => (

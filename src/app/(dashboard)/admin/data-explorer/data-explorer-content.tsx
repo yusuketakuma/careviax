@@ -276,7 +276,9 @@ export function DataExplorerContent() {
               onValueChange={(value) => setCategoryFilter(value as 'all' | CoverageCategory)}
             >
               <SelectTrigger aria-label="カテゴリフィルタ">
-                <SelectValue placeholder="カテゴリ" />
+                <SelectValue>
+                  {categoryFilter === 'all' ? 'すべて' : COVERAGE_CATEGORY_LABELS[categoryFilter]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">すべて</SelectItem>

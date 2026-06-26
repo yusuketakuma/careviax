@@ -287,7 +287,7 @@ function ScopePanel({
             }}
           >
             <SelectTrigger className="h-8 w-[140px] text-xs" aria-label="設定編集モード">
-              <SelectValue />
+              <SelectValue>{editorMode === 'json' ? 'JSON編集' : 'フォーム編集'}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="form">フォーム編集</SelectItem>
@@ -446,7 +446,7 @@ export function SettingsContent() {
               onValueChange={(value) => setSelectedSiteId(value ?? '')}
             >
               <SelectTrigger id="admin-settings-site">
-                <SelectValue placeholder="店舗を選択" />
+                <SelectValue>{selectedSite?.name ?? '店舗を選択'}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {sites.map((site) => (

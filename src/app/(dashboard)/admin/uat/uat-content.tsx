@@ -912,7 +912,7 @@ export function UatContent() {
           <Label htmlFor="feedback_priority">優先度</Label>
           <Select value={priority} onValueChange={(v) => v && setPriority(v)}>
             <SelectTrigger id="feedback_priority" className="w-48">
-              <SelectValue />
+              <SelectValue>{priorityLabelByValue.get(priority) ?? priority}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {UAT_PRIORITY_OPTIONS.map((opt) => (
@@ -1014,7 +1014,9 @@ export function UatContent() {
                         }}
                       >
                         <SelectTrigger id={`feedback-status-${item.id}`}>
-                          <SelectValue />
+                          <SelectValue>
+                            {statusLabelByValue.get(getDraft(item).status) ?? getDraft(item).status}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {UAT_STATUS_OPTIONS.map((option) => (
@@ -1038,7 +1040,12 @@ export function UatContent() {
                         }}
                       >
                         <SelectTrigger id={`feedback-owner-${item.id}`}>
-                          <SelectValue />
+                          <SelectValue>
+                            {getDraft(item).owner_user_id
+                              ? (collaborators.find((c) => c.id === getDraft(item).owner_user_id)
+                                  ?.name ?? '選択済み')
+                              : '未割当'}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="__unassigned__">未割当</SelectItem>

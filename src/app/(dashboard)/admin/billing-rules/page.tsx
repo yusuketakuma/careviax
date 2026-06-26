@@ -289,7 +289,17 @@ function RuleFormDialog({
               }
             >
               <SelectTrigger id="rule-type">
-                <SelectValue />
+                <SelectValue>
+                  {
+                    (
+                      {
+                        addition: '加算',
+                        regional_addition: '地域加算',
+                        reduction: '減算',
+                      } as const
+                    )[form.rule_type]
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="addition">加算</SelectItem>
@@ -355,7 +365,7 @@ function RuleFormDialog({
               onValueChange={(v) => setForm((f) => ({ ...f, is_active: v === 'true' }))}
             >
               <SelectTrigger id="rule-active">
-                <SelectValue />
+                <SelectValue>{form.is_active ? '有効' : '無効'}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="true">有効</SelectItem>

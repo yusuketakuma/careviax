@@ -369,7 +369,7 @@ export function DocumentTemplateContent() {
                 }}
               >
                 <SelectTrigger id="template-type">
-                  <SelectValue />
+                  <SelectValue>{TEMPLATE_TYPE_LABELS[form.templateType]}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(TEMPLATE_TYPE_LABELS).map(([value, label]) => (
@@ -403,7 +403,7 @@ export function DocumentTemplateContent() {
                   }
                 >
                   <SelectTrigger id="template-format">
-                    <SelectValue />
+                    <SelectValue>{form.format === 'pdf' ? 'PDF' : 'HTML'}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="html">HTML</SelectItem>
