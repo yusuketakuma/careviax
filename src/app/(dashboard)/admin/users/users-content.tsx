@@ -586,7 +586,12 @@ export function UsersContent() {
               }
             >
               <SelectTrigger id="user-filter-role">
-                <SelectValue />
+                {/* Radix は既定値ラベルを SSR 解決できず生 enum を出すため表示文言を明示 */}
+                <SelectValue>
+                  {roleFilter === 'all'
+                    ? 'すべて'
+                    : (ROLE_OPTIONS.find(([value]) => value === roleFilter)?.[1] ?? roleFilter)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">すべて</SelectItem>
@@ -601,7 +606,11 @@ export function UsersContent() {
           <Field label="所属店舗" htmlFor="user-filter-site">
             <Select value={siteFilter} onValueChange={(value) => setSiteFilter(value ?? 'all')}>
               <SelectTrigger id="user-filter-site">
-                <SelectValue />
+                <SelectValue>
+                  {siteFilter === 'all'
+                    ? 'すべて'
+                    : (sites.find((site) => site.id === siteFilter)?.name ?? siteFilter)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">すべて</SelectItem>
@@ -616,7 +625,11 @@ export function UsersContent() {
           <Field label="状態" htmlFor="user-filter-status">
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? 'all')}>
               <SelectTrigger id="user-filter-status">
-                <SelectValue />
+                <SelectValue>
+                  {statusFilter === 'all'
+                    ? 'すべて'
+                    : (STATUS_MAP[statusFilter as keyof typeof STATUS_MAP]?.label ?? statusFilter)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">すべて</SelectItem>
@@ -634,7 +647,9 @@ export function UsersContent() {
               onValueChange={(value) => setCredentialFilter(value ?? 'all')}
             >
               <SelectTrigger id="user-filter-credential">
-                <SelectValue />
+                <SelectValue>
+                  {credentialFilter === 'all' ? 'すべて' : credentialFilter}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">すべて</SelectItem>

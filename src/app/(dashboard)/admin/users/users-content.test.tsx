@@ -141,6 +141,10 @@ describe('UsersContent', () => {
     expect(screen.getByLabelText('所属店舗', { selector: '#user-filter-site' })).toBeTruthy();
     expect(screen.getByLabelText('状態')).toBeTruthy();
     expect(screen.getByLabelText('資格')).toBeTruthy();
+    // 既定フィルタは生 enum('all')でなく日本語ラベル('すべて')を初期表示する(Radix SSR ラベル解決対策)
+    const roleTrigger = screen.getByLabelText('ロール', { selector: '#user-filter-role' });
+    expect(roleTrigger.textContent).toContain('すべて');
+    expect(roleTrigger.textContent).not.toContain('all');
     expect(screen.getByRole('button', { name: '山田 太郎の詳細を開く' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '山田 太郎を停止' })).toBeTruthy();
   });
