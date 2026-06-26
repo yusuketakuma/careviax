@@ -21,6 +21,18 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-26 JST - QR Scan Draft PHI/Cache Hardening
+
+- Hardened QR scan draft list/detail/create/discard route boundaries so PHI/JAHIS-derived responses carry sensitive no-store headers.
+- Added exported-route fixed 500 fallbacks for QR draft list/detail/discard failures, preventing raw patient/insurance-like exception text from reaching clients.
+- Recursively strips `rawText`, `rawLine`, `raw_qr_texts`, and `qr_payload_hash` from QR draft response `parsed_data`, and writes newly-created QR draft `parsed_data` without nested raw JAHIS lines while preserving side-table supplemental records for downstream confirmation/audit workflows.
+- Added QR draft list/detail GET routes to the protected GET auth matrix so 401/403 no-store behavior is covered.
+- Preserved existing QR parsing, JAHIS supplemental side-table persistence, patient identity checks, duplicate conflict behavior for accessible duplicates, create/discard workflow semantics, realtime event minimization, schema, migrations, DB mutation scope, and frontend response shape.
+- Security risk reduced: QR raw text/hash/rawLine material is no longer exposed through list/detail/create responses or newly persisted draft parsed JSON, and sensitive QR route responses/failures are no longer cacheable at the HTTP boundary.
+- Performance issue improved: none materially changed; recursive sanitization runs only on bounded QR parsed payloads already in memory, and no new dependencies or polling were introduced.
+- Validation passed: focused QR draft/protected GET Vitest `3` files / `246` tests; focused ESLint; focused Prettier check; full TypeScript check; scoped diff whitespace check. API, privacy, and test subagents reviewed; their blocking cache/error/rawLine findings were addressed.
+- Next action: commit the QR draft API/service/test slice, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first hardening and Claude UI support. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Data Explorer Query Contract Hardening
 
 - Hardened `GET /api/admin/data-explorer/:table` so high-power admin Data Explorer reads reject duplicate `limit`, `offset`, and `search` query parameters instead of silently accepting the first value.
