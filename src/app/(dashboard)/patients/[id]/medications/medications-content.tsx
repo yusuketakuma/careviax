@@ -458,7 +458,8 @@ function IssueEditorDialog({
                 }
               >
                 <SelectTrigger id="issue-priority" className="w-full">
-                  <SelectValue />
+                  {/* Radix は既定値ラベルを SSR 解決できないため表示文言を明示 */}
+                  <SelectValue>{issuePriorityLabel[form.priority] ?? form.priority}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(issuePriorityLabel).map(([value, label]) => (
@@ -484,7 +485,7 @@ function IssueEditorDialog({
                 }
               >
                 <SelectTrigger id="issue-category" className="w-full">
-                  <SelectValue />
+                  <SelectValue>{issueCategoryLabel[form.category] ?? form.category}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(issueCategoryLabel).map(([value, label]) => (
@@ -508,7 +509,7 @@ function IssueEditorDialog({
                 }
               >
                 <SelectTrigger id="issue-status" className="w-full">
-                  <SelectValue />
+                  <SelectValue>{issueStatusLabel[form.status] ?? form.status}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(issueStatusLabel).map(([value, label]) => (
