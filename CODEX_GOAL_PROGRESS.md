@@ -113,6 +113,14 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused `prescriptions-workspace`, `page-shortcut-links`, and `workflow-page-header` Vitest `3` files / `11` tests; focused ESLint; live browser desktop/mobile checks on `http://localhost:3012/prescriptions?dev_refresh=prescription-polish-final` with `0` console errors, `0` horizontal overflow, one visible `h1`, `prescriptions-workspace` before `main-workflow-compact-nav`, and no undersized visible controls in the mobile page body. Desktop page-specific controls were 44px or larger; remaining undersized controls were pre-existing app-header chrome outside this prescriptions slice.
 - Next action: run final Prettier/diff checks including ledgers, commit prescriptions UI, shared control-size, and progress-ledger groups separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Prescription Detail History Touch Targets
+
+- Followed up the `/prescriptions` browser audit after desktop workspace checks found inline detail and patient-history links shrinking below the 44px PH-OS interaction target at desktop breakpoints.
+- Hardened the prescription inline detail header/footer actions (`詳細`, `患者`, `調剤キューへ`, `全画面表示`) and shared patient-history links so they keep 44px target size across breakpoints.
+- Preserved all existing prescription detail fetches, patient-history fetches, href builders, patient links, dispense queue link, fullscreen detail link, auth behavior, backend/API behavior, and DB behavior. No feature was removed.
+- Validation passed: focused `prescriptions-workspace`, `prescription-inline-detail`, `patient-history-summary`, and `patient-history-quick-links` Vitest `4` files / `22` tests; focused ESLint; live desktop/mobile browser checks on `/prescriptions` with `0` horizontal overflow, one visible `h1`, the intake table in the first viewport, and no undersized visible controls inside `data-testid="prescriptions-workspace"`.
+- Next action: run final Prettier/diff checks including ledgers, commit this detail/history touch-target slice, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
