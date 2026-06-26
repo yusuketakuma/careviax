@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { conflict, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
@@ -260,8 +260,13 @@ const authenticatedGET = withAuthContext(
   },
 );
 
-export const GET: typeof authenticatedGET = async (req, routeContext) =>
-  withSensitiveNoStore(await authenticatedGET(req, routeContext));
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext(
   async (req, ctx) => {

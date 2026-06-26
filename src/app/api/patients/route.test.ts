@@ -589,6 +589,37 @@ describe('/api/patients GET', () => {
     );
   });
 
+  it('returns a fixed sensitive no-store error when patient list reads fail', async () => {
+    patientFindManyMock.mockRejectedValueOnce(new Error('raw patient list failure'));
+
+    const response = (await GET(createAuthenticatedRequest('http://localhost/api/patients')))!;
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(body.code).toBe('INTERNAL_ERROR');
+    expect(body.message).toBe('サーバー内部でエラーが発生しました');
+    expect(JSON.stringify(body)).not.toContain('raw patient list failure');
+  });
+
+  it('returns a fixed sensitive no-store error when patient search reads fail', async () => {
+    patientFindManyMock.mockRejectedValueOnce(new Error('raw patient search failure 青葉 花子'));
+
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?view=search&q=青葉&limit=1'),
+    ))!;
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('raw patient search failure');
+    expect(JSON.stringify(body)).not.toContain('青葉 花子');
+  });
+
   it('returns a bounded minimal patient projection for palette search', async () => {
     patientFindManyMock.mockResolvedValueOnce([
       {
