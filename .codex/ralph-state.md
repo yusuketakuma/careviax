@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1029 JST
+
+- current task: continue the active repo-wide UI/UX refinement goal with a screenshot-driven `/schedules` first-fold departure-summary slice.
+- files inspected: agmsg inbox; `git status --short --branch --untracked-files=all`; `/Users/yusuke/.agents/skills/gstack/design-review/SKILL.md`; `src/app/(dashboard)/schedules/page.tsx`; `src/app/(dashboard)/schedules/schedule-team-board.tsx`; `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`; `src/types/schedule-day-board.ts`; live desktop/mobile `/schedules` browser screenshots and DOM/touch-target/overflow audits; `CODEX_GOAL_PROGRESS.md`; this Ralph state file.
+- files changed: `src/app/(dashboard)/schedules/page.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/schedules` used abstract first-fold copy while the concrete departure blockers and vehicle readiness were buried inside the board. The page also had a hidden `h1` (`訪問予定`) while the visible title was an `h2`, and the top schedule actions could render below the 44px target on desktop breakpoints.
+- security risks found: none changed in application logic. No auth, authorization, API, PHI projection, schema, migration, seed, DB write path, external send, or destructive operation was changed. Browser verification used normal protected-page reads only.
+- performance issues found: none materially changed. The new summary derives counts from the already-loaded day-board response and adds no fetch, query, network fan-out, backend work, or expensive computation.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/schedules/page.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`; `pnpm vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/app/(dashboard)/schedules/page.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`; live browser desktop/mobile checks on `http://localhost:3012/schedules?dev_refresh=176`.
+- validation results: focused schedules Vitest passed `1` file / `17` tests; focused ESLint passed; focused Prettier write/check passed for the changed schedule files. Live browser checks had `0` horizontal overflow, one visible `h1`, visible `今日の要点`, and no undersized visible controls inside `data-testid="schedule-team-board"`. Screenshots were saved under `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
+- remaining work: run final focused Prettier/diff checks including ledgers, commit the schedules UI slice, notify via agmsg, then continue the all-pages UI/UX objective. The broader objective is not complete.
+- next action: final validation and grouped commit for the `/schedules` first-fold departure-summary slice.
+
 ### 20260626-1019 JST
 
 - current task: continue the active repo-wide UI/UX refinement goal with a screenshot-driven `/tasks` first-fold action-summary slice.

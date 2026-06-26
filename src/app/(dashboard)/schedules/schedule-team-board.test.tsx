@@ -706,11 +706,26 @@ describe('ScheduleTeamBoard', () => {
     render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
 
     // 見出し帯 + 日/週トグル
-    expect(screen.getByRole('heading', { name: 'スケジュール' })).toBeTruthy();
-    expect(screen.getByText(/訪問は固定点・仕事はその間を流れる/)).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'スケジュール' })).toBeTruthy();
+    expect(screen.getByText(/訪問枠・未確定・車両を同じ日付で確認/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: '予定を作る' }).className).toContain('min-h-[44px]');
     const toggle = screen.getByTestId('schedule-view-mode-toggle');
-    expect(within(toggle).getByRole('link', { name: '日' })).toBeTruthy();
-    expect(within(toggle).getByRole('link', { name: '週' })).toBeTruthy();
+    expect(within(toggle).getByRole('link', { name: '日' }).className).toContain('min-h-[44px]');
+    expect(within(toggle).getByRole('link', { name: '週' }).className).toContain('min-h-[44px]');
+
+    // 今日の要点: ガント前に件数と未確定/車両判断を集約する
+    const summary = screen.getByTestId('schedule-day-summary');
+    expect(within(summary).getByRole('heading', { name: '今日の要点' })).toBeTruthy();
+    expect(within(summary).getByText('訪問枠')).toBeTruthy();
+    expect(within(summary).getByText('5件')).toBeTruthy();
+    expect(within(summary).getByText('出発前要確認')).toBeTruthy();
+    expect(within(summary).getByText('4件')).toBeTruthy();
+    expect(within(summary).getByText('監査/記録')).toBeTruthy();
+    expect(within(summary).getByText('6/2')).toBeTruthy();
+    expect(within(summary).getByText('未確定')).toBeTruthy();
+    expect(within(summary).getByText('車両反映')).toBeTruthy();
+    expect(within(summary).getAllByText('1件').length).toBe(2);
+    expect(within(summary).getByText('推奨あり')).toBeTruthy();
 
     // 全員ガント: 行ラベル + 余白バッジ + 凡例
     expect(screen.getByRole('heading', { name: '今日のスケジュール — 全員' })).toBeTruthy();
@@ -720,6 +735,9 @@ describe('ScheduleTeamBoard', () => {
     expect(screen.getAllByText('予定').length).toBeGreaterThan(0);
     expect(screen.getAllByText('準備完了').length).toBeGreaterThan(0);
     const gantt = screen.getByTestId('schedule-team-gantt');
+    expect(Boolean(summary.compareDocumentPosition(gantt) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
+      true,
+    );
     expect(
       within(gantt).getByLabelText(/伊藤 キヨ様、準備 3\/5、未完: 持参薬・物品確認/),
     ).toBeTruthy();

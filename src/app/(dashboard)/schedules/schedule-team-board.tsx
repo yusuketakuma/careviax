@@ -168,7 +168,7 @@ export function ScheduleViewModeToggle({
             href={option.href}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'inline-flex min-h-[44px] min-w-12 items-center justify-center rounded px-3 text-sm font-semibold transition-colors sm:min-h-9',
+              'inline-flex min-h-[44px] min-w-12 items-center justify-center rounded px-3 text-sm font-semibold transition-colors',
               isActive
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -493,6 +493,113 @@ function unassignedTimedVisitsForRecommendedVehicle(board: ScheduleDayBoardRespo
     .slice(0, recommendedVehicle.remaining_stops);
 }
 
+const SUMMARY_TONE_CLASSES = {
+  info: {
+    item: 'border-tag-info/30 bg-tag-info/10',
+    value: 'text-tag-info',
+  },
+  confirm: {
+    item: 'border-state-confirm/30 bg-state-confirm/10',
+    value: 'text-state-confirm',
+  },
+  done: {
+    item: 'border-state-done/30 bg-state-done/10',
+    value: 'text-state-done',
+  },
+  readonly: {
+    item: 'border-border/70 bg-muted/30',
+    value: 'text-muted-foreground',
+  },
+} as const;
+
+const scheduleTopActionClassName = cn(
+  buttonVariants({ variant: 'outline', size: 'sm' }),
+  '!h-auto !min-h-[44px] sm:!h-auto sm:!min-h-[44px]',
+);
+
+function visitNeedsPreparationAttention(visit: DayBoardVisit) {
+  const summary = normalizePreparationSummary(visit.preparation_summary);
+  return summary.status !== 'ready' || Boolean(summary.ready_blocker_summary?.blocked);
+}
+
+function ScheduleDaySummaryStrip({
+  board,
+  dateLabel,
+}: {
+  board: ScheduleDayBoardResponse;
+  dateLabel: string;
+}) {
+  const visits = board.staff.flatMap((member) => member.visits);
+  const preparationAttentionCount = visits.filter(visitNeedsPreparationAttention).length;
+  const recommendedVehicleTargets = unassignedTimedVisitsForRecommendedVehicle(board).length;
+  const summaryItems = [
+    {
+      label: '訪問枠',
+      value: `${visits.length}件`,
+      detail: `${board.staff.length}名で対応`,
+      tone: 'info' as const,
+    },
+    {
+      label: '出発前要確認',
+      value: `${preparationAttentionCount}件`,
+      detail: preparationAttentionCount > 0 ? '準備/前提条件' : '準備完了',
+      tone: preparationAttentionCount > 0 ? ('confirm' as const) : ('done' as const),
+    },
+    {
+      label: '監査/記録',
+      value: `${board.audit_pending_count}/${board.report_pending_count}`,
+      detail: '未完了件数',
+      tone:
+        board.audit_pending_count > 0 || board.report_pending_count > 0
+          ? ('confirm' as const)
+          : ('done' as const),
+    },
+    {
+      label: '未確定',
+      value: `${board.pending_proposals.length}件`,
+      detail: board.pending_proposals.length > 0 ? '受入/仮枠' : '未確定なし',
+      tone: board.pending_proposals.length > 0 ? ('confirm' as const) : ('done' as const),
+    },
+    {
+      label: '車両反映',
+      value: `${recommendedVehicleTargets}件`,
+      detail: recommendedVehicleTargets > 0 ? '推奨あり' : '割当待ちなし',
+      tone: recommendedVehicleTargets > 0 ? ('info' as const) : ('readonly' as const),
+    },
+  ];
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-3"
+      aria-labelledby="schedule-day-summary-heading"
+      data-testid="schedule-day-summary"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 id="schedule-day-summary-heading" className="text-base font-bold text-foreground">
+          今日の要点
+        </h3>
+        <span className="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+          {dateLabel}
+        </span>
+      </div>
+      <dl className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        {summaryItems.map((item) => {
+          const toneClass = SUMMARY_TONE_CLASSES[item.tone];
+          return (
+            <div key={item.label} className={cn('rounded-md border px-3 py-2', toneClass.item)}>
+              <dt className="text-xs font-semibold text-muted-foreground">{item.label}</dt>
+              <dd className={cn('mt-1 text-xl font-bold tabular-nums', toneClass.value)}>
+                {item.value}
+              </dd>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+            </div>
+          );
+        })}
+      </dl>
+    </section>
+  );
+}
+
 function VehicleRoutePanel({
   board,
   onApplyRecommendedVehicle,
@@ -581,7 +688,7 @@ function VehicleRoutePanel({
             <Button
               type="button"
               size="sm"
-              className="mt-2 w-full"
+              className="mt-2 !h-auto !min-h-[44px] w-full sm:!h-auto sm:!min-h-[44px]"
               disabled={applyingRecommendedVehicle || recommendedVehicleTargets.length === 0}
               onClick={() =>
                 onApplyRecommendedVehicle({
@@ -891,7 +998,7 @@ function TeamGanttCard({
             className={buttonVariants({
               variant: 'outline',
               size: 'sm',
-              className: 'mt-2 bg-card',
+              className: 'mt-2 !h-auto !min-h-[44px] bg-card sm:!h-auto sm:!min-h-[44px]',
             })}
           >
             {riskAlert.actionLabel}
@@ -950,7 +1057,7 @@ function PendingProposalRow({
           className={buttonVariants({
             variant: 'outline',
             size: 'sm',
-            className: 'shrink-0 bg-card',
+            className: '!h-auto !min-h-[44px] shrink-0 bg-card sm:!h-auto sm:!min-h-[44px]',
           })}
         >
           {isChangeRequested ? '→ 再提案へ' : '→ 確定フローへ'}
@@ -1158,7 +1265,7 @@ function ScheduleOperationalTasksCard({
                   className={buttonVariants({
                     variant: 'outline',
                     size: 'sm',
-                    className: 'min-h-[44px] bg-card',
+                    className: '!h-auto !min-h-[44px] bg-card sm:!h-auto sm:!min-h-[44px]',
                   })}
                 >
                   {operationalTaskActionLabel(task)}
@@ -1168,7 +1275,7 @@ function ScheduleOperationalTasksCard({
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="min-h-[44px] bg-card"
+                    className="!h-auto !min-h-[44px] bg-card sm:!h-auto sm:!min-h-[44px]"
                     disabled={pending}
                     onClick={() => onUpdateTaskStatus({ taskId: task.id, status: 'in_progress' })}
                     aria-label={`${contextLabel}を対応中にする`}
@@ -1344,13 +1451,13 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="text-xl font-bold text-foreground">スケジュール</h2>
           <p className="text-sm text-muted-foreground">
-            {dateLabel} — 訪問は固定点・仕事はその間を流れる
+            {dateLabel} — 訪問枠・未確定・車両を同じ日付で確認
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/schedules/proposals?workspace=optimizer"
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            className={scheduleTopActionClassName}
           >
             <Plus className="size-3.5" aria-hidden="true" />
             予定を作る
@@ -1376,6 +1483,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
           ) : (
             <div className="space-y-4">
               <div className="min-w-0 space-y-4">
+                <ScheduleDaySummaryStrip board={board} dateLabel={dateLabel} />
                 <TeamGanttCard
                   board={board}
                   cockpit={cockpit}

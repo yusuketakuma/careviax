@@ -80,6 +80,18 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused `tasks-content` Vitest `1` file / `8` tests; focused ESLint; live browser desktop/mobile checks on `http://localhost:3012/tasks` with `0` console errors, `0` horizontal overflow, one visible `h1`, and mobile visible touch targets at 44px or larger.
 - Next action: run final Prettier/diff checks, commit this tasks UI slice, then continue the screenshot loop on the next high-frequency operational page.
 
+### 2026-06-26 JST - Schedules First-Fold Departure Summary
+
+- Refined `/schedules` after browser inspection showed the first fold relying on abstract copy (`訪問は固定点・仕事はその間を流れる`) while departure blockers and vehicle readiness were buried in the board rows.
+- Replaced the abstract description with operational copy: `訪問枠・未確定・車両を同じ日付で確認`.
+- Added a first-fold `今日の要点` strip before the Gantt, summarizing visit slots, departure-preparation attention count, audit/report backlog, pending proposals, and recommended vehicle assignments from the already-loaded day-board response.
+- Made the visible `スケジュール` title the page `h1` and removed the hidden duplicate `訪問予定` `h1`, aligning visual and accessible page orientation.
+- Kept the `日` / `週` toggle and `予定を作る` action at 44px minimum height across breakpoints.
+- Preserved all existing schedule board fetches, day/week view toggle behavior, proposal route, vehicle assignment action, route preview, operational tasks, auth behavior, backend/API behavior, and DB behavior. No feature was removed.
+- Screenshot evidence: desktop `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/schedules-desktop-after-final.png`; mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/schedules-mobile-after-final.png`.
+- Validation passed: focused `schedule-team-board` Vitest `1` file / `17` tests; focused ESLint; focused Prettier check; live browser desktop/mobile checks on `http://localhost:3012/schedules?dev_refresh=176` with `0` horizontal overflow, one visible `h1`, visible `今日の要点`, and no undersized visible controls inside `data-testid="schedule-team-board"`.
+- Next action: run final diff checks including ledgers, commit this schedules UI slice, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
