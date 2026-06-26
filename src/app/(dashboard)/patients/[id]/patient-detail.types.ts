@@ -13,6 +13,10 @@ export type PatientOverview = {
   medical_insurance_number: string | null;
   care_insurance_number: string | null;
   billing_support_flag: boolean;
+  primary_pharmacist_id: string | null;
+  backup_pharmacist_id: string | null;
+  primary_staff_id: string | null;
+  backup_staff_id: string | null;
   allergy_info: AllergyEntry[] | null;
   notes: string | null;
   archived_at: string | null;

@@ -352,6 +352,10 @@ describe('getPatientOverview', () => {
       medical_insurance_number: 'MED1234567',
       care_insurance_number: 'CARE987654',
       billing_support_flag: false,
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: 'pharmacist_backup',
+      primary_staff_id: 'staff_primary',
+      backup_staff_id: 'staff_backup',
       allergy_info: null,
       notes: null,
       archived_at: null,
@@ -447,6 +451,10 @@ describe('getPatientOverview', () => {
     );
 
     expect(result).toMatchObject({
+      primary_pharmacist_id: 'pharmacist_primary',
+      backup_pharmacist_id: 'pharmacist_backup',
+      primary_staff_id: 'staff_primary',
+      backup_staff_id: 'staff_backup',
       phone: '***-****-5678',
       medical_insurance_number: '***-567',
       care_insurance_number: '***-654',
