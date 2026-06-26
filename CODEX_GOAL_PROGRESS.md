@@ -81,6 +81,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused workflow/protected GET Vitest `2` files / `219` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
 - Next action: run final scoped ledger checks, commit the workflow API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Dashboard Cockpit 500 No-Store
+
+- Hardened `GET /api/dashboard/cockpit` so unexpected cockpit aggregate read failures return a fixed `INTERNAL_ERROR` envelope with sensitive no-store headers.
+- Added route coverage proving raw cockpit aggregate exception text is absent from the response body and the 500 carries `Cache-Control: private, no-store, max-age=0` plus `Pragma: no-cache`.
+- Preserved existing dashboard permission behavior, strict `scope` validation, scoped cockpit cache keys, assignment narrowing, audit queue ordering, team capacity payload, protected GET matrix behavior, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: sensitive cockpit dashboard failure responses are no longer cacheable at the HTTP boundary.
+- Performance issue improved: none materially changed; the slice adds only failure-path response wrapping and tests.
+- Validation passed: focused cockpit/protected GET Vitest `2` files / `213` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
+- Next action: run final scoped ledger checks, commit the cockpit API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.
