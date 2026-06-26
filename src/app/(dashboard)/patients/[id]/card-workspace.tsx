@@ -4361,6 +4361,15 @@ export function CardWorkspace({
       {/* 本文を圧迫しないため、補助3点セットは上部バーから開く右ドロワーへ移す。 */}
       <div className="space-y-4">
         <div className="min-w-0 space-y-4">
+          {/* セーフティボード: 最上部固定で常時表示。SSOT Pinned ゾーン(アレルギー/ハイリスク薬/腎機能を fold 内最上部に置き、危険タグは絶対に隠さない) */}
+          <SafetyBoard
+            allergy={workspace.safety.allergy ?? undefined}
+            renal={workspace.safety.renal ?? undefined}
+            handlingTags={workspace.safety.handling_tags}
+            swallowing={workspace.safety.swallowing ?? undefined}
+            cautions={workspace.safety.cautions}
+            safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
+          />
           <PatientFoundationPanelMemo patient={patient} />
           <PatientProfilePanelMemo patient={patient} />
           <PatientHomeOperationsPanelMemo
@@ -4417,16 +4426,6 @@ export function CardWorkspace({
           <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
           <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
           <PatientVisitPreparationPanelMemo patient={patient} />
-
-          {/* セーフティボード: どの工程でも常時表示。危険タグは絶対に隠さない */}
-          <SafetyBoard
-            allergy={workspace.safety.allergy ?? undefined}
-            renal={workspace.safety.renal ?? undefined}
-            handlingTags={workspace.safety.handling_tags}
-            swallowing={workspace.safety.swallowing ?? undefined}
-            cautions={workspace.safety.cautions}
-            safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
-          />
 
           {/* 今回の処方: 工程チップ(9 工程)+ 薬剤テーブル(薬剤/用法/数量/安全) */}
           <SectionCard aria-label="今回の処方" data-testid="card-prescription-section">
