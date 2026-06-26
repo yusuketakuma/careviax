@@ -7,6 +7,7 @@ import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, success, validationError, notFound } from '@/lib/api/response';
+import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updatePatientSchema, type UpdatePatientData } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
 import { Prisma } from '@prisma/client';
@@ -1669,8 +1670,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     medical_insurance_number,
     care_insurance_number,
     source_visit_record_id,
+    primary_pharmacist_id,
+    backup_pharmacist_id,
+    primary_staff_id,
+    backup_staff_id,
     ...rest
   } = parsed.data;
+  // 担当チーム（患者単位）: 未指定=skip / 空文字=null へ正規化し、ID は org-reference で検証する。
+  const normalizeAssignmentId = (value: string | undefined) =>
+    value === undefined ? undefined : value === '' ? null : value;
+  const normalizedPrimaryPharmacistId = normalizeAssignmentId(primary_pharmacist_id);
+  const normalizedBackupPharmacistId = normalizeAssignmentId(backup_pharmacist_id);
+  const normalizedPrimaryStaffId = normalizeAssignmentId(primary_staff_id);
+  const normalizedBackupStaffId = normalizeAssignmentId(backup_staff_id);
+  const careTeamPharmacistIds = [
+    normalizedPrimaryPharmacistId,
+    normalizedBackupPharmacistId,
+  ].filter((value): value is string => Boolean(value));
+  const careTeamStaffIds = [normalizedPrimaryStaffId, normalizedBackupStaffId].filter(
+    (value): value is string => Boolean(value),
+  );
+  if (careTeamPharmacistIds.length > 0 || careTeamStaffIds.length > 0) {
+    const refResult = await validateOrgReferences(ctx.orgId, {
+      ...(careTeamPharmacistIds.length > 0 ? { pharmacist_ids: careTeamPharmacistIds } : {}),
+      ...(careTeamStaffIds.length > 0 ? { staff_ids: careTeamStaffIds } : {}),
+    });
+    if (!refResult.ok) return refResult.response;
+  }
   const nextName = rest.name ?? existing.name;
   const nextGender = rest.gender ?? existing.gender;
   const nextBirthDateKey =
@@ -1776,6 +1802,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             ...(normalizedCareInsuranceNumber !== undefined
               ? { care_insurance_number: normalizedCareInsuranceNumber }
               : {}),
+            ...(normalizedPrimaryPharmacistId !== undefined
+              ? { primary_pharmacist_id: normalizedPrimaryPharmacistId }
+              : {}),
+            ...(normalizedBackupPharmacistId !== undefined
+              ? { backup_pharmacist_id: normalizedBackupPharmacistId }
+              : {}),
+            ...(normalizedPrimaryStaffId !== undefined
+              ? { primary_staff_id: normalizedPrimaryStaffId }
+              : {}),
+            ...(normalizedBackupStaffId !== undefined
+              ? { backup_staff_id: normalizedBackupStaffId }
+              : {}),
             ...rest,
           } as Prisma.PatientUpdateInput,
         });
@@ -1812,6 +1850,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 ? format(existing.birth_date, 'yyyy-MM-dd')
                 : (existing.birth_date ?? null),
             new_value: birth_date,
+          });
+        }
+
+        // 担当チーム（患者単位）の変更を履歴化（audit by default）。
+        const careTeamRevisionFields: Array<{
+          key:
+            | 'primary_pharmacist_id'
+            | 'backup_pharmacist_id'
+            | 'primary_staff_id'
+            | 'backup_staff_id';
+          label: string;
+          value: string | null | undefined;
+        }> = [
+          {
+            key: 'primary_pharmacist_id',
+            label: '主担当薬剤師',
+            value: normalizedPrimaryPharmacistId,
+          },
+          {
+            key: 'backup_pharmacist_id',
+            label: '副担当薬剤師',
+            value: normalizedBackupPharmacistId,
+          },
+          { key: 'primary_staff_id', label: '主担当スタッフ', value: normalizedPrimaryStaffId },
+          { key: 'backup_staff_id', label: '副担当スタッフ', value: normalizedBackupStaffId },
+        ];
+        for (const { key, label, value } of careTeamRevisionFields) {
+          if (value === undefined) continue;
+          revisionEntries.push({
+            category: 'basic',
+            field_key: key,
+            field_label: label,
+            old_value: (existing as Record<string, unknown>)[key] ?? null,
+            new_value: value ?? null,
           });
         }
 

@@ -284,6 +284,11 @@ export const createPatientSchema = z.object({
 export const updatePatientSchema = createPatientSchema.partial().extend({
   // 反映導線(訪問記録→患者詳細)の出所。指定時は変更履歴の source を visit_record にする。
   source_visit_record_id: z.string().optional(),
+  // 担当チーム（患者単位）。空文字は未設定(null)へ正規化し、ID は org-reference で検証する。
+  primary_pharmacist_id: z.string().optional(),
+  backup_pharmacist_id: z.string().optional(),
+  primary_staff_id: z.string().optional(),
+  backup_staff_id: z.string().optional(),
 });
 
 export const updatePatientConditionsSchema = z.object({

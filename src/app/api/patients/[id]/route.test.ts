@@ -59,6 +59,7 @@ const {
   contactPartyFindManyMock,
   contactPartyDeleteManyMock,
   contactPartyCreateManyMock,
+  validateOrgReferencesMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -117,10 +118,15 @@ const {
   contactPartyFindManyMock: vi.fn(),
   contactPartyDeleteManyMock: vi.fn(),
   contactPartyCreateManyMock: vi.fn(),
+  validateOrgReferencesMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/api/org-reference', () => ({
+  validateOrgReferences: validateOrgReferencesMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -303,6 +309,7 @@ describe('/api/patients/[id]', () => {
       },
     });
     careCaseUpdateMock.mockResolvedValue({ id: 'case_1' });
+    validateOrgReferencesMock.mockResolvedValue({ ok: true });
     medicationProfileFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
@@ -952,6 +959,54 @@ describe('/api/patients/[id]', () => {
         facility_time_to: null,
       },
     });
+  });
+
+  it('assigns the patient-level care team, normalizes empty ids to null, and validates supplied ids', async () => {
+    const response = await PATCH(
+      createRequest({
+        primary_pharmacist_id: 'pharmacist_1',
+        backup_pharmacist_id: '',
+        primary_staff_id: 'staff_1',
+        backup_staff_id: 'staff_2',
+      }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    // supplied (non-empty) ids are validated as org members; empty ids are excluded
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('corg1234567890123456789012', {
+      pharmacist_ids: ['pharmacist_1'],
+      staff_ids: ['staff_1', 'staff_2'],
+    });
+    expect(patientUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1' },
+      data: expect.objectContaining({
+        primary_pharmacist_id: 'pharmacist_1',
+        backup_pharmacist_id: null,
+        primary_staff_id: 'staff_1',
+        backup_staff_id: 'staff_2',
+      }),
+    });
+  });
+
+  it('rejects the care team assignment when an id is not an eligible org member', async () => {
+    validateOrgReferencesMock.mockResolvedValueOnce({
+      ok: false,
+      response: Response.json(
+        { error: '指定された薬剤師はこの組織に所属していません' },
+        { status: 400 },
+      ),
+    });
+
+    const response = await PATCH(
+      createRequest({ primary_pharmacist_id: 'outsider', backup_staff_id: 'staff_2' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(patientUpdateMock).not.toHaveBeenCalled();
   });
 
   it('records a basic field revision for changed fields and skips no-op fields on PATCH', async () => {

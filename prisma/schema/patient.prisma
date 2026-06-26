@@ -112,6 +112,11 @@ model Patient {
   billing_support_flag     Boolean   @default(false) // 請求支援フラグ
   allergy_info             Json? // アレルギー情報 (AllergyEntry[])
   notes                    String?
+  // 担当チームは患者単位（原則）。user_id を保持し FK は張らず後段で名前解決/組織検証する（CareCase の担当列と同方針）。
+  primary_pharmacist_id    String? // 主担当薬剤師 (user_id)
+  backup_pharmacist_id     String? // 副担当薬剤師 (user_id)
+  primary_staff_id         String? // 主担当スタッフ (事務等, user_id)
+  backup_staff_id          String? // 副担当スタッフ (user_id)
   archived_at              DateTime?
   archived_by              String?
   created_at               DateTime  @default(now())
