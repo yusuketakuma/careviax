@@ -21,7 +21,7 @@ vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
 }));
 
-import { PatientsBoard, formatNextVisitLabel } from './patients-board';
+import { PatientsBoard, formatNextVisitLabel, selectVisibleSafetyTags } from './patients-board';
 import { PatientBoardLoadingShell } from './patient-board-loading';
 
 function localIso(hours: number, minutes = 0) {
@@ -507,5 +507,42 @@ describe('formatNextVisitLabel', () => {
       formatNextVisitLabel(card({ next_visit_date: null, next_visit_label: '退院連絡待ち' }), now),
     ).toBe('退院連絡待ち');
     expect(formatNextVisitLabel(card({ next_visit_date: null }), now)).toBe('未定');
+  });
+});
+
+describe('selectVisibleSafetyTags', () => {
+  it('never folds critical safety tags (allergy/narcotic) into the +N overflow', () => {
+    // server 並び順: 麻薬→冷所→一包化→…→アレルギー。アレルギーは末尾だが重大なので常時表示。
+    const { tags, hiddenCount } = selectVisibleSafetyTags([
+      'narcotic',
+      'cold_storage',
+      'unit_dose',
+      'allergy',
+    ]);
+    expect(tags).toContain('allergy');
+    expect(tags).toContain('narcotic');
+    // 上限超過分は非重大タグ(unit_dose)が折り畳まれる。
+    expect(hiddenCount).toBe(1);
+    expect(tags).not.toContain('unit_dose');
+    // 元の並び順は保持する。
+    expect(tags).toEqual(['narcotic', 'cold_storage', 'allergy']);
+  });
+
+  it('shows all critical tags even when they exceed the display limit', () => {
+    const { tags, hiddenCount } = selectVisibleSafetyTags(['narcotic', 'allergy']);
+    expect(tags).toEqual(['narcotic', 'allergy']);
+    expect(hiddenCount).toBe(0);
+  });
+
+  it('folds only non-critical tags beyond the limit', () => {
+    const { tags, hiddenCount } = selectVisibleSafetyTags([
+      'cold_storage',
+      'unit_dose',
+      'half_tablet',
+      'crush_prohibited',
+      'renal',
+    ]);
+    expect(tags).toEqual(['cold_storage', 'unit_dose', 'half_tablet']);
+    expect(hiddenCount).toBe(2);
   });
 });

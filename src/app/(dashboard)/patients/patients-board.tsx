@@ -192,6 +192,38 @@ const FOUNDATION_STATUS_TEXT: Record<
 
 const SAFETY_TAG_DISPLAY_LIMIT = 3;
 
+/**
+ * 重大安全タグ。アレルギー(アナフィラキシー)・麻薬(規制/取扱厳重)は表示上限に関わらず
+ * 必ず表示し、+N 折り畳みで隠さない(医療安全: 重大タグの埋没防止)。
+ * safety_tags は server 側 SAFETY_TAG_ORDER で麻薬→…→アレルギーの順に並ぶため、
+ * 単純な slice(0, LIMIT) だと末尾のアレルギーが折り畳まれ得る。
+ */
+const CRITICAL_SAFETY_TAGS = new Set(['allergy', 'narcotic']);
+
+/**
+ * 表示する安全タグを選ぶ。重大タグは常に含め、残り枠を非重大タグで埋める。
+ * 元の並び順(safety_tags の順)は保持する。
+ */
+export function selectVisibleSafetyTags(safetyTags: string[]): {
+  tags: string[];
+  hiddenCount: number;
+} {
+  const criticalCount = safetyTags.filter((tag) => CRITICAL_SAFETY_TAGS.has(tag)).length;
+  const budget = Math.max(SAFETY_TAG_DISPLAY_LIMIT, criticalCount);
+  const visible = new Set<string>();
+  // まず重大タグを全て確保。
+  for (const tag of safetyTags) {
+    if (CRITICAL_SAFETY_TAGS.has(tag)) visible.add(tag);
+  }
+  // 残り枠を非重大タグで埋める。
+  for (const tag of safetyTags) {
+    if (visible.size >= budget) break;
+    visible.add(tag);
+  }
+  const tags = safetyTags.filter((tag) => visible.has(tag));
+  return { tags, hiddenCount: safetyTags.length - tags.length };
+}
+
 type SummaryTile = {
   key: string;
   label: string;
@@ -380,8 +412,7 @@ function PausedDots() {
 
 function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date }) {
   const presentation = ATTENTION_PRESENTATIONS[card.attention];
-  const tags = card.safety_tags.slice(0, SAFETY_TAG_DISPLAY_LIMIT);
-  const hiddenSafetyTagCount = Math.max(card.safety_tags.length - tags.length, 0);
+  const { tags, hiddenCount: hiddenSafetyTagCount } = selectVisibleSafetyTags(card.safety_tags);
   const operationSummary = card.operation_summary ?? [];
 
   return (
