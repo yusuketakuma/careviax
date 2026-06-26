@@ -21,6 +21,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-26 JST - Visit Preparation Brief Batch PHI Minimization
+
+- Coordination:
+  - Drained `phos/codex`; no blocking Claude message was pending at slice start.
+  - Used API contract and privacy subagents. API contract requested route-local no-store/fixed-500/control-flow coverage; privacy requested minimizing the batch response to the fields actually consumed by the schedule-day offline card cache.
+  - Preserved Claude-owned staff-assignment DB dirty files: `prisma/schema/patient.prisma` and `prisma/migrations/20260626140000_add_carecase_staff_assignments/migration.sql`. Codex did not edit/stage DB schema, migrations, or data.
+- Hardened `POST /api/visit-preparations/brief-batch` so success, auth failures, validation errors, forbidden, not-found, and ordinary unexpected failures all carry sensitive no-store headers.
+- Added a fixed exported-route 500 fallback that omits raw patient/medication/SOAP-like exception text, while preserving Next.js control-flow via `unstable_rethrow(err)`.
+- Minimized the successful batch response from full `VisitBrief` objects to the schedule-day cache DTO currently consumed by `schedule-day-visit-brief-cache.ts`: `ai_summary.headline`, `must_check_today`, `source_refs`, `generated_at`, `provider`, and `is_fallback`.
+- Added route-local regression coverage proving the batch response excludes patient identifiers/names, medications, dispensing items, multidisciplinary updates, JAHIS raw lines, unresolved items, generation IDs, duration telemetry, and raw PHI-like thrown text.
+- Added protected POST matrix coverage proving `visit-preparations/brief-batch POST` 401/403/400 responses carry sensitive no-store headers.
+- Preserved existing `canVisit` permission, schedule id dedupe, max 100 ids validation, org-scoped schedule lookup, assignment access checks, service call arguments, missing schedule/not-found behavior, schema, migrations, DB writes, external sends, and offline-card consumer compatibility.
+- Security risk reduced: the day-view batch endpoint no longer sends full VisitBrief PHI/clinical details over the network for an offline card cache that only needs summary text and references.
+- Performance issue improved: smaller response payload for schedule-day offline brief prefetch. No new DB queries, dependencies, polling, frontend rendering work, schema changes, migrations, DB writes, or external sends were introduced.
+- Validation passed:
+  - `pnpm vitest run src/app/api/visit-preparations/brief-batch/route.test.ts src/app/api/__tests__/protected-post-routes.test.ts 'src/app/(dashboard)/schedules/schedule-day-visit-brief-cache.test.ts' --reporter=dot --testTimeout=30000` passed `3` files / `116` tests. Existing unrelated `webhook.org_dispatch_failed` stderr appeared in the billing-candidates close POST success case.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Full `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped diff whitespace check passed.
+- Next action: commit the brief-batch API/test slice, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first hardening and Claude UI/DB review support. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Patient Header Summary Read Model
 
 - Coordination:
