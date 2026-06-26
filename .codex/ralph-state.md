@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1927 JST
+
+- current task: `/admin/pharmacy-cooperation` contract-renewal alert priority and 44px cooperation setup controls.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, `src/app/(dashboard)/admin/pharmacy-cooperation/page.tsx`, `src/app/(dashboard)/admin/pharmacy-cooperation/page.test.tsx`, `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`, `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`, `src/components/ui/checkbox.tsx`, route-mocked before/final desktop/mobile screenshots under `artifacts/ui-pharmacy-cooperation-sweep/`.
+- files changed: `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`, `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/admin/pharmacy-cooperation` placed the contract-renewal alert behind refresh/KPI summary content and desktop setup buttons, inputs, selects, DataTable filters, row activation actions, document actions, and the PDF-generation checkbox measured `16px-32px`, below the PH-OS 44px page-body target.
+- security risks found: no auth, authorization, org scoping, pharmacy-site APIs, partner-pharmacy APIs, partnership activation behavior, contract create behavior, contract document preview/save behavior, signed PDF upload behavior, validation, schema, migrations, DB writes, external sends, PHI projection, audit behavior, or secret handling changed. Browser proof used route-mocked APIs and a local session token; no DB reads, external upload, or writes were performed.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier render loops were introduced. The change reorders already-rendered alert content and enlarges existing controls.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/page.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/page.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/page.test.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`; `pnpm exec prettier --check ...`; `git diff --check -- ...`; direct route-mocked Playwright proof on `http://localhost:3012/admin/pharmacy-cooperation`.
+- validation results: focused PharmacyCooperationSetupContent/Page Vitest passed `2` files / `16` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. Route-mocked browser proof saved `artifacts/ui-pharmacy-cooperation-sweep/before/desktop.png`, `before/mobile.png`, `after/desktop.png`, and `after/mobile.png`; final proof had no console/page errors, one visible `薬局間協力設定` h1, no horizontal overflow, page-body small-control count `0`, and `契約更新アラート` before `更新` and the KPI summary.
+- remaining work: commit the `/admin/pharmacy-cooperation` UI/test group, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server started for screenshot proof, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only the pharmacy-cooperation content/test files for the implementation commit, then stage only ledgers for the progress commit.
+
 ### 20260626-1921 JST
 
 - current task: `/admin/institutions` institution master list priority, generic intro removal, and 44px institution controls.
