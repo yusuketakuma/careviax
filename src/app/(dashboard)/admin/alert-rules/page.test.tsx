@@ -201,7 +201,7 @@ describe('AlertRulesPage', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        '相互作用（warning）の組織ルールを削除します。この操作は取り消せません。処方安全チェックの表示に反映されます。',
+        '相互作用（注意）の組織ルールを削除します。この操作は取り消せません。処方安全チェックの表示に反映されます。',
       ),
     ).toBeTruthy();
 

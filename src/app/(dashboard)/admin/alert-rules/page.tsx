@@ -51,6 +51,17 @@ const ALERT_TYPE_LABELS: Record<string, string> = {
   max_days: '投与日数上限',
 };
 
+// CLAUDE.md SSOT: 警告は重大/注意/情報の3段階。生 enum(critical等)を表に出さない
+const SEVERITY_LABELS: Record<'critical' | 'warning' | 'info', string> = {
+  critical: '重大',
+  warning: '注意',
+  info: '情報',
+};
+
+function severityLabel(severity: string): string {
+  return SEVERITY_LABELS[severity as keyof typeof SEVERITY_LABELS] ?? severity;
+}
+
 export default function AlertRulesPage() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -204,7 +215,8 @@ export default function AlertRulesPage() {
               }
             >
               <SelectTrigger id="alert_type" className="min-h-[44px] w-full sm:min-h-[44px]">
-                <SelectValue />
+                {/* Radix は SSR で既定値ラベルを解決できないため表示文言を明示する */}
+                <SelectValue>{ALERT_TYPE_LABELS[form.alert_type] ?? form.alert_type}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(ALERT_TYPE_LABELS).map(([value, label]) => (
@@ -228,12 +240,12 @@ export default function AlertRulesPage() {
               }
             >
               <SelectTrigger id="severity" className="min-h-[44px] w-full sm:min-h-[44px]">
-                <SelectValue />
+                <SelectValue>{severityLabel(form.severity)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="critical">critical</SelectItem>
-                <SelectItem value="warning">warning</SelectItem>
-                <SelectItem value="info">info</SelectItem>
+                <SelectItem value="critical">重大</SelectItem>
+                <SelectItem value="warning">注意</SelectItem>
+                <SelectItem value="info">情報</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -354,7 +366,7 @@ export default function AlertRulesPage() {
                         <Badge variant={rule.is_active ? 'default' : 'outline'}>
                           {rule.is_active ? '有効' : '停止'}
                         </Badge>
-                        <Badge variant="outline">{rule.severity}</Badge>
+                        <Badge variant="outline">{severityLabel(rule.severity)}</Badge>
                         <Badge variant="secondary">{canMutateRule ? '組織' : '共通'}</Badge>
                       </div>
                       {canMutateRule ? (
@@ -419,7 +431,7 @@ export default function AlertRulesPage() {
           deleteTarget
             ? `${
                 ALERT_TYPE_LABELS[deleteTarget.alert_type] ?? deleteTarget.alert_type
-              }（${deleteTarget.severity}）の組織ルールを削除します。この操作は取り消せません。処方安全チェックの表示に反映されます。`
+              }（${severityLabel(deleteTarget.severity)}）の組織ルールを削除します。この操作は取り消せません。処方安全チェックの表示に反映されます。`
             : ''
         }
         confirmLabel={deleteMutation.isPending ? '削除中...' : '削除する'}
