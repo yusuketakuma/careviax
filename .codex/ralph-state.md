@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2058 JST
+
+- current task: backend-first Data Explorer query contract hardening for `GET /api/admin/data-explorer/:table`.
+- files inspected: `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `git status --short --branch --untracked-files=all`, `CODEX_GOAL_PROGRESS.md`, `/Users/yusuke/.codex/memories/MEMORY.md` entries for prior tracing-reports duplicate-filter hardening, `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`, `src/app/api/admin/data-explorer/models/route.ts`, `src/app/api/admin/data-explorer/models/route.test.ts`, `src/app/api/admin/data-explorer/[table]/route.ts`, `src/app/api/admin/data-explorer/[table]/route.test.ts`, `src/app/api/admin/data-explorer/[table]/[id]/route.ts`, `src/app/api/admin/data-explorer/[table]/[id]/route.test.ts`, `src/lib/api/validation.ts`, related strict-query examples in `src/app/api/staff-workload/route.ts`, `src/app/api/dashboard/monthly-stats/route.ts`, `src/app/api/dispense-tasks/route.ts`, and `src/app/api/interventions/route.ts`, plus gbrain code graph probes for `dataExplorerGET` (`not_found` / `not_built`).
+- files changed: `src/app/api/admin/data-explorer/[table]/route.ts`, `src/app/api/admin/data-explorer/[table]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the Data Explorer table GET route read `limit`, `offset`, and `search` with `URLSearchParams.get()`, so duplicate query parameters such as `?search=花子&search=太郎` were silently collapsed before validation and service execution.
+- security risks found: reduced ambiguous high-power admin query interpretation by rejecting duplicate Data Explorer filters before any row/count query runs. No auth, authorization, admin permission, table allowlist, org scoping, PHI projection, response body shape, schema, migrations, DB writes, external sends, or frontend UI behavior changed.
+- performance issues found: added a 100-character route-level search bound so unusually large wildcard search strings do not reach the Data Explorer SQL `ILIKE` path. No new fetches, DB queries, dependencies, polling, or heavier normal-path service work were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/admin/data-explorer/[table]/route.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/api/admin/data-explorer/[table]/route.ts' 'src/app/api/admin/data-explorer/[table]/route.test.ts'`; `pnpm exec prettier --check 'src/app/api/admin/data-explorer/[table]/route.ts' 'src/app/api/admin/data-explorer/[table]/route.test.ts'`; `git diff --check -- 'src/app/api/admin/data-explorer/[table]/route.ts' 'src/app/api/admin/data-explorer/[table]/route.test.ts'`.
+- validation results: focused Data Explorer table-route Vitest passed `1` file / `9` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed.
+- remaining work: run final scoped formatting/diff checks including progress ledgers, stage only the Data Explorer route/test for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and continue backend-first hardening. The broader objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2020 JST
 
 - current task: `/admin/jobs` failure worklist first, generic intro removal, collapsed filters, and 44px job operations.
