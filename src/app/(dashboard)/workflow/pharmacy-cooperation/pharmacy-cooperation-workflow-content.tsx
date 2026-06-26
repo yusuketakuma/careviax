@@ -3124,24 +3124,30 @@ export function PharmacyCooperationWorkflowContent() {
       className="space-y-6 [&_a[data-slot=button]]:h-11 [&_a[data-slot=button]]:min-h-11 [&_a[data-slot=button]]:whitespace-normal [&_button]:h-11 [&_button]:min-h-11 [&_button]:whitespace-normal [&_input:not([type=checkbox])]:min-h-11 [&_select]:h-11 [&_select]:min-h-11 sm:[&_a[data-slot=button]]:h-11 sm:[&_a[data-slot=button]]:min-h-11 sm:[&_button]:h-11 sm:[&_button]:min-h-11"
       data-testid="pharmacy-cooperation-workflow"
     >
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border border-border/70 bg-card p-4">
-          <p className="text-sm font-semibold text-foreground">有効化待ち共有</p>
-          <p className="mt-1 text-[26px] font-bold leading-9 tabular-nums">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="flex min-h-[96px] flex-col justify-center rounded-lg border border-border/70 bg-card p-3 sm:p-4">
+          <p className="text-xs leading-tight font-semibold text-foreground sm:text-sm">
+            有効化待ち共有
+          </p>
+          <p className="mt-1 text-2xl leading-8 font-bold tabular-nums sm:text-[26px] sm:leading-9">
             {inactiveShareCases.length}
           </p>
           <TinyMeta>共有ケース {shareCases.length} 件</TinyMeta>
         </div>
-        <div className="rounded-lg border border-border/70 bg-card p-4">
-          <p className="text-sm font-semibold text-foreground">依頼中の訪問</p>
-          <p className="mt-1 text-[26px] font-bold leading-9 tabular-nums">
+        <div className="flex min-h-[96px] flex-col justify-center rounded-lg border border-border/70 bg-card p-3 sm:p-4">
+          <p className="text-xs leading-tight font-semibold text-foreground sm:text-sm">
+            依頼中の訪問
+          </p>
+          <p className="mt-1 text-2xl leading-8 font-bold tabular-nums sm:text-[26px] sm:leading-9">
             {requestedVisits.length}
           </p>
           <TinyMeta>訪問依頼 {visitRequests.length} 件</TinyMeta>
         </div>
-        <div className="rounded-lg border border-border/70 bg-card p-4">
-          <p className="text-sm font-semibold text-foreground">確認待ち記録</p>
-          <p className="mt-1 text-[26px] font-bold leading-9 tabular-nums">
+        <div className="flex min-h-[96px] flex-col justify-center rounded-lg border border-border/70 bg-card p-3 sm:p-4">
+          <p className="text-xs leading-tight font-semibold text-foreground sm:text-sm">
+            確認待ち記録
+          </p>
+          <p className="mt-1 text-2xl leading-8 font-bold tabular-nums sm:text-[26px] sm:leading-9">
             {submittedRecords.length}
           </p>
           <TinyMeta>協力訪問記録 {partnerVisitRecords.length} 件</TinyMeta>
