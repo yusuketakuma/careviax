@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2342 JST
+
+- current task: backend-first no-store/fixed-500 hardening for patient detail sub-slice GET routes: `communications`, `documents`, `home-operations`, `timeline`, `visits`, `readiness`, and `workflow-preview`.
+- files inspected: `git status --short --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, latest `git log --oneline`, Next route handler docs at `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`, Next `unstable_rethrow` docs at `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/unstable_rethrow.md`, the seven patient detail sub-slice route files, `src/app/api/patients/[id]/overview/route.ts`, `src/app/api/patients/[id]/header-summary/route.ts`, `src/app/api/patients/[id]/detail-slices.test.ts`, and Claude's committed case assignment write API result `3bc8cacd`.
+- files changed: `src/app/api/patients/[id]/communications/route.ts`, `src/app/api/patients/[id]/documents/route.ts`, `src/app/api/patients/[id]/home-operations/route.ts`, `src/app/api/patients/[id]/timeline/route.ts`, `src/app/api/patients/[id]/visits/route.ts`, `src/app/api/patients/[id]/readiness/route.ts`, `src/app/api/patients/[id]/workflow-preview/route.ts`, `src/app/api/patients/[id]/detail-slices.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: seven patient detail sub-slice GET routes returned PHI/clinical workflow success payloads, validation failures, auth rejections, not-found responses, and unexpected service failures without the consistent sensitive no-store exported-route envelope already used by overview/header-summary.
+- security risks found: reduced PHI/cacheability and error-leakage risk by wrapping the exported routes with `withSensitiveNoStore`, adding fixed sanitized `internalError()` fallbacks, and preserving Next control-flow via `unstable_rethrow(err)`. Shared tests prove raw patient/drug-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/api/patients/[id]/communications/route.ts' 'src/app/api/patients/[id]/documents/route.ts' 'src/app/api/patients/[id]/home-operations/route.ts' 'src/app/api/patients/[id]/readiness/route.ts' 'src/app/api/patients/[id]/timeline/route.ts' 'src/app/api/patients/[id]/visits/route.ts' 'src/app/api/patients/[id]/workflow-preview/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`; `pnpm exec prettier --check ...`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `git diff --check -- ...`.
+- validation results: focused Vitest passed `1` file / `56` tests; scoped ESLint passed; scoped Prettier check passed; full TypeScript check passed; scoped diff-check passed. API/privacy subagent spawning was attempted but blocked by the active agent thread limit, so no subagent edits or findings were used for this slice.
+- remaining work: commit only the patient detail sub-slice route/test files, then commit progress ledgers separately, send agmsg FYI, and continue backend-first support for the UI/UX objective. The broader all-pages UI/UX objective remains incomplete.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260626-2323 JST
 
 - current task: read-only patient header summary expansion for 4-person care-team display names after Claude's committed CareCase staff assignment migration.

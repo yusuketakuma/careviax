@@ -21,6 +21,27 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-26 JST - Patient Detail Sub-Slice No-Store 500 Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new inbox message was pending at slice start.
+  - Reviewed Claude's case assignment write API slice, returned `CHANGES` for formatting/type failures, then revalidated and sent `APPROVE`. Claude committed it as `3bc8cacd`.
+  - Attempted API/privacy subagent review for this Codex slice, but the agent thread limit was reached. Compensated with route docs review, focused route tests, scoped lint/format, full TypeScript, and diff whitespace checks.
+- Hardened the remaining patient detail sub-slice GET routes: `communications`, `documents`, `home-operations`, `timeline`, `visits`, `readiness`, and `workflow-preview`.
+- Each exported route now wraps success, auth rejection, validation errors, not-found responses, and ordinary unexpected service failures with sensitive no-store headers.
+- Added fixed sanitized `INTERNAL_ERROR` fallbacks with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Extended shared `detail-slices.test.ts` coverage so every patient detail sub-slice asserts sensitive no-store on success, 400, 403, 404, and sanitized 500 responses, with PHI-like thrown strings omitted.
+- Preserved existing `canVisit` auth, route parameter normalization, service argument contracts, timeline scoped transaction seam, success response shapes, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: patient detail slice payloads containing communications, documents, home operations, timeline, readiness, visit, and workflow preview data are no longer cacheable at the HTTP boundary, and raw service errors cannot leak PHI-like text to clients.
+- Performance issue improved: none materially changed. The slice adds only response wrapping and tests; no new normal-path DB queries, dependencies, polling, frontend rendering work, schema changes, migrations, DB writes, or external sends were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot --testTimeout=30000` passed `1` file / `56` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Full `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped diff whitespace check passed.
+- Next action: commit the patient detail sub-slice API/test hardening, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first support for the UI/UX objective. The broader all-pages UI/UX objective remains incomplete.
+
 ### 2026-06-26 JST - Patient Header Summary 4-Person Care Team Names
 
 - Coordination:
