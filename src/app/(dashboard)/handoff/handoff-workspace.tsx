@@ -190,7 +190,12 @@ function HandoffItemCard({
           </span>
         ) : null}
         {isConfirming ? (
-          <Button asChild variant="outline" size="sm" className="shrink-0">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="h-11 shrink-0 sm:h-11 sm:min-h-[44px]"
+          >
             <Link href="/communications">状況を聞く</Link>
           </Button>
         ) : null}
@@ -199,7 +204,7 @@ function HandoffItemCard({
             type="button"
             variant="outline"
             size="sm"
-            className="shrink-0"
+            className="h-11 shrink-0 sm:h-11 sm:min-h-[44px]"
             disabled={confirmPending}
             onClick={() => onConfirmReceipt(item.id)}
           >
@@ -213,7 +218,7 @@ function HandoffItemCard({
           {entityAction ? (
             <Link
               href={entityAction.href}
-              className="inline-flex min-h-6 items-center rounded-md border border-primary/30 bg-primary/5 px-2 py-0.5 font-medium text-primary hover:bg-primary/10"
+              className="inline-flex min-h-[44px] items-center rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 font-medium text-primary hover:bg-primary/10"
             >
               {entityAction.label}
             </Link>
@@ -630,7 +635,7 @@ function ConsultResolutionPanel({
           <Button
             key={action}
             type="button"
-            className={cn('min-h-[44px]', buttonClassName)}
+            className={cn('min-h-[44px] sm:h-11 sm:min-h-[44px]', buttonClassName)}
             disabled={disabled}
             data-testid={`handoff-consult-action-${action}`}
             onClick={() => {
@@ -973,7 +978,7 @@ export function HandoffWorkspace() {
         {/* 主操作(青)はこの 1 つだけ */}
         <Button
           type="button"
-          className="min-h-[44px]"
+          className="h-11 sm:h-11 sm:min-h-[44px]"
           onClick={() => setTransferDialogOpen(true)}
           data-testid="handoff-open-transfer"
         >
@@ -998,44 +1003,6 @@ export function HandoffWorkspace() {
         ) : (
           <div className="space-y-4">
             <div className="min-w-0 space-y-4">
-              <VisitHandoffConfirmationWorkspace
-                orgId={orgId}
-                tasks={confirmationTasksQuery.data ?? []}
-                isLoading={confirmationTasksQuery.isLoading}
-                error={
-                  confirmationTasksQuery.isError && confirmationTasksQuery.error instanceof Error
-                    ? confirmationTasksQuery.error
-                    : null
-                }
-                onConfirmed={invalidateBoard}
-              />
-              <ConsultWorkspace items={board.items} orgId={orgId} onResolved={invalidateBoard} />
-              <section
-                className="rounded-lg border border-border/70 bg-card p-4"
-                aria-labelledby="handoff-outgoing-heading"
-                data-testid="handoff-outgoing-section"
-              >
-                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <h2 id="handoff-outgoing-heading" className="text-base font-bold text-foreground">
-                    私が渡した
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    {outgoingItems.length}件 — 渡す=責任の移動。受領確認と根拠が必ず記録されます
-                  </p>
-                </div>
-                {outgoingItems.length === 0 ? (
-                  <p className="mt-3 text-sm text-muted-foreground">
-                    今日渡した仕事はありません。「+ 仕事を渡す」から3点セット付きで渡せます。
-                  </p>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    {outgoingItems.map((item) => (
-                      <HandoffItemCard key={item.id} item={item} now={now} viewerUserId={userId} />
-                    ))}
-                  </div>
-                )}
-              </section>
-
               <section
                 className="rounded-lg border border-border/70 bg-card p-4"
                 aria-labelledby="handoff-incoming-heading"
@@ -1070,6 +1037,46 @@ export function HandoffWorkspace() {
                   事務から薬剤師への依頼(疑義・判断・確認)もここに届きます。口頭やメモではなくハンドオフで渡すのがチームのルールです。
                 </p>
               </section>
+
+              <ConsultWorkspace items={board.items} orgId={orgId} onResolved={invalidateBoard} />
+
+              <section
+                className="rounded-lg border border-border/70 bg-card p-4"
+                aria-labelledby="handoff-outgoing-heading"
+                data-testid="handoff-outgoing-section"
+              >
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h2 id="handoff-outgoing-heading" className="text-base font-bold text-foreground">
+                    私が渡した
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {outgoingItems.length}件 — 渡す=責任の移動。受領確認と根拠が必ず記録されます
+                  </p>
+                </div>
+                {outgoingItems.length === 0 ? (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    今日渡した仕事はありません。「+ 仕事を渡す」から3点セット付きで渡せます。
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {outgoingItems.map((item) => (
+                      <HandoffItemCard key={item.id} item={item} now={now} viewerUserId={userId} />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <VisitHandoffConfirmationWorkspace
+                orgId={orgId}
+                tasks={confirmationTasksQuery.data ?? []}
+                isLoading={confirmationTasksQuery.isLoading}
+                error={
+                  confirmationTasksQuery.isError && confirmationTasksQuery.error instanceof Error
+                    ? confirmationTasksQuery.error
+                    : null
+                }
+                onConfirmed={invalidateBoard}
+              />
 
               <p
                 className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm leading-6 text-tag-info"
