@@ -24,6 +24,10 @@ describe('MasterEditorView', () => {
     expect(sampleRows).toHaveLength(8);
     expect(sampleRows[0]).toHaveProperty('disabled', true);
     expect(within(editor).queryByText('有効')).toBeNull();
+    expect(screen.getByText('実データ接続待ちのマスターです。', { exact: false })).toBeTruthy();
+    expect(within(editor).getByLabelText('スタッフ一覧のサンプル一覧').className).toContain(
+      'max-h-[240px]',
+    );
 
     for (const badge of within(editor).getAllByText('サンプル')) {
       expect(badge.closest('[data-role]')?.getAttribute('data-role')).toBe('readonly');
@@ -44,10 +48,40 @@ describe('MasterEditorView', () => {
       const input = screen.getByLabelText(label);
       expect(input).toHaveProperty('disabled', true);
       expect(input.getAttribute('aria-readonly')).toBe('true');
+      expect(input.className).toContain('!h-11');
+      expect(input.className).toContain('!min-h-11');
     }
 
     const saveButton = screen.getByRole('button', { name: '保存する' });
     expect(saveButton).toHaveProperty('disabled', true);
+    expect(saveButton.className).toContain('!h-11');
+    expect(saveButton.className).toContain('!min-h-11');
     expect(screen.getByText('サンプル表示のため保存できません。')).toBeTruthy();
+  });
+
+  it('prioritizes the sample list and detail editor before category chrome on mobile', () => {
+    render(
+      <MasterEditorView
+        activeCategory="医療機関"
+        listTitle="医療機関一覧"
+        itemPrefix="医療機関"
+        testId="external-professionals-master-editor"
+      />,
+    );
+
+    const editor = screen.getByTestId('external-professionals-master-editor');
+    const listCard = within(editor)
+      .getByRole('heading', { name: '医療機関一覧' })
+      .closest('.order-1');
+    const detailCard = within(editor)
+      .getByRole('heading', { name: '詳細を編集' })
+      .closest('.order-2');
+    const categoryCard = within(editor)
+      .getByRole('heading', { name: 'カテゴリ' })
+      .closest('.order-3');
+
+    expect(listCard).toBeTruthy();
+    expect(detailCard).toBeTruthy();
+    expect(categoryCard).toBeTruthy();
   });
 });
