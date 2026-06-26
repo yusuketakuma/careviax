@@ -91,6 +91,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused cockpit/protected GET Vitest `2` files / `213` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
 - Next action: run final scoped ledger checks, commit the cockpit API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Patient Overview 500 No-Store
+
+- Hardened `GET /api/patients/:id/overview` so unexpected patient overview read failures return a fixed `INTERNAL_ERROR` envelope with sensitive no-store headers.
+- Added route coverage proving raw patient-overview exception text is absent from the response body and the 500 carries `Cache-Control: private, no-store, max-age=0` plus `Pragma: no-cache`.
+- Preserved existing patient ID validation, not-found behavior, auth/permission behavior, service argument contract, success payload shape, protected GET matrix behavior, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: sensitive patient overview failure responses are no longer cacheable at the HTTP boundary.
+- Performance issue improved: none materially changed; the slice adds only failure-path response wrapping and tests.
+- Validation passed: focused patient detail slice/protected GET Vitest `2` files / `245` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
+- Next action: run final scoped ledger checks, commit the patient-overview API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.

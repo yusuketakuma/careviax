@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2117 JST
+
+- current task: backend-first no-store 500 hardening for `GET /api/patients/:id/overview`.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, Next Route Handlers docs at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/patients/[id]/overview/route.ts`, `src/app/api/patients/[id]/detail-slices.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, related overview route/test references discovered with `rg`, and gbrain code graph probes for `src/app/api/patients/[id]/overview/route::GET`.
+- files changed: `src/app/api/patients/[id]/overview/route.ts`, `src/app/api/patients/[id]/detail-slices.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `GET /api/patients/:id/overview` could return the standard fixed 500 envelope from an unexpected patient overview read failure without sensitive no-store headers at the exported route boundary.
+- security risks found: reduced cacheability risk for patient overview failure responses by ensuring unexpected 500 responses carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`. No auth, authorization, patient ID validation, not-found behavior, service argument contract, success payload shape, schema, migrations, DB writes, external sends, PHI projection, or frontend UI behavior changed.
+- performance issues found: none materially changed. The slice adds only failure-path response wrapping and tests; no new normal-path queries, dependencies, polling, or computation were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/api/patients/[id]/overview/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`; `pnpm exec prettier --check 'src/app/api/patients/[id]/overview/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`; `git diff --check -- 'src/app/api/patients/[id]/overview/route.ts' 'src/app/api/patients/[id]/detail-slices.test.ts'`.
+- validation results: focused patient detail slice/protected GET Vitest passed `2` files / `245` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. The failure-path test confirmed the response body omits the raw exception string.
+- remaining work: run final scoped formatting/diff checks including progress ledgers, stage only the patient overview route/test for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and continue backend-first hardening. The broader objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2114 JST
 
 - current task: backend-first no-store 500 hardening for `GET /api/dashboard/cockpit`.
