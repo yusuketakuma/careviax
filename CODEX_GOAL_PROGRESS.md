@@ -41,6 +41,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused dispensing-stats/protected GET Vitest `2` files / `203` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
 - Next action: run final scoped ledger checks, commit the dispensing-stats API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Clerk Support 500 No-Store
+
+- Hardened `GET /api/dashboard/clerk-support` so unexpected clerk-support KPI/task read failures return a fixed `INTERNAL_ERROR` envelope with sensitive no-store headers.
+- Added route coverage proving raw clerk-support read exception text is absent from the response body and the 500 carries `Cache-Control: private, no-store, max-age=0` plus `Pragma: no-cache`.
+- Preserved existing dashboard permission behavior, org-scoped KPI/task filters, encoded proposal detail links, success payload shape, protected GET matrix behavior, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: sensitive clerk-support dashboard failure responses are no longer cacheable at the HTTP boundary.
+- Performance issue improved: none materially changed; the slice adds only failure-path response wrapping and tests.
+- Validation passed: focused clerk-support/protected GET Vitest `2` files / `204` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
+- Next action: run final scoped ledger checks, commit the clerk-support API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.
