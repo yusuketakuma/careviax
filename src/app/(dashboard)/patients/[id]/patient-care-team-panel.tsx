@@ -414,7 +414,8 @@ export function PatientCareTeamPanel({
                     }
                   >
                     <SelectTrigger aria-label={`多職種連携先${index + 1}件目の役割`}>
-                      <SelectValue />
+                      {/* Radix は既定値ラベルを SSR 解決できないため表示文言を明示 */}
+                      <SelectValue>{roleLabel[row.role] ?? row.role}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {Object.entries(roleLabel).map(([value, label]) => (
@@ -657,7 +658,11 @@ export function PatientCareTeamPanel({
                 }
               >
                 <SelectTrigger id="care-team-quick-create-profession">
-                  <SelectValue />
+                  <SelectValue>
+                    {PROFESSION_OPTIONS.find(
+                      ([value]) => value === quickCreateDraft.profession_type,
+                    )?.[1] ?? quickCreateDraft.profession_type}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {PROFESSION_OPTIONS.map(([value, label]) => (

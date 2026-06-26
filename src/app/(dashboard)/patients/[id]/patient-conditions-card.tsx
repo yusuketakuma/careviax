@@ -153,7 +153,10 @@ export function PatientConditionsCard({
                     }
                   >
                     <SelectTrigger aria-label={`病名・課題${index + 1}件目の区分`}>
-                      <SelectValue />
+                      {/* Radix は既定値ラベルを SSR 解決できないため表示文言を明示 */}
+                      <SelectValue>
+                        {condition.condition_type === 'disease' ? '疾患名' : '問題・課題'}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="disease">疾患名</SelectItem>
