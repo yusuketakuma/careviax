@@ -7,6 +7,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
+const adminPageHeaderPropsMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -21,7 +22,10 @@ vi.mock('@/lib/hooks/use-realtime-query', () => ({
 }));
 
 vi.mock('@/components/features/admin/admin-page-header', () => ({
-  AdminPageHeader: () => <header data-testid="admin-page-header" />,
+  AdminPageHeader: (props: { supportingContent?: unknown }) => {
+    adminPageHeaderPropsMock(props);
+    return <header data-testid="admin-page-header" />;
+  },
 }));
 
 vi.mock('@/components/features/admin/admin-page-shortcut-presets', () => ({
@@ -47,6 +51,11 @@ describe('PerformancePage polling policy', () => {
   it('uses realtime invalidation for workflow metrics and slows runtime polling', () => {
     render(<PerformancePage />);
 
+    expect(adminPageHeaderPropsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ supportingContent: null }),
+    );
+    expect(screen.queryByText('最初に見るポイント')).toBeNull();
+    expect(screen.queryByText('Operational Performance')).toBeNull();
     expect(useRealtimeQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         queryKey: ['admin-performance-workflow', 'org_1'],
@@ -74,6 +83,28 @@ describe('PerformancePage polling policy', () => {
         refetchInterval: 60_000,
       }),
     );
+  });
+
+  it('puts actionable performance signals before routine KPI grids', () => {
+    render(<PerformancePage />);
+
+    const signalHeading = screen.getByText('今すぐ見る要対応シグナル');
+    const workflowKpiHeading = screen.getByText('業務 KPI');
+    expect(
+      signalHeading.compareDocumentPosition(workflowKpiHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText('API latency KPI')).toBeTruthy();
+  });
+
+  it('keeps KPI grids dense on mobile and update actions at 44px', () => {
+    render(<PerformancePage />);
+
+    expect(screen.getByText('業務 KPI').nextElementSibling?.className).toContain('grid-cols-2');
+    expect(screen.getByText('API latency KPI').nextElementSibling?.className).toContain(
+      'grid-cols-2',
+    );
+    expect(screen.getByRole('button', { name: '更新' }).className).toContain('min-h-11');
+    expect(screen.getByRole('button', { name: 'Runtime再計測' }).className).toContain('min-h-11');
   });
 
   it('shows ErrorState (not a false-empty) with retry when the proposals query fails', () => {

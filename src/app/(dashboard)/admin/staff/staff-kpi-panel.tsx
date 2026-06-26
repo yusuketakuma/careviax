@@ -157,6 +157,7 @@ export function StaffKpiPanel() {
             type="month"
             value={month}
             onChange={(event) => setMonth(event.target.value)}
+            suppressHydrationWarning
             className="w-[220px]"
           />
         </div>
