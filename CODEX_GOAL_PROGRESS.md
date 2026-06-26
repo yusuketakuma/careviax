@@ -39,6 +39,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: route-mocked desktop/mobile screenshots with no console/page errors; focused `dashboard-cockpit` Vitest `1` file / `14` tests; focused ESLint; focused Prettier check; focused diff whitespace check.
 - Next action: commit this single design fix, then continue the screenshot loop with the next highest-impact shared chrome issue, likely PH-OS site identity/trunk-test weakness in the app header and shared page chrome.
 
+### 2026-06-26 JST - App Header Shared Chrome Fit
+
+- Refined the shared app header after the dashboard screenshot pass exposed weak PH-OS identity on desktop and clipped right-side controls on 390px mobile.
+- Added a desktop PH-OS brand/home affordance beside the nav toggle so protected pages pass the trunk test even when page content is scrolled or dense.
+- Preserved the existing mobile primary controls while tightening the header: care mode shortens to `在宅`/`外来` on narrow screens, sync status moves out of sub-480px phone chrome, and the settings shortcut remains available from `md` up where it no longer competes with patient-work controls.
+- Preserved all existing routes, controls, labels, notifications, communication, workspace rail behavior, backend behavior, auth behavior, and DB behavior. No feature was removed.
+- Screenshot evidence: desktop `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/dashboard-after-header-fit-desktop-final.png`; mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/dashboard-after-header-fit-mobile-final.png`. Mobile header audit at `390x844` showed all visible interactive elements within viewport bounds, with no overflow.
+- Validation passed: authenticated local `/dashboard` desktop/mobile screenshots on `http://localhost:3012` with no console errors after using the e2e local session token; focused `app-header` Vitest `1` file / `19` tests; focused ESLint; focused Prettier check; focused diff whitespace check.
+- Next action: commit the header shared-chrome fix as its own design slice, commit the Codex-only/agmsg monitor state update separately, then continue the screenshot loop on the next highest-impact operational page or shared primitive.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.

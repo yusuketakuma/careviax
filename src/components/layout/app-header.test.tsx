@@ -135,6 +135,10 @@ describe('AppHeader', () => {
     expect(trigger.textContent).toContain('在宅モード');
     expect(screen.getByText('モード:')).toBeTruthy();
 
+    const brand = screen.getByTestId('app-header-brand');
+    expect(brand.getAttribute('href')).toBe('/dashboard');
+    expect(brand.textContent).toContain('PH-OS');
+
     const search = screen.getByTestId('app-header-search');
     // 検索ボックスのコピーは active カテゴリ由来(現在は薬剤のみ active、PHI カテゴリは deferred)。
     expect(search.textContent).toContain('薬剤');
@@ -144,6 +148,8 @@ describe('AppHeader', () => {
     const sync = screen.getByTestId('app-header-sync-status');
     expect(sync.textContent).toBe('同期済み 09:42');
     expect(sync.className).toContain('text-state-done');
+    expect(sync.className).toContain('max-[480px]:!hidden');
+    expect(sync.className).toContain('md:inline');
 
     const communication = screen.getByTestId('app-header-communication');
     expect(communication.getAttribute('href')).toBe(
@@ -151,7 +157,10 @@ describe('AppHeader', () => {
     );
     expect(communication.className).toContain('min-w-[44px]');
     expect(screen.getByRole('button', { name: '通知 6' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: '設定' }).getAttribute('href')).toBe('/settings');
+    const settings = screen.getByRole('link', { name: '設定' });
+    expect(settings.getAttribute('href')).toBe('/settings');
+    expect(settings.className).toContain('hidden');
+    expect(settings.className).toContain('md:inline-flex');
     expect(screen.getByTestId('app-header-user-name').textContent).toBe('山田 太郎');
   });
 
@@ -211,6 +220,11 @@ describe('AppHeader', () => {
     const actions = screen.getByTestId('app-header-search-compact').parentElement as HTMLElement;
     expect(actions.className).toContain('min-w-0');
     expect(actions.className).toContain('gap-1');
+
+    expect(screen.getByTestId('app-header-mode-trigger').textContent).toContain('在宅');
+    expect(screen.getByTestId('app-header-sync-status').className).toContain('max-[480px]:!hidden');
+    expect(screen.getByTestId('app-header-sync-status').className).toContain('md:inline');
+    expect(screen.getByRole('link', { name: '設定' }).className).toContain('hidden');
   });
 
   it('shows 外来モード on the trigger when careMode is outpatient', () => {

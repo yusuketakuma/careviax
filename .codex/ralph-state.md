@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1555 JST
+
+- current task: complete and commit the shared app-header chrome slice in the active repo-wide UI/UX refinement goal, after the dashboard screenshot loop found desktop orientation weakness and mobile right-control overflow.
+- files inspected: agmsg inbox; `git status --short --branch --untracked-files=all`; `src/components/layout/app-header.tsx`; `src/components/layout/app-header.test.tsx`; `src/components/layout/mobile-nav.tsx`; `src/components/layout/navigation-config.ts`; `src/components/features/notifications/notification-bell.tsx`; `src/app/globals.css`; local auth helper `tools/tests/helpers/local-auth.ts`; package `dev:e2e:local` script; Playwright desktop/mobile screenshots and header coordinate audit for authenticated `/dashboard`.
+- files changed: `src/components/layout/app-header.tsx`, `src/components/layout/app-header.test.tsx`, `CODEX_GOAL_PROGRESS.md`, `.agent-loop/STATE.md`, `.codex/hooks.json`, and this Ralph state entry.
+- bugs found: the shared header did not expose a desktop PH-OS brand/home affordance near the nav toggle, weakening page orientation on dense protected screens. On a 390px viewport, visible right-side header controls extended past the viewport before the fix, clipping the auxiliary-panel button.
+- security risks found: none changed in application logic. No auth, authorization, API, PHI projection, schema, migration, seed, or DB write path was changed. The local browser verification used an e2e local session token and normal protected-page reads only.
+- performance issues found: none materially changed. The fix is responsive class/copy behavior in the existing header with no new data fetch, network fan-out, query, or computation.
+- validation commands: `pnpm exec prettier --write src/components/layout/app-header.tsx src/components/layout/app-header.test.tsx`; `pnpm vitest run src/components/layout/app-header.test.tsx --reporter=dot --testTimeout=30000`; `pnpm eslint src/components/layout/app-header.tsx src/components/layout/app-header.test.tsx`; `pnpm exec prettier --check src/components/layout/app-header.tsx src/components/layout/app-header.test.tsx`; `git diff --check -- src/components/layout/app-header.tsx src/components/layout/app-header.test.tsx`; authenticated Playwright screenshots and coordinate audit on `http://localhost:3012/dashboard` at desktop and `390x844`.
+- validation results: focused AppHeader Vitest passed `1` file / `19` tests; focused ESLint passed; focused Prettier check passed after formatting; focused diff whitespace check passed. Final authenticated browser check had `0` console errors. Mobile header audit showed all visible interactive elements within viewport bounds at `390x844`, with the rightmost visible header control ending at `x=382` inside the `390px` viewport.
+- remaining work: commit the app-header UI slice, then commit the Codex-only/agmsg monitor state update as a separate coordination slice. The broader all-pages UI/UX objective is not complete.
+- next action: stage only owned header/progress files for the design commit, then stage only `.agent-loop/STATE.md` and `.codex/hooks.json` for the coordination commit.
+
 ### 20260626-1540 JST
 
 - current task: complete the first screenshot-driven UI fix in the active repo-wide UI/UX refinement goal by correcting the dashboard mobile condition banner layout.

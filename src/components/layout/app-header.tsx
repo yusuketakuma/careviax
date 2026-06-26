@@ -75,7 +75,7 @@ function HeaderSyncStatus() {
     return (
       <Link
         href="/offline-sync"
-        className="hidden shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-blocked hover:bg-state-blocked/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
+        className="hidden shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-blocked hover:bg-state-blocked/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-[480px]:!hidden md:flex"
         data-testid="app-header-sync-status"
         aria-label="オフライン — 同期状況を開く"
       >
@@ -90,7 +90,7 @@ function HeaderSyncStatus() {
   return (
     <Link
       href="/offline-sync"
-      className="hidden shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-done hover:bg-state-done/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline"
+      className="hidden shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-done hover:bg-state-done/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-[480px]:!hidden md:inline"
       data-testid="app-header-sync-status"
       aria-label="同期状況を開く"
     >
@@ -182,6 +182,18 @@ export function AppHeader() {
           <PanelLeftOpen className="size-4" aria-hidden="true" />
         </Button>
 
+        <Link
+          href="/dashboard"
+          className="hidden shrink-0 items-baseline gap-1.5 rounded-md px-1 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:flex"
+          data-testid="app-header-brand"
+          aria-label="PH-OS ダッシュボードへ"
+        >
+          <span className="text-sm font-bold tracking-tight text-foreground">PH-OS</span>
+          <span className="hidden text-[11px] font-medium text-muted-foreground xl:inline">
+            在宅薬局Ops
+          </span>
+        </Link>
+
         {/* モード切替ドロップダウン */}
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="hidden text-xs text-muted-foreground sm:inline">モード:</span>
@@ -196,7 +208,8 @@ export function AppHeader() {
                 />
               }
             >
-              {modeLabel}
+              <span className="md:hidden">{careMode === 'outpatient' ? '外来' : '在宅'}</span>
+              <span className="hidden md:inline">{modeLabel}</span>
               <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden="true" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-36">
@@ -262,7 +275,7 @@ export function AppHeader() {
           <Button
             asChild
             variant="ghost"
-            className="min-h-[44px] min-w-[44px] px-2 text-sm text-muted-foreground hover:text-foreground sm:min-h-9 sm:min-w-0"
+            className="hidden min-h-[44px] min-w-[44px] px-2 text-sm text-muted-foreground hover:text-foreground md:inline-flex md:min-h-9 md:min-w-0"
           >
             <Link href="/settings" aria-label="設定">
               <Settings className="size-4 md:hidden" aria-hidden="true" />
