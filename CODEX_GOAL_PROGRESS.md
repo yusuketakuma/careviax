@@ -21,6 +21,25 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Patient Header Summary Patient-Level Care Team Read Switch
+
+- Coordination:
+  - Reconfirmed the user directive to Claude over `agmsg`: coordinate through agmsg, keep LOCK/HANDOFF/REVIEW_REQUEST/COMMITTED/BLOCKED explicit, and continue autonomous non-overlapping work.
+  - Read-only validated Claude's P1 patient-level care-team base commit `d47a7cf6` before taking P2: focused patient route test passed and full TypeScript passed.
+  - Took `LOCK(P2 patient header summary Patient化)` for `src/server/services/patient-detail.ts` and `src/server/services/patient-detail.test.ts`.
+- Switched `getPatientHeaderSummary` to resolve the four care-team display names from Patient-level `primary_pharmacist_id`, `backup_pharmacist_id`, `primary_staff_id`, and `backup_staff_id` instead of the latest scoped CareCase assignment fields.
+- Preserved scoped case usage for first-visit and latest-prescription dates: scoped case ids are still selected with the existing `buildAssignedCareCaseWhere` filter and latest-case ordering, but only `id` is selected from cases now.
+- Preserved response shape and frontend contract: `primary_pharmacist_name`, `backup_pharmacist_name`, `primary_staff_name`, `backup_staff_name`, `first_visit_date`, `last_prescribed_date`, and `next_prescription_expected_date` remain unchanged.
+- Security risk reduced: header display now follows the new patient-level assignment SSOT without exposing assignment IDs; org-scoped user-name resolution remains deduplicated through `batchResolveNames`.
+- Performance issue improved: the patient header summary no longer selects four obsolete CareCase assignment columns for each scoped case; it selects the four Patient assignment columns once plus case ids for date scoping.
+- Validation passed:
+  - `pnpm vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot --testTimeout=30000` passed `2` files / `124` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for `src/server/services/patient-detail.ts` and `src/server/services/patient-detail.test.ts`.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed.
+- Next action: commit the Codex-owned P2 read-model switch, commit progress ledgers separately, send `agmsg` FYI to Claude, then continue the staged Patient care-team migration.
+
 ### 2026-06-27 JST - Patient MCS Build Blocker and Rate-Limit Catalog Fix
 
 - Coordination:

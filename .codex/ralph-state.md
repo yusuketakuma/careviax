@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-0624 JST
+
+- current task: P2 of the staged Patient care-team migration: switch `getPatientHeaderSummary` from latest CareCase assignment fields to Patient-level care-team fields after Claude's non-destructive P1 base commit `d47a7cf6`.
+- files inspected: `git status --short --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `git log --oneline -n 10`, `prisma/schema/patient.prisma`, `prisma/migrations/20260627000000_add_patient_care_team/migration.sql`, `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/route.test.ts`, `src/lib/validations/patient.ts`, `src/server/services/patient-detail.ts`, `src/server/services/patient-detail.test.ts`, `src/app/api/patients/[id]/detail-slices.test.ts`, and gbrain code graph probes for `getPatientHeaderSummary` (not built/not found).
+- files changed: `src/server/services/patient-detail.ts`, `src/server/services/patient-detail.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: after P1 added Patient-level care-team fields, `getPatientHeaderSummary` still resolved the four header care-team names from the latest scoped CareCase assignment fields, leaving the new Patient SSOT unused by the shared PatientHeader.
+- security risks found: reduced stale/incorrect assignment display risk by aligning the read model to the Patient-level assignment SSOT while continuing to expose only display names, not assignment IDs. Org-scoped name resolution remains deduplicated through `batchResolveNames`.
+- performance issues found: slightly reduced header query payload by selecting the four Patient assignment ids once and only scoped case ids from cases, instead of selecting four assignment columns from every scoped case. No new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced by Codex.
+- validation commands: read-only P1 verification `pnpm vitest run 'src/app/api/patients/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; read-only P1 full TypeScript `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; P2 focused validation `pnpm vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/detail-slices.test.ts' --reporter=dot --testTimeout=30000`; P2 full TypeScript `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`; `pnpm exec prettier --check src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`; `git diff --check -- src/server/services/patient-detail.ts src/server/services/patient-detail.test.ts`.
+- validation results: read-only P1 patient route Vitest passed `1` file / `37` tests and full TypeScript passed; P2 focused patient-detail/detail-slices Vitest passed `2` files / `124` tests; P2 full TypeScript passed; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed.
+- remaining work: commit only the P2 read-model/test files, then commit progress ledgers separately, send agmsg FYI with commit hashes, and continue staged Patient care-team migration follow-ups such as access scoping, schedule planner/service reads, patient response mappers, daily jobs, and future members endpoint/UI support when requested.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260627-0045 JST
 
 - current task: restore shared typecheck/build by fixing `GET /api/patients/:id/mcs`, add the missing patient header summary rate-limit catalog entry, and read-only review Claude's card-workspace v2 integration.
