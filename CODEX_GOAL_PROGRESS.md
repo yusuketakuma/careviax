@@ -21,6 +21,17 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-26 JST - Medication Set Workspace 500 No-Store
+
+- Hardened `GET /api/medication-sets/workspace` so set-preparation workspace success, validation, auth failure, permission failure, and unexpected aggregation failure responses carry sensitive no-store headers.
+- Added a fixed exported-route 500 fallback that omits patient/allergy-like thrown text from the response body.
+- Added the route to the protected GET auth matrix so 401/403 no-store behavior is covered.
+- Preserved existing `scope` compatibility, including duplicate `scope` query behavior where the first value is used, top-level `{ data: ... }` response shape, aggregation queries, set lane derivation, narcotic/cold-storage handling, schema, migrations, DB writes, and frontend UI behavior.
+- Security risk reduced: patient names/IDs, room labels, allergy presence, narcotic/cold-storage lane data, and audit-waiting workflow payloads are no longer cacheable at the HTTP boundary.
+- Performance issue improved: none materially changed; the slice adds only response wrapping and tests.
+- Validation passed: focused medication-set workspace/protected GET Vitest `2` files / `227` tests; focused ESLint; focused Prettier check; full TypeScript check; scoped diff whitespace check. API and privacy subagents reviewed with no blockers.
+- Next action: commit the medication-set workspace API/test slice, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first hardening while preserving Claude's `/patients/[id]` UI lock. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - QR Scan Draft PHI/Cache Hardening
 
 - Hardened QR scan draft list/detail/create/discard route boundaries so PHI/JAHIS-derived responses carry sensitive no-store headers.

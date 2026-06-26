@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2225 JST
+
+- current task: backend-first PHI/cache hardening for `GET /api/medication-sets/workspace`.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, Next Route Handlers docs at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/medication-sets/workspace/route.ts`, `src/app/api/medication-sets/workspace/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/app/api/set-plans/route.ts`, and read-only API/privacy subagent reviews.
+- files changed: `src/app/api/medication-sets/workspace/route.ts`, `src/app/api/medication-sets/workspace/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the set-preparation workspace BFF returned patient names/IDs, room labels, allergy flags, narcotic/cold-storage lane data, and audit-waiting workflow payloads without sensitive no-store wrapping at the exported route boundary, and unexpected aggregation failures lacked an exported-route fixed no-store fallback.
+- security risks found: reduced PHI/medical workflow cacheability risk by applying `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache` to success, validation, auth failure, permission failure, and fixed 500 responses; fixed 500 coverage proves patient/allergy-like thrown text is not returned.
+- performance issues found: none materially changed. The slice adds only response wrapping and tests; no new DB queries, schema changes, dependencies, polling, or frontend rendering work were introduced.
+- validation commands: `pnpm vitest run src/app/api/medication-sets/workspace/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/medication-sets/workspace/route.ts src/app/api/medication-sets/workspace/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check src/app/api/medication-sets/workspace/route.ts src/app/api/medication-sets/workspace/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `git diff --check -- ...`.
+- validation results: focused medication-set workspace/protected GET Vitest passed `2` files / `227` tests; scoped ESLint passed; scoped Prettier check passed; full TypeScript check passed; scoped diff-check passed. API/privacy subagents found no blockers; API reviewer requested stronger validation body, duplicate-scope compatibility, and top-level shape assertions, which were added.
+- remaining work: run final scoped ledger checks, stage only the medication-sets workspace route/test and protected GET matrix for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and continue backend-first hardening while preserving Claude's `/patients/[id]` UI lock. The broader all-pages UI/UX objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2220 JST
 
 - current task: backend-first QR scan draft PHI/cache hardening across list/detail/create/discard route boundaries.
