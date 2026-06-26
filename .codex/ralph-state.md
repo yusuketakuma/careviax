@@ -20,19 +20,6 @@ Backup directory:
 
 ## Iterations
 
-### 20260626-1410 JST
-
-- current task: continue the all-pages UI/UX objective with `/password/change`, the remaining auth password-update route in the entry/recovery surface group.
-- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox, `docs/ui-ux-design-guidelines.md` current SSOT updates already loaded for this UI loop, `src/app/(auth)/password/change/page.tsx`, `tools/tests/e2e-auth-flow.spec.ts`, desktop/mobile `/password/change` screenshots and metrics, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
-- files changed: `src/app/(auth)/password/change/page.tsx`, `tools/tests/e2e-auth-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
-- bugs found: the password-change route retained the old dense card shell with a floating `?` help affordance and desktop password fields/visibility toggles below the PH-OS 44px interaction target. A first validation pass also exposed an accessible-name collision where the heading text included the current-password label phrase and confused the focused Playwright locator.
-- security risks found: no auth, authorization, Cognito/session behavior, password submit endpoint, password validation gate, secret handling, logging, DB behavior, external send, route permissions, or backend/API behavior changed.
-- performance issues found: no new network calls, polling, DB reads, render loops, or expensive computation were introduced. The added requirement panel is static client render state driven by the existing password input.
-- validation commands: `pnpm exec prettier --write 'src/app/(auth)/password/change/page.tsx' tools/tests/e2e-auth-flow.spec.ts`; `pnpm exec eslint 'src/app/(auth)/password/change/page.tsx' tools/tests/e2e-auth-flow.spec.ts`; `git diff --check -- 'src/app/(auth)/password/change/page.tsx' tools/tests/e2e-auth-flow.spec.ts`; `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-auth-flow.spec.ts --grep "password change page"`; direct desktop/mobile browser checks on `http://localhost:3012/password/change`.
-- validation results: focused Prettier write passed; focused ESLint passed; focused diff whitespace check passed; Playwright password-change auth test passed `2` projects / `2` tests. Direct browser proof had `0` console/page errors, `0` horizontal overflow, `0` floating question-mark buttons, and no visible controls below 44px on desktop or mobile. Screenshots were saved under `artifacts/ui-entry-sweep/`.
-- remaining work: commit the password-change UI/test slice and this progress-ledger update separately, send agmsg FYI, then continue the broader all-pages UI/UX objective. The broader objective is not complete.
-- next action: grouped commits for password-change UI polish and progress ledgers.
-
 ### 20260626-1350 JST
 
 - current task: group and validate the remaining `/first-login` UI polish diff after the `/login` authentication entry slice.
@@ -5467,5 +5454,5 @@ Backup directory:
 - performance issues found: no new fetches, polling, subscriptions, DB reads beyond existing E2E session setup, mutations beyond the existing password PATCH submit, or heavier loops were introduced. The change is static layout/copy plus target sizing.
 - validation commands: `pnpm exec prettier --check 'src/app/(auth)/password/change/page.tsx' tools/tests/e2e-auth-flow.spec.ts`; `pnpm exec eslint 'src/app/(auth)/password/change/page.tsx' tools/tests/e2e-auth-flow.spec.ts`; `git diff --check -- 'src/app/(auth)/password/change/page.tsx' tools/tests/e2e-auth-flow.spec.ts`; `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 DATABASE_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public' pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-auth-flow.spec.ts --grep "password change page"`; direct Playwright proof on `http://localhost:3012/password/change`.
 - validation results: scoped Prettier passed; scoped ESLint passed; scoped diff-check passed; focused password-change E2E passed `2` tests across desktop and mobile projects. Direct proof saved `artifacts/ui-entry-sweep/password-change-final-desktop.png` and `artifacts/ui-entry-sweep/password-change-final-mobile.png`; final proof had `0` console/page errors, no horizontal overflow, no undersized visible controls, `floatingQuestionMarks=0`, visible `h2` text `安全にパスワードを更新します`, and the mobile primary submit button ended at `710px`.
-- remaining work: commit `style(auth): clarify password change update`, then commit the `/password/change` progress ledger update separately, send agmsg FYI/DONE, and continue the all-pages UI/UX sweep. The broader objective remains incomplete. The unrelated `src/app/(dashboard)/patients/patients-board.tsx` dirty diff must remain unstaged.
-- next action: stage only `src/app/(auth)/password/change/page.tsx` and `tools/tests/e2e-auth-flow.spec.ts` for the code/test commit, then stage only ledgers for the progress commit.
+- remaining work: `/password/change` UI/test group was committed as `eb4c2401`; commit the `/password/change` progress ledger update separately, send agmsg FYI/DONE, and continue the all-pages UI/UX sweep. The broader objective remains incomplete. The unrelated `src/app/(dashboard)/patients/patients-board.tsx` dirty diff must remain unstaged.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the progress commit.
