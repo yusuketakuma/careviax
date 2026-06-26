@@ -40,6 +40,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused workbench Vitest `5` files / `79` tests; focused ESLint; focused Prettier check; focused diff whitespace check; read-only API/service checks; authenticated browser desktop/mobile checks on `http://localhost:3012/dispense` and `/set` with `/dispense` rendering `処方登録患者 3名` and `/set` rendering the normal empty state without fetch-failure text.
 - Next action: commit the workbench implementation slice and the progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Billing Primary Action Strip
+
+- Refined the remaining `/billing` first-fold action area after browser proof showed the page still carried duplicate next-action, blocker, and evidence content through the separate workspace action rail.
+- Added a single `算定チェックの次アクション` strip that keeps the primary action, top blocker, and first three evidence links together before the review table.
+- Removed the duplicated action-rail panels and the fixed billing table column-visibility control, then moved the review table ahead of KPI summary cards so the疑義 worklist appears earlier on mobile.
+- Preserved all existing billing check fetches, month filter behavior, patient links, billing evidence links, org/RLS behavior, auth behavior, backend/API behavior, DB behavior, and displayed check data. No feature route or mutation behavior was removed.
+- Screenshot evidence: desktop `test-results/codex-billing-primary-strip/billing-desktop-after.png`; mobile `test-results/codex-billing-primary-strip/billing-mobile-after.png`.
+- Validation passed: focused billing/DataTable Vitest `2` files / `12` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/billing` with one visible `算定チェック` heading, no horizontal overflow, one next-action occurrence, no duplicate rail panels, and no page-body controls below the 44px target.
+- Next action: commit the billing implementation slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.

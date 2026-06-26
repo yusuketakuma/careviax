@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1308 JST
+
+- current task: continue the all-pages UI/UX objective with the remaining `/billing` first-fold action-density pass after Claude explicitly ceded the billing lane under Codex-only operation.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/01-getting-started/05-server-and-client-components.md`, `node_modules/next/dist/docs/01-app/01-getting-started/11-css.md`, `src/app/(dashboard)/billing/billing-check-content.tsx`, `src/app/(dashboard)/billing/billing-check-content.test.tsx`, `src/components/ui/data-table.tsx`, `src/components/ui/data-table.test.tsx`, authenticated desktop/mobile `/billing` screenshots under `test-results/codex-billing-primary-strip/`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/billing/billing-check-content.tsx`, `src/app/(dashboard)/billing/billing-check-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/billing` still duplicated the next-action, blocker, and evidence content through the separate workspace action rail after the billing review table had already been stabilized. The review table also exposed column-visibility chrome even though billing review has a fixed operational evidence set, and mobile placed KPI summary cards ahead of the actual疑義 table.
+- security risks found: no auth, authorization, permission, RLS, API, PHI projection, audit logging, schema, migration, DB write, external send, or mutation behavior changed.
+- performance issues found: no new fetches, polling, DB reads, render loops, or backend work were introduced. Removing the duplicate action rail reduces redundant rendered DOM for the first fold.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`; `pnpm vitest run 'src/app/(dashboard)/billing/billing-check-content.test.tsx' src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx' src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`; `pnpm exec prettier --check 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`; authenticated Playwright desktop/mobile checks on `http://localhost:3012/billing`.
+- validation results: focused billing/DataTable Vitest passed `2` files / `12` tests; focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed. Authenticated desktop/mobile browser checks rendered `算定チェック` with no horizontal overflow, one next-action occurrence, no duplicate rail panels, no page-body controls below the 44px target, and screenshots saved as `test-results/codex-billing-primary-strip/billing-desktop-after.png` and `test-results/codex-billing-primary-strip/billing-mobile-after.png`.
+- remaining work: commit the billing primary-strip implementation slice, commit the progress-ledger update separately, send agmsg FYI, then continue the broader all-pages UI/UX objective. The broader objective is not complete.
+- next action: grouped commits for billing first-fold action-density and progress ledgers.
+
 ### 20260626-1256 JST
 
 - current task: continue the all-pages UI/UX objective by fixing the `/dispense` and `/set` workbench real-data display regression found during live browser verification.
