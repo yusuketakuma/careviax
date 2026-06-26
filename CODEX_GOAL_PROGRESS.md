@@ -9592,3 +9592,29 @@ Next loop:
   - Screenshot evidence: `offline-sync-queue-mobile-after.png`, `offline-sync-queue-desktop-after.png`, `offline-sync-conflict-mobile-after.png`, and `offline-sync-conflict-desktop-after.png` under `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
 - Remaining:
   - Commit the offline-sync UI/UX slice, send agmsg FYI, then continue the all-pages UI/UX sweep. The broader objective is not complete.
+
+### Settings Policy — Primary Safety Strip
+
+- Coordination:
+  - Drained agmsg before editing and received Claude's ACK for the `/settings` lock.
+  - Restored the shared `:3012` E2E dev server after the previous process stopped responding; confirmed Claude's `/audit` re-verification was green after HMR.
+  - Avoided unrelated peer lanes and did not stage or modify non-settings files.
+- Bugs found:
+  - `/settings` kept the "次にやること / 止まっている理由 / 根拠・記録" safety context only in the right drawer, so desktop first-fold showed policy cards but not the operational consequence of changing settings.
+  - Mobile first-fold was consumed by the header and safety card; impact confirmation and the next operational action were below the fold.
+  - The header's long "薬局 ... 安全項目はロック" sentence wrapped awkwardly on mobile.
+- Implemented by Codex:
+  - Added a compact `PolicyPrimaryStrip` immediately under the settings header with save-impact confirmation, top blocked reason, change-log/lock count, and the next action.
+  - Split the header into a pharmacy chip and safety-lock chip so mobile keeps the page identity and lock state readable.
+  - Kept the existing right-drawer `WorkspaceActionRail`, policy cards, confirmation dialog, API calls, permissions, and all setting controls intact.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/settings/operational-policy-content.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/settings/operational-policy-content.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/settings/operational-policy-content.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`: passed.
+  - `pnpm test:e2e:local ui-design-fidelity -g new_14_settings`: passed desktop and mobile, `2` tests.
+  - `pnpm test:e2e:local ui-design-fidelity -g p0_44_settings`: passed desktop and mobile, `2` tests.
+  - Independent mobile browser proof at `393x852`: `policy-primary-strip` rendered from `149px` to `533px`, no console/page errors, `smallCount=0`, and horizontal overflow count `0`.
+  - Screenshot evidence: `artifacts/ui-settings-sweep/settings-mobile-before.png`, `artifacts/ui-settings-sweep/settings-mobile-after.png`, and `tools/tests/.artifacts/design-fidelity/new_14_settings.actual.png`.
+- Remaining:
+  - Commit the settings UI/UX slice, then commit this ledger update separately and release the `/settings` lock. The broader all-pages UI/UX objective remains incomplete.
