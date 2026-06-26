@@ -640,7 +640,10 @@ function ConsultResolutionPanel({
           <Button
             key={action}
             type="button"
-            className={cn('min-h-[44px] sm:h-11 sm:min-h-[44px]', buttonClassName)}
+            className={cn(
+              'min-h-[44px] min-w-[5.5rem] flex-1 px-2 text-xs sm:h-11 sm:min-h-[44px] sm:flex-none sm:px-4 sm:text-sm',
+              buttonClassName,
+            )}
             disabled={disabled}
             data-testid={`handoff-consult-action-${action}`}
             onClick={() => {
