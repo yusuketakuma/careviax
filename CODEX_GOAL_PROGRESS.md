@@ -158,6 +158,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused `workflow-dashboard-content`, `workflow-integration-map`, and `main-workflow-route` Vitest `3` files / `11` tests; focused ESLint; focused Prettier check; focused diff whitespace check; live browser desktop/mobile checks on `http://localhost:3012/workflow` using a DB-free static seed JWT cookie with `0` horizontal overflow, one visible `h1`, `workflow-main-route` in the first viewport (`244px` mobile / `252px` desktop), related links below the dashboard body, and no undersized visible controls in the mobile page body. Desktop remaining undersized controls were pre-existing shared app-header chrome outside this workflow body slice.
 - Next action: run final checks including ledgers, commit the workflow UI/touch-target group, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Pharmacy Cooperation First-Fold Workflow Strip
+
+- Refined `/workflow/pharmacy-cooperation` after screenshot proof showed the page header and vertically stacked mobile summary cards delaying the first workflow section.
+- Removed duplicated header support copy, localized the eyebrow to `薬局間協力`, kept the existing shortcut destinations, and compacted the operational summary into a 3-column worklist strip on mobile and desktop.
+- Preserved all existing patient-share case fetches, visit-request fetches, partner-record fetches, consent/correction/message panels, confirmation behavior, shortcut destinations, auth behavior, backend/API behavior, DB behavior, and external sends. No feature was removed.
+- Screenshot evidence: desktop `artifacts/ui-pharmacy-cooperation-sweep/pharmacy-cooperation-desktop-compact-summary.png`; mobile `artifacts/ui-pharmacy-cooperation-sweep/pharmacy-cooperation-mobile-compact-summary.png`.
+- Validation passed: focused pharmacy-cooperation Vitest `1` file / `20` tests; focused ESLint; focused Prettier check; focused diff whitespace check; direct browser desktop/mobile proof on `http://localhost:3012/workflow/pharmacy-cooperation` with route-mocked page APIs, no console/page errors, one visible `h1`, document horizontal overflow `false`, page-body undersized target count `0`, mobile first workflow section top improved from `950px` to `701px`, and desktop first workflow section top `566px`.
+- Validation caveat: the repository Playwright command `pnpm exec playwright test tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium --grep "pharmacy cooperation route-mocked browser workflow smoke"` timed out waiting for the configured webServer after 60 seconds, so the proof used the already-running local dev server and explicit route mocks instead.
+- Next action: commit the pharmacy-cooperation first-fold UI group separately from ledgers, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Communication Requests Work Queue First
 
 - Refined `/communications/requests` after inspection showed first-fold space going to explanatory header support copy and the collaboration workflow explainer before the reply-followup work queue.
