@@ -21,6 +21,26 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Patient Detail Root GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new messages were pending.
+  - Preserved Claude-owned dirty `src/components/features/patients/patient-form.tsx` and `src/lib/validations/patient.ts`; Codex did not edit or stage those files.
+- Hardened the root `GET /api/patients/:id` patient detail route so success, auth rejection, validation, not-found, and ordinary unexpected read failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store not-found, no-store invalid-id, and sanitized no-store 500 responses that omit raw patient/insurance/medication-like thrown text.
+- Added `patients/[id] GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canVisit` auth, assignment-scoped patient lookup, masking rules, response body shape, query fan-out, PATCH behavior, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: the PHI-rich root patient detail payload is now aligned with the surrounding patient detail sub-slices and cannot be cached at the HTTP boundary; raw unexpected read failures are no longer serialized to the client.
+- Performance issue improved: none materially changed. This slice only adds response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/patients/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `257` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the patient detail route, route test, and protected GET matrix.
+  - Scoped Prettier check passed after formatting `src/app/api/patients/[id]/route.ts`.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned patient detail root GET hardening, commit progress ledgers separately, and send `agmsg` FYI. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Org Staff Candidate Endpoint for Patient Care-Team UI
 
 - Coordination:

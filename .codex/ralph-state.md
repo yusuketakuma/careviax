@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-0645 JST
+
+- current task: backend-first PHI/cache hardening for the root `GET /api/patients/:id` patient detail route while preserving Claude-owned patient form/validation dirty work.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/route.test.ts`, `src/app/api/patients/[id]/header-summary/route.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, and gbrain code graph probes for `src/app/api/patients/[id]/route::GET` (fresh graph had no callers; caller index not built for this symbol).
+- files changed: `src/app/api/patients/[id]/route.ts`, `src/app/api/patients/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned dirty `src/components/features/patients/patient-form.tsx` and `src/lib/validations/patient.ts` were preserved and not staged by Codex.
+- bugs found: the root patient detail GET returned a PHI-rich payload without the sensitive no-store exported-route envelope already applied to surrounding patient detail sub-slices, and ordinary unexpected read failures could escape without the route-level fixed no-store `INTERNAL_ERROR` fallback.
+- security risks found: reduced patient PHI/cacheability and error-leakage risk by wrapping the root detail GET with `withSensitiveNoStore`, adding a sanitized fixed `internalError()` fallback, preserving Next control-flow via `unstable_rethrow(err)`, and proving raw patient/insurance/medication-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/patients/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- 'src/app/api/patients/[id]/route.ts' 'src/app/api/patients/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused patient detail/protected GET Vitest passed `2` files / `257` tests; full TypeScript passed; scoped ESLint passed; scoped Prettier check passed after formatting the route file; scoped diff-check passed.
+- remaining work: commit Codex-owned patient detail root GET hardening, commit progress ledgers separately, send `agmsg` FYI, then continue backend-first support for the broader UI/UX objective. The all-pages UI/UX objective remains incomplete.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260627-0640 JST
 
 - current task: implement Claude-requested P4 dependency endpoint `GET /api/org/members?eligible=staff` for patient create/edit care-team staff Selects while preserving Claude-owned patient form/validation dirty work.
