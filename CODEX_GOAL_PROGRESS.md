@@ -21,6 +21,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Patient Detail Workflow Read Slice No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new inbox message was pending at slice close.
+  - Preserved Claude-owned dirty UI files `src/app/(dashboard)/patients/[id]/card-workspace.tsx` and `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`; Codex did not edit, stage, or validate those files in this slice.
+  - No DB schema, migration, DB data mutation, frontend UI, or Claude-owned files were edited.
+- Hardened `GET /api/patients/:id/visit-constraints`, `GET /api/patients/:id/field-revisions`, and `GET /api/patients/:id/visit-brief` so success, auth/validation/not-found responses, and ordinary unexpected read failures are wrapped with sensitive no-store headers.
+- Added fixed sanitized `INTERNAL_ERROR` fallbacks with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage proving:
+  - visit-constraints, field-revisions, and visit-brief success/validation/not-found/forbidden paths are no-store where covered by existing route behavior;
+  - all three GET routes return sanitized no-store 500 responses that omit raw patient/contact/medication/clinical-like thrown text.
+- Preserved existing canVisit auth, assignment-scoped patient/case lookup, query semantics, response body shapes, PUT write behavior for visit constraints, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: patient workflow constraints, field-revision audit-like history, and visit brief payloads are no longer cacheable at the HTTP boundary, and raw read failures cannot leak PHI-like details to clients.
+- Performance issue improved: none materially changed. The slice adds only response wrapping and tests; no new normal-path DB queries, dependencies, polling, frontend rendering work, schema changes, migrations, DB writes, or external sends were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/patients/[id]/visit-constraints/route.test.ts' 'src/app/api/patients/[id]/field-revisions/route.test.ts' 'src/app/api/patients/[id]/visit-brief/route.test.ts' --reporter=dot --testTimeout=30000` passed `3` files / `21` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+  - Full `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed before Claude's current `card-workspace` integration dirty state; current `pnpm build` is intentionally not re-run until Claude lands that UI integration because the last build blocker was inside the Claude lock scope.
+- Next action: commit the patient workflow read route/test hardening, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first support for the UI/UX objective. The broader all-pages UI/UX objective remains incomplete.
+
 ### 2026-06-26 JST - Patient Detail Operational Read Slice No-Store Hardening
 
 - Coordination:

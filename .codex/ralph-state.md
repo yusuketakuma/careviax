@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-0008 JST
+
+- current task: backend-first no-store/fixed-500 hardening for patient detail workflow read GET routes: `visit-constraints`, `field-revisions`, and `visit-brief`.
+- files inspected: `git status --short --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `git log --oneline -n 8`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `src/app/api/patients/[id]/visit-constraints/route.ts` and `.test.ts`, `src/app/api/patients/[id]/field-revisions/route.ts` and `.test.ts`, `src/app/api/patients/[id]/visit-brief/route.ts` and `.test.ts`, and the current Codex-owned diff for those six files.
+- files changed: `src/app/api/patients/[id]/visit-constraints/route.ts`, `src/app/api/patients/[id]/visit-constraints/route.test.ts`, `src/app/api/patients/[id]/field-revisions/route.ts`, `src/app/api/patients/[id]/field-revisions/route.test.ts`, `src/app/api/patients/[id]/visit-brief/route.ts`, `src/app/api/patients/[id]/visit-brief/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: three patient detail workflow read GET routes returned visit constraints, field-revision history, and visit-brief payloads without the consistent sensitive no-store exported-route envelope used by nearby patient detail read routes.
+- security risks found: reduced PHI/cacheability and error-leakage risk by wrapping the three patient workflow GET routes with `withSensitiveNoStore`, adding fixed sanitized `internalError()` fallbacks, and preserving Next control-flow via `unstable_rethrow(err)`. Route tests prove raw patient/contact/medication/clinical-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/patients/[id]/visit-constraints/route.test.ts' 'src/app/api/patients/[id]/field-revisions/route.test.ts' 'src/app/api/patients/[id]/visit-brief/route.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint ...`; `pnpm exec prettier --write ...`; `pnpm exec prettier --check ...`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `git diff --check -- ...`.
+- validation results: focused workflow read Vitest passed `3` files / `21` tests; scoped ESLint passed; scoped Prettier check passed after formatting the three route files; full TypeScript check passed before Claude's current `card-workspace` integration dirty state; scoped diff-check passed. The current worktree still contains Claude-owned `card-workspace` dirty files, so `pnpm build` remains deferred until Claude lands that UI integration.
+- remaining work: commit only the patient workflow read route/test hardening, then commit progress ledgers separately, send agmsg FYI, and continue backend-first support for the UI/UX objective. The broader all-pages UI/UX objective remains incomplete.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260626-2354 JST
 
 - current task: backend-first no-store/fixed-500 hardening for patient detail operational read GET routes: `care-team`, `insurance`, `packaging`, and `structured-care`.
