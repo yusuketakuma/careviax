@@ -202,7 +202,7 @@ export const GET = withAuthContext(
     return success({ data });
   },
   {
-    permission: 'canDispense',
+    permission: 'canReport',
     message: '申し送りボードの閲覧権限がありません',
   },
 );

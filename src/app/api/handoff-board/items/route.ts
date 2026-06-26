@@ -153,7 +153,7 @@ export const POST = withAuthContext(
     return success({ data: created }, 201);
   },
   {
-    permission: 'canDispense',
+    permission: 'canReport',
     message: '申し送り項目の追加権限がありません',
   },
 );

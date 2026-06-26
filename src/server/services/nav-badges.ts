@@ -66,7 +66,7 @@ export async function countDispenseAuditBadge(ctx: AuthContext): Promise<number 
 }
 
 export async function countHandoffBadge(ctx: AuthContext): Promise<number | undefined> {
-  if (!hasPermission(ctx.role, 'canDispense')) return undefined;
+  if (!hasPermission(ctx.role, 'canReport')) return undefined;
 
   const shiftDate = toDateOnly(todayDateKey());
   return withOrgContext(

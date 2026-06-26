@@ -130,7 +130,7 @@ export const POST = withAuthContext<{ id: string }>(
     return success({ data: updated });
   },
   {
-    permission: 'canDispense',
+    permission: 'canReport',
     message: '相談に対応する権限がありません',
   },
 );

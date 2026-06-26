@@ -84,16 +84,18 @@ describe('nav badge service', () => {
     });
   });
 
-  it('skips unavailable badge reads for roles without workflow permissions', async () => {
+  it('gives clerks the handoff badge (連絡ハブ参加) but skips workflow-only badges', async () => {
+    // 事務(clerk)は handoff の薬局内連絡に参加するため canReport でバッジを受け取るが、
+    // 監査バッジ(canAuditDispense)は持たない。
     const clerkCtx = {
       orgId: 'org_1',
       userId: 'user_1',
       role: 'clerk' as const,
     };
 
-    await expect(buildNavBadgePayload(clerkCtx)).resolves.toEqual({});
+    await expect(buildNavBadgePayload(clerkCtx)).resolves.toEqual({ handoff: 2 });
     expect(dispenseTaskCountMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledOnce();
   });
 
   it('aggregates audit and handoff counts with one service call', async () => {

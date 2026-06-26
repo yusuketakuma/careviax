@@ -36,7 +36,7 @@ export const PATCH = withAuthContext<{ id: string }>(
     return success({ data: updated });
   },
   {
-    permission: 'canDispense',
+    permission: 'canReport',
     message: '申し送りの既読権限がありません',
   }
 );
