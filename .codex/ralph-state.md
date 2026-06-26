@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2158 JST
+
+- current task: backend-first no-store 500 hardening for `GET /api/dispense-audits`.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, Next Route Handlers docs at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/dispense-audits/route.ts`, `src/app/api/dispense-audits/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, and read-only code-mapper/API/security subagent reviews.
+- files changed: `src/app/api/dispense-audits/route.ts`, `src/app/api/dispense-audits/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `GET /api/dispense-audits` returned audit queue/badge responses without sensitive no-store headers at the exported route boundary, and unexpected audit queue read failures lacked a route-level fixed fallback/no-store guard.
+- security risks found: reduced cacheability/leakage risk for dispensing audit queue payloads and fixed failure responses by applying `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`, adding fixed `INTERNAL_ERROR` fallback coverage, and proving PHI-like thrown text is not returned.
+- performance issues found: none materially changed. The slice adds only response wrapping and tests; no new normal-path DB queries, polling, dependencies, or frontend rendering work were introduced.
+- validation commands: `pnpm vitest run src/app/api/dispense-audits/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/dispense-audits/route.ts src/app/api/dispense-audits/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check src/app/api/dispense-audits/route.ts src/app/api/dispense-audits/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- src/app/api/dispense-audits/route.ts src/app/api/dispense-audits/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused dispense audit/protected GET Vitest passed `2` files / `229` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. API subagent findings about auth no-store matrix and fixed 500/PHI coverage were addressed.
+- remaining work: run final scoped ledger checks, stage only the API/test files for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and continue with high-risk shortlist candidates such as prescription-intakes triage, QR scan drafts, set audits, and medication-set workspace. The broader objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2153 JST
 
 - current task: backend-first authorization and no-store 500 hardening for `GET /api/dispense-tasks/:id`.

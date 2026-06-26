@@ -166,6 +166,18 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused dispense task detail/protected GET Vitest `2` files / `213` tests; focused ESLint; focused Prettier check; scoped diff whitespace check. API and medical-safety subagents reviewed; their auth/no-store coverage findings were addressed.
 - Next action: commit the dispense task detail API/test slice, commit this progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening and UI SSOT convergence support. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Dispense Audits GET 500 No-Store
+
+- Hardened `GET /api/dispense-audits` so audit queue and badge responses are wrapped with sensitive no-store headers at the exported route boundary.
+- Added a fixed `internalError()` fallback for unexpected audit queue read failures, preventing raw patient/insurance-like exception text from reaching the client.
+- Added route coverage proving both the full audit queue response and `?badge=1` count response carry `Cache-Control: private, no-store, max-age=0` plus `Pragma: no-cache`.
+- Added `dispense-audits GET` to the protected GET auth matrix no-store assertions so 401/403 responses are covered by the shared regression guard.
+- Preserved existing `canAuditDispense` permission, badge count behavior, hold/rejected visibility filtering, task annotation, POST audit mutation behavior, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: sensitive dispensing audit queue payloads and failure responses are no longer cacheable at the HTTP boundary, and fixed 500 responses omit raw PHI-like thrown text.
+- Performance issue improved: none materially changed; the slice adds only response wrapping and tests. No new normal-path DB queries, dependencies, polling, or frontend rendering work were introduced.
+- Validation passed: focused dispense audit/protected GET Vitest `2` files / `229` tests; focused ESLint; focused Prettier check; scoped diff whitespace check. API subagent findings about auth no-store matrix and fixed 500 coverage were addressed.
+- Next action: commit the dispense audit API/test slice, commit this progress-ledger slice separately, send agmsg FYI, then continue with high-risk shortlist candidates such as prescription-intakes triage, QR scan drafts, set audits, and medication-set workspace. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.
