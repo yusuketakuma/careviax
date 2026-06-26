@@ -105,6 +105,51 @@ describe('SafetyCheckContent', () => {
     expect(screen.getByTestId('safety-concern-interaction')).toBeTruthy();
     expect(screen.getByTestId('safety-steps')).toBeTruthy();
   });
+
+  it('pins the patient identity and allergy/high-risk safety band above the workspace', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((cfg: { queryKey: unknown[] }) => {
+      const key = String((cfg.queryKey as unknown[])[0]);
+      if (key === 'medication-issues') {
+        return {
+          data: { data: [buildIssue({ id: 'issue_1' })] },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      if (key === 'safety-check-cds') return { data: [], isLoading: false };
+      if (key === 'patient-safety-check-summary') {
+        return {
+          data: {
+            name: '山田花子',
+            name_kana: 'ヤマダハナコ',
+            birth_date: '1948-03-02',
+            workspace: {
+              safety: {
+                allergy: 'ペニシリン',
+                handling_tags: ['narcotic'],
+              },
+            },
+          },
+          isLoading: false,
+        };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<SafetyCheckContent patientId="patient_1" />);
+
+    const header = screen.getByTestId('patient-header');
+    expect(header).toBeTruthy();
+    // 安全チェック中もアレルギーが常時可視化される(埋没防止)。
+    expect(within(header).getByText('山田花子 様')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('patient-header-safety')).getByText('ペニシリン'),
+    ).toBeTruthy();
+  });
 });
 
 describe('SafetyCheckContent url/header convergence', () => {

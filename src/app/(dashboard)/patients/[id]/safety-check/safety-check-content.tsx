@@ -19,6 +19,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
+import { PatientHeader } from '@/components/features/patients/patient-header';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -53,6 +54,19 @@ type MedicationIssueResponse = {
 
 type PatientSummaryResponse = {
   name: string;
+  name_kana?: string | null;
+  birth_date?: string | null;
+  // root /api/patients/[id] は workspace.safety を返す(card-workspace と同一形状)。
+  // 安全チェック中もアレルギー/ハイリスクを常時可視化するために再掲する。
+  workspace?: {
+    safety?: {
+      allergy?: string | null;
+      renal?: string | null;
+      swallowing?: string | null;
+      handling_tags?: string[] | null;
+      cautions?: string[] | null;
+    } | null;
+  } | null;
 };
 
 async function fetchPatientCdsAlerts(orgId: string, patientId: string): Promise<SafetyCdsAlert[]> {
@@ -427,7 +441,9 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
   });
 
   const isLoading = !orgId || issuesQuery.isLoading;
-  const patientName = patientQuery.data?.name;
+  const patient = patientQuery.data;
+  const patientName = patient?.name;
+  const patientSafety = patient?.workspace?.safety;
 
   return (
     <section aria-label="薬の安全チェック" data-testid="safety-check">
@@ -442,6 +458,23 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
         </div>
         <WorkflowBackLink href={buildPatientHref(patientId)} label="患者詳細へ戻る" />
       </div>
+
+      {/* p1: 患者識別 + アレルギー/ハイリスクを Pinned 再掲。安全チェック中も常時可視化する。 */}
+      {patientName ? (
+        <PatientHeader
+          name={patientName}
+          kana={patient?.name_kana ?? null}
+          birthDate={patient?.birth_date ?? null}
+          safety={{
+            allergy: patientSafety?.allergy ?? null,
+            renal: patientSafety?.renal ?? null,
+            swallowing: patientSafety?.swallowing ?? null,
+            handlingTags: patientSafety?.handling_tags ?? undefined,
+            cautions: patientSafety?.cautions ?? undefined,
+          }}
+          className="mt-4"
+        />
+      ) : null}
 
       <div className="mt-4">
         {isLoading ? (
