@@ -10259,3 +10259,27 @@ Next loop:
 - Screenshot evidence: `artifacts/ui-drug-master-sweep/drug-master-after-desktop.png`, `artifacts/ui-drug-master-sweep/drug-master-after-mobile.png`, and metrics JSON `artifacts/ui-drug-master-sweep/drug-master-proof.json`.
 - Validation passed: focused DrugMasterContent/view-model/DataTable Vitest `3` files / `84` tests; scoped ESLint; scoped Prettier check; scoped diff whitespace check; direct route-mocked desktop/mobile browser proof with no console/page errors, no horizontal overflow, and zero undersized page-body controls after excluding pre-existing app-header chrome.
 - Next action: commit this addendum separately from the existing dirty admin users slice, then continue validating `/admin/users`. The broader objective remains incomplete.
+
+### Admin Alert Rules — Existing Rule Review Priority
+
+- Coordination:
+  - Drained `phos/codex` agmsg before continuing; inbox was empty.
+  - Kept this Codex-only slice isolated to `/admin/alert-rules` page/test and its signal-tuning panel. No API route, DB, migration, auth, permission, audit, external-send, or destructive operation was changed.
+- Bugs found:
+  - `/admin/alert-rules` showed the generic `最初に見るポイント` intro and prioritized registration/test controls before the existing safety-rule review list.
+  - Mobile placed the rule review area after form/test work; desktop showed several page controls below the PH-OS 44px target.
+  - Signal tuning toggles/save button inherited compact heights and appeared below 44px on desktop.
+- Implemented by Codex:
+  - Removed the generic intro for this page.
+  - Reordered the workspace so `登録済みルール` leads, `テスト実行` follows, and the create/edit form moves to the right column on desktop and below review/test on mobile.
+  - Raised page-body buttons, inputs, the active switch, and signal-tuning actions to 44px-plus targets.
+  - Added focused tests that lock the review-before-registration source order and the local 44px class contracts.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning.shared.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `22` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning.shared.ts' 'src/app/(dashboard)/admin/alert-rules/signal-tuning.shared.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning.shared.ts' 'src/app/(dashboard)/admin/alert-rules/signal-tuning.shared.test.ts'`: passed after formatting `page.test.tsx`.
+  - `git diff --check -- 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx'`: passed.
+  - Direct route-mocked Playwright proof on `http://localhost:3012/admin/alert-rules`: no console/page errors, no horizontal overflow, `genericIntro=false`, and page-body undersized target count `0` on desktop/mobile. The direct mock rendered the empty-state branch despite fulfilled mocked rule data; registered-rule display remains covered by focused component tests.
+  - Screenshot evidence: `artifacts/ui-alert-rules-sweep/before/desktop.png`, `artifacts/ui-alert-rules-sweep/before/mobile.png`, `artifacts/ui-alert-rules-sweep/after/desktop.png`, `artifacts/ui-alert-rules-sweep/after/mobile.png`, and `artifacts/ui-alert-rules-sweep/after/metrics.json`.
+- Remaining:
+  - Commit the `/admin/alert-rules` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
