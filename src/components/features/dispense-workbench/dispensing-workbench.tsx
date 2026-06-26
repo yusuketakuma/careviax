@@ -39,6 +39,7 @@ import {
 import { isCalendarPhase } from './dispensing-workbench.types';
 import type { FKeyAction, Phase } from './dispensing-workbench.types';
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
+import { useOrgId } from '@/lib/hooks/use-org-id';
 
 import { PhaseHeader } from './phase-header';
 import { PatientListPanel } from './patient-list-panel';
@@ -84,6 +85,7 @@ export interface DispensingWorkbenchProps {
 export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkbenchProps) {
   const view = useWorkbenchView(phase);
   const router = useRouter();
+  const orgId = useOrgId();
 
   const navBy = useWorkbenchStore((s) => s.navBy);
   const openHold = useWorkbenchStore((s) => s.openHold);
@@ -119,10 +121,11 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // fetch 失敗 / 未認証 / 該当無しは空状態へ倒し、seed/mock 患者を操作可能にしない。
   useEffect(() => {
     if (!isRealDataEnabled()) return;
+    if (!orgId) return;
     if (phase !== 'dispense' && phase !== 'audit') return; // set/seta は別 effect
     let cancelled = false;
     void (async () => {
-      const { patients, rows, ok } = await loadWorkbenchPatientRowsAsync({ phase });
+      const { patients, rows, ok } = await loadWorkbenchPatientRowsAsync({ phase, orgId });
       if (cancelled) return;
       if (patients.length === 0) {
         // 取得失敗(!ok)はエラー状態、取得成功・0件は空状態として区別する。
@@ -142,7 +145,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         audit: {},
         quantityConfirmedByDid: {},
       });
-      const wb = await loadWorkbenchAsync(phase, targetId, { patientRows: rows });
+      const wb = await loadWorkbenchAsync(phase, targetId, { patientRows: rows, orgId });
       if (cancelled) return;
       if (!wb) {
         // リストは取得できたが選択患者の詳細取得に失敗＝障害。
@@ -168,7 +171,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       cancelled = true;
     };
     // selId / retryNonce 変更時に選択患者の model を再取得する。phase 変更でも再評価。
-  }, [phase, selId, retryNonce, hydrate, setWriteContext, setOperators, setLoadError]);
+  }, [phase, orgId, selId, retryNonce, hydrate, setWriteContext, setOperators, setLoadError]);
 
   // ---- 実データ結線（カレンダー: set / seta）----
   // 既定（モック）では no-op。opt-in 時は direct /set entry でも cycle_id -> SetPlan -> calendar
@@ -176,6 +179,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // 取得失敗時は空状態へ倒し、seed/mock カレンダーを操作可能にしない。
   useEffect(() => {
     if (!isRealDataEnabled()) return;
+    if (!orgId) return;
     if (!isCalendarPhase(phase)) return;
     // セット / セット監査はカレンダー由来で operator chrome を持たない。前工程の dispenser/操作者を
     // 残さないよう null へ倒す（status bar は '—'）。
@@ -185,7 +189,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     let cancelled = false;
     void (async () => {
       if (planId) {
-        const result = await loadCalendarWriteContextAsync(selId, planId);
+        const result = await loadCalendarWriteContextAsync(selId, planId, { orgId });
         if (cancelled) return;
         if (!result) {
           hydrate({ patients: [] });
@@ -196,10 +200,16 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         return;
       }
 
-      const result = await loadSetCalendarForPatientAsync(selId, phase);
+      const result = await loadSetCalendarForPatientAsync(selId, phase, { orgId });
       if (cancelled) return;
       if (!result) {
         hydrate({ patients: [] });
+        setLoadError(true);
+        return;
+      }
+      if ('empty' in result) {
+        hydrate({ patients: [] });
+        setLoadError(false);
         return;
       }
       hydrate({ patients: result.patients, selId: result.selId });
@@ -215,6 +225,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     };
   }, [
     phase,
+    orgId,
     selId,
     planId,
     retryNonce,

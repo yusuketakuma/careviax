@@ -38,6 +38,7 @@ import type {
   DispenseWorkbenchPatientsResponse,
   DispenseWorkbenchPhase,
 } from '@/lib/dispensing/dispense-workbench-shared';
+import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
   WorkbenchConflictError,
   WorkbenchWriteError,
@@ -119,11 +120,21 @@ export function loadCalendar(patientId: string): CalcResult {
 
 // ── 非同期（実データ）API: USE_MOCK ゲートの裏 ──
 
+type WorkbenchFetchScope = {
+  orgId?: string;
+};
+
+function buildWorkbenchReadHeaders(scope: WorkbenchFetchScope = {}): Record<string, string> {
+  return scope.orgId
+    ? buildOrgHeaders(scope.orgId, { Accept: 'application/json' })
+    : { Accept: 'application/json' };
+}
+
 /** 安全な JSON fetch。非 2xx / 例外は null（呼び出し側が fail-closed する）。 */
-async function fetchJson<T>(url: string): Promise<T | null> {
+async function fetchJson<T>(url: string, scope: WorkbenchFetchScope = {}): Promise<T | null> {
   try {
     const res = await fetch(url, {
-      headers: { Accept: 'application/json' },
+      headers: buildWorkbenchReadHeaders(scope),
       credentials: 'same-origin',
       cache: 'no-store',
     });
@@ -138,13 +149,16 @@ async function fetchJson<T>(url: string): Promise<T | null> {
  * 患者リスト（実データ）。USE_MOCK 時は seed 全件、実データ fetch 失敗時は空配列。
  * 実データ画面では seed/mock 患者を表示・操作可能にしない。
  */
-export async function loadPatientsAsync(phase?: Phase): Promise<SeedPatient[]> {
-  const { patients } = await loadWorkbenchPatientRowsAsync({ phase });
+export async function loadPatientsAsync(
+  phase?: Phase,
+  scope: WorkbenchFetchScope = {},
+): Promise<SeedPatient[]> {
+  const { patients } = await loadWorkbenchPatientRowsAsync({ phase, ...scope });
   return patients;
 }
 
 export async function loadWorkbenchPatientRowsAsync(
-  options: { includeSetPlan?: boolean; phase?: Phase } = {},
+  options: { includeSetPlan?: boolean; phase?: Phase } & WorkbenchFetchScope = {},
 ): Promise<{
   patients: SeedPatient[];
   rows: DispenseWorkbenchPatientRow[];
@@ -153,7 +167,7 @@ export async function loadWorkbenchPatientRowsAsync(
 }> {
   if (USE_MOCK) return { patients: buildPatients(), rows: [], ok: true };
   const path = `/api/dispense-workbench/patients${buildPatientsQuery(options)}`;
-  const body = await fetchJson<DispenseWorkbenchPatientsResponse>(path);
+  const body = await fetchJson<DispenseWorkbenchPatientsResponse>(path, options);
   // body=null は非2xx/例外＝取得失敗。配列だが空は「取得成功・0件」で区別する。
   if (!body) return { patients: [], rows: [], ok: false };
   if (!Array.isArray(body.data) || body.data.length === 0) {
@@ -179,9 +193,11 @@ const ACTIVE_TASK_STATUS_PRIORITY: Record<'dispense' | 'audit', string[]> = {
 async function resolveTaskId(
   cycleId: string,
   phase: Extract<Phase, 'dispense' | 'audit'>,
+  scope: WorkbenchFetchScope = {},
 ): Promise<string | null> {
   const body = await fetchJson<DispenseTaskListResponse>(
     `/api/dispense-tasks?cycle_id=${encodeURIComponent(cycleId)}`,
+    scope,
   );
   const tasks = body?.data;
   if (!tasks || tasks.length === 0) return null;
@@ -203,7 +219,7 @@ async function resolveTaskId(
 export async function loadWorkbenchAsync(
   phase: Phase,
   patientId: string,
-  options: { patientRows?: DispenseWorkbenchPatientRow[] } = {},
+  options: { patientRows?: DispenseWorkbenchPatientRow[] } & WorkbenchFetchScope = {},
 ): Promise<{
   patient: SeedPatient;
   groups: Group[];
@@ -216,14 +232,17 @@ export async function loadWorkbenchAsync(
   if (USE_MOCK) return null;
   // 詳細 fetch は cycle_id 起点（cycle-bound）なので URL に phase は載せない。
   // リスト未受領時の fallback 取得のみ、当該工程でフィルタした行を解決する。
-  const listRows = options.patientRows ?? (await loadWorkbenchPatientRowsAsync({ phase })).rows;
+  const listRows =
+    options.patientRows ??
+    (await loadWorkbenchPatientRowsAsync({ phase, orgId: options.orgId })).rows;
   const row = listRows.find((r) => r.patient_id === patientId);
   if (!row || !row.cycle_id) return null;
   if (phase !== 'dispense' && phase !== 'audit') return null;
-  const taskId = await resolveTaskId(row.cycle_id, phase);
+  const taskId = await resolveTaskId(row.cycle_id, phase, options);
   if (!taskId) return null;
   const data = await fetchJson<DispenseWorkbenchData>(
     `/api/dispense-tasks/${encodeURIComponent(taskId)}/workbench`,
+    options,
   );
   if (!data) return null;
   const { patient, groups, done, audit, quantityConfirmedByDid, operators } =
@@ -245,10 +264,14 @@ export async function loadWorkbenchAsync(
  * カレンダー（実データ・set/seta 読取）。USE_MOCK 時は null（呼び出し側が seed 継続）。
  * fetch 失敗 / 未認証 / 該当無しも null。
  */
-export async function loadCalendarAsync(planId: string): Promise<CalendarMatrixResponse | null> {
+export async function loadCalendarAsync(
+  planId: string,
+  scope: WorkbenchFetchScope = {},
+): Promise<CalendarMatrixResponse | null> {
   if (USE_MOCK) return null;
   const body = await fetchJson<{ data: CalendarMatrixResponse }>(
     `/api/set-plans/${encodeURIComponent(planId)}/calendar`,
+    scope,
   );
   return body?.data ?? null;
 }
@@ -261,12 +284,13 @@ export async function loadCalendarAsync(planId: string): Promise<CalendarMatrixR
 export async function loadCalendarWriteContextAsync(
   patientId: string,
   planId: string,
+  scope: WorkbenchFetchScope = {},
 ): Promise<{
   matrix: CalendarMatrixResponse;
   calendarState: ReturnType<typeof calendarWorkbenchStateFromApi>;
   writeContext: WorkbenchWriteContextPatch;
 } | null> {
-  const matrix = await loadCalendarAsync(planId);
+  const matrix = await loadCalendarAsync(planId, scope);
   if (!matrix) return null;
   return {
     matrix,
@@ -295,20 +319,31 @@ export async function loadCalendarWriteContextAsync(
 export async function loadSetCalendarForPatientAsync(
   patientId: string,
   phase?: Phase,
-): Promise<{
-  patients: SeedPatient[];
-  selId: string;
-  matrix: CalendarMatrixResponse;
-  calendarState: ReturnType<typeof calendarWorkbenchStateFromApi>;
-  writeContext: WorkbenchWriteContextPatch;
-} | null> {
+  scope: WorkbenchFetchScope = {},
+): Promise<
+  | {
+      patients: SeedPatient[];
+      selId: string;
+      matrix: CalendarMatrixResponse;
+      calendarState: ReturnType<typeof calendarWorkbenchStateFromApi>;
+      writeContext: WorkbenchWriteContextPatch;
+    }
+  | {
+      empty: true;
+      patients: [];
+      selId: '';
+    }
+  | null
+> {
   if (USE_MOCK) return null;
   // set/seta の左一覧も工程フィルタ。seta（set-audit）は BFF 側で空ゲート → 取得 0 件で fail-closed。
   const listBody = await fetchJson<DispenseWorkbenchPatientsResponse>(
     `/api/dispense-workbench/patients${buildPatientsQuery({ includeSetPlan: true, phase })}`,
+    scope,
   );
   const listRows = listBody?.data;
-  if (!listRows || listRows.length === 0) return null;
+  if (!listRows) return null;
+  if (listRows.length === 0) return { empty: true, patients: [], selId: '' };
 
   const selectedRow = listRows.find((row) => row.patient_id === patientId);
   const candidates = selectedRow ? [selectedRow] : listRows;
@@ -316,11 +351,11 @@ export async function loadSetCalendarForPatientAsync(
   for (const row of candidates) {
     const planId = row.latest_set_plan_id;
     if (!planId) {
-      if (selectedRow) return null;
+      if (selectedRow) return { empty: true, patients: [], selId: '' };
       continue;
     }
 
-    const calendar = await loadCalendarWriteContextAsync(row.patient_id, planId);
+    const calendar = await loadCalendarWriteContextAsync(row.patient_id, planId, scope);
     if (!calendar) {
       if (selectedRow) return null;
       continue;
@@ -333,7 +368,7 @@ export async function loadSetCalendarForPatientAsync(
     };
   }
 
-  return null;
+  return { empty: true, patients: [], selId: '' };
 }
 
 // ── 書込（実データ）: USE_MOCK ゲートの裏 ──

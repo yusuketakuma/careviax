@@ -148,6 +148,26 @@ const UNAVAILABLE_PATIENT: SeedPatient = {
   rows: [],
 };
 
+const EMPTY_PATIENT: SeedPatient = {
+  id: '',
+  name: '対象患者なし',
+  kana: '',
+  dob: '—',
+  age: 0,
+  sex: '—',
+  sub: 'この工程に対象患者がいません',
+  short: '空',
+  chips: ['対象なし'],
+  regist: '—',
+  seedStart: '',
+  seedDays: 0,
+  yosei: '—',
+  changes: [],
+  biko: ['対象患者が発生すると、この工程の作業内容が表示されます。'],
+  discontinued: [],
+  rows: [],
+};
+
 /**
  * phase 用 view model を組み立てて返す。コンポーネントはこの view と store actions を消費する。
  */
@@ -308,8 +328,10 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   // 実データ取得失敗時は patients=[] を明示して seed/mock に戻さない。
   const pts = args.patients === undefined ? SEED_PATIENTS : args.patients;
   const dataUnavailable = pts.length === 0;
+  const loadError = args.loadError ?? false;
 
-  const p = pts.find((x) => x.id === id) ?? pts[0] ?? UNAVAILABLE_PATIENT;
+  const p =
+    pts.find((x) => x.id === id) ?? pts[0] ?? (loadError ? UNAVAILABLE_PATIENT : EMPTY_PATIENT);
   const isGrid = isGridPhase(ph);
   const isSet = ph === 'setp';
   const isSeta = ph === 'seta';
@@ -1064,7 +1086,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   }
   if (dataUnavailable) {
     gateOk = false;
-    gateText = '実データを取得できませんでした';
+    gateText = loadError ? '実データを取得できませんでした' : 'この工程に対象患者がいません';
     gateColor = 'var(--wb-state-blocked)';
     gateBg = 'var(--wb-blocked-bg)';
     gateBorder = 'var(--wb-blocked-border-soft)';
@@ -1130,7 +1152,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   const listState = deriveListState({
     isRealData: args.isRealData ?? false,
     hydrated: args.hydrated ?? false,
-    loadError: args.loadError ?? false,
+    loadError,
     dataUnavailable,
   });
 

@@ -7,6 +7,15 @@ function jsonResponse(body: unknown) {
   });
 }
 
+function expectOrgReadHeaders(init: unknown, orgId: string) {
+  expect(init).toMatchObject({
+    headers: {
+      Accept: 'application/json',
+      'x-org-id': orgId,
+    },
+  });
+}
+
 function calendarBody() {
   return {
     data: {
@@ -355,7 +364,7 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     const { loadSetCalendarForPatientAsync } = await import('./dispensing-workbench.adapter');
     const result = await loadSetCalendarForPatientAsync('patient_without_plan');
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ empty: true, patients: [], selId: '' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/set-plans?patient_id=patient_without_plan',
@@ -526,7 +535,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     vi.stubGlobal('fetch', fetchMock);
 
     const { loadSetCalendarForPatientAsync } = await import('./dispensing-workbench.adapter');
-    const result = await loadSetCalendarForPatientAsync('patient_1', 'setp');
+    const result = await loadSetCalendarForPatientAsync('patient_1', 'setp', { orgId: 'org_1' });
 
     expect(result?.selId).toBe('patient_1');
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -534,10 +543,69 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
       '/api/dispense-workbench/patients?include_set_plan=1&phase=set',
       expect.any(Object),
     );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/set-plans/plan_1/calendar',
+      expect.any(Object),
+    );
+    expectOrgReadHeaders(fetchMock.mock.calls[0]?.[1], 'org_1');
+    expectOrgReadHeaders(fetchMock.mock.calls[1]?.[1], 'org_1');
+  });
+
+  it('passes the current org header through the dispense read chain', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/dispense-workbench/patients?phase=dispense') {
+        return jsonResponse({
+          data: [
+            {
+              patient_id: 'patient_1',
+              cycle_id: 'cycle_1',
+              name: '佐藤 花子',
+              name_kana: 'サトウ ハナコ',
+              overall_status: 'dispensing',
+              badge: 'in_progress',
+              start_date: '2026-06-17',
+              registered_date: '2026-06-01',
+              latest_set_plan_id: null,
+              latest_set_plan_cycle_id: null,
+            },
+          ],
+        });
+      }
+      if (url === '/api/dispense-tasks?cycle_id=cycle_1') {
+        return jsonResponse({
+          data: [{ id: 'task_1', cycle_id: 'cycle_1', status: 'in_progress' }],
+        });
+      }
+      if (url === '/api/dispense-tasks/task_1/workbench') {
+        return jsonResponse(workbenchBody());
+      }
+      return new Response('unexpected url', { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadWorkbenchPatientRowsAsync, loadWorkbenchAsync } =
+      await import('./dispensing-workbench.adapter');
+    const { patients, rows } = await loadWorkbenchPatientRowsAsync({
+      phase: 'dispense',
+      orgId: 'org_1',
+    });
+    const result = await loadWorkbenchAsync('dispense', patients[0]!.id, {
+      patientRows: rows,
+      orgId: 'org_1',
+    });
+
+    expect(result?.writeContext.taskId).toBe('task_1');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const call of fetchMock.mock.calls) {
+      expectOrgReadHeaders(call[1], 'org_1');
+    }
   });
 
   it('maps the seta phase to set-audit and fails closed on the empty gate', async () => {
-    // set-audit は BFF で空集合ゲート → 0 件 → null（seed カレンダーへ戻さない）。
+    // set-audit は BFF で空集合ゲート → 0 件 → empty（seed カレンダーへ戻さない）。
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
     vi.stubGlobal('fetch', fetchMock);
@@ -545,7 +613,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     const { loadSetCalendarForPatientAsync } = await import('./dispensing-workbench.adapter');
     const result = await loadSetCalendarForPatientAsync('patient_1', 'seta');
 
-    expect(result).toBeNull();
+    expect(result).toEqual({ empty: true, patients: [], selId: '' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/dispense-workbench/patients?include_set_plan=1&phase=set-audit',

@@ -103,9 +103,13 @@ function recoverActiveQuery(queryClient: QueryClient, queryKey: QueryKey): void 
   void queryClient.refetchQueries({ queryKey, type: 'active' });
 }
 
-async function recoverWorkbenchDirect(phase: Phase, patientId: string): Promise<void> {
+async function recoverWorkbenchDirect(
+  phase: Phase,
+  patientId: string,
+  orgId?: string,
+): Promise<void> {
   if (phase !== 'dispense' && phase !== 'audit') return;
-  const patients = await loadPatientsAsync(phase);
+  const patients = await loadPatientsAsync(phase, { orgId });
   if (patients.length === 0) {
     useWorkbenchStore.getState().hydrate({ patients: [] });
     return;
@@ -113,7 +117,7 @@ async function recoverWorkbenchDirect(phase: Phase, patientId: string): Promise<
   const targetId = patients.some((patient) => patient.id === patientId)
     ? patientId
     : patients[0].id;
-  const workbench = await loadWorkbenchAsync(phase, targetId);
+  const workbench = await loadWorkbenchAsync(phase, targetId, { orgId });
   if (!workbench) {
     useWorkbenchStore.getState().hydrate({ patients: [] });
     return;
@@ -133,9 +137,10 @@ async function recoverCalendarDirect(
   phase: Phase,
   patientId: string,
   planId: string | null,
+  orgId?: string,
 ): Promise<void> {
   if (!isCalendarPhase(phase) || !planId) return;
-  const result = await loadCalendarWriteContextAsync(patientId, planId);
+  const result = await loadCalendarWriteContextAsync(patientId, planId, { orgId });
   if (!result) {
     useWorkbenchStore.getState().hydrate({ patients: [] });
     return;
@@ -166,7 +171,7 @@ export function useWorkbenchMutations(args: {
 
   const recoverWorkbench = useCallback(() => {
     recoverActiveQuery(queryClient, workbenchQueryKey(orgId, patientId));
-    void recoverWorkbenchDirect(phase, patientId);
+    void recoverWorkbenchDirect(phase, patientId, orgId);
   }, [queryClient, orgId, patientId, phase]);
 
   const invalidateCalendar = useCallback(() => {
@@ -177,7 +182,7 @@ export function useWorkbenchMutations(args: {
   const recoverCalendar = useCallback(() => {
     if (!planId) return;
     recoverActiveQuery(queryClient, calendarQueryKey(orgId, planId));
-    void recoverCalendarDirect(phase, patientId, planId);
+    void recoverCalendarDirect(phase, patientId, planId, orgId);
   }, [queryClient, orgId, patientId, planId, phase]);
 
   // ── 調剤完了（POST /api/dispense-results, OCC=cycle.version）──

@@ -169,9 +169,12 @@ describe('buildView calendar period', () => {
     expect(view.setChips.map((chip) => chip.label)).not.toContain('特記なし');
   });
 
-  it('does not fall back to seed patients when real-data hydration reports an empty patient list', () => {
+  it('shows a normal empty patient fallback when real-data hydration reports an empty patient list', () => {
     const view = buildView({
       phase: 'dispense',
+      isRealData: true,
+      hydrated: true,
+      loadError: false,
       selId: '',
       sortMode: 'start',
       done: {},
@@ -193,7 +196,7 @@ describe('buildView calendar period', () => {
     expect(view.patientCount).toBe('0');
     expect(view.patients).toEqual([]);
     expect(view.rows).toEqual([]);
-    expect(view.cur.name).toBe('実データ未取得');
+    expect(view.cur.name).toBe('対象患者なし');
     expect(view.cur.period).toBe('—');
     expect(view.progress.fraction).toBe('0 / 0');
     expect(view.primary.cursor).toBe('not-allowed');
@@ -452,6 +455,9 @@ describe('buildView calendar period', () => {
     (phase) => {
       const view = buildView({
         phase,
+        isRealData: true,
+        hydrated: true,
+        loadError: false,
         selId: '',
         sortMode: 'start',
         done: {},
@@ -473,7 +479,7 @@ describe('buildView calendar period', () => {
       expect(view.patientCount).toBe('0');
       expect(view.gate).toMatchObject({
         ok: false,
-        text: '実データを取得できませんでした',
+        text: 'この工程に対象患者がいません',
       });
       expect(view.primary.cursor).toBe('not-allowed');
     },
