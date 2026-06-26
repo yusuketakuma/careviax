@@ -17,6 +17,7 @@ export default function AnalyticsPage() {
         title="KPI分析ダッシュボード"
         description="請求 SSOT と運用実績を月次で分析します。"
         shortcuts={getAdminAnalyticsShortcutLinks()}
+        supportingContent={null}
       />
 
       <Suspense fallback={<Loading />}>

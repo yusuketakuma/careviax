@@ -231,7 +231,10 @@ export function AnalyticsContent() {
   }, [resourceMap?.data]);
 
   return (
-    <div className="space-y-6">
+    <div
+      className="space-y-6 [&_input]:!h-11 [&_input]:!min-h-[44px]"
+      data-testid="analytics-workbench"
+    >
       {isError && !data ? (
         <ErrorState
           variant="server"
@@ -257,7 +260,11 @@ export function AnalyticsContent() {
               live="polite"
             />
           )}
-          <div aria-busy={isLoading} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div
+            aria-busy={isLoading}
+            className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
+            data-testid="analytics-kpis"
+          >
             <MetricCard
               icon={FileSpreadsheet}
               label="今月候補"
@@ -428,7 +435,7 @@ export function AnalyticsContent() {
                 </div>
                 <Link
                   href="/workflow"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                  className="inline-flex min-h-[44px] items-center gap-2 text-sm font-medium text-primary hover:underline"
                 >
                   緊急時プレイブックを確認
                 </Link>
@@ -465,7 +472,7 @@ export function AnalyticsContent() {
                 <CardTitle className="text-base">拠点別の対応体制</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2" data-testid="resource-filter-rail">
                   {[
                     ['all', '全拠点'],
                     ['emergency_ready', '緊急対応可'],
@@ -479,6 +486,7 @@ export function AnalyticsContent() {
                       key={value}
                       size="sm"
                       variant={resourceFilter === value ? 'default' : 'outline'}
+                      className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
                       onClick={() => setResourceFilter(value as ResourceFilter)}
                     >
                       {label}

@@ -202,6 +202,24 @@ describe('AnalyticsContent', () => {
     expect(await screen.findByText('基幹薬局')).toBeTruthy();
   });
 
+  it('keeps the analytics workbench compact on mobile and preserves 44px page controls', async () => {
+    renderContent();
+
+    expect(await screen.findByText('月次推移')).toBeTruthy();
+
+    const kpiGrid = screen.getByTestId('analytics-kpis');
+    const workbench = screen.getByTestId('analytics-workbench');
+    expect(workbench.className).toContain('[&_input]:!min-h-[44px]');
+    expect(kpiGrid.className).toContain('grid-cols-2');
+    expect(kpiGrid.className).toContain('xl:grid-cols-4');
+    expect(screen.getByRole('link', { name: '緊急時プレイブックを確認' }).className).toContain(
+      'min-h-[44px]',
+    );
+    for (const button of screen.getByTestId('resource-filter-rail').querySelectorAll('button')) {
+      expect(button.className).toContain('min-h-[44px]');
+    }
+  });
+
   it('fetches analytics and resource-map data with shared org headers and exact query keys', async () => {
     const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
     vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
