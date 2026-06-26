@@ -355,7 +355,7 @@ export function WorkflowDashboardView({
                       <p className="text-sm font-medium text-foreground">{bucket.label}</p>
                       <Link
                         href={bucket.action_href}
-                        className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
+                        className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline"
                       >
                         inbox を開く
                       </Link>
@@ -470,7 +470,7 @@ export function WorkflowDashboardView({
                         </div>
                         <Link
                           href={draft.action_href}
-                          className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
+                          className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline"
                         >
                           {draft.action_label}
                         </Link>
@@ -481,6 +481,7 @@ export function WorkflowDashboardView({
                       <div className="mt-3 flex justify-end">
                         <Button
                           size="sm"
+                          className="h-auto min-h-11"
                           variant="outline"
                           onClick={() => createEmergencyDraftMutation.mutate(draft)}
                           disabled={createEmergencyDraftMutation.isPending}
@@ -652,6 +653,7 @@ export function WorkflowDashboardView({
                           <div className="flex flex-wrap gap-2">
                             <Button
                               size="sm"
+                              className="h-auto min-h-11"
                               type="button"
                               variant={
                                 inquiryEdit?.proposalOrigin === 'post_inquiry'
@@ -666,6 +668,7 @@ export function WorkflowDashboardView({
                             </Button>
                             <Button
                               size="sm"
+                              className="h-auto min-h-11"
                               type="button"
                               variant={
                                 inquiryEdit?.proposalOrigin === 'pre_issuance'
@@ -680,6 +683,7 @@ export function WorkflowDashboardView({
                             </Button>
                             <Button
                               size="sm"
+                              className="h-auto min-h-11"
                               type="button"
                               variant={inquiryEdit?.residualAdjustment ? 'default' : 'outline'}
                               onClick={() =>
@@ -698,6 +702,7 @@ export function WorkflowDashboardView({
                       {item.item_type === 'issue' ? (
                         <Button
                           size="sm"
+                          className="h-auto min-h-11"
                           onClick={() => createInquiryMutation.mutate(item)}
                           disabled={!item.can_create || createInquiryMutation.isPending}
                         >
@@ -707,6 +712,7 @@ export function WorkflowDashboardView({
                         <>
                           <Button
                             size="sm"
+                            className="h-auto min-h-11"
                             variant="secondary"
                             onClick={() =>
                               item.inquiry_id &&
@@ -727,6 +733,7 @@ export function WorkflowDashboardView({
                           </Button>
                           <Button
                             size="sm"
+                            className="h-auto min-h-11"
                             variant="outline"
                             onClick={() =>
                               item.inquiry_id &&
@@ -760,6 +767,7 @@ export function WorkflowDashboardView({
                           </Button>
                           <Button
                             size="sm"
+                            className="h-auto min-h-11"
                             variant="outline"
                             onClick={() =>
                               item.inquiry_id &&
@@ -937,7 +945,7 @@ export function WorkflowDashboardView({
                     </div>
                     <a
                       href={item.action_href}
-                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline"
                     >
                       {item.action_label}
                     </a>
@@ -982,7 +990,7 @@ export function WorkflowDashboardView({
                     </div>
                     <a
                       href={item.action_href}
-                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline"
                     >
                       {item.action_label}
                     </a>
@@ -1013,7 +1021,7 @@ export function WorkflowDashboardView({
                     </Badge>
                     <a
                       href={item.action_href}
-                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline"
                     >
                       {item.action_label}
                     </a>
@@ -1159,7 +1167,7 @@ export function WorkflowDashboardView({
                     </div>
                     <a
                       href={item.action_href}
-                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center text-xs font-medium text-primary hover:underline"
                     >
                       {item.action_label}
                     </a>
@@ -1391,6 +1399,7 @@ export function WorkflowDashboardView({
                       ) : (
                         <Button
                           size="sm"
+                          className="h-auto min-h-11"
                           variant="outline"
                           aria-label={`${
                             item.upcoming_kind === 'refill' ? 'リフィル' : '分割調剤'
@@ -1417,7 +1426,7 @@ export function WorkflowDashboardView({
       <div className="flex justify-end">
         <button
           onClick={() => refetch()}
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground sm:min-h-0 sm:min-w-0"
+          className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           type="button"
         >
           <RefreshCw className="size-3" aria-hidden="true" />

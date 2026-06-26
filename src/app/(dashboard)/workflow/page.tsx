@@ -20,22 +20,24 @@ export default async function WorkflowDashboardPage({ searchParams }: WorkflowDa
   const initialState = readWorkflowState(resolvedSearchParams);
 
   return (
-    <PageScaffold>
+    <PageScaffold stackClassName="space-y-3">
       <WorkflowPageHeader
-        eyebrow="Workflow Control"
+        eyebrow="業務フロー"
         title="ワークフローダッシュボード"
         description="処方登録から報告書までの主業務フローと、工程別の滞留・例外・連携状況を確認します"
-        supportingContent={
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">確認順序</p>
-            <p className="text-sm text-muted-foreground">
-              まず 8
-              工程の本流を確認し、その後に工程別の滞留件数と例外を見て、各ワークベンチや連携画面へ進みます。
-            </p>
-          </div>
-        }
-        childrenLabel="関連導線"
-      >
+      />
+
+      <Suspense fallback={<Loading />}>
+        <WorkflowDashboardContent
+          initialFocus={initialState.initialFocus}
+          initialContext={initialState.initialContext}
+        />
+      </Suspense>
+
+      <div className="space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          関連導線
+        </p>
         <PageShortcutLinks
           links={[
             { href: '/workflow/pharmacy-cooperation', label: '薬局間協力' },
@@ -44,14 +46,7 @@ export default async function WorkflowDashboardPage({ searchParams }: WorkflowDa
             { href: '/notifications', label: '通知' },
           ]}
         />
-      </WorkflowPageHeader>
-
-      <Suspense fallback={<Loading />}>
-        <WorkflowDashboardContent
-          initialFocus={initialState.initialFocus}
-          initialContext={initialState.initialContext}
-        />
-      </Suspense>
+      </div>
     </PageScaffold>
   );
 }
