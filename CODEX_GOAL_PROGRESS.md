@@ -61,6 +61,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused overdue/protected GET Vitest `2` files / `205` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
 - Next action: run final scoped ledger checks, commit the overdue API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Medication Deadlines 500 No-Store
+
+- Hardened `GET /api/dashboard/medication-deadlines` so unexpected deadline read failures return a fixed `INTERNAL_ERROR` envelope with sensitive no-store headers.
+- Added route coverage proving raw medication-deadline exception text is absent from the response body and the 500 carries `Cache-Control: private, no-store, max-age=0` plus `Pragma: no-cache`.
+- Preserved existing dashboard permission behavior, strict `within_days` / `limit` / `q` validation, org-scoped visit-schedule query, success payload shape, protected GET matrix behavior, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: sensitive medication-deadline dashboard failure responses are no longer cacheable at the HTTP boundary.
+- Performance issue improved: none materially changed; the slice adds only failure-path response wrapping and tests.
+- Validation passed: focused medication-deadlines/protected GET Vitest `2` files / `218` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
+- Next action: run final scoped ledger checks, commit the medication-deadlines API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.
