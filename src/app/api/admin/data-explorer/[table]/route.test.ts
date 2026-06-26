@@ -94,6 +94,46 @@ describe('/api/admin/data-explorer/[table] GET', () => {
     expect(listDataExplorerRowsMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['limit', '?limit=10&limit=25'],
+    ['offset', '?offset=0&offset=20'],
+    ['search', '?search=花子&search=太郎'],
+  ])('rejects duplicate %s query parameters before querying rows', async (fieldName, query) => {
+    const response = await GET(createRequest(query), {
+      params: Promise.resolve({ table: 'Patient' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリが不正です',
+      details: {
+        [fieldName]: [`${fieldName} は1つだけ指定してください`],
+      },
+    });
+    expect(listDataExplorerRowsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects oversized search terms before querying rows', async () => {
+    const response = await GET(createRequest(`?search=${'あ'.repeat(101)}`), {
+      params: Promise.resolve({ table: 'Patient' }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリが不正です',
+      details: {
+        search: ['search は100文字以内で指定してください'],
+      },
+    });
+    expect(listDataExplorerRowsMock).not.toHaveBeenCalled();
+  });
+
   it('returns validation error for unknown tables', async () => {
     listDataExplorerRowsMock.mockRejectedValue(new Error('Unknown table: NoSuchTable'));
 
