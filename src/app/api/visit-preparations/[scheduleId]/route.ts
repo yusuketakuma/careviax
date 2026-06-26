@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { deriveFacilityLabel, deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { facilityPacketMemoToDisplayText } from '@/lib/visits/facility-packet';
 import { Prisma } from '@prisma/client';
@@ -16,7 +17,9 @@ import {
   notFound,
   forbiddenResponse,
   conflict,
+  internalError,
 } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { hasPermission } from '@/lib/auth/permissions';
 import { upsertVisitPreparationSchema } from '@/lib/validations/visit-preparation';
 import {
@@ -688,7 +691,7 @@ function buildConferenceHighlights(
     .filter((value): value is string => value !== null);
 }
 
-export async function GET(
+async function authenticatedGET(
   req: NextRequest,
   { params }: { params: Promise<{ scheduleId: string }> },
 ) {
@@ -1537,6 +1540,18 @@ export async function GET(
       },
     },
   });
+}
+
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<{ scheduleId: string }> },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function PUT(

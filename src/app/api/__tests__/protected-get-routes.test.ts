@@ -14,6 +14,9 @@ const {
   buildPharmacyInvoiceDocumentPdfMock,
   getPatientHeaderSummaryMock,
   getPatientOverviewMock,
+  listBillingEvidenceBlockersMock,
+  patientHomeCareFeatureSummaryMock,
+  scheduleFeatureHighlightsMock,
 } = vi.hoisted(() => {
   const createRecord = () => ({
     id: 'entity_1',
@@ -94,6 +97,9 @@ const {
     buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
     getPatientHeaderSummaryMock: vi.fn(),
     getPatientOverviewMock: vi.fn(),
+    listBillingEvidenceBlockersMock: vi.fn(),
+    patientHomeCareFeatureSummaryMock: vi.fn(),
+    scheduleFeatureHighlightsMock: vi.fn(),
   };
 });
 
@@ -113,6 +119,23 @@ vi.mock('@/server/services/visit-brief', () => ({
   getPatientVisitBrief: patientVisitBriefMock,
   getScheduleVisitBrief: scheduleVisitBriefMock,
 }));
+
+vi.mock('@/server/services/billing-evidence', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/billing-evidence')>();
+  return {
+    ...actual,
+    listBillingEvidenceBlockers: listBillingEvidenceBlockersMock,
+  };
+});
+
+vi.mock('@/server/services/home-care-ops', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/home-care-ops')>();
+  return {
+    ...actual,
+    getPatientHomeCareFeatureSummary: patientHomeCareFeatureSummaryMock,
+    selectScheduleHomeCareFeatureHighlights: scheduleFeatureHighlightsMock,
+  };
+});
 
 vi.mock('@/server/services/pdf-documents', () => ({
   buildBillingDocumentPdf: buildBillingDocumentPdfMock,
@@ -207,6 +230,7 @@ import { GET as visitSchedulesGet } from '../visit-schedules/route';
 import { GET as visitScheduleGet } from '../visit-schedules/[id]/route';
 import { GET as visitSchedulesDayBoardGet } from '../visit-schedules/day-board/route';
 import { GET as visitsTodayPreparationGet } from '../visits/today-preparation/route';
+import { GET as visitPreparationGet } from '../visit-preparations/[scheduleId]/route';
 import { GET as visitPreparationBriefGet } from '../visit-preparations/[scheduleId]/brief/route';
 
 type Handler = () => Promise<Response | undefined>;
@@ -947,6 +971,64 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'visit-preparations/[scheduleId] GET',
+    setupSuccess: () => {
+      prismaMock.visitSchedule.findFirst.mockResolvedValueOnce({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        carry_items_status: 'ready',
+        priority: 'normal',
+        pharmacist_id: 'user_1',
+        facility_batch_id: null,
+        facility_batch: null,
+        route_order: null,
+        medication_start_date: null,
+        medication_end_date: null,
+        assignment_mode: 'primary',
+        escalation_reason: null,
+        confirmed_at: null,
+        site: null,
+        visit_record: null,
+        preparation: null,
+        override_request: null,
+        applied_override: null,
+        case_: {
+          id: 'case_1',
+          primary_pharmacist_id: 'user_1',
+          backup_pharmacist_id: null,
+          required_visit_support: null,
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            name_kana: 'カンジャエー',
+            birth_date: new Date('1950-01-01T00:00:00.000Z'),
+            gender: 'female',
+            residences: [],
+            contacts: [],
+            consents: [],
+            scheduling_preference: null,
+          },
+          care_team_links: [],
+          management_plans: [],
+        },
+      });
+      prismaMock.visitRecord.findFirst.mockResolvedValueOnce(null);
+      prismaMock.firstVisitDocument.findFirst.mockResolvedValueOnce(null);
+    },
+    handler: () =>
+      visitPreparationGet(
+        createRequest('http://localhost/api/visit-preparations/schedule_1', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ scheduleId: 'schedule_1' }) },
+      ),
+  },
+  {
     name: 'visit-preparations/[scheduleId]/brief GET',
     handler: () =>
       visitPreparationBriefGet(
@@ -1030,6 +1112,12 @@ describe('protected GET routes auth matrix', () => {
       buffer: Buffer.from('%PDF-visit-record'),
       fileName: 'visit-record.pdf',
     });
+    listBillingEvidenceBlockersMock.mockResolvedValue([]);
+    patientHomeCareFeatureSummaryMock.mockResolvedValue({
+      totals: { blocked: 0, attention: 0, monitoring: 0, ready: 20 },
+      features: [],
+    });
+    scheduleFeatureHighlightsMock.mockReturnValue([]);
   });
 
   for (const route of routes) {
@@ -1072,6 +1160,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-records/[id] GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
+        route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||
@@ -1131,6 +1220,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-records/[id] GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
+        route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'set-plans GET' ||
@@ -1165,6 +1255,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'communication-requests/[id] GET' ||
+        route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');

@@ -702,6 +702,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(peerVisitScheduleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -1147,11 +1149,55 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       message: '訪問予定IDが不正です',
     });
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
     expect(scheduleVisitBriefMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store not found before loading preparation dependencies', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_missing' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      message: '訪問予定が見つかりません',
+    });
+    expect(visitRecordFindManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when preparation loading fails unexpectedly', async () => {
+    visitScheduleFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 住所 東京都港区1-1-1 raw visit preparation detail'),
+    );
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+
+    const json = await response.json();
+    expect(json).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(json)).not.toContain('山田太郎');
+    expect(JSON.stringify(json)).not.toContain('東京都港区1-1-1');
+    expect(JSON.stringify(json)).not.toContain('raw visit preparation detail');
   });
 
   it('ignores malformed conference JSON sections and sync summaries', async () => {
