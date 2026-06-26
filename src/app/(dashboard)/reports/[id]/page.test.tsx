@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -236,22 +236,69 @@ describe('ReportDetailPage send safety dialog', () => {
     });
   });
 
+  it('pins the shared patient identity band above the fold', () => {
+    render(<ReportDetailPage />);
+
+    const header = screen.getByTestId('patient-header');
+    expect(header).toBeTruthy();
+    // 患者識別がダイアログを開かずに fold 内へ常時表示される（取り違え防止）。
+    expect(within(header).getByText('佐藤 花子 様')).toBeTruthy();
+    expect(within(header).getByText('サトウ ハナコ')).toBeTruthy();
+  });
+
+  it('summarizes report content warnings above the body so they are not buried on mobile', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            content: {
+              ...structuredPhysicianContent,
+              warnings: ['用法用量の記載がありません', '相互作用の確認が未完了です'],
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    const summary = screen.getByTestId('report-warnings-summary');
+    expect(summary).toBeTruthy();
+    expect(within(summary).getByText('報告内容に確認事項があります（2件）')).toBeTruthy();
+    expect(within(summary).getByText('用法用量の記載がありません')).toBeTruthy();
+    expect(within(summary).getByText('相互作用の確認が未完了です')).toBeTruthy();
+  });
+
+  it('does not render a warnings summary when there are no content warnings', () => {
+    render(<ReportDetailPage />);
+
+    expect(screen.queryByTestId('report-warnings-summary')).toBeNull();
+  });
+
   it('blocks report sending until recipient fields and safety acknowledgement are confirmed', () => {
     render(<ReportDetailPage />);
 
     fireEvent.click(screen.getByRole('button', { name: '送付' }));
 
-    expect(screen.getByRole('dialog', { name: '報告書を送付' })).toBeTruthy();
+    const sendDialog = screen.getByRole('dialog', { name: '報告書を送付' });
+    expect(sendDialog).toBeTruthy();
     expect(screen.getByText('送付前確認')).toBeTruthy();
     expect(screen.getByLabelText('送付チャネル')).toBeTruthy();
     expect((screen.getByLabelText(/送付先連絡先/) as HTMLInputElement).required).toBe(true);
     expect(
       screen.getByText('メール送信ではメールアドレス、FAX送信ではFAX番号を入力してください。'),
     ).toBeTruthy();
-    expect(screen.getByText('佐藤 花子')).toBeTruthy();
-    expect(screen.getByText('サトウ ハナコ')).toBeTruthy();
-    expect(screen.getByText('1940/01/01')).toBeTruthy();
-    expect(screen.getByText('2026/03/29')).toBeTruthy();
+    // 患者識別は共通 PatientHeader バンドと送付ダイアログの双方に出るため、ダイアログ内に限定して検証する。
+    expect(within(sendDialog).getByText('佐藤 花子')).toBeTruthy();
+    expect(within(sendDialog).getByText('サトウ ハナコ')).toBeTruthy();
+    expect(within(sendDialog).getByText('1940/01/01')).toBeTruthy();
+    expect(within(sendDialog).getByText('2026/03/29')).toBeTruthy();
     expect(screen.getAllByText('patient_1').length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByPlaceholderText('例: 山田 太郎 先生'), {

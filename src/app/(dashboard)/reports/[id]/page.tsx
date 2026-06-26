@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { getReportDetailShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
+import { PatientHeader } from '@/components/features/patients/patient-header';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -831,6 +832,7 @@ export default function ReportDetailPage() {
   }
 
   // p0_28: 共有先候補(処方元医療機関 + ケアチーム/他職種)を送付ターゲットに正規化する。
+  // メモ化は React Compiler に委ねる（手動 useMemo は preserve-manual-memoization と競合する）。
   const shareTargets: ShareTarget[] = [
     ...(prescriberInstitutionSuggestion
       ? [
@@ -1002,6 +1004,30 @@ export default function ReportDetailPage() {
             </>
           }
         />
+        {/* p0: 患者識別を fold 内に固定再掲（取り違え防止）。共通 PatientHeader の識別 tier を再利用。 */}
+        <PatientHeader
+          name={patientName ?? report.patient_id}
+          kana={patientKana}
+          birthDate={patientBirthDate}
+          sticky={false}
+        />
+        {/* p0: 報告内容の警告を本文/サイドバー前に要約再掲（モバイルで本文後に埋没させない）。 */}
+        {hasContentView && warnings.length > 0 ? (
+          <Alert
+            data-testid="report-warnings-summary"
+            className="border-transparent bg-state-confirm/10 text-state-confirm"
+          >
+            <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
+            <AlertTitle>報告内容に確認事項があります（{warnings.length}件）</AlertTitle>
+            <AlertDescription className="text-state-confirm">
+              <ul className="list-disc space-y-0.5 pl-4">
+                {warnings.map((warning, index) => (
+                  <li key={`${index}-${warning}`}>{warning}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <VisitReportReadinessPanel
           mode="report_detail"
           items={reportReadinessItems}
