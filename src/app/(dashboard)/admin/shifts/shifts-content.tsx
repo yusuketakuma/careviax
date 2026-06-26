@@ -1555,7 +1555,13 @@ export function ShiftsContent() {
                       onValueChange={(value) => value && setTemplateApplyUserId(value)}
                     >
                       <SelectTrigger id="template-apply-user" className="w-full">
-                        <SelectValue />
+                        {/* Radix は既定値ラベルを SSR 解決できないため表示文言を明示 */}
+                        <SelectValue>
+                          {templateApplyUserId === 'all'
+                            ? '全担当者'
+                            : (shiftPharmacists.find((p) => p.id === templateApplyUserId)?.name ??
+                              templateApplyUserId)}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">全担当者</SelectItem>
