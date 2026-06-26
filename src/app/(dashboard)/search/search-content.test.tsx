@@ -154,6 +154,10 @@ describe('SearchContent', () => {
     expect(screen.getByRole('heading', { name: '全体検索' })).toBeTruthy();
     expect(screen.getByLabelText('全体検索キーワード')).toBeTruthy();
     expect(screen.getByPlaceholderText(/田中 一郎 アムロジピン/)).toBeTruthy();
+    expect(screen.getByText('キーワード入力待ち')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: '検索結果' })).toBeTruthy();
+    expect(screen.getByLabelText('全体検索キーワード').className).toContain('sm:h-12');
+    expect(screen.getByRole('button', { name: '詳しく絞り込む' }).className).toContain('!min-h-11');
 
     for (const chip of [
       '患者',
@@ -179,6 +183,7 @@ describe('SearchContent', () => {
     render(<SearchContent />);
     await triggerSearch('田中');
 
+    expect(screen.getByText(/患者 1件 \/ 全カテゴリ/)).toBeTruthy();
     expect(screen.getAllByTestId('list-open-card').length).toBeGreaterThan(0);
     expect(screen.getByText('田中 一郎 様')).toBeTruthy();
   });

@@ -479,6 +479,11 @@ export function SearchContent({
   const visibleItems = allResults[category];
   const hasResults = visibleItems.length > 0;
   const hasSearched = query.trim().length > 0;
+  const totalResults = SEARCH_CATEGORIES.reduce((sum, cat) => sum + (counts[cat] ?? 0), 0);
+  const selectedCategoryLabel = SEARCH_CATEGORY_LABELS[category];
+  const resultStatusLabel = hasSearched
+    ? `${selectedCategoryLabel} ${visibleItems.length}件 / 全カテゴリ ${totalResults}件`
+    : 'キーワード入力待ち';
 
   const handleApplyFilter = (filter: AdvancedFilterState) => {
     setAdvancedFilter(filter);
@@ -486,92 +491,110 @@ export function SearchContent({
 
   return (
     <div className="w-full space-y-5" data-testid="search-page">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">全体検索</h1>
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">全体検索</h1>
+          <p className="hidden max-w-3xl text-sm leading-6 text-muted-foreground md:block">
+            患者・訪問候補・処方・薬切れ・薬剤・施設・報告書・連絡先を横断し、必要なレコードへ直接移動します。
+          </p>
+        </div>
+        <div
+          role="status"
+          className="inline-flex min-h-11 shrink-0 items-center rounded-full border border-primary/15 bg-primary/10 px-4 text-sm font-semibold text-primary"
+        >
+          {resultStatusLabel}
+        </div>
+      </div>
 
-      {/* 検索ボックス */}
-      <Input
-        aria-label="全体検索キーワード"
-        data-search-input
-        autoFocus
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="田中 一郎 アムロジピン 施設A などで検索"
-        className="h-12 text-base"
-      />
-
-      {/* カテゴリチップ + 詳しく絞り込むボタン */}
-      <div className="flex flex-wrap items-center gap-3">
-        <FilterChipBar
-          ariaLabel="検索カテゴリの絞り込み"
-          value={category}
-          onChange={handleCategoryChange}
-          options={SEARCH_CATEGORIES.map((cat) => ({
-            value: cat,
-            label: SEARCH_CATEGORY_LABELS[cat],
-            count: counts[cat],
-          }))}
-          className="flex-1"
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+        <Input
+          aria-label="全体検索キーワード"
+          data-search-input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="田中 一郎 アムロジピン 施設A などで検索"
+          className="h-12 min-h-[44px] text-base sm:h-12 sm:min-h-[44px]"
         />
         <Button
           type="button"
           variant="outline"
-          size="sm"
           onClick={() => setIsAdvancedOpen(true)}
-          className="shrink-0"
+          className="!h-auto !min-h-11 justify-center px-5"
         >
           詳しく絞り込む
         </Button>
       </div>
 
-      {/* ローディング */}
-      {isLoading ? <p className="text-sm text-muted-foreground">検索中...</p> : null}
-      {/* エラー */}
-      {searchError ? <p className="text-sm text-destructive">{searchError}</p> : null}
-      {failedCategories.length > 0 && !searchError ? (
-        <div
-          role="status"
-          className="flex items-start gap-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm"
-        >
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-          <p>
-            一部の検索結果を取得できませんでした:{' '}
-            {failedCategories.map((cat) => SEARCH_CATEGORY_LABELS[cat]).join('、')}。
-            条件を変えずに再検索できます。
-          </p>
-        </div>
-      ) : null}
+      <FilterChipBar
+        ariaLabel="検索カテゴリの絞り込み"
+        value={category}
+        onChange={handleCategoryChange}
+        options={SEARCH_CATEGORIES.map((cat) => ({
+          value: cat,
+          label: SEARCH_CATEGORY_LABELS[cat],
+          count: counts[cat],
+        }))}
+      />
 
-      {/* 結果リスト */}
-      {!isLoading && !searchError ? (
-        !hasSearched ? (
-          <EmptyState
-            icon={Search}
-            title="キーワードを入力して横断検索"
-            description="キーワードを入力すると患者・訪問候補・処方・薬切れ・薬剤・施設・報告書・連絡先を横断して探します。"
-          />
-        ) : !hasResults ? (
-          <EmptyState
-            icon={Search}
-            title="一致する結果がありません"
-            description="キーワードや詳細条件を見直して、もう一度検索してください。"
-          />
-        ) : (
-          <div role="list" aria-label={`${SEARCH_CATEGORY_LABELS[category]}の検索結果`}>
-            <div className="space-y-3">
-              {visibleItems.map((item) => (
-                <ListOpenCard
-                  key={item.id}
-                  badgeLabel={item.badgeLabel}
-                  badgeClassName={item.badgeClassName}
-                  title={item.title}
-                  subtitle={item.subtitle}
-                  onOpen={() => router.push(item.href)}
-                />
-              ))}
-            </div>
+      <section aria-labelledby="search-results-title" className="border-t border-border/70 pt-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 id="search-results-title" className="text-lg font-bold text-foreground">
+            検索結果
+          </h2>
+          {isLoading ? <p className="text-sm font-medium text-primary">検索中...</p> : null}
+        </div>
+
+        {searchError ? (
+          <p role="alert" className="text-sm font-medium text-destructive">
+            {searchError}
+          </p>
+        ) : null}
+        {failedCategories.length > 0 && !searchError ? (
+          <div
+            role="status"
+            className="mb-4 flex items-start gap-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm"
+          >
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <p>
+              一部の検索結果を取得できませんでした:{' '}
+              {failedCategories.map((cat) => SEARCH_CATEGORY_LABELS[cat]).join('、')}。
+              条件を変えずに再検索できます。
+            </p>
           </div>
-        )
-      ) : null}
+        ) : null}
+
+        {!isLoading && !searchError ? (
+          !hasSearched ? (
+            <EmptyState
+              icon={Search}
+              title="キーワードを入力して横断検索"
+              description="キーワードを入力すると患者・訪問候補・処方・薬切れ・薬剤・施設・報告書・連絡先を横断して探します。"
+            />
+          ) : !hasResults ? (
+            <EmptyState
+              icon={Search}
+              title="一致する結果がありません"
+              description="キーワードや詳細条件を見直して、もう一度検索してください。"
+            />
+          ) : (
+            <div role="list" aria-label={`${selectedCategoryLabel}の検索結果`}>
+              <div className="space-y-3">
+                {visibleItems.map((item) => (
+                  <ListOpenCard
+                    key={item.id}
+                    badgeLabel={item.badgeLabel}
+                    badgeClassName={item.badgeClassName}
+                    title={item.title}
+                    subtitle={item.subtitle}
+                    onOpen={() => router.push(item.href)}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        ) : null}
+      </section>
 
       {/* 詳しく絞り込むモーダル */}
       <AdvancedFilterModal
