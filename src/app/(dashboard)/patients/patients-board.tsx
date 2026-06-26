@@ -167,14 +167,27 @@ const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> 
   allergy: { label: 'アレルギー', className: PATIENT_SAFETY_TAG_CLASS },
 };
 
-/** 情報基盤の整備状況コールアウト → ready=done(緑) / needs_confirmation=confirm(橙) / missing=blocked(赤)。 */
-const FOUNDATION_STATUS_CLASSES: Record<
+/**
+ * 情報基盤の整備状況コールアウト → ready=done(緑) / needs_confirmation=confirm(橙) / missing=blocked(赤)。
+ * 全面塗りは引き算し、状態色は左ボーダー(ACCENT) + ラベル(TEXT)のみに限定する
+ * (SSOT 色「状態色の塗り面積を最小化する」)。
+ */
+const FOUNDATION_STATUS_ACCENT: Record<
   NonNullable<PatientBoardCard['foundation_summary']>['status'],
   string
 > = {
-  ready: 'border-state-done/35 bg-state-done/10 text-foreground',
-  needs_confirmation: 'border-state-confirm/35 bg-state-confirm/10 text-foreground',
-  missing: 'border-state-blocked/35 bg-state-blocked/10 text-foreground',
+  ready: 'border-l-state-done',
+  needs_confirmation: 'border-l-state-confirm',
+  missing: 'border-l-state-blocked',
+};
+
+const FOUNDATION_STATUS_TEXT: Record<
+  NonNullable<PatientBoardCard['foundation_summary']>['status'],
+  string
+> = {
+  ready: 'text-state-done',
+  needs_confirmation: 'text-state-confirm',
+  missing: 'text-state-blocked',
 };
 
 const SAFETY_TAG_DISPLAY_LIMIT = 3;
@@ -447,13 +460,20 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
       {card.foundation_summary ? (
         <div
           className={cn(
-            'rounded-md border px-2.5 py-2 text-xs leading-5',
-            FOUNDATION_STATUS_CLASSES[card.foundation_summary.status],
+            'rounded-md border border-l-4 bg-card px-2.5 py-2 text-xs leading-5 text-foreground',
+            FOUNDATION_STATUS_ACCENT[card.foundation_summary.status],
           )}
           aria-label={`${card.name} 様の情報基盤`}
         >
           <div className="flex items-start justify-between gap-2">
-            <p className="font-semibold">{card.foundation_summary.label}</p>
+            <p
+              className={cn(
+                'font-semibold',
+                FOUNDATION_STATUS_TEXT[card.foundation_summary.status],
+              )}
+            >
+              {card.foundation_summary.label}
+            </p>
             {card.foundation_href ? (
               <Link
                 href={card.foundation_href}
