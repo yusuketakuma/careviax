@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1406 JST
+
+- current task: verify and finish the `/patients` board status-color area minimization, then compact mobile summary tiles so patient cards enter the first viewport.
+- files inspected: agmsg inbox, `git status --short --branch --untracked-files=all`, `src/app/(dashboard)/patients/patients-board.tsx`, `src/app/(dashboard)/patients/patients-board.test.tsx`, recent commits `d152584a`, `c07b59bc`, and `f12350ab`, direct desktop/mobile `/patients` browser metrics and screenshots, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/patients/patients-board.tsx`, `src/app/(dashboard)/patients/patients-board.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the patient-board summary tiles used full status-tinted backgrounds before `d152584a`, conflicting with the newly ratified status-color area minimization SSOT. Browser proof after that change showed the mobile first patient card still started at `780px`, so the summary consumed too much first-fold space.
+- security risks found: no auth, authorization, org scoping, patient-board API, PHI projection, routes, links, DB behavior, schema, migrations, external sends, audit behavior, or mutation path changed.
+- performance issues found: no new fetches, polling, subscriptions, DB reads beyond the existing local-auth browser proof helper, mutations, or render loops were introduced. The changes are CSS class selection and responsive visibility only.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/patients/patients-board.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`; direct authenticated Playwright proof on `http://localhost:3012/patients`.
+- validation results: focused patient-board Vitest passed `1` file / `14` tests; focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed. Direct browser proof had no console/page errors, no horizontal overflow, visible `患者一覧` `h1`, visible patients-board grid, neutral white KPI tiles with state left borders, and no undersized page-body controls. Mobile summary tile height dropped from `108px` to `72px`, and first patient card top improved from `780px` to `708px`.
+- remaining work: `d152584a` and `b76c4055` contain the patients-board UI/test groups; commit this progress-ledger update separately, send agmsg FYI, and continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the progress commit.
+
 ### 20260626-1350 JST
 
 - current task: group and validate the remaining `/first-login` UI polish diff after the `/login` authentication entry slice.

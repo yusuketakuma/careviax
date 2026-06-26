@@ -9962,3 +9962,24 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-entry-sweep/password-change-final-desktop.png` and `artifacts/ui-entry-sweep/password-change-final-mobile.png`.
 - Remaining:
   - `/password/change` UI/test group was committed as `eb4c2401`; commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Patients Board — Status Color Area Reduction and Mobile Summary Compaction
+
+- Coordination:
+  - `d152584a` landed the first patients-board status-color minimization slice.
+  - Codex verified the rendered `/patients` surface and added follow-up `b76c4055` so the first patient card appears in the mobile first viewport.
+- Implemented by Codex:
+  - Kept patient-board summary tiles as neutral `bg-card` panels with state-colored left borders and state-colored label text instead of full tinted status surfaces.
+  - Hid the summary description line on mobile only and reduced the mobile tile minimum height from `84px` to `72px`; desktop still shows descriptions.
+  - Added a focused test assertion that the urgent summary tile stays neutral, uses the state left border, and keeps the mobile description class hidden.
+  - Preserved patient-board fetches, filters, scope note, card links, safety tags, foundation links, auth behavior, backend/API behavior, DB behavior, and displayed data.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/patients/patients-board.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `14` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`: passed.
+  - Direct authenticated Playwright proof on `http://localhost:3012/patients`: no console/page errors, no horizontal overflow, visible `患者一覧` `h1`, visible patients-board grid, neutral KPI cards with state left borders, and no undersized page-body controls.
+  - Final metrics: mobile summary tile height `72px`, first patient card top `708px` after compaction (`780px` before the follow-up), desktop summary tiles still show descriptions.
+  - Screenshot evidence: `artifacts/ui-patients-board-sweep/patients-board-final-desktop.png` and `artifacts/ui-patients-board-sweep/patients-board-final-mobile.png`.
+- Remaining:
+  - `d152584a` and `b76c4055` contain the patients-board UI/test groups; commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
