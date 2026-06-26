@@ -12,7 +12,6 @@ export const metadata: Metadata = {
 export default function VisitsPage() {
   return (
     <PageScaffold variant="bare">
-      <h1 className="sr-only">出発前チェック</h1>
       <VisitsToday />
     </PageScaffold>
   );

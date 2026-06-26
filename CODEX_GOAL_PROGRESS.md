@@ -59,6 +59,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation caveat: `pnpm exec playwright test tools/tests/ui-layout-screenshot-audit.spec.ts --project=chromium --grep "my-day"` timed out waiting for the configured webServer after 60 seconds while starting the Next build, so a fresh screenshot audit was not completed in this slice.
 - Next action: commit the My Day UI slice, commit the Codex-only runtime-state correction separately, then continue screenshot-driven refinement on the next high-frequency operational page.
 
+### 2026-06-26 JST - Visits First-Fold Clinical Copy
+
+- Refined `/visits` after desktop/mobile browser inspection showed the first visit group exposing internal design language: `今日の訪問 — 準備が9割` and `...確認すればよい設計`.
+- Replaced the section title and helper copy with operational language: `今日の訪問 — 出発前確認` and `未完了チェックを0にしてから訪問モードへ進みます`.
+- Removed the hidden page-level `h1` and made the visible `訪問` heading the single `h1`, improving trunk-test orientation and heading hierarchy without changing visible layout density.
+- Preserved all existing visit-preparation data fetches, visit-mode link, preparation cards, safety tags, route/card links, offline guidance, auth behavior, backend/API behavior, and DB behavior. No feature was removed.
+- Screenshot evidence: before mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/visits-mobile-before.png`; after mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/visits-mobile-after.png`; desktop after `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/visits-desktop-after.png`.
+- Validation passed: focused `visits-today` Vitest `1` file / `5` tests; focused ESLint; focused Prettier check; focused diff whitespace check; live browser desktop/mobile checks on `http://localhost:3012/visits` with `0` console errors, `0` horizontal overflow, one visible `h1`, and mobile visible touch targets at 44px or larger.
+- Next action: commit the visits UI slice, commit the Codex-only runtime-state correction separately, then continue the screenshot loop on the next high-frequency operational page.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.

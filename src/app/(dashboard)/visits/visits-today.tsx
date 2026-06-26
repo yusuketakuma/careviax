@@ -294,7 +294,7 @@ export function VisitsToday() {
     <section aria-label="今日の訪問(出発前の準備チェック)" data-testid="visits-today">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-bold text-foreground">訪問</h2>
+          <h1 className="text-xl font-bold text-foreground">訪問</h1>
           <p className="text-sm text-muted-foreground">{dateLabel}</p>
         </div>
         {/* 主操作(青)は 1 画面 1 つ: 訪問モードの開始 */}
@@ -352,10 +352,10 @@ export function VisitsToday() {
                     id="visits-today-list-heading"
                     className="text-base font-bold text-foreground"
                   >
-                    今日の訪問 — 準備が9割
+                    今日の訪問 — 出発前確認
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    出発前に⚠がゼロになっていることだけ確認すればよい設計
+                    未完了チェックを0にしてから訪問モードへ進みます
                   </p>
                   {countBadge ? (
                     <span className="ml-auto inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-bold text-primary-foreground">

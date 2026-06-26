@@ -191,10 +191,8 @@ describe('VisitsToday', () => {
     render(<VisitsToday />);
 
     const list = screen.getByTestId('visits-today-list');
-    expect(within(list).getByText('今日の訪問 — 準備が9割')).toBeTruthy();
-    expect(
-      within(list).getByText('出発前に⚠がゼロになっていることだけ確認すればよい設計'),
-    ).toBeTruthy();
+    expect(within(list).getByText('今日の訪問 — 出発前確認')).toBeTruthy();
+    expect(within(list).getByText('未完了チェックを0にしてから訪問モードへ進みます')).toBeTruthy();
     expect(within(list).getByText('2件＋施設12名')).toBeTruthy();
 
     const cards = within(list).getAllByTestId('visit-prep-card');

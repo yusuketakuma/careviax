@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1010 JST
+
+- current task: continue the active repo-wide UI/UX refinement goal with a screenshot-driven `/visits` first-fold polish slice, then commit all changed groups separately.
+- files inspected: agmsg inbox; `git status --short --branch --untracked-files=all`; `docs/ui-ux-design-guidelines.md`; local Next.js `page.md` and `use-client.md` docs already used in this loop; `src/app/(dashboard)/visits/page.tsx`; `src/app/(dashboard)/visits/visits-today.tsx`; `src/app/(dashboard)/visits/visits-today.test.tsx`; `tools/tests/ui-schedule-visit-report.spec.ts`; live desktop/mobile `/visits` browser screenshots and DOM/touch-target/overflow audits; `.agent-loop/README.md`; `.agent-loop/LOCKS.md`; `.agent-loop/STATE.md`; `CODEX_GOAL_PROGRESS.md`.
+- files changed: `src/app/(dashboard)/visits/page.tsx`, `src/app/(dashboard)/visits/visits-today.tsx`, `src/app/(dashboard)/visits/visits-today.test.tsx`, `CODEX_GOAL_PROGRESS.md`, `.agent-loop/README.md`, `.agent-loop/LOCKS.md`, `.agent-loop/STATE.md`, and this Ralph state entry.
+- bugs found: `/visits` exposed internal design-process copy in the first work group (`準備が9割`, `...設計`) instead of direct clinical task language. The page also used a hidden `h1` (`出発前チェック`) while the visible page title `訪問` was only `h2`, weakening heading hierarchy and trunk-test orientation. The loop coordination docs had drifted back to a rev6 Claude+Codex parallel-mode banner, contradicting the user's current Codex-only operation.
+- security risks found: none changed in application logic. No auth, authorization, API, PHI projection, schema, migration, seed, DB write path, external send, or destructive operation was changed. The browser verification used the existing local dev app and normal protected-page reads only.
+- performance issues found: none materially changed. The visits fix changes copy and heading semantics only, with no new data fetch, query, network fan-out, render loop, or computation.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/visits/page.tsx' 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx'`; `pnpm vitest run 'src/app/(dashboard)/visits/visits-today.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/app/(dashboard)/visits/page.tsx' 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/visits/page.tsx' 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/visits/page.tsx' 'src/app/(dashboard)/visits/visits-today.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx'`; live browser desktop/mobile checks on `http://localhost:3012/visits`.
+- validation results: focused visits Vitest passed `1` file / `5` tests; focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed. Live browser checks had `0` console errors, `0` horizontal overflow, one visible `h1`, and mobile visible touch targets at 44px or larger. Screenshots were saved under `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
+- remaining work: run final formatting/diff checks including ledgers and coordination docs, commit the visits UI slice, commit the Codex-only coordination correction separately, commit any remaining research-doc slice separately if validation passes, then continue the all-pages UI/UX objective. The broader objective is not complete.
+- next action: drain agmsg, stage only owned visits/progress files for the design commit, then stage coordination docs separately.
+
 ### 20260626-1004 JST
 
 - current task: commit the current grouped changes under the active repo-wide UI/UX refinement goal, with Codex-only coordination restored and the `/my-day` first-fold scan path validated.
