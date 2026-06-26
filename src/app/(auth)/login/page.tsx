@@ -8,12 +8,11 @@ import {
   COGNITO_CHALLENGE_STORAGE_KEY,
   decodeCognitoChallenge,
 } from '@/lib/auth/cognito-challenge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, ShieldCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, KeyRound, ShieldCheck, Smartphone } from 'lucide-react';
 
 const ERROR_MESSAGES: Record<string, string> = {
   CredentialsSignin: 'メールアドレスまたはパスワードが正しくありません。',
@@ -108,13 +107,67 @@ function LoginForm() {
   }
 
   return (
-    <div className="w-full max-w-md">
-      <Card>
-        <CardHeader>
-          <CardTitle>ログイン</CardTitle>
-          <CardDescription>アカウント情報を入力してください</CardDescription>
-        </CardHeader>
-        <CardContent>
+    <section
+      aria-labelledby="login-entry-title"
+      className="w-full max-w-5xl overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-sm"
+    >
+      <div className="grid lg:grid-cols-[0.92fr_1.08fr]">
+        <aside className="order-2 border-t border-border/70 bg-slate-50/80 p-5 sm:p-6 lg:order-1 lg:border-r lg:border-t-0 lg:p-8">
+          <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-primary">
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+            MFA保護された入口
+          </div>
+          <div className="mt-6 space-y-3">
+            <p className="text-sm font-semibold text-muted-foreground">PH-OS secure sign-in</p>
+            <h2
+              id="login-entry-title"
+              className="text-2xl font-semibold leading-tight text-foreground"
+            >
+              薬局業務を始める前に、本人確認を完了します
+            </h2>
+            <p className="text-sm leading-6 text-muted-foreground">
+              メールアドレスとパスワードで確認後、必要に応じて6桁コードへ進みます。端末変更や初回利用時も同じ手順です。
+            </p>
+          </div>
+
+          <div className="mt-7 grid gap-3 text-sm">
+            {[
+              { icon: KeyRound, title: '1. 認証情報', text: 'メールアドレスとパスワードを入力' },
+              {
+                icon: Smartphone,
+                title: '2. 確認コード',
+                text: 'スマホまたはメールの6桁コードを確認',
+              },
+              {
+                icon: CheckCircle2,
+                title: '3. 業務開始',
+                text: '薬局・担当モードを選んでワークベンチへ',
+              },
+            ].map((item) => (
+              <div
+                key={item.title}
+                className="grid grid-cols-[2.75rem_1fr] items-center gap-3 rounded-xl border border-border/70 bg-background/80 p-3"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <item.icon className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <span>
+                  <span className="block font-semibold text-foreground">{item.title}</span>
+                  <span className="block leading-5 text-muted-foreground">{item.text}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <div className="order-1 p-5 sm:p-6 lg:order-2 lg:p-8">
+          <div className="mb-6">
+            <p className="text-sm font-semibold text-primary">ログイン</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              職員アカウントで入室してください。入力内容はエラー後も保持されます。
+            </p>
+          </div>
+
           {notice && (
             <Alert className="mb-4 border-tag-info/30 bg-tag-info/10 text-tag-info">
               <ShieldCheck className="h-4 w-4 text-tag-info" />
@@ -132,6 +185,7 @@ function LoginForm() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="email">メールアドレス</Label>
               <Input
+                className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
                 id="email"
                 name="email"
                 type="email"
@@ -147,6 +201,7 @@ function LoginForm() {
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="password">パスワード</Label>
               <Input
+                className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
                 id="password"
                 name="password"
                 type="password"
@@ -161,7 +216,7 @@ function LoginForm() {
             <Button
               type="submit"
               size="lg"
-              className="mt-2 w-full"
+              className="mt-2 h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
               disabled={isLoading}
               aria-busy={isLoading}
             >
@@ -169,25 +224,27 @@ function LoginForm() {
             </Button>
           </form>
 
-          <div className="mt-4 text-center">
+          <div className="mt-4 flex justify-center">
             <Link
               href="/password/reset"
-              className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              className="inline-flex min-h-11 items-center rounded px-3 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               パスワードを忘れた方
             </Link>
           </div>
 
-          {/* デザイン p0_01: MFA 確認コードの事前案内(初回・端末変更時の戸惑い防止) */}
-          <div className="mt-4 rounded-lg border border-tag-info/30 bg-tag-info/10 p-3.5">
-            <p className="text-sm font-semibold text-foreground">確認コードが必要な場合</p>
-            <p className="mt-1 text-sm leading-5 text-muted-foreground">
-              スマホまたはメールに届いた6桁のコードを入力してください。初回だけでなく、端末が変わった時にも確認します。
+          <div className="mt-4 rounded-xl border border-tag-info/30 bg-tag-info/10 p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Smartphone className="h-4 w-4 text-tag-info" aria-hidden="true" />
+              確認コードが必要な場合
+            </p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              スマホまたはメールに届いた6桁のコードを入力します。手元に端末がない場合は、ログインせず管理者へ連絡してください。
             </p>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -195,8 +252,8 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="w-full max-w-md">
-          <div className="h-72 animate-pulse rounded-xl bg-muted" />
+        <div className="w-full max-w-5xl">
+          <div className="h-[31rem] animate-pulse rounded-2xl bg-muted" />
         </div>
       }
     >
