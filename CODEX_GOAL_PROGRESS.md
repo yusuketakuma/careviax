@@ -21,6 +21,26 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Org Staff Candidate Endpoint for Patient Care-Team UI
+
+- Coordination:
+  - Responded to Claude's P4 dependency request over `agmsg` and confirmed the contract: `GET /api/org/members?eligible=staff`, `canVisit`, sensitive no-store, and `{ data: Array<{ id: string; name: string; role: string }> }`.
+  - Preserved Claude-owned dirty `src/lib/validations/patient.ts` from the patient create/edit P4 work; Codex did not stage or edit that file.
+- Added `GET /api/org/members?eligible=staff` for patient care-team staff Select candidates.
+- The endpoint returns only active same-org members with roles from the shared `STAFF_ASSIGNABLE_ROLES` set: `owner`, `admin`, `pharmacist`, `pharmacist_trainee`, and `clerk`.
+- The response is intentionally minimal and ID-safe for UI selection: `id`, `name`, and `role`; no email, phone, site, permissions, account status, or workload data are returned.
+- Exported `STAFF_ASSIGNABLE_ROLES` from `src/lib/api/org-reference.ts` so validation and candidate listing share the same eligibility rule.
+- Added the route to the protected GET auth/no-store matrix and `API_ROUTE_TEMPLATES` rate-limit catalog.
+- Security risk reduced: staff candidate listing is org-scoped, active-member-only, `canVisit` gated, and no-store; unexpected read failures return sanitized fixed 500 responses.
+- Performance issue improved: the UI no longer needs to overload `/api/pharmacists` collaborator mode or fetch broader staff management payloads to populate two staff Selects.
+- Validation passed:
+  - `pnpm vitest run src/app/api/org/members/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts src/lib/api/rate-limit.test.ts src/lib/api/org-reference.test.ts --reporter=dot --testTimeout=30000` passed `4` files / `263` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the endpoint, endpoint test, `org-reference`, `rate-limit`, and protected GET matrix files.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned endpoint files, commit progress ledgers separately, and send `agmsg` FYI so Claude can wire the patient form to the landed endpoint.
+
 ### 2026-06-27 JST - Patient Header Summary Patient-Level Care Team Read Switch
 
 - Coordination:

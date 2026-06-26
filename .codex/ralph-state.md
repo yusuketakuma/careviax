@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-0640 JST
+
+- current task: implement Claude-requested P4 dependency endpoint `GET /api/org/members?eligible=staff` for patient create/edit care-team staff Selects while preserving Claude-owned patient form/validation dirty work.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox/send flow via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `src/app/api/org/members/route.ts`, `src/app/api/org/members/route.test.ts`, `src/lib/api/org-reference.ts`, `src/lib/api/org-reference.test.ts`, `src/lib/api/rate-limit.ts`, `src/lib/api/rate-limit.test.ts`, and `src/app/api/__tests__/protected-get-routes.test.ts`.
+- files changed: `src/app/api/org/members/route.ts`, `src/app/api/org/members/route.test.ts`, `src/lib/api/org-reference.ts`, `src/lib/api/rate-limit.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned dirty `src/lib/validations/patient.ts` was preserved and not staged by Codex.
+- bugs found: the patient care-team UI work needed a same-org staff candidate endpoint and would otherwise have to overload broader pharmacist/collaborator references or staff-management payloads for staff Select population.
+- security risks found: reduced staff-directory overexposure risk by adding a `canVisit`-gated, same-org, active-members-only, active-users-only endpoint that returns only `{ id, name, role }`, applies sensitive no-store headers, rejects unsupported `eligible` filters, and returns sanitized fixed 500 responses for unexpected lookup failures.
+- performance issues found: reduced candidate-fetch payload and client coupling by providing a narrow staff-eligible member list based on the shared `STAFF_ASSIGNABLE_ROLES` set instead of broader reference endpoints.
+- validation commands: `pnpm vitest run src/app/api/org/members/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts src/lib/api/rate-limit.test.ts src/lib/api/org-reference.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint src/app/api/org/members/route.ts src/app/api/org/members/route.test.ts src/lib/api/org-reference.ts src/lib/api/rate-limit.ts src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check src/app/api/org/members/route.ts src/app/api/org/members/route.test.ts src/lib/api/org-reference.ts src/lib/api/rate-limit.ts src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- src/app/api/org/members/route.ts src/app/api/org/members/route.test.ts src/lib/api/org-reference.ts src/lib/api/rate-limit.ts src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused org-members/protected GET/rate-limit/org-reference Vitest passed `4` files / `263` tests; full TypeScript passed after typing endpoint roles as `MemberRole`; scoped ESLint passed; scoped Prettier check passed after formatting the new route file; scoped diff-check passed.
+- remaining work: commit Codex-owned endpoint files, commit progress ledgers separately, send `agmsg` FYI with commit hashes, and let Claude wire the patient form to `/api/org/members?eligible=staff` from its existing P4 lock.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260627-0624 JST
 
 - current task: P2 of the staged Patient care-team migration: switch `getPatientHeaderSummary` from latest CareCase assignment fields to Patient-level care-team fields after Claude's non-destructive P1 base commit `d47a7cf6`.
