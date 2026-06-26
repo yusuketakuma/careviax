@@ -105,6 +105,9 @@ describe('ClerkSupportContent', () => {
     const consult = screen.getByTestId('clerk-consult-card');
     expect(within(consult).getByText('薬剤師に相談が必要')).toBeTruthy();
     expect(within(consult).getByText(/算定できるかの判断/)).toBeTruthy();
+    // 気づき→起票導線: ハンドオフの相談起票へ繋ぐ CTA
+    const handoffLink = within(consult).getByTestId('clerk-consult-handoff-link');
+    expect(handoffLink.getAttribute('href')).toBe('/handoff');
   });
 
   it('does not paint state/ad-hoc colors on KPI counts and dims zero counts', () => {

@@ -163,6 +163,14 @@ export function ClerkSupportContent() {
                   </li>
                 ))}
               </ul>
+              {/* 気づき(掲示)から実際の起票へ繋ぐ。ハンドオフの相談起票で薬剤師に渡す。 */}
+              <Link
+                href="/handoff"
+                className="mt-4 inline-flex min-h-[44px] items-center gap-1 rounded-md border border-border/70 px-3 py-2 text-sm font-semibold text-primary hover:bg-muted/50"
+                data-testid="clerk-consult-handoff-link"
+              >
+                ハンドオフで薬剤師に相談する →
+              </Link>
             </section>
           </div>
         </>
