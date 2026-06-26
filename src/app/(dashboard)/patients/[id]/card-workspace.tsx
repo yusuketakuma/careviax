@@ -3462,13 +3462,11 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
           >
             <div className="flex items-start justify-between gap-2">
               <p className="font-semibold">{item.label}</p>
-              <span className="text-[11px] font-medium">
-                {FOUNDATION_STATUS_LABELS[item.status]}
-              </span>
+              <span className="text-xs font-medium">{FOUNDATION_STATUS_LABELS[item.status]}</span>
             </div>
             <p className="mt-1 text-xs leading-5 opacity-85">{item.detail}</p>
             {item.meta ? (
-              <div className="mt-2 space-y-1 border-t border-current/15 pt-2 text-[11px] leading-4 opacity-85">
+              <div className="mt-2 space-y-1 border-t border-current/15 pt-2 text-xs leading-4 opacity-85">
                 <p>
                   最終更新 {item.meta.updated_at} / {item.meta.updated_by_name ?? '更新者不明'} /{' '}
                   {item.meta.source}
@@ -3541,7 +3539,7 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
                     <span className="block text-muted-foreground">{lab.measured_at}</span>
                   </span>
                   {lab.abnormal || lab.stale ? (
-                    <span className="rounded-full border border-transparent bg-state-confirm/10 px-2 py-0.5 text-[11px] font-semibold text-state-confirm">
+                    <span className="rounded-full border border-transparent bg-state-confirm/10 px-2 py-0.5 text-xs font-semibold text-state-confirm">
                       {[lab.abnormal ? '異常' : null, lab.stale ? '古い' : null]
                         .filter(Boolean)
                         .join('・')}
@@ -3570,7 +3568,7 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
                     </span>
                     <span
                       className={cn(
-                        'rounded-full border border-transparent px-2 py-0.5 text-[11px] font-semibold',
+                        'rounded-full border border-transparent px-2 py-0.5 text-xs font-semibold',
                         insurance.expires_soon
                           ? 'bg-state-confirm/10 text-state-confirm'
                           : 'bg-state-done/10 text-state-done',
