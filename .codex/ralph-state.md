@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2205 JST
+
+- current task: backend-first no-store 500 hardening for `GET /api/prescription-intakes/:id`.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, Next Route Handlers docs at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/prescription-intakes/[id]/route.ts`, `src/app/api/prescription-intakes/[id]/route.test.ts`, `src/app/api/prescription-intakes/route.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/lib/api/sensitive-response.ts`, `src/lib/api/response.ts`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, and read-only API/privacy subagent reviews.
+- files changed: `src/app/api/prescription-intakes/[id]/route.ts`, `src/app/api/prescription-intakes/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `GET /api/prescription-intakes/:id` returned auth, validation, not-found, success, and unexpected failure responses without a consistent sensitive no-store envelope at the exported route boundary.
+- security risks found: reduced cacheability/leakage risk for prescription intake detail payloads containing medication lines, JAHIS `payload`/`raw_line`, patient identity, and inquiry content by applying `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`; fixed 500 coverage proves raw patient/JAHIS/insurance-like thrown text is not returned.
+- performance issues found: none materially changed. The slice adds only response wrapping and tests; no new normal-path DB queries, polling, dependencies, or frontend rendering work were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/prescription-intakes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/api/prescription-intakes/[id]/route.ts' 'src/app/api/prescription-intakes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check 'src/app/api/prescription-intakes/[id]/route.ts' 'src/app/api/prescription-intakes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- 'src/app/api/prescription-intakes/[id]/route.ts' 'src/app/api/prescription-intakes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused prescription intake detail/protected GET Vitest passed `2` files / `227` tests; scoped ESLint passed; scoped Prettier check passed after formatting `src/app/api/prescription-intakes/[id]/route.ts`; scoped diff-check passed. API subagent found no blockers; privacy subagent requested PHI-rich success and 404 no-store coverage, which was added.
+- remaining work: run final scoped ledger checks, stage only the API/test files for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and continue with high-risk shortlist candidates such as prescription-intakes triage, QR scan drafts, set audits, and medication-set workspace. Projection/minimization for JAHIS/raw-line fields remains a separate explicit-contract candidate. The broader objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2158 JST
 
 - current task: backend-first no-store 500 hardening for `GET /api/dispense-audits`.
