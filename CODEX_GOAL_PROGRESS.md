@@ -40,6 +40,14 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused PharmacySitesContent/Page/Sheet Vitest `3` files / `15` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/pharmacy-sites` with no console/page errors, no generic intro, one visible `薬局情報管理` h1, no horizontal overflow after sheet animation settles, and page/sheet small-control count `0` inside the targeted page body and sheet.
 - Next action: commit the `/admin/pharmacy-sites` + shared Sheet 44px UI/test slice, commit this progress-ledger slice separately, send agmsg FYI, stop the local dev server, and continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Claude Type-Fix Support Verification
+
+- Supported the existing Claude-authored type-fix slice now committed as `e636b05a fix(types): resolve build-blocking type errors in admin routes, offline-sync, and workbench test`.
+- Verified the slice covers: admin dynamic route context params narrowed to `{ id: string }`, offline-sync conflict resolution re-guarded inside the click closure, and dispense-workbench adapter tests narrowed before reading `writeContext` while using `vi.fn<typeof fetch>`.
+- Preserved product behavior: no UI layout, auth, authorization, API body shape, DB schema, migrations, DB writes, external sends, PHI projection, or runtime mutation behavior changed by this support pass.
+- Validation passed in this Codex support pass: focused admin external-professionals/facility contacts/dispense-workbench adapter Vitest `3` files / `29` tests; scoped ESLint; scoped Prettier write/check; scoped diff-check; full `pnpm typecheck`.
+- Next action: commit this progress-ledger update separately, send agmsg FYI, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Communication Requests Reply Follow-up First
 
 - Refined `/communications/requests` after browser proof showed the first viewport spent the first interaction budget on status/context filters before the reply follow-up queue.

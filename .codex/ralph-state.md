@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1848 JST
+
+- current task: support the existing Claude-authored type-fix slice for admin route context params, offline-sync closure narrowing, and dispense-workbench adapter test typing.
+- files inspected: `git status --short --branch --untracked-files=all`, design-review skill guidance, `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`, `src/app/api/admin/external-professionals/[id]/route.ts`, `src/app/api/admin/facilities/[id]/contacts/route.ts`, `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`, related tests discovered with `rg`, and commit `e636b05a`.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only in this support-record slice. The validated implementation/type-fix files were already committed as `e636b05a`.
+- bugs found: the pre-existing slice fixed build-blocking TypeScript issues: generic `Record<string,string>` route params incompatible with `withAuthContext<{ id: string }>`, render-time `row.id !== null` narrowing not preserved inside the offline-sync click closure, and test mock/union typing that needed explicit fetch and populated-result narrowing.
+- security risks found: no auth, authorization, org scoping, RLS, API response envelope, schema, migrations, DB writes, external sends, PHI projection, audit behavior, or secret handling changed by this support pass.
+- performance issues found: no new fetches, polling, subscriptions, dependencies, DB reads, or heavier runtime loops were introduced. The support pass is type/test correctness only.
+- validation commands: `pnpm vitest run 'src/app/api/admin/external-professionals/[id]/route.test.ts' 'src/app/api/admin/facilities/[id]/contacts/route.test.ts' 'src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/api/admin/external-professionals/[id]/route.ts' 'src/app/api/admin/facilities/[id]/contacts/route.ts' 'src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts'`; `pnpm exec prettier --write ...`; `pnpm exec prettier --check ...`; `git diff --check -- ...`; `pnpm typecheck`.
+- validation results: focused Vitest passed `3` files / `29` tests; scoped ESLint passed; scoped Prettier write/check passed; scoped diff-check passed; full `pnpm typecheck` passed after `next typegen` generated route types successfully.
+- remaining work: commit this progress-ledger update separately, send agmsg FYI, and continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the progress commit.
+
 ### 20260626-1843 JST
 
 - current task: `/admin/pharmacy-sites` pharmacy workspace first-fold priority, 44px pharmacy/site insurance controls, and shared Sheet close target hardening.
