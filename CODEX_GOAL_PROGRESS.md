@@ -21,6 +21,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-26 JST - Patient Detail Operational Read Slice No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new inbox message was pending at slice start.
+  - Attempted to spawn an API contract subagent for read-only review, but the active agent thread limit was reached. Compensated with Next route docs review, existing route tests, focused route-local regression tests, scoped lint/format, full TypeScript, and diff whitespace checks.
+  - No DB schema, migration, DB data mutation, frontend UI, or Claude-owned files were edited.
+- Hardened `GET /api/patients/:id/care-team`, `GET /api/patients/:id/insurance`, `GET /api/patients/:id/packaging`, and `GET /api/patients/:id/structured-care` so success, auth/validation/not-found responses, and ordinary unexpected read failures are wrapped with sensitive no-store headers.
+- Added fixed sanitized `INTERNAL_ERROR` fallbacks with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added or extended route-local regression coverage proving:
+  - care-team, insurance, packaging, and structured-care success/validation/not-found paths are no-store where applicable;
+  - all four GET routes return sanitized no-store 500 responses that omit raw patient/contact/insurance/medication-like thrown text;
+  - structured-care now has dedicated route coverage for success, `include_ended=true`, blank id, inaccessible patient, and sanitized 500.
+- Preserved existing canVisit auth, assignment-scoped patient/case lookup, contact masking/reliability behavior, insurance classification and JST date-boundary behavior, packaging summary shape, structured-care include-ended query semantics, PUT/POST write behavior, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: patient care-team contacts, insurance records, packaging instructions, and structured-care/narcotic-use state are no longer cacheable at the HTTP boundary, and raw read failures cannot leak PHI-like details to clients.
+- Performance issue improved: none materially changed. The slice adds only response wrapping and tests; no new normal-path DB queries, dependencies, polling, frontend rendering work, schema changes, migrations, DB writes, or external sends were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/patients/[id]/care-team/route.test.ts' 'src/app/api/patients/[id]/insurance/route.test.ts' 'src/app/api/patients/[id]/packaging/route.test.ts' 'src/app/api/patients/[id]/structured-care/route.test.ts' --reporter=dot --testTimeout=30000` passed `4` files / `45` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed after formatting the four route files and new structured-care test.
+  - Full `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped diff whitespace check passed.
+- Next action: commit the patient detail operational read hardening, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first support for the UI/UX objective. The broader all-pages UI/UX objective remains incomplete.
+
 ### 2026-06-26 JST - Patient Detail Clinical Read Slice No-Store Hardening
 
 - Coordination:

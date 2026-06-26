@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2354 JST
+
+- current task: backend-first no-store/fixed-500 hardening for patient detail operational read GET routes: `care-team`, `insurance`, `packaging`, and `structured-care`.
+- files inspected: `git status --short --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, latest `git log --oneline`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `src/app/api/patients/[id]/care-team/route.ts` and `.test.ts`, `src/app/api/patients/[id]/insurance/route.ts` and `.test.ts`, `src/app/api/patients/[id]/packaging/route.ts` and `.test.ts`, `src/app/api/patients/[id]/structured-care/route.ts`, `src/server/services/patient-structured-care-list.ts`, and nearby patient GET hardening patterns.
+- files changed: `src/app/api/patients/[id]/care-team/route.ts`, `src/app/api/patients/[id]/care-team/route.test.ts`, `src/app/api/patients/[id]/insurance/route.ts`, `src/app/api/patients/[id]/insurance/route.test.ts`, `src/app/api/patients/[id]/packaging/route.ts`, `src/app/api/patients/[id]/packaging/route.test.ts`, `src/app/api/patients/[id]/structured-care/route.ts`, `src/app/api/patients/[id]/structured-care/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: four patient detail operational GET routes returned care-team contact, insurance, packaging, and structured-care payloads without the consistent sensitive no-store exported-route envelope used by nearby patient detail sub-slices. `structured-care` also had no dedicated route test coverage.
+- security risks found: reduced PHI/cacheability and error-leakage risk by wrapping the four patient operational GET routes with `withSensitiveNoStore`, adding fixed sanitized `internalError()` fallbacks, and preserving Next control-flow via `unstable_rethrow(err)`. Route tests prove raw patient/contact/insurance/medication-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/patients/[id]/care-team/route.test.ts' 'src/app/api/patients/[id]/insurance/route.test.ts' 'src/app/api/patients/[id]/packaging/route.test.ts' 'src/app/api/patients/[id]/structured-care/route.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint ...`; `pnpm exec prettier --write ...`; `pnpm exec prettier --check ...`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `git diff --check -- ...`.
+- validation results: focused operational read Vitest passed `4` files / `45` tests; scoped ESLint passed; scoped Prettier check passed after formatting the four route files and new structured-care test; full TypeScript check passed; scoped diff-check passed. An API contract subagent spawn was attempted but blocked by the active agent thread limit, so no subagent findings were used for this slice.
+- remaining work: commit only the patient operational read route/test hardening, then commit progress ledgers separately, send agmsg FYI, and continue backend-first support for the UI/UX objective. The broader all-pages UI/UX objective remains incomplete.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260626-2348 JST
 
 - current task: backend-first no-store/fixed-500 hardening for patient detail clinical read GET routes: `conditions`, `contacts`, and `labs`, plus a focused Next route-handler type fix found by full TypeScript.
