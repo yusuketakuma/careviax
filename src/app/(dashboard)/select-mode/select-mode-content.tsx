@@ -20,6 +20,7 @@ export type WorkModeOption = {
   title: string;
   description: string;
   note: string;
+  firstView: string;
   actionLabel: string;
   landingHref: string;
   titleClass: string;
@@ -31,7 +32,8 @@ export const WORK_MODE_OPTIONS: WorkModeOption[] = [
     mode: 'pharmacist',
     title: '薬剤師モード',
     description: '薬の確認・監査・訪問・報告を進めます',
-    note: 'よく使う画面だけを先に表示します',
+    note: '患者安全に関わる未完了作業を優先します',
+    firstView: '今日の運用・鑑査・訪問準備',
     actionLabel: '薬剤師として入る',
     landingHref: '/dashboard',
     titleClass: 'text-blue-600',
@@ -41,7 +43,8 @@ export const WORK_MODE_OPTIONS: WorkModeOption[] = [
     mode: 'clerk_support',
     title: '事務サポートモード',
     description: '受付・送付先確認・日程確認を進めます',
-    note: 'よく使う画面だけを先に表示します',
+    note: '連絡待ちと送付先確認を先に片付けます',
+    firstView: '受付・配送・日程確認',
     actionLabel: '事務として入る',
     landingHref: '/clerk-support',
     titleClass: 'text-violet-600',
@@ -51,7 +54,8 @@ export const WORK_MODE_OPTIONS: WorkModeOption[] = [
     mode: 'management',
     title: '管理モード',
     description: '詰まり・件数・スタッフ負荷を見ます',
-    note: 'よく使う画面だけを先に表示します',
+    note: '止まっている業務と負荷の偏りを見ます',
+    firstView: '詰まり・件数・スタッフ負荷',
     actionLabel: '管理画面へ',
     landingHref: '/admin',
     titleClass: 'text-emerald-600',
@@ -87,27 +91,36 @@ export function SelectModeContent() {
   });
 
   return (
-    <div className="space-y-5" data-testid="select-mode-page">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">
-        今日はどの画面から始めますか?
-      </h1>
+    <div
+      className="mx-auto w-full max-w-6xl space-y-5 px-3 py-4 md:px-6"
+      data-testid="select-mode-page"
+    >
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          今日はどの画面から始めますか?
+        </h1>
+        <p className="hidden text-sm leading-6 text-muted-foreground md:block">
+          選んだモードに合わせて、最初に見る作業と通知の優先順を切り替えます。
+        </p>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {WORK_MODE_OPTIONS.map((option) => (
           <article
             key={option.mode}
             data-testid="select-mode-card"
-            className="flex flex-col gap-3 rounded-lg border border-border/70 bg-card p-4"
+            className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card p-3 md:gap-3 md:p-4"
           >
             <h2 className={cn('text-lg font-bold', option.titleClass)}>{option.title}</h2>
-            <p className="text-sm text-foreground">{option.description}</p>
-            <p className="rounded-md border border-border/60 bg-muted/30 px-3 py-2.5 text-sm text-muted-foreground">
-              {option.note}
-            </p>
+            <p className="text-sm leading-5 text-foreground">{option.description}</p>
+            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm">
+              <p className="font-semibold text-foreground">最初に見る: {option.firstView}</p>
+              <p className="mt-1 leading-5 text-muted-foreground">{option.note}</p>
+            </div>
             <Button
               type="button"
               variant={option.primary ? 'default' : 'outline'}
-              className={cn('mt-auto min-h-11 w-full', !option.primary && 'text-primary')}
+              className={cn('mt-auto !h-auto !min-h-11 w-full', !option.primary && 'text-primary')}
               onClick={() => selectMutation.mutate(option)}
               disabled={selectMutation.isPending}
             >

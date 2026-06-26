@@ -63,10 +63,18 @@ describe('SelectModeContent', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: '今日はどの画面から始めますか?' })).toBeTruthy();
+    expect(
+      screen.getByText('選んだモードに合わせて、最初に見る作業と通知の優先順を切り替えます。'),
+    ).toBeTruthy();
     expect(screen.getByText('薬剤師モード')).toBeTruthy();
     expect(screen.getByText('事務サポートモード')).toBeTruthy();
     expect(screen.getByText('管理モード')).toBeTruthy();
-    expect(screen.getAllByText('よく使う画面だけを先に表示します')).toHaveLength(3);
+    expect(screen.getByText('最初に見る: 今日の運用・鑑査・訪問準備')).toBeTruthy();
+    expect(screen.getByText('最初に見る: 受付・配送・日程確認')).toBeTruthy();
+    expect(screen.getByText('最初に見る: 詰まり・件数・スタッフ負荷')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '薬剤師として入る' }).className).toContain(
+      '!min-h-11',
+    );
   });
 
   it('persists clerk mode then lands on the clerk support dashboard', async () => {
