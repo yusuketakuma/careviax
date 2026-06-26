@@ -135,67 +135,65 @@ export async function buildTodayOpsRail(
   // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜レンジ
   const todayRange = todayUtcRange(now);
 
-  const [auditTasks, todaySchedules, openExceptions] = await Promise.all([
-    tx.dispenseTask.findMany({
-      where: { org_id: orgId, status: 'completed' },
-      orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'asc' }],
-      take: AUDIT_QUEUE_FETCH_LIMIT,
-      select: {
-        id: true,
-        priority: true,
-        due_date: true,
-        updated_at: true,
-        audits: {
-          orderBy: { audited_at: 'desc' },
-          take: 1,
-          select: { result: true },
-        },
-        cycle: {
-          select: {
-            case_: { select: { patient: { select: { name: true } } } },
-            prescription_intakes: {
-              orderBy: { created_at: 'desc' },
-              take: 1,
-              select: {
-                lines: {
-                  select: {
-                    packaging_instruction_tags: true,
-                    packaging_instructions: true,
-                    notes: true,
-                    dispensing_method: true,
-                  },
+  const auditTasks = await tx.dispenseTask.findMany({
+    where: { org_id: orgId, status: 'completed' },
+    orderBy: [{ priority: 'asc' }, { due_date: 'asc' }, { updated_at: 'asc' }],
+    take: AUDIT_QUEUE_FETCH_LIMIT,
+    select: {
+      id: true,
+      priority: true,
+      due_date: true,
+      updated_at: true,
+      audits: {
+        orderBy: { audited_at: 'desc' },
+        take: 1,
+        select: { result: true },
+      },
+      cycle: {
+        select: {
+          case_: { select: { patient: { select: { name: true } } } },
+          prescription_intakes: {
+            orderBy: { created_at: 'desc' },
+            take: 1,
+            select: {
+              lines: {
+                select: {
+                  packaging_instruction_tags: true,
+                  packaging_instructions: true,
+                  notes: true,
+                  dispensing_method: true,
                 },
               },
             },
           },
         },
       },
-    }),
-    tx.visitSchedule.findMany({
-      where: {
-        org_id: orgId,
-        scheduled_date: todayRange,
-        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-      },
-      orderBy: [{ time_window_start: 'asc' }],
-      select: {
-        time_window_start: true,
-        case_: { select: { patient: { select: { name: true } } } },
-      },
-    }),
-    tx.workflowException.findMany({
-      where: { org_id: orgId, status: 'open' },
-      orderBy: { created_at: 'asc' },
-      take: BLOCKED_REASONS_LIMIT,
-      select: {
-        id: true,
-        exception_type: true,
-        description: true,
-        severity: true,
-        created_at: true,
-      },
-    }),
-  ]);
+    },
+  });
+  const todaySchedules = await tx.visitSchedule.findMany({
+    where: {
+      org_id: orgId,
+      scheduled_date: todayRange,
+      schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+    },
+    orderBy: [{ time_window_start: 'asc' }],
+    select: {
+      time_window_start: true,
+      case_: { select: { patient: { select: { name: true } } } },
+    },
+  });
+  const openExceptions = await tx.workflowException.findMany({
+    where: { org_id: orgId, status: 'open' },
+    orderBy: { created_at: 'asc' },
+    take: BLOCKED_REASONS_LIMIT,
+    select: {
+      id: true,
+      exception_type: true,
+      description: true,
+      severity: true,
+      created_at: true,
+    },
+  });
 
   const pendingAudits = (auditTasks as AuditTaskRecord[])
     .filter((task) => {
@@ -230,8 +228,7 @@ export async function buildTodayOpsRail(
       id: exception.id,
       label: exception.description,
       severity: exception.severity === 'critical' ? 'critical' : 'warning',
-      category:
-        EXCEPTION_CATEGORY_LABELS[exception.exception_type] ?? EXCEPTION_CATEGORY_FALLBACK,
+      category: EXCEPTION_CATEGORY_LABELS[exception.exception_type] ?? EXCEPTION_CATEGORY_FALLBACK,
       age_minutes: Math.max(
         0,
         Math.floor((now.getTime() - exception.created_at.getTime()) / 60_000),

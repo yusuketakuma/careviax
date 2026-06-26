@@ -423,7 +423,11 @@ export function DataTable<TData>({
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
-                    <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0" />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-[44px] sm:h-11 sm:min-h-[44px]"
+                    />
                   }
                 >
                   <Columns3 className="mr-1.5 size-3.5" aria-hidden="true" />列

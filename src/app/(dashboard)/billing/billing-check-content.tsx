@@ -70,15 +70,26 @@ function KpiCard({
   testId: string;
 }) {
   return (
-    <article className="rounded-lg border border-border/70 bg-card p-4" data-testid={testId}>
-      <p className="text-sm font-semibold text-foreground">{label}</p>
-      <p className="mt-1 flex items-baseline gap-1">
-        <span className={cn('text-[28px] font-bold leading-9 tabular-nums', valueClassName)}>
-          {value}
-        </span>
-        <span className="text-sm text-muted-foreground">{unit}</span>
-      </p>
-      <div aria-hidden="true" className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+    <article className="rounded-lg border border-border/70 bg-card p-3 sm:p-4" data-testid={testId}>
+      <div className="flex items-start justify-between gap-3 sm:block">
+        <p className="max-w-40 text-xs font-semibold leading-5 text-foreground sm:max-w-none sm:text-sm">
+          {label}
+        </p>
+        <p className="flex shrink-0 items-baseline gap-1 sm:mt-1">
+          <span
+            className={cn(
+              'text-2xl font-bold leading-7 tabular-nums sm:text-[28px] sm:leading-9',
+              valueClassName,
+            )}
+          >
+            {value}
+          </span>
+          <span className="max-w-28 text-xs leading-4 text-muted-foreground sm:max-w-none sm:text-sm">
+            {unit}
+          </span>
+        </p>
+      </div>
+      <div aria-hidden="true" className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted sm:mt-3">
         {bar ? (
           <div
             className={cn('h-full rounded-full', bar.className)}
@@ -97,7 +108,7 @@ function KpiStrip({ data }: { data: BillingCheckResponse }) {
     checkedTotal > 0 ? Math.max((data.review_count / checkedTotal) * 100, 2) : 0;
 
   return (
-    <div className="grid gap-3 sm:grid-cols-3" data-testid="billing-check-kpi-strip">
+    <div className="grid gap-2 sm:grid-cols-3 sm:gap-3" data-testid="billing-check-kpi-strip">
       <KpiCard
         label={`${data.month_short_label} 自動チェック`}
         value={data.passed_count}
@@ -137,7 +148,10 @@ const reviewColumns: ColumnDef<BillingCheckReviewRow>[] = [
     header: '患者',
     cell: ({ row }) =>
       row.original.patient_href ? (
-        <a href={row.original.patient_href} className="font-medium hover:underline">
+        <a
+          href={row.original.patient_href}
+          className="inline-flex min-h-[44px] items-center font-medium hover:underline"
+        >
           {row.original.patient_label}
         </a>
       ) : (
@@ -163,7 +177,7 @@ const reviewColumns: ColumnDef<BillingCheckReviewRow>[] = [
     cell: ({ row }) => (
       <a
         href={row.original.evidence_href}
-        className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-full border border-tag-info/30 bg-tag-info/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-tag-info/15 sm:min-h-8"
+        className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-full border border-tag-info/30 bg-tag-info/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-tag-info/15"
       >
         {row.original.evidence_label} →
       </a>
@@ -176,7 +190,7 @@ const reviewColumns: ColumnDef<BillingCheckReviewRow>[] = [
     cell: ({ row }) => (
       <a
         href={row.original.action_href}
-        className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-md border border-primary/30 bg-card px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5 sm:min-h-8"
+        className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-md border border-primary/30 bg-card px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5"
       >
         {row.original.action_label}
       </a>
@@ -297,7 +311,7 @@ export function BillingCheckContent() {
     <section aria-label="算定チェック" data-testid="billing-check">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-bold text-foreground">算定チェック</h2>
+          <h1 className="text-xl font-bold text-foreground">算定チェック</h1>
           <p className="text-sm text-muted-foreground">
             {data
               ? `${data.month_label} — 合格${data.passed_count} / 疑義${data.review_count}`

@@ -9498,3 +9498,28 @@ Next loop:
   - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/audit-after-task-priority-desktop.png` and `audit-after-task-priority-mobile.png`.
 - Remaining:
   - Commit the audit workbench render-stability/touch-target slice, send agmsg FYI, then continue the all-pages UI/UX sweep. The broader objective is not complete.
+
+### Billing Check First-Fold and Transaction Read Stability
+
+- Coordination:
+  - Continued under Codex-only operation and drained agmsg; no Claude gate was used.
+  - Preserved unrelated dirty work in `.codex/hooks.json`, admin/master-hub, and dispense-workbench files.
+- Bugs found:
+  - `/billing` could hang at the shell because `/api/billing-evidence/check` still performed concurrent Prisma reads inside org-scoped interactive transactions.
+  - The shared `buildTodayOpsRail` helper also used `Promise.all` against the transaction client, which can trigger pg's already-executing-query warning and long waits under the RLS transaction wrapper.
+  - `/billing` had duplicate page orientation (`sr-only` `h1` plus visible `h2`), mobile KPI cards pushed the review table lower than necessary, and desktop table actions could shrink below the 44px PH-OS interaction target.
+- Implemented by Codex:
+  - Serialized the billing check base reads and review-row enrichment reads inside `withOrgContext`, preserving response shape and RLS scope.
+  - Serialized `buildTodayOpsRail` reads so shared right-rail data does not issue concurrent queries on a transaction client.
+  - Promoted the visible billing title to the single page `h1`, removed the duplicate hidden heading, compacted the KPI strip on mobile, and kept billing table links at 44px.
+  - Raised the shared DataTable column-visibility trigger to a 44px target on desktop as well as mobile.
+- Validation:
+  - `pnpm vitest run src/server/services/today-ops-rail.test.ts src/app/api/billing-evidence/check/route.test.ts 'src/app/(dashboard)/billing/billing-check-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `16` tests.
+  - `pnpm vitest run src/components/ui/data-table.test.tsx 'src/app/(dashboard)/billing/billing-check-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `12` tests.
+  - Focused ESLint for DataTable, billing content/page/API, billing tests, and today-ops-rail files: passed.
+  - Focused Prettier check and `git diff --check` for the owned files: passed.
+  - `curl` to `/api/billing-evidence/check?month=current` returned `HTTP=200`; after serialization the focused API timing improved from prior 30-45s timeouts to observed `~5.1s`, with independent browser resource timings of `1.8s` mobile and `4.7s` desktop after warmup.
+  - Independent Playwright verification on `http://localhost:3012/billing`: mobile `390x844` and desktop `1440x1000` both had one visible `h1`, no error text, no horizontal overflow, and `smallCount=0`.
+  - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/billing-mobile-after-sequential-first-fold.png` and `billing-desktop-after-sequential-first-fold.png`.
+- Remaining:
+  - Commit this billing/data-table/today-ops-rail slice, send agmsg FYI, then continue the all-pages UI/UX sweep. The broader objective is not complete.

@@ -89,66 +89,55 @@ export const GET = withAuthContext(
     const base = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        const [
-          passedCount,
-          reviewCount,
-          reviewCandidates,
-          todayPendingCount,
-          latestRevisionRule,
-          rejectionCount,
-          templateKinds,
-          rail,
-        ] = await Promise.all([
-          tx.billingEvidence.count({
-            where: { org_id: ctx.orgId, billing_month: monthStart, claimable: true },
-          }),
-          tx.billingCandidate.count({
-            where: { org_id: ctx.orgId, billing_month: monthStart, status: 'candidate' },
-          }),
-          tx.billingCandidate.findMany({
-            where: { org_id: ctx.orgId, billing_month: monthStart, status: 'candidate' },
-            orderBy: { created_at: 'asc' },
-            take: REVIEW_ROWS_LIMIT,
-            select: {
-              id: true,
-              patient_id: true,
-              cycle_id: true,
-              rule_id: true,
-              billing_name: true,
-              billing_target_name: true,
-              exclusion_reason: true,
-            },
-          }),
-          tx.visitSchedule.count({
-            where: {
-              org_id: ctx.orgId,
-              scheduled_date: todayRange,
-              schedule_status: { in: [...TODAY_PENDING_SCHEDULE_STATUSES] },
-            },
-          }),
-          tx.billingRule.findFirst({
-            where: {
-              org_id: ctx.orgId,
-              billing_scope: 'home_care_ssot',
-              is_active: true,
-              effective_from: { not: null },
-            },
-            orderBy: { effective_from: 'desc' },
-            select: { effective_from: true },
-          }),
-          tx.billingCandidate.count({
-            where: {
-              org_id: ctx.orgId,
-              status: 'excluded',
-              exclusion_reason: { contains: '返戻' },
-            },
-          }),
-          tx.template.groupBy({
-            by: ['template_type'],
-            where: { org_id: ctx.orgId },
-          }),
-          buildTodayOpsRail(tx, ctx.orgId, now),
-        ]);
+        const passedCount = await tx.billingEvidence.count({
+          where: { org_id: ctx.orgId, billing_month: monthStart, claimable: true },
+        });
+        const reviewCount = await tx.billingCandidate.count({
+          where: { org_id: ctx.orgId, billing_month: monthStart, status: 'candidate' },
+        });
+        const reviewCandidates = await tx.billingCandidate.findMany({
+          where: { org_id: ctx.orgId, billing_month: monthStart, status: 'candidate' },
+          orderBy: { created_at: 'asc' },
+          take: REVIEW_ROWS_LIMIT,
+          select: {
+            id: true,
+            patient_id: true,
+            cycle_id: true,
+            rule_id: true,
+            billing_name: true,
+            billing_target_name: true,
+            exclusion_reason: true,
+          },
+        });
+        const todayPendingCount = await tx.visitSchedule.count({
+          where: {
+            org_id: ctx.orgId,
+            scheduled_date: todayRange,
+            schedule_status: { in: [...TODAY_PENDING_SCHEDULE_STATUSES] },
+          },
+        });
+        const latestRevisionRule = await tx.billingRule.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            billing_scope: 'home_care_ssot',
+            is_active: true,
+            effective_from: { not: null },
+          },
+          orderBy: { effective_from: 'desc' },
+          select: { effective_from: true },
+        });
+        const rejectionCount = await tx.billingCandidate.count({
+          where: {
+            org_id: ctx.orgId,
+            status: 'excluded',
+            exclusion_reason: { contains: '返戻' },
+          },
+        });
+        const templateKinds = await tx.template.groupBy({
+          by: ['template_type'],
+          where: { org_id: ctx.orgId },
+        });
+        const rail = await buildTodayOpsRail(tx, ctx.orgId, now);
 
         return {
           passedCount,
@@ -192,26 +181,27 @@ export const GET = withAuthContext(
         : await withOrgContext(
             ctx.orgId,
             async (tx) => {
-              const [patients, cycles, rules] = await Promise.all([
+              const patients =
                 patientIds.length === 0
                   ? []
-                  : tx.patient.findMany({
+                  : await tx.patient.findMany({
                       where: { org_id: ctx.orgId, id: { in: patientIds } },
                       select: { id: true, name: true },
-                    }),
+                    });
+              const cycles =
                 cycleIds.length === 0
                   ? []
-                  : tx.medicationCycle.findMany({
+                  : await tx.medicationCycle.findMany({
                       where: { org_id: ctx.orgId, id: { in: cycleIds } },
                       select: { id: true, case_: { select: { status: true } } },
-                    }),
+                    });
+              const rules =
                 ruleIds.length === 0
                   ? []
-                  : tx.billingRule.findMany({
+                  : await tx.billingRule.findMany({
                       where: { org_id: ctx.orgId, id: { in: ruleIds } },
                       select: { id: true, source_note: true, source_url: true },
-                    }),
-              ]);
+                    });
 
               return { patients, cycles, rules };
             },
