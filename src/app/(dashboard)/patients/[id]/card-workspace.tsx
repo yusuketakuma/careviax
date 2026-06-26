@@ -40,7 +40,6 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  SafetyBoard,
   getHandlingTagBadgeClass,
   getHandlingTagLabel,
 } from '@/components/features/workspace/safety-board';
@@ -48,6 +47,8 @@ import { ProcessChips } from '@/components/features/workspace/process-chips';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
 import { PatientFieldRevisionTimeline } from '@/components/features/patients/patient-field-revision-timeline';
 import { PatientStructuredCarePanel } from '@/components/features/patients/patient-structured-care-panel';
+import { PatientHeader } from '@/components/features/patients/patient-header';
+import type { PatientHeaderSummary } from '@/server/services/patient-detail';
 import {
   WorkspaceActionRail,
   type BlockedReason,
@@ -3799,48 +3800,6 @@ function formatCareLevel(careLevel: string): string {
   return careLevel;
 }
 
-/**
- * 患者識別情報の Pinned ストリップ(氏名・年齢・性別・要介護度・在宅状態)。
- * SSOT 情報重力ゾーン: 患者詳細の最上部 Pinned 帯に「誰の・どんな患者か」を常時表示し、
- * 直下の SafetyBoard(アレルギー/ハイリスク)と合わせて at-a-glance の判断材料を fold 内に固定する。
- */
-function PatientIdentityStrip({ patient }: { patient: PatientOverview }) {
-  const age = differenceInYears(new Date(), new Date(patient.birth_date));
-  const genderLabel = formatGenderLabel(patient.gender);
-  const intake = getPrimaryHomeVisitIntake(patient);
-  const careLevel = patient.scheduling_preference?.care_level ?? intake?.care_level ?? null;
-  const homeStatus = labelOf(intake?.home_care_status, homeCareStatusLabels);
-  const nextVisit = buildVisitScheduleLabel(patient).next;
-
-  return (
-    <div
-      data-testid="patient-identity-strip"
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border/70 bg-card px-4 py-2.5"
-    >
-      <span className="text-base font-bold text-foreground">{patient.name} 様</span>
-      <span className="text-sm tabular-nums text-muted-foreground">
-        {age}歳・{genderLabel}
-      </span>
-      {careLevel ? (
-        <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
-          {formatCareLevel(careLevel)}
-        </span>
-      ) : null}
-      {homeStatus !== '—' ? (
-        <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-          {homeStatus}
-        </span>
-      ) : null}
-      {nextVisit !== '未設定' ? (
-        <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
-          <span className="text-muted-foreground">次回訪問</span>
-          <span className="tabular-nums">{nextVisit}</span>
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
 export function CardWorkspace({
   patientId,
   initialPatient = null,
@@ -3888,6 +3847,18 @@ export function CardWorkspace({
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('在宅運用管理の取得に失敗しました');
+      return res.json();
+    },
+    enabled: Boolean(orgId && patient),
+  });
+
+  const { data: headerSummary, isError: headerSummaryError } = useQuery<PatientHeaderSummary>({
+    queryKey: ['patient-header-summary', patientId, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/header-summary`, {
+        headers: buildOrgHeaders(orgId),
+      });
+      if (!res.ok) throw new Error('患者ヘッダー情報の取得に失敗しました');
       return res.json();
     },
     enabled: Boolean(orgId && patient),
@@ -4444,6 +4415,43 @@ export function CardWorkspace({
     },
   ];
 
+  // 共通患者ヘッダー(PatientHeader)へ渡す派生値。既存ヘルパを再利用し、空相当は null 化して false-empty を避ける。
+  const headerIntake = getPrimaryHomeVisitIntake(patient);
+  const headerCareLevelRaw =
+    patient.scheduling_preference?.care_level ?? headerIntake?.care_level ?? null;
+  const headerCareLevelLabel = headerCareLevelRaw ? formatCareLevel(headerCareLevelRaw) : null;
+  const headerHomeStatusRaw = labelOf(headerIntake?.home_care_status, homeCareStatusLabels);
+  const headerHomeStatusLabel = headerHomeStatusRaw !== '—' ? headerHomeStatusRaw : null;
+  const headerResidenceRaw = formatResidenceLabel(patient);
+  const headerResidenceLabel = headerResidenceRaw !== '住所未設定' ? headerResidenceRaw : null;
+  const headerPrimaryCondition =
+    patient.conditions.find((c) => c.is_primary && c.is_active) ??
+    patient.conditions.find((c) => c.is_active) ??
+    null;
+  const headerPrimaryDiagnosis = headerPrimaryCondition?.name ?? null;
+  // backend getPatientHeaderSummary と同じ tie-break(updated_at → created_at → id, いずれも desc)で
+  // latest ケースを選ぶ。これにより担当4名(header-summary 由来)と介入開始日が同一ケースを指す。
+  const headerLatestCase =
+    [...patient.cases].sort(
+      (a, b) =>
+        b.updated_at.localeCompare(a.updated_at) ||
+        b.created_at.localeCompare(a.created_at) ||
+        b.id.localeCompare(a.id),
+    )[0] ?? null;
+  const headerInterventionStartDate = headerLatestCase?.start_date ?? null;
+  const headerVisit = buildVisitScheduleLabel(patient);
+  const headerLastVisitLabel = headerVisit.latest !== '未設定' ? headerVisit.latest : null;
+  const headerNextVisitLabel = headerVisit.next !== '未設定' ? headerVisit.next : null;
+  const headerFirstVisitLabel = headerSummary?.first_visit_date
+    ? formatOptionalDate(headerSummary.first_visit_date.slice(0, 10))
+    : null;
+  const headerLastPrescriptionLabel = headerSummary?.last_prescribed_date
+    ? formatOptionalDate(headerSummary.last_prescribed_date.slice(0, 10))
+    : null;
+  const headerNextPrescriptionLabel = headerSummary?.next_prescription_expected_date
+    ? formatOptionalDate(headerSummary.next_prescription_expected_date.slice(0, 10))
+    : null;
+
   return (
     <div className="space-y-4" data-testid="card-workspace">
       {headerRow}
@@ -4451,20 +4459,49 @@ export function CardWorkspace({
       {/* 本文を圧迫しないため、補助3点セットは上部バーから開く右ドロワーへ移す。 */}
       <div className="space-y-4">
         <div className="min-w-0 space-y-6">
-          {/* Pinned クラスタ: 識別ストリップ + セーフティボードは密に束ね、以降の主要セクションとは
-              space-y-6 の余白で分離する(SSOT L172 Pinned グルーピング / L279 主要グループ間余白)。 */}
-          <div className="space-y-3">
-            {/* 患者識別ストリップ: 氏名・年齢・性別・要介護度・在宅状態を Pinned 帯最上部に固定 */}
-            <PatientIdentityStrip patient={patient} />
-            {/* セーフティボード: 最上部固定で常時表示。SSOT Pinned ゾーン(アレルギー/ハイリスク薬/腎機能を fold 内最上部に置き、危険タグは絶対に隠さない) */}
-            <SafetyBoard
-              allergy={workspace.safety.allergy ?? undefined}
-              renal={workspace.safety.renal ?? undefined}
-              handlingTags={workspace.safety.handling_tags}
-              swallowing={workspace.safety.swallowing ?? undefined}
-              cautions={workspace.safety.cautions}
+          {/* 共通患者ヘッダー: 識別 + 臨床コンテキスト(担当4名/主病名/介入/処方・訪問) + 安全情報を
+              3 層に圧縮し sticky で fold 内最上部に固定。全患者ページ共通部品で、危険タグは常時表示する。 */}
+          <div className="space-y-1.5">
+            <PatientHeader
+              name={patient.name}
+              kana={patient.name_kana}
+              birthDate={patient.birth_date}
+              genderLabel={formatGenderLabel(patient.gender)}
+              careLevelLabel={headerCareLevelLabel}
+              homeStatusLabel={headerHomeStatusLabel}
+              residenceLabel={headerResidenceLabel}
+              careTeam={{
+                primaryPharmacist: headerSummary?.primary_pharmacist_name ?? null,
+                backupPharmacist: headerSummary?.backup_pharmacist_name ?? null,
+                primaryStaff: headerSummary?.primary_staff_name ?? null,
+                backupStaff: headerSummary?.backup_staff_name ?? null,
+              }}
+              primaryDiagnosis={headerPrimaryDiagnosis}
+              interventionStartDate={headerInterventionStartDate}
+              firstVisitLabel={headerFirstVisitLabel}
+              lastVisitLabel={headerLastVisitLabel}
+              nextVisitLabel={headerNextVisitLabel}
+              lastPrescriptionLabel={headerLastPrescriptionLabel}
+              nextPrescriptionLabel={headerNextPrescriptionLabel}
+              safety={{
+                allergy: workspace.safety.allergy ?? null,
+                renal: workspace.safety.renal ?? null,
+                handlingTags: workspace.safety.handling_tags,
+                swallowing: workspace.safety.swallowing ?? null,
+                cautions: workspace.safety.cautions,
+              }}
               safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
             />
+            {headerSummaryError ? (
+              <p
+                role="status"
+                data-testid="patient-header-summary-error"
+                className="flex items-center gap-1 px-1 text-[11px] font-medium text-tag-hazard"
+              >
+                <TriangleAlert aria-hidden className="size-3.5" />
+                担当者・処方／訪問サマリーを取得できませんでした（最新の担当情報が表示されていない可能性があります）。
+              </p>
+            ) : null}
           </div>
 
           {/* 今回の処方: 安全確認の直後に置き、正本/補助パネルより先に実作業へ入れる */}

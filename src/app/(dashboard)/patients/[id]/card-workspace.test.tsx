@@ -314,6 +314,16 @@ function mockPatientQuery(
       error?: Error;
       isLoading?: boolean;
     };
+    headerSummary?: {
+      primary_pharmacist_name: string | null;
+      backup_pharmacist_name: string | null;
+      primary_staff_name: string | null;
+      backup_staff_name: string | null;
+      first_visit_date: string | null;
+      last_prescribed_date: string | null;
+      next_prescription_expected_date: string | null;
+    };
+    headerSummaryError?: boolean;
     executePatientShareCaseMutation?: boolean;
   } = {},
 ) {
@@ -666,6 +676,30 @@ function mockPatientQuery(
         error: options.patientDocuments?.error ?? null,
       };
     }
+    if (queryKey[0] === 'patient-header-summary') {
+      if (options.headerSummaryError) {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          error: new Error('患者ヘッダー情報の取得に失敗しました'),
+        };
+      }
+      return {
+        data: options.headerSummary ?? {
+          primary_pharmacist_name: null,
+          backup_pharmacist_name: null,
+          primary_staff_name: null,
+          backup_staff_name: null,
+          first_visit_date: null,
+          last_prescribed_date: null,
+          next_prescription_expected_date: null,
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+      };
+    }
 
     return {
       data: patientData,
@@ -997,8 +1031,8 @@ describe('CardWorkspace', () => {
     // タブ UI は廃止(単一スクロール構成)
     expect(screen.queryByRole('tab')).toBeNull();
 
-    // セーフティボード: アレルギー / 腎機能 / 取扱タグ / 嚥下 / 注意
-    const safetyBoard = screen.getByTestId('safety-board');
+    // 共通患者ヘッダーの安全層: アレルギー / 腎機能 / 取扱タグ / 嚥下 / 注意
+    const safetyBoard = screen.getByTestId('patient-header-safety');
     expect(within(safetyBoard).getByText('セフェム系(2019)')).toBeTruthy();
     expect(within(safetyBoard).getByText('eGFR 38(6/1)')).toBeTruthy();
     expect(within(safetyBoard).getByText('一包化')).toBeTruthy();
@@ -1055,6 +1089,72 @@ describe('CardWorkspace', () => {
     expect(screen.queryByTestId('next-action-panel')).toBeNull();
     expect(screen.queryByTestId('blocked-reasons-panel')).toBeNull();
     expect(screen.queryByTestId('evidence-panel')).toBeNull();
+  });
+
+  it('surfaces a clear failure state when the patient header summary fetch errors (no false-empty)', () => {
+    mockPatientQuery(buildWorkspace(), null, {}, { headerSummaryError: true });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    // 取得失敗を「データなし」として黙って隠さず、明示的なエラー帯を出す。
+    const errorNotice = screen.getByTestId('patient-header-summary-error');
+    expect(errorNotice.textContent).toContain('取得できませんでした');
+  });
+
+  it('aligns intervention start with the backend latest-case tie-break (updated_at, created_at, id desc)', () => {
+    const sharedUpdatedAt = '2026-06-15T00:00:00.000Z';
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverrides: {
+          cases: [
+            {
+              id: 'case_a',
+              status: 'active',
+              primary_pharmacist_id: null,
+              backup_pharmacist_id: null,
+              referral_source: null,
+              referral_date: null,
+              start_date: '2026-06-01',
+              end_date: null,
+              end_reason: null,
+              notes: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              updated_at: sharedUpdatedAt,
+              required_visit_support: null,
+              care_team_links: [],
+            },
+            {
+              id: 'case_b',
+              status: 'active',
+              primary_pharmacist_id: null,
+              backup_pharmacist_id: null,
+              referral_source: null,
+              referral_date: null,
+              start_date: '2026-06-10',
+              end_date: null,
+              end_reason: null,
+              notes: null,
+              // updated_at は case_a と同値。tie-break は created_at desc で case_b が勝つ。
+              created_at: '2026-06-10T00:00:00.000Z',
+              updated_at: sharedUpdatedAt,
+              required_visit_support: null,
+              care_team_links: [],
+            },
+          ],
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const header = screen.getByTestId('patient-header');
+    // tie-break 勝者 case_b の start_date(2026/6/10)が介入開始として表示される。
+    expect(within(header).getByText(/2026\/6\/10〜/)).toBeTruthy();
+    // 敗者 case_a の start_date(2026/6/1)は介入開始として出さない。
+    expect(within(header).queryByText(/2026\/6\/1〜/)).toBeNull();
   });
 
   it('routes card workspace patient links through buildPatientHref and encodes compare query params', () => {
