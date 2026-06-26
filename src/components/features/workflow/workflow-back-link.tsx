@@ -13,7 +13,7 @@ export function WorkflowBackLink({ href, label, className }: WorkflowBackLinkPro
     <Link
       href={href}
       className={cn(
-        'inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted sm:h-7 sm:min-h-0',
+        'inline-flex min-h-[44px] items-center gap-1 rounded-lg px-2.5 text-[0.8rem] font-medium text-foreground hover:bg-muted',
         className,
       )}
     >

@@ -9647,3 +9647,24 @@ Next loop:
   - Screenshot evidence: `settings-operational-policy-mobile-after-primary-strip.png` and `settings-operational-policy-desktop-after-primary-strip.png` under `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
 - Remaining:
   - Commit the settings UI/UX continuation as its own grouped commit, then continue the all-pages UI/UX sweep. The broader objective is not complete.
+
+### Pharmacy Cooperation Workflow — Responsive Targets and Table Width
+
+- Coordination:
+  - Continued under Codex-only operation after the settings commit. No DB writes, migrations, external sends, or destructive data operations were performed.
+- Bugs found:
+  - `/workflow/pharmacy-cooperation` still rendered four workflow tables with mobile horizontal scroll regions up to `1152px` wide.
+  - Desktop page-body proof found `43` small targets, mostly compact row actions, form controls, and the shared workflow back link.
+- Implemented by Codex:
+  - Kept the PHI-minimized table content and existing API/mutation behavior intact.
+  - Raised page-body buttons, native selects, text inputs, and the shared workflow back link to the 44px interaction floor.
+  - Moved wide workflow table and action-cell min-widths to `lg:` so mobile can wrap instead of forcing a 72rem table.
+  - Allowed workflow row action buttons to wrap text instead of forcing nowrap overflow.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' src/components/features/workflow/workflow-page-intro.test.tsx --reporter=dot --testTimeout=30000`: passed, `2` files / `24` tests.
+  - `pnpm eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' src/components/features/workflow/workflow-back-link.tsx src/components/features/workflow/workflow-page-intro.test.tsx`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' src/components/features/workflow/workflow-back-link.tsx`: passed.
+  - Independent authenticated Playwright verification on `http://localhost:3012/workflow/pharmacy-cooperation` at `390x844` and `1440x1000`: no console/page errors, no error text, no page horizontal overflow, one visible `h1`, workflow rows present, page-body `smallTargetCount=0`, and `maxRegionOverflow=0`.
+  - Screenshot evidence: `pharmacy-cooperation-workflow-mobile-before.png`, `pharmacy-cooperation-workflow-desktop-before.png`, `pharmacy-cooperation-workflow-mobile-after-responsive-tables.png`, and `pharmacy-cooperation-workflow-desktop-after-responsive-tables.png` under `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
+- Remaining:
+  - Commit this workflow UI/UX group, send agmsg FYI, then continue the all-pages UI/UX sweep. The broader objective is not complete.

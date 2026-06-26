@@ -867,7 +867,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(document.activeElement).toBe(shareCasesRegion);
     expect(
       within(shareCasesRegion).getByRole('table', { name: '患者共有ケース一覧' }).className,
-    ).toContain('min-w-[72rem]');
+    ).toContain('lg:min-w-[72rem]');
     expect(screen.getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
     expect(document.body.textContent).not.toContain('山田');
     expect(document.body.textContent).not.toContain('訪問本文');

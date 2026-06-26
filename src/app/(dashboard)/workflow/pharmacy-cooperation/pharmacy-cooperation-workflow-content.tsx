@@ -907,7 +907,7 @@ function NativeSelect({
       onChange={(event) => onChange(event.target.value)}
       disabled={disabled}
       aria-label={ariaLabel}
-      className="h-10 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+      className="h-11 min-h-11 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
     >
       {children}
     </select>
@@ -944,7 +944,7 @@ function TableFrame({ children, label }: { children: ReactNode; label: string })
       tabIndex={0}
       className="overflow-x-auto rounded-lg border border-border/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:max-h-[70vh] xl:overflow-y-auto"
     >
-      <table className="min-w-[72rem] text-sm" aria-label={label}>
+      <table className="w-full table-fixed text-sm lg:min-w-[72rem]" aria-label={label}>
         {children}
       </table>
     </div>
@@ -1081,7 +1081,7 @@ function ShareCasesTable({
               <td className="px-3 py-2 tabular-nums">
                 {formatDate(row.starts_at)} - {formatDate(row.ends_at)}
               </td>
-              <td className="min-w-[44rem] px-3 py-2">
+              <td className="px-3 py-2 lg:min-w-[44rem]">
                 <div className="flex flex-col gap-3">
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -1211,7 +1211,7 @@ function ShareCasesTable({
                           }
                           placeholder="辞退理由"
                           aria-label={`${row.id} の患者リンク辞退理由`}
-                          className="min-w-52 flex-1"
+                          className="min-w-0 flex-1 lg:min-w-52"
                         />
                         <Button
                           type="button"
@@ -1370,7 +1370,7 @@ function PatientShareConsentsPanel({
               aria-label="患者共有同意有効期限"
             />
           </label>
-          <label className="flex min-h-10 items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={form.allowPdfOutput}
@@ -1378,11 +1378,11 @@ function PatientShareConsentsPanel({
                 setForm((current) => ({ ...current, allowPdfOutput: event.target.checked }))
               }
               aria-label="患者共有同意PDF出力"
-              className="size-4 rounded border-border"
+              className="size-5 rounded border-border"
             />
             PDF出力
           </label>
-          <label className="flex min-h-10 items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
             <input
               type="checkbox"
               checked={form.allowAttachments}
@@ -1390,7 +1390,7 @@ function PatientShareConsentsPanel({
                 setForm((current) => ({ ...current, allowAttachments: event.target.checked }))
               }
               aria-label="患者共有同意添付閲覧"
-              className="size-4 rounded border-border"
+              className="size-5 rounded border-border"
             />
             添付閲覧
           </label>
@@ -1450,7 +1450,7 @@ function PatientShareConsentsPanel({
                         {row.scope_keys.length > 0 ? row.scope_keys.join(', ') : '-'}
                       </TinyMeta>
                     </td>
-                    <td className="min-w-64 px-3 py-2">
+                    <td className="px-3 py-2 lg:min-w-64">
                       {row.revoked_at ? (
                         <TinyMeta>状態遷移はありません</TinyMeta>
                       ) : (
@@ -1572,7 +1572,7 @@ function VisitRequestsTable({
                   </TinyMeta>
                 </div>
               </td>
-              <td className="min-w-72 px-3 py-2">
+              <td className="px-3 py-2 lg:min-w-72">
                 {row.status === 'requested' ? (
                   <div className="flex flex-col gap-2">
                     <div className="flex flex-wrap gap-2">
@@ -2034,7 +2034,7 @@ function PartnerVisitRecordsTable({
                   <TinyMeta>未作成</TinyMeta>
                 )}
               </td>
-              <td className="min-w-[24rem] px-3 py-2">
+              <td className="px-3 py-2 lg:min-w-[24rem]">
                 {row.status === 'draft' || row.status === 'returned' ? (
                   <Button
                     type="button"
@@ -3120,7 +3120,10 @@ export function PharmacyCooperationWorkflowContent() {
   const inactiveShareCases = shareCases.filter((shareCase) => shareCase.status !== 'active');
 
   return (
-    <div className="space-y-6" data-testid="pharmacy-cooperation-workflow">
+    <div
+      className="space-y-6 [&_a[data-slot=button]]:h-11 [&_a[data-slot=button]]:min-h-11 [&_a[data-slot=button]]:whitespace-normal [&_button]:h-11 [&_button]:min-h-11 [&_button]:whitespace-normal [&_input:not([type=checkbox])]:min-h-11 [&_select]:h-11 [&_select]:min-h-11 sm:[&_a[data-slot=button]]:h-11 sm:[&_a[data-slot=button]]:min-h-11 sm:[&_button]:h-11 sm:[&_button]:min-h-11"
+      data-testid="pharmacy-cooperation-workflow"
+    >
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-lg border border-border/70 bg-card p-4">
           <p className="text-sm font-semibold text-foreground">有効化待ち共有</p>
@@ -3160,7 +3163,10 @@ export function PharmacyCooperationWorkflowContent() {
             </div>
             <a
               href={`/reports/${lastReportDraft.report.id}`}
-              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'bg-card')}
+              className={cn(
+                buttonVariants({ variant: 'outline', size: 'sm' }),
+                'h-11 min-h-11 bg-card sm:h-11 sm:min-h-11',
+              )}
             >
               <FileText className="size-4" aria-hidden="true" />
               報告書を開く
