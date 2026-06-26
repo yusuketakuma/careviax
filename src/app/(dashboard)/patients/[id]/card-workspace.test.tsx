@@ -850,13 +850,18 @@ describe('CardWorkspace', () => {
 
     const { container } = render(<CardWorkspace patientId="patient_1" />);
 
-    // ヘッダー行: カード見出し + RX 番号 + サブ + 右上 2 ボタン
-    expect(screen.getByRole('heading', { name: 'カード — 田中 一郎 様' })).toBeTruthy();
-    expect(screen.getByText('RX-2026-0500 / 1枚で患者のいまが全部わかる作業台')).toBeTruthy();
+    // ヘッダー行: カード見出し + RX 番号 + 右上 3 ボタン（氏名は Pinned ストリップに一本化）
+    expect(screen.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeTruthy();
+    expect(screen.getByText('RX-2026-0500')).toBeTruthy();
+    const collaborationLink = screen.getByRole('link', { name: 'いま見ている人' });
+    expect(collaborationLink.getAttribute('href')).toBe('/patients/patient_1/collaboration');
+    expect(collaborationLink.className).toContain('!min-h-11');
     const profileLink = screen.getByRole('link', { name: 'プロフィールを確認' });
     expect(profileLink.getAttribute('href')).toBe('#patient-profile-summary');
+    expect(profileLink.className).toContain('!min-h-11');
     const compareLink = screen.getByRole('link', { name: 'カードを分割表示' });
     expect(compareLink.getAttribute('href')).toBe('/patients/compare?patients=patient_1');
+    expect(compareLink.className).toContain('!min-h-11');
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     const foundationPanel = screen.getByTestId('patient-foundation-panel');
     expect(within(foundationPanel).getByRole('heading', { name: '正本確認' })).toBeTruthy();
@@ -1008,6 +1013,12 @@ describe('CardWorkspace', () => {
       within(chips).getByText('監査').closest('[data-state]')?.getAttribute('data-state'),
     ).toBe('current');
     const prescriptionSection = screen.getByTestId('card-prescription-section');
+    expect(
+      Boolean(
+        prescriptionSection.compareDocumentPosition(foundationPanel) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
     expect(within(prescriptionSection).getByText('アムロジピン錠5mg')).toBeTruthy();
     expect(within(prescriptionSection).getByText('オキシコドン錠5mg')).toBeTruthy();
     expect(within(prescriptionSection).getByText('14錠')).toBeTruthy();
@@ -1155,7 +1166,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
-    expect(screen.getByRole('heading', { name: 'カード — 田中 一郎 様' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '処方カード作業台', level: 1 })).toBeTruthy();
     expect(screen.getByText('進行中のカードがありません')).toBeTruthy();
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     expect(screen.getByTestId('patient-home-operations-panel')).toBeTruthy();
