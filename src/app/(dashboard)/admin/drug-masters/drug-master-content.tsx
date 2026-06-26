@@ -1904,7 +1904,7 @@ function DrugMasterOperationalContent({
               size="sm"
               variant={isStocked ? 'outline' : 'default'}
               disabled={!effectiveSelectedSiteId || stockMutation.isPending}
-              className="h-9 gap-1"
+              className="min-h-[44px] gap-1 sm:min-h-[44px]"
               onClick={(event) => {
                 event.stopPropagation();
                 if (!effectiveSelectedSiteId) {
@@ -2052,127 +2052,9 @@ function DrugMasterOperationalContent({
           title={headerTitle}
           description={headerDescription}
           shortcuts={headerShortcuts}
+          supportingContent={null}
         />
       </div>
-
-      <PageSection
-        title="更新と対象拠点"
-        description="マスター取込、採用品設定の拠点、表示対象を先に固定してから採用薬レビューへ進みます。"
-        tone="subtle"
-        actions={
-          <ActionRail>
-            {IMPORT_ACTIONS.map((action) => (
-              <LoadingButton
-                key={action.key}
-                type="button"
-                size="sm"
-                loading={importMutation.isPending && importMutation.variables === action.key}
-                loadingLabel={action.loadingLabel}
-                onClick={() => importMutation.mutate(action.key)}
-                className="gap-1"
-              >
-                <Download className="size-3.5" aria-hidden="true" />
-                {action.label}
-              </LoadingButton>
-            ))}
-          </ActionRail>
-        }
-      >
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
-          <div className="space-y-3">
-            <FilterSummaryBar
-              items={[
-                {
-                  label: '登録件数',
-                  value:
-                    data?.totalCount !== undefined
-                      ? `${data.totalCount.toLocaleString()}件`
-                      : '読込中',
-                },
-                {
-                  label: '対象拠点',
-                  value:
-                    sites.find((site) => site.id === effectiveSelectedSiteId)?.name ?? '未選択',
-                  tone: effectiveSelectedSiteId ? 'default' : 'warning',
-                },
-                {
-                  label: '表示対象',
-                  value: stockedOnly ? '採用品のみ' : '全件',
-                },
-                ...(activeImport && importMutation.isPending
-                  ? [{ label: '実行中', value: activeImport.label, tone: 'warning' as const }]
-                  : []),
-              ]}
-            />
-            <div className="space-y-2 rounded-xl border border-border/70 bg-background/70 px-3 py-3">
-              <p className="text-sm text-muted-foreground">
-                HOTコードマスターおよびPMDA添付文書の連携が未設定の場合は、システム管理者に連絡してください。
-                PMDA添付文書の取得にはメディナビ/マイ医薬品集の登録が必要です。
-              </p>
-              <details className="group">
-                <summary className="cursor-pointer text-xs text-muted-foreground/70 hover:text-muted-foreground">
-                  技術詳細を表示
-                </summary>
-                <p className="mt-1 rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
-                  HOT: <code>HOT_MASTER_URL</code> または明示 URL
-                  <br />
-                  PMDA: <code>PMDA_PACKAGE_INSERT_FULL_URL</code> /{' '}
-                  <code>PMDA_PACKAGE_INSERT_DELTA_URL</code>
-                </p>
-              </details>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <span
-              id="drug-master-target-site-label"
-              className="flex items-center gap-1 text-xs font-medium text-muted-foreground"
-            >
-              <Building2 className="size-3.5" aria-hidden="true" />
-              採用品設定の対象拠点
-            </span>
-            <Select
-              value={effectiveSelectedSiteId}
-              onValueChange={(value) => {
-                const next = value ?? '';
-                // P1 race guard: 同期的に最新コンテキストを ref へ反映（effect flush を待たない）。
-                effectiveSelectedSiteIdRef.current = next || sitesData?.data?.[0]?.id || '';
-                copySourceSiteIdRef.current = '';
-                setSelectedSiteId(next);
-                setPreferredGenericId(null);
-                setCopySourceSiteId('');
-                setCopyPreview(null);
-                setTemplatePreview(null);
-                setBulkPreview(null);
-                setBulkPreviewExpanded(false);
-              }}
-            >
-              <SelectTrigger
-                id="drug-master-target-site"
-                aria-labelledby="drug-master-target-site-label"
-                className="min-h-[44px] w-full sm:min-h-[44px]"
-              >
-                <SelectValue placeholder="拠点を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {sites.map((site) => (
-                  <SelectItem key={site.id} value={site.id} className="min-h-[44px]">
-                    {site.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <label className="mt-2 flex min-h-[44px] items-center gap-1.5 text-xs text-muted-foreground sm:min-h-0">
-              <input
-                type="checkbox"
-                checked={stockedOnly}
-                onChange={(event) => setStockedOnly(event.target.checked)}
-                className="size-4 rounded border-input"
-              />
-              採用品のみ表示
-            </label>
-          </div>
-        </div>
-      </PageSection>
 
       {variant === 'formulary' && (
         <Card>
@@ -3312,6 +3194,255 @@ function DrugMasterOperationalContent({
         </Card>
       )}
 
+      <PageSection
+        title="検索・フィルタ"
+        description="一覧に表示する医薬品を名称、薬効分類、安全性属性、採用品状態で絞り込みます。"
+      >
+        <div className="space-y-3">
+          <FilterSummaryBar
+            items={[
+              { label: '検索:', value: searchQuery.trim() || 'なし' },
+              { label: '薬効分類:', value: selectedCategoryLabel },
+              { label: '有効フィルタ:', value: `${activeSafetyFilterCount}件` },
+              { label: '採用品:', value: stockedOnly ? '採用品のみ' : '条件なし' },
+            ]}
+          />
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search
+                className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="医薬品名・カナ・YJコード・一般名で検索"
+                className="h-11 min-h-[44px] w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm"
+                aria-label="医薬品検索"
+              />
+            </div>
+            <Select value={category} onValueChange={(value) => setCategory(value ?? category)}>
+              <SelectTrigger
+                aria-label="薬効分類フィルタ"
+                className="min-h-[44px] min-w-[160px] sm:min-h-[44px]"
+              >
+                <SelectValue>{selectedCategoryLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORY_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value} className="min-h-[44px]">
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <label className="relative flex min-h-[44px] items-center gap-1.5 rounded-md px-1 text-sm focus-within:ring-2 focus-within:ring-ring">
+              <input
+                type="checkbox"
+                checked={genericOnly}
+                onChange={(e) => setGenericOnly(e.target.checked)}
+                className="absolute inset-0 cursor-pointer opacity-0"
+              />
+              <span
+                aria-hidden="true"
+                className={`size-4 shrink-0 rounded border ${genericOnly ? 'border-primary bg-primary' : 'border-input bg-background'}`}
+              />
+              後発品のみ
+            </label>
+            <label className="relative flex min-h-[44px] items-center gap-1.5 rounded-md px-1 text-sm focus-within:ring-2 focus-within:ring-ring">
+              <input
+                type="checkbox"
+                checked={narcoticOnly}
+                onChange={(e) => setNarcoticOnly(e.target.checked)}
+                className="absolute inset-0 cursor-pointer opacity-0"
+              />
+              <span
+                aria-hidden="true"
+                className={`size-4 shrink-0 rounded border ${narcoticOnly ? 'border-primary bg-primary' : 'border-input bg-background'}`}
+              />
+              麻薬のみ
+            </label>
+            <label className="relative flex min-h-[44px] items-center gap-1.5 rounded-md px-1 text-sm focus-within:ring-2 focus-within:ring-ring">
+              <input
+                type="checkbox"
+                checked={highRiskOnly}
+                onChange={(e) => setHighRiskOnly(e.target.checked)}
+                className="absolute inset-0 cursor-pointer opacity-0"
+              />
+              <span
+                aria-hidden="true"
+                className={`size-4 shrink-0 rounded border ${highRiskOnly ? 'border-primary bg-primary' : 'border-input bg-background'}`}
+              />
+              ハイリスク薬のみ
+            </label>
+            <label className="relative flex min-h-[44px] items-center gap-1.5 rounded-md px-1 text-sm focus-within:ring-2 focus-within:ring-ring">
+              <input
+                type="checkbox"
+                checked={lasaOnly}
+                onChange={(e) => setLasaOnly(e.target.checked)}
+                className="absolute inset-0 cursor-pointer opacity-0"
+              />
+              <span
+                aria-hidden="true"
+                className={`size-4 shrink-0 rounded border ${lasaOnly ? 'border-primary bg-primary' : 'border-input bg-background'}`}
+              />
+              LASA注意のみ
+            </label>
+            <label className="relative flex min-h-[44px] items-center gap-1.5 rounded-md px-1 text-sm focus-within:ring-2 focus-within:ring-ring">
+              <input
+                type="checkbox"
+                checked={stockedOnly}
+                onChange={(e) => setStockedOnly(e.target.checked)}
+                className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                disabled={!effectiveSelectedSiteId}
+              />
+              <span
+                aria-hidden="true"
+                className={`size-4 shrink-0 rounded border ${stockedOnly ? 'border-primary bg-primary' : 'border-input bg-background'}`}
+              />
+              採用品のみ
+            </label>
+          </div>
+        </div>
+      </PageSection>
+
+      <DataTable
+        columns={tableColumns}
+        data={drugs}
+        isLoading={isLoading}
+        caption="医薬品マスター一覧"
+        onRowClick={(index) => openDrugDetail(drugs[index]?.id ?? null)}
+        selectedRowIndex={selectedRowIndex}
+        errorMessage={
+          isDrugMasterError
+            ? drugMasterError instanceof Error
+              ? drugMasterError.message
+              : '医薬品マスターの取得に失敗しました'
+            : undefined
+        }
+        onRetry={() => void refetchDrugMasters()}
+      />
+
+      <PageSection
+        title="更新と対象拠点"
+        description="マスター取込、採用品設定の拠点、表示対象をここで固定できます。"
+        tone="subtle"
+        actions={
+          <ActionRail>
+            {IMPORT_ACTIONS.map((action) => (
+              <LoadingButton
+                key={action.key}
+                type="button"
+                size="sm"
+                loading={importMutation.isPending && importMutation.variables === action.key}
+                loadingLabel={action.loadingLabel}
+                onClick={() => importMutation.mutate(action.key)}
+                className="min-h-[44px] gap-1 sm:min-h-[44px]"
+              >
+                <Download className="size-3.5" aria-hidden="true" />
+                {action.label}
+              </LoadingButton>
+            ))}
+          </ActionRail>
+        }
+      >
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
+          <div className="space-y-3">
+            <FilterSummaryBar
+              items={[
+                {
+                  label: '登録件数',
+                  value:
+                    data?.totalCount !== undefined
+                      ? `${data.totalCount.toLocaleString()}件`
+                      : '読込中',
+                },
+                {
+                  label: '対象拠点',
+                  value:
+                    sites.find((site) => site.id === effectiveSelectedSiteId)?.name ?? '未選択',
+                  tone: effectiveSelectedSiteId ? 'default' : 'warning',
+                },
+                {
+                  label: '表示対象',
+                  value: stockedOnly ? '採用品のみ' : '全件',
+                },
+                ...(activeImport && importMutation.isPending
+                  ? [{ label: '実行中', value: activeImport.label, tone: 'warning' as const }]
+                  : []),
+              ]}
+            />
+            <div className="space-y-2 rounded-xl border border-border/70 bg-background/70 px-3 py-3">
+              <p className="text-sm text-muted-foreground">
+                HOTコードマスターおよびPMDA添付文書の連携が未設定の場合は、システム管理者に連絡してください。
+                PMDA添付文書の取得にはメディナビ/マイ医薬品集の登録が必要です。
+              </p>
+              <details className="group">
+                <summary className="cursor-pointer text-xs text-muted-foreground/70 hover:text-muted-foreground">
+                  技術詳細を表示
+                </summary>
+                <p className="mt-1 rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
+                  HOT: <code>HOT_MASTER_URL</code> または明示 URL
+                  <br />
+                  PMDA: <code>PMDA_PACKAGE_INSERT_FULL_URL</code> /{' '}
+                  <code>PMDA_PACKAGE_INSERT_DELTA_URL</code>
+                </p>
+              </details>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <span
+              id="drug-master-target-site-label"
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground"
+            >
+              <Building2 className="size-3.5" aria-hidden="true" />
+              採用品設定の対象拠点
+            </span>
+            <Select
+              value={effectiveSelectedSiteId}
+              onValueChange={(value) => {
+                const next = value ?? '';
+                // P1 race guard: 同期的に最新コンテキストを ref へ反映（effect flush を待たない）。
+                effectiveSelectedSiteIdRef.current = next || sitesData?.data?.[0]?.id || '';
+                copySourceSiteIdRef.current = '';
+                setSelectedSiteId(next);
+                setPreferredGenericId(null);
+                setCopySourceSiteId('');
+                setCopyPreview(null);
+                setTemplatePreview(null);
+                setBulkPreview(null);
+                setBulkPreviewExpanded(false);
+              }}
+            >
+              <SelectTrigger
+                id="drug-master-target-site"
+                aria-labelledby="drug-master-target-site-label"
+                className="min-h-[44px] w-full sm:min-h-[44px]"
+              >
+                <SelectValue placeholder="拠点を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                {sites.map((site) => (
+                  <SelectItem key={site.id} value={site.id} className="min-h-[44px]">
+                    {site.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <label className="mt-2 flex min-h-[44px] items-center gap-1.5 text-xs text-muted-foreground sm:min-h-0">
+              <input
+                type="checkbox"
+                checked={stockedOnly}
+                onChange={(event) => setStockedOnly(event.target.checked)}
+                className="size-4 rounded border-input"
+              />
+              採用品のみ表示
+            </label>
+          </div>
+        </div>
+      </PageSection>
+
       {masterStatusData && (
         <PageSection
           title="マスター更新ステータス"
@@ -3324,6 +3455,7 @@ function DrugMasterOperationalContent({
               loading={freshnessCheckMutation.isPending}
               loadingLabel="確認中"
               onClick={() => freshnessCheckMutation.mutate()}
+              className="min-h-[44px] sm:min-h-[44px]"
             >
               鮮度チェック
             </LoadingButton>
@@ -3423,7 +3555,7 @@ function DrugMasterOperationalContent({
             <Button
               variant="outline"
               size="sm"
-              className="mt-2 w-full"
+              className="mt-2 min-h-[44px] w-full sm:min-h-[44px]"
               disabled={importMutation.isPending || autoRefreshMutation.isPending}
               onClick={() => autoRefreshMutation.mutate()}
             >
@@ -3538,118 +3670,6 @@ function DrugMasterOperationalContent({
           )}
         </div>
       </PageSection>
-
-      {/* Search & Filters */}
-      <PageSection
-        title="検索・フィルタ"
-        description="一覧に表示する医薬品を名称、薬効分類、安全性属性、採用品状態で絞り込みます。"
-      >
-        <div className="space-y-3">
-          <FilterSummaryBar
-            items={[
-              { label: '検索:', value: searchQuery.trim() || 'なし' },
-              { label: '薬効分類:', value: selectedCategoryLabel },
-              { label: '有効フィルタ:', value: `${activeSafetyFilterCount}件` },
-              { label: '採用品:', value: stockedOnly ? '採用品のみ' : '条件なし' },
-            ]}
-          />
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search
-                className="absolute left-2.5 top-2 size-4 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="医薬品名・カナ・YJコード・一般名で検索"
-                className="h-9 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm"
-                aria-label="医薬品検索"
-              />
-            </div>
-            <Select value={category} onValueChange={(value) => setCategory(value ?? category)}>
-              <SelectTrigger
-                aria-label="薬効分類フィルタ"
-                className="min-h-[44px] min-w-[160px] sm:min-h-[44px]"
-              >
-                <SelectValue>{selectedCategoryLabel}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {CATEGORY_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value} className="min-h-[44px]">
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <label className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={genericOnly}
-                onChange={(e) => setGenericOnly(e.target.checked)}
-                className="size-4 rounded border-input"
-              />
-              後発品のみ
-            </label>
-            <label className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={narcoticOnly}
-                onChange={(e) => setNarcoticOnly(e.target.checked)}
-                className="size-4 rounded border-input"
-              />
-              麻薬のみ
-            </label>
-            <label className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={highRiskOnly}
-                onChange={(e) => setHighRiskOnly(e.target.checked)}
-                className="size-4 rounded border-input"
-              />
-              ハイリスク薬のみ
-            </label>
-            <label className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={lasaOnly}
-                onChange={(e) => setLasaOnly(e.target.checked)}
-                className="size-4 rounded border-input"
-              />
-              LASA注意のみ
-            </label>
-            <label className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
-                checked={stockedOnly}
-                onChange={(e) => setStockedOnly(e.target.checked)}
-                className="size-4 rounded border-input"
-                disabled={!effectiveSelectedSiteId}
-              />
-              採用品のみ
-            </label>
-          </div>
-        </div>
-      </PageSection>
-
-      {/* Table */}
-      <DataTable
-        columns={tableColumns}
-        data={drugs}
-        isLoading={isLoading}
-        caption="医薬品マスター一覧"
-        onRowClick={(index) => openDrugDetail(drugs[index]?.id ?? null)}
-        selectedRowIndex={selectedRowIndex}
-        errorMessage={
-          isDrugMasterError
-            ? drugMasterError instanceof Error
-              ? drugMasterError.message
-              : '医薬品マスターの取得に失敗しました'
-            : undefined
-        }
-        onRetry={() => void refetchDrugMasters()}
-      />
 
       <ConfirmDialog
         open={formularyRequestDecisionTarget !== null}

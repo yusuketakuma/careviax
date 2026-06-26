@@ -337,7 +337,7 @@ export function DataTable<TData>({
                     <button
                       type="button"
                       className={cn(
-                        'flex items-center gap-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        'flex min-h-[44px] items-center gap-1 rounded-md px-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         isSpecial && 'sr-only',
                       )}
                       onClick={header.column.getToggleSortingHandler()}
