@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1016 JST
+
+- current task: stop the rogue Codex monitor bridge that was auto-running extra Codex turns and rewriting coordination state while the live user directive has Claude+Codex parallel screen-partitioned work active.
+- files inspected: agmsg inbox; `delivery.sh status codex /Users/yusuke/workspace/careviax`; `.codex/hooks.json`; active `codex-bridge` / `watch-once` / `codex --remote` processes; recent commits `648fce78`, `d78ee492`, `4c2fd87d`; `.agent-loop/STATE.md`; `.agent-loop/README.md`; `.agent-loop/LOCKS.md`; `git status --short --untracked-files=all`.
+- files changed: `.codex/hooks.json` and this Ralph state entry. Codex did not edit `.agent-loop/STATE.md`, `.agent-loop/README.md`, `.agent-loop/LOCKS.md`, `patients/**`, or DB/schema/data/migration files in this correction.
+- bugs found: agmsg Codex monitor mode left a stale `codex-bridge.js --inline-inbox` plus `codex --remote` launcher alive. That bridge resumed a Codex thread on agmsg wakeups, creating duplicate Codex turns that committed rev7 Codex-only loop docs after the live session had re-enabled Claude+Codex parallel mode.
+- security risks found: none changed in application logic. No auth, authorization, PHI projection, API, schema, migration, seed, DB write path, external send, secret, or destructive operation was changed.
+- performance issues found: stopped duplicate background Codex turn execution and avoided further extra local work triggered by agmsg monitor wakeups.
+- validation commands: `delivery.sh set off codex /Users/yusuke/workspace/careviax`; `delivery.sh set turn codex /Users/yusuke/workspace/careviax`; `delivery.sh status codex /Users/yusuke/workspace/careviax`; `node -e "JSON.parse(require('fs').readFileSync('.codex/hooks.json','utf8')); console.log('hooks json ok')"`; `ps -axo pid,ppid,command | rg -i "codex-bridge|codex --remote|watch-once" || true`.
+- validation results: delivery mode is now `turn` with `SessionStart`/`SessionEnd` removed and one `Stop` inbox-check hook installed; stale Codex bridge/remote processes were killed; hooks JSON parses successfully; no `codex-bridge`, `codex --remote`, or `watch-once` process remains after cleanup. The remaining agmsg watch process reported by delivery status is Claude's watcher, not Codex's bridge.
+- remaining work: keep `.agent-loop` mode docs unstaged and avoid further mode-doc thrash until the user/persistent directive is reconciled. Continue Codex-owned operational screen slices only after exact-path locks and manual inbox drains.
+- next action: commit the `.codex/hooks.json` runtime fix separately, notify Claude, then continue the Codex operational lane without touching `patients/**` or `.agent-loop` mode docs.
+
 ### 20260626-1010 JST
 
 - current task: continue the active repo-wide UI/UX refinement goal with a screenshot-driven `/visits` first-fold polish slice, then commit all changed groups separately.
