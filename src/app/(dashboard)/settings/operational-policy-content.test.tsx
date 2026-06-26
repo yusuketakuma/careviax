@@ -197,7 +197,19 @@ describe('OperationalPolicyContent', () => {
 
     // 見出し帯: 設定 + 薬局名 + ロック注記
     expect(screen.getByRole('heading', { name: '設定' })).toBeTruthy();
-    expect(screen.getByText(/薬局: ひまわり薬局 小倉北 — 安全項目はロック/)).toBeTruthy();
+    expect(screen.getByTestId('policy-pharmacy-chip').textContent).toContain(
+      '薬局: ひまわり薬局 小倉北',
+    );
+    expect(screen.getByTestId('policy-lock-summary').textContent).toContain('安全3項目ロック');
+
+    // Primary zone: 保存前確認・詰まり理由・次アクションを本文側にも出す
+    const primaryStrip = screen.getByTestId('policy-primary-strip');
+    expect(within(primaryStrip).getByText('保存前に影響範囲を確認')).toBeTruthy();
+    expect(within(primaryStrip).getByText('3項目ロック / 今月3件の変更履歴')).toBeTruthy();
+    expect(within(primaryStrip).getByText(/ご家族の同意待ち/)).toBeTruthy();
+    expect(
+      within(primaryStrip).getByRole('link', { name: '麻薬監査を開始 — 12:00期限' }),
+    ).toBeTruthy();
 
     // 安全カード: ロック2件 + 感度セグメント(標準が選択中)
     const safety = screen.getByTestId('policy-safety-card');
@@ -228,9 +240,12 @@ describe('OperationalPolicyContent', () => {
     expect(screen.getByTestId('policy-impact-banner').textContent).toContain('影響範囲');
 
     // 右レール: 次にやること(青主操作1つ)/止まっている理由/根拠・記録
-    const nextActionLink = screen.getByRole('link', { name: '麻薬監査を開始 — 12:00期限' });
+    const nextActionPanel = screen.getByTestId('next-action-panel');
+    const nextActionLink = within(nextActionPanel).getByRole('link', {
+      name: '麻薬監査を開始 — 12:00期限',
+    });
     expect(nextActionLink.getAttribute('href')).toBe('/audit');
-    expect(screen.getByText(/14:00訪問\(田中 一郎様\)の持参薬です/)).toBeTruthy();
+    expect(within(nextActionPanel).getByText(/14:00訪問\(田中 一郎様\)の持参薬です/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: '止まっている理由' })).toBeTruthy();
     expect(screen.getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();
     expect(screen.getByText('送付先の確認(やまもと内科)')).toBeTruthy();

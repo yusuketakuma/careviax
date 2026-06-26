@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Lock } from 'lucide-react';
+import { AlertTriangle, ClipboardCheck, History, Lock, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
@@ -254,6 +254,93 @@ function PolicyCard({
   );
 }
 
+function PolicyPrimaryStrip({
+  lockedCount,
+  changeLogCount,
+  nextAction,
+  blockedReasons,
+}: {
+  lockedCount: number;
+  changeLogCount: number;
+  nextAction: NextActionPanelProps;
+  blockedReasons: BlockedReason[];
+}) {
+  const topBlockedReason = blockedReasons[0] ?? null;
+
+  return (
+    <section
+      className="mt-4 overflow-hidden rounded-lg border border-border/70 bg-card"
+      aria-label="設定変更の安全確認"
+      data-testid="policy-primary-strip"
+    >
+      <div className="grid divide-y divide-border/70 md:grid-cols-[1.05fr_1fr_1.2fr] md:divide-x md:divide-y-0">
+        <div className="flex gap-3 p-3.5">
+          <ShieldCheck className="mt-0.5 size-5 shrink-0 text-state-done" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-foreground">保存前に影響範囲を確認</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              変更前後・対象画面・ロック項目を確認してから反映します。
+            </p>
+            <p className="mt-2 text-xs font-semibold text-muted-foreground">
+              {lockedCount}項目ロック / 今月{changeLogCount}件の変更履歴
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 p-3.5">
+          {topBlockedReason ? (
+            <AlertTriangle
+              className="mt-0.5 size-5 shrink-0 text-state-confirm"
+              aria-hidden="true"
+            />
+          ) : (
+            <History className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-foreground">止まっている理由</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {topBlockedReason
+                ? `${topBlockedReason.label}${topBlockedReason.ageLabel ? ` / ${topBlockedReason.ageLabel}` : ''}`
+                : 'いま期限で止まっている作業はありません。'}
+            </p>
+            <p className="mt-2 text-xs font-semibold text-muted-foreground">
+              {blockedReasons.length > 0
+                ? `${blockedReasons.length}件を補助パネルで確認`
+                : '補助パネルに根拠を保持'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-3 p-3.5">
+          <ClipboardCheck className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-foreground">次にやること</p>
+            {nextAction.description ? (
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {nextAction.description}
+              </p>
+            ) : null}
+            {nextAction.actionHref ? (
+              <Button asChild className="mt-3 min-h-[44px] w-full justify-center">
+                <Link href={nextAction.actionHref}>{nextAction.actionLabel}</Link>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className="mt-3 min-h-[44px] w-full justify-center"
+                onClick={nextAction.onAction}
+                disabled={nextAction.actionDisabled}
+              >
+                {nextAction.actionLabel}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 影響範囲の確認(保存前)
 // ---------------------------------------------------------------------------
@@ -431,6 +518,7 @@ export function OperationalPolicyContent() {
   const data = policyQuery.data ?? null;
   const cockpit = cockpitQuery.data ?? null;
   const canEdit = data?.can_edit ?? false;
+  const lockedCount = data?.locked_items.length ?? 0;
 
   function requestChange(change: PendingChange) {
     setPendingChange(change);
@@ -491,11 +579,21 @@ export function OperationalPolicyContent() {
 
   return (
     <section aria-label="薬局運用ポリシー" data-testid="operational-policy">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-bold text-foreground">設定</h1>
-        <p className="text-sm text-muted-foreground">
-          薬局: {data?.pharmacy_label ?? '—'} — 安全項目はロック
-        </p>
+        <span
+          className="inline-flex min-h-7 max-w-full items-center rounded-full border border-border/70 bg-card px-3 text-sm font-medium text-muted-foreground"
+          data-testid="policy-pharmacy-chip"
+        >
+          薬局: {data?.pharmacy_label ?? '—'}
+        </span>
+        <span
+          className="inline-flex min-h-7 items-center gap-1 rounded-full border border-state-done/25 bg-state-done/10 px-3 text-sm font-semibold text-state-done"
+          data-testid="policy-lock-summary"
+        >
+          <Lock className="size-3.5" aria-hidden="true" />
+          安全{lockedCount}項目ロック
+        </span>
       </div>
 
       <div className="mt-4">
@@ -512,182 +610,191 @@ export function OperationalPolicyContent() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            {/* 左列: 安全 / 働き方 */}
-            <div className="min-w-0 space-y-4">
-              <PolicyCard
-                title="安全"
-                note="下げられない項目はロック表示"
-                testId="policy-safety-card"
-              >
-                <PolicyRow
-                  title="安全タグの表示"
-                  description="麻薬・冷所・アレルギー等のタグはすべての画面で常時表示されます"
-                  control={<LockedPill />}
-                />
-                <PolicyRow
-                  title="安全サインの感度"
-                  description="「気になるサイン」の通知頻度は調整できますが、安全タグより下げることはできません"
-                  control={
-                    <SensitivitySegment
-                      value={data.policy.safety_sign_sensitivity}
-                      disabled={!canEdit || updateMutation.isPending}
-                      onSelect={(next) =>
-                        requestChange({
-                          values: { safety_sign_sensitivity: next },
-                          title: '安全サインの感度を変更',
-                          currentLabel: sensitivityLabel(data.policy.safety_sign_sensitivity),
-                          nextLabel: sensitivityLabel(next),
-                          affectedScreens: ['通知', 'ダッシュボード', '患者カード'],
-                          impact:
-                            '「気になるサイン」の通知頻度が変わります。対象: チーム全員の通知とダッシュボード表示。安全タグの常時表示は変わりません。',
-                        })
-                      }
-                    />
-                  }
-                />
-                <PolicyRow
-                  title="二人制監査"
-                  description="調剤者と監査者の同一人チェック"
-                  control={<LockedPill />}
-                />
-              </PolicyCard>
-
-              <PolicyCard title="働き方" testId="policy-workstyle-card">
-                <PolicyRow
-                  title="WIP目安"
-                  description="工程ごとの仕掛かり上限(超過で赤表示)。変更はチーム全員のダッシュボードに影響します"
-                  meta={
-                    <span className="text-xs font-semibold text-state-confirm">
-                      {data.wip_revision_label}
-                    </span>
-                  }
-                  control={
-                    <Button asChild variant="outline" size="sm">
-                      <Link href="/dashboard#dashboard-process-now">→ 詰まり管理へ</Link>
-                    </Button>
-                  }
-                />
-                <PolicyRow
-                  title="余白の計算"
-                  description="確定予定と移動時間から自動計算。手動の「ブロック時間」も余白から除外されます"
-                  control={
-                    <OnOffPill
-                      on={data.policy.slack_auto_calc}
-                      disabled={!canEdit || updateMutation.isPending}
-                      label="余白の計算"
-                      onToggle={() =>
-                        requestChange({
-                          values: { slack_auto_calc: !data.policy.slack_auto_calc },
-                          title: '余白の計算を変更',
-                          currentLabel: data.policy.slack_auto_calc ? 'ON' : 'OFF',
-                          nextLabel: data.policy.slack_auto_calc ? 'OFF' : 'ON',
-                          affectedScreens: ['スケジュール', 'ダッシュボード'],
-                          impact:
-                            'スケジュールの「余白」表示の計算方法が変わります。対象: チーム全員のスケジュール画面とダッシュボード。',
-                        })
-                      }
-                    />
-                  }
-                />
-                <PolicyRow
-                  title="割り込み防護"
-                  description="調剤・監査中は緊急(赤)以外の通知で画面を切り替えません"
-                  control={
-                    <OnOffPill
-                      on={data.policy.interrupt_guard}
-                      disabled={!canEdit || updateMutation.isPending}
-                      label="割り込み防護"
-                      onToggle={() =>
-                        requestChange({
-                          values: { interrupt_guard: !data.policy.interrupt_guard },
-                          title: '割り込み防護を変更',
-                          currentLabel: data.policy.interrupt_guard ? 'ON' : 'OFF',
-                          nextLabel: data.policy.interrupt_guard ? 'OFF' : 'ON',
-                          affectedScreens: ['調剤', '監査', '通知'],
-                          impact:
-                            '調剤・監査中の通知の出方が変わります。対象: チーム全員の調剤・監査画面。緊急(赤)の通知は常に表示されます。',
-                        })
-                      }
-                    />
-                  }
-                />
-              </PolicyCard>
-            </div>
-
-            {/* 中央列: 通知 + 影響範囲バナー */}
-            <div className="min-w-0 space-y-4">
-              <PolicyCard title="通知" testId="policy-notification-card">
-                <PolicyRow
-                  title="緊急(赤)の通知"
-                  description="期限・安全に関わる通知 — 常にONです"
-                  control={<LockedPill />}
-                />
-                <PolicyRow
-                  title="待ち解除の通知"
-                  description="止まっていた仕事が再開可能になったとき(照会回答の到着など)"
-                  control={
-                    <OnOffPill
-                      on={data.policy.wait_release_notification}
-                      disabled={!canEdit || updateMutation.isPending}
-                      label="待ち解除の通知"
-                      onToggle={() =>
-                        requestChange({
-                          values: {
-                            wait_release_notification: !data.policy.wait_release_notification,
-                          },
-                          title: '待ち解除の通知を変更',
-                          currentLabel: data.policy.wait_release_notification ? 'ON' : 'OFF',
-                          nextLabel: data.policy.wait_release_notification ? 'OFF' : 'ON',
-                          affectedScreens: ['通知', '工程の今', 'ハンドオフ'],
-                          impact:
-                            '止まっていた仕事が再開できるようになったときの通知が変わります。対象: チーム全員の通知。',
-                        })
-                      }
-                    />
-                  }
-                />
-                <PolicyRow
-                  title="静かな時間"
-                  description="訪問モード中は緊急以外をまとめて後で表示"
-                  control={
-                    <OnOffPill
-                      on={data.policy.quiet_hours}
-                      disabled={!canEdit || updateMutation.isPending}
-                      label="静かな時間"
-                      onToggle={() =>
-                        requestChange({
-                          values: { quiet_hours: !data.policy.quiet_hours },
-                          title: '静かな時間を変更',
-                          currentLabel: data.policy.quiet_hours ? 'ON' : 'OFF',
-                          nextLabel: data.policy.quiet_hours ? 'OFF' : 'ON',
-                          affectedScreens: ['訪問', '通知', 'モード表示'],
-                          impact:
-                            '訪問モード中の通知の出方が変わります。対象: 訪問担当者の画面。緊急(赤)の通知は常に表示されます。',
-                        })
-                      }
-                    />
-                  }
-                />
-              </PolicyCard>
-
-              <p
-                className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2.5 text-sm leading-6 text-state-confirm"
-                data-testid="policy-impact-banner"
-              >
-                設定の変更は保存前に<strong className="font-bold">影響範囲</strong>
-                (誰の・どの画面が変わるか)を表示します。「いつの間にか変わっていた」を起こさないためです。
-              </p>
-            </div>
-
-            <WorkspaceActionRail
+          <>
+            <PolicyPrimaryStrip
+              lockedCount={lockedCount}
+              changeLogCount={data.change_log_count_this_month}
               nextAction={nextAction}
               blockedReasons={blockedReasons}
-              blockedReasonsEmptyLabel="止まっている作業はありません"
-              evidence={evidence}
-              evidenceOpenLabel="開く"
             />
-          </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              {/* 左列: 安全 / 働き方 */}
+              <div className="min-w-0 space-y-4">
+                <PolicyCard
+                  title="安全"
+                  note="下げられない項目はロック表示"
+                  testId="policy-safety-card"
+                >
+                  <PolicyRow
+                    title="安全タグの表示"
+                    description="麻薬・冷所・アレルギー等のタグはすべての画面で常時表示されます"
+                    control={<LockedPill />}
+                  />
+                  <PolicyRow
+                    title="安全サインの感度"
+                    description="「気になるサイン」の通知頻度は調整できますが、安全タグより下げることはできません"
+                    control={
+                      <SensitivitySegment
+                        value={data.policy.safety_sign_sensitivity}
+                        disabled={!canEdit || updateMutation.isPending}
+                        onSelect={(next) =>
+                          requestChange({
+                            values: { safety_sign_sensitivity: next },
+                            title: '安全サインの感度を変更',
+                            currentLabel: sensitivityLabel(data.policy.safety_sign_sensitivity),
+                            nextLabel: sensitivityLabel(next),
+                            affectedScreens: ['通知', 'ダッシュボード', '患者カード'],
+                            impact:
+                              '「気になるサイン」の通知頻度が変わります。対象: チーム全員の通知とダッシュボード表示。安全タグの常時表示は変わりません。',
+                          })
+                        }
+                      />
+                    }
+                  />
+                  <PolicyRow
+                    title="二人制監査"
+                    description="調剤者と監査者の同一人チェック"
+                    control={<LockedPill />}
+                  />
+                </PolicyCard>
+
+                <PolicyCard title="働き方" testId="policy-workstyle-card">
+                  <PolicyRow
+                    title="WIP目安"
+                    description="工程ごとの仕掛かり上限(超過で赤表示)。変更はチーム全員のダッシュボードに影響します"
+                    meta={
+                      <span className="text-xs font-semibold text-state-confirm">
+                        {data.wip_revision_label}
+                      </span>
+                    }
+                    control={
+                      <Button asChild variant="outline" size="sm">
+                        <Link href="/dashboard#dashboard-process-now">→ 詰まり管理へ</Link>
+                      </Button>
+                    }
+                  />
+                  <PolicyRow
+                    title="余白の計算"
+                    description="確定予定と移動時間から自動計算。手動の「ブロック時間」も余白から除外されます"
+                    control={
+                      <OnOffPill
+                        on={data.policy.slack_auto_calc}
+                        disabled={!canEdit || updateMutation.isPending}
+                        label="余白の計算"
+                        onToggle={() =>
+                          requestChange({
+                            values: { slack_auto_calc: !data.policy.slack_auto_calc },
+                            title: '余白の計算を変更',
+                            currentLabel: data.policy.slack_auto_calc ? 'ON' : 'OFF',
+                            nextLabel: data.policy.slack_auto_calc ? 'OFF' : 'ON',
+                            affectedScreens: ['スケジュール', 'ダッシュボード'],
+                            impact:
+                              'スケジュールの「余白」表示の計算方法が変わります。対象: チーム全員のスケジュール画面とダッシュボード。',
+                          })
+                        }
+                      />
+                    }
+                  />
+                  <PolicyRow
+                    title="割り込み防護"
+                    description="調剤・監査中は緊急(赤)以外の通知で画面を切り替えません"
+                    control={
+                      <OnOffPill
+                        on={data.policy.interrupt_guard}
+                        disabled={!canEdit || updateMutation.isPending}
+                        label="割り込み防護"
+                        onToggle={() =>
+                          requestChange({
+                            values: { interrupt_guard: !data.policy.interrupt_guard },
+                            title: '割り込み防護を変更',
+                            currentLabel: data.policy.interrupt_guard ? 'ON' : 'OFF',
+                            nextLabel: data.policy.interrupt_guard ? 'OFF' : 'ON',
+                            affectedScreens: ['調剤', '監査', '通知'],
+                            impact:
+                              '調剤・監査中の通知の出方が変わります。対象: チーム全員の調剤・監査画面。緊急(赤)の通知は常に表示されます。',
+                          })
+                        }
+                      />
+                    }
+                  />
+                </PolicyCard>
+              </div>
+
+              {/* 中央列: 通知 + 影響範囲バナー */}
+              <div className="min-w-0 space-y-4">
+                <PolicyCard title="通知" testId="policy-notification-card">
+                  <PolicyRow
+                    title="緊急(赤)の通知"
+                    description="期限・安全に関わる通知 — 常にONです"
+                    control={<LockedPill />}
+                  />
+                  <PolicyRow
+                    title="待ち解除の通知"
+                    description="止まっていた仕事が再開可能になったとき(照会回答の到着など)"
+                    control={
+                      <OnOffPill
+                        on={data.policy.wait_release_notification}
+                        disabled={!canEdit || updateMutation.isPending}
+                        label="待ち解除の通知"
+                        onToggle={() =>
+                          requestChange({
+                            values: {
+                              wait_release_notification: !data.policy.wait_release_notification,
+                            },
+                            title: '待ち解除の通知を変更',
+                            currentLabel: data.policy.wait_release_notification ? 'ON' : 'OFF',
+                            nextLabel: data.policy.wait_release_notification ? 'OFF' : 'ON',
+                            affectedScreens: ['通知', '工程の今', 'ハンドオフ'],
+                            impact:
+                              '止まっていた仕事が再開できるようになったときの通知が変わります。対象: チーム全員の通知。',
+                          })
+                        }
+                      />
+                    }
+                  />
+                  <PolicyRow
+                    title="静かな時間"
+                    description="訪問モード中は緊急以外をまとめて後で表示"
+                    control={
+                      <OnOffPill
+                        on={data.policy.quiet_hours}
+                        disabled={!canEdit || updateMutation.isPending}
+                        label="静かな時間"
+                        onToggle={() =>
+                          requestChange({
+                            values: { quiet_hours: !data.policy.quiet_hours },
+                            title: '静かな時間を変更',
+                            currentLabel: data.policy.quiet_hours ? 'ON' : 'OFF',
+                            nextLabel: data.policy.quiet_hours ? 'OFF' : 'ON',
+                            affectedScreens: ['訪問', '通知', 'モード表示'],
+                            impact:
+                              '訪問モード中の通知の出方が変わります。対象: 訪問担当者の画面。緊急(赤)の通知は常に表示されます。',
+                          })
+                        }
+                      />
+                    }
+                  />
+                </PolicyCard>
+
+                <p
+                  className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2.5 text-sm leading-6 text-state-confirm"
+                  data-testid="policy-impact-banner"
+                >
+                  設定の変更は保存前に<strong className="font-bold">影響範囲</strong>
+                  (誰の・どの画面が変わるか)を表示します。「いつの間にか変わっていた」を起こさないためです。
+                </p>
+              </div>
+
+              <WorkspaceActionRail
+                nextAction={nextAction}
+                blockedReasons={blockedReasons}
+                blockedReasonsEmptyLabel="止まっている作業はありません"
+                evidence={evidence}
+                evidenceOpenLabel="開く"
+              />
+            </div>
+          </>
         )}
       </div>
 
