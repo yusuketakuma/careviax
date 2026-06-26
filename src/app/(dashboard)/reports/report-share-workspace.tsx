@@ -70,6 +70,11 @@ const DELIVERY_CHANNEL_LABELS: Record<string, string> = {
   ph_os_share: 'PH-OS共有',
 };
 
+const reportOutlineActionClassName = cn(
+  buttonVariants({ variant: 'outline', size: 'sm' }),
+  '!h-auto !min-h-[44px] sm:!h-auto sm:!min-h-[44px]',
+);
+
 type GeneratedCareReport = GeneratedCareReportSummary;
 
 function formatDateTime(iso: string): string {
@@ -139,8 +144,8 @@ function TodayDraftsCard({
           本日の訪問予定はありません。訪問が完了すると、ここに報告の下書きが並びます。
         </p>
       ) : (
-        <Table className="mt-3">
-          <TableHeader>
+        <Table className="mt-3 block md:table">
+          <TableHeader className="hidden md:table-header-group">
             <TableRow>
               <TableHead className="w-20">訪問</TableHead>
               <TableHead>患者</TableHead>
@@ -151,21 +156,35 @@ function TodayDraftsCard({
               </TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className="block space-y-2 md:table-row-group md:space-y-0">
             {data.draft_rows.map((row) => (
-              <TableRow key={row.id} data-testid="report-draft-row">
-                <TableCell className="font-semibold tabular-nums text-foreground">
-                  {row.time_start ? formatTimeOfDay(row.time_start) : '--:--'}
+              <TableRow
+                key={row.id}
+                className="block rounded-md border border-border/70 bg-card px-3 py-2.5 md:table-row md:rounded-none md:border-x-0 md:border-t-0 md:bg-transparent md:p-0"
+                data-testid="report-draft-row"
+              >
+                <TableCell className="block p-0 font-semibold tabular-nums text-foreground md:table-cell md:p-2">
+                  <span className="mr-2 text-xs font-medium text-muted-foreground md:hidden">
+                    訪問
+                  </span>
+                  <span>{row.time_start ? formatTimeOfDay(row.time_start) : '--:--'}</span>
                 </TableCell>
-                <TableCell className="font-medium text-foreground">{row.patient_label}</TableCell>
-                <TableCell className="text-foreground">{row.recipient_label}</TableCell>
-                <TableCell>
+                <TableCell className="mt-1 block p-0 font-medium text-foreground md:table-cell md:mt-0 md:p-2">
+                  {row.patient_label}
+                </TableCell>
+                <TableCell className="mt-1 block p-0 text-sm text-foreground md:table-cell md:mt-0 md:p-2">
+                  <span className="mr-2 text-xs font-medium text-muted-foreground md:hidden">
+                    宛先
+                  </span>
+                  <span>{row.recipient_label}</span>
+                </TableCell>
+                <TableCell className="mt-2 block p-0 md:table-cell md:mt-0 md:p-2">
                   <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                     {DRAFT_STATUS_LABELS[row.status] ?? row.status}
                   </span>
                 </TableCell>
-                <TableCell>
-                  <div className="flex flex-col items-start gap-2 sm:items-end">
+                <TableCell className="mt-2 block p-0 md:table-cell md:mt-0 md:p-2">
+                  <div className="flex flex-col items-start gap-2 md:items-end">
                     {row.note ? (
                       // 危険区分メモ(麻薬使用状況を含む 等)は隠さず常時表示する
                       <span className="text-xs text-muted-foreground">{row.note}</span>
@@ -173,7 +192,7 @@ function TodayDraftsCard({
                     {row.action ? (
                       <Link
                         href={row.action.href}
-                        className="inline-flex min-h-[44px] items-center rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 sm:min-h-8"
+                        className="inline-flex min-h-[44px] items-center rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 sm:min-h-[44px]"
                       >
                         {row.action.label}
                       </Link>
@@ -189,7 +208,7 @@ function TodayDraftsCard({
                         }
                         disabled={isGeneratingDraft}
                         aria-label={`${row.patient_label} ${row.recipient_label} の下書きを自動作成`}
-                        className="px-3"
+                        className="h-auto min-h-[44px] px-3 sm:min-h-[44px]"
                       >
                         {generatingVisitRecordId === row.visit_record_id
                           ? '作成中...'
@@ -227,7 +246,7 @@ function WaitingReplyRow({ reply }: { reply: ReportWaitingReply }) {
             <Link
               key={action.label}
               href={action.href}
-              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-primary')}
+              className={cn(reportOutlineActionClassName, 'text-primary')}
             >
               {action.label}
             </Link>
@@ -296,10 +315,7 @@ function WaitingBoxesSection({ data }: { data: ReportsTodayWorkspaceResponse }) 
                   </p>
                   <Link
                     href={item.action.href}
-                    className={cn(
-                      buttonVariants({ variant: 'outline', size: 'sm' }),
-                      'shrink-0 text-primary',
-                    )}
+                    className={cn(reportOutlineActionClassName, 'shrink-0 text-primary')}
                   >
                     {item.action.label}
                   </Link>
@@ -355,7 +371,7 @@ function ReportOpenIssuesSection({ issues }: { issues: ReportOpenIssue[] }) {
               </span>
               <Link
                 href={issue.action.href}
-                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-primary')}
+                className={cn(reportOutlineActionClassName, 'text-primary')}
               >
                 {issue.action.label}
               </Link>
@@ -385,7 +401,7 @@ function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
           <Link
             href={failedDelivery.action.href}
             className={cn(
-              buttonVariants({ variant: 'outline', size: 'sm' }),
+              reportOutlineActionClassName,
               'mt-2 border-state-blocked/30 bg-background text-state-blocked hover:bg-state-blocked/10',
             )}
           >
@@ -486,10 +502,7 @@ function CreatedReportsSection({ reports }: { reports: ReportCreatedRow[] }) {
                 <TableCell>
                   <Link
                     href={report.action.href}
-                    className={cn(
-                      buttonVariants({ variant: 'outline', size: 'sm' }),
-                      'text-primary',
-                    )}
+                    className={cn(reportOutlineActionClassName, 'text-primary')}
                   >
                     {report.action.label}
                   </Link>
@@ -607,25 +620,21 @@ export function ReportShareWorkspace() {
     <section aria-label="報告・共有ワークスペース" data-testid="report-share-workspace">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-bold text-foreground">報告・共有</h2>
+          <h1 className="text-xl font-bold text-foreground">報告・共有</h1>
           <p className="text-sm text-muted-foreground">
             {buildHeaderMeta(now, data?.counts ?? null)}
           </p>
         </div>
         <Link
           href="/admin/document-templates"
-          className={buttonVariants({ variant: 'outline' })}
+          className={buttonVariants({
+            variant: 'outline',
+            className: '!h-auto !min-h-[44px] sm:!h-auto sm:!min-h-[44px]',
+          })}
           data-testid="report-edit-templates"
         >
           テンプレートを編集
         </Link>
-      </div>
-
-      <div className="mt-4">
-        <MainWorkflowCompactNav
-          currentSteps={['reports']}
-          description="報告・共有は処方から訪問後報告までの主業務フローの終点です。前工程の訪問記録へ戻って根拠を確認できます。"
-        />
       </div>
 
       <div className="mt-4">
@@ -657,6 +666,10 @@ export function ReportShareWorkspace() {
                     : null
                 }
                 isGeneratingDraft={generateDraftMutation.isPending}
+              />
+              <MainWorkflowCompactNav
+                currentSteps={['reports']}
+                description="報告・共有は処方から訪問後報告までの主業務フローの終点です。前工程の訪問記録へ戻って根拠を確認できます。"
               />
               {/* 即時対応優先(guidelines §68-76): 今日書く → 返信待ち(=止まっている/他職種待ち) →
                   残課題 → 作成済(参照)。返信待ちを上位へ繰り上げて判断を先に出す。 */}

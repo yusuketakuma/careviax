@@ -311,7 +311,7 @@ describe('ReportShareWorkspace', () => {
     stubFetch();
     renderWorkspace();
 
-    expect(screen.getByText('報告・共有')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: '報告・共有' })).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByTestId('report-today-drafts')).toBeTruthy();
     });
@@ -322,6 +322,11 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByTestId('report-edit-templates').textContent).toContain('テンプレートを編集');
 
     // 今日書く報告: 宛先と状態
+    const drafts = screen.getByTestId('report-today-drafts');
+    const workflow = screen.getByTestId('main-workflow-compact-nav');
+    expect(
+      Boolean(drafts.compareDocumentPosition(workflow) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
     expect(screen.getByText('未作成・下書き一覧 — 訪問完了後に選択して作成')).toBeTruthy();
     expect(screen.getByText('伊藤 キヨ 様')).toBeTruthy();
     expect(screen.getByText('ケアマネ(中島様)')).toBeTruthy();
