@@ -3,9 +3,9 @@
 **Purpose.** Edit-conflict ledger. Records which Supervisor owns which paths for an in-flight
 task so the two lanes never edit the same files concurrently.
 
-**Current mode (2026-06-26 JST, rev4).** **Claude + Codex implementation-only
-PARALLEL mode** is active (re-enabled by the user; supersedes the same-day rev3
-Codex-only override; Codex confirmed it will not auto-revert). **No mutual
+**Current mode (2026-06-26 JST, rev6).** **Claude + Codex implementation-only
+PARALLEL mode** is active (re-enabled by the user; supersedes the same-day
+Codex-only override). **No mutual
 review** — this ledger is used ONLY to keep the two lanes' edit surfaces
 **disjoint**, not as a review gate. Both lanes refine disjoint screens FE→BE (no
 DB). Before editing, a lane LOCKs its exact files over agmsg (and may record
@@ -14,7 +14,7 @@ its own files. Historical Claude/Codex rows below are stale; do not block on
 them, but preserve pre-existing dirty files and inspect diffs before claiming
 any path.
 
-**Active screen partition (agreed 2026-06-26, SSOT = `STATE.md` rev4).**
+**Active screen partition (agreed 2026-06-26, SSOT = `STATE.md` rev6).**
 
 - **Claude lane**: `src/app/(dashboard)/patients/**`, `…/reports/**`,
   `…/billing/**`, `…/admin/**`, `…/statistics/**`, `…/audit/**`,
@@ -23,17 +23,18 @@ any path.
   Plus single-owner of `docs/ui-ux-design-guidelines.md` (SSOT refresh).
 - **Codex lane**: dashboard, my-day, visits/**, schedules/**, prescriptions/**,
   dispense, set, set-audit, tasks, workflow, handoff, qr-scan, notifications,
-  search, select-mode, select-site, offline-sync, conferences, communications/**
-  + each screen's backend + shared `src/components/ui/**` and
-  `src/components/layout/**`.
+  search, select-mode, select-site, offline-sync, conferences,
+  communications/**, each screen's backend, and shared `src/components/ui/**`
+  and `src/components/layout/**`.
 - Each lane's screens are the other lane's forbidden paths. Shared-primitive or
   shell edits cross-lane go through a LOCK handshake (no review).
 
 **How it's used in the loop.** This mirrors the live `agmsg` LOCK discipline already in use:
-Claude works the UI lane (`src/app/(dashboard)/**`, `src/components/**`); Codex works the
-backend lane (server/perf/refactor/tests). Before editing, a Supervisor LOCKs its paths here
-and over agmsg; it drains its inbox before committing and stages only its own files. Release
-the lock (set `status: released`) once the task's changes are committed.
+Claude and Codex work the screen partitions above, each owning the full FE→BE
+vertical slice for its screens while avoiding DB schema/data/migration changes.
+Before editing, a Supervisor LOCKs its paths here and over agmsg; it drains its
+inbox before committing and stages only its own files. Release the lock (set
+`status: released`) once the task's changes are committed.
 
 | task_id                       | owner       | reviewer    | branch                           | locked_paths                                                                                                                                                                                                                                                                                                                                                                                                                        | forbidden_paths                                                                                                                                                                                                       | mode | lease_until                 | state_version | status                                                                                                |
 | ----------------------------- | ----------- | ----------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | --------------------------- | ------------- | ----------------------------------------------------------------------------------------------------- |

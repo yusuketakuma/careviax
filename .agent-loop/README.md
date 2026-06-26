@@ -1,7 +1,7 @@
 # Agent Loop — Operator Guide
 
-> Current mode (2026-06-26 JST, rev4): **Claude + Codex implementation-only PARALLEL mode** for **careviax (PH-OS Pharmacy)** — re-enabled by the user, superseding the same-day rev3 Codex-only override (Codex confirmed it will not auto-revert this banner).
-> Both lanes refine **disjoint screens** end-to-end (frontend as the entry point, fixing through to backend where needed; **no DB changes**), driven by a screenshot → improve → re-screenshot loop toward a world-top-level UI/UX bar (足し算と引き算). **No mutual review** — neither lane sends or waits on PLAN/PATCH/VERIFY verdicts; disjointness is held purely by agmsg `LOCK` / `HANDOFF` of exact files before editing. The peer-review / maker-checker sections below are retained as historical reference and are **not active** in this mode. Screen partition + active goal: see `STATE.md` "Current runtime override (rev4)". gbrain remains long-term memory subordinate to live repository state.
+> Current mode (2026-06-26 JST, rev6): **Claude + Codex implementation-only PARALLEL mode** for **careviax (PH-OS Pharmacy)** — re-enabled by the user, superseding the same-day Codex-only override.
+> Both lanes refine **disjoint screens** end-to-end (frontend as the entry point, fixing through to backend where needed; **no DB changes**), driven by a screenshot → improve → re-screenshot loop toward a world-top-level UI/UX bar (足し算と引き算). **No mutual review** — neither lane sends or waits on PLAN/PATCH/VERIFY verdicts; disjointness is held purely by agmsg `LOCK` / `HANDOFF` of exact files before editing. The peer-review / maker-checker sections below are retained as historical reference and are **not active** in this mode. Screen partition + active goal: see `STATE.md` "Current runtime override (rev6)". gbrain remains long-term memory subordinate to live repository state.
 
 This directory holds the human/operator entry points and the live operational artifacts for the loop. Start here.
 
@@ -11,8 +11,8 @@ This directory holds the human/operator entry points and the live operational ar
 
 Current active loop:
 
-- **codex** — the sole active supervisor. It selects work, implements, runs validation, records progress, and uses Codex subagents or separate review passes for high-risk checks.
-- **claude** — inactive/suspended. Do not send new work, review requests, lock requests, or gate negotiations to Claude unless the user explicitly re-enables multi-agent operation.
+- **codex** — implementation lane for operational/field screens plus shared `src/components/ui/**` and `src/components/layout/**`. It locks exact files, implements, validates, records progress, and does not wait on Claude review.
+- **claude** — implementation lane for patient/admin/reporting screens plus medical UI/UX SSOT docs. It locks exact files, implements, validates, records progress, and does not wait on Codex review.
 - **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
 
 Historical two-supervisor model, retained for context:
@@ -21,7 +21,7 @@ Historical two-supervisor model, retained for context:
 - **codex-lead** (= agmsg identity `codex` on team `phos`) — the **independent peer reviewer / strict verifier / limited assisting implementer**. Owns backend/perf/refactor/test-review review passes. Reviews Claude's diffs and returns `APPROVED` or `CHANGES_REQUESTED`. Implements only within an explicitly LOCKed scope.
 - **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
 
-In Codex-only mode, agmsg is only for one-time pause/handoff notices to a leftover Claude process and is not a completion gate. Subagents/workers never write to agmsg directly.
+In the current parallel mode, agmsg is a coordination channel for exact-path locks, handoffs, urgent conflict notices, and concise status. It is not a mutual-review gate. Subagents/workers never write to agmsg directly.
 
 ```
 send:  ~/.agents/skills/agmsg/scripts/send.sh phos <from> <to> "<msg>"
@@ -30,8 +30,9 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 
 ### 1.1 Communication mode
 
-Codex-only mode does not require agmsg monitor delivery. If multi-agent operation
-is explicitly re-enabled, check the current delivery state first:
+Parallel mode uses agmsg monitor delivery as a latency optimization, while
+manual inbox drains remain the reliable delivery path. Check and restore Codex
+monitor mode when needed:
 
 ```bash
 ~/.agents/skills/agmsg/scripts/delivery.sh status codex "$(pwd)"

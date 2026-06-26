@@ -4,14 +4,14 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current runtime override - 2026-06-26 JST (rev5: Codex-only UI/UX loop)
+## Current runtime override - 2026-06-26 JST (rev6: Claude+Codex parallel UI/UX loop)
 
-The user switched this worktree back to **Codex-only operation**. Do not route
-new work to Claude, require Claude review/ACK, or wait for Claude gates unless
-the user explicitly re-enables multi-agent operation in a later message.
-Continue using agmsg inbox drains for safety and traceability, but treat an
-empty inbox as enough to proceed. Preserve any pre-existing dirty Claude/user
-files until Codex explicitly claims them.
+The user re-enabled **Claude + Codex implementation-only PARALLEL mode** after
+the same-day Codex-only override. No mutual review is active: neither lane sends
+or waits on PLAN/PATCH/VERIFY verdicts. Coordination exists only to keep edit
+surfaces disjoint through exact-path agmsg `LOCK` / `HANDOFF` messages and
+pre-commit inbox drains. Preserve pre-existing dirty Claude/user files until a
+lane explicitly claims them.
 
 **Active goal (user /goal 2026-06-26).** Refine the UI/UX of _all_ pages to a
 world-top-level ("10M-download") bar using a 足し算と引き算 (add/subtract)
@@ -24,16 +24,35 @@ highest-frequency user screens first. Research medical-system best practices and
 existing-system layout patterns, refresh the design-language SSOT first, then
 continue screenshot → improve → re-screenshot loops.
 
-**Current Codex progress.**
+**Active screen partition.**
 
-- SSOT research update committed in `e0f6bd1e`.
+- **Claude lane**: `src/app/(dashboard)/patients/**`, `reports/**`,
+  `billing/**`, `admin/**`, `statistics/**`, `audit/**`,
+  `clerk-support/**`, `external/**`, `referrals/**`, `views/**`, those
+  screens' page-local components and backend/API/service code, plus the
+  medical UI/UX SSOT docs.
+- **Codex lane**: dashboard, my-day, visits/**, schedules/**,
+  prescriptions/**, dispense, set, set-audit, tasks, workflow, handoff,
+  qr-scan, notifications, search, select-mode, select-site, offline-sync,
+  conferences, communications/**, each owned screen's backend/API/service code,
+  and shared `src/components/ui/**` + `src/components/layout/**`.
+- No DB schema/data/migration changes. Backend API/service changes are allowed
+  only when needed to make an owned screen render or work correctly.
+
+**Current progress.**
+
+- SSOT research update committed in `e0f6bd1e`; supporting research notes
+  committed in `5f116094`.
 - Dashboard mobile condition banner fix committed in `beb82a27`.
 - Shared app-header/chrome refinement committed in `0bceeeff`.
-- Codex-only monitor/state restoration committed in `c26db837`.
-- Current in-flight group: `my-day` first-fold operational scan path.
+- `my-day` first-fold operational scan path committed in `163cd7fd`.
+- Earlier Codex-only state commits (`c26db837`, `049dcf2a`) are superseded by
+  this rev6 parallel-mode override and must not be treated as the active mode.
 
-Next action: validate and commit the `my-day` UI slice, then continue the
-Codex-only screenshot loop across the next highest-frequency operational page.
+Next action: continue the screen-partitioned screenshot loop. Codex proceeds in
+the operational/field lane; Claude proceeds in the patient/admin/reporting lane
+and SSOT docs. Both lanes keep locks disjoint and report removed features with
+reasons at the end of their slices.
 
 **How it's used in the loop.**
 
