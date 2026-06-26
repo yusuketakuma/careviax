@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -218,17 +218,35 @@ describe('SearchContent', () => {
   });
 
   it('switching chip shows results for the new category', async () => {
+    setupFetchMocks({ patients: [] });
     render(<SearchContent />);
     await triggerSearch('アムロジピン');
 
+    expect(screen.getByTestId('search-cross-category-hint')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '薬剤 1件' })).toBeTruthy();
+
     // Switch to drug chip and verify drug results appear
+    const categoryGroup = screen.getByRole('group', { name: '検索カテゴリの絞り込み' });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /薬剤/ }));
+      fireEvent.click(within(categoryGroup).getByRole('button', { name: /薬剤/ }));
     });
 
     expect(screen.getByText('アムロジピン錠')).toBeTruthy();
     // Patient results are not visible when drug chip is selected
     expect(screen.queryByText('田中 一郎 様')).toBeNull();
+  });
+
+  it('lets users jump to a category that has results when the selected category is empty', async () => {
+    setupFetchMocks({ patients: [] });
+    render(<SearchContent />);
+    await triggerSearch('アムロジピン');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '薬剤 1件' }));
+    });
+
+    expect(screen.getByText(/薬剤 1件 \/ 全カテゴリ/)).toBeTruthy();
+    expect(screen.getByText('アムロジピン錠')).toBeTruthy();
   });
 
   it('renders ListOpenCard with badge, title, and 開く button', async () => {
@@ -408,6 +426,24 @@ describe('SearchContent', () => {
     expect(screen.getByText('一致する結果がありません')).toBeTruthy();
   });
 
+  it('guides users to other categories when the selected category has no results', async () => {
+    setupFetchMocks({ patients: [], drugs: DRUG_RESULTS });
+
+    render(<SearchContent />);
+    await triggerSearch('アムロジピン');
+
+    expect(screen.getByText('患者には一致がありません')).toBeTruthy();
+    expect(
+      screen.getByText('他カテゴリに 1 件あります。該当カテゴリへ切り替えて確認してください。'),
+    ).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '薬剤 1件' }));
+    });
+
+    expect(screen.getByText('アムロジピン錠')).toBeTruthy();
+  });
+
   it('shows partial failure feedback while keeping successful category results available', async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url.includes('/api/pharmacists')) return makeJsonResponse([]);
@@ -430,7 +466,8 @@ describe('SearchContent', () => {
     expect(partialFailureStatus?.textContent).toContain('患者');
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /薬剤/ }));
+      const categoryGroup = screen.getByRole('group', { name: '検索カテゴリの絞り込み' });
+      fireEvent.click(within(categoryGroup).getByRole('button', { name: /薬剤/ }));
     });
 
     expect(screen.getByText('アムロジピン錠')).toBeTruthy();

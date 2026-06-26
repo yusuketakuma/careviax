@@ -481,6 +481,9 @@ export function SearchContent({
   const hasSearched = query.trim().length > 0;
   const totalResults = SEARCH_CATEGORIES.reduce((sum, cat) => sum + (counts[cat] ?? 0), 0);
   const selectedCategoryLabel = SEARCH_CATEGORY_LABELS[category];
+  const categoriesWithResults = SEARCH_CATEGORIES.filter(
+    (cat) => cat !== category && (counts[cat] ?? 0) > 0,
+  );
   const resultStatusLabel = hasSearched
     ? `${selectedCategoryLabel} ${visibleItems.length}件 / 全カテゴリ ${totalResults}件`
     : 'キーワード入力待ち';
@@ -571,6 +574,32 @@ export function SearchContent({
               title="キーワードを入力して横断検索"
               description="キーワードを入力すると患者・訪問候補・処方・薬切れ・薬剤・施設・報告書・連絡先を横断して探します。"
             />
+          ) : !hasResults && categoriesWithResults.length > 0 ? (
+            <div
+              role="status"
+              className="rounded-lg border border-primary/20 bg-primary/5 p-5"
+              data-testid="search-cross-category-hint"
+            >
+              <p className="text-sm font-semibold text-foreground">
+                {selectedCategoryLabel}には一致がありません
+              </p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                他カテゴリに {totalResults} 件あります。該当カテゴリへ切り替えて確認してください。
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {categoriesWithResults.map((cat) => (
+                  <Button
+                    key={cat}
+                    type="button"
+                    variant="outline"
+                    className="!h-auto !min-h-11 px-4"
+                    onClick={() => handleCategoryChange(cat)}
+                  >
+                    {SEARCH_CATEGORY_LABELS[cat]} {counts[cat]}件
+                  </Button>
+                ))}
+              </div>
+            </div>
           ) : !hasResults ? (
             <EmptyState
               icon={Search}
