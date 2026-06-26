@@ -1,13 +1,15 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
-import { forbidden, notFound, success, validationError } from '@/lib/api/response';
+import { forbidden, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { parseOptionalBoundedIntegerParam } from '@/lib/api/pagination';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   getPatientMcsOverview,
   PATIENT_MCS_MAX_MESSAGE_LIMIT,
@@ -58,7 +60,10 @@ async function authorizeMcsRequest(
   return { ctx, id };
 }
 
-async function loadVisibleMcsPatient(id: string, ctx: AuthContext) {
+async function loadVisibleMcsPatient(
+  id: string,
+  ctx: AuthContext,
+): Promise<{ response: Response } | { patient: { id: string; name: string } }> {
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
       { id, org_id: ctx.orgId },
@@ -71,7 +76,10 @@ async function loadVisibleMcsPatient(id: string, ctx: AuthContext) {
   return { patient };
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
   const authorized = await authorizeMcsRequest(req, params, 'MCS 連携の閲覧権限がありません');
   if ('response' in authorized) return authorized.response;
   const { ctx, id } = authorized;
@@ -105,6 +113,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     },
   });
 }
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authorized = await authorizeMcsRequest(req, params, 'MCS 連携の更新権限がありません');

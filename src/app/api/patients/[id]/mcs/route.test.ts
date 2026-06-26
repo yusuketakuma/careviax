@@ -70,6 +70,11 @@ function createRequest(
   );
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/[id]/mcs GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -159,6 +164,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'patient_1',
@@ -213,6 +219,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(getPatientMcsOverviewMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       patientId: 'patient_1',
@@ -229,6 +236,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -249,6 +257,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
   });
 
@@ -261,6 +270,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
   });
 
@@ -273,6 +283,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'limit は 0 から 100 の整数で指定してください',
     });
@@ -289,8 +300,44 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store not-found responses for inaccessible patients', async () => {
+    patientFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when MCS overview reads fail', async () => {
+    const rawError = '青葉 花子 ワルファリン MCS timeline failure';
+    getPatientMcsOverviewMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('青葉 花子');
+    expect(JSON.stringify(body)).not.toContain('ワルファリン');
   });
 
   it('saves the MCS participation profile as an operational task sidecar', async () => {

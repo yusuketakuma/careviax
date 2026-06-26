@@ -664,6 +664,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/patients/:id/contacts',
   '/api/patients/:id/documents',
   '/api/patients/:id/field-revisions',
+  '/api/patients/:id/header-summary',
   '/api/patients/:id/home-operations',
   '/api/patients/:id/insurance',
   '/api/patients/:id/insurance/:id',
