@@ -3430,12 +3430,18 @@ function DrugMasterOperationalContent({
                 ))}
               </SelectContent>
             </Select>
-            <label className="mt-2 flex min-h-[44px] items-center gap-1.5 text-xs text-muted-foreground sm:min-h-0">
+            <label className="relative mt-2 flex min-h-[44px] items-center gap-1.5 rounded-md px-1 text-xs text-muted-foreground focus-within:ring-2 focus-within:ring-ring sm:min-h-[44px]">
               <input
                 type="checkbox"
                 checked={stockedOnly}
                 onChange={(event) => setStockedOnly(event.target.checked)}
-                className="size-4 rounded border-input"
+                className="absolute inset-0 cursor-pointer opacity-0"
+              />
+              <span
+                aria-hidden="true"
+                className={`size-4 shrink-0 rounded border ${
+                  stockedOnly ? 'border-primary bg-primary' : 'border-input bg-background'
+                }`}
               />
               採用品のみ表示
             </label>
