@@ -21,6 +21,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-26 JST - Patient Header Summary Read Model
+
+- Coordination:
+  - Drained `phos/codex`; Claude was waiting on a shared patient-header `PATCH_REVIEW_REQUEST` and partition decision.
+  - Sent ACK, reviewed Claude-owned `src/components/features/patients/patient-header.tsx` read-only, independently ran focused component validation, and returned `CHANGES` for the empty clinical tier false-empty issue without editing or staging Claude-owned files.
+  - Confirmed partition: Codex keeps the active no-DB-mutation constraint and owns read-only patient header summary/API plus maker/checker review of Claude DB/write changes; Claude owns staff-column migration/write UI.
+- Added `getPatientHeaderSummary` as a narrow read-only service instead of expanding the large `PatientOverview` response.
+- Added `GET /api/patients/[id]/header-summary` with `canVisit`, route param normalization, not-found behavior, fixed sanitized `INTERNAL_ERROR` fallback, `unstable_rethrow(err)` preservation, and sensitive no-store wrapping for success and failure paths.
+- The public response is intentionally minimal: `primary_pharmacist_name`, `first_visit_date`, `last_prescribed_date`, and `next_prescription_expected_date`. It does not return `patient_id` or `primary_pharmacist_id`.
+- Primary pharmacist source is the latest scoped case by `updated_at desc`, matching the existing patient-list canonical latest-case rule. It does not fall back to older case pharmacists when the latest case is unassigned.
+- First visit date uses the earliest scoped `VisitRecord.visit_date`; latest prescription date uses the latest scoped `PrescriptionIntake.prescribed_date`; next prescription expected date remains `null` because current schema sources such as refill/split next dispense dates are not prescription expected dates.
+- Added route-local tests for success exact keys, invalid id no-store, not-found no-store, and sanitized fixed 500 with PHI-like thrown text omitted.
+- Added service tests for readable scope, no-source nulls, latest-case pharmacist rule, earliest visit, latest prescription, and org-scoped name resolution.
+- Added the route to the protected GET auth matrix so 401, 403, and 200 responses assert sensitive no-store headers.
+- Security risk reduced: patient header data is now served through a scoped minimal endpoint rather than broad overview expansion or frontend false-data inference, with no-store and fixed 500 coverage.
+- Performance issue improved: avoids expanding the high-blast-radius overview payload and confines normal-path work to a small summary query set. No schema changes, migrations, DB writes, external sends, or frontend UI changes were introduced by Codex.
+- Validation passed:
+  - Claude UI review validation: `pnpm vitest run src/components/features/patients/patient-header.test.tsx --reporter=dot --testTimeout=30000` passed `1` file / `7` tests; scoped ESLint and Prettier passed.
+  - Backend validation: `pnpm vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/detail-slices.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `331` tests.
+  - Scoped backend ESLint passed; scoped backend Prettier check passed; full `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed; scoped diff whitespace check passed.
+- Next action: commit the patient-header summary backend slice, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first hardening and Claude UI support. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Visit Today Preparation PHI/Cache Hardening
 
 - Coordination:
