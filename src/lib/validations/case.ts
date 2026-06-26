@@ -17,7 +17,12 @@ export const caseStatusTransitions: Record<CaseStatus, CaseStatus[]> = {
 export const createCaseSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
   referral_source: z.string().optional(),
-  referral_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です').optional().or(z.literal('')).transform(v => v === '' ? undefined : v),
+  referral_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です')
+    .optional()
+    .or(z.literal(''))
+    .transform((v) => (v === '' ? undefined : v)),
   notes: z.string().optional(),
 });
 
@@ -26,6 +31,8 @@ export const updateCaseSchema = z.object({
   notes: z.string().optional(),
   primary_pharmacist_id: z.string().optional(),
   backup_pharmacist_id: z.string().optional(),
+  primary_staff_id: z.string().optional(),
+  backup_staff_id: z.string().optional(),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   end_reason: z.string().optional(),

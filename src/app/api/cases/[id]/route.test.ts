@@ -176,7 +176,7 @@ describe('/api/cases/[id]', () => {
       },
     });
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
-      pharmacist_id: 'pharmacist_2',
+      pharmacist_ids: ['pharmacist_2'],
     });
     expect(careCaseUpdateMock).toHaveBeenCalledWith({
       where: { id: 'case_1' },
@@ -190,6 +190,85 @@ describe('/api/cases/[id]', () => {
       (careCaseUpdateMock.mock.calls[0][0].data.required_visit_support as Record<string, unknown>)
         .internal_note,
     ).toBeUndefined();
+  });
+
+  it('validates both primary and backup pharmacist ids together', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        primary_pharmacist_id: 'pharmacist_1',
+        backup_pharmacist_id: 'pharmacist_2',
+      }),
+      {
+        params: Promise.resolve({ id: 'case_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    // both ids must be validated — not just one (regression guard against same-key spread)
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      pharmacist_ids: ['pharmacist_1', 'pharmacist_2'],
+    });
+  });
+
+  it('rejects pharmacist assignment when a pharmacist id is not an eligible org member', async () => {
+    validateOrgReferencesMock.mockResolvedValueOnce({
+      ok: false,
+      response: Response.json(
+        { error: '指定された薬剤師はこの組織に所属していません' },
+        { status: 400 },
+      ),
+    });
+    const response = (await PATCH(
+      createPatchRequest({
+        primary_pharmacist_id: 'outsider',
+        backup_pharmacist_id: 'pharmacist_2',
+      }),
+      {
+        params: Promise.resolve({ id: 'case_1' }),
+      },
+    ))!;
+    expect(response.status).toBe(400);
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('assigns staff, normalizes empty staff ids to null, and validates only the supplied staff ids', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        primary_staff_id: '',
+        backup_staff_id: 'staff_2',
+      }),
+      {
+        params: Promise.resolve({ id: 'case_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    // empty primary -> excluded from validation; backup is validated as an org member
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      staff_ids: ['staff_2'],
+    });
+    expect(careCaseUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'case_1' },
+      data: expect.objectContaining({
+        primary_staff_id: null,
+        backup_staff_id: 'staff_2',
+      }),
+    });
+  });
+
+  it('rejects staff assignment when the staff id is not an org member', async () => {
+    validateOrgReferencesMock.mockResolvedValueOnce({
+      ok: false,
+      response: Response.json(
+        { error: '指定されたスタッフはこの組織に所属していません' },
+        { status: 400 },
+      ),
+    });
+    const response = (await PATCH(createPatchRequest({ primary_staff_id: 'outsider' }), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+    expect(response.status).toBe(400);
+    expect(careCaseUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object patch payloads before loading the case', async () => {

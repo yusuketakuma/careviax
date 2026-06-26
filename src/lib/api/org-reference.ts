@@ -1,3 +1,4 @@
+import type { MemberRole } from '@prisma/client';
 import { validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 
@@ -11,9 +12,46 @@ export type OrgReferenceInput = {
   task_id?: string | null;
   site_id?: string | null;
   pharmacist_id?: string | null;
+  /** 主/副 担当薬剤師候補。全 ID が同一 org の有効な薬剤師資格メンバーであることを検証する。 */
+  pharmacist_ids?: string[];
+  /** 主/副 担当スタッフ候補。全 ID が同一 org の有効な内部メンバーであることを検証する。 */
+  staff_ids?: string[];
   schedule_id?: string | null;
   line_ids?: string[];
 };
+
+/** 担当薬剤師に割り当て可能なロール。 */
+const PHARMACIST_ASSIGNABLE_ROLES = [
+  'owner',
+  'admin',
+  'pharmacist',
+  'pharmacist_trainee',
+] as const satisfies readonly MemberRole[];
+
+/** 担当スタッフに割り当て可能な内部メンバーロール（運転手・外部閲覧者を除く）。 */
+const STAFF_ASSIGNABLE_ROLES = [
+  'owner',
+  'admin',
+  'pharmacist',
+  'pharmacist_trainee',
+  'clerk',
+] as const satisfies readonly MemberRole[];
+
+/** 渡された全 ID が同一 org の有効メンバーかつ指定ロールに該当するか。空配列は true。 */
+async function areAllEligibleMembers(
+  orgId: string,
+  ids: string[],
+  roles: readonly MemberRole[],
+): Promise<boolean> {
+  const unique = Array.from(new Set(ids));
+  if (unique.length === 0) return true;
+  const memberships = await prisma.membership.findMany({
+    where: { user_id: { in: unique }, org_id: orgId, is_active: true, role: { in: [...roles] } },
+    select: { user_id: true },
+  });
+  const eligible = new Set(memberships.map((m) => m.user_id));
+  return unique.every((id) => eligible.has(id));
+}
 
 type PatientRef = { id: string };
 type CareCaseRef = { id: string; patient_id: string };
@@ -41,10 +79,9 @@ export type OrgReferenceData = {
 
 export async function validateOrgReferences(
   orgId: string,
-  refs: OrgReferenceInput
+  refs: OrgReferenceInput,
 ): Promise<
-  | { ok: true; data: OrgReferenceData }
-  | { ok: false; response: ReturnType<typeof validationError> }
+  { ok: true; data: OrgReferenceData } | { ok: false; response: ReturnType<typeof validationError> }
 > {
   const [
     patient,
@@ -126,6 +163,24 @@ export async function validateOrgReferences(
         })
       : Promise.resolve(null),
   ]);
+
+  if (refs.pharmacist_ids && refs.pharmacist_ids.length > 0) {
+    if (!(await areAllEligibleMembers(orgId, refs.pharmacist_ids, PHARMACIST_ASSIGNABLE_ROLES))) {
+      return {
+        ok: false,
+        response: validationError('指定された薬剤師はこの組織に所属していません'),
+      };
+    }
+  }
+
+  if (refs.staff_ids && refs.staff_ids.length > 0) {
+    if (!(await areAllEligibleMembers(orgId, refs.staff_ids, STAFF_ASSIGNABLE_ROLES))) {
+      return {
+        ok: false,
+        response: validationError('指定されたスタッフはこの組織に所属していません'),
+      };
+    }
+  }
 
   if (refs.patient_id && !patient) {
     return { ok: false, response: validationError('指定された患者が見つかりません') };

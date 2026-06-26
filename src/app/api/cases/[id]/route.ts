@@ -128,6 +128,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     required_visit_support,
     primary_pharmacist_id,
     backup_pharmacist_id,
+    primary_staff_id,
+    backup_staff_id,
     referral_source,
     notes,
     end_reason,
@@ -135,15 +137,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   } = parsed.data;
   const normalizedPrimaryPharmacistId = primary_pharmacist_id === '' ? null : primary_pharmacist_id;
   const normalizedBackupPharmacistId = backup_pharmacist_id === '' ? null : backup_pharmacist_id;
+  const normalizedPrimaryStaffId = primary_staff_id === '' ? null : primary_staff_id;
+  const normalizedBackupStaffId = backup_staff_id === '' ? null : backup_staff_id;
   const normalizedStartDate = normalizeOptionalDate(start_date);
   const normalizedEndDate = normalizeOptionalDate(end_date);
   const normalizedReferralSource = normalizeOptionalText(referral_source);
   const normalizedNotes = normalizeOptionalText(notes);
   const normalizedEndReason = normalizeOptionalText(end_reason);
 
+  const pharmacistIds = [normalizedPrimaryPharmacistId, normalizedBackupPharmacistId].filter(
+    (value): value is string => Boolean(value),
+  );
+  const staffIds = [normalizedPrimaryStaffId, normalizedBackupStaffId].filter(
+    (value): value is string => Boolean(value),
+  );
   const refResult = await validateOrgReferences(ctx.orgId, {
-    ...(normalizedPrimaryPharmacistId ? { pharmacist_id: normalizedPrimaryPharmacistId } : {}),
-    ...(normalizedBackupPharmacistId ? { pharmacist_id: normalizedBackupPharmacistId } : {}),
+    ...(pharmacistIds.length > 0 ? { pharmacist_ids: pharmacistIds } : {}),
+    ...(staffIds.length > 0 ? { staff_ids: staffIds } : {}),
   });
   if (!refResult.ok) return refResult.response;
 
@@ -160,6 +170,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             : {}),
           ...(normalizedBackupPharmacistId !== undefined
             ? { backup_pharmacist_id: normalizedBackupPharmacistId }
+            : {}),
+          ...(normalizedPrimaryStaffId !== undefined
+            ? { primary_staff_id: normalizedPrimaryStaffId }
+            : {}),
+          ...(normalizedBackupStaffId !== undefined
+            ? { backup_staff_id: normalizedBackupStaffId }
             : {}),
           ...(normalizedReferralSource !== undefined
             ? { referral_source: normalizedReferralSource }
