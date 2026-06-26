@@ -30,6 +30,15 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused communication requests Vitest `3` files / `14` tests; focused ESLint; authenticated browser desktop/mobile checks on `http://localhost:3012/communications/requests` with no console/page errors, no horizontal overflow, and mobile page-body small-target count `0`. The first reply-follow-up option moved from `689px` to `503px` on desktop and from `782px` to `511px` on mobile.
 - Next action: commit the `/communications/requests` UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Handoff Incoming Receipt Priority
+
+- Refined `/handoff` after the current dirty UI slice showed multiple incoming handoff receipts rendering as a full stacked list before the rest of the board.
+- Kept the newest incoming item as the primary visible work item and tucked older incoming receipt items behind a `残りの受領待ち` disclosure with a count, reducing first-fold receipt backlog weight while preserving access to every item.
+- Preserved all existing handoff board fetches, transfer creation behavior, receipt confirmation mutation, consult workspace, outgoing list, visit handoff confirmation area, auth behavior, backend/API behavior, DB behavior, and displayed handoff data. No feature was removed.
+- Screenshot evidence: route-mocked desktop and mobile screenshots saved under `artifacts/ui-handoff-sweep/`.
+- Validation passed: focused HandoffWorkspace Vitest `1` file / `14` tests; focused ESLint; focused Prettier check; route-mocked desktop/mobile browser proof on `http://localhost:3012/handoff` with no console/page errors for the mocked page, no horizontal overflow, visible primary incoming item, and visible `残りの受領待ち 2件` disclosure. Desktop remaining undersized controls were shared app-header chrome outside this page-body slice.
+- Next action: commit the `/handoff` UI/test slice and progress-ledger slice separately, then continue the all-pages screenshot loop with `/admin/notification-settings`. The broader objective is not complete.
+
 ### 2026-06-26 JST - UI/UX Research SSOT Update
 
 - Implemented the first required step of the active UI/UX goal: researched medical/public-sector UI guidance and encoded the findings into `docs/ui-ux-design-guidelines.md` before starting code-level page changes.

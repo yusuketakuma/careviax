@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1508 JST
+
+- current task: `/handoff` incoming receipt first-fold priority and backlog disclosure validation.
+- files inspected: `$agmsg` inbox, `git status --short --branch --untracked-files=all`, `src/app/(dashboard)/handoff/handoff-workspace.tsx`, `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`, `src/app/(dashboard)/handoff/handoff-workspace.helpers.ts`, `src/proxy.ts`, `src/lib/auth/secret.ts`, `tools/tests/helpers/local-auth.ts`, `tools/tests/ui-browser-matrix-smoke.spec.ts`, route-mocked desktop/mobile `/handoff` screenshots under `artifacts/ui-handoff-sweep/`, and `CODEX_GOAL_PROGRESS.md`.
+- files changed: `src/app/(dashboard)/handoff/handoff-workspace.tsx`, `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: multiple incoming handoff receipt items rendered as a full stacked list before the rest of the board, causing receipt backlog weight to compete with the primary incoming item and downstream consult/outgoing work.
+- security risks found: no auth, authorization, org scoping, handoff-board API, transfer creation, receipt confirmation mutation, visit handoff confirmation, audit behavior, schema, migrations, DB writes, external sends, PHI projection, or secret handling changed. Browser proof used route-mocked APIs with a local session token and no DB writes.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier render loops were introduced. The change renders the same incoming collection with only the first item expanded and the remaining items inside native disclosure.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`; direct route-mocked Playwright proof on `http://localhost:3012/handoff`.
+- validation results: focused HandoffWorkspace Vitest passed `1` file / `14` tests with existing React `act(...)` warnings; scoped ESLint passed; scoped Prettier check passed. Route-mocked desktop/mobile proof saved `artifacts/ui-handoff-sweep/handoff-after-desktop.png` and `artifacts/ui-handoff-sweep/handoff-after-mobile.png`; proof had no console/page errors for the mocked page, no horizontal overflow, visible primary incoming item, and visible `残りの受領待ち 2件` disclosure. Desktop remaining small controls were shared app-header chrome outside this page-body slice.
+- remaining work: commit the `/handoff` UI/test group, commit this progress-ledger update separately, send agmsg FYI, then continue with `/admin/notification-settings`. The broader all-pages UI/UX objective remains incomplete.
+- next action: stage only `src/app/(dashboard)/handoff/handoff-workspace.tsx` and `src/app/(dashboard)/handoff/handoff-workspace.test.tsx` for the implementation/test commit, then stage only ledgers for the progress commit.
+
 ### 20260626-1454 JST
 
 - current task: `/communications/requests` first-fold priority pass for reply follow-up work.
