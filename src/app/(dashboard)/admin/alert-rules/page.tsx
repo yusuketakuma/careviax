@@ -198,9 +198,109 @@ export default function AlertRulesPage() {
         title="処方安全アラートルール"
         description="相互作用、重複、高齢者 PIM などのルールを ON/OFF と条件 JSON で管理します。"
         shortcuts={getAdminAlertRulesShortcutLinks()}
+        supportingContent={null}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+      <div
+        className="grid gap-6 [&_button]:!h-11 [&_button]:!min-h-[44px] [&_input]:!h-11 [&_input]:!min-h-[44px] xl:grid-cols-[minmax(0,1fr)_420px]"
+        data-testid="alert-rules-workspace"
+      >
+        <div className="space-y-6">
+          <PageSection title="登録済みルール" contentClassName="space-y-3">
+            {rulesQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void rulesQuery.refetch() }}
+              />
+            ) : rules.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                まだ処方安全アラートルールはありません。
+              </p>
+            ) : (
+              rules.map((rule) => {
+                const canMutateRule = rule.org_id === orgId;
+                return (
+                  <div key={rule.id} className="rounded-lg border border-border/60 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-foreground">
+                          {ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type}
+                        </p>
+                        <Badge variant={rule.is_active ? 'default' : 'outline'}>
+                          {rule.is_active ? '有効' : '停止'}
+                        </Badge>
+                        <Badge variant="outline">{severityLabel(rule.severity)}</Badge>
+                        <Badge variant="secondary">{canMutateRule ? '組織' : '共通'}</Badge>
+                      </div>
+                      {canMutateRule ? (
+                        <ActionRail>
+                          <Button
+                            variant="outline"
+                            aria-label={`${
+                              ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type
+                            } の処方安全アラートルールを編集`}
+                            onClick={() =>
+                              setForm({
+                                id: rule.id,
+                                alert_type: rule.alert_type,
+                                severity: rule.severity,
+                                is_active: rule.is_active,
+                                message: rule.message,
+                                conditionText: JSON.stringify(rule.condition ?? {}, null, 2),
+                              })
+                            }
+                          >
+                            編集
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setDeleteTarget(rule)}
+                            disabled={deleteMutation.isPending}
+                            aria-label={`${
+                              ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type
+                            } の処方安全アラートルールを削除`}
+                          >
+                            削除
+                          </Button>
+                        </ActionRail>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{rule.message}</p>
+                    <pre className="mt-3 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs leading-5 text-foreground">
+                      {JSON.stringify(rule.condition ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                );
+              })
+            )}
+          </PageSection>
+
+          <PageSection
+            title="テスト実行"
+            description="既存の処方サイクル ID を指定すると処方安全チェックを即時実行します。"
+            contentClassName="flex flex-wrap items-end gap-3"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="test-cycle-id">サイクル ID</Label>
+              <Input
+                id="test-cycle-id"
+                value={testCycleId}
+                onChange={(event) => setTestCycleId(event.target.value)}
+                placeholder="cycle_xxx"
+              />
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => testMutation.mutate()}
+              disabled={!testCycleId || testMutation.isPending}
+            >
+              {testMutation.isPending ? '実行中...' : 'テスト実行'}
+            </Button>
+          </PageSection>
+        </div>
+
         <PageSection
           title={form.id ? 'ルールを編集' : 'ルールを登録'}
           description="空条件 `{}` でも種別単位の ON/OFF ルールとして利用できます。"
@@ -261,6 +361,7 @@ export default function AlertRulesPage() {
             </div>
             <Switch
               id="alert-rule-active"
+              className="!h-11 !w-14 px-1 data-[state=checked]:[&>span]:!translate-x-6 [&>span]:!size-6"
               checked={form.is_active}
               onCheckedChange={(checked) =>
                 setForm((current) => ({ ...current, is_active: checked }))
@@ -316,104 +417,6 @@ export default function AlertRulesPage() {
             ) : null}
           </ActionRail>
         </PageSection>
-
-        <div className="space-y-6">
-          <PageSection
-            title="テスト実行"
-            description="既存の処方サイクル ID を指定すると処方安全チェックを即時実行します。"
-            contentClassName="flex flex-wrap items-end gap-3"
-          >
-            <div className="space-y-2">
-              <Label htmlFor="test-cycle-id">サイクル ID</Label>
-              <Input
-                id="test-cycle-id"
-                value={testCycleId}
-                onChange={(event) => setTestCycleId(event.target.value)}
-                placeholder="cycle_xxx"
-              />
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => testMutation.mutate()}
-              disabled={!testCycleId || testMutation.isPending}
-            >
-              {testMutation.isPending ? '実行中...' : 'テスト実行'}
-            </Button>
-          </PageSection>
-
-          <PageSection title="登録済みルール" contentClassName="space-y-3">
-            {rulesQuery.isError ? (
-              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
-              <ErrorState
-                variant="server"
-                size="inline"
-                action={{ label: '再読み込み', onClick: () => void rulesQuery.refetch() }}
-              />
-            ) : rules.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                まだ処方安全アラートルールはありません。
-              </p>
-            ) : (
-              rules.map((rule) => {
-                const canMutateRule = rule.org_id === orgId;
-                return (
-                  <div key={rule.id} className="rounded-lg border border-border/60 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-foreground">
-                          {ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type}
-                        </p>
-                        <Badge variant={rule.is_active ? 'default' : 'outline'}>
-                          {rule.is_active ? '有効' : '停止'}
-                        </Badge>
-                        <Badge variant="outline">{severityLabel(rule.severity)}</Badge>
-                        <Badge variant="secondary">{canMutateRule ? '組織' : '共通'}</Badge>
-                      </div>
-                      {canMutateRule ? (
-                        <ActionRail>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            aria-label={`${
-                              ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type
-                            } の処方安全アラートルールを編集`}
-                            onClick={() =>
-                              setForm({
-                                id: rule.id,
-                                alert_type: rule.alert_type,
-                                severity: rule.severity,
-                                is_active: rule.is_active,
-                                message: rule.message,
-                                conditionText: JSON.stringify(rule.condition ?? {}, null, 2),
-                              })
-                            }
-                          >
-                            編集
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setDeleteTarget(rule)}
-                            disabled={deleteMutation.isPending}
-                            aria-label={`${
-                              ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type
-                            } の処方安全アラートルールを削除`}
-                          >
-                            削除
-                          </Button>
-                        </ActionRail>
-                      ) : null}
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{rule.message}</p>
-                    <pre className="mt-3 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs leading-5 text-foreground">
-                      {JSON.stringify(rule.condition ?? {}, null, 2)}
-                    </pre>
-                  </div>
-                );
-              })
-            )}
-          </PageSection>
-        </div>
       </div>
 
       {/* p1_14: 気になる処方の表示設定(強く表示/標準+カードプレビュー) */}

@@ -169,7 +169,7 @@ export function SignalTuningPanel() {
                     }))
                   }
                   className={cn(
-                    'inline-flex min-h-9 items-center rounded-full border px-3 py-1 text-xs font-semibold',
+                    'inline-flex min-h-11 items-center rounded-full border px-3 py-1 text-xs font-semibold',
                     strong
                       ? 'border-primary/40 bg-primary/10 text-primary'
                       : 'border-border bg-muted/40 text-muted-foreground',
@@ -219,7 +219,7 @@ export function SignalTuningPanel() {
         </div>
         <Button
           type="button"
-          className="mt-5 min-h-11 w-full sm:w-48"
+          className="mt-5 !h-11 !min-h-[44px] w-full sm:w-48"
           disabled={saveMutation.isPending || rulesQuery.isLoading || changedCount === 0}
           onClick={() => saveMutation.mutate()}
         >
