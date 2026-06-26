@@ -136,11 +136,11 @@ export function EvidenceGalleryContent() {
               <p className="text-[11px] font-bold text-muted-foreground">合計</p>
               <p className="mt-1 text-lg font-bold text-foreground">{summary.totalCount}枚</p>
             </div>
-            <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-2">
+            <div className="rounded-lg border border-border/60 border-l-4 border-l-state-confirm bg-card px-3 py-2">
               <p className="text-[11px] font-bold text-state-confirm">未同期</p>
               <p className="mt-1 text-lg font-bold text-state-confirm">{summary.pendingCount}枚</p>
             </div>
-            <div className="rounded-lg border border-state-done/30 bg-state-done/10 px-3 py-2">
+            <div className="rounded-lg border border-border/60 border-l-4 border-l-state-done bg-card px-3 py-2">
               <p className="text-[11px] font-bold text-state-done">同期済み</p>
               <p className="mt-1 text-lg font-bold text-state-done">{summary.syncedCount}枚</p>
             </div>
