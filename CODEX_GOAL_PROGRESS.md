@@ -9429,3 +9429,25 @@ Next loop:
   - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/billing-desktop-after-timeout-fix.png` and `billing-mobile-after-timeout-fix.png`.
 - Remaining:
   - Commit the BE render-fix, commit this ledger update separately, send `DONE`/handback to Claude, then continue the UI/UX sweep on a non-conflicting page. Billing mobile still has a follow-up polish opportunity: KPI cards consume most of the first fold, but that page is handed back to Claude after this timeout fix.
+
+### Handoff First-Fold Priority — Incoming Work Before Consultation
+
+- Coordination:
+  - Drained agmsg before selecting the slice.
+  - Sent `LOCK: src/app/(dashboard)/handoff/** + handoff tests + CODEX_GOAL_PROGRESS.md + .codex/ralph-state.md`.
+  - Claude acknowledged billing handback and continued its lane. No handoff conflict arrived.
+- Bugs found:
+  - `/handoff` showed the pharmacist consultation workspace before the "私に来た" section. On mobile, the incoming work section began around `1717px`, so the pharmacist's immediate receipt confirmations were well below the first fold.
+  - Several high-risk handoff actions inherited desktop `sm:h-7` / `sm:h-8` button sizing and measured below 44px in the page body.
+- Implemented by Codex:
+  - Reordered the workspace so "私に来た" is the first primary section under the header; consultation, outgoing handoffs, optional visit confirmation, and the rule bar now follow.
+  - Kept the action semantics and data unchanged while making handoff receipt, consultation resolution, "状況を聞く", and primary transfer controls maintain 44px height on desktop as well as mobile.
+- Validation:
+  - Before screenshot audit: desktop incoming `top=840`, mobile incoming `top=1717`.
+  - After screenshot audit: desktop incoming `top=141`, mobile incoming `top=169`; no page/console errors; no horizontal overflow; no page-body small targets remained.
+  - `pnpm vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests. Existing act warnings remain in the test suite.
+  - `pnpm exec eslint 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`: passed.
+  - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/handoff-desktop-before.png`, `handoff-mobile-before.png`, `handoff-desktop-after-final.png`, and `handoff-mobile-after-final.png`.
+- Remaining:
+  - Run final diff checks, commit the handoff UI slice, commit this ledger update separately, release the handoff lock, then continue the all-pages UI/UX sweep on the next non-conflicting route.

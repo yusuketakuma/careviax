@@ -5079,3 +5079,16 @@ Backup directory:
 - validation results: billing API/content Vitest passed 2 files / 12 tests; scoped ESLint passed; scoped Prettier check passed; browser screenshot audit passed with no console/page errors, no horizontal overflow, and `errorText=false`. Screenshots were saved as `billing-desktop-after-timeout-fix.png` and `billing-mobile-after-timeout-fix.png`.
 - remaining work: run final focused format/diff checks including ledger files, commit the BE render-fix separately from the ledger update, send `DONE`/billing handback to Claude, then continue UI/UX sweep on a non-conflicting page.
 - next action: commit the billing timeout split, then commit ledgers and hand billing back.
+
+### 20260626-1127 JST
+
+- current task: `/handoff` first-fold priority and touch-target polish under handoff UI lock.
+- files inspected: agmsg inbox, git status, `src/app/(dashboard)/handoff/page.tsx`, `src/app/(dashboard)/handoff/handoff-workspace.tsx`, `src/app/(dashboard)/handoff/handoff-workspace.test.tsx`, `src/components/ui/button.tsx`, `docs/ui-ux-design-guidelines.md`, and before/after Playwright screenshots.
+- files changed: `src/app/(dashboard)/handoff/handoff-workspace.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/handoff` put the pharmacist consultation workspace before the immediate incoming work queue. On mobile, "私に来た" started around 1717px, hiding receipt confirmations below the first fold. Page-body handoff actions also inherited desktop `sm:h-7` / `sm:h-8` Button sizing and measured below 44px.
+- security risks found: no auth, API, DB, mutation semantics, permissions, or audit behavior changed. The UI still uses the same existing endpoints and actions.
+- performance issues found: no new queries, polling, subscriptions, or heavier render loops were introduced. The change reorders existing sections and adjusts class names only.
+- validation commands: authenticated Playwright screenshot audit for `/handoff` desktop/mobile before and after; `pnpm vitest run 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/handoff/handoff-workspace.tsx' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx'`.
+- validation results: desktop incoming top moved from 840px to 141px; mobile incoming top moved from 1717px to 169px; no page/console errors; no horizontal overflow; no page-body small targets remained after final pass. Handoff Vitest passed 1 file / 13 tests with existing act warnings; scoped ESLint and Prettier passed.
+- remaining work: run final focused Prettier/diff checks including ledgers, commit the handoff UI slice separately from the ledger update, send `DONE`/release lock, then continue the all-pages UI/UX sweep on a non-conflicting page.
+- next action: commit handoff first-fold polish, then commit ledgers and release handoff lock.
