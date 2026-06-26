@@ -612,6 +612,7 @@ export function NotificationSettingsContent() {
         title="通知設定"
         description="イベントごとのアプリ内通知、ブラウザ通知、エスカレーション条件を管理します。"
         shortcuts={getAdminNotificationSettingsShortcutLinks()}
+        supportingContent={null}
       />
 
       <Alert>

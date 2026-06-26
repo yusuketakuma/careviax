@@ -106,6 +106,7 @@ describe('NotificationSettingsContent', () => {
 
     await screen.findByText('イベント通知ルール');
 
+    expect(screen.queryByText('最初に見るポイント')).toBeNull();
     const eventRulesTitle = screen.getByText('イベント通知ルール');
     const browserNotificationsTitle = screen.getByText('ブラウザ通知');
     expect(
