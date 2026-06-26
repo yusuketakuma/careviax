@@ -113,6 +113,24 @@ describe('BillingRulesPage', () => {
     vi.clearAllMocks();
   });
 
+  it('prioritizes the billing rules workbench over the generic admin intro', () => {
+    render(<BillingRulesPage />);
+
+    expect(screen.queryByText('最初に見るポイント')).toBeNull();
+    expect(screen.getByLabelText('請求ルールSSOT状態')).toBeTruthy();
+    expect(screen.getByText('公式SSOTと任意ルールを照合')).toBeTruthy();
+    expect(screen.getByText('local / push')).toBeTruthy();
+  });
+
+  it('keeps high-risk billing rule actions at the PH-OS 44px target', () => {
+    render(<BillingRulesPage />);
+
+    expect(screen.getByRole('button', { name: '公式SSOT同期' }).className).toContain('min-h-11');
+    expect(screen.getByRole('button', { name: '任意ルール追加' }).className).toContain('min-h-11');
+    expect(screen.getByRole('button', { name: '夜間加算 を編集' }).className).toContain('size-11');
+    expect(screen.getByRole('button', { name: '夜間加算 を削除' }).className).toContain('size-11');
+  });
+
   it('names the billing rule delete action and requires confirmation', () => {
     render(<BillingRulesPage />);
 

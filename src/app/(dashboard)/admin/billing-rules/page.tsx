@@ -202,6 +202,7 @@ function BillingRuleRowActions({
         <Button
           variant="ghost"
           size="icon"
+          className="size-11 sm:size-11"
           aria-label={`${rule.name} を編集`}
           aria-describedby={systemRuleReason ? systemRuleReasonId : undefined}
           disabled={rule.is_system}
@@ -212,6 +213,7 @@ function BillingRuleRowActions({
         <Button
           variant="ghost"
           size="icon"
+          className="size-11 sm:size-11"
           aria-label={`${rule.name} を削除`}
           aria-describedby={systemRuleReason ? systemRuleReasonId : undefined}
           disabled={rule.is_system}
@@ -288,7 +290,7 @@ function RuleFormDialog({
                 setForm((f) => ({ ...f, rule_type: v as RuleFormData['rule_type'] }))
               }
             >
-              <SelectTrigger id="rule-type">
+              <SelectTrigger id="rule-type" className="min-h-11 sm:h-11 sm:min-h-11">
                 <SelectValue>
                   {
                     (
@@ -314,6 +316,7 @@ function RuleFormDialog({
             <Label htmlFor="rule-name">ルール名</Label>
             <Input
               id="rule-name"
+              className="min-h-11 sm:h-11 sm:min-h-11"
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               placeholder="例: 在宅患者重複投薬・相互作用等防止加算"
@@ -325,6 +328,7 @@ function RuleFormDialog({
             <Label htmlFor="rule-code">算定コード（任意）</Label>
             <Input
               id="rule-code"
+              className="min-h-11 sm:h-11 sm:min-h-11"
               value={form.code}
               onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
               placeholder="例: 01234"
@@ -339,7 +343,7 @@ function RuleFormDialog({
               value={form.conditions}
               onChange={(e) => setForm((f) => ({ ...f, conditions: e.target.value }))}
               rows={4}
-              className="font-mono text-xs"
+              className="min-h-24 font-mono text-xs"
               placeholder='{"visit_count_min": 1}'
             />
             {conditionsError && <p className="text-xs text-destructive">{conditionsError}</p>}
@@ -351,6 +355,7 @@ function RuleFormDialog({
             <Input
               id="rule-amount"
               type="number"
+              className="min-h-11 sm:h-11 sm:min-h-11"
               value={form.amount}
               onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
               placeholder="例: 40"
@@ -364,7 +369,7 @@ function RuleFormDialog({
               value={form.is_active ? 'true' : 'false'}
               onValueChange={(v) => setForm((f) => ({ ...f, is_active: v === 'true' }))}
             >
-              <SelectTrigger id="rule-active">
+              <SelectTrigger id="rule-active" className="min-h-11 sm:h-11 sm:min-h-11">
                 <SelectValue>{form.is_active ? '有効' : '無効'}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -376,10 +381,19 @@ function RuleFormDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+          <Button
+            variant="outline"
+            className="min-h-11 sm:h-11 sm:min-h-11"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
             キャンセル
           </Button>
-          <Button onClick={handleSubmit} disabled={isPending || !form.name.trim()}>
+          <Button
+            className="min-h-11 sm:h-11 sm:min-h-11"
+            onClick={handleSubmit}
+            disabled={isPending || !form.name.trim()}
+          >
             {isPending ? '保存中...' : '保存'}
           </Button>
         </DialogFooter>
@@ -469,6 +483,17 @@ export default function BillingRulesPage() {
       ),
     },
     {
+      id: 'actions',
+      header: '操作',
+      cell: ({ row }) => (
+        <BillingRuleRowActions
+          rule={row.original}
+          onEdit={setEditTarget}
+          onDelete={setDeleteTarget}
+        />
+      ),
+    },
+    {
       accessorKey: 'rule_type',
       header: '種別',
       cell: ({ row }) => {
@@ -508,17 +533,6 @@ export default function BillingRulesPage() {
           </Badge>
         ),
     },
-    {
-      id: 'actions',
-      header: '操作',
-      cell: ({ row }) => (
-        <BillingRuleRowActions
-          rule={row.original}
-          onEdit={setEditTarget}
-          onDelete={setDeleteTarget}
-        />
-      ),
-    },
   ];
 
   return (
@@ -529,8 +543,13 @@ export default function BillingRulesPage() {
             title="算定ルール設定"
             description="薬剤師居宅療養管理指導と在宅患者訪問薬剤管理指導の算定 SSOT を管理します。"
             shortcuts={getAdminBillingRulesShortcutLinks()}
+            supportingContent={null}
           />
-          <div className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <div
+            aria-label="請求ルールSSOT状態"
+            className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+          >
+            <span className="font-medium text-foreground">公式SSOTと任意ルールを照合</span>
             <Badge variant="secondary">公式 {data?.summary.ssot_rule_count ?? 0}</Badge>
             <Badge variant="outline">任意 {data?.summary.custom_rule_count ?? 0}</Badge>
             {data?.source ? (
@@ -540,16 +559,17 @@ export default function BillingRulesPage() {
             ) : null}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
+            className="min-h-11 sm:h-11 sm:min-h-11"
             onClick={() => syncMutation.mutate()}
             disabled={syncMutation.isPending}
           >
             <RefreshCw className="mr-2 h-4 w-4" />
             {syncMutation.isPending ? '同期中...' : '公式SSOT同期'}
           </Button>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button className="min-h-11 sm:h-11 sm:min-h-11" onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             任意ルール追加
           </Button>
