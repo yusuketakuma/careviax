@@ -150,6 +150,8 @@ describe('/api/communication-requests/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: 'request_1',
@@ -194,6 +196,8 @@ describe('/api/communication-requests/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '連携依頼IDが不正です',
@@ -225,6 +229,8 @@ describe('/api/communication-requests/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(communicationRequestFindFirstMock).toHaveBeenCalledTimes(1);
     expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
   });
@@ -252,6 +258,8 @@ describe('/api/communication-requests/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: { id: 'request_1', subject: '確認事項' },
     });
@@ -266,6 +274,29 @@ describe('/api/communication-requests/[id] GET', () => {
       },
     });
     expect(fetchEmergencyContactsMock).toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when request lookup fails unexpectedly', async () => {
+    communicationRequestFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 090-1234-5678 raw care coordination detail'),
+    );
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+
+    const json = await response.json();
+    expect(json).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(json)).not.toContain('山田花子');
+    expect(JSON.stringify(json)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(json)).not.toContain('raw care coordination detail');
   });
 });
 

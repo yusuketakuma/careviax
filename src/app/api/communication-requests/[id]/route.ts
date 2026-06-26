@@ -2,11 +2,20 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, forbidden, conflict } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  forbidden,
+  conflict,
+  internalError,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { buildTracingReportPdfPath } from '@/lib/reports/tracing-report-pdf-path';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {
@@ -28,7 +37,7 @@ import {
   upsertCommunicationResponseByIntent,
 } from '@/server/services/communication-response-upsert';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: '連携依頼の閲覧権限がありません',
@@ -117,6 +126,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       suggested_contacts: emergencyContacts,
     },
   });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 const ALLOWED_STATUS_TRANSITIONS: Record<

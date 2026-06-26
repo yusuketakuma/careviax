@@ -147,6 +147,7 @@ import { GET as careReportsTodayWorkspaceGet } from '../care-reports/today-works
 import { GET as casesGet } from '../cases/route';
 import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
+import { GET as communicationRequestGet } from '../communication-requests/[id]/route';
 import { GET as communicationRequestsExportGet } from '../communication-requests/export/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
 import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
@@ -355,6 +356,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       communicationRequestsGet(
         createRequest('http://localhost/api/communication-requests', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'communication-requests/[id] GET',
+    handler: () =>
+      communicationRequestGet(
+        createRequest('http://localhost/api/communication-requests/request_1', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'request_1' }) },
       ),
   },
   {
@@ -1048,6 +1059,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'communication-requests/[id] GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
@@ -1106,6 +1118,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'communication-requests/[id] GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
@@ -1151,6 +1164,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'communication-requests/[id] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
