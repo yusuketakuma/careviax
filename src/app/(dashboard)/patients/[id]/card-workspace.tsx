@@ -427,7 +427,7 @@ function SummaryTile({
       )}
     >
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 font-semibold text-foreground">{value}</dd>
+      <dd className="mt-1 font-semibold text-foreground tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -3328,7 +3328,7 @@ function PatientProfilePanel({ patient }: { patient: PatientOverview }) {
             .join(' / ')}
         />
       </dl>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <p className="mt-2 text-xs text-muted-foreground tabular-nums">
         {age}歳 / {genderLabel} / {latestCondition?.name ?? '主病名未設定'}
       </p>
       {notes ? <p className="mt-3 text-sm leading-6 text-muted-foreground">{notes}</p> : null}
