@@ -9736,3 +9736,29 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-conferences-sweep/conferences-desktop-before.png`, `artifacts/ui-conferences-sweep/conferences-mobile-before.png`, `artifacts/ui-conferences-sweep/conferences-desktop-after.png`, and `artifacts/ui-conferences-sweep/conferences-mobile-after.png`.
 - Remaining:
   - Commit this conferences UI/UX group, then commit this ledger update separately and continue the all-pages UI/UX sweep. The broader objective is not complete.
+
+### Global Search — Primary Workbench and Result-Fold Proof
+
+- Coordination:
+  - Drained `phos/codex` agmsg before selecting the slice and before editing.
+  - Sent `LOCK: /search UI first-fold screenshot pass`; Claude ACKed no overlap and stayed on patient-detail/patients-list page-local work.
+  - Avoided patient medication/detail files and shared layout/design-system edits.
+- Bugs found:
+  - `/search` showed the search input, category chips, and results as a flat vertical stack, so operators did not get an immediate count summary for the selected category vs. all categories.
+  - The desktop `詳しく絞り込む` page-body button inherited compact sizing and measured `28px` high in the baseline proof, below the PH-OS 44px interaction target.
+  - A first attempted nested-card design pushed mobile results too far down (`listTop=746px`), so it was rejected and simplified back to a single PageScaffold work surface.
+- Implemented by Codex:
+  - Added a PH-OS workbench-style result status pill near the page title: selected-category count and all-category count stay visible while the operator switches chips.
+  - Kept search input, advanced filter, category chips, partial-failure feedback, empty states, and `ListOpenCard` result opening intact.
+  - Raised the `詳しく絞り込む` button to the 44px page-body target on desktop and mobile.
+  - Added a light `検索結果` divider heading without nesting extra cards, preserving first-fold result visibility on mobile.
+  - Extended the focused SearchContent test to lock the empty-search status, result heading, result count summary, and advanced-filter button target class.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/search/search-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `16` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`: passed.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/search/search-content.tsx'`: passed, unchanged after final simplification.
+  - Direct authenticated Playwright proof on `http://localhost:3012/search` with route-mocked page APIs and the existing local-auth helper: no console/page errors, no horizontal overflow, no page-body undersized targets on mobile, and no `/search` page-body undersized target on desktop.
+  - Final metrics: desktop `詳しく絞り込む` improved from `28px` to `44px`; desktop `listTop=371px`; mobile `listTop=543px`, within the first viewport. Shared app-header chrome still contains pre-existing compact controls outside this `/search` page-body slice.
+  - Screenshot evidence: `artifacts/ui-search-sweep/search-desktop-before.png`, `artifacts/ui-search-sweep/search-mobile-before.png`, `artifacts/ui-search-sweep/search-desktop-after.png`, and `artifacts/ui-search-sweep/search-mobile-after.png`.
+- Remaining:
+  - Run final focused Prettier/diff checks including this ledger update, commit the `/search` UI group, then commit the progress ledger update separately and release the `/search` lock. The broader all-pages UI/UX objective remains incomplete.
