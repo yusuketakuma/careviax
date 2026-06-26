@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2020 JST
+
+- current task: `/admin/jobs` failure worklist first, generic intro removal, collapsed filters, and 44px job operations.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, `src/app/(dashboard)/admin/jobs/page.tsx`, `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx`, `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx`, `src/app/api/jobs/route.ts`, related references discovered with `rg`, route-mocked before/final desktop/mobile screenshots under `artifacts/ui-jobs-sweep/`, and gbrain code graph probes for `JobsDashboardPage` / `JobsDashboardContent` (call graph not built).
+- files changed: `src/app/(dashboard)/admin/jobs/page.tsx`, `src/app/(dashboard)/admin/jobs/page.test.tsx`, `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx`, `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/admin/jobs` rendered the generic `最初に見るポイント` admin intro above job operations; routine summary and filters appeared before failed/running job actions; desktop filters, row detail controls, and re-run buttons measured `28px-32px`; mobile first viewport showed only summary cards before the operational worklist.
+- security risks found: no auth, authorization, org scoping, job list API, job re-run endpoints, scheduler behavior, mutation semantics, schema, migrations, DB writes, external sends, PHI projection, audit behavior, or secret handling changed. Browser proof used route-mocked APIs and a local session token; no DB reads or writes were performed.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or unbounded loops were introduced. The existing 60-second refetch cadence is unchanged. The new attention worklist derives from the already-fetched bounded job definition list.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/jobs/page.test.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/jobs/page.tsx' 'src/app/(dashboard)/admin/jobs/page.test.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx'`; `pnpm exec prettier --write ...`; `pnpm exec prettier --check ...`; `git diff --check -- ...`; direct route-mocked Playwright proof on `http://localhost:3012/admin/jobs`.
+- validation results: focused JobsDashboardPage/Content Vitest passed `2` files / `6` tests; scoped ESLint passed; scoped Prettier write/check passed; scoped diff-check passed. Route-mocked browser proof saved `artifacts/ui-jobs-sweep/before/desktop.png`, `before/mobile.png`, `final/desktop.png`, and `final/mobile.png`; final proof had no generic intro, one visible `ジョブ監視` h1, no console/page errors, no horizontal overflow, page-body small-control count `0`, desktop first failed-job re-run at `566-610px`, and mobile first failed-job re-run at `698-742px` above the bottom navigation.
+- remaining work: commit the `/admin/jobs` UI/test group, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server started for screenshot proof, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only the jobs page/content/test files for the implementation commit, then stage only ledgers for the progress commit.
+
 ### 20260626-2010 JST
 
 - current task: `/admin/billing-rules` action-beside-evidence ordering, generic intro removal, and 44px billing rule controls.
