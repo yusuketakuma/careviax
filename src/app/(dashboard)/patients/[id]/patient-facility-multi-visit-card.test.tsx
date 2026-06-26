@@ -194,7 +194,11 @@ describe('PatientFacilityMultiVisitCard', () => {
   it('shows facility/unit readiness and schedule grouping guidance', () => {
     vi.mocked(buildPatientHref).mockClear();
 
-    render(<PatientFacilityMultiVisitCard patient={buildPatient()} />);
+    const { container } = render(<PatientFacilityMultiVisitCard patient={buildPatient()} />);
+
+    // SSOT/L170: 装飾に bespoke な Tailwind 状態色をベタ書きしない（トークンへ寄せる）。
+    // 色名+シェード番号(例 sky-200)のみを検出する(translate-y 等の誤検出を避ける)。
+    expect(container.innerHTML).not.toMatch(/(sky|emerald|violet|amber|slate|rose|cyan)-\d/);
 
     expect(screen.getByText('施設・個人宅の複数名同時訪問設定')).toBeTruthy();
     expect(screen.getByText('施設 登録済み')).toBeTruthy();

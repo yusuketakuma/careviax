@@ -79,18 +79,18 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
   const residenceAddress = primaryResidence?.address?.trim() || '住所未登録';
 
   return (
-    <Card className="border-sky-200 bg-sky-50/50">
+    <Card>
       <CardHeader className="space-y-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
-            <p className="inline-flex items-center rounded-full border border-sky-200 bg-white/70 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-800">
+            <p className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Facility Multi-Visit
             </p>
-            <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium text-sky-950">
+            <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium text-foreground">
               <UsersRound className="size-4" aria-hidden="true" />
               施設・個人宅の複数名同時訪問設定
             </h2>
-            <p className="max-w-3xl text-sm leading-6 text-sky-900/80">
+            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
               施設とユニット、または個人宅の同一住所・同居グループを患者情報に登録しておくと、同日訪問がスケジュール上でまとまり、現地では患者をスワイプで切り替えられます。
             </p>
           </div>
@@ -154,9 +154,9 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
         </div>
 
         <div className="grid gap-3 text-sm md:grid-cols-3">
-          <div className="rounded-xl border border-sky-200 bg-white/80 px-3 py-3">
+          <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3">
             <div className="flex items-center gap-2 font-medium text-foreground">
-              <Building2 className="size-4 text-sky-700" aria-hidden="true" />
+              <Building2 className="size-4 text-muted-foreground" aria-hidden="true" />
               訪問先グループ
             </div>
             <p className="mt-2 text-muted-foreground">
@@ -167,9 +167,9 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
                 : ''}
             </p>
           </div>
-          <div className="rounded-xl border border-sky-200 bg-white/80 px-3 py-3">
+          <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3">
             <div className="flex items-center gap-2 font-medium text-foreground">
-              <CalendarDays className="size-4 text-sky-700" aria-hidden="true" />
+              <CalendarDays className="size-4 text-muted-foreground" aria-hidden="true" />
               訪問曜日
             </div>
             <p className="mt-2 text-muted-foreground">
@@ -178,9 +178,9 @@ export function PatientFacilityMultiVisitCard({ patient }: { patient: PatientOve
                 : '未設定'}
             </p>
           </div>
-          <div className="rounded-xl border border-sky-200 bg-white/80 px-3 py-3">
+          <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3">
             <div className="flex items-center gap-2 font-medium text-foreground">
-              <UsersRound className="size-4 text-sky-700" aria-hidden="true" />
+              <UsersRound className="size-4 text-muted-foreground" aria-hidden="true" />
               同時訪問表示
             </div>
             <p className="mt-2 text-muted-foreground">
