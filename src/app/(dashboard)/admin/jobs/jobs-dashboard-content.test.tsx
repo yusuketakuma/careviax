@@ -150,9 +150,21 @@ describe('JobsDashboardContent', () => {
         refetchInterval: 60_000,
       }),
     );
-    expect(screen.getByText('一部失敗')).toBeTruthy();
-    expect(screen.getByText('対象 2件 / 成功 1件 / 失敗 1件')).toBeTruthy();
+    expect(screen.getByText('対応が必要なジョブ')).toBeTruthy();
+    expect(screen.getAllByText('一部失敗').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('対象 2件 / 成功 1件 / 失敗 1件').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('詳細は監査ログと保管元ジョブを確認してください。')).toBeTruthy();
+
+    const attentionHeading = screen.getByText('対応が必要なジョブ');
+    const summaryHeading = screen.getByText('登録ジョブ数');
+    expect(
+      attentionHeading.compareDocumentPosition(summaryHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    const rerunButtons = screen.getAllByRole('button', {
+      name: 'medication-history-bulk-export-drain を再実行',
+    });
+    expect(rerunButtons[0]?.className).toContain('!min-h-[44px]');
   });
 
   it('ignores malformed or successful bulk export output', () => {
@@ -239,7 +251,7 @@ describe('JobsDashboardContent', () => {
     render(<JobsDashboardContent />);
 
     expect(screen.getByRole('alert').textContent).toContain('ジョブ一覧を取得できませんでした');
-    expect(screen.getAllByText('—')).toHaveLength(4);
+    expect(screen.getAllByText('—')).toHaveLength(5);
     expect(screen.getByText('—件')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));

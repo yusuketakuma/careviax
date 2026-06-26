@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef, type Row } from '@tanstack/react-table';
-import { Filter, Play } from 'lucide-react';
+import { AlertTriangle, Filter, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -126,6 +126,14 @@ function matchesSourceFilter(jobType: string, source: string): boolean {
   return true;
 }
 
+function getAttentionReason(entry: JobDefinitionEntry) {
+  const summary = getJobBulkExportRunSummary(entry);
+  if (entry.latest_run?.status === 'failed') return 'failed';
+  if (summary) return 'partial';
+  if (entry.latest_run?.status === 'running') return 'running';
+  return null;
+}
+
 // --- Main ---
 
 export function JobsDashboardContent() {
@@ -172,6 +180,7 @@ export function JobsDashboardContent() {
     },
   });
 
+  const jobs = data?.data ?? [];
   const filteredJobs = useMemo(() => {
     const jobs = data?.data ?? [];
     return jobs.filter((entry) => {
@@ -287,7 +296,7 @@ export function JobsDashboardContent() {
           <Button
             size="sm"
             variant="outline"
-            className="h-7 px-2 text-xs"
+            className="!h-11 !min-h-[44px] !min-w-11 px-3 text-xs"
             aria-label={`${row.original.job_type} を再実行`}
             disabled={rerunMutation.isPending}
             onClick={() =>
@@ -336,56 +345,148 @@ export function JobsDashboardContent() {
     );
   }
 
-  const failedCount = (data?.data ?? []).filter((e) => e.latest_run?.status === 'failed').length;
-  const runningCount = (data?.data ?? []).filter((e) => e.latest_run?.status === 'running').length;
-  const partialWarningCount = (data?.data ?? []).filter((e) =>
-    Boolean(getJobBulkExportRunSummary(e)),
-  ).length;
+  const failedCount = jobs.filter((e) => e.latest_run?.status === 'failed').length;
+  const runningCount = jobs.filter((e) => e.latest_run?.status === 'running').length;
+  const partialWarningCount = jobs.filter((e) => Boolean(getJobBulkExportRunSummary(e))).length;
+  const attentionJobs = jobs.filter((entry) => getAttentionReason(entry));
   const jobCountsUnavailable = (isLoading || isError) && !data;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 [&_[data-slot=select-trigger]]:!h-11 [&_[data-slot=select-trigger]]:!min-h-[44px] [&_button]:!min-h-[44px] [&_button]:!min-w-11">
+      <section className="rounded-xl border border-border/70 bg-card p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+              <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
+              対応が必要なジョブ
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              失敗・一部失敗・実行中を先に確認し、対象ジョブの近くで再実行します。
+            </p>
+          </div>
+          <Badge variant={attentionJobs.length > 0 ? 'destructive' : 'outline'}>
+            {jobCountsUnavailable ? '—' : `${attentionJobs.length}件`}
+          </Badge>
+        </div>
+
+        {jobCountsUnavailable ? (
+          <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+            ジョブ状態を読み込み中です。
+          </p>
+        ) : attentionJobs.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+            今すぐ対応が必要なジョブはありません。
+          </p>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {attentionJobs.map((entry) => {
+              const status = entry.latest_run?.status ?? 'unknown';
+              const cfg = STATUS_CONFIG[status];
+              const summary = getJobBulkExportRunSummary(entry);
+              const reason = getAttentionReason(entry);
+              const detail =
+                reason === 'partial' && summary
+                  ? formatBulkExportSummary(summary)
+                  : entry.latest_run?.error_log || entry.schedule_hint;
+
+              return (
+                <article
+                  key={entry.job_type}
+                  className="rounded-lg border border-border/70 bg-muted/20 p-3"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {cfg?.role && cfg.role !== 'neutral' ? (
+                          <StateBadge role={cfg.role}>{cfg.label}</StateBadge>
+                        ) : (
+                          <Badge variant="outline">{cfg?.label ?? status}</Badge>
+                        )}
+                        {reason === 'partial' ? (
+                          <Badge variant="outline" className="text-state-confirm">
+                            一部失敗
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <p className="break-all font-mono text-sm font-medium text-foreground">
+                        {entry.job_type}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{entry.schedule_hint}</p>
+                      <p
+                        className={`line-clamp-2 text-sm ${
+                          reason === 'failed' ? 'text-destructive' : 'text-muted-foreground'
+                        }`}
+                      >
+                        {detail}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="!h-11 !min-h-[44px] !min-w-11 shrink-0 px-3 text-xs"
+                      aria-label={`${entry.job_type} を再実行`}
+                      disabled={rerunMutation.isPending}
+                      onClick={() =>
+                        rerunMutation.mutate({
+                          endpoint: entry.endpoint,
+                          jobType: entry.job_type,
+                        })
+                      }
+                    >
+                      <Play className="mr-1 size-3" aria-hidden="true" />
+                      再実行
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="px-3 pt-3 pb-1 sm:px-6 sm:pt-6">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               登録ジョブ数
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold">
+          <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+            <p className="text-xl font-semibold sm:text-2xl">
               {jobCountsUnavailable ? '—' : (data?.data.length ?? '—')}
             </p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="px-3 pt-3 pb-1 sm:px-6 sm:pt-6">
             <CardTitle className="text-sm font-medium text-muted-foreground">実行中</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-semibold text-tag-info">
+          <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+            <p className="text-xl font-semibold text-tag-info sm:text-2xl">
               {jobCountsUnavailable ? '—' : runningCount}
             </p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="px-3 pt-3 pb-1 sm:px-6 sm:pt-6">
             <CardTitle className="text-sm font-medium text-muted-foreground">失敗</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className={`text-2xl font-semibold ${failedCount > 0 ? 'text-destructive' : ''}`}>
+          <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
+            <p
+              className={`text-xl font-semibold sm:text-2xl ${failedCount > 0 ? 'text-destructive' : ''}`}
+            >
               {jobCountsUnavailable ? '—' : failedCount}
             </p>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2">
+          <CardHeader className="px-3 pt-3 pb-1 sm:px-6 sm:pt-6">
             <CardTitle className="text-sm font-medium text-muted-foreground">一部失敗</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 pb-3 sm:px-6 sm:pb-6">
             <p
-              className={`text-2xl font-semibold ${partialWarningCount > 0 ? 'text-state-confirm' : ''}`}
+              className={`text-xl font-semibold sm:text-2xl ${partialWarningCount > 0 ? 'text-state-confirm' : ''}`}
             >
               {jobCountsUnavailable ? '—' : partialWarningCount}
             </p>
@@ -394,48 +495,49 @@ export function JobsDashboardContent() {
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
+      <details className="rounded-xl border border-border/70 bg-card p-4 shadow-sm">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-base font-semibold text-foreground [&::-webkit-details-marker]:hidden">
+          <span className="flex items-center gap-2">
             <Filter className="size-4" aria-hidden="true" />
-            フィルタ
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="source-filter">ソース種別</Label>
-              <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v ?? '')}>
-                <SelectTrigger id="source-filter">
-                  <SelectValue placeholder="すべて" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SOURCE_FILTER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="status-filter">状態</Label>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? '')}>
-                <SelectTrigger id="status-filter">
-                  <SelectValue placeholder="すべて" />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_FILTER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            表示条件を変更
+          </span>
+          <span className="text-xs font-normal text-muted-foreground">
+            {filteredJobs.length}件表示中
+          </span>
+        </summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="source-filter">ソース種別</Label>
+            <Select value={sourceFilter} onValueChange={(v) => setSourceFilter(v ?? '')}>
+              <SelectTrigger id="source-filter">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                {SOURCE_FILTER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value || 'all'} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </CardContent>
-      </Card>
+          <div className="space-y-1.5">
+            <Label htmlFor="status-filter">状態</Label>
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? '')}>
+              <SelectTrigger id="status-filter">
+                <SelectValue placeholder="すべて" />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_FILTER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value || 'all'} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </details>
 
       {/* Count */}
       <p className="text-sm text-muted-foreground">
@@ -443,16 +545,18 @@ export function JobsDashboardContent() {
       </p>
 
       {/* Table */}
-      <DataTable
-        columns={columns}
-        data={filteredJobs}
-        isLoading={isLoading}
-        errorMessage={isError ? 'ジョブ一覧を取得できませんでした' : undefined}
-        onRetry={() => void refetch()}
-        caption="IntegrationJob 一覧"
-        renderExpandedRow={renderExpandedRow}
-        getRowId={(row) => row.job_type}
-      />
+      <div className="[&_button]:!min-h-[44px] [&_button]:!min-w-11">
+        <DataTable
+          columns={columns}
+          data={filteredJobs}
+          isLoading={isLoading}
+          errorMessage={isError ? 'ジョブ一覧を取得できませんでした' : undefined}
+          onRetry={() => void refetch()}
+          caption="IntegrationJob 一覧"
+          renderExpandedRow={renderExpandedRow}
+          getRowId={(row) => row.job_type}
+        />
+      </div>
     </div>
   );
 }

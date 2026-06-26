@@ -15,6 +15,7 @@ export default function JobsDashboardPage() {
         title="ジョブ監視"
         description="IntegrationJob の実行状況・エラーログ・手動再実行"
         shortcuts={getAdminJobsShortcutLinks()}
+        supportingContent={null}
       />
       <Suspense fallback={<Loading />}>
         <JobsDashboardContent />
