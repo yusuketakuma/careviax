@@ -189,7 +189,7 @@ export function ScheduleViewModeToggle({
 const BLOCK_KIND_CLASSES: Record<BoardBlock['kind'], string> = {
   visit: 'bg-tag-info text-white',
   desk: 'bg-primary text-primary-foreground',
-  prep: 'bg-amber-500 text-white',
+  prep: 'bg-state-confirm text-white',
   travel:
     'bg-[repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0_4px,#cbd5e1_4px,#cbd5e1_8px)] text-transparent',
   break: 'border border-dashed border-border bg-muted/40 text-muted-foreground',
