@@ -117,6 +117,37 @@ async function fetchHandoffConfirmationTasks(orgId: string): Promise<HandoffConf
   return (json.data ?? []).filter((task) => Boolean(task.related_entity_id));
 }
 
+type RecentComment = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  content: string;
+  author_id: string;
+  author_name: string;
+  mentions_me: boolean;
+  authored_by_me: boolean;
+  created_at: string;
+};
+
+/** コメント対象エンティティの日本語ラベル(やり取りの文脈表示用)。 */
+const COMMENT_ENTITY_LABELS: Record<string, string> = {
+  dispense_task: '調剤',
+  medication_cycle: '処方サイクル',
+  set_plan: 'セット',
+  visit_record: '訪問記録',
+  care_report: '報告書',
+  patient: '患者',
+};
+
+async function fetchRecentComments(orgId: string): Promise<RecentComment[]> {
+  const res = await fetch('/api/comments/recent', {
+    headers: { 'x-org-id': orgId },
+  });
+  if (!res.ok) throw new Error('やり取りの取得に失敗しました');
+  const json = (await res.json()) as { data?: RecentComment[] };
+  return json.data ?? [];
+}
+
 async function fetchVisitHandoff(orgId: string, visitRecordId: string): Promise<VisitHandoff> {
   const res = await fetch(`/api/visit-records/${visitRecordId}/handoff`, {
     headers: { 'x-org-id': orgId },
@@ -470,6 +501,70 @@ function TransferDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// やり取り: 各画面に散在するカードコメント(TaskComment)を handoff に読み取り集約
+// ---------------------------------------------------------------------------
+
+function HandoffCommentFeed({
+  comments,
+  isLoading,
+}: {
+  comments: RecentComment[];
+  isLoading: boolean;
+}) {
+  // 自分が関与したコメントが無ければ section ごと出さない(ノイズを足さない)。
+  if (!isLoading && comments.length === 0) return null;
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="handoff-comment-feed-heading"
+      data-testid="handoff-comment-feed"
+    >
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 id="handoff-comment-feed-heading" className="text-base font-bold text-foreground">
+          やり取り
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          各画面のカードコメントのうち、あなた宛・あなたの投稿を集めています。
+        </p>
+      </div>
+      {isLoading ? (
+        <div className="mt-3 space-y-2" aria-hidden="true">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      ) : (
+        <ul className="mt-3 space-y-2" role="list">
+          {comments.map((comment) => (
+            <li
+              key={comment.id}
+              data-testid="handoff-comment-item"
+              className="rounded-md border border-border/60 bg-card px-3 py-2"
+            >
+              <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">
+                  {familyNameOf(comment.author_name)}
+                </span>
+                <span className="rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[11px]">
+                  {COMMENT_ENTITY_LABELS[comment.entity_type] ?? comment.entity_type}
+                </span>
+                {comment.mentions_me ? (
+                  <span className="font-semibold text-tag-info">@あなた</span>
+                ) : null}
+                <span className="ml-auto tabular-nums">{formatTimeOfDay(comment.created_at)}</span>
+              </div>
+              <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                {comment.content}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -1272,6 +1367,12 @@ export function HandoffWorkspace() {
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
   });
+  const commentsQuery = useQuery({
+    queryKey: ['handoff', 'recent-comments', orgId],
+    queryFn: () => fetchRecentComments(orgId),
+    staleTime: 30_000,
+    enabled: !isBootstrappingOrg,
+  });
 
   const confirmReceiptMutation = useMutation({
     mutationFn: async (itemId: string) => {
@@ -1411,6 +1512,11 @@ export function HandoffWorkspace() {
                 recipientOptions={board.recipient_options}
                 viewerUserId={userId}
                 onChanged={invalidateBoard}
+              />
+
+              <HandoffCommentFeed
+                comments={commentsQuery.data ?? []}
+                isLoading={commentsQuery.isLoading}
               />
 
               <ConsultWorkspace
