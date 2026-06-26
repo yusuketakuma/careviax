@@ -519,6 +519,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/collaboration/room-token',
   '/api/comments',
   '/api/comments/:id',
+  '/api/comments/recent',
   '/api/communication-events',
   '/api/communication-requests',
   '/api/communication-requests/:id',
