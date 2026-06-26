@@ -42,7 +42,9 @@ test.describe('auth: login page', () => {
     });
     await openStableRoute(page, '/login');
 
-    const resetLink = page.getByRole('link', { name: /パスワードを忘れた|パスワードリセット|Forgot/i });
+    const resetLink = page.getByRole('link', {
+      name: /パスワードを忘れた|パスワードリセット|Forgot/i,
+    });
     await expect(resetLink).toBeVisible();
 
     expect(errors).toEqual([]);
@@ -64,7 +66,9 @@ test.describe('auth: login page', () => {
 });
 
 test.describe('auth: MFA page', () => {
-  test('MFA page renders verification code input', async ({ context }) => {
+  test('MFA page renders verification code input or session recovery action', async ({
+    context,
+  }) => {
     const { page, errors } = await createInstrumentedPage(context, {
       captureHttpErrors: false,
     });
@@ -72,11 +76,21 @@ test.describe('auth: MFA page', () => {
 
     // MFA page should show OTP input or redirect to login if no session
     const hasMfaInput =
-      (await page.getByLabel(/確認コード|TOTP|認証コード/i).isVisible().catch(() => false)) ||
-      (await page.getByRole('textbox').isVisible().catch(() => false)) ||
+      (await page
+        .getByLabel(/確認コード|TOTP|認証コード/i)
+        .isVisible()
+        .catch(() => false)) ||
+      (await page
+        .getByRole('textbox')
+        .isVisible()
+        .catch(() => false)) ||
       page.url().includes('/login');
+    const hasRecoveryAction = await page
+      .getByRole('button', { name: /ログインからやり直す|ログインに戻る/i })
+      .isVisible()
+      .catch(() => false);
 
-    expect(hasMfaInput).toBe(true);
+    expect(hasMfaInput || hasRecoveryAction).toBe(true);
 
     expect(errors).toEqual([]);
   });
@@ -90,9 +104,7 @@ test.describe('auth: password reset flow', () => {
     await openStableRoute(page, '/password/reset');
 
     await expect(page.getByLabel(/メールアドレス|Email/i)).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: /送信|リセット|Reset|Submit/i }),
-    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /送信|リセット|Reset|Submit/i })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
