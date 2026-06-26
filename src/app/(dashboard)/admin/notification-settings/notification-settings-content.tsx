@@ -287,9 +287,10 @@ export function NotificationSettingsContent() {
   const [escalationLoadError, setEscalationLoadError] = useState(false);
   const [escalationReloadKey, setEscalationReloadKey] = useState(0);
   const [savingKey, setSavingKey] = useState<string | null>(null);
-  const [browserNotificationState, setBrowserNotificationState] = useState(
-    readBrowserNotificationState,
-  );
+  const [browserNotificationState, setBrowserNotificationState] = useState<{
+    permission: NotificationPermission | 'unsupported';
+    enabled: boolean;
+  }>({ permission: 'unsupported', enabled: false });
   const [newEscalationOpen, setNewEscalationOpen] = useState(false);
   const [newEscalationTrigger, setNewEscalationTrigger] = useState<EscalationRule['trigger_type']>(
     'communication_response_overdue',
@@ -303,6 +304,13 @@ export function NotificationSettingsContent() {
     null,
   );
   const [deleteEscalationTarget, setDeleteEscalationTarget] = useState<EscalationRule | null>(null);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setBrowserNotificationState(readBrowserNotificationState());
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   useEffect(() => {
     if (!orgId) return;
@@ -618,48 +626,6 @@ export function NotificationSettingsContent() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <BellRing className="size-4" aria-hidden="true" />
-            ブラウザ通知
-          </CardTitle>
-          <CardDescription>PWA/ブラウザ権限を使ってデスクトップ通知を表示します。</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">
-              権限: {permission === 'unsupported' ? '非対応' : permission}
-            </Badge>
-            <Badge variant={browserNotificationsEnabled ? 'secondary' : 'outline'}>
-              {browserNotificationsEnabled ? '有効' : '無効'}
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            緊急連絡や差戻しなどの新着通知を、ブラウザがバックグラウンドでも確認しやすくします。
-          </p>
-        </CardContent>
-        <CardFooter className="gap-2">
-          <Button
-            type="button"
-            aria-label="ブラウザ通知を許可して有効化"
-            onClick={() => void enableBrowserNotifications()}
-            disabled={permission === 'unsupported'}
-          >
-            許可して有効化
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            aria-label="ブラウザ通知を停止"
-            onClick={disableBrowserNotifications}
-            disabled={!browserNotificationsEnabled}
-          >
-            停止
-          </Button>
-        </CardFooter>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
             <Bell className="size-4" aria-hidden="true" />
             イベント通知ルール
           </CardTitle>
@@ -741,6 +707,7 @@ export function NotificationSettingsContent() {
                               <Badge variant="outline">既定ON</Badge>
                             ) : null}
                             <Checkbox
+                              className="size-11 rounded-lg"
                               checked={enabled}
                               disabled={isSaving}
                               onCheckedChange={(checked) =>
@@ -765,6 +732,50 @@ export function NotificationSettingsContent() {
 
       <Card>
         <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BellRing className="size-4" aria-hidden="true" />
+            ブラウザ通知
+          </CardTitle>
+          <CardDescription>PWA/ブラウザ権限を使ってデスクトップ通知を表示します。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">
+              権限: {permission === 'unsupported' ? '非対応' : permission}
+            </Badge>
+            <Badge variant={browserNotificationsEnabled ? 'secondary' : 'outline'}>
+              {browserNotificationsEnabled ? '有効' : '無効'}
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            緊急連絡や差戻しなどの新着通知を、ブラウザがバックグラウンドでも確認しやすくします。
+          </p>
+        </CardContent>
+        <CardFooter className="gap-2">
+          <Button
+            type="button"
+            className="h-11 sm:h-11 sm:min-h-[44px]"
+            aria-label="ブラウザ通知を許可して有効化"
+            onClick={() => void enableBrowserNotifications()}
+            disabled={permission === 'unsupported'}
+          >
+            許可して有効化
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 sm:h-11 sm:min-h-[44px]"
+            aria-label="ブラウザ通知を停止"
+            onClick={disableBrowserNotifications}
+            disabled={!browserNotificationsEnabled}
+          >
+            停止
+          </Button>
+        </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle>エスカレーションルール</CardTitle>
@@ -772,7 +783,12 @@ export function NotificationSettingsContent() {
                 停滞や失敗が一定時間続いたときに、誰へ何を起こすかを定義します。
               </CardDescription>
             </div>
-            <Button type="button" size="sm" onClick={() => handleNewEscalationOpenChange(true)}>
+            <Button
+              type="button"
+              size="sm"
+              className="h-11 sm:h-11 sm:min-h-[44px]"
+              onClick={() => handleNewEscalationOpenChange(true)}
+            >
               ルール追加
             </Button>
           </div>
@@ -831,6 +847,7 @@ export function NotificationSettingsContent() {
                   <div className="flex items-center gap-2">
                     <label className="flex items-center gap-2 text-sm font-medium text-foreground">
                       <Checkbox
+                        className="size-11 rounded-lg"
                         checked={rule.is_active}
                         disabled={isSaving || isDeleting}
                         onCheckedChange={(checked) =>
@@ -843,6 +860,7 @@ export function NotificationSettingsContent() {
                       type="button"
                       size="sm"
                       variant="outline"
+                      className="h-11 sm:h-11 sm:min-h-[44px]"
                       disabled={isDeleting}
                       aria-label={`${escalationRuleSummary(rule)} を削除`}
                       onClick={() => setDeleteEscalationTarget(rule)}

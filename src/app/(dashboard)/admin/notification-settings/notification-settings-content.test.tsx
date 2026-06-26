@@ -101,6 +101,23 @@ describe('NotificationSettingsContent', () => {
     });
   });
 
+  it('prioritizes event delivery rules before browser permission settings', async () => {
+    render(<NotificationSettingsContent />);
+
+    await screen.findByText('イベント通知ルール');
+
+    const eventRulesTitle = screen.getByText('イベント通知ルール');
+    const browserNotificationsTitle = screen.getByText('ブラウザ通知');
+    expect(
+      eventRulesTitle.compareDocumentPosition(browserNotificationsTitle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    expect(
+      screen.getAllByRole('checkbox').some((checkbox) => checkbox.className.includes('size-11')),
+    ).toBe(true);
+  });
+
   it('shows inline validation before creating an escalation rule with an invalid threshold', async () => {
     render(<NotificationSettingsContent />);
 
