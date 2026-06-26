@@ -141,7 +141,13 @@ describe('/api/billing-evidence/check GET', () => {
     const response = await GET(createRequest(), emptyParams);
 
     expect(response.status).toBe(200);
-    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function), {
+      timeoutMs: 10_000,
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function), {
+      timeoutMs: 10_000,
+    });
     expect(txMock.billingEvidence.count).toHaveBeenCalledWith({
       where: { org_id: 'org_1', billing_month: currentMonthStart, claimable: true },
     });

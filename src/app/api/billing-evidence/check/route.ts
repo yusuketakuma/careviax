@@ -20,6 +20,7 @@ const querySchema = z.object({
 });
 
 const REVIEW_ROWS_LIMIT = 10;
+const BILLING_CHECK_READ_TIMEOUT_MS = 10_000;
 
 /** 訪問完了後に算定候補へ確定する、当日の未完了予定ステータス。 */
 const TODAY_PENDING_SCHEDULE_STATUSES = [
@@ -85,118 +86,148 @@ export const GET = withAuthContext(
     // scheduled_date(@db.Date)比較用: ローカル日付の UTC 深夜レンジ
     const todayRange = todayUtcRange(now);
 
-    const data = await withOrgContext(ctx.orgId, async (tx) => {
-      const [
-        passedCount,
-        reviewCount,
-        reviewCandidates,
-        todayPendingCount,
-        latestRevisionRule,
-        rejectionCount,
-        templateKinds,
-        rail,
-      ] = await Promise.all([
-        tx.billingEvidence.count({
-          where: { org_id: ctx.orgId, billing_month: monthStart, claimable: true },
-        }),
-        tx.billingCandidate.count({
-          where: { org_id: ctx.orgId, billing_month: monthStart, status: 'candidate' },
-        }),
-        tx.billingCandidate.findMany({
-          where: { org_id: ctx.orgId, billing_month: monthStart, status: 'candidate' },
-          orderBy: { created_at: 'asc' },
-          take: REVIEW_ROWS_LIMIT,
-          select: {
-            id: true,
-            patient_id: true,
-            cycle_id: true,
-            rule_id: true,
-            billing_name: true,
-            billing_target_name: true,
-            exclusion_reason: true,
-          },
-        }),
-        tx.visitSchedule.count({
-          where: {
-            org_id: ctx.orgId,
-            scheduled_date: todayRange,
-            schedule_status: { in: [...TODAY_PENDING_SCHEDULE_STATUSES] },
-          },
-        }),
-        tx.billingRule.findFirst({
-          where: {
-            org_id: ctx.orgId,
-            billing_scope: 'home_care_ssot',
-            is_active: true,
-            effective_from: { not: null },
-          },
-          orderBy: { effective_from: 'desc' },
-          select: { effective_from: true },
-        }),
-        tx.billingCandidate.count({
-          where: {
-            org_id: ctx.orgId,
-            status: 'excluded',
-            exclusion_reason: { contains: '返戻' },
-          },
-        }),
-        tx.template.groupBy({
-          by: ['template_type'],
-          where: { org_id: ctx.orgId },
-        }),
-        buildTodayOpsRail(tx, ctx.orgId, now),
-      ]);
+    const base = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const [
+          passedCount,
+          reviewCount,
+          reviewCandidates,
+          todayPendingCount,
+          latestRevisionRule,
+          rejectionCount,
+          templateKinds,
+          rail,
+        ] = await Promise.all([
+          tx.billingEvidence.count({
+            where: { org_id: ctx.orgId, billing_month: monthStart, claimable: true },
+          }),
+          tx.billingCandidate.count({
+            where: { org_id: ctx.orgId, billing_month: monthStart, status: 'candidate' },
+          }),
+          tx.billingCandidate.findMany({
+            where: { org_id: ctx.orgId, billing_month: monthStart, status: 'candidate' },
+            orderBy: { created_at: 'asc' },
+            take: REVIEW_ROWS_LIMIT,
+            select: {
+              id: true,
+              patient_id: true,
+              cycle_id: true,
+              rule_id: true,
+              billing_name: true,
+              billing_target_name: true,
+              exclusion_reason: true,
+            },
+          }),
+          tx.visitSchedule.count({
+            where: {
+              org_id: ctx.orgId,
+              scheduled_date: todayRange,
+              schedule_status: { in: [...TODAY_PENDING_SCHEDULE_STATUSES] },
+            },
+          }),
+          tx.billingRule.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              billing_scope: 'home_care_ssot',
+              is_active: true,
+              effective_from: { not: null },
+            },
+            orderBy: { effective_from: 'desc' },
+            select: { effective_from: true },
+          }),
+          tx.billingCandidate.count({
+            where: {
+              org_id: ctx.orgId,
+              status: 'excluded',
+              exclusion_reason: { contains: '返戻' },
+            },
+          }),
+          tx.template.groupBy({
+            by: ['template_type'],
+            where: { org_id: ctx.orgId },
+          }),
+          buildTodayOpsRail(tx, ctx.orgId, now),
+        ]);
 
-      const patientIds = Array.from(
-        new Set(
-          reviewCandidates
-            .map((candidate) => candidate.patient_id)
-            .filter((value): value is string => value != null),
-        ),
-      );
-      const cycleIds = Array.from(
-        new Set(
-          reviewCandidates
-            .map((candidate) => candidate.cycle_id)
-            .filter((value): value is string => value != null),
-        ),
-      );
-      const ruleIds = Array.from(
-        new Set(
-          reviewCandidates
-            .map((candidate) => candidate.rule_id)
-            .filter((value): value is string => value != null),
-        ),
-      );
+        return {
+          passedCount,
+          reviewCount,
+          reviewCandidates,
+          todayPendingCount,
+          latestRevisionRule,
+          rejectionCount,
+          templateKindCount: templateKinds.length,
+          rail,
+        };
+      },
+      { timeoutMs: BILLING_CHECK_READ_TIMEOUT_MS },
+    );
 
-      const [patients, cycles, rules] = await Promise.all([
-        patientIds.length === 0
-          ? []
-          : tx.patient.findMany({
-              where: { org_id: ctx.orgId, id: { in: patientIds } },
-              select: { id: true, name: true },
-            }),
-        cycleIds.length === 0
-          ? []
-          : tx.medicationCycle.findMany({
-              where: { org_id: ctx.orgId, id: { in: cycleIds } },
-              select: { id: true, case_: { select: { status: true } } },
-            }),
-        ruleIds.length === 0
-          ? []
-          : tx.billingRule.findMany({
-              where: { org_id: ctx.orgId, id: { in: ruleIds } },
-              select: { id: true, source_note: true, source_url: true },
-            }),
-      ]);
+    const patientIds = Array.from(
+      new Set(
+        base.reviewCandidates
+          .map((candidate) => candidate.patient_id)
+          .filter((value): value is string => value != null),
+      ),
+    );
+    const cycleIds = Array.from(
+      new Set(
+        base.reviewCandidates
+          .map((candidate) => candidate.cycle_id)
+          .filter((value): value is string => value != null),
+      ),
+    );
+    const ruleIds = Array.from(
+      new Set(
+        base.reviewCandidates
+          .map((candidate) => candidate.rule_id)
+          .filter((value): value is string => value != null),
+      ),
+    );
 
-      const patientNameById = new Map(patients.map((patient) => [patient.id, patient.name]));
+    const details =
+      patientIds.length === 0 && cycleIds.length === 0 && ruleIds.length === 0
+        ? { patients: [], cycles: [], rules: [] }
+        : await withOrgContext(
+            ctx.orgId,
+            async (tx) => {
+              const [patients, cycles, rules] = await Promise.all([
+                patientIds.length === 0
+                  ? []
+                  : tx.patient.findMany({
+                      where: { org_id: ctx.orgId, id: { in: patientIds } },
+                      select: { id: true, name: true },
+                    }),
+                cycleIds.length === 0
+                  ? []
+                  : tx.medicationCycle.findMany({
+                      where: { org_id: ctx.orgId, id: { in: cycleIds } },
+                      select: { id: true, case_: { select: { status: true } } },
+                    }),
+                ruleIds.length === 0
+                  ? []
+                  : tx.billingRule.findMany({
+                      where: { org_id: ctx.orgId, id: { in: ruleIds } },
+                      select: { id: true, source_note: true, source_url: true },
+                    }),
+              ]);
+
+              return { patients, cycles, rules };
+            },
+            { timeoutMs: BILLING_CHECK_READ_TIMEOUT_MS },
+          );
+
+    const data = (() => {
+      const patientNameById = new Map(
+        details.patients.map((patient) => [patient.id, patient.name]),
+      );
       const caseStatusByCycleId = new Map(
-        cycles.map((cycle) => [cycle.id, cycle.case_.status as string]),
+        details.cycles.map((cycle) => [cycle.id, cycle.case_.status as string]),
       );
-      const ruleById = new Map(rules.map((rule) => [rule.id, rule]));
+      const ruleById = new Map(details.rules.map((rule) => [rule.id, rule]));
 
-      const reviewRows: BillingCheckReviewRow[] = reviewCandidates.map((candidate) => {
+      const reviewRows: BillingCheckReviewRow[] = base.reviewCandidates.map((candidate) => {
         const patientName = candidate.patient_id
           ? (patientNameById.get(candidate.patient_id) ?? null)
           : null;
@@ -233,18 +264,20 @@ export const GET = withAuthContext(
         month: parsed.data.month,
         month_label: `${monthYear}年${monthNumber}月分`,
         month_short_label: `${monthNumber}月分`,
-        passed_count: passedCount,
-        review_count: reviewCount,
-        today_pending_count: todayPendingCount,
+        passed_count: base.passedCount,
+        review_count: base.reviewCount,
+        today_pending_count: base.todayPendingCount,
         review_rows: reviewRows,
         records: {
-          rule_revision_label: formatReiwaRevisionLabel(latestRevisionRule?.effective_from ?? null),
-          rejection_count: rejectionCount,
-          summary_template_kind_count: templateKinds.length,
+          rule_revision_label: formatReiwaRevisionLabel(
+            base.latestRevisionRule?.effective_from ?? null,
+          ),
+          rejection_count: base.rejectionCount,
+          summary_template_kind_count: base.templateKindCount,
         },
-        rail,
+        rail: base.rail,
       } satisfies BillingCheckResponse;
-    });
+    })();
 
     return success({ data });
   },
