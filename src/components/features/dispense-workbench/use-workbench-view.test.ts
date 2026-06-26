@@ -564,6 +564,21 @@ describe('buildView listState (左ペインの実データ取得状態)', () => 
     ).toBe('error');
   });
 
+  it('詳細取得失敗でも取得済みの患者リストは ready のまま残す', () => {
+    const view = buildView({
+      ...listBase,
+      isRealData: true,
+      hydrated: true,
+      loadError: true,
+      patients: [patient],
+      selId: patient.id,
+    });
+
+    expect(view.listState).toBe('ready');
+    expect(view.patientCount).toBe('1');
+    expect(view.patients.map((row) => row.id)).toEqual([patient.id]);
+  });
+
   it('error は loading より優先（loadError なら hydrate 前でも error）', () => {
     // loadError 判定が !hydrated(loading) 判定より前にあることを固定する（優先順位の teeth）。
     expect(

@@ -271,7 +271,7 @@ function deriveListState(args: {
 }): WorkbenchListState {
   // モックは常に通常表示（seed）。実データのみ取得状態を反映する。
   if (!args.isRealData) return 'ready';
-  if (args.loadError) return 'error';
+  if (args.loadError && args.dataUnavailable) return 'error';
   // hydrate 前は loading（seed のちらつきを避ける）。
   if (!args.hydrated) return 'loading';
   return args.dataUnavailable ? 'empty' : 'ready';

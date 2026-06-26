@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1202 JST
+
+- current task: group and validate the remaining dispense-workbench false-zero guard changes before committing all dirty work by coherent group.
+- files inspected: `git status --short --branch --untracked-files=all`, `src/components/features/dispense-workbench/dispensing-workbench.tsx`, `src/components/features/dispense-workbench/use-workbench-view.ts`, `src/components/features/dispense-workbench/use-workbench-view.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/components/features/dispense-workbench/dispensing-workbench.tsx`, `src/components/features/dispense-workbench/use-workbench-view.ts`, `src/components/features/dispense-workbench/use-workbench-view.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: when the patient queue loaded successfully but the selected-patient workbench projection failed, the workbench could replace the known queue with an empty list and present a false-zero state.
+- security risks found: no auth, authorization, permission, RLS, API contract, mutation, schema, migration, external send, or DB write behavior changed.
+- performance issues found: no new network calls were introduced. The already-fetched patient list is hydrated earlier so a slow or failed detail projection no longer blocks the queue from rendering.
+- validation commands: `pnpm vitest run src/components/features/dispense-workbench/use-workbench-view.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/app/api/dispense-workbench/patients/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm eslint src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/use-workbench-view.ts src/components/features/dispense-workbench/use-workbench-view.test.ts`; `pnpm exec prettier --check src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/use-workbench-view.ts src/components/features/dispense-workbench/use-workbench-view.test.ts`.
+- validation results: focused dispense workbench Vitest passed `3` files / `50` tests; focused ESLint passed; focused Prettier check passed.
+- remaining work: run final ledger/diff checks, commit the false-zero guard group, then handle `.codex/hooks.json` as a separate runtime config group.
+- next action: grouped commit for the dispense-workbench false-zero guard.
+
 ### 20260626-1200 JST
 
 - current task: continue the repo-wide UI/UX refinement goal with `/billing` first-fold polish and billing check read stability under Codex-only operation.

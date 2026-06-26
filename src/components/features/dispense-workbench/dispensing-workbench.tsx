@@ -131,12 +131,23 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         return;
       }
       const targetId = patients.some((p) => p.id === selId) ? selId : patients[0].id;
+      // The list is the primary queue. Render it as soon as it succeeds so a slow
+      // selected-patient projection cannot masquerade as "0 patients".
+      setLoadError(false);
+      hydrate({
+        patients,
+        selId: targetId,
+        model: { [targetId]: [] },
+        done: {},
+        audit: {},
+        quantityConfirmedByDid: {},
+      });
       const wb = await loadWorkbenchAsync(phase, targetId, { patientRows: rows });
       if (cancelled) return;
       if (!wb) {
         // リストは取得できたが選択患者の詳細取得に失敗＝障害。
+        // 成功済みの患者リストは残し、false-zero へ戻さない。
         setLoadError(true);
-        hydrate({ patients: [] });
         return;
       }
       setLoadError(false);

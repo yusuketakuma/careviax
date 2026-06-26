@@ -9523,3 +9523,47 @@ Next loop:
   - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/billing-mobile-after-sequential-first-fold.png` and `billing-desktop-after-sequential-first-fold.png`.
 - Remaining:
   - Commit this billing/data-table/today-ops-rail slice, send agmsg FYI, then continue the all-pages UI/UX sweep. The broader objective is not complete.
+
+### Audit Fidelity Hydration — List Before Slow Detail
+
+- Coordination:
+  - Drained agmsg after Claude's `RE-FLAG /audit` that the fidelity path still captured `実データ未取得 / 取得失敗 / 0名`.
+  - ACKed Claude, released the untouched `/offline-sync` lock, and took a `dispense-workbench` lock for the `/audit` fidelity fix.
+  - Avoided Claude's patient-detail lock and unrelated dirty billing/hooks files.
+- Bugs found:
+  - `pnpm test:e2e:local ui-design-fidelity -g new_08_audit` initially failed desktop before capture because navigation raced `page.addStyleTag`; mobile captured but could still show the false-zero state.
+  - The e2e DB and browser API both had 7 audit-ready patients, but `DispensingWorkbench` waited for the selected-patient detail projection before hydrating the already-successful patient list.
+  - The selected-patient projection path can take more than 10s under local fidelity, so the screen stayed at `処方登録患者0名` / `実データ未取得` even though the queue list had already loaded.
+- Implemented by Codex:
+  - Hydrated the audit/dispense patient list immediately after `/api/dispense-workbench/patients?phase=audit` succeeds, clearing the selected patient's stale model while the detail projection loads.
+  - Preserved the successful patient list if selected-patient detail retrieval later fails, instead of reverting to an empty list.
+  - Tightened `deriveListState` so a detail-side `loadError` only hides the list when no patient list data exists.
+  - Added a regression test proving a non-empty patient list remains `ready` when detail loading fails.
+- Validation:
+  - Read-only DB check: local e2e had `dispensed=7`; browser API returned `200` with 7 `/audit` patient rows.
+  - Browser verification after the fix: `/audit` rendered `処方登録患者7名` and 7 patient rows after the list loaded, with no console/page errors.
+  - `pnpm vitest run src/components/features/dispense-workbench/use-workbench-view.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `34` tests.
+  - `pnpm test:e2e:local ui-design-fidelity -g new_08_audit`: passed desktop and mobile, `2` tests.
+  - `pnpm exec eslint src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/use-workbench-view.ts src/components/features/dispense-workbench/use-workbench-view.test.ts`: passed.
+  - `pnpm exec prettier --check src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/use-workbench-view.ts src/components/features/dispense-workbench/use-workbench-view.test.ts`: passed.
+  - `git diff --check -- src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/use-workbench-view.ts src/components/features/dispense-workbench/use-workbench-view.test.ts`: passed.
+- Remaining:
+  - Commit the `/audit` hydration fix, then commit this ledger update separately and release the workbench lock. The broader all-pages UI/UX objective remains incomplete.
+
+### Dispense Workbench False-Zero Guard — Keep List on Detail Failure
+
+- Coordination:
+  - Committed as a separate group from billing and runtime hook settings.
+  - Preserved unrelated dirty `.codex/hooks.json`.
+- Bugs found:
+  - When the audit/dispense patient list loaded successfully but the selected-patient workbench detail projection failed, the workbench could hydrate back to an empty patient list and present a false `0 patients` state.
+- Implemented by Codex:
+  - Hydrated the fetched patient queue immediately after list success, before loading the selected-patient detail projection.
+  - On selected detail failure, retained the successful patient list and surfaced the load error without converting the queue to empty.
+  - Adjusted list-state derivation so `loadError` only becomes a list-level error when the list data itself is unavailable.
+- Validation:
+  - `pnpm vitest run src/components/features/dispense-workbench/use-workbench-view.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/app/api/dispense-workbench/patients/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `50` tests.
+  - `pnpm eslint src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/use-workbench-view.ts src/components/features/dispense-workbench/use-workbench-view.test.ts`: passed.
+  - `pnpm exec prettier --check src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/use-workbench-view.ts src/components/features/dispense-workbench/use-workbench-view.test.ts`: passed.
+- Remaining:
+  - Commit this dispense-workbench false-zero guard, then commit runtime hook configuration separately if validation is sufficient.
