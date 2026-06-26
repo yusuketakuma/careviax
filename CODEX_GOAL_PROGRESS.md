@@ -159,6 +159,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused communication requests page/content Vitest `2` files / `13` tests; focused ESLint; focused Prettier check; focused diff whitespace check; live browser desktop/mobile checks on `http://localhost:3012/communications/requests` using the existing DB-free static seed JWT session with `0` horizontal overflow, one visible `h1`, work queue before the collaboration explainer, work queue in the first viewport (`633px` mobile / `577px` desktop), and no undersized visible controls in the mobile page body. Desktop remaining undersized controls were pre-existing shared app-header chrome outside this requests body slice.
 - Next action: run final checks including ledgers, commit the communication requests UI group, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Notifications Heading and Action Targets
+
+- Refined `/notifications` after browser inspection showed duplicated page orientation (`お知らせ` rendered as both a hidden page `h1` and visible content `h2`) and desktop notification action buttons shrinking below the 44px PH-OS target.
+- Removed the duplicate hidden page heading and made the visible inbox title the single page `h1`.
+- Hardened notification actions by keeping `全て既読にする` and shared `ListOpenCard` `開く` actions at 44px minimum height; this also improves the shared search-result open card that uses the same primitive.
+- Preserved all existing notification fetches, realtime merge behavior, category filtering, offline unsynced row, mark-read mutation behavior, notification links, auth behavior, backend/API behavior, DB behavior, and external sends. No feature was removed.
+- Screenshot evidence: mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/notifications-mobile-after-final.png`; desktop `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/notifications-desktop-after-final.png`.
+- Validation passed: focused notifications/search Vitest `2` files / `23` tests; focused ESLint; focused Prettier write; focused diff whitespace check; live browser desktop/mobile checks on `http://localhost:3012/notifications` using the existing DB-free static seed JWT session with `0` horizontal overflow, one visible `h1`, no duplicate visible `h2`, list in the first viewport, and no undersized visible controls in the mobile page body. Desktop remaining undersized controls were pre-existing shared app-header chrome outside this notifications/list-card slice.
+- Next action: run final checks including ledgers, commit the notifications UI/shared list-card group, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
@@ -9397,3 +9407,25 @@ Next loop:
   - Privacy compliance reviewer: initially found missing RLS org context and report org boundary; re-review returned PASS after `withOrgContext`, scoped DB injection, and `report.org_id` service boundary were added.
 - Remaining:
   - Run final ledger formatting/diff checks, stage only the six route/service/catalog/protected-matrix files plus ledgers, commit the slice, send `DONE`, close completed reviewers, then continue backend/API/security/performance hardening with the next candidates from code mapper such as `GET /api/management-plans`, `GET /api/visit-records/:id`, or `GET /api/care-reports/today-workspace`.
+
+### Billing Check Render Recovery — Transaction Timeout Split
+
+- Coordination:
+  - Drained agmsg before and during the slice.
+  - Sent `LOCK: src/app/api/billing-evidence/check/route.ts + src/app/(dashboard)/billing/billing-check-content.tsx + billing tests`.
+  - Claude ACKed the billing lock and asked Codex to land only the BE render-fix, then hand billing back. Unrelated notification/search/list-card changes in the dirty worktree were left untouched.
+- Bugs found:
+  - `/billing` could render the page shell but the billing check component failed to show data because `/api/billing-evidence/check` ran aggregate reads, right-rail reads, and review-row enrichment inside one default 5s interactive RLS transaction.
+  - The first aggregate phase could exceed the default transaction window; the later `billingRule.findMany()` enrichment then failed with `Transaction API error: A batch query cannot be executed on an expired transaction`.
+- Implemented by Codex:
+  - Split the billing check BFF into two short org-scoped read transactions: one for base counts/candidates/rail data, and a second for patient/cycle/rule enrichment needed by the visible review rows.
+  - Added an explicit 10s read timeout for both transactions, preserving org RLS context, response shape, auth permission, query semantics, and UI contract.
+  - Updated the route test to assert both org-scoped reads are opened with the bounded timeout.
+- Validation:
+  - `pnpm vitest run 'src/app/api/billing-evidence/check/route.test.ts' 'src/app/(dashboard)/billing/billing-check-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `12` tests.
+  - `pnpm exec eslint 'src/app/api/billing-evidence/check/route.ts' 'src/app/api/billing-evidence/check/route.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/api/billing-evidence/check/route.ts' 'src/app/api/billing-evidence/check/route.test.ts'`: passed after targeted format.
+  - Browser screenshot verification on `http://localhost:3012/billing`: desktop and mobile passed with no page/console errors, no horizontal overflow, and `errorText=false`.
+  - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/billing-desktop-after-timeout-fix.png` and `billing-mobile-after-timeout-fix.png`.
+- Remaining:
+  - Commit the BE render-fix, commit this ledger update separately, send `DONE`/handback to Claude, then continue the UI/UX sweep on a non-conflicting page. Billing mobile still has a follow-up polish opportunity: KPI cards consume most of the first fold, but that page is handed back to Claude after this timeout fix.
