@@ -9451,3 +9451,28 @@ Next loop:
   - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/handoff-desktop-before.png`, `handoff-mobile-before.png`, `handoff-desktop-after-final.png`, and `handoff-mobile-after-final.png`.
 - Remaining:
   - Run final diff checks, commit the handoff UI slice, commit this ledger update separately, release the handoff lock, then continue the all-pages UI/UX sweep on the next non-conflicting route.
+
+### External Collaboration First-Fold — Share State Before Workflow Explanation
+
+- Coordination:
+  - Drained agmsg before and during the slice.
+  - Sent `LOCK: src/app/(dashboard)/external/** + external tests + CODEX_GOAL_PROGRESS.md + .codex/ralph-state.md`.
+  - No conflicting external lock arrived. Billing/reports/admin/patients lanes were avoided.
+- Bugs found:
+  - `/external` rendered the long cross-workflow explanation before the actual external share/self-report workspace. On mobile, `外部連携サマリー` started around `1595px` and `共有とフォロー` around `2117px`, so the user could not see external access state or self-report actions in the first fold.
+  - Desktop body actions (`詳細を開く`, `受理`, `タスク化`, `解決`) inherited compact desktop sizing and measured below 44px.
+- Implemented by Codex:
+  - Kept all features and links, but moved `ExternalViewerContent` above `CollaborationWorkflowPanel`.
+  - Removed non-essential header supporting copy from the first fold and moved related shortcut links into a lower related-links section.
+  - Converted the external summary to a compact mobile KPI strip and preserved fuller descriptions on wider screens.
+  - Kept self-report and share actions at 44px on desktop as well as mobile.
+- Validation:
+  - Before screenshot audit: mobile `外部連携サマリー top=1595`, `共有とフォロー top=2117`; desktop `外部連携サマリー top=810`, `共有とフォロー top=1056`.
+  - Final screenshot audit: mobile `外部連携サマリー top=253`, `共有とフォロー top=495`; desktop `外部連携サマリー top=285`, `共有とフォロー top=519`.
+  - Browser audit: no page/console errors, no horizontal overflow, and no page-body small targets remained; only pre-existing app-header chrome remains under 44px on desktop.
+  - `pnpm vitest run 'src/app/(dashboard)/external/external-viewer-content.test.tsx' 'src/app/(dashboard)/external/external-query-state.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `4` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/external/page.tsx' 'src/app/(dashboard)/external/external-viewer-content.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/external/page.tsx' 'src/app/(dashboard)/external/external-viewer-content.tsx'`: passed after targeted format.
+  - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/external-desktop-before.png`, `external-mobile-before.png`, `external-desktop-after-final.png`, and `external-mobile-after-final.png`.
+- Remaining:
+  - Run final diff/agmsg checks, commit the external UI slice, commit this ledger update separately, release the external lock, then continue the all-pages UI/UX sweep on the next non-conflicting route.
