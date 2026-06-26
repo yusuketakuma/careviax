@@ -10017,3 +10017,27 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-admin-sweep/admin-before-desktop.png`, `artifacts/ui-admin-sweep/admin-before-mobile.png`, `artifacts/ui-admin-sweep/admin-after-desktop.png`, and `artifacts/ui-admin-sweep/admin-after-mobile.png`.
 - Remaining:
   - Commit the `/admin` master hub UI/test group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### External Collaboration — Focused Work Queue Ordering
+
+- Coordination:
+  - Drained `phos/codex` agmsg before continuing; inbox was empty.
+  - Kept this Codex-only slice isolated to `/external` page/content/test files and did not touch DB, migrations, auth providers, patient APIs, external sends, or notification behavior.
+- Bugs found:
+  - `/external?focus=self_reports&from=dashboard_home` did not show the dashboard context banner because the page contract expects `context=dashboard_home`.
+  - Even with `focus=self_reports`, the mobile page rendered `外部共有管理` before `自己申告キュー`, pushing the requested queue and its first action below the most relevant first-fold area.
+  - The first implementation pass built card JSX before `updateSelfReportMutation`, causing a runtime error boundary until the mutation definitions were moved before the panel construction.
+- Implemented by Codex:
+  - Localized the external page eyebrow and clarified the page description around family/external role inputs and pharmacy follow-up.
+  - Reused the existing three panels, but ordered them by `initialFocus` so `self_reports`, `activities`, or `shares` can lead the work queue without removing any panel or changing API behavior.
+  - Added `external-work-queue` / `external-self-report-queue` test IDs and a focused unit test that verifies `self_reports` becomes the first work panel.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/external/external-viewer-content.test.tsx' 'src/app/(dashboard)/external/external-query-state.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `5` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/external/page.tsx' 'src/app/(dashboard)/external/external-viewer-content.tsx' 'src/app/(dashboard)/external/external-viewer-content.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/external/page.tsx' 'src/app/(dashboard)/external/external-viewer-content.tsx' 'src/app/(dashboard)/external/external-viewer-content.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/external/page.tsx' 'src/app/(dashboard)/external/external-viewer-content.tsx' 'src/app/(dashboard)/external/external-viewer-content.test.tsx'`: passed.
+  - Direct Playwright route-mocked proof on `http://localhost:3012/external?focus=self_reports&context=dashboard_home`: no console/page errors, no error boundary, no horizontal overflow, and mobile `自己申告キュー` rendered before `外部共有管理`.
+  - Final metrics: desktop/mobile title `外部連携ビュー`, context banner `ホームから自己申告キューにフォーカスして開いています。`, mobile `自己申告キュー` top `679px`, mobile `外部共有管理` top `1119px`, mobile overflow `0`.
+  - Screenshot evidence: `artifacts/ui-external-sweep/external-after-desktop.png`, `artifacts/ui-external-sweep/external-after-mobile.png`, and `artifacts/ui-external-sweep/after-metrics.json`.
+- Remaining:
+  - Commit the `/external` UI/test group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
