@@ -84,7 +84,7 @@ function MasterCard({ card }: { card: MasterHubCard }) {
       </p>
       <p className="flex-1 text-sm leading-6 text-muted-foreground">{card.note}</p>
       <div className="rounded-md border border-border/70 bg-muted/35 px-3 py-2">
-        <p className="text-[11px] font-bold text-muted-foreground">次にすること</p>
+        <p className="text-xs font-bold text-muted-foreground">次にすること</p>
         <p className="mt-1 text-sm font-semibold leading-5 text-foreground">
           {card.next_action_hint}
         </p>
