@@ -493,21 +493,23 @@ function unassignedTimedVisitsForRecommendedVehicle(board: ScheduleDayBoardRespo
     .slice(0, recommendedVehicle.remaining_stops);
 }
 
+// 状態色は左アクセント枠＋数値色に限定し、タイル全面の塗りつぶしは避ける
+// (docs/ui-ux-design-guidelines.md「状態色の塗り面積を最小化する」)
 const SUMMARY_TONE_CLASSES = {
   info: {
-    item: 'border-tag-info/30 bg-tag-info/10',
+    item: 'border-border/70 border-l-4 border-l-tag-info bg-card',
     value: 'text-tag-info',
   },
   confirm: {
-    item: 'border-state-confirm/30 bg-state-confirm/10',
+    item: 'border-border/70 border-l-4 border-l-state-confirm bg-card',
     value: 'text-state-confirm',
   },
   done: {
-    item: 'border-state-done/30 bg-state-done/10',
+    item: 'border-border/70 border-l-4 border-l-state-done bg-card',
     value: 'text-state-done',
   },
   readonly: {
-    item: 'border-border/70 bg-muted/30',
+    item: 'border-border/70 border-l-4 border-l-border bg-card',
     value: 'text-muted-foreground',
   },
 } as const;
@@ -934,8 +936,11 @@ function TeamGanttCard({
               aria-hidden="true"
               className="flex justify-between text-[10px] text-muted-foreground"
             >
-              {hourLabels.map((label) => (
-                <span key={label}>{label}</span>
+              {hourLabels.map((label, index) => (
+                // モバイルは中央列が狭く全時刻だと潰れるため、奇数時刻はレイアウト幅を保ったまま隠す
+                <span key={label} className={index % 2 === 1 ? 'max-sm:invisible' : undefined}>
+                  {label}
+                </span>
               ))}
             </div>
             <span aria-hidden="true" />
