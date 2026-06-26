@@ -21,6 +21,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-26 JST - Patient Header Summary 4-Person Care Team Names
+
+- Coordination:
+  - Drained `phos/codex`; no new inbox message was pending at slice start.
+  - Reviewed Claude's committed CareCase staff-column migration read-only and sent `APPROVE` over agmsg before this backend slice.
+  - Used API contract and medical safety subagents. API contract requested additive response-key coverage plus deduped/missing-name tests. Medical safety requested deterministic latest-case selection and explicit nested `org_id`, which were addressed.
+  - Preserved concurrent Claude/write-path dirty files: `src/app/api/cases/[id]/route.ts`, `src/app/api/cases/[id]/route.test.ts`, `src/lib/api/org-reference.ts`, `src/lib/api/org-reference.test.ts`, and `src/lib/validations/case.ts`. Codex did not stage or edit those files in this slice. A pharmacist validation blocker in the concurrent write-path was forwarded to Claude via agmsg.
+- Extended `getPatientHeaderSummary` to resolve the latest scoped case's `primary_pharmacist_id`, `backup_pharmacist_id`, `primary_staff_id`, and `backup_staff_id` into display names.
+- Kept the response additive and ID-minimized: existing `primary_pharmacist_name` remains, and `backup_pharmacist_name`, `primary_staff_name`, and `backup_staff_name` are added. Assignment IDs and `patient_id` are not returned.
+- Added explicit nested `org_id: args.orgId` filtering for the selected cases and deterministic ordering by `updated_at desc`, `created_at desc`, then `id desc`.
+- Deduplicated assigned user ID lookups before `batchResolveNames`, and preserved per-field `null` when an assigned user cannot be resolved in the current org.
+- Preserved existing `canVisit`, patient detail scope, not-found behavior, sensitive no-store route wrapper, fixed `INTERNAL_ERROR` fallback, date fields, schema/migrations/DB data, and frontend UI behavior.
+- Security risk reduced: the shared patient header can show all four care-team display names without exposing assignment IDs or expanding the broader `PatientOverview` payload.
+- Performance issue improved: all four assignment names are resolved through one deduplicated org-scoped `user.findMany` instead of separate lookups.
+- Validation passed:
+  - `pnpm vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/detail-slices.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `332` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed.
+  - Full `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped diff whitespace check passed.
+- Remaining risk: the current worktree also contains concurrent write-path changes with a pharmacist validation blocker noted by medical safety review. That blocker is not part of the Codex-owned read-only summary commit and must be fixed before shipping the write API slice.
+- Next action: commit the read-only header-summary service/API test slice, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first support for the patient header integration. The broader all-pages UI/UX objective remains incomplete.
+
 ### 2026-06-26 JST - Visit Preparation Brief Batch PHI Minimization
 
 - Coordination:
