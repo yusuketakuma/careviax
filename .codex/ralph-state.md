@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1524 JST
+
+- current task: `/admin/audit-logs` evidence-first ordering, folded display filters, and 44px audit controls.
+- files inspected: agmsg inbox, `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, frontend-design skill guidance, `src/app/(dashboard)/admin/audit-logs/page.tsx`, `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`, `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`, `tools/tests/helpers/local-auth.ts`, and authenticated before/after screenshots under `artifacts/ui-audit-logs-sweep/`.
+- files changed: `src/app/(dashboard)/admin/audit-logs/page.tsx`, `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`, `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/admin/audit-logs` spent the first viewport on a generic admin intro and detailed filters before the audit evidence list. Browser proof showed mobile `監査ログ一覧` at `1076px`, desktop `監査ログ一覧` at `758px`, and desktop page-body filter/export controls measuring `28px-32px`.
+- security risks found: no auth, authorization, org scoping, audit-log API, export API, error-vs-empty semantics, schema, migrations, DB writes, external sends, PHI projection, audit behavior, or secret handling changed. Browser proof used authenticated local reads and a read-only local user lookup only.
+- performance issues found: no new fetches, polling, subscriptions, dependencies, DB reads beyond the existing local-auth SELECT helper, or heavier render loops were introduced. The change reorders already-rendered sections and keeps detailed filters collapsed until needed.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/audit-logs/page.tsx' 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx' 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx'`; `pnpm exec prettier --write 'src/app/(dashboard)/admin/audit-logs/page.tsx' 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx' 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/admin/audit-logs/page.tsx' 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx' 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/admin/audit-logs/page.tsx' 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx' 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx'`; direct authenticated Playwright proof on `http://localhost:3012/admin/audit-logs`.
+- validation results: focused AuditLogsContent Vitest passed `1` file / `4` tests; scoped ESLint passed; scoped Prettier write/check passed; scoped diff-check passed. Authenticated live browser proof saved `artifacts/ui-audit-logs-sweep/audit-logs-before-desktop.png`, `audit-logs-before-mobile.png`, `audit-logs-after-final2-desktop.png`, and `audit-logs-after-final2-mobile.png`; final proof had no console/page errors, no `/api/audit-logs` errors, no horizontal overflow, one visible `監査ログ` h1, list at `496px` desktop / `464px` mobile, `表示条件を変更` at 44px, closed filter grid hidden, and page-body small-control count `0`.
+- remaining work: commit the `/admin/audit-logs` UI/test group, commit this progress-ledger update separately, send agmsg FYI/release lock, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only the audit-logs page/content/test files for the implementation commit, then stage only ledgers for the progress commit.
+
 ### 20260626-1516 JST
 
 - current task: `/admin/business-holidays` calendar-first ordering and 44px holiday controls.
