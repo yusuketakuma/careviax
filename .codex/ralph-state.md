@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2243 JST
+
+- current task: backend-first PHI/cache hardening for `GET /api/visit-preparations/:scheduleId/brief`, plus coordination reply for Claude's patient-related shared header backend data request.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, Next Route Handlers docs at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/visit-preparations/[scheduleId]/brief/route.ts`, `src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, gbrain code graph probes for `src/app/api/visit-preparations/[scheduleId]/brief/route::GET`, and read-only API/privacy subagent reviews.
+- files changed: `src/app/api/visit-preparations/[scheduleId]/brief/route.ts`, `src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned `src/app/(dashboard)/patients/[id]/card-workspace.tsx` and `.test.tsx` remained untouched by Codex.
+- bugs found: the schedule visit brief endpoint returned PHI-rich VisitBrief success payloads, validation failures, forbidden/not-found responses, and unexpected brief-generation failures without a consistent sensitive no-store exported-route envelope.
+- security risks found: reduced cacheability and error-leakage risk by wrapping ordinary exported responses in `withSensitiveNoStore`, adding a fixed no-store `internalError()` fallback, preserving Next control-flow with `unstable_rethrow(err)`, and covering raw patient/medication/SOAP-like thrown text omission.
+- performance issues found: none materially changed. The slice adds only response wrapping and tests; no new normal-path DB queries, dependencies, polling, frontend rendering changes, schema changes, migrations, DB writes, or external sends were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/api/visit-preparations/[scheduleId]/brief/route.ts' 'src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check 'src/app/api/visit-preparations/[scheduleId]/brief/route.ts' 'src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `git diff --check -- 'src/app/api/visit-preparations/[scheduleId]/brief/route.ts' 'src/app/api/visit-preparations/[scheduleId]/brief/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused visit-preparation brief/protected GET Vitest passed `2` files / `221` tests; scoped ESLint passed; scoped Prettier check passed; full TypeScript check passed; scoped diff-check passed. API/privacy subagents found no implementation blockers and requested no-store/fixed-500/control-flow coverage, which was added.
+- remaining work: stage only the visit-preparation brief route/test and protected GET matrix for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and inspect Claude-requested patient-detail read-only additions for the shared patient header. Follow-up candidate: `POST /api/visit-preparations/brief-batch` no-store/fixed-500 hardening. The broader all-pages UI/UX objective remains incomplete.
+- next action: final status check, grouped commits, agmsg FYI.
+
 ### 20260626-2236 JST
 
 - current task: backend-first PHI/cache hardening for `GET /api/visits/today-preparation`, plus read-only support review for Claude's `/patients/[id]` Stage1 pinned-cluster patch.

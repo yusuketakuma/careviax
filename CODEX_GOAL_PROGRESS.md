@@ -38,6 +38,22 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Claude support validation passed: `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` passed `1` file / `48` tests before Codex sent APPROVE for Claude's Stage1 slice.
 - Next action: commit the visit-preparation API/test slice, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first hardening and Claude UI support. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Visit Preparation Brief PHI/Cache Hardening
+
+- Coordination:
+  - Continued while preserving Claude-owned `/patients/[id]` UI dirty files.
+  - Drained `phos/codex`; Claude requested backend feasibility for a patient-related shared header. Codex ACKed and will inspect patient-detail read-only additions after this committed slice.
+- Hardened `GET /api/visit-preparations/[scheduleId]/brief` so auth failures, validation errors, forbidden, not-found, PHI-rich success, and ordinary unexpected failures all carry sensitive no-store headers.
+- Added a fixed exported-route 500 fallback that omits raw patient/medication/SOAP-like exception text from the response body.
+- Preserved Next.js control-flow semantics with `unstable_rethrow(err)` before converting ordinary exceptions to fixed 500 responses.
+- Added the route to protected GET no-store assertions for 401, 403, and successful 200 responses.
+- Preserved existing `canVisit` permission, schedule ID normalization, schedule org scoping, assignment access check, VisitBrief service arguments, response body shape, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: schedule visit brief payloads containing patient identity, medications, unresolved items, and AI summary data are no longer cacheable at the HTTP boundary, and fixed 500 responses omit raw PHI-like thrown text.
+- Performance issue improved: none materially changed. The slice adds only response wrapping and tests; no new normal-path DB queries, dependencies, polling, frontend rendering work, schema changes, migrations, DB writes, or external sends were introduced.
+- Validation passed: focused visit-preparation brief/protected GET Vitest `2` files / `221` tests; focused ESLint; focused Prettier check; full TypeScript check; scoped diff whitespace check. API/privacy subagents reviewed; their no-store, fixed 500, and control-flow coverage findings were addressed.
+- Follow-up candidate: `POST /api/visit-preparations/brief-batch` returns similar VisitBrief PHI for schedule day-view/offline cache and should receive the same no-store/fixed-500 treatment in a separate slice.
+- Next action: commit the visit-preparation brief API/test slice, commit this progress-ledger update separately, send agmsg FYI, then inspect Claude's requested patient-detail read-only header data additions. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Medication Set Workspace 500 No-Store
 
 - Hardened `GET /api/medication-sets/workspace` so set-preparation workspace success, validation, auth failure, permission failure, and unexpected aggregation failure responses carry sensitive no-store headers.
