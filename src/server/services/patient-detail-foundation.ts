@@ -7,7 +7,7 @@ import {
   selectPrimaryCareTeamCase,
 } from '@/lib/patient/care-team-contact';
 import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
-import { summarizePatientInsurances } from '@/lib/patient/insurance-summary';
+import { formatCareLevel, summarizePatientInsurances } from '@/lib/patient/insurance-summary';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { listPatientFieldRevisionMetadata } from '@/server/services/patient-field-revision-list';
 import type { PatientFieldRevisionMetadataItem } from '@/server/services/patient-field-revision-list';
@@ -538,7 +538,10 @@ export async function buildPatientFoundationData(
       key: 'care_level',
       label: '介護度',
       status: preference?.care_level ? 'ready' : 'needs_confirmation',
-      detail: preference?.care_level ?? '介護度が未確認です。',
+      // 介護度コード(care_2 等)を生のまま出さず要介護2/要支援2へ整形する
+      detail: preference?.care_level
+        ? formatCareLevel(preference.care_level)
+        : '介護度が未確認です。',
       action_href: buildPatientHref(args.patientId, '/edit?section=care#intake.care_level'),
       action_label: '介護度を編集',
     },
