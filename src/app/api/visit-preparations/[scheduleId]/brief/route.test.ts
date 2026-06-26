@@ -41,6 +41,11 @@ function createRequest(headers?: Record<string, string>) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-preparations/[scheduleId]/brief', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -111,11 +116,27 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
       caseIds: ['case_1'],
     });
     if (!response) throw new Error('response is required');
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: {
         context: 'schedule',
       },
     });
+  });
+
+  it('returns no-store auth failure before loading the schedule', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
+    });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefMock).not.toHaveBeenCalled();
   });
 
   it('trims padded schedule ids before loading the schedule', async () => {
@@ -129,6 +150,7 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
       }),
     );
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
   });
 
   it('rejects blank schedule ids before loading the schedule', async () => {
@@ -137,6 +159,7 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
     });
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '訪問予定IDが不正です',
     });
@@ -153,5 +176,54 @@ describe('/api/visit-preparations/[scheduleId]/brief', () => {
 
     expect(scheduleVisitBriefMock).not.toHaveBeenCalled();
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+  });
+
+  it('returns no-store not found when the schedule is unavailable', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'missing_schedule' }),
+    });
+
+    expect(scheduleVisitBriefMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+  });
+
+  it('returns a fixed no-store 500 when brief generation fails with PHI text', async () => {
+    scheduleVisitBriefMock.mockRejectedValueOnce(
+      new Error('患者A ワルファリン SOAP詳細 の訪問要約生成に失敗しました'),
+    );
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('患者A');
+    expect(serialized).not.toContain('ワルファリン');
+    expect(serialized).not.toContain('SOAP詳細');
+    expect(serialized).not.toContain('訪問要約生成');
+  });
+
+  it('rethrows Next.js control-flow errors instead of converting them to fixed 500', async () => {
+    const redirectError = Object.assign(new Error('NEXT_REDIRECT'), {
+      digest: 'NEXT_REDIRECT;replace;/login;307;',
+    });
+    scheduleVisitBriefMock.mockRejectedValueOnce(redirectError);
+
+    await expect(
+      GET(createRequest({ 'x-org-id': 'org_1' }), {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      }),
+    ).rejects.toBe(redirectError);
   });
 });

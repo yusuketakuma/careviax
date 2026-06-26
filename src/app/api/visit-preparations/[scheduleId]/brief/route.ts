@@ -1,12 +1,20 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
-import { forbiddenResponse, notFound, success, validationError } from '@/lib/api/response';
+import {
+  forbiddenResponse,
+  internalError,
+  notFound,
+  success,
+  validationError,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { getScheduleVisitBrief } from '@/server/services/visit-brief';
 
-export async function GET(
+async function getVisitPreparationBrief(
   req: NextRequest,
   { params }: { params: Promise<{ scheduleId: string }> },
 ) {
@@ -52,4 +60,16 @@ export async function GET(
   });
 
   return success({ data: brief });
+}
+
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<{ scheduleId: string }> },
+) {
+  try {
+    return withSensitiveNoStore(await getVisitPreparationBrief(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
