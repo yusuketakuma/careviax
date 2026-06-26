@@ -3,13 +3,25 @@
 **Purpose.** Edit-conflict ledger. Records which Supervisor owns which paths for an in-flight
 task so the two lanes never edit the same files concurrently.
 
-**Current mode (2026-06-26 JST, rev7).** **Codex-only UI/UX loop** is active.
-Do not route new work to Claude, require Claude review/ACK, or wait on Claude
-gates unless the user explicitly re-enables multi-agent operation. This ledger
-is currently a traceability/safety artifact for Codex-owned slices and stale
-conflict notices, not a mutual-review gate. Historical Claude/Codex rows below
-are stale; do not block on them, but preserve pre-existing dirty files and
+**Current mode (2026-06-26 JST, rev8).** **Claude + Codex implementation-only
+PARALLEL mode** is active (re-enabled by the user; the rev3/rev5/rev7 "Codex-only"
+banners came from a stale codex-bridge auto-restore process that Codex has since
+killed). **No mutual review** — this ledger keeps the two lanes' edit surfaces
+**disjoint**, not as a review gate. Both lanes refine disjoint screens FE→BE (no
+DB). Before editing, a lane LOCKs its exact files over agmsg, drains its inbox
+before committing, and stages only its own files. Historical Claude/Codex rows
+below are stale; do not block on them, but preserve pre-existing dirty files and
 inspect diffs before claiming any path.
+
+**Active screen partition (SSOT = `STATE.md` rev8).** Claude lane:
+`src/app/(dashboard)/patients/**`, `…/reports/**`, `…/billing/**`, `…/admin/**`,
+`…/statistics/**`, `…/audit/**`, `…/clerk-support/**`, `…/external/**`,
+`…/referrals/**`, `…/views/**` + page-local components + each screen's backend
+(no DB) + `docs/ui-ux-design-guidelines.md`. Codex lane: dashboard, my-day,
+visits/**, schedules/**, prescriptions/**, dispense, set, set-audit, tasks,
+workflow, handoff, qr-scan, notifications, search, select-mode, select-site,
+offline-sync, conferences, communications/** + `src/components/ui/**` +
+`src/components/layout/**`. Each lane's screens are the other's forbidden paths.
 
 **Active ownership (SSOT = `STATE.md` rev7).**
 

@@ -4,14 +4,17 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current runtime override - 2026-06-26 JST (rev7: Codex-only UI/UX loop)
+## Current runtime override - 2026-06-26 JST (rev8: parallel UI/UX→BE, driver fixed)
 
-The user switched this worktree back to **Codex-only operation**. Do not route
-new work to Claude, require Claude review/ACK, or wait for Claude gates unless
-the user explicitly re-enables multi-agent operation in a later message.
-Continue using agmsg inbox drains for safety and traceability, but treat an
-empty inbox as enough to proceed. Preserve any pre-existing dirty Claude/user
-files until Codex explicitly claims them.
+The user **re-enabled Claude** alongside Codex in **implementation-only PARALLEL
+mode** (this rev8 supersedes the rev3/rev5/rev7 "Codex-only" banners, which were
+produced by a stale codex-bridge/remote auto-restore process — NOT user intent.
+Codex killed that process and switched delivery monitor→turn on 2026-06-26
+~01:16Z, so this banner should now persist). Both lanes refine **disjoint
+screens** end-to-end (frontend as the entry point, fixing through to backend
+where a screen renders/behaves wrong; **no DB changes**), driven by a screenshot
+→ improve → re-screenshot loop. **No mutual review**; disjointness held purely
+via agmsg `LOCK` / `HANDOFF`.
 
 **Active goal (user /goal 2026-06-26).** Refine the UI/UX of _all_ pages to a
 world-top-level ("10M-download") bar using a 足し算と引き算 (add/subtract)
@@ -20,23 +23,29 @@ compromise. Constraints: **no DB changes** (schema/data/migrations off-limits);
 backend API/service code _may_ be fixed so a screen renders correctly; if any
 existing feature is removed, report what + why at the end; layout may be
 rearranged where operation is hard from the user's perspective. Begin with the
-highest-frequency user screens first. Research medical-system best practices and
-existing-system layout patterns, refresh the design-language SSOT first, then
-continue screenshot → improve → re-screenshot loops.
+highest-frequency user screens first. Research + SSOT refresh first (done), then
+screenshot → improve → re-screenshot loops.
 
-**Current Codex progress.**
+**Screen partition (agreed, no review).** Codex lane: dashboard, my-day,
+visits/**, schedules/**, prescriptions/**, dispense, set, set-audit, tasks,
+workflow, handoff, qr-scan, notifications, search, select-mode, select-site,
+offline-sync, conferences, communications/** + shared `src/components/ui/**` +
+`src/components/layout/**`. Claude lane: patients/**, reports/**, billing/**,
+admin/**, statistics, audit, clerk-support, external, referrals, views +
+page-local components + each screen's backend (no DB). SSOT
+`docs/ui-ux-design-guidelines.md` owned by Claude.
 
-- SSOT research update committed in `e0f6bd1e`; supporting research notes
-  committed in `5f116094`.
-- Dashboard mobile condition banner fix committed in `beb82a27`.
-- Shared app-header/chrome refinement committed in `0bceeeff`.
-- `my-day` first-fold operational scan path committed in `163cd7fd`.
-- Codex-only monitor/state restoration commits `c26db837` and `049dcf2a`
-  remain the active coordination direction; this rev7 banner supersedes the
-  intervening parallel-mode rev6 text.
+**Progress (both lanes).**
 
-Next action: continue the Codex-only screenshot loop across the next
-highest-frequency operational page, with no DB schema/data/migration changes.
+- Codex: research/SSOT seed `e0f6bd1e`/`5f116094`; dashboard `beb82a27`;
+  app-header `0bceeeff`; my-day `163cd7fd`; visits `648fce78`; tasks in flight.
+- Claude: parallel mechanism + screen partition restored; medical UI/UX SSOT
+  refresh `9e1cdfbd` (research integrated); patient-detail at-a-glance
+  tabular-nums slice C1 `02b46cb1` (prettier OK, vitest 47/47).
+
+Next action: Claude continues the patients lane (deeper at-a-glance refinement
+needs the audit screenshot webServer up), then patients list → reports → admin.
+Codex continues its lane.
 
 **How it's used in the loop.**
 
