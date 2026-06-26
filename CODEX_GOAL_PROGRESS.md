@@ -131,6 +131,17 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused patient board/protected GET Vitest `2` files / `215` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
 - Next action: run final scoped ledger checks, commit the patient-board API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening with subagent-mapped candidates. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Patient List/Search 500 No-Store
+
+- Hardened `GET /api/patients` so unexpected patient list and patient search read failures return a fixed `INTERNAL_ERROR` envelope with sensitive no-store headers.
+- Added route coverage for both default list reads and `view=search` reads, proving raw PHI-like exception text is absent from the response body and the 500 carries `Cache-Control: private, no-store, max-age=0` plus `Pragma: no-cache`.
+- Preserved existing patient query validation, duplicate query-key rejection, minimal palette/search/match projections, full-list enrichment behavior, auth/permission behavior, POST patient creation behavior, protected GET matrix behavior, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: sensitive patient list/search failure responses are no longer cacheable at the HTTP boundary, and raw patient names from thrown errors are not returned to the client.
+- Performance issue improved: none materially changed; the slice adds only failure-path response wrapping and tests.
+- Validation passed: focused patients route/protected GET Vitest `2` files / `239` tests; focused ESLint; focused Prettier check; scoped diff whitespace check. Existing webhook dispatch failure logs still appear in unrelated POST tests and were not introduced by this GET slice.
+- Remaining risk: privacy subagent identified an existing shared logging risk in `withAuthContext`/`logger.error` where raw `error.message` and `stack` may be emitted before the fixed 500 envelope. Treat this as a separate cross-route logging hardening candidate rather than mixing it into this patients route slice.
+- Next action: run final scoped ledger checks, commit the patient list/search API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.

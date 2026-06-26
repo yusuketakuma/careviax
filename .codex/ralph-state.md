@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2138 JST
+
+- current task: backend-first no-store 500 hardening for `GET /api/patients`.
+- files inspected: `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `git status --short --branch --untracked-files=all`, Next Route Handlers docs at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/patients/route.ts`, `src/app/api/patients/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/lib/auth/context.ts`, `src/lib/utils/logger.ts`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, gbrain code graph probes for `src/app/api/patients/route::GET`, and read-only API/privacy subagent reviews.
+- files changed: `src/app/api/patients/route.ts`, `src/app/api/patients/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `GET /api/patients` could return the standard fixed 500 envelope from unexpected patient list/search read failures without sensitive no-store headers at the exported route boundary.
+- security risks found: reduced cacheability risk for patient list/search failure responses by ensuring unexpected 500 responses carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`; tests also prove raw PHI-like exception text is omitted from the client response. Existing shared logging risk remains in `withAuthContext`/`logger.error`, where raw `error.message` and `stack` may be logged before the fixed response envelope; record as a separate cross-route hardening candidate.
+- performance issues found: none materially changed. The slice adds only failure-path response wrapping and tests; no new normal-path queries, dependencies, polling, or computation were introduced.
+- validation commands: `pnpm vitest run src/app/api/patients/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/patients/route.ts src/app/api/patients/route.test.ts`; `pnpm exec prettier --check src/app/api/patients/route.ts src/app/api/patients/route.test.ts`; `git diff --check -- src/app/api/patients/route.ts src/app/api/patients/route.test.ts`.
+- validation results: focused patients route/protected GET Vitest passed `2` files / `239` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. Existing webhook dispatch failure logs appeared in unrelated POST tests and were not introduced by this GET slice.
+- remaining work: run final scoped formatting/diff checks including progress ledgers, stage only the patients route/test for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, close subagents, and continue backend-first hardening. The broader objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2125 JST
 
 - current task: backend-first no-store 500 hardening for `GET /api/patients/board`.
