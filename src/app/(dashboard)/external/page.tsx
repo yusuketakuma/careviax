@@ -29,9 +29,9 @@ export default async function ExternalViewerPage({ searchParams }: ExternalViewe
   return (
     <PageScaffold>
       <WorkflowPageHeader
-        eyebrow="External Collaboration"
+        eyebrow="外部連携"
         title="外部連携ビュー"
-        description="外部連携者（ケアマネジャー・医師等）向けの閲覧専用ビュー"
+        description="家族・外部職種から届いた共有、自己申告、地域フォローを確認し、薬局内の次対応へ戻します。"
       />
       <Suspense fallback={<Loading />}>
         <ExternalViewerContent

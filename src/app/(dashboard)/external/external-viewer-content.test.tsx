@@ -142,4 +142,58 @@ describe('ExternalViewerContent', () => {
       updated_at: '2026-03-28T01:02:03.000Z',
     });
   });
+
+  it('moves the requested focus queue to the first work panel', () => {
+    useQueryMock
+      .mockReturnValueOnce({
+        data: {
+          data: [
+            {
+              id: 'grant_1',
+              patient_id: 'patient_1',
+              patient: { name: '患者A' },
+              granted_to_name: '家族A',
+              granted_to_contact_masked: null,
+              scope: { medications: true },
+              expires_at: '2026-04-01T00:00:00.000Z',
+              accessed_at: null,
+              created_at: '2026-03-28T00:00:00.000Z',
+              self_report_summary: { total: 0, open: 0, latest_at: null },
+            },
+          ],
+        },
+        isLoading: false,
+      })
+      .mockReturnValueOnce({
+        data: {
+          data: [
+            {
+              id: 'report_1',
+              patient_id: 'patient_1',
+              patient_name: '患者A',
+              category: '服薬相談',
+              subject: '残薬が増えた',
+              status: 'submitted',
+              reported_by_name: '家族A',
+              requested_callback: true,
+              created_at: '2026-03-28T00:00:00.000Z',
+              updated_at: '2026-03-28T01:02:03.000Z',
+            },
+          ],
+        },
+        isLoading: false,
+      })
+      .mockReturnValueOnce({
+        data: { data: [] },
+        isLoading: false,
+      });
+
+    render(<ExternalViewerContent initialFocus="self_reports" />);
+
+    const workQueue = screen.getByTestId('external-work-queue');
+    const panelGrid = workQueue.lastElementChild;
+    const firstPanel = workQueue.querySelector('[data-testid="external-self-report-queue"]');
+
+    expect(firstPanel).toBe(panelGrid?.firstElementChild);
+  });
 });

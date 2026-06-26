@@ -1,6 +1,6 @@
 'use client';
 
-import type { ElementType } from 'react';
+import type { ElementType, ReactNode } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -195,6 +195,178 @@ export function ExternalViewerContent({
     onError: (error: Error) => toast.error(error.message),
   });
 
+  const shareCard = (
+    <ExternalPanelCard
+      key="shares"
+      active={initialFocus === 'shares'}
+      title="外部共有管理"
+      description="患者ごとの共有 grant と閲覧状況を管理します"
+    >
+      {grantsQuery.isLoading ? (
+        <p className="text-sm text-muted-foreground">共有情報を読み込んでいます...</p>
+      ) : grants.length === 0 ? (
+        <p className="text-sm text-muted-foreground">有効な共有リンクはありません</p>
+      ) : (
+        grants.map((grant) => (
+          <div key={grant.id} className="rounded-xl border border-border/70 px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-medium text-foreground">{grant.patient.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  共有先: {grant.granted_to_name}
+                  {grant.granted_to_contact_masked ? ` / ${grant.granted_to_contact_masked}` : ''}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {scopeLabels(grant.scope).map((label) => (
+                  <Badge key={`${grant.id}-${label}`} variant="outline">
+                    {label}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>
+                有効期限: {format(new Date(grant.expires_at), 'yyyy年M月d日 HH:mm', { locale: ja })}
+              </span>
+              <span>{grant.accessed_at ? '閲覧済み' : '未閲覧'}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span>自己申告 {grant.self_report_summary.total} 件</span>
+              <span>未解決 {grant.self_report_summary.open} 件</span>
+              {grant.self_report_summary.latest_at ? (
+                <span>
+                  最新{' '}
+                  {format(new Date(grant.self_report_summary.latest_at), 'M/d HH:mm', {
+                    locale: ja,
+                  })}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-3">
+              <Link
+                href={`/patients/${grant.patient_id}/share`}
+                className="inline-flex min-h-11 min-w-11 items-center gap-1 text-sm font-medium text-primary hover:underline"
+              >
+                詳細を開く
+                <ExternalLink className="size-3.5" aria-hidden="true" />
+              </Link>
+            </div>
+          </div>
+        ))
+      )}
+    </ExternalPanelCard>
+  );
+  const selfReportCard = (
+    <ExternalPanelCard
+      key="self_reports"
+      active={initialFocus === 'self_reports'}
+      title="自己申告キュー"
+      description="折返しや triage が必要な申告を確認します"
+      testId="external-self-report-queue"
+    >
+      {selfReportsQuery.isLoading ? (
+        <p className="text-sm text-muted-foreground">自己申告を読み込んでいます...</p>
+      ) : activeSelfReports.length === 0 ? (
+        <p className="text-sm text-muted-foreground">自己申告はありません</p>
+      ) : (
+        activeSelfReports.slice(0, 6).map((report) => (
+          <div key={report.id} className="rounded-xl border border-border/70 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-medium text-foreground">{report.subject}</p>
+                <p className="text-sm text-muted-foreground">
+                  {report.patient_name ?? '患者不明'} / {report.reported_by_name ?? '報告者非表示'}
+                </p>
+              </div>
+              <Badge variant="outline">
+                {SELF_REPORT_STATUS_LABELS[report.status] ?? report.status}
+              </Badge>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {report.category}
+              {report.requested_callback ? ' / 折返し希望' : ''}
+            </p>
+            <ActionRail align="start" className="mt-3">
+              <Button
+                size="sm"
+                variant="outline"
+                className="sm:h-11 sm:min-h-[44px]"
+                onClick={() =>
+                  updateSelfReportMutation.mutate({
+                    id: report.id,
+                    status: 'triaged',
+                    updated_at: report.updated_at,
+                  })
+                }
+                disabled={updateSelfReportMutation.isPending || createTaskMutation.isPending}
+              >
+                受理
+              </Button>
+              <Button
+                size="sm"
+                className="sm:h-11 sm:min-h-[44px]"
+                onClick={() => createTaskMutation.mutate(report)}
+                disabled={updateSelfReportMutation.isPending || createTaskMutation.isPending}
+              >
+                タスク化
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="sm:h-11 sm:min-h-[44px]"
+                onClick={() =>
+                  updateSelfReportMutation.mutate({
+                    id: report.id,
+                    status: 'resolved',
+                    updated_at: report.updated_at,
+                  })
+                }
+                disabled={updateSelfReportMutation.isPending || createTaskMutation.isPending}
+              >
+                解決
+              </Button>
+            </ActionRail>
+          </div>
+        ))
+      )}
+    </ExternalPanelCard>
+  );
+  const activityCard = (
+    <ExternalPanelCard
+      key="activities"
+      active={initialFocus === 'activities'}
+      title="地域活動フォロー"
+      description="紹介導線と地域活動の後続対応です"
+    >
+      {activitiesQuery.isLoading ? (
+        <p className="text-sm text-muted-foreground">地域活動を読み込んでいます...</p>
+      ) : followUps.length === 0 ? (
+        <p className="text-sm text-muted-foreground">要フォロー活動はありません</p>
+      ) : (
+        followUps.map((activity) => (
+          <div key={activity.id} className="rounded-xl border border-border/70 px-4 py-3">
+            <p className="font-medium text-foreground">{activity.title}</p>
+            <p className="text-sm text-muted-foreground">
+              {activity.activity_type}
+              {activity.partner_name ? ` / ${activity.partner_name}` : ''}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              紹介件数: {activity.referrals_generated ?? 0} / 実施日:{' '}
+              {format(new Date(activity.activity_date), 'yyyy年M月d日', { locale: ja })}
+            </p>
+          </div>
+        ))
+      )}
+    </ExternalPanelCard>
+  );
+  const panelOrder: Record<NonNullable<ExternalFocus>, ReactNode[]> = {
+    self_reports: [selfReportCard, shareCard, activityCard],
+    activities: [activityCard, shareCard, selfReportCard],
+    shares: [shareCard, selfReportCard, activityCard],
+  };
+  const orderedPanels = initialFocus ? panelOrder[initialFocus] : panelOrder.shares;
+
   return (
     <div className="space-y-6">
       {contextSummary ? (
@@ -234,185 +406,36 @@ export function ExternalViewerContent({
       <PageSection
         title="共有とフォロー"
         description="共有 grant、自己申告キュー、地域活動フォローを役割ごとに分けて確認します。"
-        contentClassName="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]"
+        contentClassName="grid gap-4 xl:grid-cols-[1fr_1fr_0.9fr]"
+        data-testid="external-work-queue"
       >
-        <Card className={cn(initialFocus === 'shares' ? 'ring-2 ring-primary/25' : null)}>
-          <CardHeader>
-            <CardTitle className="text-base">外部共有管理</CardTitle>
-            <CardDescription>患者ごとの共有 grant と閲覧状況を管理します</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {grantsQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">共有情報を読み込んでいます...</p>
-            ) : grants.length === 0 ? (
-              <p className="text-sm text-muted-foreground">有効な共有リンクはありません</p>
-            ) : (
-              grants.map((grant) => (
-                <div key={grant.id} className="rounded-xl border border-border/70 px-4 py-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-foreground">{grant.patient.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        共有先: {grant.granted_to_name}
-                        {grant.granted_to_contact_masked
-                          ? ` / ${grant.granted_to_contact_masked}`
-                          : ''}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {scopeLabels(grant.scope).map((label) => (
-                        <Badge key={`${grant.id}-${label}`} variant="outline">
-                          {label}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span>
-                      有効期限:{' '}
-                      {format(new Date(grant.expires_at), 'yyyy年M月d日 HH:mm', { locale: ja })}
-                    </span>
-                    <span>{grant.accessed_at ? '閲覧済み' : '未閲覧'}</span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span>自己申告 {grant.self_report_summary.total} 件</span>
-                    <span>未解決 {grant.self_report_summary.open} 件</span>
-                    {grant.self_report_summary.latest_at ? (
-                      <span>
-                        最新{' '}
-                        {format(new Date(grant.self_report_summary.latest_at), 'M/d HH:mm', {
-                          locale: ja,
-                        })}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="mt-3">
-                    <Link
-                      href={`/patients/${grant.patient_id}/share`}
-                      className="inline-flex min-h-11 min-w-11 items-center gap-1 text-sm font-medium text-primary hover:underline"
-                    >
-                      詳細を開く
-                      <ExternalLink className="size-3.5" aria-hidden="true" />
-                    </Link>
-                  </div>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6">
-          <Card className={cn(initialFocus === 'self_reports' ? 'ring-2 ring-primary/25' : null)}>
-            <CardHeader>
-              <CardTitle className="text-base">自己申告キュー</CardTitle>
-              <CardDescription>折返しや triage が必要な申告を確認します</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {selfReportsQuery.isLoading ? (
-                <p className="text-sm text-muted-foreground">自己申告を読み込んでいます...</p>
-              ) : activeSelfReports.length === 0 ? (
-                <p className="text-sm text-muted-foreground">自己申告はありません</p>
-              ) : (
-                activeSelfReports.slice(0, 6).map((report) => (
-                  <div key={report.id} className="rounded-xl border border-border/70 px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-foreground">{report.subject}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {report.patient_name ?? '患者不明'} /{' '}
-                          {report.reported_by_name ?? '報告者非表示'}
-                        </p>
-                      </div>
-                      <Badge variant="outline">
-                        {SELF_REPORT_STATUS_LABELS[report.status] ?? report.status}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {report.category}
-                      {report.requested_callback ? ' / 折返し希望' : ''}
-                    </p>
-                    <ActionRail align="start" className="mt-3">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="sm:h-11 sm:min-h-[44px]"
-                        onClick={() =>
-                          updateSelfReportMutation.mutate({
-                            id: report.id,
-                            status: 'triaged',
-                            updated_at: report.updated_at,
-                          })
-                        }
-                        disabled={
-                          updateSelfReportMutation.isPending || createTaskMutation.isPending
-                        }
-                      >
-                        受理
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="sm:h-11 sm:min-h-[44px]"
-                        onClick={() => createTaskMutation.mutate(report)}
-                        disabled={
-                          updateSelfReportMutation.isPending || createTaskMutation.isPending
-                        }
-                      >
-                        タスク化
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="sm:h-11 sm:min-h-[44px]"
-                        onClick={() =>
-                          updateSelfReportMutation.mutate({
-                            id: report.id,
-                            status: 'resolved',
-                            updated_at: report.updated_at,
-                          })
-                        }
-                        disabled={
-                          updateSelfReportMutation.isPending || createTaskMutation.isPending
-                        }
-                      >
-                        解決
-                      </Button>
-                    </ActionRail>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className={cn(initialFocus === 'activities' ? 'ring-2 ring-primary/25' : null)}>
-            <CardHeader>
-              <CardTitle className="text-base">地域活動フォロー</CardTitle>
-              <CardDescription>紹介導線と地域活動の後続対応です</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {activitiesQuery.isLoading ? (
-                <p className="text-sm text-muted-foreground">地域活動を読み込んでいます...</p>
-              ) : followUps.length === 0 ? (
-                <p className="text-sm text-muted-foreground">要フォロー活動はありません</p>
-              ) : (
-                followUps.map((activity) => (
-                  <div key={activity.id} className="rounded-xl border border-border/70 px-4 py-3">
-                    <p className="font-medium text-foreground">{activity.title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {activity.activity_type}
-                      {activity.partner_name ? ` / ${activity.partner_name}` : ''}
-                    </p>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      紹介件数: {activity.referrals_generated ?? 0} / 実施日:{' '}
-                      {format(new Date(activity.activity_date), 'yyyy年M月d日', { locale: ja })}
-                    </p>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </div>
+        {orderedPanels}
       </PageSection>
     </div>
+  );
+}
+
+function ExternalPanelCard({
+  active,
+  title,
+  description,
+  testId,
+  children,
+}: {
+  active: boolean;
+  title: string;
+  description: string;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card className={cn('min-w-0', active ? 'ring-2 ring-primary/25' : null)} data-testid={testId}>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">{children}</CardContent>
+    </Card>
   );
 }
 
