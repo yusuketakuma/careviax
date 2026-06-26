@@ -9916,3 +9916,25 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-entry-sweep/mfa-before-desktop.png`, `artifacts/ui-entry-sweep/mfa-before-mobile.png`, `artifacts/ui-entry-sweep/mfa-final-desktop.png`, and `artifacts/ui-entry-sweep/mfa-final-mobile.png`.
 - Remaining:
   - Commit the `/mfa` UI/test group, then commit this ledger update separately and release the `/mfa` lock. The broader all-pages UI/UX objective remains incomplete.
+
+### Password Reset — Recovery Flow Clarity and Target Proof
+
+- Coordination:
+  - Drained `phos/codex` agmsg before selecting the slice and before editing.
+  - Sent a `/password/reset` lock for `src/app/(auth)/password/reset/page.tsx`, focused auth E2E if needed, and ledgers. No conflicting inbound message arrived.
+- Bugs found:
+  - `/password/reset` rendered the shared `CardDescription` as a lone `?` help button, so users could not see the reset instruction without opening help.
+  - Desktop proof showed the email input, send button, and back-to-login link below the 44px PH-OS target floor.
+  - The page did not visually separate the email-code request step from the code/password confirmation step.
+- Implemented by Codex:
+  - Replaced the card-description pattern with an explicit password-recovery header and step-specific instruction copy.
+  - Raised email, confirmation-code, password, back, and submit controls to the 44px interaction floor on desktop and mobile.
+  - Preserved existing request/confirm API endpoints, email state, confirmation-code paste handling, password-strength logic, password visibility toggle, reset success state, and login navigation.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(auth)/password/reset/page.tsx'`: passed.
+  - `pnpm exec eslint 'src/app/(auth)/password/reset/page.tsx'`: passed.
+  - `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-auth-flow.spec.ts --grep "auth: password reset flow"`: passed, `8` tests across desktop and mobile projects.
+  - Direct Playwright proof on `http://localhost:3012/password/reset`: no console/page errors, no horizontal overflow, no undersized visible page controls, no floating `?` buttons, and one visible `h2` `確認コードの送信先を確認します`.
+  - Screenshot evidence: `artifacts/ui-entry-sweep/password-reset-before-desktop.png`, `artifacts/ui-entry-sweep/password-reset-before-mobile.png`, `artifacts/ui-entry-sweep/password-reset-final-desktop.png`, and `artifacts/ui-entry-sweep/password-reset-final-mobile.png`.
+- Remaining:
+  - Commit the `/password/reset` UI group, then commit this ledger update separately and release the `/password/reset` lock. The broader all-pages UI/UX objective remains incomplete.
