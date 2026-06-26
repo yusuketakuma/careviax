@@ -383,14 +383,14 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
           >
             {card.name}
           </Link>
-          <span className="ml-1.5 text-xs text-muted-foreground">
+          <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">
             {card.age != null ? `${card.age}歳・` : ''}
             {card.residence_label}
           </span>
         </p>
         <span
           className={cn(
-            'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold',
+            'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold',
             presentation.badgeClass,
           )}
         >
@@ -418,7 +418,10 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
       </div>
 
       <p className="text-sm leading-5 text-muted-foreground">
-        次回: <span className="font-bold text-foreground">{formatNextVisitLabel(card, now)}</span>
+        次回:{' '}
+        <span className="font-bold text-foreground tabular-nums">
+          {formatNextVisitLabel(card, now)}
+        </span>
       </p>
 
       {operationSummary.length > 0 ? (
@@ -426,7 +429,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
           {operationSummary.map((item) => (
             <span
               key={item}
-              className="inline-flex items-center rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+              className="inline-flex items-center rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs font-medium text-muted-foreground"
             >
               {item}
             </span>
@@ -447,13 +450,13 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
             {card.foundation_href ? (
               <Link
                 href={card.foundation_href}
-                className="inline-flex min-h-11 shrink-0 items-center text-[11px] font-semibold underline-offset-4 hover:underline"
+                className="inline-flex min-h-11 shrink-0 items-center text-xs font-semibold underline-offset-4 hover:underline"
               >
                 正本確認
               </Link>
             ) : null}
           </div>
-          <p className="text-[11px] opacity-85">{card.foundation_summary.items.join(' / ')}</p>
+          <p className="text-xs opacity-85">{card.foundation_summary.items.join(' / ')}</p>
         </div>
       ) : null}
 
