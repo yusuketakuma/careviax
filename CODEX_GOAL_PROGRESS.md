@@ -10306,3 +10306,27 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-business-holidays-sweep/before/desktop.png`, `artifacts/ui-business-holidays-sweep/before/mobile.png`, `artifacts/ui-business-holidays-sweep/after/desktop.png`, `artifacts/ui-business-holidays-sweep/after/mobile.png`, and `artifacts/ui-business-holidays-sweep/after/metrics.json`.
 - Remaining:
   - Commit the `/admin/business-holidays` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Admin Capacity — Capacity Pressure First-Fold Clarity
+
+- Coordination:
+  - Continued from a clean tree and drained `phos/codex`; inbox was empty.
+  - Kept this slice isolated to `/admin/capacity` content/test files. No API route, DB, migration, auth, permission, audit, external-send, or destructive operation was changed.
+- Bugs found:
+  - `/admin/capacity` still showed the generic `最初に見るポイント` intro above the pressure dashboard.
+  - Mobile stacked all four KPI cards vertically, pushing `今すぐ見るべきこと` to `991px`, too low for a screen whose job is immediate capacity pressure judgment.
+- Implemented by Codex:
+  - Removed the generic intro for this page.
+  - Changed the KPI grid and matching loading skeleton to two columns on mobile and four on desktop.
+  - Reduced KPI card mobile padding/value scale so the pressure summary stays readable without crowding.
+  - Added focused assertions for the no-intro contract and KPI grid class contract.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `3` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/capacity/page.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/capacity/page.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/capacity/page.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.tsx' 'src/app/(dashboard)/admin/capacity/capacity-content.test.tsx'`: passed.
+  - Direct route-mocked Playwright proof on `http://localhost:3012/admin/capacity`: no console/page errors, no horizontal overflow, `genericIntro=false`, and page-body undersized target count `0` on desktop/mobile.
+  - Final metrics: desktop `今すぐ見るべきこと` moved from `601px` to `519px`; mobile moved from `991px` to `661px`.
+  - Screenshot evidence: `artifacts/ui-capacity-sweep/baseline/desktop.png`, `artifacts/ui-capacity-sweep/baseline/mobile.png`, `artifacts/ui-capacity-sweep/after/desktop.png`, `artifacts/ui-capacity-sweep/after/mobile.png`, and `artifacts/ui-capacity-sweep/after/metrics.json`.
+- Remaining:
+  - Commit the `/admin/capacity` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
