@@ -125,6 +125,21 @@ describe('/api/patients/check-duplicate GET', () => {
     expect(patientFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('returns a fixed sensitive no-store error when duplicate lookup fails', async () => {
+    patientFindManyMock.mockRejectedValueOnce(new Error('raw duplicate lookup failure'));
+
+    const response = (await GET(
+      createGetRequest('?name=山田&date_of_birth=1950-01-01&gender=male'),
+      emptyRouteContext,
+    ))!;
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(body.code).toBe('INTERNAL_ERROR');
+    expect(JSON.stringify(body)).not.toContain('raw duplicate lookup failure');
+  });
+
   it.each([
     [
       'duplicate name',
