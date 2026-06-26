@@ -1,5 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
-import { success } from '@/lib/api/response';
+import { unstable_rethrow } from 'next/navigation';
+import { internalError, success } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
@@ -31,6 +32,7 @@ import type {
  */
 
 const BLOCKED_REASONS_LIMIT = 2;
+const VISIT_PREPARATION_BLOCKED_REASON_LABEL = '対応が必要な未解決項目があります';
 
 const ACTIVE_SCHEDULE_STATUSES = [
   'planned',
@@ -542,7 +544,6 @@ const authenticatedGET = withAuthContext(
         select: {
           id: true,
           exception_type: true,
-          description: true,
           severity: true,
           created_at: true,
         },
@@ -648,7 +649,13 @@ const authenticatedGET = withAuthContext(
         return (left.due_at ?? '9999').localeCompare(right.due_at ?? '9999');
       });
 
-    const blockedReasons: VisitPrepBlockedReason[] = buildBlockedReasons(openExceptions, now);
+    const blockedReasons: VisitPrepBlockedReason[] = buildBlockedReasons(
+      openExceptions.map((exception) => ({
+        ...exception,
+        description: VISIT_PREPARATION_BLOCKED_REASON_LABEL,
+      })),
+      now,
+    );
 
     const facilityPatientCount = cards
       .filter((card) => card.is_facility)
@@ -676,5 +683,11 @@ const authenticatedGET = withAuthContext(
   },
 );
 
-export const GET: typeof authenticatedGET = async (req, routeContext) =>
-  withSensitiveNoStore(await authenticatedGET(req, routeContext));
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

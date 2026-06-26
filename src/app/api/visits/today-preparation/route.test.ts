@@ -177,6 +177,44 @@ describe('/api/visits/today-preparation', () => {
     expect(json.data.facility_patient_count).toBe(0);
   });
 
+  it('redacts workflow exception free text from the visit preparation board blockers', async () => {
+    workflowExceptionFindManyMock.mockResolvedValue([
+      {
+        id: 'exception_1',
+        exception_type: 'dispense_audit_rejected',
+        description: '患者A の ワルファリン 監査差戻し詳細を確認してください',
+        severity: 'critical',
+        created_at: new Date('2026-06-12T07:50:00+09:00'),
+      },
+    ]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(workflowExceptionFindManyMock.mock.calls[0][0].select).toEqual({
+      id: true,
+      exception_type: true,
+      severity: true,
+      created_at: true,
+    });
+    const json = await response.json();
+    expect(json.data.blocked_reasons).toEqual([
+      expect.objectContaining({
+        id: 'exception_1',
+        label: '対応が必要な未解決項目があります',
+        severity: 'critical',
+        category: '調剤',
+        action_label: '状況を見る →',
+        action_href: '/dispense',
+      }),
+    ]);
+    const serialized = JSON.stringify(json);
+    expect(serialized).not.toContain('患者A');
+    expect(serialized).not.toContain('ワルファリン');
+    expect(serialized).not.toContain('監査差戻し詳細');
+  });
+
   it('JST 朝(UTC では前日)でも scheduled_date(@db.Date)をローカル日付の UTC レンジで比較する', async () => {
     vi.useFakeTimers();
     // JST 2026-06-12 08:00(UTC では 2026-06-11T23:00Z)
@@ -545,19 +583,57 @@ describe('/api/visits/today-preparation', () => {
     expect(JSON.stringify(json)).not.toContain('施設患者1のメモ');
   });
 
+  it('returns a fixed no-store 500 when the preparation board aggregation fails', async () => {
+    visitScheduleFindManyMock.mockRejectedValueOnce(
+      new Error('患者A 保険番号 123456789 の訪問準備集計に失敗しました'),
+    );
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('患者A');
+    expect(serialized).not.toContain('123456789');
+    expect(serialized).not.toContain('訪問準備集計');
+  });
+
+  it('rethrows Next.js control-flow errors instead of converting them to a fixed 500', async () => {
+    const redirectError = Object.assign(new Error('NEXT_REDIRECT'), {
+      digest: 'NEXT_REDIRECT;replace;/login;307;',
+    });
+    visitScheduleFindManyMock.mockRejectedValueOnce(redirectError);
+
+    await expect(GET(createRequest(), { params: Promise.resolve({}) })).rejects.toBe(redirectError);
+  });
+
   it.each(['.', '..'])(
-    'rejects a home visit_mode_href built from a dot-segment schedule id (%s) via the shared guard',
+    'returns a fixed no-store 500 when a home visit_mode_href is built from a dot-segment schedule id (%s)',
     async (dotScheduleId) => {
       visitScheduleFindManyMock.mockResolvedValue([buildSchedule({ id: dotScheduleId })]);
 
-      await expect(GET(createRequest(), { params: Promise.resolve({}) })).rejects.toThrow(
-        RangeError,
-      );
+      const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+
+      expect(response.status).toBe(500);
+      expectSensitiveNoStore(response);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        code: 'INTERNAL_ERROR',
+        message: 'サーバー内部でエラーが発生しました',
+      });
+      const serialized = JSON.stringify(body);
+      expect(serialized).not.toContain(dotScheduleId);
+      expect(serialized).not.toContain('患者A');
     },
   );
 
   it.each(['.', '..'])(
-    'rejects a facility visit_mode_href built from a dot-segment lead schedule id (%s) via the shared guard',
+    'returns a fixed no-store 500 when a facility visit_mode_href is built from a dot-segment lead schedule id (%s)',
     async (dotScheduleId) => {
       visitScheduleFindManyMock.mockResolvedValue([
         buildSchedule({
@@ -573,9 +649,18 @@ describe('/api/visits/today-preparation', () => {
       ]);
       facilityFindManyMock.mockResolvedValue([{ id: 'facility_1', name: 'グリーンヒル' }]);
 
-      await expect(GET(createRequest(), { params: Promise.resolve({}) })).rejects.toThrow(
-        RangeError,
-      );
+      const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+
+      expect(response.status).toBe(500);
+      expectSensitiveNoStore(response);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        code: 'INTERNAL_ERROR',
+        message: 'サーバー内部でエラーが発生しました',
+      });
+      const serialized = JSON.stringify(body);
+      expect(serialized).not.toContain(dotScheduleId);
+      expect(serialized).not.toContain('患者A');
     },
   );
 });
