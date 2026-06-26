@@ -461,6 +461,40 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
     enabled: !!orgId,
   });
 
+  // 担当チーム（患者単位）の候補。編集時のみ取得する（新規登録は別フェーズで対応）。
+  const careTeamPharmacistsQuery = useQuery({
+    queryKey: ['patient-form', 'care-team-pharmacists', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/pharmacists', { headers: { 'x-org-id': orgId } });
+      if (!res.ok) throw new Error('薬剤師一覧の取得に失敗しました');
+      const payload = (await res.json()) as { data?: Array<{ id: string; name: string }> };
+      return payload.data ?? [];
+    },
+    enabled: !!orgId && !!patientId,
+  });
+
+  const careTeamStaffQuery = useQuery({
+    queryKey: ['patient-form', 'care-team-staff', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/org/members?eligible=staff', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('スタッフ一覧の取得に失敗しました');
+      const payload = (await res.json()) as { data?: Array<{ id: string; name: string }> };
+      return payload.data ?? [];
+    },
+    enabled: !!orgId && !!patientId,
+  });
+
+  const careTeamPharmacists = careTeamPharmacistsQuery.data ?? [];
+  const careTeamStaff = careTeamStaffQuery.data ?? [];
+  const careTeamFields = [
+    { name: 'primary_pharmacist_id' as const, label: '主担当薬剤師', options: careTeamPharmacists },
+    { name: 'backup_pharmacist_id' as const, label: '副担当薬剤師', options: careTeamPharmacists },
+    { name: 'primary_staff_id' as const, label: '主担当スタッフ', options: careTeamStaff },
+    { name: 'backup_staff_id' as const, label: '副担当スタッフ', options: careTeamStaff },
+  ];
+
   const serviceAreaWarning = evaluateServiceAreaWarning({
     serviceAreas: serviceAreasQuery.data ?? [],
     address: watchedAddress,
@@ -700,6 +734,32 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                   )}
                 </div>
               </div>
+
+              {/* 担当チーム（患者単位）。編集時のみ。主/副 薬剤師・スタッフを org メンバーから割当。 */}
+              {patientId ? (
+                <div className="space-y-3 border-t pt-4" data-testid="patient-care-team">
+                  <p className="text-sm font-medium text-foreground">担当チーム</p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {careTeamFields.map((field) => (
+                      <div key={field.name} className="space-y-1.5">
+                        <Label htmlFor={field.name}>{field.label}</Label>
+                        <select
+                          id={field.name}
+                          {...register(field.name)}
+                          className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 sm:h-8 sm:min-h-0"
+                        >
+                          <option value="">未設定</option>
+                          {field.options.map((member) => (
+                            <option key={member.id} value={member.id}>
+                              {member.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>

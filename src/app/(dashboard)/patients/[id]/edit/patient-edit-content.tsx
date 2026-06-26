@@ -132,6 +132,11 @@ function buildDefaultValues(patient: PatientOverview): Partial<CreatePatientInpu
     unit_name: primaryResidence?.unit_name ?? undefined,
     allergy_info: normalizeAllergyInfoForPatientForm(patient.allergy_info),
     notes: patient.notes ?? undefined,
+    // 担当チーム（患者単位）を現在値で pre-populate（未選択='' での null 上書き=消失を防ぐ）。
+    primary_pharmacist_id: patient.primary_pharmacist_id ?? undefined,
+    backup_pharmacist_id: patient.backup_pharmacist_id ?? undefined,
+    primary_staff_id: patient.primary_staff_id ?? undefined,
+    backup_staff_id: patient.backup_staff_id ?? undefined,
     requester: intake?.requester
       ? {
           organization_name: intake.requester.organization_name,

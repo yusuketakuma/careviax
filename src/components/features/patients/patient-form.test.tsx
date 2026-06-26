@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PatientForm } from './patient-form';
@@ -140,6 +140,61 @@ describe('PatientForm', () => {
       ).not.toBeNull();
     });
     expect(screen.getByLabelText('介護認定')).toBeTruthy();
+  });
+
+  it('renders the patient-level care team selects in edit mode and pre-populates current assignments', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      const key = options.queryKey[1];
+      if (key === 'care-team-pharmacists') {
+        return {
+          data: [
+            { id: 'ph1', name: '薬剤 太郎' },
+            { id: 'ph2', name: '薬剤 次郎' },
+          ],
+          isLoading: false,
+        };
+      }
+      if (key === 'care-team-staff') {
+        return { data: [{ id: 'st1', name: '事務 花子' }], isLoading: false };
+      }
+      return { data: [], isLoading: false };
+    });
+
+    render(
+      <PatientForm
+        patientId="patient_1"
+        defaultValues={{ primary_pharmacist_id: 'ph1', primary_staff_id: 'st1' }}
+      />,
+    );
+
+    const careTeam = screen.getByTestId('patient-care-team');
+    expect(careTeam).toBeTruthy();
+
+    const primaryPharmacist = screen.getByLabelText('主担当薬剤師') as HTMLSelectElement;
+    const backupPharmacist = screen.getByLabelText('副担当薬剤師') as HTMLSelectElement;
+    const primaryStaff = screen.getByLabelText('主担当スタッフ') as HTMLSelectElement;
+    const backupStaff = screen.getByLabelText('副担当スタッフ') as HTMLSelectElement;
+
+    // 薬剤師候補は薬剤師クエリ、スタッフ候補はスタッフクエリから供給される。
+    // 主/副の2 select に同じ候補が並ぶため複数一致する。
+    expect(within(careTeam).getAllByText('薬剤 太郎').length).toBe(2);
+    expect(within(careTeam).getAllByText('事務 花子').length).toBe(2);
+
+    // 現在値で pre-populate され、未選択の副担当は空（'' での null 上書き=消失を防ぐ）。
+    expect(primaryPharmacist.value).toBe('ph1');
+    expect(primaryStaff.value).toBe('st1');
+    expect(backupPharmacist.value).toBe('');
+    expect(backupStaff.value).toBe('');
+  });
+
+  it('does not render the care team selects in create mode', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+
+    render(<PatientForm />);
+
+    expect(screen.queryByTestId('patient-care-team')).toBeNull();
   });
 
   it('shows server-side duplicate candidates and resubmits with duplicate acknowledgement', async () => {
