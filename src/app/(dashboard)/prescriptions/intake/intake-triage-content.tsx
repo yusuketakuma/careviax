@@ -145,13 +145,85 @@ function QueueRow({
           className={buttonVariants({
             variant: isPrimaryAction ? 'default' : 'outline',
             size: 'sm',
-            className: 'whitespace-nowrap',
+            className: '!h-auto !min-h-11 whitespace-nowrap px-3 py-2',
           })}
         >
           {action.label}
         </Link>
       </TableCell>
     </TableRow>
+  );
+}
+
+function QueueMobileCard({
+  row,
+  isPrimaryAction,
+  now,
+}: {
+  row: IntakeTriageRow;
+  isPrimaryAction: boolean;
+  now: Date;
+}) {
+  const statusPresentation = INTAKE_STATUS_PRESENTATIONS[row.status];
+  const action = INTAKE_ACTION_PRESENTATIONS[row.action];
+  const contentLabel = `${row.patient_name} 様 — ${row.content_label}${
+    row.rx_number ? ` ${row.rx_number}` : ''
+  }`;
+
+  return (
+    <article
+      className={cn(
+        'rounded-md border border-border/70 bg-background p-3',
+        statusPresentation.rowClassName,
+      )}
+      data-testid="intake-triage-card"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">{contentLabel}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {formatReceivedAt(row.received_at, now)} / {row.issuer ?? '発行元未設定'}
+          </p>
+        </div>
+        <span
+          className={cn(
+            'inline-flex shrink-0 items-center rounded-full px-2 py-1 text-xs font-semibold',
+            INTAKE_LANE_BADGE_CLASSES[row.lane],
+          )}
+        >
+          {INTAKE_LANE_LABELS[row.lane]}
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span
+          className={cn(
+            'inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold',
+            statusPresentation.badgeClassName,
+          )}
+        >
+          {buildStatusLabel(row)}
+        </span>
+        <span className="text-sm text-muted-foreground">
+          自動読取{' '}
+          {row.auto_read_percent != null ? (
+            <strong className="font-bold text-state-done">{row.auto_read_percent}%</strong>
+          ) : (
+            '未算出'
+          )}
+        </span>
+      </div>
+
+      <Link
+        href={action.href(row)}
+        className={buttonVariants({
+          variant: isPrimaryAction ? 'default' : 'outline',
+          className: 'mt-3 min-h-11 w-full justify-center',
+        })}
+      >
+        {action.label}
+      </Link>
+    </article>
   );
 }
 
@@ -287,12 +359,15 @@ export function IntakeTriageContent() {
     <section aria-label="処方取込トリアージ" data-testid="intake-triage">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-bold text-foreground">処方取込</h2>
+          <h1 className="text-xl font-bold text-foreground">処方取込</h1>
           <p className="text-sm text-muted-foreground">{dateLabel}</p>
         </div>
         <Link
           href="/prescriptions/new"
-          className={buttonVariants({ variant: 'outline' })}
+          className={buttonVariants({
+            variant: 'outline',
+            className: '!h-auto !min-h-11 px-4 py-2',
+          })}
           data-testid="intake-manual-entry-link"
         >
           手動で取り込む
@@ -339,7 +414,19 @@ export function IntakeTriageContent() {
                   />
                 </div>
                 {visibleRows.length > 0 ? (
-                  <div className="mt-3 max-h-[360px] overflow-y-auto rounded-md border border-border/70">
+                  <div className="mt-3 space-y-3 md:hidden">
+                    {visibleRows.map((row) => (
+                      <QueueMobileCard
+                        key={row.intake_id}
+                        row={row}
+                        isPrimaryAction={row.intake_id === primaryRowId}
+                        now={now}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {visibleRows.length > 0 ? (
+                  <div className="mt-3 hidden max-h-[360px] overflow-y-auto rounded-md border border-border/70 md:block">
                     <Table className="table-fixed">
                       <TableHeader className="sticky top-0 z-10 bg-card">
                         <TableRow>

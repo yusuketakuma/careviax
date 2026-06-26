@@ -214,29 +214,40 @@ describe('IntakeTriageContent', () => {
     render(<IntakeTriageContent />);
 
     // ヘッダー: 見出し + 新着/確認待ちサマリ + 手動取込(outline)
-    expect(screen.getByRole('heading', { name: '処方取込' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '処方取込', level: 1 })).toBeTruthy();
     expect(screen.getByText(/新着2件・確認待ち1件/)).toBeTruthy();
     const manualLink = screen.getByTestId('intake-manual-entry-link');
     expect(manualLink.getAttribute('href')).toBe('/prescriptions/new');
+    expect(manualLink.className).toContain('!min-h-11');
 
     // 取込キュー: 既定は FAX レーンの 3 行
     expect(screen.getByRole('heading', { name: '取込キュー' })).toBeTruthy();
     expect(screen.getByText('新着が上・読取の確からしさは必ず人が確認してから入力へ')).toBeTruthy();
     expect(screen.getAllByTestId('intake-triage-row')).toHaveLength(3);
+    expect(screen.getAllByTestId('intake-triage-card')).toHaveLength(3);
 
     // 行内容: 状態語彙 + 自動読取 % + RX 番号 + 動的アクション
-    expect(screen.getByText('待ち解除に関連')).toBeTruthy();
-    expect(screen.getByText('98%')).toBeTruthy();
-    expect(screen.getByText('重複の疑い(6/9取込分と同一?)')).toBeTruthy();
-    expect(screen.getByText('入力済 → 監査中')).toBeTruthy();
-    expect(screen.getByText(/田中 一郎 様 — 定期処方 RX-2024-0500/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: '入力へ送る' }).getAttribute('href')).toBe(
-      '/prescriptions/intake_sasaki',
+    expect(screen.getAllByText('待ち解除に関連')).toHaveLength(2);
+    expect(screen.getAllByText('98%')).toHaveLength(2);
+    expect(screen.getAllByText('重複の疑い(6/9取込分と同一?)')).toHaveLength(2);
+    expect(screen.getAllByText('入力済 → 監査中')).toHaveLength(2);
+    expect(screen.getAllByText(/田中 一郎 様 — 定期処方 RX-2024-0500/)).toHaveLength(2);
+    const desktopRows = screen.getAllByTestId('intake-triage-row');
+    expect(
+      within(desktopRows[0]).getByRole('link', { name: '入力へ送る' }).getAttribute('href'),
+    ).toBe('/prescriptions/intake_sasaki');
+    expect(within(desktopRows[0]).getByRole('link', { name: '入力へ送る' }).className).toContain(
+      '!min-h-11',
     );
-    expect(screen.getByRole('link', { name: '並べて比較' }).getAttribute('href')).toBe(
-      '/prescriptions/intake_takahashi',
+    expect(
+      within(desktopRows[1]).getByRole('link', { name: '並べて比較' }).getAttribute('href'),
+    ).toBe('/prescriptions/intake_takahashi');
+    expect(within(desktopRows[2]).getByRole('link', { name: '→ 監査へ' })).toBeTruthy();
+    const mobileCards = screen.getAllByTestId('intake-triage-card');
+    expect(within(mobileCards[0]).getByText(/佐々木 ハル 様/)).toBeTruthy();
+    expect(within(mobileCards[0]).getByRole('link', { name: '入力へ送る' }).className).toContain(
+      'min-h-11',
     );
-    expect(screen.getByRole('link', { name: '→ 監査へ' })).toBeTruthy();
 
     // 受信時刻の相対表記(昨日)
     expect(screen.getByText('昨日 17:20')).toBeTruthy();
@@ -275,11 +286,13 @@ describe('IntakeTriageContent', () => {
     // FAX(選択中)をもう一度押す → 全レーン表示
     fireEvent.click(screen.getByRole('button', { name: /FAX/ }));
     expect(screen.getAllByTestId('intake-triage-row')).toHaveLength(5);
+    expect(screen.getAllByTestId('intake-triage-card')).toHaveLength(5);
 
     // オンラインを選ぶ → 1 行
     fireEvent.click(screen.getByRole('button', { name: /オンライン/ }));
     expect(screen.getAllByTestId('intake-triage-row')).toHaveLength(1);
-    expect(screen.getByText('受入判断待ち')).toBeTruthy();
+    expect(screen.getAllByTestId('intake-triage-card')).toHaveLength(1);
+    expect(screen.getAllByText('受入判断待ち')).toHaveLength(2);
   });
 
   it('uses the current set audit label for entered prescriptions moving to set work', () => {
