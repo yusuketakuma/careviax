@@ -116,6 +116,11 @@ function createMalformedJsonPatchRequest(taskId = 'task_1') {
   } satisfies NextRequestInit);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/dispense-tasks/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -233,6 +238,7 @@ describe('/api/dispense-tasks/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       facility_label: 'facility_a',
       site: {
@@ -327,12 +333,36 @@ describe('/api/dispense-tasks/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '調剤タスクIDが不正です',
     });
     expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
     expect(membershipFindFirstMock).not.toHaveBeenCalled();
     expect(generateDispensePrefillMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 when task detail loading fails without exposing raw PHI', async () => {
+    dispenseTaskFindFirstMock.mockRejectedValue(
+      new Error('DB failed for patient 山田 太郎 insurance 12345678'),
+    );
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'task_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    const body = JSON.parse(bodyText) as { code: string; message: string; details?: unknown };
+    expect(body).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(body).not.toHaveProperty('details');
+    expect(bodyText).not.toContain('山田');
+    expect(bodyText).not.toContain('12345678');
   });
 
   it('keeps packaging groups available for completed tasks during auditing', async () => {

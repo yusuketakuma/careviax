@@ -2,7 +2,8 @@ import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, forbidden } from '@/lib/api/response';
+import { success, validationError, notFound, forbidden, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -248,7 +249,15 @@ async function buildLineStockGuidance(input: {
   });
 }
 
-export const GET = withAuthContext(async (_req, ctx, { params }) => {
+const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
+  if (
+    !hasPermission(ctx.role, 'canDispense') &&
+    !hasPermission(ctx.role, 'canAuditDispense') &&
+    !hasPermission(ctx.role, 'canReport')
+  ) {
+    return forbidden('調剤タスクの閲覧権限がありません');
+  }
+
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('調剤タスクIDが不正です');
@@ -442,6 +451,14 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
         },
   });
 });
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const PATCH = withAuthContext(async (req, ctx, { params }) => {
   if (!hasPermission(ctx.role, 'canDispense')) {

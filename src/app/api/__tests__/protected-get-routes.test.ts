@@ -156,6 +156,7 @@ import { GET as dashboardOverdueGet } from '../dashboard/overdue/route';
 import { GET as dispenseAuditsGet } from '../dispense-audits/route';
 import { GET as dispenseQueueGet } from '../dispense-queue/route';
 import { GET as dispenseTasksGet } from '../dispense-tasks/route';
+import { GET as dispenseTaskGet } from '../dispense-tasks/[id]/route';
 import { GET as dispenseTaskWorkbenchGet } from '../dispense-tasks/[id]/workbench/route';
 import { GET as firstVisitDocumentsGet } from '../first-visit-documents/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
@@ -448,6 +449,51 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       dispenseTasksGet(
         createRequest('http://localhost/api/dispense-tasks', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dispense-tasks/[id] GET',
+    setupSuccess: () => {
+      prismaMock.membership.findFirst
+        .mockResolvedValueOnce({ role: 'admin' })
+        .mockResolvedValueOnce({
+          site_id: null,
+          user: {
+            default_site_id: 'site_1',
+          },
+        });
+      prismaMock.pharmacySite.findFirst.mockResolvedValueOnce({ id: 'site_1', name: '本店' });
+      prismaMock.dispenseTask.findFirst.mockResolvedValueOnce({
+        id: 'task_1',
+        cycle_id: 'cycle_1',
+        priority: 'normal',
+        due_date: null,
+        status: 'pending',
+        results: [],
+        audits: [],
+        cycle: {
+          id: 'cycle_1',
+          patient_id: 'patient_1',
+          overall_status: 'ready_to_dispense',
+          inquiries: [],
+          case_: {
+            id: 'case_1',
+            primary_pharmacist_id: 'user_1',
+            patient: {
+              id: 'patient_1',
+              name: '患者A',
+              name_kana: 'カンジャ エー',
+              residences: [],
+            },
+          },
+          prescription_intakes: [],
+        },
+      });
+    },
+    handler: () =>
+      dispenseTaskGet(
+        createRequest('http://localhost/api/dispense-tasks/task_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'task_1' }) },
       ),
   },
   {
@@ -929,6 +975,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
+        route.name === 'dispense-tasks/[id] GET' ||
         route.name === 'dispense-tasks/[id]/workbench GET' ||
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
@@ -978,6 +1025,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
+        route.name === 'dispense-tasks/[id] GET' ||
         route.name === 'dispense-tasks/[id]/workbench GET' ||
         route.name === 'tasks GET' ||
         route.name === 'patients GET' ||
