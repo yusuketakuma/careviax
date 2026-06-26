@@ -64,14 +64,22 @@ export function SelectSiteContent() {
   });
 
   const sites = sitesQuery.data ?? [];
+  const currentSite = sites.find((site) => site.is_current);
+  const totalVisits = sites.reduce((sum, site) => sum + site.todays_visit_count, 0);
+  const homeVisitSiteCount = sites.filter((site) => site.has_home_visit).length;
 
   return (
-    <div className="space-y-5" data-testid="select-site-page">
-      <div>
+    <div
+      className="mx-auto w-full max-w-6xl space-y-5 px-3 py-4 md:px-6"
+      data-testid="select-site-page"
+    >
+      <div className="space-y-1">
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           使う薬局を選んでください
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">所属している薬局だけが表示されます。</p>
+        <p className="hidden text-sm leading-6 text-muted-foreground md:block">
+          所属薬局の本日訪問数と在宅対応を確認して、作業する薬局を切り替えます。
+        </p>
       </div>
 
       {!orgId || sitesQuery.isLoading ? (
@@ -98,42 +106,65 @@ export function SelectSiteContent() {
           所属している薬局がありません。管理者にお問い合わせください。
         </p>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {sites.map((site) => (
-            <article
-              key={site.id}
-              data-testid="select-site-card"
-              className={cn(
-                'flex flex-col gap-3 rounded-lg border bg-card p-4',
-                site.is_current ? 'border-primary ring-1 ring-primary/30' : 'border-border/70',
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <h2 className="text-base font-bold text-foreground">{site.name}</h2>
-                {site.is_current ? (
-                  <span className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-                    選択中
+        <>
+          <div
+            className="grid grid-cols-3 gap-2 rounded-lg border border-border/70 bg-muted/20 p-3 text-sm"
+            aria-label="薬局選択の要点"
+            data-testid="select-site-summary"
+          >
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground">選択中</p>
+              <p className="mt-1 font-bold text-foreground">{currentSite?.name ?? '未選択'}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground">本日訪問</p>
+              <p className="mt-1 font-bold text-foreground">{totalVisits}件</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground">在宅対応あり</p>
+              <p className="mt-1 font-bold text-foreground">{homeVisitSiteCount}薬局</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {sites.map((site) => (
+              <article
+                key={site.id}
+                data-testid="select-site-card"
+                className={cn(
+                  'flex flex-col gap-3 rounded-lg border bg-card p-3 md:p-4',
+                  site.is_current ? 'border-primary ring-1 ring-primary/30' : 'border-border/70',
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <h2 className="text-base font-bold text-foreground">{site.name}</h2>
+                  {site.is_current ? (
+                    <span className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                      選択中
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  本日訪問 {site.todays_visit_count}件
+                </p>
+                {site.has_home_visit ? (
+                  <span className="inline-flex w-fit items-center rounded-full bg-tag-info/10 px-2.5 py-0.5 text-xs font-semibold text-tag-info">
+                    在宅あり
                   </span>
                 ) : null}
-              </div>
-              <p className="text-sm text-muted-foreground">本日訪問 {site.todays_visit_count}件</p>
-              {site.has_home_visit ? (
-                <span className="inline-flex w-fit items-center rounded-full bg-tag-info/10 px-2.5 py-0.5 text-xs font-semibold text-tag-info">
-                  在宅あり
-                </span>
-              ) : null}
-              <Button
-                type="button"
-                variant={site.is_current ? 'default' : 'outline'}
-                className="mt-auto min-h-11 w-full"
-                onClick={() => switchMutation.mutate(site.id)}
-                disabled={switchMutation.isPending}
-              >
-                この薬局を使う
-              </Button>
-            </article>
-          ))}
-        </div>
+                <Button
+                  type="button"
+                  variant={site.is_current ? 'default' : 'outline'}
+                  className="mt-auto !h-auto !min-h-11 w-full"
+                  onClick={() => switchMutation.mutate(site.id)}
+                  disabled={switchMutation.isPending}
+                >
+                  {site.is_current ? 'この薬局で続ける' : 'この薬局を使う'}
+                </Button>
+              </article>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

@@ -94,11 +94,20 @@ describe('SelectSiteContent', () => {
 
     const cards = await screen.findAllByTestId('select-site-card');
     expect(cards).toHaveLength(2);
+    const summary = screen.getByTestId('select-site-summary');
 
+    expect(within(summary).getByText('選択中')).toBeTruthy();
+    expect(within(summary).getByText('本日訪問')).toBeTruthy();
+    expect(within(summary).getByText('42件')).toBeTruthy();
+    expect(within(summary).getByText('在宅対応あり')).toBeTruthy();
+    expect(within(summary).getByText('2薬局')).toBeTruthy();
     expect(within(cards[0]).getByText('PH薬局 本店')).toBeTruthy();
     expect(within(cards[0]).getByText('選択中')).toBeTruthy();
     expect(within(cards[0]).getByText('本日訪問 28件')).toBeTruthy();
     expect(within(cards[0]).getByText('在宅あり')).toBeTruthy();
+    expect(within(cards[0]).getByRole('button', { name: 'この薬局で続ける' }).className).toContain(
+      '!min-h-11',
+    );
     expect(within(cards[1]).queryByText('選択中')).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith('/api/me/sites', { headers: sentinelHeaders });
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledWith('org_1');
