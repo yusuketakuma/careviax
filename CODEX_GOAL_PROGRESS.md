@@ -21,6 +21,19 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest backend/API slice ready to commit: `GET /api/tracing-reports` now wraps handled and unexpected list responses in sensitive no-store headers, rejects duplicate `patient_id` and `status` filters before report/assignment reads, returns a fixed no-store `INTERNAL_ERROR` 500 envelope on unexpected scoped-load failures, and runs GET-side assignment, report list, and patient-name enrichment reads through `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`. Existing padded valid `patient_id/status` compatibility, pagination fallback behavior, response body shape, POST create behavior, schema, migrations, DB writes, external sends, and frontend UI code are unchanged. Validation passed: focused tracing-reports/protected GET Vitest `2` files / `216` tests, focused ESLint, focused Prettier check, focused diff whitespace check, and full `pnpm typecheck` under long-gate token `DCAFAEB4-B3B5-45B4-A839-F2FC673B8412`. Implementation-only coordination is active; no Claude review gate is required. Previous committed slice `GET /api/care-reports/:id` landed as `2dee775a`; Claude's disjoint day-board explicit-500 slice landed as `b460747c`.
 
+### 2026-06-26 JST - Billing Rules Action-Beside-Evidence Pass
+
+- Refined `/admin/billing-rules` after route-mocked browser proof showed the generic admin intro above the billing-rule workbench and desktop page-body actions measuring `32px`.
+- Removed the generic `最初に見るポイント` support block from this high-risk billing settings page.
+- Kept SSOT status visible as a compact one-line evidence strip directly under the header, without adding a new bulky section.
+- Enlarged visible billing-rule actions to 44px targets across desktop and mobile, including `公式SSOT同期`, `任意ルール追加`, row edit/delete actions, and the create/edit dialog controls.
+- Moved the row `操作` column immediately after `ルール名` so mobile cards place edit/delete beside the target rule instead of near the bottom navigation.
+- Preserved all existing billing-rule fetches, SSOT seed action, create/update/delete mutations, JSON condition validation, system-rule edit/delete blocking, auth behavior, backend/API behavior, DB behavior, and displayed rule data. No feature was removed; only generic admin support copy was hidden.
+- Screenshot evidence: before and final desktop/mobile screenshots under `artifacts/ui-billing-rules-sweep/`, including `before/desktop.png`, `before/mobile.png`, `final/desktop.png`, and `final/mobile.png`.
+- Validation passed: focused BillingRulesPage Vitest `1` file / `4` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/billing-rules` with no generic intro, one visible `算定ルール設定` h1, no console/page errors, no horizontal overflow, and page-body small-control count `0`.
+- Final proof metrics: `公式SSOT同期` and `任意ルール追加` measured `44px` tall; desktop row edit/delete measured `44px` at `570-614px`; mobile row edit/delete measured `44px` at `645-689px`, above the bottom navigation.
+- Next action: commit the `/admin/billing-rules` UI/test slice, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server, and continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dispense Audit Stats Evidence First
 
 - Refined `/admin/dispense-audit-stats` after route-mocked browser proof showed the generic admin intro above the rejection-stat evidence and desktop period filters measuring `28px`.
