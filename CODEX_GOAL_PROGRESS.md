@@ -30,6 +30,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused AuditLogsContent Vitest `1` file / `4` tests; focused ESLint; focused Prettier write/check; scoped diff-check; authenticated live desktop/mobile browser proof on `http://localhost:3012/admin/audit-logs` with no console/page errors, no `/api/audit-logs` errors, no horizontal overflow, list at `496px` desktop / `464px` mobile, `表示条件を変更` at 44px, hidden filter grid while closed, and page-body small-control count `0`.
 - Next action: commit the `/admin/audit-logs` UI/test slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Pharmacy Sites Workspace First
+
+- Refined `/admin/pharmacy-sites` after route-mocked browser proof showed the generic admin intro consuming the first fold and pharmacy site actions shrinking below the PH-OS 44px target on desktop.
+- Removed the generic `最初に見るポイント` support block from this focused settings page, stacked the pharmacy card header safely on mobile, and forced the pharmacy edit / insurance settings actions to 44px on desktop and mobile.
+- Opened the primary `保険設定` sheet and found desktop sheet actions plus the shared Sheet close affordance shrinking to `28px`; enlarged the visible insurance config sheet actions and the shared Sheet close button to preserve the same 44px target standard inside drawers.
+- Preserved all existing pharmacy-site fetches, site edit PATCH behavior, insurance config GET/POST/PATCH/DELETE behavior, 2026 clone shortcut, date validation, org headers, path-segment encoding, auth behavior, backend/API behavior, DB behavior, and displayed pharmacy data. No business feature was removed; only the generic admin intro was hidden from this page.
+- Screenshot evidence: before/final desktop and mobile screenshots under `artifacts/ui-pharmacy-sites-sweep/`, including `pharmacy-sites-before-desktop.png`, `pharmacy-sites-before-mobile.png`, `pharmacy-sites-after-final2-desktop.png`, `pharmacy-sites-after-final2-mobile.png`, `pharmacy-sites-insurance-sheet-final-desktop.png`, and `pharmacy-sites-insurance-sheet-final-mobile.png`.
+- Validation passed: focused PharmacySitesContent/Page/Sheet Vitest `3` files / `15` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/pharmacy-sites` with no console/page errors, no generic intro, one visible `薬局情報管理` h1, no horizontal overflow after sheet animation settles, and page/sheet small-control count `0` inside the targeted page body and sheet.
+- Next action: commit the `/admin/pharmacy-sites` + shared Sheet 44px UI/test slice, commit this progress-ledger slice separately, send agmsg FYI, stop the local dev server, and continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Communication Requests Reply Follow-up First
 
 - Refined `/communications/requests` after browser proof showed the first viewport spent the first interaction budget on status/context filters before the reply follow-up queue.
