@@ -4,6 +4,32 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
+## Current runtime override - 2026-06-26 JST
+
+The user switched the worktree to **Codex-only operation**. Claude/Codex
+two-supervisor coordination, peer ACK, peer review, and agmsg lock gates are
+suspended unless the user explicitly re-enables them.
+
+Codex sent a one-time `PAUSE_REQUEST`/handoff notice to the registered `claude`
+agmsg peer. No ACK had arrived at the time of this state update. Codex should
+continue with non-overlapping work, preserve existing dirty/user/Claude files,
+and avoid broad staging.
+
+Pre-existing dirty work observed at the switch:
+
+- `src/app/api/admin/capacity/route.ts`
+- `src/app/api/admin/data-explorer/[table]/route.ts` and tests
+- `src/app/api/admin/data-explorer/models/route.ts` and tests
+- `src/app/api/admin/escalation-rules/route.ts`
+- `src/app/api/admin/external-professionals/**` route/test files
+- `src/app/api/admin/facilities/[id]/contacts/route.ts` and tests
+- untracked `.agent-loop/plans/loop-propose-phase5-design.md`
+- untracked `.agent-loop/plans/loop-runtime-controller-design.md`
+
+Next action: Codex may continue backend/API hardening only after inspecting and
+explicitly claiming a non-overlapping path. Use Codex subagents or independent
+review passes for high-risk medical/privacy/auth/RLS changes.
+
 **How it's used in the loop.**
 
 - At cycle start: read the YAML, confirm `current_run_id` / `current_cycle`, pick up `next_action`.

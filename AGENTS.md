@@ -16,39 +16,42 @@ Work in YOLO mode.
 Use Ralph-loop execution.
 Do not stop until the concrete task is actually complete or an explicit blocker is proven.
 
+## Current Operating Mode - Codex-only (2026-06-26 JST)
+
+The user has switched this worktree to **Codex-only operation**.
+
+- Do not route new work to Claude, spawn Claude, require Claude ACK/review, or wait on Claude gates.
+- Treat the older Claude/Codex agmsg protocol below as historical unless the user explicitly re-enables multi-agent operation.
+- Use agmsg only for one-time pause/handoff notices to any already-running Claude session; agmsg is no longer a completion gate.
+- Preserve all pre-existing dirty/user/Claude changes. Before claiming a file, inspect `git status --short --untracked-files=all` and the file diff.
+- For high-risk medical, patient, audit, auth, RLS, DB, or permission changes, use Codex subagents/independent review plus real validation instead of Claude mutual review.
+
 ## Ralph-loop
 
 For each iteration:
 
-0. **Drain the agmsg inbox first** (`~/.agents/skills/agmsg/scripts/inbox.sh phos codex`). A busy main loop does not process pushed agmsg events until it reaches a turn boundary, so polling here every iteration is the reliable delivery path — do not rely on push alone. Act on any `PAUSE_REQUEST`/`HANDOFF_REQUEST`/conflicting `LOCK`/`REQUEST CHANGES` before doing anything else.
+0. Inspect `git status --short --untracked-files=all` first and preserve pre-existing dirty work. If a legacy peer session may still be active, do a one-time agmsg drain/notification, but do not wait on peer review in Codex-only mode.
 1. Read repository state and `.codex/ralph-state.md` if present.
 2. Choose the highest-value next action.
-3. **Before editing, re-drain the inbox and check no peer holds a `LOCK` on the target files.** Declare your own `LOCK` and wait for `ACK`/no-conflict before editing shared/high-risk files.
+3. Before editing, inspect affected diffs and confirm the target paths are not pre-existing user/Claude work unless explicitly claimed for the current Codex task.
 4. Inspect affected code and impact radius.
 5. Make the smallest complete fix.
 6. Run available validation.
-7. Update `.codex/ralph-state.md`; send an agmsg `FYI:`/`READY_FOR_REVIEW:` at start and finish of each owned group.
-8. **Drain the inbox again** before committing (catch a just-arrived `PAUSE_REQUEST`/conflict), then continue.
+7. Update `.codex/ralph-state.md` / `CODEX_GOAL_PROGRESS.md` when present and relevant.
+8. Before any commit, inspect `git status --short --untracked-files=all`, stage only explicit owned paths, and continue. Do not push unless the user explicitly asks.
 
-## Multi-agent coordination (agmsg)
+## Multi-agent coordination (suspended)
 
-This worktree is shared with a peer Claude Code agent (`claude` in team `phos`). Messaging is best-effort: a pushed event is only processed when the receiver hits a turn boundary, so **never assume a message was received**.
+Claude/Codex agmsg coordination is suspended while Codex-only operation is active.
 
-- **Poll, don't trust push.** Drain the inbox at every iteration boundary, before every edit, and before every commit (steps 0/3/8 above). This is the guaranteed delivery channel; the Monitor stream is only a latency optimization.
-- **Codex stays monitor-enabled.** For this worktree, Codex should keep agmsg delivery mode at `monitor`; verify with `~/.agents/skills/agmsg/scripts/delivery.sh status codex "$(pwd)"` and restore with `~/.agents/skills/agmsg/scripts/delivery.sh set monitor codex "$(pwd)"` if it drifts. Already-running Codex sessions still need a restart/first turn before the monitor bridge fully engages, so manual inbox drains remain required.
-- **Priority prefixes.** Tag messages so a draining peer can triage fast: `URGENT:` (act before anything else — conflicts, data-loss risk, broken main), `LOCK:`/`PAUSE_REQUEST:`/`HANDOFF_REQUEST:` (coordination), `DELEGATE:`/`REQUEST CHANGES:`/`READY_FOR_REVIEW:`/`FYI:`. Scan for `URGENT:` first on every drain.
-- **ACK-gate blocking operations.** `URGENT`, `LOCK`, `LONG_GATE_LOCK`, `DELEGATE`, `PAUSE_REQUEST`, `HANDOFF_REQUEST`, and `REQUEST CHANGES` require an explicit reply (`ACK`/`ACCEPT`/`DECLINE`) before the sender proceeds. Review/verify requests need a quick receipt ACK before sustained work. `FYI`, `DONE`, `STATE_SUMMARY`, and `LONG_GATE_RELEASE` do not require ACK unless explicitly requested. If you send a blocking message, wait for the ack; if you receive one, ack promptly. No ack within your next 1–2 iterations → re-send.
-- **Two live agents only by default.** The active loop is `codex` and `claude`. Do not add a relay/third agent unless the human explicitly re-authorizes it for the current run.
-- **Main dispatcher discipline.** Keep the main Codex loop available for inbox drain, ACK/LOCK/review routing, subagent steering, and committing reviewed work. Send a quick ACK/STATUS for inbound `PLAN_REVIEW_REQUEST`, `PATCH_REVIEW_REQUEST`, `CODE_REVIEW_REQUEST`, `BATCH_REVIEW_REQUEST`, `VERIFY_REQUEST`, `LOCK_REQUEST`, `LONG_GATE_LOCK`, `HANDOFF`, `PAUSE_REQUEST`, `URGENT`, and `CHANGES_REQUESTED` before starting long review or validation work. Delegate sustained implementation, large review, and verification to subagents or background sessions, then summarize from the main loop.
-- **Serialize long Next.js gates.** Do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race. Acquire `.agent-loop/scripts/long-gate-lock.sh`, send `LONG_GATE_LOCK`, run build/type gates serially, release with `LONG_GATE_RELEASE`, and keep the main loop free while they run.
-- **File-level locks are mandatory for shared edits.** Announce `LOCK: <paths>` before touching files; respect peer locks; never edit a peer-locked path. Resolve overlaps via `PAUSE_REQUEST`/`HANDOFF_REQUEST`.
-- **Use compact coordination packets.** Send `STATE_SUMMARY` for current-state catch-up, keep review requests to changed paths/delta/validation/risk/verdict, and use `BATCH_REVIEW_REQUEST` only for homogeneous low-risk slices that exclude auth, RLS, permissions, DB, patient/medical semantics, audit logs, offline sync, realtime, billing, and destructive operations.
-- **Own your commits.** Commit your own groups in isolation and announce them; do not mix the peer's in-flight (unlocked) changes into your commits.
-- **High-risk areas** (auth, patient/medical data, audit logs, permissions, DB/RLS, offline sync, realtime, billing) require mutual review before landing.
+- Do not create new Claude tasks, review requests, lock requests, or long-gate negotiations.
+- If an already-running Claude session sends messages, treat them as legacy handoff context only. Preserve its dirty files, but do not wait for Claude before continuing with non-overlapping Codex-owned work.
+- Keep long Next.js gates serialized locally: do not run `pnpm build` concurrently with `pnpm typecheck` or `pnpm typecheck:no-unused`; `.next/types` can race.
+- For commits, stage only explicit Codex-owned files. Never use `git add -A` in this shared dirty worktree.
 
 ## Agent loop SSOT
 
-The Claude x Codex x agmsg x gbrain operational loop SSOT is `.agent-loop/README.md`. Before editing, LOCK via agmsg; before committing, drain the inbox; stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
+The current operational SSOT is `.agent-loop/README.md` plus this Codex-only override. Historical Claude x Codex x agmsg rules remain useful background, but the active loop is single-supervisor Codex plus validation/gbrain. Before editing, inspect the dirty tree; before committing, stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
 
 ## gbrain memory writeback
 
@@ -67,7 +70,7 @@ For long-running Ralph loops, do not let validated work accumulate indefinitely.
 - Commit after each validated logical group, or at minimum after roughly 30-45 minutes of successful implementation work if a safe group boundary exists.
 - Mandatory commit trigger points include: finished implementation slice, finished test-only slice, finished validation/CI wiring slice, finished progress-ledger slice, or before switching to a substantially different task area.
 - A group is committable only when its affected code paths were inspected, relevant focused validation passed, and `.codex/ralph-state.md` / `CODEX_GOAL_PROGRESS.md` are updated when required.
-- Before every commit, drain `agmsg` inbox, resolve any `URGENT:` / `LOCK:` / `PAUSE_REQUEST:` / `HANDOFF_REQUEST:` / `REQUEST CHANGES:` message, inspect `git status --short --untracked-files=all`, and stage only explicit owned paths.
+- Before every commit, inspect `git status --short --untracked-files=all`, preserve unrelated dirty work, and stage only explicit owned paths.
 - Never use `git add -A` or broad staging in a shared dirty worktree. Do not include peer-owned files, peer locks, generated artifacts, or unrelated user changes.
 - Prefer small commit groups such as implementation, tests, validation/CI wiring, and progress-ledger updates. If one file contains unrelated hunks, split or delay the commit rather than mixing ownership.
 - If automatic commit is skipped because validation is failing, the slice is not coherent, files are peer-locked, or unrelated hunks cannot be separated safely, record the skip reason in the progress ledger or user-facing update and continue toward the next safe commit boundary.

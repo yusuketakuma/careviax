@@ -1,7 +1,7 @@
 # Agent Loop — Operator Guide
 
-> Two-supervisor, maker/checker development loop for **careviax (PH-OS Pharmacy)**.
-> Claude Code is the main implementer; Codex is an independent peer reviewer/auditor over agmsg; gbrain is long-term memory that is always subordinate to the live repository state.
+> Current mode (2026-06-26 JST): **Codex-only operation** for **careviax (PH-OS Pharmacy)**.
+> Claude/Codex two-supervisor sections in this file are retained as historical reference and are suspended unless the user explicitly re-enables multi-agent operation. Codex owns planning, implementation, review, validation, and progress ledgers; gbrain remains long-term memory subordinate to live repository state.
 
 This directory holds the human/operator entry points and the live operational artifacts for the loop. Start here.
 
@@ -9,30 +9,36 @@ This directory holds the human/operator entry points and the live operational ar
 
 ## 1. What this loop is
 
-A disciplined pair of AI supervisors working the careviax codebase under maker/checker separation:
+Current active loop:
+
+- **codex** — the sole active supervisor. It selects work, implements, runs validation, records progress, and uses Codex subagents or separate review passes for high-risk checks.
+- **claude** — inactive/suspended. Do not send new work, review requests, lock requests, or gate negotiations to Claude unless the user explicitly re-enables multi-agent operation.
+- **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
+
+Historical two-supervisor model, retained for context:
 
 - **claude-lead** (= agmsg identity `claude` on team `phos`) — the **main implementer**. Owns UI/UX and main feature implementation: `src/app/(dashboard)/**`, `src/components/**`. Studies existing code first, implements, runs the objective gate.
 - **codex-lead** (= agmsg identity `codex` on team `phos`) — the **independent peer reviewer / strict verifier / limited assisting implementer**. Owns backend/perf/refactor/test-review review passes. Reviews Claude's diffs and returns `APPROVED` or `CHANGES_REQUESTED`. Implements only within an explicitly LOCKed scope.
 - **gbrain** — long-term memory subordinate. Provides recall (past decisions, prior art) but **never overrides live repo state**. When repo and gbrain disagree, the repo wins; gbrain gets a writeback correction.
 
-The two supervisors coordinate exclusively over **agmsg** (cross-vendor CLI messaging over SQLite). Only supervisors speak on agmsg; subagents/workers never write to agmsg directly.
+In Codex-only mode, agmsg is only for one-time pause/handoff notices to a leftover Claude process and is not a completion gate. Subagents/workers never write to agmsg directly.
 
 ```
 send:  ~/.agents/skills/agmsg/scripts/send.sh phos <from> <to> "<msg>"
 inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 ```
 
-### 1.1 Always-on communication mode
+### 1.1 Communication mode
 
-Codex should run this worktree in agmsg `monitor` delivery mode so Claude can
-reach it while long-running work is in progress.
+Codex-only mode does not require agmsg monitor delivery. If multi-agent operation
+is explicitly re-enabled, check the current delivery state first:
 
 ```bash
 ~/.agents/skills/agmsg/scripts/delivery.sh status codex "$(pwd)"
 ~/.agents/skills/agmsg/scripts/delivery.sh set monitor codex "$(pwd)"
 ```
 
-Monitor mode installs the `~/.agents/bin/codex` shim. A Codex session that was
+Historical note: monitor mode installs the `~/.agents/bin/codex` shim. A Codex session that was
 already running before the mode change does not become fully monitored until it
 is restarted and receives its first turn, so supervisors still drain inboxes
 manually at every loop boundary.

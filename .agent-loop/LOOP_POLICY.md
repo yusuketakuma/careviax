@@ -7,6 +7,13 @@ discipline that the two sessions have already proven in practice. Only `ApplyNow
 `MEMORY_REVIEW.md` are copied here; the gbrain memory model and classification rule are defined in
 `GBRAIN_SCHEMA.md` (§14).
 
+**Current mode override (2026-06-26 JST).** The user has switched this worktree
+to Codex-only operation. Any policy line requiring Claude review, Claude ACK,
+Claude locks, maker/checker separation between Claude and Codex, or Claude-origin
+priority is suspended unless the user explicitly re-enables multi-agent work.
+Preserve pre-existing dirty work and use Codex subagents/independent review plus
+real validation for high-risk changes.
+
 **How it is used in the loop.**
 
 - Read at the **start of every cycle** before any work is planned or dispatched.

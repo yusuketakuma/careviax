@@ -7,6 +7,13 @@ are only `claude` and `codex`; role descriptors such as `claude-lead` and
 `codex-lead` may still describe the two supervisor lanes in prose. Everything a
 subagent produces is summarized by its supervisor before it goes on the wire.
 
+**Current status (2026-06-26 JST).** Codex-only operation is active. This
+protocol is suspended for routine work and kept as historical/reference material.
+Do not send new Claude work, review, lock, or long-gate messages unless the user
+explicitly re-enables multi-agent operation. agmsg may be used only to notify an
+already-running Claude session to pause or hand off; Codex should not wait on
+Claude ACK/review as a completion gate.
+
 **How it's used in the loop.** Each cycle, a supervisor drains its inbox,
 acts (plan / lock / implement / review / verify), and then emits one or more
 envelopes to the other supervisor to hand off work, request review, report
