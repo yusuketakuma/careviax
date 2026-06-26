@@ -278,71 +278,6 @@ export function CommunicationRequestsContent({
         </Alert>
       ) : null}
       <PageSection
-        title="絞り込みと文脈"
-        description="返信待ち、対応中、患者文脈を先に絞り込み、確認すべき依頼だけに集中できるようにします。"
-        tone="subtle"
-      >
-        <div className="flex flex-wrap gap-2 border-b border-border/70 pb-3">
-          {FILTER_TABS.map((tab) => (
-            <Button
-              key={tab.value}
-              variant={statusFilter === tab.value ? 'default' : 'ghost'}
-              size="sm"
-              className="!h-auto !min-h-[44px]"
-              onClick={() => {
-                setStatusFilter(tab.value);
-                replaceRequestsUrl({ status: tab.value || null });
-              }}
-            >
-              {tab.label}
-            </Button>
-          ))}
-        </div>
-
-        {patientFilter || relatedEntityTypeFilter || relatedEntityIdFilter ? (
-          <FilterSummaryBar
-            items={[
-              {
-                label: '患者',
-                value: patientFilterLink ? (
-                  <Link
-                    href={patientFilterLink.href}
-                    className="inline-flex min-h-11 min-w-11 items-center text-primary underline-offset-4 hover:underline"
-                  >
-                    詳細
-                  </Link>
-                ) : (
-                  'なし'
-                ),
-              },
-              ...(relatedEntityTypeFilter
-                ? [{ label: '関連種別', value: relatedEntityTypeFilter }]
-                : []),
-              ...(relatedEntityIdFilter ? [{ label: '関連ID', value: relatedEntityIdFilter }] : []),
-            ]}
-            actions={
-              <ActionRail>
-                {relatedEntityLink ? (
-                  <Link
-                    href={relatedEntityLink.href}
-                    className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline"
-                  >
-                    {relatedEntityLink.label}
-                  </Link>
-                ) : null}
-                <Link
-                  href={buildCommunicationRequestsHref({ status: statusFilter || null })}
-                  className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline"
-                >
-                  文脈をクリア
-                </Link>
-              </ActionRail>
-            }
-          />
-        ) : null}
-      </PageSection>
-
-      <PageSection
         title="返信待ち・フォロー"
         description="返信待ちの依頼を1件ずつ確認し、返信内容と次回カードへ残すことを記録して対応済みにします。"
         tone="subtle"
@@ -480,6 +415,71 @@ export function CommunicationRequestsContent({
             </div>
           </>
         )}
+      </PageSection>
+
+      <PageSection
+        title="表示条件"
+        description="必要な時だけ状態や患者文脈で絞り込みます。主作業は上の返信フォローで続けられます。"
+        tone="subtle"
+      >
+        <div className="flex flex-wrap gap-2 border-b border-border/70 pb-3">
+          {FILTER_TABS.map((tab) => (
+            <Button
+              key={tab.value}
+              variant={statusFilter === tab.value ? 'default' : 'ghost'}
+              size="sm"
+              className="!h-auto !min-h-[44px]"
+              onClick={() => {
+                setStatusFilter(tab.value);
+                replaceRequestsUrl({ status: tab.value || null });
+              }}
+            >
+              {tab.label}
+            </Button>
+          ))}
+        </div>
+
+        {patientFilter || relatedEntityTypeFilter || relatedEntityIdFilter ? (
+          <FilterSummaryBar
+            items={[
+              {
+                label: '患者',
+                value: patientFilterLink ? (
+                  <Link
+                    href={patientFilterLink.href}
+                    className="inline-flex min-h-11 min-w-11 items-center text-primary underline-offset-4 hover:underline"
+                  >
+                    詳細
+                  </Link>
+                ) : (
+                  'なし'
+                ),
+              },
+              ...(relatedEntityTypeFilter
+                ? [{ label: '関連種別', value: relatedEntityTypeFilter }]
+                : []),
+              ...(relatedEntityIdFilter ? [{ label: '関連ID', value: relatedEntityIdFilter }] : []),
+            ]}
+            actions={
+              <ActionRail>
+                {relatedEntityLink ? (
+                  <Link
+                    href={relatedEntityLink.href}
+                    className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline"
+                  >
+                    {relatedEntityLink.label}
+                  </Link>
+                ) : null}
+                <Link
+                  href={buildCommunicationRequestsHref({ status: statusFilter || null })}
+                  className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline"
+                >
+                  文脈をクリア
+                </Link>
+              </ActionRail>
+            }
+          />
+        ) : null}
       </PageSection>
     </div>
   );

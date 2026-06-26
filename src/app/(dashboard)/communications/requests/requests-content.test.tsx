@@ -165,7 +165,11 @@ describe('CommunicationRequestsContent', () => {
 
     expect(screen.getByTestId('reply-followup-list')).toBeTruthy();
     expect(screen.getByText('返信内容と次の対応')).toBeTruthy();
-    expect(screen.getByText('絞り込みと文脈')).toBeTruthy();
+    const followupHeading = screen.getByRole('heading', { name: '返信待ち・フォロー' });
+    const filterHeading = screen.getByRole('heading', { name: '表示条件' });
+    expect(
+      followupHeading.compareDocumentPosition(filterHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(screen.getByRole('button', { name: '返信待ち' }).className).toContain('!min-h-[44px]');
     expect(screen.queryByRole('group', { name: '表示モード' })).toBeNull();
     expect(screen.queryByText('連携ログ一覧')).toBeNull();
