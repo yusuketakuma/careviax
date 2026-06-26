@@ -9870,3 +9870,28 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-entry-sweep/select-site-mobile-before.png`, `artifacts/ui-entry-sweep/select-site-desktop-before.png`, `artifacts/ui-entry-sweep/select-site-mobile-after.png`, and `artifacts/ui-entry-sweep/select-site-desktop-after.png`.
 - Remaining:
   - Run final scoped Prettier/diff/status including ledgers, commit this `/select-site` code/test group, then commit this ledger update separately and release the `/select-site` lock. The broader all-pages UI/UX objective remains incomplete.
+
+### MFA — Safe Recovery State and Target Proof
+
+- Coordination:
+  - Drained `phos/codex` agmsg before selecting the slice and before editing.
+  - Sent a `/mfa` lock for `src/app/(auth)/mfa/page.tsx`, focused auth E2E if needed, and ledgers. No conflicting inbound message arrived.
+  - Respected Claude's active patient card-workspace lock and did not stage or edit patient card-workspace files.
+- Bugs found:
+  - `/mfa` rendered the shared `CardDescription` as a lone `?` help button, so the page lost its primary instruction text.
+  - When no MFA challenge session existed, the page still showed code/recovery input modes and a submit action instead of a clear recovery path.
+  - The no-session recovery button initially measured `36px` high on desktop because the shared Button `sm:h-*` variant overrode the page target size.
+- Implemented by Codex:
+  - Replaced the card-description pattern with an explicit MFA header, instruction text, and safe no-session recovery state.
+  - Changed the no-session state to show the exact error and a single `ログインからやり直す` primary action.
+  - Kept existing TOTP, paste handling, recovery-code POST, sign-in challenge behavior, session-storage cleanup, and redirects unchanged when a valid challenge exists.
+  - Updated the focused auth E2E to accept either a live MFA input state or the safer session-recovery action.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(auth)/mfa/page.tsx' tools/tests/e2e-auth-flow.spec.ts`: passed.
+  - `pnpm exec eslint 'src/app/(auth)/mfa/page.tsx' tools/tests/e2e-auth-flow.spec.ts`: passed.
+  - `git diff --check -- 'src/app/(auth)/mfa/page.tsx' tools/tests/e2e-auth-flow.spec.ts`: passed.
+  - `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-auth-flow.spec.ts --grep "auth: MFA page"`: passed, `2` tests across desktop and mobile projects.
+  - Direct Playwright proof on `http://localhost:3012/mfa`: no console/page errors, no horizontal overflow, no undersized visible page controls, no floating `?` buttons, and one visible `h2` `6桁コードで入室を確認します`.
+  - Screenshot evidence: `artifacts/ui-entry-sweep/mfa-before-desktop.png`, `artifacts/ui-entry-sweep/mfa-before-mobile.png`, `artifacts/ui-entry-sweep/mfa-final-desktop.png`, and `artifacts/ui-entry-sweep/mfa-final-mobile.png`.
+- Remaining:
+  - Commit the `/mfa` UI/test group, then commit this ledger update separately and release the `/mfa` lock. The broader all-pages UI/UX objective remains incomplete.
