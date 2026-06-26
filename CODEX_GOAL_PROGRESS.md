@@ -10406,3 +10406,31 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-realtime-sweep/before/desktop.png`, `artifacts/ui-realtime-sweep/before/mobile.png`, `artifacts/ui-realtime-sweep/final/desktop.png`, `artifacts/ui-realtime-sweep/final/mobile.png`, and metrics JSON under `artifacts/ui-realtime-sweep/`.
 - Remaining:
   - Commit the `/admin/realtime` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Admin Performance — First-Fold Operations Pressure
+
+- Coordination:
+  - Continued in Codex-only mode from a clean tree after realtime commits.
+  - Kept this slice to `/admin/performance` and the embedded staff KPI month input. No API route, DB, migration, auth, permission, audit, external-send, or destructive operation was changed.
+- Bugs found:
+  - `/admin/performance` still showed the generic `最初に見るポイント` intro and a descriptive `Operational Performance` card before the actual pressure signals.
+  - Mobile stacked KPI cards vertically, pushing first business KPI to `983px`, API P95 to `2051px`, and `運用ボトルネック` to `2579px`.
+  - Desktop page-body update buttons measured `28-32px` because compact responsive button sizing overrode the local `min-h`.
+  - Staff KPI's native month input emitted a route proof hydration mismatch from browser-added input styling.
+- Implemented by Codex:
+  - Removed the generic admin intro and the descriptive performance card.
+  - Added a first-position `今すぐ見る要対応シグナル` strip for override requests, emergency impact, API P95, over-target routes, and report backlog.
+  - Split business and API metrics into labeled KPI sections and changed KPI grids to two columns on mobile.
+  - Raised route-refresh/runtime-refresh controls and staff KPI nested controls to 44px targets.
+  - Added `suppressHydrationWarning` to the Staff KPI month input to avoid the native month-control browser styling mismatch.
+  - Added focused assertions for no generic intro, signal-before-KPI order, mobile dense KPI grids, and 44px refresh action contracts.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/performance/page.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/performance/page.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx' 'src/app/(dashboard)/admin/staff/staff-kpi-panel.tsx'`: passed.
+  - `pnpm format:check`: passed for changed files.
+  - `git diff --check -- 'src/app/(dashboard)/admin/performance/page.tsx' 'src/app/(dashboard)/admin/performance/page.test.tsx' 'src/app/(dashboard)/admin/staff/staff-kpi-panel.tsx'`: passed.
+  - Direct route-mocked Playwright proof on `http://localhost:3012/admin/performance`: no console/page errors, no failed responses, no horizontal overflow, `genericIntro=false`, `Operational Performance=false`, and no page-body undersized controls on desktop/mobile.
+  - Final metrics: desktop signal top `411px`, business KPI top `591px`, API KPI top `903px`, bottleneck top `1099px`; mobile signal top `441px`, business KPI top `911px`, API KPI top `1519px`, bottleneck top `1863px`.
+  - Screenshot evidence: `artifacts/ui-performance-sweep/before/desktop.png`, `artifacts/ui-performance-sweep/before/mobile.png`, `artifacts/ui-performance-sweep/final/desktop.png`, `artifacts/ui-performance-sweep/final/mobile.png`, and metrics JSON under `artifacts/ui-performance-sweep/`.
+- Remaining:
+  - Commit the `/admin/performance` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
