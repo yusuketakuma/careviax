@@ -4514,6 +4514,40 @@ export function CardWorkspace({
             )}
           </SectionCard>
 
+          {/* 直近の動き: 工程遷移・疑義照会・処方取込の時系列 */}
+          <SectionCard aria-label="直近の動き" data-testid="card-recent-activities">
+            <h3 className="text-base font-semibold text-foreground">直近の動き</h3>
+            {workspace.recent_activities.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {workspace.recent_activities.map((activity) => (
+                  <ListOpenCard
+                    key={activity.id}
+                    badgeLabel={ACTIVITY_TYPE_LABELS[activity.type]}
+                    badgeClassName={ACTIVITY_BADGE_CLASSES[activity.type]}
+                    title={
+                      activity.actor ? `${activity.label} — ${activity.actor}` : activity.label
+                    }
+                    subtitle={formatActivityTime(activity.at)}
+                    openLabel="開く"
+                    onOpen={() => router.push(activity.href)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">直近の動きはまだありません。</p>
+            )}
+          </SectionCard>
+
+          {/* 変更履歴: 患者項目の業務差分(誰がいつ何を何から何へ・確認元) */}
+          <SectionCard aria-label="変更履歴" data-testid="card-field-revisions">
+            <h3 className="text-base font-semibold text-foreground">変更履歴</h3>
+            <div className="mt-3">
+              <PatientFieldRevisionTimeline patientId={patientId} />
+            </div>
+          </SectionCard>
+
+          {/* 参照パネル群(Scroll ゾーン): 正本確認・プロフィール・在宅運用・共有ケース・初回訪問文書・訪問前確認。
+              実作業(今回の処方/直近の動き)を Primary に上げ、確認系はここへ降ろす(SSOT L170-182)。 */}
           <PatientFoundationPanelMemo patient={patient} />
           <PatientProfilePanelMemo patient={patient} />
           <PatientHomeOperationsPanelMemo
@@ -4570,38 +4604,6 @@ export function CardWorkspace({
           <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
           <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
           <PatientVisitPreparationPanelMemo patient={patient} />
-
-          {/* 直近の動き: 工程遷移・疑義照会・処方取込の時系列 */}
-          <SectionCard aria-label="直近の動き" data-testid="card-recent-activities">
-            <h3 className="text-base font-semibold text-foreground">直近の動き</h3>
-            {workspace.recent_activities.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {workspace.recent_activities.map((activity) => (
-                  <ListOpenCard
-                    key={activity.id}
-                    badgeLabel={ACTIVITY_TYPE_LABELS[activity.type]}
-                    badgeClassName={ACTIVITY_BADGE_CLASSES[activity.type]}
-                    title={
-                      activity.actor ? `${activity.label} — ${activity.actor}` : activity.label
-                    }
-                    subtitle={formatActivityTime(activity.at)}
-                    openLabel="開く"
-                    onOpen={() => router.push(activity.href)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-muted-foreground">直近の動きはまだありません。</p>
-            )}
-          </SectionCard>
-
-          {/* 変更履歴: 患者項目の業務差分(誰がいつ何を何から何へ・確認元) */}
-          <SectionCard aria-label="変更履歴" data-testid="card-field-revisions">
-            <h3 className="text-base font-semibold text-foreground">変更履歴</h3>
-            <div className="mt-3">
-              <PatientFieldRevisionTimeline patientId={patientId} />
-            </div>
-          </SectionCard>
 
           {/* 在宅医療処置・麻薬: 構造化レイヤ(開始日・確認元の時系列。実施中行が無ければ非表示) */}
           <PatientStructuredCarePanel patientId={patientId} />
