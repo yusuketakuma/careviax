@@ -10041,3 +10041,28 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-external-sweep/external-after-desktop.png`, `artifacts/ui-external-sweep/external-after-mobile.png`, and `artifacts/ui-external-sweep/after-metrics.json`.
 - Remaining:
   - Commit the `/external` UI/test group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Shared Admin Master Editor — Sample State Clarity and Mobile Detail Reach
+
+- Coordination:
+  - Started from a clean worktree, then found an unrelated pre-existing dirty diff in `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`; it was inspected and left unstaged.
+  - Kept this slice scoped to the shared fabricated `MasterEditorView`, which is used by `/admin/external-professionals`, `/admin/facilities`, `/admin/staff`, and `/admin/vehicles`.
+- Bugs found:
+  - The shared master editor disclosed "サンプル表示" through a help-popover-only `SectionIntro`, so the page looked like a real editable master until users noticed disabled controls.
+  - On `/admin/external-professionals` mobile, `詳細を編集` started at `1604px`, after the full disabled category/list chrome, hiding the edit-field shape from the first viewport.
+  - Desktop disabled sample inputs and the disabled save button inherited compact `sm:h-*` sizing and measured `32px`, below the PH-OS 44px page-body target.
+- Implemented by Codex:
+  - Replaced the help-popover-only sample notice with visible supporting copy that says the master is waiting for real-data connection and that changes are not saved.
+  - Reordered the shared master editor on mobile so the sample list and detail fields come before disabled category chrome.
+  - Bounded the mobile sample list while preserving all 8 sample rows, and raised disabled sample inputs/save action to `44px`.
+  - Added focused tests for visible sample copy, mobile order, bounded sample list, and 44px-preserving classes.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/master-editor-view.test.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `64` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/master-editor-view.tsx' 'src/app/(dashboard)/admin/master-editor-view.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/master-editor-view.tsx' 'src/app/(dashboard)/admin/master-editor-view.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/master-editor-view.tsx' 'src/app/(dashboard)/admin/master-editor-view.test.tsx'`: passed.
+  - Direct route-mocked Playwright proof on `http://localhost:3012/admin/external-professionals`: no console/page errors, no horizontal overflow, visible sample description, and zero undersized controls inside the shared editor root on desktop/mobile.
+  - Final metrics: mobile `詳細を編集` top improved from `1604px` to `888px`; mobile `カテゴリ` moved below the primary sample list/detail at `1760px`; desktop editor small-control count `0`.
+  - Screenshot evidence: `artifacts/ui-master-editor-sweep/external-professionals-before-desktop.png`, `artifacts/ui-master-editor-sweep/external-professionals-before-mobile.png`, `artifacts/ui-master-editor-sweep/external-professionals-after-desktop.png`, `artifacts/ui-master-editor-sweep/external-professionals-after-mobile.png`, and `artifacts/ui-master-editor-sweep/after-metrics.json`.
+- Remaining:
+  - Commit the shared admin master editor UI/test group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
