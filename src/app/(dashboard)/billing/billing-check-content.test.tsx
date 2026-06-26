@@ -193,7 +193,7 @@ describe('BillingCheckContent', () => {
 
     const table = within(section).getByRole('table', { name: '算定チェック疑義一覧' });
     expect(within(table).getAllByRole('row')).toHaveLength(4);
-    expect(within(section).getByRole('button', { name: /列/ })).toBeTruthy();
+    expect(within(section).queryByRole('button', { name: /列/ })).toBeNull();
     expect(within(section).queryByRole('textbox')).toBeNull();
     expect(within(section).queryByRole('button', { name: 'CSV出力' })).toBeNull();
     expect(within(section).queryByRole('button', { name: '印刷' })).toBeNull();
@@ -218,36 +218,40 @@ describe('BillingCheckContent', () => {
     ).toBeTruthy();
   });
 
-  it('renders the action rail with a single primary action and the 根拠・記録 rows', () => {
+  it('renders the primary strip and keeps the existing action rail', () => {
     render(<BillingCheckContent />);
+
+    const primaryStrip = screen.getByTestId('billing-primary-strip');
+    expect(
+      within(primaryStrip).getByRole('link', { name: '麻薬監査を開始 — 12:00期限' }),
+    ).toBeTruthy();
+    expect(within(primaryStrip).getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();
+    expect(within(primaryStrip).getByRole('link', { name: '再連絡する →' })).toBeTruthy();
+    expect(within(primaryStrip).getByText('算定ルール版')).toBeTruthy();
+    expect(within(primaryStrip).getByText('令和8年改定')).toBeTruthy();
+    expect(
+      within(primaryStrip).getByText(
+        '14:00訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。',
+      ),
+    ).toBeTruthy();
+    expect(within(primaryStrip).getByText('患者')).toBeTruthy();
+    expect(within(primaryStrip).getByText('1日')).toBeTruthy();
+    expect(within(primaryStrip).queryByText('送付先の確認(やまもと内科)')).toBeNull();
+    expect(within(primaryStrip).getByText('返戻履歴')).toBeTruthy();
+    expect(within(primaryStrip).getByText('直近0件')).toBeTruthy();
+    expect(within(primaryStrip).getByText('摘要欄テンプレ')).toBeTruthy();
+    expect(within(primaryStrip).getByText('12種')).toBeTruthy();
 
     const nextAction = screen.getByTestId('next-action-panel');
     expect(
       within(nextAction).getByRole('link', { name: '麻薬監査を開始 — 12:00期限' }),
     ).toBeTruthy();
-    expect(
-      within(nextAction).getByText(
-        '14:00訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。',
-      ),
-    ).toBeTruthy();
 
     const blocked = screen.getByTestId('blocked-reasons-panel');
-    expect(within(blocked).getByText('患者')).toBeTruthy();
-    expect(within(blocked).getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();
-    expect(within(blocked).getByText('1日')).toBeTruthy();
-    expect(within(blocked).getByText('再連絡する →')).toBeTruthy();
-    expect(within(blocked).getByText('事務')).toBeTruthy();
     expect(within(blocked).getByText('送付先の確認(やまもと内科)')).toBeTruthy();
-    expect(within(blocked).getByText('30分')).toBeTruthy();
 
     const evidence = screen.getByTestId('evidence-panel');
-    expect(within(evidence).getByText('根拠・記録')).toBeTruthy();
-    expect(within(evidence).getByText('算定ルール版')).toBeTruthy();
-    expect(within(evidence).getByText('令和8年改定')).toBeTruthy();
-    expect(within(evidence).getByText('返戻履歴')).toBeTruthy();
-    expect(within(evidence).getByText('直近0件')).toBeTruthy();
-    expect(within(evidence).getByText('摘要欄テンプレ')).toBeTruthy();
-    expect(within(evidence).getByText('12種')).toBeTruthy();
+    expect(within(evidence).getByText('薬局間協力')).toBeTruthy();
   });
 
   it('shows the green empty bar when there are no 疑義 rows', () => {

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { Button } from '@/components/ui/button';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import {
   WorkspaceActionRail,
@@ -138,6 +139,109 @@ function KpiStrip({ data }: { data: BillingCheckResponse }) {
   );
 }
 
+function BillingPrimaryStrip({
+  data,
+  blockedReasons,
+  evidence,
+}: {
+  data: BillingCheckResponse;
+  blockedReasons: BlockedReason[];
+  evidence: EvidenceItem[];
+}) {
+  const primaryBlockedReason = blockedReasons[0] ?? null;
+
+  return (
+    <section
+      aria-label="算定チェックの次アクション"
+      className="grid gap-3 rounded-lg border border-border/70 bg-card p-3 md:grid-cols-[1.05fr_0.95fr_0.9fr] md:p-4"
+      data-testid="billing-primary-strip"
+    >
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          次にやること
+        </p>
+        <Button asChild className="min-h-[44px] w-full justify-start sm:h-11 sm:min-h-[44px]">
+          <a href={data.rail.next_action.href}>{data.rail.next_action.label}</a>
+        </Button>
+        <p className="text-sm leading-5 text-muted-foreground">
+          {data.rail.next_action.description}
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          止まっている理由
+        </p>
+        {primaryBlockedReason ? (
+          <div
+            className={cn(
+              'rounded-md border p-3',
+              primaryBlockedReason.severity === 'critical'
+                ? 'border-destructive/30 bg-destructive/10'
+                : 'border-state-confirm/30 bg-state-confirm/10',
+            )}
+          >
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {primaryBlockedReason.categoryLabel ? (
+                <span className="rounded bg-background px-1.5 py-0.5 font-medium text-foreground">
+                  {primaryBlockedReason.categoryLabel}
+                </span>
+              ) : null}
+              {primaryBlockedReason.ageLabel ? (
+                <span className="text-muted-foreground">{primaryBlockedReason.ageLabel}</span>
+              ) : null}
+            </div>
+            <p className="mt-2 text-sm font-medium leading-5 text-foreground">
+              {primaryBlockedReason.label}
+            </p>
+            {primaryBlockedReason.actionHref && primaryBlockedReason.actionLabel ? (
+              <a
+                href={primaryBlockedReason.actionHref}
+                className="mt-2 inline-flex min-h-[44px] items-center text-sm font-medium text-primary hover:underline"
+              >
+                {primaryBlockedReason.actionLabel}
+              </a>
+            ) : null}
+          </div>
+        ) : (
+          <p className="rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2.5 text-sm text-state-done">
+            止まっている作業はありません
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          根拠・記録
+        </p>
+        <p className="text-sm leading-5 text-muted-foreground md:hidden">
+          {evidence
+            .slice(0, 3)
+            .map((item) => `${item.label}${item.meta ? ` ${item.meta}` : ''}`)
+            .join(' / ')}
+        </p>
+        <ul className="hidden flex-wrap gap-2 md:flex" role="list">
+          {evidence.slice(0, 3).map((item) => (
+            <li key={item.id} className="min-w-0">
+              {item.href ? (
+                <a
+                  href={item.href}
+                  className="inline-flex min-h-[44px] min-w-[44px] max-w-full items-center gap-2 rounded-md border border-border/70 px-3 py-1 text-sm hover:bg-muted/60"
+                >
+                  <span className="min-w-0 truncate text-foreground">{item.label}</span>
+                  {item.meta ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">{item.meta}</span>
+                  ) : null}
+                </a>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 疑義テーブル(根拠とセットでしか出さない)
 // ---------------------------------------------------------------------------
@@ -226,9 +330,6 @@ function ReviewTableSection({ data }: { data: BillingCheckResponse }) {
             caption="算定チェック疑義一覧"
             getRowId={(row) => row.id}
             getRowA11yLabel={(row) => `${row.patient_label} / ${row.billing_name} / ${row.id}`}
-            toolbar={{
-              enableColumnVisibility: true,
-            }}
           />
         </div>
       )}
@@ -342,8 +443,13 @@ export function BillingCheckContent() {
         ) : (
           <div className="space-y-4">
             <div className="min-w-0 space-y-4">
-              <KpiStrip data={data} />
+              <BillingPrimaryStrip
+                data={data}
+                blockedReasons={blockedReasons}
+                evidence={evidence}
+              />
               <ReviewTableSection data={data} />
+              <KpiStrip data={data} />
               <p
                 className="rounded-md border border-tag-info/30 bg-tag-info/10 px-3 py-2.5 text-sm leading-6 text-tag-info"
                 data-testid="billing-check-summary-note"
