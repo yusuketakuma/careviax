@@ -203,6 +203,14 @@ describe('PatientsBoard', () => {
 
     const summary = screen.getByLabelText('今日の患者判断サマリー');
     expect(summary.className).toContain('grid-cols-2');
+    const summaryButtons = within(summary).getAllByRole('button');
+    expect(summaryButtons[0].className).toContain('bg-card');
+    expect(summaryButtons[0].className).toContain('border-l-state-blocked');
+    expect(summaryButtons[0].className).not.toContain('bg-state-blocked');
+    expect(summaryButtons[0].className).toContain('min-h-[72px]');
+    expect(within(summaryButtons[0]).getByText('田中 一郎様から確認').className).toContain(
+      'hidden',
+    );
     expect(within(summary).getByText('最初に見る')).toBeTruthy();
     expect(within(summary).getByText('田中 一郎様から確認')).toBeTruthy();
     expect(within(summary).getByText('再開できる')).toBeTruthy();

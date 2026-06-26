@@ -339,7 +339,7 @@ function SummaryTileButton({
     <button
       type="button"
       className={cn(
-        'min-h-[84px] rounded-lg border bg-card p-2.5 text-left transition hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-24 sm:p-3',
+        'min-h-[72px] rounded-lg border bg-card p-2.5 text-left transition hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-24 sm:p-3',
         tile.className,
         selected && 'ring-2 ring-ring ring-offset-2 ring-offset-background',
       )}
@@ -353,7 +353,7 @@ function SummaryTileButton({
       <span className="mt-1.5 block text-lg font-bold text-foreground sm:mt-2 sm:text-xl">
         {tile.value}
       </span>
-      <span className="mt-1 block text-xs leading-4 text-muted-foreground sm:leading-5">
+      <span className="mt-1 hidden text-xs leading-4 text-muted-foreground sm:block sm:leading-5">
         {tile.description}
       </span>
     </button>
