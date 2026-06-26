@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1443 JST
+
+- current task: `/admin/users` first-fold priority and 44px interaction-floor pass for account/permission administration.
+- files inspected: agmsg inbox, `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, frontend-design skill guidance, `src/app/(dashboard)/admin/users/page.tsx`, `src/app/(dashboard)/admin/users/users-content.tsx`, `src/app/(dashboard)/admin/users/users-content.test.tsx`, before/after desktop/mobile screenshots under `artifacts/ui-admin-users-sweep/`, and `CODEX_GOAL_PROGRESS.md`.
+- files changed: `src/app/(dashboard)/admin/users/page.tsx`, `src/app/(dashboard)/admin/users/users-content.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Peer-owned dirty `src/app/(dashboard)/handoff/handoff-workspace.helpers.ts` was acknowledged and left untouched.
+- bugs found: `/admin/users` rendered a generic header intro and large vertical summary cards before the actual user list, leaving the mobile first viewport without any user row. Desktop filter controls, invite action, and row actions measured `32px`/`28px`, below the PH-OS 44px page-body target.
+- security risks found: no auth, authorization, Cognito invite/update behavior, role/site validation, visit-limit validation, user mutation APIs, DB writes, schema, migrations, audit behavior, external sends, PHI projection, or secret handling changed. Browser proof used local authenticated reads only.
+- performance issues found: no new fetches, polling, subscriptions, DB reads beyond the existing local-auth SELECT helper, dependencies, or render loops were introduced. The change reorders already-rendered controls and hides non-primary filters behind native disclosure.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/admin/users/page.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx'`; `pnpm vitest run 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/users/page.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/admin/users/page.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx'`; direct authenticated Playwright proof on `http://localhost:3012/admin/users`.
+- validation results: focused UsersContent Vitest passed `1` file / `6` tests; scoped ESLint passed; scoped Prettier write passed; scoped diff-check passed. Direct browser proof had no console/page errors, no horizontal overflow, mobile page-body small-target count `0`, and desktop remaining small targets limited to pre-existing app-header chrome outside this page-body slice. Final proof placed the first user row in the mobile first viewport; desktop first row action top improved from `992px` to `729px`. Screenshots: `artifacts/ui-admin-users-sweep/admin-users-before-desktop.png`, `artifacts/ui-admin-users-sweep/admin-users-before-mobile.png`, `artifacts/ui-admin-users-sweep/admin-users-after-desktop.png`, and `artifacts/ui-admin-users-sweep/admin-users-after-mobile.png`.
+- remaining work: commit the `/admin/users` implementation group, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server, and continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only `src/app/(dashboard)/admin/users/page.tsx` and `src/app/(dashboard)/admin/users/users-content.tsx` for implementation commit, then stage only ledgers for progress commit.
+
 ### 20260626-1441 JST
 
 - current task: `/admin/drug-masters` post-verification 44px target addendum for the moved `更新と対象拠点` stocked-only control.

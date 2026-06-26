@@ -10092,6 +10092,31 @@ Next loop:
 - Remaining:
   - Commit the `/admin/drug-masters` implementation group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
 
+### Admin Users — Account Worklist First-Fold Priority
+
+- Coordination:
+  - Drained `phos/codex` agmsg before selecting and before edits.
+  - Sent `LOCK` / `LOCK RESEND` for `/admin/users`; acknowledged Claude's separate `handoff-workspace.helpers.ts` lock and did not touch or stage that file.
+- Bugs found:
+  - `/admin/users` showed a generic intro card and large vertical summary cards before any actual user row on mobile.
+  - Desktop filter controls, invite action, and row actions measured `32px`/`28px`, below the PH-OS 44px page-body target.
+- Implemented by Codex:
+  - Removed the generic `最初に見るポイント` intro for this screen.
+  - Combined invite, search, and the user list into the primary work card.
+  - Moved the summary counts after the list and placed role/site/status/credential filters behind a native `詳細フィルタ` disclosure.
+  - Raised search, invite, detail/resend/stop/reactivate row actions, and advanced filter controls to 44px page-body targets.
+  - Preserved existing user reads, Cognito invite/update flows, role/site validation, visit-limit validation, action dialogs, mutation handlers, and DataTable behavior.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/users/page.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: passed.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/users/page.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/users/page.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx'`: passed.
+  - Direct authenticated Playwright proof on `http://localhost:3012/admin/users`: no console/page errors, no horizontal overflow, mobile page-body small-target count `0`, and desktop remaining small targets limited to pre-existing app-header chrome outside this slice.
+  - Final proof: first user row appears in the mobile first viewport; desktop first row action top improved from `992px` to `729px`.
+  - Screenshot evidence: `artifacts/ui-admin-users-sweep/admin-users-before-desktop.png`, `artifacts/ui-admin-users-sweep/admin-users-before-mobile.png`, `artifacts/ui-admin-users-sweep/admin-users-after-desktop.png`, and `artifacts/ui-admin-users-sweep/admin-users-after-mobile.png`.
+- Remaining:
+  - Commit the `/admin/users` implementation group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
 ### Admin Drug Masters — Supplemental Checkbox Target Addendum
 
 - Rechecked `/admin/drug-masters` with route-mocked desktop/mobile screenshots after the search/list priority slice.
