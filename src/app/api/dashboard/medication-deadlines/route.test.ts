@@ -189,4 +189,17 @@ describe('/api/dashboard/medication-deadlines', () => {
       expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
     },
   );
+
+  it('returns a sanitized no-store 500 when deadline reads fail', async () => {
+    const rawError = 'raw medication deadline read failure';
+    visitScheduleFindManyMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = (await GET(createRequest()))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+  });
 });
