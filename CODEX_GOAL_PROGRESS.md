@@ -89,6 +89,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused patient-card/SafetyBoard Vitest `2` files / `56` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/patients/cmnhdemopt001amq9ph-os` with no console/page errors, one visible `処方カード作業台` `h1`, no horizontal overflow, no undersized visible controls in the patient-card body, and prescription card top improved to `432px` desktop / `716px` mobile.
 - Next action: commit the patient-card UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Login MFA Entry Layout
+
+- Grouped and validated the remaining `/login` UI polish diff.
+- Replaced the dense default login card with a two-column desktop / stacked mobile MFA-protected entry panel that explains the authentication sequence before the form.
+- Kept email/password input behavior, `signIn('credentials')`, callback URL guarding, Cognito challenge routing, lockout handling, password reset route, notices, and error handling unchanged.
+- Hardened the visible login controls so email/password inputs, submit, and password reset action stay at 44px-plus target size.
+- Screenshot evidence: desktop and mobile screenshots under `artifacts/ui-login-sweep/`.
+- Validation passed: focused ESLint; focused Prettier check; focused diff whitespace check; direct desktop/mobile browser checks on `http://localhost:3012/login` with no console/page errors, visible login form and password reset link, no horizontal overflow, and no visible controls below 44px.
+- Next action: commit the login UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.

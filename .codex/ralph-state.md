@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1338 JST
+
+- current task: group and validate the remaining login-page UI polish diff before committing all dirty work by coherent group.
+- files inspected: `git status --short --branch --untracked-files=all`, `src/app/(auth)/login/page.tsx`, login/auth E2E test references, desktop/mobile `/login` screenshots, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(auth)/login/page.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the pre-existing login UI diff replaced the dense default card with a clearer MFA-protected entry layout and set email/password/reset/submit controls to 44px-plus target size.
+- security risks found: no sign-in provider, callback URL guard, Cognito challenge handling, lockout redirect, password reset route, session behavior, auth API, secret handling, DB behavior, or external send behavior changed.
+- performance issues found: no new network calls, polling, DB reads, or expensive computation were introduced. The instructional step list is static render data.
+- validation commands: `pnpm eslint 'src/app/(auth)/login/page.tsx'`; `pnpm exec prettier --check 'src/app/(auth)/login/page.tsx'`; `git diff --check -- 'src/app/(auth)/login/page.tsx'`; direct Playwright desktop/mobile checks on `http://localhost:3012/login`.
+- validation results: focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed. Browser proof had `0` console/page errors, visible login form and password reset link, no horizontal overflow, and no visible controls below 44px on desktop or mobile. Screenshots were saved under `artifacts/ui-login-sweep/`.
+- remaining work: commit the login UI slice and this progress-ledger update separately, then confirm the worktree is clean except for intentionally untracked/generated artifacts. The broader all-pages objective is not complete.
+- next action: grouped commits for login entry UI polish and progress ledgers.
+
 ### 20260626-1333 JST
 
 - current task: continue the all-pages UI/UX objective with `/patients/[id]` prescription card workspace, preserving existing dirty work and prioritizing the prescription card content in the first fold.
