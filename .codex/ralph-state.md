@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-0656 JST
+
+- current task: backend-first PHI/cache hardening for `GET /api/visit-preparations/:scheduleId` while preserving Claude-owned patient form/validation dirty work.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `git log --oneline -n 8`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, Next route handler docs at `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/lib/auth/visit-schedule-access.ts`, and gbrain code graph probes for `src/app/api/visit-preparations/[scheduleId]/route::GET` (fresh graph had no callers; caller index not built for this symbol).
+- files changed: `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned dirty `src/components/features/patients/patient-form.tsx` and `src/lib/validations/patient.ts` were preserved and not staged by Codex.
+- bugs found: the visit preparation detail GET returned patient names/addresses, care-team/contact context, previous visit summaries, conference highlights, billing collection context, and readiness blockers without the sensitive no-store exported-route envelope, and ordinary unexpected read failures lacked a route-level fixed no-store `INTERNAL_ERROR` fallback.
+- security risks found: reduced visit-preparation PHI/medical workflow cacheability and error-leakage risk by wrapping the detail GET with `withSensitiveNoStore`, adding a sanitized fixed `internalError()` fallback, preserving Next control-flow via `unstable_rethrow(err)`, and proving raw patient/address/workflow-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint 'src/app/api/visit-preparations/[scheduleId]/route.ts' 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check 'src/app/api/visit-preparations/[scheduleId]/route.ts' 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- 'src/app/api/visit-preparations/[scheduleId]/route.ts' 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused visit preparation detail/protected GET Vitest passed `2` files / `257` tests; full TypeScript passed; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed.
+- remaining work: commit Codex-owned visit preparation detail GET hardening, commit progress ledgers separately, send `agmsg` FYI, then continue with the mapper's remaining candidates: `GET /api/visit-schedule-proposals/:id`, `GET /api/cases/:id`, or `GET /api/dispense-results/:id`. The all-pages UI/UX objective remains incomplete.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260627-0650 JST
 
 - current task: backend-first PHI/cache hardening for `GET /api/communication-requests/:id` while preserving Claude-owned patient form/validation dirty work.
