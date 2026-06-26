@@ -30,14 +30,14 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused communication requests Vitest `3` files / `14` tests; focused ESLint; authenticated browser desktop/mobile checks on `http://localhost:3012/communications/requests` with no console/page errors, no horizontal overflow, and mobile page-body small-target count `0`. The first reply-follow-up option moved from `689px` to `503px` on desktop and from `782px` to `511px` on mobile.
 - Next action: commit the `/communications/requests` UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
-### 2026-06-26 JST - Handoff Incoming Receipt Priority
+### 2026-06-26 JST - Handoff Pharmacist Actions First-Fold
 
-- Refined `/handoff` after the current dirty UI slice showed multiple incoming handoff receipts rendering as a full stacked list before the rest of the board.
-- Kept the newest incoming item as the primary visible work item and tucked older incoming receipt items behind a `残りの受領待ち` disclosure with a count, reducing first-fold receipt backlog weight while preserving access to every item.
-- Preserved all existing handoff board fetches, transfer creation behavior, receipt confirmation mutation, consult workspace, outgoing list, visit handoff confirmation area, auth behavior, backend/API behavior, DB behavior, and displayed handoff data. No feature was removed.
-- Screenshot evidence: route-mocked desktop and mobile screenshots saved under `artifacts/ui-handoff-sweep/`.
-- Validation passed: focused HandoffWorkspace Vitest `1` file / `14` tests; focused ESLint; focused Prettier check; route-mocked desktop/mobile browser proof on `http://localhost:3012/handoff` with no console/page errors for the mocked page, no horizontal overflow, visible primary incoming item, and visible `残りの受領待ち 2件` disclosure. Desktop remaining undersized controls were shared app-header chrome outside this page-body slice.
-- Next action: commit the `/handoff` UI/test slice and progress-ledger slice separately, then continue the all-pages screenshot loop with `/admin/notification-settings`. The broader objective is not complete.
+- Refined `/handoff` after live browser proof showed the incoming receipt stack pushing pharmacist consult work below the first mobile viewport.
+- Kept the newest incoming item visible, kept older incoming items available behind the preserved `残りの受領待ち` disclosure, and adjusted pharmacist response actions so `内容を確認した` / `医師へ確認する` / `事務へ戻す` all fit above the mobile bottom navigation.
+- Preserved all existing handoff board fetches, transfer creation behavior, receipt confirmation mutation, consult resolve mutation, outgoing list, visit handoff confirmation area, auth behavior, backend/API behavior, DB behavior, and displayed handoff data. No feature was removed.
+- Screenshot evidence: before/final desktop and mobile screenshots under `artifacts/ui-handoff-sweep/`.
+- Validation passed: focused HandoffWorkspace Vitest `1` file / `14` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated browser proof on `http://localhost:3012/handoff` with `/api/handoff-board` returning 200, no console/page errors, no horizontal overflow, and mobile page-body small-target count `0`. Final mobile proof placed all three pharmacist actions at `721px-765px`, above the bottom nav top `779px`.
+- Next action: commit the `/handoff` UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
 ### 2026-06-26 JST - UI/UX Research SSOT Update
 
