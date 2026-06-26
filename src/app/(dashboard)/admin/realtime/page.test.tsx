@@ -7,6 +7,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
+const adminPageHeaderPropsMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -21,7 +22,10 @@ vi.mock('@/lib/hooks/use-realtime-query', () => ({
 }));
 
 vi.mock('@/components/features/admin/admin-page-header', () => ({
-  AdminPageHeader: ({ title }: { title: string }) => <h1>{title}</h1>,
+  AdminPageHeader: (props: { title: string; supportingContent?: unknown }) => {
+    adminPageHeaderPropsMock(props);
+    return <h1>{props.title}</h1>;
+  },
 }));
 
 import RealtimePage from './page';
@@ -90,6 +94,11 @@ describe('RealtimePage', () => {
     render(<RealtimePage />);
 
     expect(screen.getByText('リアルタイム運用監視')).toBeTruthy();
+    expect(adminPageHeaderPropsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ supportingContent: null }),
+    );
+    expect(screen.queryByText('最初に見るポイント')).toBeNull();
+    expect(screen.queryByText('Live Operations')).toBeNull();
     expect(screen.getByText('SSE 接続中です。新着通知は即時反映されます。')).toBeTruthy();
     expect(useRealtimeQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -106,6 +115,26 @@ describe('RealtimePage', () => {
         onRealtimeEvent: expect.any(Function),
       }),
     );
+  });
+
+  it('prioritizes actionable realtime signals before routine route KPIs', () => {
+    render(<RealtimePage />);
+
+    const signalHeading = screen.getByText('今すぐ見る運用シグナル');
+    const routeKpiHeading = screen.getByText('ルート・例外 KPI');
+    expect(
+      signalHeading.compareDocumentPosition(routeKpiHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText('至急通知')).toBeTruthy();
+    expect(screen.getByText('高優先ワークベンチ')).toBeTruthy();
+  });
+
+  it('renders notification and workbench actions as 44px touch targets', () => {
+    render(<RealtimePage />);
+
+    expect(screen.getByRole('link', { name: '詳細を開く' }).className).toContain('min-h-11');
+    expect(screen.getByRole('link', { name: '開く' }).className).toContain('min-h-11');
+    expect(screen.getByRole('link', { name: '開く' }).className).toContain('min-w-11');
   });
 
   it('renders the workbench priority as a Japanese label, not the raw enum', () => {

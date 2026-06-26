@@ -9,7 +9,7 @@ import { AlertTriangle, BellRing, Clock, RefreshCw, Route, Sparkles } from 'luci
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { PageScaffold } from '@/components/layout/page-scaffold';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ErrorState } from '@/components/ui/error-state';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -130,6 +130,12 @@ export default function RealtimePage() {
   const workbenchItems = workflow?.unified_workbench ?? [];
   const liveNotifications = notifications.slice(0, 8);
   const realtimeConnected = workflowQuery.connected || notificationsQuery.connected;
+  const urgentNotifications = liveNotifications.filter(
+    (notification) => notification.type === 'urgent',
+  );
+  const priorityWorkbenchItems = workbenchItems.filter(
+    (item) => item.priority === 'urgent' || item.priority === 'high',
+  );
 
   const routeHealth = [
     {
@@ -158,47 +164,60 @@ export default function RealtimePage() {
         title="リアルタイム運用監視"
         description="通知ストリームとワークフロー制御を同じ面で追跡し、遅延や割込影響を即時確認します。"
         shortcuts={getAdminRealtimeShortcutLinks()}
+        supportingContent={null}
       />
-      {/* SYS-5: グラデーション帯 hero は一般画面に持ち込まない(guideline L182)。calm な bg-card イントロへ。 */}
-      <Card>
-        <CardContent className="grid gap-5 px-5 py-5 lg:grid-cols-[1.1fr_0.9fr]">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Live Operations
+      <section className="space-y-3" aria-labelledby="realtime-operation-signals">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="realtime-operation-signals" className="text-base font-semibold text-foreground">
+            今すぐ見る運用シグナル
+          </h2>
+          {/* SYS-4: 接続状態は状態色トークンで示す。再接続中(=ライブ未保証)を常時 done(緑)にすると
+              緑=正常の偽シグナルになるため confirm(要注意/橙)へ切替える。文言も併記し色のみ依存にしない。 */}
+          <div
+            className={`inline-flex min-h-11 items-center rounded-md border px-3 py-2 text-xs font-medium ${
+              realtimeConnected
+                ? 'border-state-done/20 bg-state-done/10 text-state-done'
+                : 'border-state-confirm/20 bg-state-confirm/10 text-state-confirm'
+            }`}
+          >
+            {realtimeConnected
+              ? 'SSE 接続中です。新着通知は即時反映されます。'
+              : 'SSE 再接続中です。未接続時は定期再取得へフォールバックします。'}
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border border-state-blocked/30 bg-state-blocked/10 px-4 py-3">
+            <p className="text-sm font-medium text-state-blocked">至急通知</p>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+              {urgentNotifications.length}
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-foreground">
-              通知と訪問制御を同じ運用面で監視
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              通知は SSE で即時反映し、ワークフローは定期再取得で補完して、
-              確定ロック、変更承認待ち、緊急影響を継続監視します。
+            <p className="mt-1 text-xs text-muted-foreground">
+              未読通知 {liveNotifications.length} 件
             </p>
           </div>
-          <div className="grid gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">未読通知</span>
-              <span className="font-medium text-foreground">{liveNotifications.length}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">ワークベンチ</span>
-              <span className="font-medium text-foreground">{workbenchItems.length}</span>
-            </div>
-            {/* SYS-4: 接続状態は状態色トークンで示す。再接続中(=ライブ未保証)を常時 done(緑)にすると
-                緑=正常の偽シグナルになるため confirm(要注意/橙)へ切替える。文言も併記し色のみ依存にしない。 */}
-            <div
-              className={`rounded-xl border px-3 py-2 text-xs ${
-                realtimeConnected
-                  ? 'border-state-done/20 bg-state-done/10 text-state-done'
-                  : 'border-state-confirm/20 bg-state-confirm/10 text-state-confirm'
-              }`}
-            >
-              {realtimeConnected
-                ? 'SSE 接続中です。新着通知は即時反映されます。'
-                : 'SSE 再接続中です。未接続時は定期再取得へフォールバックします。'}
-            </div>
+          <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3">
+            <p className="text-sm font-medium text-state-confirm">高優先ワークベンチ</p>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+              {priorityWorkbenchItems.length}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">全項目 {workbenchItems.length} 件</p>
           </div>
-        </CardContent>
-      </Card>
+          <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
+            <p className="text-sm font-medium text-muted-foreground">変更承認待ち</p>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+              {workflow?.route_control.pending_override_requests ?? 0}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">専用リスケで処理</p>
+          </div>
+          <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
+            <p className="text-sm font-medium text-muted-foreground">未処理例外</p>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+              {workflow?.workflow_exceptions.open ?? 0}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">ワークフロー例外</p>
+          </div>
+        </div>
+      </section>
 
       {workflowQuery.isError ? (
         // ワークフロー取得失敗時は KPI を 0 (false-zero) 表示せず、再読み込み導線つきの ErrorState を出す。
@@ -208,45 +227,49 @@ export default function RealtimePage() {
           action={{ label: '再読み込み', onClick: () => void workflowQuery.refetch() }}
         />
       ) : (
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {routeHealth.map((item) => (
-            <Card key={item.title}>
+        <section className="space-y-3" aria-labelledby="realtime-route-health">
+          <h2 id="realtime-route-health" className="text-base font-semibold text-foreground">
+            ルート・例外 KPI
+          </h2>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {routeHealth.map((item) => (
+              <Card key={item.title}>
+                <CardContent className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">{item.title}</p>
+                    <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+                      {item.value}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                  </div>
+                  <div className="rounded-full border border-border bg-background p-2">
+                    <item.icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            <Card>
               <CardContent className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">{item.title}</p>
+                  <p className="text-sm font-medium text-muted-foreground">未処理例外</p>
                   <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-                    {item.value}
+                    {workflow?.workflow_exceptions.open ?? 0}
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">ワークフロー例外</p>
                 </div>
                 <div className="rounded-full border border-border bg-background p-2">
-                  <item.icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                  <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
                 </div>
               </CardContent>
             </Card>
-          ))}
-          <Card>
-            <CardContent className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">未処理例外</p>
-                <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-                  {workflow?.workflow_exceptions.open ?? 0}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">ワークフロー例外</p>
-              </div>
-              <div className="rounded-full border border-border bg-background p-2">
-                <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
-              </div>
-            </CardContent>
-          </Card>
+          </div>
         </section>
       )}
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card>
+        <Card className="order-2 xl:order-2">
           <CardHeader>
             <CardTitle className="text-base">最新通知</CardTitle>
-            <CardDescription>未読通知を中心に、直近の運用イベントを確認します</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {notificationsQuery.isLoading ? (
@@ -267,7 +290,7 @@ export default function RealtimePage() {
                 return (
                   <div
                     key={notification.id}
-                    className="space-y-2 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3"
+                    className="space-y-2 rounded-lg border border-border/70 bg-muted/20 px-4 py-3"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
@@ -293,7 +316,7 @@ export default function RealtimePage() {
                     {notification.link ? (
                       <Link
                         href={notification.link}
-                        className="text-xs font-medium text-primary hover:underline"
+                        className="inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm font-medium text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         詳細を開く
                       </Link>
@@ -305,10 +328,9 @@ export default function RealtimePage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="order-1 xl:order-1">
           <CardHeader>
             <CardTitle className="text-base">ライブワークベンチ</CardTitle>
-            <CardDescription>優先度順に処理すべき運用項目です</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {workflowQuery.isLoading ? (
@@ -326,7 +348,7 @@ export default function RealtimePage() {
               workbenchItems.slice(0, 10).map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-2xl border border-border/70 bg-background px-4 py-3"
+                  className="rounded-lg border border-border/70 bg-background px-4 py-3"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -367,7 +389,7 @@ export default function RealtimePage() {
                     ))}
                     <Link
                       href={item.action_href}
-                      className="ml-auto text-xs font-medium text-primary hover:underline"
+                      className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border px-3 text-sm font-medium text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {item.action_label}
                     </Link>
