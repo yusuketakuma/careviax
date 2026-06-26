@@ -10066,3 +10066,28 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-master-editor-sweep/external-professionals-before-desktop.png`, `artifacts/ui-master-editor-sweep/external-professionals-before-mobile.png`, `artifacts/ui-master-editor-sweep/external-professionals-after-desktop.png`, `artifacts/ui-master-editor-sweep/external-professionals-after-mobile.png`, and `artifacts/ui-master-editor-sweep/after-metrics.json`.
 - Remaining:
   - Commit the shared admin master editor UI/test group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Admin Drug Masters — Search/List First-Fold Priority
+
+- Coordination:
+  - Drained `phos/codex` agmsg before continuing and before ledger/commit prep; inbox was empty.
+  - Kept this slice isolated to `/admin/drug-masters` and shared `DataTable` target sizing. No DB writes, migrations, imports, external sends, or API contract changes were made.
+- Bugs found:
+  - `/admin/drug-masters` buried the primary search/list workflow behind the generic intro card, update/import card, freshness status, and import history.
+  - Mobile search still landed at `1224px` after the first reorder, outside the `844px` viewport.
+  - Import/freshness/table sort/adoption actions exposed page-body controls below the PH-OS 44px target.
+- Implemented by Codex:
+  - Removed the generic page-header intro card for this screen and moved `検索・フィルタ` plus the drug list ahead of update/status/history.
+  - Preserved the update/import, target-site, freshness, and import-history functions below the list instead of deleting them.
+  - Raised import, freshness, row adoption, table sort, search input, and filter checkbox hit areas to 44px page-body targets.
+  - Kept existing drug-master API usage, import mutation handlers, status reads, target-site state, filters, table data, and detail sheet behavior intact.
+- Validation:
+  - `pnpm vitest run src/components/ui/data-table.test.tsx 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `65` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`: passed.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' src/components/ui/data-table.tsx`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' src/components/ui/data-table.tsx`: passed.
+  - Direct authenticated Playwright proof on `http://localhost:3012/admin/drug-masters`: no console/page errors, no horizontal overflow, mobile page-body small-target count `0`, and desktop remaining small targets limited to pre-existing app-header chrome outside this slice.
+  - Final metrics: mobile `検索・フィルタ` top improved from `1224px` to `492px`; desktop `検索・フィルタ` top improved from `844px` to `476px`; desktop table top improved from `1085px` to `717px`.
+  - Screenshot evidence: `artifacts/ui-drug-masters-sweep/drug-masters-before-desktop.png`, `artifacts/ui-drug-masters-sweep/drug-masters-before-mobile.png`, `artifacts/ui-drug-masters-sweep/drug-masters-after-desktop.png`, and `artifacts/ui-drug-masters-sweep/drug-masters-after-mobile.png`.
+- Remaining:
+  - Commit the `/admin/drug-masters` implementation group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
