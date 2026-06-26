@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1441 JST
+
+- current task: `/admin/drug-masters` post-verification 44px target addendum for the moved `更新と対象拠点` stocked-only control.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `src/components/ui/data-table.tsx`, focused validation output, route-mocked desktop/mobile screenshots and metrics under `artifacts/ui-drug-master-sweep/`, and existing commits `05a723a4` / `ca69d357`.
+- files changed: `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Existing unrelated dirty `src/app/(dashboard)/admin/users/page.tsx` and `src/app/(dashboard)/admin/users/users-content.tsx` were inspected but not changed or staged by this addendum.
+- bugs found: route-mocked proof after the drug-master reorder showed the supplemental `採用品のみ表示` checkbox in `更新と対象拠点` still exposed a visible native `16px` checkbox, unlike the 44px filter controls above it.
+- security risks found: no auth, authorization, org scoping, admin APIs, import mutations, drug-master writes, PHI projection, audit behavior, schema, migrations, DB writes, external sends, or secret handling changed. Browser proof used route-mocked APIs and a route-mock local session; no DB reads or writes were required for the addendum proof.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier loops were introduced. The change is a CSS/markup target-size alignment for an existing checkbox.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/components/ui/data-table.tsx'`; `pnpm vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-formulary-view-model.test.ts' src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`; `pnpm exec prettier --check 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/components/ui/data-table.tsx'`; `git diff --check -- 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/components/ui/data-table.tsx'`; direct route-mocked Playwright proof on `http://localhost:3012/admin/drug-masters`.
+- validation results: focused DrugMasterContent/view-model/DataTable Vitest passed `3` files / `84` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. Route-mocked browser proof saved `artifacts/ui-drug-master-sweep/drug-master-after-desktop.png`, `artifacts/ui-drug-master-sweep/drug-master-after-mobile.png`, and `artifacts/ui-drug-master-sweep/drug-master-proof.json`; final proof had no console/page errors, no horizontal overflow, and zero undersized page-body controls after excluding pre-existing app-header chrome.
+- remaining work: commit this addendum separately from the existing dirty admin users slice, send agmsg FYI, then validate the admin users slice if it remains aligned with the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx` for the addendum implementation commit, then stage only ledgers for the addendum progress commit.
+
 ### 20260626-1433 JST
 
 - current task: `/admin/drug-masters` first-fold priority pass for the drug master search/list workflow and page-body 44px targets.

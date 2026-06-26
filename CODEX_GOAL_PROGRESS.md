@@ -10091,3 +10091,13 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-drug-masters-sweep/drug-masters-before-desktop.png`, `artifacts/ui-drug-masters-sweep/drug-masters-before-mobile.png`, `artifacts/ui-drug-masters-sweep/drug-masters-after-desktop.png`, and `artifacts/ui-drug-masters-sweep/drug-masters-after-mobile.png`.
 - Remaining:
   - Commit the `/admin/drug-masters` implementation group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Admin Drug Masters — Supplemental Checkbox Target Addendum
+
+- Rechecked `/admin/drug-masters` with route-mocked desktop/mobile screenshots after the search/list priority slice.
+- Found and fixed the remaining supplemental `採用品のみ表示` checkbox in `更新と対象拠点`: the label area was 44px, but the visible native checkbox still rendered as a 16px target and did not match the filter controls above it.
+- Converted that supplemental checkbox to the same visible 44px custom target pattern used in the search filters, preserving the existing `stockedOnly` state and query behavior.
+- Preserved all existing drug-master fetches, import actions, selected-site behavior, stocked-only behavior, auth behavior, backend/API behavior, DB behavior, and displayed data. No route or feature was removed.
+- Screenshot evidence: `artifacts/ui-drug-master-sweep/drug-master-after-desktop.png`, `artifacts/ui-drug-master-sweep/drug-master-after-mobile.png`, and metrics JSON `artifacts/ui-drug-master-sweep/drug-master-proof.json`.
+- Validation passed: focused DrugMasterContent/view-model/DataTable Vitest `3` files / `84` tests; scoped ESLint; scoped Prettier check; scoped diff whitespace check; direct route-mocked desktop/mobile browser proof with no console/page errors, no horizontal overflow, and zero undersized page-body controls after excluding pre-existing app-header chrome.
+- Next action: commit this addendum separately from the existing dirty admin users slice, then continue validating `/admin/users`. The broader objective remains incomplete.
