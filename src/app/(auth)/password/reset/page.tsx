@@ -3,12 +3,11 @@
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, ArrowLeft, Check, Eye, EyeOff, Mail } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, Eye, EyeOff, KeyRound, Mail } from 'lucide-react';
 
 interface PasswordStrength {
   score: 0 | 1 | 2 | 3 | 4;
@@ -170,210 +169,236 @@ export default function PasswordResetPage() {
 
   if (success) {
     return (
-      <div className="w-full max-w-md">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-state-done/15">
-                <Check className="h-6 w-6 text-state-done" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">
-                パスワードをリセットしました
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                新しいパスワードでログインしてください。
-              </p>
-              <Button size="lg" className="w-full" onClick={() => router.push('/login')}>
-                ログイン画面へ
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <section
+        aria-labelledby="password-reset-success-title"
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-sm"
+      >
+        <div className="p-6 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-state-done/15">
+            <Check className="h-6 w-6 text-state-done" />
+          </div>
+          <h2
+            id="password-reset-success-title"
+            className="mt-4 text-lg font-semibold text-foreground"
+          >
+            パスワードをリセットしました
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            新しいパスワードでログインしてください。
+          </p>
+          <Button
+            size="lg"
+            className="mt-6 h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+            onClick={() => router.push('/login')}
+          >
+            ログイン画面へ
+          </Button>
+        </div>
+      </section>
     );
   }
 
   return (
-    <div className="w-full max-w-md">
-      <Card>
-        <CardHeader>
-          <CardTitle>パスワードリセット</CardTitle>
-          <CardDescription>
-            {step === 1
-              ? 'アカウントに登録されたメールアドレスを入力してください'
-              : `${email} に送信された確認コードと新しいパスワードを入力してください`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+    <section
+      aria-labelledby="password-reset-title"
+      className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-sm"
+    >
+      <div className="border-b border-border/70 bg-slate-50/80 p-5 sm:p-6">
+        <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-primary">
+          {step === 1 ? (
+            <Mail className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <KeyRound className="h-4 w-4" aria-hidden="true" />
           )}
+          パスワード復旧
+        </div>
+        <div className="mt-5 space-y-2">
+          <h2
+            id="password-reset-title"
+            className="text-2xl font-semibold leading-tight text-foreground"
+          >
+            {step === 1
+              ? '確認コードの送信先を確認します'
+              : '確認コードと新しいパスワードを入力します'}
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            {step === 1
+              ? 'アカウントに登録されたメールアドレスへ、6桁の確認コードを送信します。'
+              : `${email} に送信された確認コードを入力し、13文字以上の新しいパスワードを設定してください。`}
+          </p>
+        </div>
+      </div>
 
-          {/* Step 1: Email */}
-          {step === 1 && (
-            <form onSubmit={handleSendCode} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="reset-email">メールアドレス</Label>
+      <div className="p-5 sm:p-6">
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Step 1: Email */}
+        {step === 1 && (
+          <form onSubmit={handleSendCode} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="reset-email">メールアドレス</Label>
+              <Input
+                className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
+                id="reset-email"
+                type="email"
+                autoComplete="email"
+                placeholder="example@pharmacy.jp"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={isLoading}
+              />
+            </div>
+
+            <Button
+              type="submit"
+              size="lg"
+              className="mt-2 h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+              disabled={!email || isLoading}
+              aria-busy={isLoading}
+            >
+              <Mail className="mr-2 h-4 w-4" />
+              {isLoading ? '送信中...' : '確認コードを送信'}
+            </Button>
+
+            <div className="mt-2">
+              <Link
+                href="/login"
+                className="inline-flex min-h-11 items-center rounded px-3 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ArrowLeft className="mr-1 h-4 w-4" />
+                ログインに戻る
+              </Link>
+            </div>
+          </form>
+        )}
+
+        {/* Step 2: Code + New Password */}
+        {step === 2 && (
+          <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
+            {/* Verification code */}
+            <div className="flex flex-col gap-1.5">
+              <Label>確認コード</Label>
+              <div className="flex justify-center gap-2" role="group" aria-label="確認コード入力">
+                {digits.map((digit, index) => (
+                  <Input
+                    key={index}
+                    ref={setRef(index)}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={digit}
+                    onChange={(e) => handleDigitChange(index, e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(index, e)}
+                    className="h-12 w-12 text-center text-lg font-semibold sm:h-12 sm:min-h-12"
+                    aria-label={`確認コード ${index + 1}桁目`}
+                    disabled={isLoading}
+                    autoFocus={index === 0}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* New password */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="reset-new-password">新しいパスワード</Label>
+              <div className="relative">
                 <Input
-                  id="reset-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="example@pharmacy.jp"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  className="h-11 min-h-[44px] pr-12 sm:h-11 sm:min-h-[44px]"
+                  id="reset-new-password"
+                  type={showNewPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
                   required
                   disabled={isLoading}
                 />
+                <button
+                  type="button"
+                  className="absolute right-0.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  aria-label={showNewPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+                >
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
 
+              {newPassword.length > 0 && (
+                <div className="mt-1 space-y-1.5">
+                  <div className="flex gap-1">
+                    {[0, 1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        className={`h-1.5 flex-1 rounded-full transition-colors ${
+                          i < strength.score ? strength.bgColor : 'bg-muted'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className={`text-xs ${strength.color}`}>パスワード強度: {strength.label}</p>
+                </div>
+              )}
+
+              {newPassword.length > 0 && !isLongEnough && (
+                <p className="text-xs text-destructive">パスワードは13文字以上で入力してください</p>
+              )}
+            </div>
+
+            {/* Confirm password */}
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="reset-confirm-password">新しいパスワード（確認）</Label>
+              <Input
+                className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
+                id="reset-confirm-password"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                disabled={isLoading}
+              />
+              {confirmPassword.length > 0 && !passwordsMatch && (
+                <p className="text-xs text-destructive">パスワードが一致しません</p>
+              )}
+            </div>
+
+            <div className="mt-2 flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="h-11 min-h-[44px] flex-1 sm:h-11 sm:min-h-[44px]"
+                onClick={() => {
+                  setStep(1);
+                  setDigits(['', '', '', '', '', '']);
+                  setNewPassword('');
+                  setConfirmPassword('');
+                  setError(null);
+                }}
+              >
+                戻る
+              </Button>
               <Button
                 type="submit"
                 size="lg"
-                className="mt-2 w-full"
-                disabled={!email || isLoading}
+                className="h-11 min-h-[44px] flex-1 sm:h-11 sm:min-h-[44px]"
+                disabled={
+                  isLoading || digits.join('').length !== 6 || !isLongEnough || !passwordsMatch
+                }
                 aria-busy={isLoading}
               >
-                <Mail className="mr-2 h-4 w-4" />
-                {isLoading ? '送信中...' : '確認コードを送信'}
+                {isLoading ? 'リセット中...' : 'パスワードをリセット'}
               </Button>
-
-              <div className="mt-2">
-                <Link
-                  href="/login"
-                  className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
-                >
-                  <ArrowLeft className="mr-1 h-4 w-4" />
-                  ログインに戻る
-                </Link>
-              </div>
-            </form>
-          )}
-
-          {/* Step 2: Code + New Password */}
-          {step === 2 && (
-            <form onSubmit={handleResetPassword} className="flex flex-col gap-4">
-              {/* Verification code */}
-              <div className="flex flex-col gap-1.5">
-                <Label>確認コード</Label>
-                <div className="flex justify-center gap-2" role="group" aria-label="確認コード入力">
-                  {digits.map((digit, index) => (
-                    <Input
-                      key={index}
-                      ref={setRef(index)}
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={6}
-                      value={digit}
-                      onChange={(e) => handleDigitChange(index, e.target.value)}
-                      onKeyDown={(e) => handleKeyDown(index, e)}
-                      className="h-12 w-12 text-center text-lg font-semibold"
-                      aria-label={`確認コード ${index + 1}桁目`}
-                      disabled={isLoading}
-                      autoFocus={index === 0}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* New password */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="reset-new-password">新しいパスワード</Label>
-                <div className="relative">
-                  <Input
-                    id="reset-new-password"
-                    type={showNewPassword ? 'text' : 'password'}
-                    autoComplete="new-password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    disabled={isLoading}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    aria-label={showNewPassword ? 'パスワードを隠す' : 'パスワードを表示'}
-                  >
-                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-
-                {newPassword.length > 0 && (
-                  <div className="mt-1 space-y-1.5">
-                    <div className="flex gap-1">
-                      {[0, 1, 2, 3].map((i) => (
-                        <div
-                          key={i}
-                          className={`h-1.5 flex-1 rounded-full transition-colors ${
-                            i < strength.score ? strength.bgColor : 'bg-muted'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                    <p className={`text-xs ${strength.color}`}>パスワード強度: {strength.label}</p>
-                  </div>
-                )}
-
-                {newPassword.length > 0 && !isLongEnough && (
-                  <p className="text-xs text-destructive">
-                    パスワードは13文字以上で入力してください
-                  </p>
-                )}
-              </div>
-
-              {/* Confirm password */}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="reset-confirm-password">新しいパスワード（確認）</Label>
-                <Input
-                  id="reset-confirm-password"
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  disabled={isLoading}
-                />
-                {confirmPassword.length > 0 && !passwordsMatch && (
-                  <p className="text-xs text-destructive">パスワードが一致しません</p>
-                )}
-              </div>
-
-              <div className="flex gap-3 mt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  className="flex-1"
-                  onClick={() => {
-                    setStep(1);
-                    setDigits(['', '', '', '', '', '']);
-                    setNewPassword('');
-                    setConfirmPassword('');
-                    setError(null);
-                  }}
-                >
-                  戻る
-                </Button>
-                <Button
-                  type="submit"
-                  size="lg"
-                  className="flex-1"
-                  disabled={
-                    isLoading || digits.join('').length !== 6 || !isLongEnough || !passwordsMatch
-                  }
-                  aria-busy={isLoading}
-                >
-                  {isLoading ? 'リセット中...' : 'パスワードをリセット'}
-                </Button>
-              </div>
-            </form>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+            </div>
+          </form>
+        )}
+      </div>
+    </section>
   );
 }
