@@ -186,7 +186,10 @@ type SummaryTile = {
   description: string;
   chip: BoardChipValue;
   icon: LucideIcon;
+  // 全面塗りは引き算し、状態色は左ボーダー(className) + ラベル(labelClassName)のみに限定する
+  // (SSOT 色「状態色の塗り面積を最小化する」/ globals.css の --state-*・--tag-*)。
   className: string;
+  labelClassName: string;
 };
 
 function countCards(
@@ -266,7 +269,8 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
           : '期限超過の患者はいません',
       chip: 'priority',
       icon: AlertTriangle,
-      className: 'border-state-blocked/35 bg-state-blocked/10 text-foreground',
+      className: 'border-l-4 border-l-state-blocked',
+      labelClassName: 'text-state-blocked',
     },
     {
       key: 'release',
@@ -275,7 +279,8 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
       description: waitReleaseCount > 0 ? '照会回答などで工程を戻せます' : '待ち解除はありません',
       chip: 'priority',
       icon: MessageSquareWarning,
-      className: 'border-state-done/35 bg-state-done/10 text-foreground',
+      className: 'border-l-4 border-l-state-done',
+      labelClassName: 'text-state-done',
     },
     {
       key: 'visit',
@@ -288,7 +293,8 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
         todayVisitCount > 0 ? '出発前チェックとセット確認' : '今日の個別訪問はありません',
       chip: 'visit_today',
       icon: CalendarDays,
-      className: 'border-tag-info/35 bg-tag-info/10 text-foreground',
+      className: 'border-l-4 border-l-tag-info',
+      labelClassName: 'text-tag-info',
     },
     {
       key: 'hold',
@@ -300,7 +306,8 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
           : '外部待ち・休止はありません',
       chip: externalCount > 0 ? 'external' : 'paused',
       icon: PauseCircle,
-      className: 'border-state-waiting/35 bg-state-waiting/10 text-foreground',
+      className: 'border-l-4 border-l-state-waiting',
+      labelClassName: 'text-state-waiting',
     },
   ];
 }
@@ -326,7 +333,7 @@ function SummaryTileButton({
       aria-pressed={selected}
       onClick={() => onSelect(tile.chip)}
     >
-      <span className="flex items-center gap-2 text-xs font-semibold">
+      <span className={cn('flex items-center gap-2 text-xs font-semibold', tile.labelClassName)}>
         <Icon className="size-4" aria-hidden="true" />
         {tile.label}
       </span>
