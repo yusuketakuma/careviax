@@ -74,12 +74,14 @@ function KpiCard({
 }) {
   return (
     <section
-      className="rounded-lg border border-border/70 bg-card p-4"
+      className="rounded-lg border border-border/70 bg-card p-3 sm:p-4"
       aria-label={`${label} ${value}`}
     >
       <h2 className="text-sm font-medium text-muted-foreground">{label}</h2>
       <div className="mt-2 flex items-center gap-3">
-        <p className={`whitespace-nowrap text-2xl font-bold tabular-nums ${textClass}`}>{value}</p>
+        <p className={`whitespace-nowrap text-xl font-bold tabular-nums sm:text-2xl ${textClass}`}>
+          {value}
+        </p>
         <ProgressBar percent={percent} colorClass={barClass} />
       </div>
     </section>
@@ -138,7 +140,7 @@ export function CapacityContent() {
     return (
       <div className="space-y-4" role="status" aria-label="キャパシティ読み込み中">
         <div
-          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+          className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
           data-testid="capacity-loading-kpis"
         >
           <Skeleton className="h-24 w-full rounded-lg" />
@@ -181,10 +183,11 @@ export function CapacityContent() {
         title="今日あとどれだけ対応できる?"
         description="訪問枠・調剤セット・スタッフ稼働・緊急余力から、今日あと対応できる量と詰まりを確認します。"
         shortcuts={getAdminCapacityShortcutLinks()}
+        supportingContent={null}
       />
 
       {/* KPI 4 枚: 訪問枠 / 調剤・セット / スタッフ稼働 / 緊急余力 */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" data-testid="capacity-kpis">
         <KpiCard
           label="訪問枠"
           value={`${kpis.visit_slots.completed} / ${kpis.visit_slots.total}件`}

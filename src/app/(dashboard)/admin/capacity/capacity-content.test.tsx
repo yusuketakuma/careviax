@@ -85,6 +85,11 @@ describe('CapacityContent', () => {
     const attention = screen.getByRole('heading', { name: '今すぐ見るべきこと' });
     const processChart = screen.getByRole('heading', { name: '行程ごとの残り' });
     const staffChart = screen.getByRole('heading', { name: 'スタッフ別の負荷' });
+    const kpiGrid = screen.getByTestId('capacity-kpis');
+
+    expect(screen.queryByText('最初に見るポイント')).toBeNull();
+    expect(kpiGrid.className).toContain('grid-cols-2');
+    expect(kpiGrid.className).toContain('xl:grid-cols-4');
 
     const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
     // 即時判断 section は KPI グリッド全体(最後の KPI=緊急余力)より後ろ。
@@ -124,6 +129,8 @@ describe('CapacityContent', () => {
 
     // loaded と同じ 4 KPI / 1 即時判断 / 2 チャート の骨格(load 時のジャンプ防止)。
     expect(kpis.childElementCount).toBe(4);
+    expect(kpis.className).toContain('grid-cols-2');
+    expect(kpis.className).toContain('xl:grid-cols-4');
     expect(attention.childElementCount).toBe(1);
     expect(charts.childElementCount).toBe(2);
 
