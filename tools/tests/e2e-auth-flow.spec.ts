@@ -94,6 +94,53 @@ test.describe('auth: MFA page', () => {
 
     expect(errors).toEqual([]);
   });
+
+  test('MFA setup page renders setup steps without contacting real MFA provider', async ({
+    context,
+  }) => {
+    const { page, errors } = await createInstrumentedPage(context, {
+      captureHttpErrors: false,
+    });
+    await page.route('**/api/me/mfa/setup', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          secretCode: 'JBSWY3DPEHPK3PXP',
+          otpauthUri: 'otpauth://totp/PH-OS:test@example.com?secret=JBSWY3DPEHPK3PXP&issuer=PH-OS',
+        }),
+      });
+    });
+
+    await openStableRoute(page, '/mfa/setup');
+
+    await expect(page.getByRole('heading', { name: /認証アプリを登録します/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /次へ/i })).toBeVisible();
+    await expect(page.getByRole('link', { name: /ログイン画面に戻る/i })).toBeVisible();
+    await expect(page.getByText('JBSWY3DPEHPK3PXP')).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('auth: lockout page', () => {
+  test('lockout page explains recovery path and keeps login return action visible', async ({
+    context,
+  }) => {
+    const { page, errors } = await createInstrumentedPage(context, {
+      captureHttpErrors: false,
+    });
+    await openStableRoute(page, '/lockout');
+
+    await expect(
+      page.getByRole('heading', { name: /アカウントを一時ロックしました/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/一定時間（30分）経過後/i)).toBeVisible();
+    await expect(page.getByText(/システム管理部門/i)).toBeVisible();
+    await expect(page.getByRole('link', { name: /ログイン画面に戻る/i })).toBeVisible();
+
+    expect(errors).toEqual([]);
+  });
 });
 
 test.describe('auth: first login page', () => {

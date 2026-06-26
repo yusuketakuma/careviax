@@ -4,7 +4,6 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -234,230 +233,263 @@ export default function MfaSetupPage() {
   }
 
   return (
-    <div className="w-full max-w-md">
+    <section
+      aria-labelledby="mfa-setup-title"
+      className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-sm"
+    >
       {/* Step indicator */}
-      <div className="mb-6">
+      <div className="border-b border-border/70 bg-slate-50/80 p-4 sm:p-6">
+        <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-primary">
+          <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+          MFA設定
+        </div>
+        <div className="mt-4 space-y-2">
+          <h2
+            id="mfa-setup-title"
+            className="text-xl font-semibold leading-tight text-foreground sm:text-2xl"
+          >
+            {step === 1 && '認証アプリを登録します'}
+            {step === 2 && '6桁の確認コードを入力します'}
+            {step === 3 && 'リカバリーコードを保存します'}
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            {step === 1 &&
+              '業務アカウントを保護するため、認証アプリでQRコードを読み取ってください。'}
+            {step === 2 && '認証アプリに表示された6桁のコードで、登録できたことを確認します。'}
+            {step === 3 && '端末紛失時に使うコードです。この画面を閉じる前に保存してください。'}
+          </p>
+        </div>
+      </div>
+
+      <div className="border-b border-border/70 px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center justify-between">
           {([1, 2, 3] as Step[]).map((s) => (
             <div key={s} className="flex flex-1 items-center">
-              <div className="flex flex-col items-center gap-1 flex-1">
+              <div className="flex flex-1 flex-col items-center gap-1.5 sm:gap-2">
                 <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors ${
+                  className={`flex h-9 w-9 items-center justify-center rounded-full border text-sm font-semibold transition-colors sm:h-11 sm:w-11 ${
                     s < step
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'border-primary bg-primary text-primary-foreground'
                       : s === step
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground'
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-muted text-muted-foreground'
                   }`}
                   aria-current={s === step ? 'step' : undefined}
                 >
                   {s < step ? <Check className="h-4 w-4" aria-hidden="true" /> : s}
                 </div>
-                <span className="text-xs text-muted-foreground text-center">
+                <span className="text-center text-[11px] leading-3 text-muted-foreground sm:text-xs sm:leading-4">
                   {stepLabels[s - 1]}
                 </span>
               </div>
               {s < 3 && (
-                <div className={`h-0.5 w-full mx-2 mb-5 ${s < step ? 'bg-primary' : 'bg-muted'}`} />
+                <div
+                  className={`mx-1 mb-5 h-0.5 w-full sm:mx-2 sm:mb-6 ${
+                    s < step ? 'bg-primary' : 'bg-muted'
+                  }`}
+                />
               )}
             </div>
           ))}
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
-            <CardTitle>MFA設定</CardTitle>
-          </div>
-          <CardDescription>
-            {step === 1 && '認証アプリでQRコードを読み取ってください'}
-            {step === 2 && '認証アプリに表示された6桁のコードを入力してください'}
-            {step === 3 && 'リカバリーコードを安全な場所に保存して設定を完了してください'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+      <div className="p-4 sm:p-6">
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-          {/* Step 1: QR Code */}
-          {step === 1 && (
-            <div className="flex flex-col items-center gap-6">
-              <div className="flex h-48 w-48 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted">
-                {setupLoading ? (
-                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <LoaderCircle className="h-12 w-12 animate-spin" aria-hidden="true" />
-                    <span className="text-xs">設定を準備中</span>
-                  </div>
-                ) : qrCodeDataUrl ? (
-                  <Image
-                    src={qrCodeDataUrl}
-                    alt="MFA設定用QRコード"
-                    className="h-48 w-48 rounded-md bg-background p-2"
-                    width={192}
-                    height={192}
-                    unoptimized
+        {/* Step 1: QR Code */}
+        {step === 1 && (
+          <div className="flex flex-col items-center gap-4 sm:gap-6">
+            <div className="flex h-40 w-40 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted sm:h-48 sm:w-48">
+              {setupLoading ? (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <LoaderCircle
+                    className="h-10 w-10 animate-spin sm:h-12 sm:w-12"
+                    aria-hidden="true"
                   />
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                    <QrCode className="h-12 w-12" aria-hidden="true" />
-                    <span className="text-xs">認証アプリで手動登録</span>
-                  </div>
-                )}
-              </div>
+                  <span className="text-xs">設定を準備中</span>
+                </div>
+              ) : qrCodeDataUrl ? (
+                <Image
+                  src={qrCodeDataUrl}
+                  alt="MFA設定用QRコード"
+                  className="h-40 w-40 rounded-md bg-background p-2 sm:h-48 sm:w-48"
+                  width={192}
+                  height={192}
+                  unoptimized
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <QrCode className="h-10 w-10 sm:h-12 sm:w-12" aria-hidden="true" />
+                  <span className="text-xs">認証アプリで手動登録</span>
+                </div>
+              )}
+            </div>
 
-              <div className="w-full rounded-lg bg-muted p-3">
-                <p className="mb-1 text-xs font-medium text-muted-foreground">
-                  手動入力用シークレットキー
-                </p>
-                <code className="block break-all text-sm font-mono text-foreground">
-                  {secretCode || '取得中...'}
-                </code>
-              </div>
+            <div className="w-full rounded-lg bg-muted p-2.5 sm:p-3">
+              <p className="mb-1 text-xs font-medium text-muted-foreground">
+                手動入力用シークレットキー
+              </p>
+              <code className="block break-all text-sm font-mono text-foreground">
+                {secretCode || '取得中...'}
+              </code>
+            </div>
 
-              <div className="w-full text-sm text-muted-foreground space-y-2">
-                <p className="font-medium">対応アプリ:</p>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>Google Authenticator</li>
-                  <li>Microsoft Authenticator</li>
-                  <li>Authy</li>
-                </ul>
-              </div>
+            <Button
+              size="lg"
+              className="h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+              onClick={() => setStep(2)}
+              disabled={setupLoading || !secretCode}
+            >
+              次へ
+            </Button>
 
+            <div className="w-full space-y-1.5 text-sm text-muted-foreground sm:space-y-2">
+              <p className="font-medium">対応アプリ:</p>
+              <ul className="grid grid-cols-1 gap-1 pl-0 sm:list-disc sm:pl-5">
+                <li>Google Authenticator</li>
+                <li>Microsoft Authenticator</li>
+                <li>Authy</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Verification */}
+        {step === 2 && (
+          <form onSubmit={handleVerify} className="flex flex-col gap-6">
+            <div className="grid grid-cols-6 gap-2" role="group" aria-label="確認コード入力">
+              {digits.map((digit, index) => (
+                <Input
+                  key={index}
+                  ref={setRef(index)}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={digit}
+                  onChange={(e) => handleDigitChange(index, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(index, e)}
+                  className="h-12 min-h-[48px] w-full min-w-0 text-center text-lg font-semibold"
+                  aria-label={`コード ${index + 1}桁目`}
+                  disabled={isLoading}
+                  autoFocus={index === 0}
+                />
+              ))}
+            </div>
+
+            <div className="flex gap-3">
               <Button
+                type="button"
+                variant="outline"
                 size="lg"
-                className="w-full"
-                onClick={() => setStep(2)}
-                disabled={setupLoading || !secretCode}
+                className="h-11 min-h-[44px] flex-1 sm:h-11 sm:min-h-[44px]"
+                onClick={() => {
+                  setStep(1);
+                  setDigits(['', '', '', '', '', '']);
+                  setError(null);
+                }}
               >
-                次へ
+                戻る
+              </Button>
+              <Button
+                type="submit"
+                size="lg"
+                className="h-11 min-h-[44px] flex-1 sm:h-11 sm:min-h-[44px]"
+                disabled={isLoading || digits.join('').length !== 6}
+                aria-busy={isLoading}
+              >
+                {isLoading ? '確認中...' : '確認する'}
               </Button>
             </div>
-          )}
+          </form>
+        )}
 
-          {/* Step 2: Verification */}
-          {step === 2 && (
-            <form onSubmit={handleVerify} className="flex flex-col gap-6">
-              <div className="flex justify-center gap-2" role="group" aria-label="確認コード入力">
-                {digits.map((digit, index) => (
-                  <Input
-                    key={index}
-                    ref={setRef(index)}
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={6}
-                    value={digit}
-                    onChange={(e) => handleDigitChange(index, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(index, e)}
-                    className="h-12 w-12 text-center text-lg font-semibold"
-                    aria-label={`コード ${index + 1}桁目`}
-                    disabled={isLoading}
-                    autoFocus={index === 0}
-                  />
+        {/* Step 3: Completed */}
+        {step === 3 && (
+          <div className="flex flex-col gap-6">
+            <Alert className="border-state-done/30 bg-state-done/10">
+              <ShieldCheck className="h-4 w-4 text-state-done" />
+              <AlertDescription className="text-state-done">
+                二要素認証の設定が完了しました。次回ログインから認証アプリの6桁コードが必要になります。
+              </AlertDescription>
+            </Alert>
+
+            <Alert className="border-state-confirm/30 bg-state-confirm/10 text-state-confirm">
+              <AlertCircle className="h-4 w-4 text-state-confirm" />
+              <AlertDescription className="text-state-confirm">
+                以下のリカバリーコードはこの画面でのみ表示されます。印刷または安全な場所に保存してください。
+              </AlertDescription>
+            </Alert>
+
+            <div className="rounded-lg border bg-muted p-4">
+              <p className="mb-3 text-sm font-medium text-foreground">リカバリーコード</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {recoveryCodes.map((code) => (
+                  <code
+                    key={code}
+                    className="rounded-md border border-border bg-background px-3 py-2 text-sm font-mono text-foreground"
+                  >
+                    {code}
+                  </code>
                 ))}
               </div>
+            </div>
 
-              <div className="flex gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  className="flex-1"
-                  onClick={() => {
-                    setStep(1);
-                    setDigits(['', '', '', '', '', '']);
-                    setError(null);
-                  }}
-                >
-                  戻る
-                </Button>
-                <Button
-                  type="submit"
-                  size="lg"
-                  className="flex-1"
-                  disabled={isLoading || digits.join('').length !== 6}
-                  aria-busy={isLoading}
-                >
-                  {isLoading ? '確認中...' : '確認する'}
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {/* Step 3: Completed */}
-          {step === 3 && (
-            <div className="flex flex-col gap-6">
-              <Alert className="border-state-done/30 bg-state-done/10">
-                <ShieldCheck className="h-4 w-4 text-state-done" />
-                <AlertDescription className="text-state-done">
-                  二要素認証の設定が完了しました。次回ログインから認証アプリの6桁コードが必要になります。
-                </AlertDescription>
-              </Alert>
-
-              <Alert className="border-state-confirm/30 bg-state-confirm/10 text-state-confirm">
-                <AlertCircle className="h-4 w-4 text-state-confirm" />
-                <AlertDescription className="text-state-confirm">
-                  以下のリカバリーコードはこの画面でのみ表示されます。印刷または安全な場所に保存してください。
-                </AlertDescription>
-              </Alert>
-
-              <div className="rounded-lg border bg-muted p-4">
-                <p className="mb-3 text-sm font-medium text-foreground">リカバリーコード</p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {recoveryCodes.map((code) => (
-                    <code
-                      key={code}
-                      className="rounded-md border border-border bg-background px-3 py-2 text-sm font-mono text-foreground"
-                    >
-                      {code}
-                    </code>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Button variant="outline" size="lg" className="w-full" onClick={handleCopySecret}>
-                  {copied ? (
-                    <>
-                      <Check className="mr-2 h-4 w-4 text-state-done" />
-                      コピーしました
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="mr-2 h-4 w-4" />
-                      コードをコピー
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="w-full"
-                  onClick={handleDownloadRecoveryCodes}
-                >
-                  <Download className="mr-2 h-4 w-4" />
-                  テキスト保存
-                </Button>
-              </div>
-
-              <Button size="lg" className="w-full" onClick={() => router.push(callbackUrl)}>
-                設定を完了する
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+                onClick={handleCopySecret}
+              >
+                {copied ? (
+                  <>
+                    <Check className="mr-2 h-4 w-4 text-state-done" />
+                    コピーしました
+                  </>
+                ) : (
+                  <>
+                    <Copy className="mr-2 h-4 w-4" />
+                    コードをコピー
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+                onClick={handleDownloadRecoveryCodes}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                テキスト保存
               </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
-      <p className="mt-4 text-center text-sm text-muted-foreground">
-        <Link href="/login" className="text-primary hover:underline">
+
+            <Button
+              size="lg"
+              className="h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+              onClick={() => router.push(callbackUrl)}
+            >
+              設定を完了する
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-border/70 px-5 py-4 text-center sm:px-6">
+        <Link
+          href="/login"
+          className="inline-flex min-h-11 items-center justify-center rounded px-3 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           ログイン画面に戻る
         </Link>
-      </p>
-    </div>
+      </div>
+    </section>
   );
 }
