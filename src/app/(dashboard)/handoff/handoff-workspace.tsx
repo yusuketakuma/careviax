@@ -45,7 +45,10 @@ import {
   buildWorkspaceNextAction,
   consultItemsOf,
   countConsultByStatus,
+  familyNameOf,
   formatTimeOfDay,
+  messageItemsOf,
+  handoffItemKind,
   progressPercent,
   CONSULT_STATUS_META,
   CONSULT_STATUS_ORDER,
@@ -467,6 +470,205 @@ function TransferDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 連絡(伝言): 3点セット不要の薬局内フリー連絡チャンネル(薬剤師⇔事務)
+// ---------------------------------------------------------------------------
+
+function HandoffMessageChannel({
+  items,
+  boardId,
+  orgId,
+  recipientOptions,
+  viewerUserId,
+  onChanged,
+}: {
+  items: HandoffBoardItem[];
+  boardId: string | null;
+  orgId: string;
+  recipientOptions: HandoffRecipientOption[];
+  viewerUserId: string;
+  onChanged: () => void;
+}) {
+  const [recipientUserId, setRecipientUserId] = useState('');
+  const [content, setContent] = useState('');
+  const canSelectRecipient = recipientOptions.length > 0;
+  const isComplete = content.trim().length > 0 && Boolean(recipientUserId);
+
+  const sendMutation = useMutation({
+    mutationFn: async () => {
+      if (!boardId) throw new Error('ボードが見つかりません');
+      const recipient = recipientOptions.find((option) => option.id === recipientUserId);
+      const res = await fetch('/api/handoff-board/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          board_id: boardId,
+          kind: 'message',
+          content: content.trim(),
+          recipient_user_id: recipientUserId,
+          recipient_label: recipient ? `${recipient.name}(${recipient.role_label})` : '',
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message ?? '連絡を送れませんでした');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('連絡を送りました。');
+      setContent('');
+      onChanged();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const readMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      const res = await fetch(`/api/handoff-board/items/${itemId}/read`, {
+        method: 'PATCH',
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message ?? '既読にできませんでした');
+      }
+      return res.json();
+    },
+    onSuccess: () => onChanged(),
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="handoff-message-heading"
+      data-testid="handoff-message-channel"
+    >
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 id="handoff-message-heading" className="text-base font-bold text-foreground">
+          連絡
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          3点セット不要の一言連絡。薬剤師⇔事務で気軽に。受け取りは既読で記録されます。
+        </p>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          まだ連絡はありません。下の入力から送れます。
+        </p>
+      ) : (
+        <ul className="mt-3 space-y-2" role="list">
+          {items.map((item) => {
+            const outgoing = item.created_by === viewerUserId;
+            const readByRecipient = item.recipient_user_id
+              ? item.read_by.includes(item.recipient_user_id)
+              : false;
+            const unreadIncoming = !outgoing && !item.read_by.includes(viewerUserId);
+            return (
+              <li
+                key={item.id}
+                data-testid="handoff-message-item"
+                className={cn(
+                  'rounded-md border px-3 py-2',
+                  unreadIncoming ? 'border-tag-info/40 bg-tag-info/5' : 'border-border/60 bg-card',
+                )}
+              >
+                <div className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {familyNameOf(item.created_by_name)}
+                  </span>
+                  <span>→ {item.recipient_label ?? item.recipient_name ?? '—'}</span>
+                  <span className="ml-auto tabular-nums">{formatTimeOfDay(item.created_at)}</span>
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                  {item.content}
+                </p>
+                <div className="mt-1 flex items-center gap-2 text-[11px]">
+                  {outgoing ? (
+                    <span className={readByRecipient ? 'text-state-done' : 'text-muted-foreground'}>
+                      {readByRecipient ? '既読' : '未読'}
+                    </span>
+                  ) : unreadIncoming ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-[11px]"
+                      disabled={readMutation.isPending}
+                      onClick={() => readMutation.mutate(item.id)}
+                      data-testid="handoff-message-confirm"
+                    >
+                      確認済みにする
+                    </Button>
+                  ) : (
+                    <span className="text-state-done">確認済み</span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <form
+        className="mt-3 space-y-2 border-t border-border/60 pt-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!isComplete || sendMutation.isPending) return;
+          sendMutation.mutate();
+        }}
+      >
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Select
+            value={recipientUserId}
+            disabled={!canSelectRecipient}
+            onValueChange={(value) => setRecipientUserId(value ?? '')}
+          >
+            <SelectTrigger className="w-full sm:w-56" aria-label="連絡の宛先">
+              <SelectValue placeholder="宛先を選択" />
+            </SelectTrigger>
+            <SelectContent>
+              {recipientOptions.map((option) => (
+                <SelectItem key={option.id} value={option.id}>
+                  {option.name}({option.role_label})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Textarea
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder="例: 14時の鈴木様、保冷剤の準備をお願いします"
+            rows={2}
+            className="flex-1 resize-none text-sm"
+            aria-label="連絡内容"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          {!canSelectRecipient ? (
+            <p className="text-xs text-state-confirm" role="alert">
+              連絡できる宛先がいません。
+            </p>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+          <Button
+            type="submit"
+            size="sm"
+            className="min-h-[40px]"
+            disabled={!isComplete || sendMutation.isPending || !boardId || !canSelectRecipient}
+            data-testid="handoff-message-send"
+          >
+            {sendMutation.isPending ? '送信中...' : '連絡する'}
+          </Button>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -966,11 +1168,14 @@ export function HandoffWorkspace() {
   const board = boardQuery.data ?? null;
   const cockpit = cockpitQuery.data ?? null;
 
-  const { outgoingItems, incomingItems } = useMemo(() => {
+  const { outgoingItems, incomingItems, messageItems } = useMemo(() => {
     const items = board?.items ?? [];
+    // 伝言(message)は連絡チャンネルで扱い、責任移転/相談の列からは除外する。
+    const nonMessage = items.filter((item) => handoffItemKind(item) !== 'message');
     return {
-      outgoingItems: items.filter((item) => item.direction === 'outgoing'),
-      incomingItems: items.filter((item) => item.direction === 'incoming'),
+      outgoingItems: nonMessage.filter((item) => item.direction === 'outgoing'),
+      incomingItems: nonMessage.filter((item) => item.direction === 'incoming'),
+      messageItems: messageItemsOf(items),
     };
   }, [board?.items]);
   const primaryIncomingItem = incomingItems[0] ?? null;
@@ -1069,6 +1274,15 @@ export function HandoffWorkspace() {
                   事務からの疑義・判断もここに届き、対応は監査ログに残ります。
                 </p>
               </section>
+
+              <HandoffMessageChannel
+                items={messageItems}
+                boardId={board.id}
+                orgId={orgId}
+                recipientOptions={board.recipient_options}
+                viewerUserId={userId}
+                onChanged={invalidateBoard}
+              />
 
               <ConsultWorkspace items={board.items} orgId={orgId} onResolved={invalidateBoard} />
 

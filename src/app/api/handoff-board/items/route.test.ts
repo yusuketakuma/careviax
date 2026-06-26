@@ -281,4 +281,74 @@ describe('/api/handoff-board/items', () => {
     expect(handoffBoardFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
+
+  it('creates a free-form message (kind=message) without the 3-point set', async () => {
+    handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
+    const created = {
+      id: 'item_message',
+      board_id: 'board_1',
+      content: '14時の鈴木様、保冷剤の準備お願いします',
+      recipient_user_id: 'user_2',
+      recipient_label: '鈴木 一郎(事務スタッフ)',
+      lifecycle_status: null,
+      consult_status: null,
+    };
+    const itemCreateMock = vi.fn().mockResolvedValue(created);
+    const auditCreateMock = vi.fn().mockResolvedValue({ id: 'audit_msg' });
+    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        handoffItem: { create: itemCreateMock },
+        auditLog: { create: auditCreateMock },
+      }),
+    );
+
+    const req = createRequest('http://localhost/api/handoff-board/items', {
+      board_id: 'board_1',
+      kind: 'message',
+      content: '14時の鈴木様、保冷剤の準備お願いします',
+      recipient_user_id: 'user_2',
+      recipient_label: '鈴木 一郎(事務スタッフ)',
+    });
+    const res = await POST(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(201);
+
+    // 伝言は3点セット・相談状態・lifecycle を持たない(全 null)。
+    expect(itemCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recipient_user_id: 'user_2',
+          lifecycle_status: null,
+          consult_status: null,
+          scope: null,
+          rationale: null,
+          deadline: null,
+        }),
+      }),
+    );
+    // 監査既定方針: 伝言も軽量に記録する。
+    expect(auditCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'handoff_message_created',
+          target_type: 'handoff_item',
+          target_id: 'item_message',
+        }),
+      }),
+    );
+  });
+
+  it('rejects a message (kind=message) without a recipient', async () => {
+    const req = createRequest('http://localhost/api/handoff-board/items', {
+      board_id: 'board_1',
+      kind: 'message',
+      content: '宛先のない連絡',
+    });
+    const res = await POST(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(400);
+    const json = await res!.json();
+    expect(json.details).toMatchObject({
+      recipient_label: expect.arrayContaining([expect.stringContaining('連絡の宛先')]),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
 });

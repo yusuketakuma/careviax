@@ -25,6 +25,9 @@ const createHandoffItemSchema = z
     priority: z.enum(['normal', 'high', 'urgent']).default('normal'),
     entity_type: z.string().trim().max(100).optional(),
     entity_id: z.string().trim().max(100).optional(),
+    // 種別。未指定時は従来どおり推論(consult_status あり=相談 / 宛先あり=責任移転)。
+    // 'message' は3点セット不要の薬局内フリー連絡(伝言)。
+    kind: z.enum(['transfer', 'consult', 'message']).optional(),
     // --- 責任移転(仕事を渡す)用の拡張フィールド ---
     recipient_user_id: z.string().trim().min(1).max(100).optional(),
     recipient_label: z.string().trim().min(1, '宛先は必須です').max(200).optional(),
@@ -38,7 +41,19 @@ const createHandoffItemSchema = z
     consult_status: consultStatusSchema.optional(),
   })
   .superRefine((value, refinementCtx) => {
-    const isTransfer = Boolean(value.recipient_label || value.recipient_user_id);
+    const hasRecipient = Boolean(value.recipient_label || value.recipient_user_id);
+    // フリー連絡(伝言): 宛先 + 内容のみ。3点セット・相談状態は不要。
+    if (value.kind === 'message') {
+      if (!hasRecipient) {
+        refinementCtx.addIssue({
+          code: 'custom',
+          path: ['recipient_label'],
+          message: '連絡の宛先を指定してください',
+        });
+      }
+      return;
+    }
+    const isTransfer = hasRecipient;
     const isConsult = Boolean(value.consult_status);
     if (!isTransfer && !isConsult) {
       refinementCtx.addIssue({
@@ -105,7 +120,11 @@ export const POST = withAuthContext(
       if (!recipient) return validationError('宛先ユーザーが見つかりません');
     }
 
-    const isTransfer = Boolean(parsed.data.recipient_label || parsed.data.recipient_user_id);
+    const isMessage = parsed.data.kind === 'message';
+    const isTransfer =
+      !isMessage &&
+      !parsed.data.consult_status &&
+      Boolean(parsed.data.recipient_label || parsed.data.recipient_user_id);
 
     const created = await withOrgContext(ctx.orgId, async (tx) => {
       const item = await tx.handoffItem.create({
@@ -117,21 +136,23 @@ export const POST = withAuthContext(
           entity_id: parsed.data.entity_id ?? null,
           recipient_user_id: parsed.data.recipient_user_id ?? null,
           recipient_label: parsed.data.recipient_label ?? null,
-          lifecycle_status: parsed.data.consult_status
-            ? null
-            : (parsed.data.lifecycle_status ?? 'proposed'),
-          scope: parsed.data.scope ?? null,
-          rationale: parsed.data.rationale ?? null,
-          deadline: parsed.data.deadline ? new Date(parsed.data.deadline) : null,
-          progress_done: parsed.data.progress_done ?? null,
-          progress_total: parsed.data.progress_total ?? null,
-          consult_status: parsed.data.consult_status ?? null,
+          // 伝言(message)・相談(consult)は lifecycle を持たない。責任移転のみ proposed 既定。
+          lifecycle_status:
+            isMessage || parsed.data.consult_status
+              ? null
+              : (parsed.data.lifecycle_status ?? 'proposed'),
+          scope: isMessage ? null : (parsed.data.scope ?? null),
+          rationale: isMessage ? null : (parsed.data.rationale ?? null),
+          deadline: !isMessage && parsed.data.deadline ? new Date(parsed.data.deadline) : null,
+          progress_done: isMessage ? null : (parsed.data.progress_done ?? null),
+          progress_total: isMessage ? null : (parsed.data.progress_total ?? null),
+          consult_status: isMessage ? null : (parsed.data.consult_status ?? null),
           read_by: [],
           created_by: ctx.userId,
         },
       });
 
-      if (isTransfer && !parsed.data.consult_status) {
+      if (isTransfer) {
         // 責任の移転は「受領確認と根拠が必ず記録されます」(12_handoff)。
         await createAuditLogEntry(tx, ctx, {
           action: 'handoff_transfer_created',
@@ -143,6 +164,17 @@ export const POST = withAuthContext(
             scope: item.scope,
             rationale: item.rationale,
             deadline: item.deadline?.toISOString() ?? null,
+          },
+        });
+      } else if (isMessage) {
+        // 薬局内フリー連絡も監査既定方針に沿って軽量に記録する。
+        await createAuditLogEntry(tx, ctx, {
+          action: 'handoff_message_created',
+          targetType: 'handoff_item',
+          targetId: item.id,
+          changes: {
+            recipient_user_id: item.recipient_user_id,
+            recipient_label: item.recipient_label,
           },
         });
       }

@@ -142,7 +142,11 @@ describe('/api/handoff-board', () => {
         include: {
           items: {
             where: {
-              OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
+              OR: [
+                { lifecycle_status: { not: null } },
+                { consult_status: { not: null } },
+                { recipient_user_id: { not: null } },
+              ],
             },
             orderBy: { created_at: 'asc' },
           },

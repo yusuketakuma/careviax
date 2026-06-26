@@ -109,9 +109,34 @@ export const RESOLUTION_ACTION_LABEL: Record<HandoffResolutionAction, string> = 
   returned_to_clerk: '事務へ戻す',
 };
 
+/** ハンドオフ項目の種別。consult=相談 / transfer=責任移転 / message=薬局内フリー連絡(伝言)。 */
+export type HandoffItemKind = 'transfer' | 'consult' | 'message';
+
+/**
+ * 1テーブル(HandoffItem)に同居する3種別を列の有無で判別する。
+ * consult_status あり=相談 / lifecycle_status あり=責任移転 / それ以外(宛先のみ)=伝言。
+ */
+export function handoffItemKind(
+  item: Pick<HandoffBoardItem, 'lifecycle_status' | 'consult_status'>,
+): HandoffItemKind {
+  if (item.consult_status != null) return 'consult';
+  if (item.lifecycle_status != null) return 'transfer';
+  return 'message';
+}
+
 /** consult_status を持つ相談だけを取り出す。 */
 export function consultItemsOf(items: HandoffBoardItem[]): HandoffBoardItem[] {
   return items.filter((item) => item.consult_status != null);
+}
+
+/** 伝言(フリー連絡)だけを取り出す。 */
+export function messageItemsOf(items: HandoffBoardItem[]): HandoffBoardItem[] {
+  return items.filter((item) => handoffItemKind(item) === 'message');
+}
+
+/** 責任移転(仕事を渡す)だけを取り出す。 */
+export function transferItemsOf(items: HandoffBoardItem[]): HandoffBoardItem[] {
+  return items.filter((item) => handoffItemKind(item) === 'transfer');
 }
 
 /** 相談を状態ごとに件数集計する。 */

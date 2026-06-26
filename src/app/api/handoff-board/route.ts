@@ -39,12 +39,23 @@ const HANDOFF_RECIPIENT_ROLES = [
 function isCurrentHandoffItem(item: {
   lifecycle_status?: string | null;
   consult_status?: string | null;
+  recipient_user_id?: string | null;
 }): boolean {
-  return item.lifecycle_status != null || item.consult_status != null;
+  // 責任移転(lifecycle) / 相談(consult) / フリー連絡(宛先あり=message) を現行アイテムとして扱う。
+  // legacy のシフトメモ(全 null・宛先なし)だけは除外する。
+  return (
+    item.lifecycle_status != null ||
+    item.consult_status != null ||
+    item.recipient_user_id != null
+  );
 }
 
 const currentHandoffItemWhere = {
-  OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
+  OR: [
+    { lifecycle_status: { not: null } },
+    { consult_status: { not: null } },
+    { recipient_user_id: { not: null } },
+  ],
 };
 
 const handoffBoardInclude = {
