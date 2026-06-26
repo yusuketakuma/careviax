@@ -487,6 +487,7 @@ export function UsersContent() {
             <Button
               size="sm"
               variant="secondary"
+              className="min-h-[44px] sm:min-h-[44px]"
               aria-label={`${user.name}の詳細を開く`}
               onClick={() => openDetail(user)}
             >
@@ -496,6 +497,7 @@ export function UsersContent() {
               <Button
                 size="sm"
                 variant="outline"
+                className="min-h-[44px] sm:min-h-[44px]"
                 aria-label={`${user.name}に招待を再送`}
                 onClick={() => setActionDialog({ type: 'resend_invite', user, reason: '' })}
               >
@@ -506,6 +508,7 @@ export function UsersContent() {
               <Button
                 size="sm"
                 variant="outline"
+                className="min-h-[44px] sm:min-h-[44px]"
                 aria-label={`${user.name}を停止`}
                 onClick={() => setActionDialog({ type: 'suspend', user, reason: '' })}
               >
@@ -516,6 +519,7 @@ export function UsersContent() {
               <Button
                 size="sm"
                 variant="outline"
+                className="min-h-[44px] sm:min-h-[44px]"
                 aria-label={`${user.name}を復帰`}
                 onClick={() => setActionDialog({ type: 'reactivate', user, reason: '' })}
               >
@@ -554,130 +558,162 @@ export function UsersContent() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-4">
-        <SummaryCard label="総ユーザー数" value={userCountsUnavailable ? '—' : summary.total} />
-        <SummaryCard label="稼働中" value={userCountsUnavailable ? '—' : summary.active} />
-        <SummaryCard
-          label="招待済（未承認）"
-          value={userCountsUnavailable ? '—' : summary.invited}
-        />
-        <SummaryCard label="停止/退職" value={userCountsUnavailable ? '—' : summary.suspended} />
-      </div>
-
+    <div className="space-y-4">
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">絞り込み</CardTitle>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <CardTitle className="text-base">ユーザー一覧</CardTitle>
+            <p className="hidden text-sm text-muted-foreground sm:block">
+              招待、権限、停止状態を一覧で確認し、必要なユーザーだけ詳細を開きます。
+            </p>
+          </div>
+          <Button className="min-h-[44px] sm:min-h-[44px]" onClick={() => setShowInvite(true)}>
+            ユーザーを招待
+          </Button>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <CardContent className="space-y-4">
           <Field label="検索" htmlFor="user-filter-search">
             <Input
               id="user-filter-search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="氏名・メール・店舗で検索"
+              className="min-h-[44px] sm:min-h-[44px]"
             />
           </Field>
-          <Field label="ロール" htmlFor="user-filter-role">
-            <Select
-              value={roleFilter}
-              onValueChange={(value) =>
-                setRoleFilter((value as 'all' | ManageableMemberRole) ?? 'all')
-              }
-            >
-              <SelectTrigger id="user-filter-role">
-                {/* Radix は既定値ラベルを SSR 解決できず生 enum を出すため表示文言を明示 */}
-                <SelectValue>
-                  {roleFilter === 'all'
-                    ? 'すべて'
-                    : (ROLE_OPTIONS.find(([value]) => value === roleFilter)?.[1] ?? roleFilter)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">すべて</SelectItem>
-                {ROLE_OPTIONS.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="所属店舗" htmlFor="user-filter-site">
-            <Select value={siteFilter} onValueChange={(value) => setSiteFilter(value ?? 'all')}>
-              <SelectTrigger id="user-filter-site">
-                <SelectValue>
-                  {siteFilter === 'all'
-                    ? 'すべて'
-                    : (sites.find((site) => site.id === siteFilter)?.name ?? siteFilter)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">すべて</SelectItem>
-                {sites.map((site) => (
-                  <SelectItem key={site.id} value={site.id}>
-                    {site.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="状態" htmlFor="user-filter-status">
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? 'all')}>
-              <SelectTrigger id="user-filter-status">
-                <SelectValue>
-                  {statusFilter === 'all'
-                    ? 'すべて'
-                    : (STATUS_MAP[statusFilter as keyof typeof STATUS_MAP]?.label ?? statusFilter)}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">すべて</SelectItem>
-                {Object.entries(STATUS_MAP).map(([value, config]) => (
-                  <SelectItem key={value} value={value}>
-                    {config.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="資格" htmlFor="user-filter-credential">
-            <Select
-              value={credentialFilter}
-              onValueChange={(value) => setCredentialFilter(value ?? 'all')}
-            >
-              <SelectTrigger id="user-filter-credential">
-                <SelectValue>
-                  {credentialFilter === 'all' ? 'すべて' : credentialFilter}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">すべて</SelectItem>
-                {credentialOptions.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">ユーザー一覧</CardTitle>
-          <Button onClick={() => setShowInvite(true)}>ユーザーを招待</Button>
-        </CardHeader>
-        <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={filteredUsers}
-            isLoading={isLoading}
-            errorMessage={isError ? 'ユーザー一覧を取得できませんでした' : undefined}
-            onRetry={() => void refetch()}
-            caption="ユーザー一覧"
-          />
+          <div className="-mx-4 border-t border-border/70 pt-1 sm:-mx-6">
+            <DataTable
+              columns={columns}
+              data={filteredUsers}
+              isLoading={isLoading}
+              errorMessage={isError ? 'ユーザー一覧を取得できませんでした' : undefined}
+              onRetry={() => void refetch()}
+              caption="ユーザー一覧"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-2 rounded-xl border border-border/70 bg-background/70 px-3 py-3">
+            {[
+              ['総ユーザー数', userCountsUnavailable ? '—' : summary.total],
+              ['稼働中', userCountsUnavailable ? '—' : summary.active],
+              ['招待済', userCountsUnavailable ? '—' : summary.invited],
+              ['停止/退職', userCountsUnavailable ? '—' : summary.suspended],
+            ].map(([label, value]) => (
+              <Badge key={label} variant="outline" className="min-h-7 rounded-full px-3">
+                {label}: <span className="font-semibold tabular-nums">{value}</span>
+              </Badge>
+            ))}
+          </div>
+
+          <details className="group rounded-xl border border-border/70 bg-background/60 px-3 py-2">
+            <summary className="flex min-h-[44px] cursor-pointer items-center justify-between gap-3 text-sm font-medium text-foreground">
+              詳細フィルタ
+              <span className="text-xs text-muted-foreground">
+                ロール・店舗・状態・資格で絞り込み
+              </span>
+            </summary>
+            <div className="grid gap-3 pt-3 md:grid-cols-2 xl:grid-cols-4">
+              <Field label="ロール" htmlFor="user-filter-role">
+                <Select
+                  value={roleFilter}
+                  onValueChange={(value) =>
+                    setRoleFilter((value as 'all' | ManageableMemberRole) ?? 'all')
+                  }
+                >
+                  <SelectTrigger id="user-filter-role" className="min-h-[44px] sm:min-h-[44px]">
+                    {/* Radix は既定値ラベルを SSR 解決できず生 enum を出すため表示文言を明示 */}
+                    <SelectValue>
+                      {roleFilter === 'all'
+                        ? 'すべて'
+                        : (ROLE_OPTIONS.find(([value]) => value === roleFilter)?.[1] ?? roleFilter)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="min-h-[44px]">
+                      すべて
+                    </SelectItem>
+                    {ROLE_OPTIONS.map(([value, label]) => (
+                      <SelectItem key={value} value={value} className="min-h-[44px]">
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="所属店舗" htmlFor="user-filter-site">
+                <Select value={siteFilter} onValueChange={(value) => setSiteFilter(value ?? 'all')}>
+                  <SelectTrigger id="user-filter-site" className="min-h-[44px] sm:min-h-[44px]">
+                    <SelectValue>
+                      {siteFilter === 'all'
+                        ? 'すべて'
+                        : (sites.find((site) => site.id === siteFilter)?.name ?? siteFilter)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="min-h-[44px]">
+                      すべて
+                    </SelectItem>
+                    {sites.map((site) => (
+                      <SelectItem key={site.id} value={site.id} className="min-h-[44px]">
+                        {site.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="状態" htmlFor="user-filter-status">
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value) => setStatusFilter(value ?? 'all')}
+                >
+                  <SelectTrigger id="user-filter-status" className="min-h-[44px] sm:min-h-[44px]">
+                    <SelectValue>
+                      {statusFilter === 'all'
+                        ? 'すべて'
+                        : (STATUS_MAP[statusFilter as keyof typeof STATUS_MAP]?.label ??
+                          statusFilter)}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="min-h-[44px]">
+                      すべて
+                    </SelectItem>
+                    {Object.entries(STATUS_MAP).map(([value, config]) => (
+                      <SelectItem key={value} value={value} className="min-h-[44px]">
+                        {config.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="資格" htmlFor="user-filter-credential">
+                <Select
+                  value={credentialFilter}
+                  onValueChange={(value) => setCredentialFilter(value ?? 'all')}
+                >
+                  <SelectTrigger
+                    id="user-filter-credential"
+                    className="min-h-[44px] sm:min-h-[44px]"
+                  >
+                    <SelectValue>
+                      {credentialFilter === 'all' ? 'すべて' : credentialFilter}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="min-h-[44px]">
+                      すべて
+                    </SelectItem>
+                    {credentialOptions.map((option) => (
+                      <SelectItem key={option} value={option} className="min-h-[44px]">
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+          </details>
         </CardContent>
       </Card>
 
@@ -1263,17 +1299,6 @@ export function UsersContent() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: number | string }) {
-  return (
-    <Card>
-      <CardContent>
-        <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="mt-2 text-3xl font-semibold">{value}</div>
-      </CardContent>
-    </Card>
   );
 }
 

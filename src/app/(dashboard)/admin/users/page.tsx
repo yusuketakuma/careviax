@@ -17,6 +17,7 @@ export default function UsersPage() {
         title="ユーザー管理"
         description="スタッフの招待・権限変更・停止を管理します。"
         shortcuts={getAdminUsersShortcutLinks()}
+        supportingContent={null}
       />
 
       <Suspense fallback={<Loading />}>
