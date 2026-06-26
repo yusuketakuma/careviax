@@ -154,6 +154,18 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Tradeoff: the shared auth wrapper now favors PHI safety over raw exception stack grouping in Sentry for this path. Operators retain safe event, route, method, and error name; richer debugging should add safe structured fields, not raw exception capture.
 - Next action: run final scoped ledger checks, commit the auth/logger hardening slice, commit the progress-ledger slice separately, send agmsg FYI, then return to backend-first API hardening and Claude Stage0 review flow. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Dispense Task Detail Authorization and 500 No-Store
+
+- Hardened `GET /api/dispense-tasks/:id` so detail reads now require the same read permissions as the dispense task list: `canDispense`, `canAuditDispense`, or `canReport`.
+- Wrapped the exported detail GET with sensitive no-store headers and a fixed `internalError()` fallback, so unexpected detail-read failures return a non-cacheable `INTERNAL_ERROR` envelope instead of leaking raw patient/insurance-like exception text or framework-default error behavior.
+- Added route coverage proving successful detail reads and route-param validation responses carry `Cache-Control: private, no-store, max-age=0` plus `Pragma: no-cache`, and that PHI-like thrown text is omitted from a fixed 500 body.
+- Added `dispense-tasks/[id] GET` to the protected GET auth matrix so 401/403 responses are covered by the shared no-store assertions.
+- Preserved existing org scoping, medication-cycle assignment narrowing, not-found behavior, success payload shape, stock guidance, prefill availability, PATCH mutation behavior, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: unauthorized low-permission roles can no longer read dispense task detail payloads, and sensitive detail-read responses/failures are no longer cacheable at the HTTP boundary.
+- Performance issue improved: none materially changed; the slice adds only permission checks, failure-path response wrapping, and tests. No new normal-path DB queries, dependencies, polling, or frontend rendering work were introduced.
+- Validation passed: focused dispense task detail/protected GET Vitest `2` files / `213` tests; focused ESLint; focused Prettier check; scoped diff whitespace check. API and medical-safety subagents reviewed; their auth/no-store coverage findings were addressed.
+- Next action: commit the dispense task detail API/test slice, commit this progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening and UI SSOT convergence support. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.

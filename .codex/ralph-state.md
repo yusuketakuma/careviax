@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2153 JST
+
+- current task: backend-first authorization and no-store 500 hardening for `GET /api/dispense-tasks/:id`.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, Next Route Handlers docs at `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `src/app/api/dispense-tasks/[id]/route.ts`, `src/app/api/dispense-tasks/[id]/route.test.ts`, `src/app/api/dispense-tasks/route.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/lib/api/sensitive-response.ts`, `src/lib/api/response.ts`, `src/lib/auth/context.ts`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, gbrain code graph probes for `src/app/api/dispense-tasks/[id]/route::GET`, and read-only API/medical-safety subagent reviews.
+- files changed: `src/app/api/dispense-tasks/[id]/route.ts`, `src/app/api/dispense-tasks/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `GET /api/dispense-tasks/:id` did not explicitly require the dispense read permissions used by the list endpoint, so low-permission authenticated roles could reach the detail read path. The exported detail GET also lacked sensitive no-store wrapping and an exported-route fallback for unexpected detail-read failures.
+- security risks found: reduced unauthorized dispense detail exposure by requiring `canDispense`, `canAuditDispense`, or `canReport`; reduced cacheability/leakage risk by applying `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache` to success, validation, auth failure, and fixed 500 responses, with a regression proving PHI-like thrown text is not returned.
+- performance issues found: none materially changed. The slice adds only permission checks, response wrapping, and tests; no new normal-path DB queries, polling, dependencies, or frontend rendering work were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/dispense-tasks/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/api/dispense-tasks/[id]/route.ts' 'src/app/api/dispense-tasks/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check 'src/app/api/dispense-tasks/[id]/route.ts' 'src/app/api/dispense-tasks/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- 'src/app/api/dispense-tasks/[id]/route.ts' 'src/app/api/dispense-tasks/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused dispense task detail/protected GET Vitest passed `2` files / `213` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. API subagent requested stronger production-contract testing and exported-route fallback, which were added; medical-safety subagent requested auth/no-store coverage, which was addressed through the protected GET matrix.
+- remaining work: run final scoped ledger checks, stage only the API/test files for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and continue backend-first hardening/UI SSOT convergence support. The broader objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2143 JST
 
 - current task: cross-route PHI-safe logging hardening for unexpected `withAuthContext` route handler failures.
