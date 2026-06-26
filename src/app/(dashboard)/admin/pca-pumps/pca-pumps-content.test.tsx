@@ -324,6 +324,26 @@ describe('PcaPumpsContent', () => {
     ).toBeTruthy();
   });
 
+  it('prioritizes return inspections before the inventory table', () => {
+    render(<PcaPumpsContent />);
+
+    const returnInspectionTitle = screen.getByText('返却検品待ち');
+    const inventoryTitle = screen.getByText('PCAポンプ台帳');
+    expect(
+      returnInspectionTitle.compareDocumentPosition(inventoryTitle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    expect(
+      screen.getByRole('button', {
+        name: /検品 PCA-RETURNED サンプル在宅クリニック 返却日 2026\/6\/8/,
+      }).className,
+    ).toContain('h-11');
+    expect(screen.getByRole('button', { name: '貸出登録' }).className).toContain('h-11');
+    expect(screen.getByRole('button', { name: 'ポンプ登録' }).className).toContain('h-11');
+    expect(screen.getByLabelText('検索').className).toContain('h-11');
+  });
+
   it('passes pump inventory failures to DataTable instead of showing a false empty table', () => {
     queryErrorKeysMock.add('pca-pumps');
 

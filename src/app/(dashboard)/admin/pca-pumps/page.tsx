@@ -15,6 +15,7 @@ export default function PcaPumpsPage() {
       <AdminPageHeader
         title="PCAポンプレンタル"
         description="薬局から医療機関へ貸し出すPCAポンプの台帳、貸出先、返却予定、返却状況を管理します。"
+        supportingContent={null}
       />
 
       <Suspense fallback={<Loading />}>

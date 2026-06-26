@@ -825,6 +825,7 @@ export function PcaPumpsContent() {
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-2">
           <Button
+            className="h-11 sm:h-11 sm:min-h-[44px]"
             size="sm"
             variant="outline"
             onClick={() => openRental(row.original)}
@@ -833,6 +834,7 @@ export function PcaPumpsContent() {
             貸出
           </Button>
           <Button
+            className="h-11 sm:h-11 sm:min-h-[44px]"
             size="sm"
             variant="outline"
             onClick={() =>
@@ -915,6 +917,7 @@ export function PcaPumpsContent() {
       cell: ({ row }) => (
         <div className="flex flex-wrap gap-2">
           <Button
+            className="h-11 sm:h-11 sm:min-h-[44px]"
             size="sm"
             variant="outline"
             onClick={() => updateRentalMutation.mutate({ id: row.original.id, status: 'returned' })}
@@ -923,6 +926,7 @@ export function PcaPumpsContent() {
             返却
           </Button>
           <Button
+            className="h-11 sm:h-11 sm:min-h-[44px]"
             size="sm"
             variant="outline"
             onClick={() =>
@@ -941,16 +945,89 @@ export function PcaPumpsContent() {
     <>
       <div className="space-y-6">
         <Card>
+          <CardHeader>
+            <div>
+              <CardTitle>返却検品待ち</CardTitle>
+              <CardDescription>
+                返却済みで、付属品・清拭・動作確認が未完了のPCAポンプを先に確認します。
+              </CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {returnInspectionRentals.length === 0 ? (
+              <p className="text-sm text-muted-foreground">返却検品待ちはありません。</p>
+            ) : (
+              <div className="divide-y divide-border/70 rounded-md border border-border/70 bg-card">
+                {returnInspectionRentals.map((rental) => (
+                  <div
+                    key={rental.id}
+                    className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-foreground">
+                        {rental.pump.asset_code} / {rental.pump.model_name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {rental.institution.name} ・返却日 {formatDate(rental.returned_at)}
+                      </p>
+                    </div>
+                    <Button
+                      className="h-11 sm:h-11 sm:min-h-[44px]"
+                      variant="outline"
+                      onClick={() => openReturnInspection(rental)}
+                      aria-label={getReturnInspectionActionLabel(rental)}
+                      disabled={completeReturnInspectionMutation.isPending}
+                    >
+                      検品
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>貸出中・対応待ち</CardTitle>
+            <CardDescription>
+              医療機関へ貸出中、返却検品待ち、延滞扱いのPCAポンプを確認します。
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <DataTable
+              columns={rentalColumns}
+              data={openRentals}
+              isLoading={rentalsQuery.isLoading}
+              errorMessage={
+                rentalsQuery.isError ? 'PCAポンプ貸出一覧を取得できませんでした' : undefined
+              }
+              emptyMessage="貸出中・対応待ちのPCAポンプはありません"
+              onRetry={() => void rentalsQuery.refetch()}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <CardTitle>PCAポンプ台帳</CardTitle>
               <CardDescription>管理番号、機種、貸出状態、メンテ予定を確認します。</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => openRental()}>
+              <Button
+                className="h-11 sm:h-11 sm:min-h-[44px]"
+                variant="outline"
+                onClick={() => openRental()}
+              >
                 貸出登録
               </Button>
-              <Button onClick={() => setPumpSheetOpen(true)}>ポンプ登録</Button>
+              <Button
+                className="h-11 sm:h-11 sm:min-h-[44px]"
+                onClick={() => setPumpSheetOpen(true)}
+              >
+                ポンプ登録
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -958,6 +1035,7 @@ export function PcaPumpsContent() {
               <Label htmlFor="pca-pump-search">検索</Label>
               <Input
                 id="pca-pump-search"
+                className="h-11 sm:h-11 sm:min-h-[44px]"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="管理番号 / シリアル / 機種"
@@ -970,64 +1048,6 @@ export function PcaPumpsContent() {
               errorMessage={pumpsQuery.isError ? 'PCAポンプ台帳を取得できませんでした' : undefined}
               emptyMessage="PCAポンプはまだ登録されていません"
               onRetry={() => void pumpsQuery.refetch()}
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>貸出中・対応待ち</CardTitle>
-            <CardDescription>
-              医療機関へ貸出中、返却検品待ち、延滞扱いのPCAポンプを確認します。
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <section className="space-y-3 rounded-md border border-border/70 bg-muted/20 p-4">
-              <div>
-                <h2 className="text-base font-semibold text-foreground">返却検品待ち</h2>
-                <p className="text-sm text-muted-foreground">
-                  返却済みで、付属品・清拭・動作確認が未完了のPCAポンプです。
-                </p>
-              </div>
-              {returnInspectionRentals.length === 0 ? (
-                <p className="text-sm text-muted-foreground">返却検品待ちはありません。</p>
-              ) : (
-                <div className="divide-y divide-border/70 rounded-md border border-border/70 bg-card">
-                  {returnInspectionRentals.map((rental) => (
-                    <div
-                      key={rental.id}
-                      className="flex flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-medium text-foreground">
-                          {rental.pump.asset_code} / {rental.pump.model_name}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {rental.institution.name} ・返却日 {formatDate(rental.returned_at)}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        onClick={() => openReturnInspection(rental)}
-                        aria-label={getReturnInspectionActionLabel(rental)}
-                        disabled={completeReturnInspectionMutation.isPending}
-                      >
-                        検品
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-            <DataTable
-              columns={rentalColumns}
-              data={openRentals}
-              isLoading={rentalsQuery.isLoading}
-              errorMessage={
-                rentalsQuery.isError ? 'PCAポンプ貸出一覧を取得できませんでした' : undefined
-              }
-              emptyMessage="貸出中・対応待ちのPCAポンプはありません"
-              onRetry={() => void rentalsQuery.refetch()}
             />
           </CardContent>
         </Card>
