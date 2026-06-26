@@ -532,6 +532,8 @@ describe('PharmacyCooperationSetupContent', () => {
 
     expect(await screen.findByText('契約更新アラート')).toBeTruthy();
     const alertList = screen.getByRole('list', { name: '契約更新アラート一覧' });
+    const setupRoot = screen.getByTestId('pharmacy-cooperation-setup');
+    const refreshButton = screen.getByRole('button', { name: /更新/ });
 
     expect(within(alertList).getByText('contract_1')).toBeTruthy();
     expect(within(alertList).getByText(/あと\d+日/)).toBeTruthy();
@@ -539,6 +541,24 @@ describe('PharmacyCooperationSetupContent', () => {
     expect(alertList.textContent).toContain('有償/定額');
     expect(alertList.textContent).not.toContain('山田');
     expect(alertList.textContent).not.toContain('signed-contract.pdf');
+    expect(
+      setupRoot.compareDocumentPosition(alertList) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      alertList.compareDocumentPosition(refreshButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('keeps setup controls at medical touch target size', async () => {
+    renderContent();
+
+    const setupRoot = await screen.findByTestId('pharmacy-cooperation-setup');
+    expect(setupRoot.className).toContain('[&_button]:!h-11');
+    expect(setupRoot.className).toContain('[&_input]:!h-11');
+    expect(setupRoot.className).toContain('[&_select]:!h-11');
+
+    const generatePdfCheckbox = screen.getByLabelText('PDFを生成して保存');
+    expect(generatePdfCheckbox.className).toContain('size-11');
   });
 
   it('creates a partner pharmacy and a draft pharmacy partnership', async () => {

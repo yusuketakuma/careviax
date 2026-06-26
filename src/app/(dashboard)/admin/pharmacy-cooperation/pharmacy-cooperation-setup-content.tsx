@@ -465,7 +465,7 @@ function NativeSelect({
     <label className="grid gap-1.5">
       <FieldLabel>{label}</FieldLabel>
       <select
-        className="min-h-[44px] rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-8 sm:min-h-0"
+        className="!h-11 !min-h-[44px] rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={label}
@@ -1234,7 +1234,12 @@ export function PharmacyCooperationSetupContent() {
   }
 
   return (
-    <div className="space-y-6" data-testid="pharmacy-cooperation-setup">
+    <div
+      className="space-y-6 [&_button]:!h-11 [&_button]:!min-h-[44px] [&_input]:!h-11 [&_input]:!min-h-[44px] [&_select]:!h-11 [&_select]:!min-h-[44px]"
+      data-testid="pharmacy-cooperation-setup"
+    >
+      <ContractRenewalAlerts alerts={contractRenewalAlerts} />
+
       <div className="flex justify-end">
         <Button type="button" variant="outline" onClick={refetchAll}>
           <RefreshCw className="size-4" aria-hidden="true" />
@@ -1263,8 +1268,6 @@ export function PharmacyCooperationSetupContent() {
           </p>
         </div>
       </div>
-
-      <ContractRenewalAlerts alerts={contractRenewalAlerts} />
 
       <SectionShell title="協力薬局登録" description="連携先薬局の基本情報を登録します。">
         <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
@@ -1558,8 +1561,9 @@ export function PharmacyCooperationSetupContent() {
               aria-label="契約書署名日"
             />
           </label>
-          <label className="flex min-h-10 items-center gap-2 rounded-md border border-border/70 px-3 py-2">
+          <label className="flex min-h-11 items-center gap-2 rounded-md border border-border/70 px-3 py-2">
             <Checkbox
+              className="size-11 rounded-lg"
               checked={documentForm.generate_pdf && !documentForm.signed_file}
               onCheckedChange={(checked) =>
                 setDocumentForm((current) => ({
