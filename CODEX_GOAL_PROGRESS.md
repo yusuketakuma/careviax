@@ -30,6 +30,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: `pnpm exec prettier --write docs/ui-ux-design-guidelines.md`; `pnpm exec prettier --check docs/ui-ux-design-guidelines.md`; `git diff --check -- docs/ui-ux-design-guidelines.md`.
 - Next action: capture route-mocked screenshots of priority pages, select the highest-impact visual defect from rendered evidence, implement a small shared-primitive or page-level UI fix, re-screenshot, validate, update ledgers, and commit as the next grouped design slice.
 
+### 2026-06-26 JST - Dispense/Set Workbench Org Scope
+
+- Fixed the live `/dispense` and `/set` workbench display regression found during browser verification.
+- Workbench read fetches now pass the active org header (`x-org-id`) through patient-list, task-resolution, workbench-detail, and set-calendar read paths, matching the rest of the org-scoped app reads and preventing wrong-org false empty/error states.
+- `/set` now distinguishes a successful empty calendar queue from an acquisition failure. When there is no SetPlan-backed calendar work, the page shows the normal `この工程に対象患者がいません` empty state instead of `実データ未取得` or `実データを取得できませんでした`.
+- Preserved existing auth, authorization, API permissions, mutations, schema, migrations, DB writes, external sends, and seeded data. Validation used read-only local DB/API checks and authenticated browser reads only.
+- Screenshot evidence: desktop and mobile after images saved under `test-results/codex-workbench-org-scope/` for `/dispense` and `/set`.
+- Validation passed: focused workbench Vitest `5` files / `79` tests; focused ESLint; focused Prettier check; focused diff whitespace check; read-only API/service checks; authenticated browser desktop/mobile checks on `http://localhost:3012/dispense` and `/set` with `/dispense` rendering `処方登録患者 3名` and `/set` rendering the normal empty state without fetch-failure text.
+- Next action: commit the workbench implementation slice and the progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.
