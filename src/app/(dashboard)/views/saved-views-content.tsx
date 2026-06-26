@@ -56,7 +56,7 @@ function PresetCard({
 }) {
   return (
     <article
-      className="flex flex-col gap-2 rounded-xl border border-border/70 bg-card p-5 shadow-sm"
+      className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card p-5 shadow-sm"
       data-testid="saved-view-preset-card"
     >
       <h2 className="text-base font-bold text-foreground">{title}</h2>
@@ -126,7 +126,7 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
   return (
     <section
       aria-labelledby="current-filter-heading"
-      className="min-h-[320px] rounded-xl border border-border/70 bg-card p-5 shadow-sm"
+      className="rounded-lg border border-border/70 bg-card p-5 shadow-sm"
       data-testid="current-filter-card"
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -330,7 +330,7 @@ function NamedSavedViewsCard({
   return (
     <section
       aria-labelledby="named-views-heading"
-      className="rounded-xl border border-border/70 bg-card p-5 shadow-sm"
+      className="rounded-lg border border-border/70 bg-card p-5 shadow-sm"
       data-testid="named-views-card"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
