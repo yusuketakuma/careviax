@@ -4262,11 +4262,13 @@ export function CardWorkspace({
         >
           プロフィールを確認
         </a>
+        {/* カードの分割表示は side-by-side で幅が要るデスクトップ機能。狭い画面では
+            プレミアムな上部スペースを使わないよう非表示にする(モバイルは最小情報優先)。 */}
         <Link
           href={buildPatientCompareHref(patientId)}
           className={buttonVariants({
             variant: 'outline',
-            className: '!h-auto !min-h-11 px-4 py-2',
+            className: 'max-sm:hidden !h-auto !min-h-11 px-4 py-2',
           })}
           data-testid="card-open-compare"
         >
