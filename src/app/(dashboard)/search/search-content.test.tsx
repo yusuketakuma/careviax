@@ -233,7 +233,7 @@ describe('SearchContent', () => {
     expect(screen.getByText('田中 一郎 様')).toBeTruthy();
     // '患者' appears both in the chip and the card badge
     expect(screen.getAllByText('患者').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByRole('button', { name: '開く' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '開く' }).className).toContain('min-h-11');
   });
 
   it('shows visit schedule proposal results through the existing proposal API', async () => {

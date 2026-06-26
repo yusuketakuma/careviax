@@ -19,7 +19,6 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
 
   return (
     <PageScaffold>
-      <h1 className="sr-only">お知らせ</h1>
       <Suspense fallback={<Loading />}>
         <NotificationsContent initialCategory={initialState.initialCategory} />
       </Suspense>

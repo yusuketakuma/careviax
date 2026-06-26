@@ -193,7 +193,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
     <div className="w-full space-y-5" data-testid="notifications-inbox">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">お知らせ</h2>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">お知らせ</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             急ぎの確認、返信待ち、未同期をまとめて見ます。
           </p>
@@ -202,6 +202,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
           type="button"
           variant="outline"
           size="sm"
+          className="!h-auto !min-h-11"
           onClick={() => markReadMutation.mutate(unreadIds)}
           disabled={unreadIds.length === 0 || markReadMutation.isPending}
         >

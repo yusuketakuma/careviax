@@ -95,8 +95,9 @@ describe('NotificationsContent', () => {
   it('renders the p0_04 inbox: heading, filter chips, badge cards, and open buttons', () => {
     render(<NotificationsContent />);
 
-    expect(screen.getByRole('heading', { name: 'お知らせ' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'お知らせ', level: 1 })).toBeTruthy();
     expect(screen.getByText('急ぎの確認、返信待ち、未同期をまとめて見ます。')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '全て既読にする' }).className).toContain('min-h-11');
 
     for (const chip of ['すべて', '急ぎ', '薬剤師確認', '事務で対応', '返信待ち', '未同期']) {
       expect(screen.getByRole('button', { name: new RegExp(chip) })).toBeTruthy();

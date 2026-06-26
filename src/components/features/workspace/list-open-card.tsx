@@ -64,7 +64,7 @@ export function ListOpenCard({
       <Button
         type="button"
         variant="outline"
-        className="min-h-[40px] shrink-0 px-5"
+        className="!h-auto !min-h-11 shrink-0 px-5"
         onClick={onOpen}
       >
         {openLabel}
