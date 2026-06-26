@@ -157,14 +157,17 @@ test.describe('auth: password reset flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/password/change');
 
-    // Either renders the form or redirects if not applicable
-    const isFormVisible = await page
-      .getByRole('button', { name: /変更|保存|Submit/i })
-      .isVisible()
-      .catch(() => false);
-    const isRedirected = !page.url().includes('/password/change');
-
-    expect(isFormVisible || isRedirected).toBe(true);
+    await expect(
+      page.getByRole('heading', {
+        name: /安全にパスワードを更新します|パスワード変更/i,
+      }),
+    ).toBeVisible();
+    await expect(page.locator('#current-password')).toBeVisible();
+    await expect(page.locator('#new-password')).toBeVisible();
+    await expect(page.locator('#confirm-password')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /パスワードを変更|変更|保存|Submit/i }),
+    ).toBeVisible();
 
     expect(errors).toEqual([]);
   });

@@ -3,12 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, ArrowLeft, Check, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, Eye, EyeOff, KeyRound } from 'lucide-react';
 
 interface PasswordStrength {
   score: 0 | 1 | 2 | 3 | 4;
@@ -92,155 +91,177 @@ export default function PasswordChangePage() {
 
   if (success) {
     return (
-      <div className="w-full max-w-md">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-state-done/15">
-                <Check className="h-6 w-6 text-state-done" />
-              </div>
-              <h2 className="text-lg font-semibold text-foreground">パスワードを変更しました</h2>
-              <p className="text-sm text-muted-foreground">
-                新しいパスワードでログインしてください。
-              </p>
-              <Button size="lg" className="w-full" onClick={() => router.push('/login')}>
-                ログイン画面へ
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <section
+        aria-labelledby="password-change-success-title"
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-sm"
+      >
+        <div className="p-6 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-state-done/15">
+            <Check className="h-6 w-6 text-state-done" />
+          </div>
+          <h2
+            id="password-change-success-title"
+            className="mt-4 text-lg font-semibold text-foreground"
+          >
+            パスワードを変更しました
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            新しいパスワードでログインしてください。
+          </p>
+          <Button
+            size="lg"
+            className="mt-6 h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+            onClick={() => router.push('/login')}
+          >
+            ログイン画面へ
+          </Button>
+        </div>
+      </section>
     );
   }
 
   return (
-    <div className="w-full max-w-md">
-      <Card>
-        <CardHeader>
-          <CardTitle>パスワード変更</CardTitle>
-          <CardDescription>現在のパスワードと新しいパスワードを入力してください</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+    <section
+      aria-labelledby="password-change-title"
+      className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-sm"
+    >
+      <div className="border-b border-border/70 bg-slate-50/80 p-5 sm:p-6">
+        <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-primary">
+          <KeyRound className="h-4 w-4" aria-hidden="true" />
+          パスワード変更
+        </div>
+        <div className="mt-5 space-y-2">
+          <h2
+            id="password-change-title"
+            className="text-2xl font-semibold leading-tight text-foreground"
+          >
+            安全にパスワードを更新します
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            現在のパスワードで本人確認し、13文字以上の新しいパスワードを設定してください。
+          </p>
+        </div>
+      </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {/* Current password */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="current-password">現在のパスワード</Label>
-              <div className="relative">
-                <Input
-                  id="current-password"
-                  type={showCurrentPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  aria-label={showCurrentPassword ? 'パスワードを隠す' : 'パスワードを表示'}
-                >
-                  {showCurrentPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-            </div>
+      <div className="p-5 sm:p-6">
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-            {/* New password */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-password">新しいパスワード</Label>
-              <div className="relative">
-                <Input
-                  id="new-password"
-                  type={showNewPassword ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  disabled={isLoading}
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  aria-label={showNewPassword ? 'パスワードを隠す' : 'パスワードを表示'}
-                >
-                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-
-              {/* Password strength indicator */}
-              {newPassword.length > 0 && (
-                <div className="mt-1 space-y-1.5">
-                  <div className="flex gap-1">
-                    {[0, 1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        className={`h-1.5 flex-1 rounded-full transition-colors ${
-                          i < strength.score ? strength.bgColor : 'bg-muted'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <p className={`text-xs ${strength.color}`}>パスワード強度: {strength.label}</p>
-                </div>
-              )}
-
-              {newPassword.length > 0 && !isLongEnough && (
-                <p className="text-xs text-destructive">パスワードは13文字以上で入力してください</p>
-              )}
-            </div>
-
-            {/* Confirm password */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="confirm-password">新しいパスワード（確認）</Label>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Current password */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="current-password">現在のパスワード</Label>
+            <div className="relative">
               <Input
-                id="confirm-password"
-                type="password"
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="h-11 min-h-[44px] pr-12 sm:h-11 sm:min-h-[44px]"
+                id="current-password"
+                type={showCurrentPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
                 required
                 disabled={isLoading}
               />
-              {confirmPassword.length > 0 && !passwordsMatch && (
-                <p className="text-xs text-destructive">パスワードが一致しません</p>
-              )}
+              <button
+                type="button"
+                className="absolute right-0.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                aria-label={showCurrentPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+              >
+                {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* New password */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-password">新しいパスワード</Label>
+            <div className="relative">
+              <Input
+                className="h-11 min-h-[44px] pr-12 sm:h-11 sm:min-h-[44px]"
+                id="new-password"
+                type={showNewPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                disabled={isLoading}
+              />
+              <button
+                type="button"
+                className="absolute right-0.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                aria-label={showNewPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+              >
+                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
 
-            <Button
-              type="submit"
-              size="lg"
-              className="mt-2 w-full"
-              disabled={!canSubmit || isLoading}
-              aria-busy={isLoading}
-            >
-              {isLoading ? '変更中...' : 'パスワードを変更'}
-            </Button>
-          </form>
+            {/* Password strength indicator */}
+            {newPassword.length > 0 && (
+              <div className="mt-1 space-y-1.5">
+                <div className="flex gap-1">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className={`h-1.5 flex-1 rounded-full transition-colors ${
+                        i < strength.score ? strength.bgColor : 'bg-muted'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p className={`text-xs ${strength.color}`}>パスワード強度: {strength.label}</p>
+              </div>
+            )}
 
-          <div className="mt-4">
-            <Link
-              href="/login"
-              className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              ログインに戻る
-            </Link>
+            {newPassword.length > 0 && !isLongEnough && (
+              <p className="text-xs text-destructive">パスワードは13文字以上で入力してください</p>
+            )}
           </div>
-        </CardContent>
-      </Card>
-    </div>
+
+          {/* Confirm password */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="confirm-password">新しいパスワード（確認）</Label>
+            <Input
+              className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
+              id="confirm-password"
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              disabled={isLoading}
+            />
+            {confirmPassword.length > 0 && !passwordsMatch && (
+              <p className="text-xs text-destructive">パスワードが一致しません</p>
+            )}
+          </div>
+
+          <Button
+            type="submit"
+            size="lg"
+            className="mt-2 h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+            disabled={!canSubmit || isLoading}
+            aria-busy={isLoading}
+          >
+            {isLoading ? '変更中...' : 'パスワードを変更'}
+          </Button>
+        </form>
+
+        <div className="mt-4">
+          <Link
+            href="/login"
+            className="inline-flex min-h-11 items-center rounded px-3 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            ログインに戻る
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
