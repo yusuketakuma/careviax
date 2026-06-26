@@ -1,5 +1,7 @@
+import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { success } from '@/lib/api/response';
+import { success, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import {
@@ -22,7 +24,7 @@ import {
  * 行程ごとの残り + スタッフ別の負荷 + 今すぐ見るべきことで返す BFF。
  */
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx) => {
     const now = new Date();
     // scheduled_date / shift date(@db.Date)比較用: ローカル日付の UTC 深夜レンジ
@@ -118,8 +120,7 @@ export const GET = withAuthContext(
         visits: todaySchedules
           .filter(
             (schedule) =>
-              schedule.pharmacist_id === member.user_id &&
-              schedule.schedule_status !== 'completed',
+              schedule.pharmacist_id === member.user_id && schedule.schedule_status !== 'completed',
           )
           .map((schedule) => ({
             startMinutes: visitTimeToMinutes(schedule.time_window_start),
@@ -180,3 +181,14 @@ export const GET = withAuthContext(
     message: 'キャパシティの閲覧権限がありません',
   },
 );
+
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<Record<string, string>> },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}

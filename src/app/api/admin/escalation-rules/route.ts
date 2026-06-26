@@ -1,8 +1,10 @@
 import { Prisma } from '@prisma/client';
+import { NextRequest } from 'next/server';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { createEscalationRuleSchema } from '@/lib/validations/escalation-rule';
@@ -14,7 +16,7 @@ function serializeCondition(value: Prisma.JsonValue) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const limit = parseBoundedInteger(
@@ -48,6 +50,17 @@ export const GET = withAuthContext(
     message: 'エスカレーションルールの閲覧権限がありません',
   },
 );
+
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<Record<string, string>> },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}
 
 export const POST = withAuthContext(
   async (req, ctx) => {
