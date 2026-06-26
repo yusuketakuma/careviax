@@ -417,14 +417,14 @@ function NamedSavedViewsCard({
                     onChange={(event) => setRenameValue(event.target.value)}
                     maxLength={100}
                     aria-label="新しいビュー名"
-                    className="min-h-10 w-full max-w-xs"
+                    className="min-h-11 w-full max-w-xs"
                     autoFocus
                     data-testid="named-view-rename-input"
                   />
                   <Button
                     type="submit"
                     size="sm"
-                    className="min-h-10"
+                    className="min-h-11"
                     disabled={renameMutation.isPending || renameValue.trim().length === 0}
                   >
                     保存
@@ -433,7 +433,7 @@ function NamedSavedViewsCard({
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="min-h-10"
+                    className="min-h-11"
                     onClick={() => {
                       setRenamingId(null);
                       setRenameValue('');
@@ -476,7 +476,7 @@ function NamedSavedViewsCard({
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="min-h-10"
+                        className="min-h-11"
                         aria-label={`${view.name}の名前を変更`}
                         onClick={() => {
                           setRenamingId(view.id);
@@ -490,7 +490,7 @@ function NamedSavedViewsCard({
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="min-h-10 text-destructive hover:text-destructive"
+                        className="min-h-11 text-destructive hover:text-destructive"
                         aria-label={`${view.name}を削除`}
                         onClick={() => setDeleteTarget(view)}
                         data-testid="named-view-delete"

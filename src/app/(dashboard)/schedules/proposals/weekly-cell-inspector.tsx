@@ -273,7 +273,7 @@ export function WeeklyCellInspector({
               proposals.map((proposal) => (
                 <div
                   key={proposal.id}
-                  className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-3"
+                  className="rounded-xl border border-border/70 bg-background px-3 py-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>

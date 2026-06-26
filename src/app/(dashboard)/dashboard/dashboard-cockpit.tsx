@@ -389,8 +389,8 @@ function TodayFlowSection({
 // ---------------------------------------------------------------------------
 
 const PROCESS_TILE_TONE_CLASSES: Record<ProcessNowTile['tone'], { tile: string; count: string }> = {
-  over: { tile: 'border-state-blocked/40 bg-state-blocked/10', count: 'text-state-blocked' },
-  near: { tile: 'border-state-confirm/40 bg-state-confirm/10', count: 'text-state-confirm' },
+  over: { tile: 'border-border/70 border-l-4 border-l-state-blocked bg-card', count: 'text-state-blocked' },
+  near: { tile: 'border-border/70 border-l-4 border-l-state-confirm bg-card', count: 'text-state-confirm' },
   normal: { tile: 'border-border/70 bg-background', count: 'text-foreground' },
 };
 

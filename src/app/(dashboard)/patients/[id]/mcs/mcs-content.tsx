@@ -471,7 +471,7 @@ function PatientMcsProfilePanel({
             </label>
             <select
               id="mcs-linked-status"
-              className="min-h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+              className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
               value={linkedStatus}
               onChange={(event) => setLinkedStatus(event.target.value)}
             >
@@ -488,7 +488,7 @@ function PatientMcsProfilePanel({
             </label>
             <select
               id="mcs-participation-status"
-              className="min-h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+              className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
               value={participationStatus}
               onChange={(event) => setParticipationStatus(event.target.value)}
             >
@@ -529,7 +529,7 @@ function PatientMcsProfilePanel({
             {MCS_COUNTERPART_ROLE_OPTIONS.map((option) => (
               <label
                 key={option.value}
-                className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-sm"
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm"
               >
                 <input
                   type="checkbox"
@@ -735,7 +735,7 @@ function PatientMcsCheckLogPanel({
             </label>
             <select
               id="mcs-log-content-type"
-              className="min-h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+              className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
               value={contentType}
               onChange={(event) => setContentType(event.target.value)}
             >

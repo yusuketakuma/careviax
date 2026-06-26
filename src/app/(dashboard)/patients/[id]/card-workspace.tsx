@@ -427,12 +427,21 @@ function SummaryTile({
     <div
       className={cn(
         'rounded-md border border-border/60 bg-muted/30 p-3',
-        tone === 'warn' && 'border-transparent bg-state-confirm/10 text-state-confirm',
-        tone === 'risk' && 'border-transparent bg-state-blocked/10 text-state-blocked',
+        tone === 'warn' && 'border-l-4 border-l-state-confirm',
+        tone === 'risk' && 'border-l-4 border-l-state-blocked',
       )}
     >
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 flex items-center gap-1 font-semibold text-foreground tabular-nums">
+      <dd
+        className={cn(
+          'mt-1 flex items-center gap-1 font-semibold tabular-nums',
+          tone === 'risk'
+            ? 'text-state-blocked'
+            : tone === 'warn'
+              ? 'text-state-confirm'
+              : 'text-foreground',
+        )}
+      >
         {tone ? (
           <TriangleAlert
             aria-hidden
