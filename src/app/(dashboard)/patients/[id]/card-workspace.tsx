@@ -22,6 +22,7 @@ import {
   FileText,
   Link2,
   Pill,
+  TriangleAlert,
 } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -427,7 +428,18 @@ function SummaryTile({
       )}
     >
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 font-semibold text-foreground tabular-nums">{value}</dd>
+      <dd className="mt-1 flex items-center gap-1 font-semibold text-foreground tabular-nums">
+        {tone ? (
+          <TriangleAlert
+            aria-hidden
+            className={cn(
+              'size-3.5 shrink-0',
+              tone === 'risk' ? 'text-state-blocked' : 'text-state-confirm',
+            )}
+          />
+        ) : null}
+        {value}
+      </dd>
     </div>
   );
 }
