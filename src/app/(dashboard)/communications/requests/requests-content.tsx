@@ -288,6 +288,7 @@ export function CommunicationRequestsContent({
               key={tab.value}
               variant={statusFilter === tab.value ? 'default' : 'ghost'}
               size="sm"
+              className="!h-auto !min-h-[44px]"
               onClick={() => {
                 setStatusFilter(tab.value);
                 replaceRequestsUrl({ status: tab.value || null });
@@ -306,7 +307,7 @@ export function CommunicationRequestsContent({
                 value: patientFilterLink ? (
                   <Link
                     href={patientFilterLink.href}
-                    className="inline-flex min-h-11 min-w-11 items-center text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
+                    className="inline-flex min-h-11 min-w-11 items-center text-primary underline-offset-4 hover:underline"
                   >
                     詳細
                   </Link>
@@ -324,14 +325,14 @@ export function CommunicationRequestsContent({
                 {relatedEntityLink ? (
                   <Link
                     href={relatedEntityLink.href}
-                    className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
+                    className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline"
                   >
                     {relatedEntityLink.label}
                   </Link>
                 ) : null}
                 <Link
                   href={buildCommunicationRequestsHref({ status: statusFilter || null })}
-                  className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline sm:min-h-0 sm:min-w-0"
+                  className="inline-flex min-h-11 min-w-11 items-center text-sm text-primary underline-offset-4 hover:underline"
                 >
                   文脈をクリア
                 </Link>
@@ -456,7 +457,7 @@ export function CommunicationRequestsContent({
 
                   <div className="flex justify-start pt-1">
                     <Button
-                      className="bg-state-done text-white hover:bg-state-done/90"
+                      className="!h-auto !min-h-[44px] bg-state-done text-white hover:bg-state-done/90"
                       onClick={() =>
                         resolveFocusedMutation.mutate({
                           item: focusedSelected,

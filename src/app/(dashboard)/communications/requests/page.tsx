@@ -25,17 +25,9 @@ export default async function CommunicationRequestsPage({
   return (
     <PageScaffold variant="card">
       <WorkflowPageHeader
-        eyebrow="Communications"
+        eyebrow="コミュニケーション"
         title="依頼・照会一覧"
         description="返信待ち・対応中・完了の依頼・照会を管理します"
-        supportingContent={
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">最初に見るポイント</p>
-            <p className="text-sm text-muted-foreground">
-              返信待ち、期限超過、関連する報告や通知を先に確認し、対応導線を短くします。
-            </p>
-          </div>
-        }
         childrenLabel="関連導線"
       >
         <PageShortcutLinks
@@ -47,11 +39,6 @@ export default async function CommunicationRequestsPage({
           ]}
         />
       </WorkflowPageHeader>
-      <CollaborationWorkflowPanel
-        focus="requests"
-        description="依頼・照会を処方確認、調剤監査、報告書フォローへ戻すための連携ハブとして整理しています。"
-      />
-
       <Suspense fallback={<Loading />}>
         <CommunicationRequestsContent
           initialStatus={initialState.initialStatus}
@@ -61,6 +48,10 @@ export default async function CommunicationRequestsPage({
           initialContext={initialState.initialContext}
         />
       </Suspense>
+      <CollaborationWorkflowPanel
+        focus="requests"
+        description="依頼・照会を処方確認、調剤監査、報告書フォローへ戻すための連携ハブとして整理しています。"
+      />
     </PageScaffold>
   );
 }

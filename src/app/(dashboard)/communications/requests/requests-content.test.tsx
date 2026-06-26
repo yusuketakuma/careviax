@@ -115,6 +115,9 @@ describe('CommunicationRequestsContent', () => {
 
     expect(screen.getByTestId('reply-followup-list')).toBeTruthy();
     expect(screen.getByText('返信内容と次の対応')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '対応済みにする' }).className).toContain(
+      '!min-h-[44px]',
+    );
     fireEvent.change(screen.getByLabelText('返信内容'), {
       target: { value: '服薬状況の確認が取れました' },
     });
@@ -163,6 +166,7 @@ describe('CommunicationRequestsContent', () => {
     expect(screen.getByTestId('reply-followup-list')).toBeTruthy();
     expect(screen.getByText('返信内容と次の対応')).toBeTruthy();
     expect(screen.getByText('絞り込みと文脈')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '返信待ち' }).className).toContain('!min-h-[44px]');
     expect(screen.queryByRole('group', { name: '表示モード' })).toBeNull();
     expect(screen.queryByText('連携ログ一覧')).toBeNull();
   });

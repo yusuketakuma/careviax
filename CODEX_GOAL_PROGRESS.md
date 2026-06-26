@@ -130,6 +130,15 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused `patients/page` and `patients-board` Vitest `2` files / `15` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated live browser desktop/mobile checks on `http://localhost:3012/patients` with `0` console errors, `0` horizontal overflow, one visible `h1`, `80` rendered patient cards, mobile first card top improved from `1110px` to `780px`, and no undersized visible controls in the mobile page body.
 - Next action: run final Prettier/diff checks including ledgers, commit this patients UI slice, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Communications Follow-up First
+
+- Refined `/communications/requests` after browser inspection showed the `他職種連携の接続点` workflow explainer pushing the actual `返信待ち・フォロー` queue to `1790px` on `390x844` mobile.
+- Moved the preserved collaboration workflow panel below the request work queue, localized the page eyebrow to `コミュニケーション`, removed the duplicate header support card, and kept filter tabs/context actions/resolve action at 44px minimum target size.
+- Preserved all existing request fetches, status filters, patient/related context links, resolve-followup mutation behavior, related shortcut destinations, collaboration workflow panel, auth behavior, backend/API behavior, and DB behavior. No route or workflow feature was removed; only duplicated explanatory header copy was removed to reduce first-fold noise.
+- Screenshot evidence: before `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/communications-mobile-before.png`; after `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/communications-mobile-after-final.png`; desktop after `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/communications-desktop-after-final.png`.
+- Validation passed: focused `communications/requests/page` and `requests-content` Vitest `2` files / `13` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated live browser desktop/mobile checks on `http://localhost:3012/communications/requests?status=sent` with `0` non-ignored console/page errors, `0` horizontal overflow, one visible `h1`, mobile follow-up heading at `650px`, follow-up list at `754px`, and workflow panel after the work queue.
+- Next action: run final Prettier/diff checks including ledgers, commit this communications UI slice, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Workflow Main Route First-Fold
 
 - Refined `/workflow` after mobile browser inspection showed the first viewport dominated by explanatory header support copy and related links while the actual workflow body was not visible.
@@ -139,6 +148,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Screenshot evidence: before mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/workflow-mobile-before.png`; after mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/workflow-mobile-after-final.png`; after desktop `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/workflow-desktop-after-final.png`.
 - Validation passed: focused `workflow-dashboard-content`, `workflow-integration-map`, and `main-workflow-route` Vitest `3` files / `11` tests; focused ESLint; focused Prettier check; focused diff whitespace check; live browser desktop/mobile checks on `http://localhost:3012/workflow` using a DB-free static seed JWT cookie with `0` horizontal overflow, one visible `h1`, `workflow-main-route` in the first viewport (`244px` mobile / `252px` desktop), related links below the dashboard body, and no undersized visible controls in the mobile page body. Desktop remaining undersized controls were pre-existing shared app-header chrome outside this workflow body slice.
 - Next action: run final checks including ledgers, commit the workflow UI/touch-target group, then continue the all-pages screenshot loop. The broader objective is not complete.
+
+### 2026-06-26 JST - Communication Requests Work Queue First
+
+- Refined `/communications/requests` after inspection showed first-fold space going to explanatory header support copy and the collaboration workflow explainer before the reply-followup work queue.
+- Removed the header support copy, localized the eyebrow to `コミュニケーション`, kept the related shortcut destinations in the header, and moved the preserved collaboration workflow explainer below the `CommunicationRequestsContent` work queue.
+- Hardened request workflow controls by keeping status filter tabs, patient/context links, related-entity links, context-clear links, and the `対応済みにする` button at 44px minimum target size across breakpoints.
+- Preserved all existing communication request fetches, filters, URL state, focused reply workflow, mutation behavior, related shortcut destinations, collaboration panel content, auth behavior, backend/API behavior, DB behavior, and external sends. No feature was removed.
+- Screenshot evidence: mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/communications-requests-mobile-after-final.png`; desktop `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/communications-requests-desktop-after-final.png`.
+- Validation passed: focused communication requests page/content Vitest `2` files / `13` tests; focused ESLint; focused Prettier check; focused diff whitespace check; live browser desktop/mobile checks on `http://localhost:3012/communications/requests` using the existing DB-free static seed JWT session with `0` horizontal overflow, one visible `h1`, work queue before the collaboration explainer, work queue in the first viewport (`633px` mobile / `577px` desktop), and no undersized visible controls in the mobile page body. Desktop remaining undersized controls were pre-existing shared app-header chrome outside this requests body slice.
+- Next action: run final checks including ledgers, commit the communication requests UI group, then continue the all-pages screenshot loop. The broader objective is not complete.
 
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
