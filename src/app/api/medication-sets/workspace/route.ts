@@ -472,7 +472,7 @@ const authenticatedGET = withAuthContext(
 
 export async function GET(
   req: NextRequest,
-  routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
+  routeContext: { params: Promise<Record<string, string>> },
 ) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));

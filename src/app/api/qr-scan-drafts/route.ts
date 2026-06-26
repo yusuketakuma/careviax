@@ -253,7 +253,7 @@ const authenticatedGET = withAuthContext(
 
 export async function GET(
   req: NextRequest,
-  routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
+  routeContext: { params: Promise<Record<string, string>> },
 ) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
@@ -521,7 +521,7 @@ const authenticatedPOST = withAuthContext(
 
 export async function POST(
   req: NextRequest,
-  routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
+  routeContext: { params: Promise<Record<string, string>> },
 ) {
   try {
     return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
