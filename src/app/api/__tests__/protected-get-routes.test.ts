@@ -165,6 +165,7 @@ import { GET as managementPlansGet } from '../management-plans/route';
 import { GET as managementPlanGet } from '../management-plans/[id]/route';
 import { GET as medicationCyclesGet } from '../medication-cycles/route';
 import { GET as medicationIssuesGet } from '../medication-issues/route';
+import { GET as medicationSetsWorkspaceGet } from '../medication-sets/workspace/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
 import { GET as patientsGet } from '../patients/route';
 import { GET as patientsBoardGet } from '../patients/board/route';
@@ -598,6 +599,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'medication-sets/workspace GET',
+    handler: () =>
+      medicationSetsWorkspaceGet(
+        createRequest('http://localhost/api/medication-sets/workspace', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
     name: 'medication-profiles GET',
     handler: () =>
       medicationProfilesGet(
@@ -993,6 +1002,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'qr-scan-drafts GET' ||
         route.name === 'qr-scan-drafts/[id] GET' ||
         route.name === 'medication-cycles GET' ||
+        route.name === 'medication-sets/workspace GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||
@@ -1047,6 +1057,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'qr-scan-drafts GET' ||
         route.name === 'qr-scan-drafts/[id] GET' ||
         route.name === 'medication-cycles GET' ||
+        route.name === 'medication-sets/workspace GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-tasks GET' ||

@@ -51,6 +51,11 @@ function createRequest(query = '') {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('pragma')).toBe('no-cache');
+}
+
 function buildSchedule(args: {
   id: string;
   caseId: string;
@@ -201,7 +206,9 @@ describe('/api/medication-sets/workspace', () => {
 
     const res = await GET(createRequest('?scope=today'), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
+    expectSensitiveNoStore(res);
     const body = await res.json();
+    expect(Object.keys(body)).toEqual(['data']);
     const data = body.data;
 
     expect(data.facility_groups).toHaveLength(1);
@@ -414,6 +421,45 @@ describe('/api/medication-sets/workspace', () => {
   it('不正な scope はバリデーションエラー', async () => {
     const res = await GET(createRequest('?scope=yesterday'), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);
+    expectSensitiveNoStore(res);
+    await expect(res.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+      details: {
+        fieldErrors: {
+          scope: expect.any(Array),
+        },
+      },
+    });
+  });
+
+  it('重複 scope は既存互換として最初の値を採用する', async () => {
+    const res = await GET(createRequest('?scope=today&scope=upcoming'), {
+      params: Promise.resolve({}),
+    });
+
+    expect(res.status).toBe(200);
+    expectSensitiveNoStore(res);
+    const body = await res.json();
+    expect(body.data.scope).toBe('today');
+  });
+
+  it('集計中の例外は固定メッセージかつ no-store で返す', async () => {
+    visitScheduleFindManyMock.mockRejectedValueOnce(
+      new Error('workspace read failed for patient 山田 太郎 allergy セフェム'),
+    );
+
+    const res = await GET(createRequest(), { params: Promise.resolve({}) });
+
+    expect(res.status).toBe(500);
+    expectSensitiveNoStore(res);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田 太郎');
+    expect(JSON.stringify(body)).not.toContain('セフェム');
   });
 });
 

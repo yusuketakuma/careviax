@@ -1,6 +1,8 @@
+import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { success, validationError, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
@@ -51,8 +53,8 @@ function buildAssigneeLabel(name: string, membership: RoleLike): string {
   return name;
 }
 
-export const GET = withAuthContext(
-  async (req, ctx) => {
+const authenticatedGET = withAuthContext(
+  async (req: NextRequest, ctx) => {
     const url = new URL(req.url);
     const parsedQuery = querySchema.safeParse({
       scope: url.searchParams.get('scope') ?? undefined,
@@ -467,3 +469,14 @@ export const GET = withAuthContext(
     message: 'セット準備ワークスペースの閲覧権限がありません',
   },
 );
+
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}
