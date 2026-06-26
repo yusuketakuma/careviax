@@ -1449,7 +1449,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
     <section aria-label="スケジュールボード" data-testid="schedule-team-board">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-xl font-bold text-foreground">スケジュール</h1>
+          <h2 className="text-xl font-bold text-foreground">スケジュール</h2>
           <p className="text-sm text-muted-foreground">
             {dateLabel} — 訪問枠・未確定・車両を同じ日付で確認
           </p>

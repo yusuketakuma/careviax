@@ -706,7 +706,7 @@ describe('ScheduleTeamBoard', () => {
     render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
 
     // 見出し帯 + 日/週トグル
-    expect(screen.getByRole('heading', { level: 1, name: 'スケジュール' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'スケジュール' })).toBeTruthy();
     expect(screen.getByText(/訪問枠・未確定・車両を同じ日付で確認/)).toBeTruthy();
     expect(screen.getByRole('link', { name: '予定を作る' }).className).toContain('min-h-[44px]');
     const toggle = screen.getByTestId('schedule-view-mode-toggle');
