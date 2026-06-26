@@ -21,6 +21,23 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-26 JST - Visit Today Preparation PHI/Cache Hardening
+
+- Coordination:
+  - Continued from a clean Codex-owned tree while preserving Claude-owned `/patients/[id]` UI dirty files.
+  - Drained `phos/codex`; Claude requested review for `/patients/[id]` Stage1 pinned-cluster work. Codex sent ACK, performed read-only review, independently ran the focused card-workspace test, and sent APPROVE without editing Claude-owned files.
+- Hardened `GET /api/visits/today-preparation` so unexpected visit-preparation aggregation failures and shared URL guard failures return a fixed `INTERNAL_ERROR` response with sensitive no-store headers.
+- Preserved Next.js control-flow semantics by calling `unstable_rethrow(err)` before converting ordinary exceptions to fixed 500 responses.
+- Reduced PHI exposure in the visit-preparation board by no longer selecting `WorkflowException.description` for `blocked_reasons`; the board now returns a generic unresolved-item label with category/action/age instead of org-wide free-text blocker details.
+- Added route-local coverage proving PHI-like thrown text, dot-segment schedule ids, patient names, insurance-like numbers, drug names, and workflow exception free text are not serialized in success blocker payloads or fixed failure payloads.
+- Added protected GET matrix coverage proving the successful `visits/today-preparation GET` response still carries `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
+- Preserved existing auth/permission behavior, assignment scoping, schedule/facility grouping, safety tag derivation, audit queue derivation, evidence counts, response top-level shape, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: today's visit preparation board no longer exposes unrelated workflow exception free text, and sensitive visit-prep success/failure responses are consistently non-cacheable at the HTTP boundary.
+- Performance issue improved: avoids selecting one free-text column from the workflow-exception query; otherwise no material performance change. No new dependencies, polling, normal-path DB queries, or frontend rendering work were introduced.
+- Validation passed: focused visit-preparation/protected GET Vitest `2` files / `227` tests; focused ESLint; focused Prettier check; full TypeScript check; scoped diff whitespace check. API/test/privacy subagents reviewed; their findings were addressed.
+- Claude support validation passed: `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` passed `1` file / `48` tests before Codex sent APPROVE for Claude's Stage1 slice.
+- Next action: commit the visit-preparation API/test slice, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first hardening and Claude UI support. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Medication Set Workspace 500 No-Store
 
 - Hardened `GET /api/medication-sets/workspace` so set-preparation workspace success, validation, auth failure, permission failure, and unexpected aggregation failure responses carry sensitive no-store headers.
