@@ -183,6 +183,8 @@ import { GET as pharmacyInvoicePdfGet } from '../pharmacy-invoices/[id]/pdf/rout
 import { GET as pharmacySitesGet } from '../pharmacy-sites/route';
 import { GET as prescriptionIntakesGet } from '../prescription-intakes/route';
 import { GET as prescriptionIntakeGet } from '../prescription-intakes/[id]/route';
+import { GET as qrScanDraftsGet } from '../qr-scan-drafts/route';
+import { GET as qrScanDraftGet } from '../qr-scan-drafts/[id]/route';
 import { GET as residualMedicationsGet } from '../residual-medications/route';
 import { GET as setPlansGet } from '../set-plans/route';
 import { GET as staffWorkloadGet } from '../staff-workload/route';
@@ -752,6 +754,22 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'qr-scan-drafts GET',
+    handler: () =>
+      qrScanDraftsGet(
+        createRequest('http://localhost/api/qr-scan-drafts', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'qr-scan-drafts/[id] GET',
+    handler: () =>
+      qrScanDraftGet(
+        createRequest('http://localhost/api/qr-scan-drafts/draft_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'draft_1' }) },
+      ),
+  },
+  {
     name: 'residual-medications GET',
     handler: () =>
       residualMedicationsGet(
@@ -972,6 +990,8 @@ describe('protected GET routes auth matrix', () => {
       if (
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
+        route.name === 'qr-scan-drafts GET' ||
+        route.name === 'qr-scan-drafts/[id] GET' ||
         route.name === 'medication-cycles GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
@@ -1024,6 +1044,8 @@ describe('protected GET routes auth matrix', () => {
       if (
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
+        route.name === 'qr-scan-drafts GET' ||
+        route.name === 'qr-scan-drafts/[id] GET' ||
         route.name === 'medication-cycles GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||

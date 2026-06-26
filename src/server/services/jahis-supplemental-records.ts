@@ -149,9 +149,9 @@ export function readJahisSupplementalRecords(value: unknown): JahisSupplementalR
         })
       : [];
     const summary = typeof record.summary === 'string' ? record.summary : null;
-    const rawLine = typeof record.rawLine === 'string' ? record.rawLine : null;
+    const rawLine = typeof record.rawLine === 'string' ? record.rawLine : (summary ?? '');
 
-    if (!recordType || !recordLabel || lineNumber == null || !fields || !summary || !rawLine) {
+    if (!recordType || !recordLabel || lineNumber == null || !fields || !summary) {
       return [];
     }
 

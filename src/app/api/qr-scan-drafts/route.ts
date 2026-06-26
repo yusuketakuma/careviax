@@ -1,7 +1,9 @@
+import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { toPrismaJsonInput } from '@/lib/db/json';
-import { success, validationError, conflict } from '@/lib/api/response';
+import { success, validationError, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
@@ -50,11 +52,15 @@ type QrDraftResponse = {
   [key: string]: unknown;
 };
 
-function sanitizeParsedDataForResponse(parsedData: unknown) {
-  if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) return parsedData;
-  const sanitized = { ...(parsedData as Record<string, unknown>) };
-  delete sanitized.rawText;
-  return sanitized;
+function sanitizeParsedDataForResponse(parsedData: unknown): unknown {
+  if (Array.isArray(parsedData)) return parsedData.map(sanitizeParsedDataForResponse);
+  if (!parsedData || typeof parsedData !== 'object') return parsedData;
+
+  return Object.fromEntries(
+    Object.entries(parsedData as Record<string, unknown>)
+      .filter(([key]) => !['rawText', 'rawLine', 'raw_qr_texts', 'qr_payload_hash'].includes(key))
+      .map(([key, value]) => [key, sanitizeParsedDataForResponse(value)]),
+  );
 }
 
 function toQrDraftResponse<T extends QrDraftResponse>(draft: T) {
@@ -190,7 +196,7 @@ function buildDraftParsedData(args: {
 
 // ── GET: list pending drafts (paginated) ──
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
@@ -245,9 +251,20 @@ export const GET = withAuthContext(
   },
 );
 
+export async function GET(
+  req: NextRequest,
+  routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}
+
 // ── POST: create a new QR draft ──
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -399,11 +416,17 @@ export const POST = withAuthContext(
     }
 
     try {
+      const assignedPatientIds = await getAssignedPatientIds(prisma, ctx.orgId, ctx);
+      const duplicateAssignmentWhere = buildQrDraftAssignmentWhere(ctx, assignedPatientIds ?? []);
+      const duplicateWhere: Prisma.QrScanDraftWhereInput = {
+        org_id: ctx.orgId,
+        status: { in: ['pending', 'confirmed'] },
+        qr_payload_hash: qrPayloadHash,
+      };
       const existingDraft = await prisma.qrScanDraft.findFirst({
         where: {
-          org_id: ctx.orgId,
-          status: { in: ['pending', 'confirmed'] },
-          qr_payload_hash: qrPayloadHash,
+          ...duplicateWhere,
+          ...(duplicateAssignmentWhere ? { AND: [duplicateAssignmentWhere] } : {}),
         },
         select: { id: true, status: true },
         orderBy: { created_at: 'desc' },
@@ -415,9 +438,23 @@ export const POST = withAuthContext(
           status: existingDraft.status,
         });
       }
+
+      const inaccessibleDuplicate = duplicateAssignmentWhere
+        ? await prisma.qrScanDraft.findFirst({
+            where: duplicateWhere,
+            select: { id: true },
+            orderBy: { created_at: 'desc' },
+          })
+        : null;
+
+      if (inaccessibleDuplicate) {
+        return conflict('同じQRスキャン下書きが既に存在します');
+      }
     } catch {
       return conflict('QRスキャン下書きの重複確認に失敗しました');
     }
+
+    const sanitizedDraftParsedData = sanitizeParsedDataForResponse(draftParsedData);
 
     // Create QrScanDraft record
     let draft;
@@ -434,7 +471,7 @@ export const POST = withAuthContext(
             schema_version: 1,
             raw_qr_texts: qr_texts,
             qr_payload_hash: qrPayloadHash,
-            parsed_data: toPrismaJsonInput(draftParsedData),
+            parsed_data: toPrismaJsonInput(sanitizedDraftParsedData),
             parse_errors: allErrors.length > 0 ? toPrismaJsonInput(allErrors) : Prisma.JsonNull,
             auto_completed: toPrismaJsonInput(autoCompleted),
             expected_qr_count,
@@ -481,3 +518,14 @@ export const POST = withAuthContext(
     message: 'QRスキャン下書きの作成権限がありません',
   },
 );
+
+export async function POST(
+  req: NextRequest,
+  routeContext: { params: Promise<Record<string, string>> } = { params: Promise.resolve({}) },
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}

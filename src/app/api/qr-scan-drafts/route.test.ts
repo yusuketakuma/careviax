@@ -125,6 +125,11 @@ function createGetRequest(url = 'http://localhost/api/qr-scan-drafts') {
   return new NextRequest(url, { method: 'GET' });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('pragma')).toBe('no-cache');
+}
+
 describe('/api/qr-scan-drafts GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -157,6 +162,7 @@ describe('/api/qr-scan-drafts GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toMatchObject({
       data: [
@@ -183,7 +189,64 @@ describe('/api/qr-scan-drafts GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(qrScanDraftCountMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves the top-level cursor page shape', async () => {
+    qrScanDraftFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'draft_2',
+        status: 'pending',
+        patient_id: null,
+        raw_qr_texts: ['secret-2'],
+        qr_payload_hash: 'hash_2',
+        parsed_data: { patient: { name: '佐藤 花子' }, rawText: 'secret text 2' },
+      },
+      {
+        id: 'draft_1',
+        status: 'pending',
+        patient_id: null,
+        raw_qr_texts: ['secret-1'],
+        qr_payload_hash: 'hash_1',
+        parsed_data: { patient: { name: '山田 太郎' }, rawText: 'secret text 1' },
+      },
+    ]);
+
+    const response = await GET(createGetRequest('http://localhost/api/qr-scan-drafts?limit=1'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [{ id: 'draft_2' }],
+      hasMore: true,
+      nextCursor: 'draft_2',
+    });
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]).not.toHaveProperty('raw_qr_texts');
+    expect(body.data[0]).not.toHaveProperty('qr_payload_hash');
+    expect(body.data[0].parsed_data).not.toHaveProperty('rawText');
+  });
+
+  it('returns a fixed no-store 500 when the draft list read fails', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw QR read failed for patient 山田 太郎 insurer 06012345'),
+    );
+
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田 太郎');
+    expect(JSON.stringify(body)).not.toContain('06012345');
   });
 });
 
@@ -330,6 +393,7 @@ describe('/api/qr-scan-drafts POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -376,6 +440,7 @@ describe('/api/qr-scan-drafts POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(pharmacySiteFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'site_1', org_id: 'org_1' },
       select: { id: true },
@@ -436,6 +501,12 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(qrScanDraftCreateMock.mock.calls[0]?.[0]?.data.parsed_data).not.toHaveProperty(
       'rawText',
     );
+    expect(
+      JSON.stringify(qrScanDraftCreateMock.mock.calls[0]?.[0]?.data.parsed_data),
+    ).not.toContain('rawLine');
+    expect(
+      JSON.stringify(qrScanDraftCreateMock.mock.calls[0]?.[0]?.data.parsed_data),
+    ).not.toContain('JAHISTC08');
     expect(jahisSupplementalRecordDeleteManyMock).toHaveBeenCalledWith({
       where: { org_id: 'org_1', qr_draft_id: 'draft_1' },
     });
@@ -516,6 +587,7 @@ describe('/api/qr-scan-drafts POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body.draft).toMatchObject({
       id: 'draft_1',
@@ -528,6 +600,7 @@ describe('/api/qr-scan-drafts POST', () => {
     expect(body.draft).not.toHaveProperty('raw_qr_texts');
     expect(body.draft).not.toHaveProperty('qr_payload_hash');
     expect(body.draft.parsed_data).not.toHaveProperty('rawText');
+    expect(JSON.stringify(body)).not.toContain('rawLine');
   });
 
   it('rejects blank QR texts and blank site ids before lookup or parsing', async () => {
@@ -885,6 +958,7 @@ describe('/api/qr-scan-drafts POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '同じQRスキャン下書きが既に存在します',
@@ -922,6 +996,7 @@ describe('/api/qr-scan-drafts POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '同じQRスキャン下書きが既に存在します',

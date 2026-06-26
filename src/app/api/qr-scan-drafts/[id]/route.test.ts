@@ -45,6 +45,11 @@ function createRequest(method: 'DELETE' | 'GET' = 'GET') {
   return new NextRequest('http://localhost/api/qr-scan-drafts/draft_1', { method });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('cache-control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('pragma')).toBe('no-cache');
+}
+
 describe('/api/qr-scan-drafts/[id] GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -57,6 +62,7 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'QRスキャン下書きIDが不正です',
@@ -72,7 +78,12 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
       status: 'pending',
       raw_qr_texts: ['JAHISTC08,1\n1,山田 太郎'],
       qr_payload_hash: 'a'.repeat(64),
-      parsed_data: { patientName: '山田 太郎', rawText: 'JAHISTC08,1\n1,山田 太郎' },
+      parsed_data: {
+        patientName: '山田 太郎',
+        rawText: 'JAHISTC08,1\n1,山田 太郎',
+        rawRecords: [{ recordType: '1', rawLine: '1,山田 太郎' }],
+        supplementalRecords: [{ recordType: '421', rawLine: '421,残薬あり' }],
+      },
     };
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -87,11 +98,14 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toMatchObject({ id: 'draft_1', status: 'pending' });
     expect(body).not.toHaveProperty('raw_qr_texts');
     expect(body).not.toHaveProperty('qr_payload_hash');
     expect(body.parsed_data).not.toHaveProperty('rawText');
+    expect(JSON.stringify(body)).not.toContain('rawLine');
+    expect(JSON.stringify(body)).not.toContain('JAHISTC08');
   });
 
   it('returns 404 when draft is not found', async () => {
@@ -107,6 +121,26 @@ describe('/api/qr-scan-drafts/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+  });
+
+  it('returns a fixed no-store 500 when the draft detail read fails', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw QR detail failed for patient 山田 太郎 insurer 06012345'),
+    );
+
+    const response = await GET(createRequest(), DRAFT_PARAMS);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田 太郎');
+    expect(JSON.stringify(body)).not.toContain('06012345');
   });
 
   it('queries with the correct org_id scope', async () => {
@@ -156,6 +190,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'QRスキャン下書きIDが不正です',
@@ -198,6 +233,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toMatchObject({ id: 'draft_1', status: 'discarded' });
     expect(body).not.toHaveProperty('raw_qr_texts');
@@ -217,6 +253,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
   });
 
   it('rejects already processed drafts before discard side effects', async () => {
@@ -237,12 +274,32 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'このQRスキャン下書きはすでに処理済みです',
     });
     expect(updateManySpy).not.toHaveBeenCalled();
     expect(deleteSupplementalSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 when discard lookup fails', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw QR discard failed for patient 山田 太郎 insurer 06012345'),
+    );
+
+    const response = await DELETE(createRequest('DELETE'), DRAFT_PARAMS);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田 太郎');
+    expect(JSON.stringify(body)).not.toContain('06012345');
   });
 
   it('does not delete supplemental records when pending discard claim is lost', async () => {
@@ -273,6 +330,7 @@ describe('/api/qr-scan-drafts/[id] DELETE', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: 'このQRスキャン下書きはすでに処理済みです',

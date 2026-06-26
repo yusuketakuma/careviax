@@ -1,6 +1,8 @@
+import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, notFound, validationError, conflict } from '@/lib/api/response';
+import { success, notFound, validationError, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import {
   buildQrDraftAssignmentWhere,
@@ -16,11 +18,15 @@ type QrDraftResponse = {
   [key: string]: unknown;
 };
 
-function sanitizeParsedDataForResponse(parsedData: unknown) {
-  if (!parsedData || typeof parsedData !== 'object' || Array.isArray(parsedData)) return parsedData;
-  const sanitized = { ...(parsedData as Record<string, unknown>) };
-  delete sanitized.rawText;
-  return sanitized;
+function sanitizeParsedDataForResponse(parsedData: unknown): unknown {
+  if (Array.isArray(parsedData)) return parsedData.map(sanitizeParsedDataForResponse);
+  if (!parsedData || typeof parsedData !== 'object') return parsedData;
+
+  return Object.fromEntries(
+    Object.entries(parsedData as Record<string, unknown>)
+      .filter(([key]) => !['rawText', 'rawLine', 'raw_qr_texts', 'qr_payload_hash'].includes(key))
+      .map(([key, value]) => [key, sanitizeParsedDataForResponse(value)]),
+  );
 }
 
 function toQrDraftResponse<T extends QrDraftResponse>(draft: T) {
@@ -35,7 +41,7 @@ function toQrDraftResponse<T extends QrDraftResponse>(draft: T) {
 
 // ── GET: fetch single draft by id ──
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -78,9 +84,17 @@ export const GET = withAuthContext(
   },
 );
 
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}
+
 // ── DELETE: discard a draft (set status to 'discarded') ──
 
-export const DELETE = withAuthContext(
+const authenticatedDELETE = withAuthContext(
   async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -160,3 +174,11 @@ export const DELETE = withAuthContext(
     message: 'QRスキャン下書きの操作権限がありません',
   },
 );
+
+export async function DELETE(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+}
