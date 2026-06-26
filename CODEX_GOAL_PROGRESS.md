@@ -85,11 +85,11 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Refined `/schedules` after browser inspection showed the first fold relying on abstract copy (`訪問は固定点・仕事はその間を流れる`) while departure blockers and vehicle readiness were buried in the board rows.
 - Replaced the abstract description with operational copy: `訪問枠・未確定・車両を同じ日付で確認`.
 - Added a first-fold `今日の要点` strip before the Gantt, summarizing visit slots, departure-preparation attention count, audit/report backlog, pending proposals, and recommended vehicle assignments from the already-loaded day-board response.
-- Made the visible `スケジュール` title the page `h1` and removed the hidden duplicate `訪問予定` `h1`, aligning visual and accessible page orientation.
+- Follow-up correction in `e99004f0`: restored the page-level `sr-only` `訪問予定` `h1` and made the board `スケジュール` title an `h2`, matching the page shell heading hierarchy while keeping the visible board title unchanged.
 - Kept the `日` / `週` toggle and `予定を作る` action at 44px minimum height across breakpoints.
 - Preserved all existing schedule board fetches, day/week view toggle behavior, proposal route, vehicle assignment action, route preview, operational tasks, auth behavior, backend/API behavior, and DB behavior. No feature was removed.
 - Screenshot evidence: desktop `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/schedules-desktop-after-final.png`; mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/schedules-mobile-after-final.png`.
-- Validation passed: focused `schedule-team-board` Vitest `1` file / `17` tests; focused ESLint; focused Prettier check; live browser desktop/mobile checks on `http://localhost:3012/schedules?dev_refresh=176` with `0` horizontal overflow, one visible `h1`, visible `今日の要点`, and no undersized visible controls inside `data-testid="schedule-team-board"`.
+- Validation passed: focused `schedule-team-board` Vitest `1` file / `17` tests; focused ESLint; focused Prettier check; authenticated live browser desktop/mobile checks on `http://localhost:3012/schedules` with `0` console/page errors, `0` horizontal overflow, `h1Texts=["訪問予定"]`, board `h2` text `スケジュール`, visible `今日の要点`, and `予定を作る` / `日` / `週` controls at 44px or larger.
 - Next action: run final diff checks including ledgers, commit this schedules UI slice, then continue the all-pages screenshot loop. The broader objective is not complete.
 
 ### 2026-06-26 JST - Reports First-Fold Draft Priority

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1048 JST
+
+- current task: correct the committed `/schedules` heading hierarchy follow-up after browser verification showed the board title still rendering as the page `h1`.
+- files inspected: agmsg inbox; `git status --short --untracked-files=all`; `git log --oneline`; `src/app/(dashboard)/schedules/page.tsx`; `src/app/(dashboard)/schedules/schedule-team-board.tsx`; `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`; live authenticated desktop/mobile `/schedules` browser DOM and screenshot checks.
+- files changed: `src/app/(dashboard)/schedules/page.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, `src/app/(dashboard)/schedules/schedule-team-board.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the previous schedules slice added the first-fold summary but left the board `スケジュール` heading as `h1` and omitted a page-level `sr-only` heading, so the accessible page heading did not match the page shell contract.
+- security risks found: none changed in application logic. No auth, authorization, API, PHI projection, schema, migration, seed, DB write path, external send, or destructive operation was changed.
+- performance issues found: none. The fix is heading markup and test expectation only.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/app/(dashboard)/schedules/page.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/schedules/page.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`; authenticated Playwright desktop/mobile DOM and screenshot check on `http://localhost:3012/schedules`.
+- validation results: focused schedules Vitest passed `1` file / `17` tests; focused ESLint passed; focused Prettier check passed. Authenticated browser checks passed on desktop and mobile with `0` console/page errors, `h1Texts=["訪問予定"]`, board `h2` text `スケジュール`, no horizontal overflow, and `予定を作る` / `日` / `週` controls at 44px or larger. Screenshots were refreshed under `test-results/ui-layout-screenshot-audit/schedules-*-after.png`.
+- remaining work: continue the operational-screen UI/UX loop. A separate Codex pane currently owns dirty `/prescriptions` and shared workflow shortcut files, so this entry/commit must not include those files.
+- next action: commit this progress-ledger correction separately, notify Claude that the schedules lock is released, and avoid the other Codex pane's in-flight prescriptions files.
+
 ### 20260626-1041 JST
 
 - current task: continue the active repo-wide UI/UX refinement goal with a screenshot-driven `/reports` first-fold draft-priority slice plus shared 44px control hardening found during the report audit.
