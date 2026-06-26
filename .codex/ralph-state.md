@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1856 JST
+
+- current task: `/admin/pca-pumps` return-inspection-first ordering and 44px action target hardening.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, design-review skill guidance, `src/app/(dashboard)/admin/pca-pumps/page.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`, related PCA tests discovered with `rg`, route-mocked before/final desktop/mobile screenshots under `artifacts/ui-pca-pumps-sweep/`, and gbrain code graph probes for `PcaPumpsContent`.
+- files changed: `src/app/(dashboard)/admin/pca-pumps/page.tsx`, `src/app/(dashboard)/admin/pca-pumps/page.test.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/admin/pca-pumps` rendered the generic admin intro before medical equipment work, placed `返却検品待ち` below the first viewport at `950px` desktop / `875px` mobile, and allowed desktop page-body actions/search to shrink to `28px-32px`.
+- security risks found: no auth, authorization, org scoping, PCA pump APIs, rental APIs, return-inspection mutation behavior, billing fee behavior, validation blockers, schema, migrations, DB writes, external sends, PHI projection, audit behavior, or secret handling changed. Browser proof used route-mocked APIs and a local session token; no DB reads or writes were performed.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier render loops were introduced. The change reorders already-rendered sections and enlarges existing controls.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx' 'src/app/(dashboard)/admin/pca-pumps/page.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/pca-pumps/page.tsx' 'src/app/(dashboard)/admin/pca-pumps/page.test.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx'`; `pnpm exec prettier --write ...`; `pnpm exec prettier --check ...`; `git diff --check -- ...`; direct route-mocked Playwright proof on `http://localhost:3012/admin/pca-pumps`.
+- validation results: focused PcaPumpsContent/Page Vitest passed `2` files / `11` tests; scoped ESLint passed; scoped Prettier write/check passed; scoped diff-check passed. Route-mocked browser proof saved `pca-pumps-before-desktop.png`, `pca-pumps-before-mobile.png`, `pca-pumps-after-final-desktop.png`, and `pca-pumps-after-final-mobile.png`; final proof had no console/page errors, no generic intro, one visible `PCAポンプレンタル` h1, no horizontal overflow, page-body small-control count `0`, `返却検品待ち` at `366px` desktop / `338px` mobile, and `検品` at `465px` desktop / `509px` mobile.
+- remaining work: commit the `/admin/pca-pumps` UI/test group, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server started for screenshot proof, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only the pca-pumps page/content/test files for the implementation commit, then stage only ledgers for the progress commit.
+
 ### 20260626-1848 JST
 
 - current task: support the existing Claude-authored type-fix slice for admin route context params, offline-sync closure narrowing, and dispense-workbench adapter test typing.

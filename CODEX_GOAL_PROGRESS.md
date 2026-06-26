@@ -48,6 +48,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed in this Codex support pass: focused admin external-professionals/facility contacts/dispense-workbench adapter Vitest `3` files / `29` tests; scoped ESLint; scoped Prettier write/check; scoped diff-check; full `pnpm typecheck`.
 - Next action: commit this progress-ledger update separately, send agmsg FYI, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - PCA Pumps Return Inspection First
+
+- Refined `/admin/pca-pumps` after route-mocked browser proof showed the generic admin intro consuming first-fold space, the safety-relevant `返却検品待ち` work area starting at `950px` desktop / `875px` mobile, and desktop page-body actions/search measuring `28px-32px`.
+- Removed the generic `最初に見るポイント` intro from this medical equipment page, moved returned-pump inspection ahead of the inventory table, kept open rentals next, and moved the full pump inventory/search/registration area after the immediate return-inspection work.
+- Enlarged visible PCA actions and search input to 44px targets, including `検品`, `貸出登録`, `ポンプ登録`, DataTable row actions (`返却`, `取消`, `貸出`, `メンテ`), and the inventory search input.
+- Preserved all existing PCA pump fetches, rental fetches, return inspection fetches, prescriber institution fetches, create/update mutations, validation blockers, return-inspection checklist behavior, billing fee fields, auth behavior, backend/API behavior, DB behavior, and displayed PCA data. No feature was removed; only generic admin support copy was hidden and sections were reordered.
+- Screenshot evidence: before/final desktop and mobile screenshots under `artifacts/ui-pca-pumps-sweep/`, including `pca-pumps-before-desktop.png`, `pca-pumps-before-mobile.png`, `pca-pumps-after-final-desktop.png`, and `pca-pumps-after-final-mobile.png`.
+- Validation passed: focused PcaPumpsContent/Page Vitest `2` files / `11` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/pca-pumps` with no console/page errors, no generic intro, one visible `PCAポンプレンタル` h1, no horizontal overflow, and page-body small-control count `0`. Final proof placed `返却検品待ち` at `366px` desktop / `338px` mobile and `検品` at `465px` desktop / `509px` mobile.
+- Next action: commit the `/admin/pca-pumps` UI/test slice, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server, and continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Communication Requests Reply Follow-up First
 
 - Refined `/communications/requests` after browser proof showed the first viewport spent the first interaction budget on status/context filters before the reply follow-up queue.
