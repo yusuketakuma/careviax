@@ -155,7 +155,7 @@ function SensitivitySegment({
               if (!isActive) onSelect(option.value);
             }}
             className={cn(
-              'inline-flex min-h-8 min-w-10 items-center justify-center rounded px-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+              'inline-flex min-h-11 min-w-11 items-center justify-center rounded px-2 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60',
               isActive
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -190,7 +190,7 @@ function OnOffPill({
       title={disabled ? '管理者のみ変更できます' : undefined}
       onClick={onToggle}
       className={cn(
-        'inline-flex min-h-8 shrink-0 items-center rounded-full border px-3 py-1 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+        'inline-flex min-h-11 min-w-14 shrink-0 items-center justify-center rounded-full border px-3 py-1 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60',
         on
           ? 'border-state-done/30 bg-state-done/10 text-state-done'
           : 'border-border bg-muted text-muted-foreground',
@@ -321,13 +321,16 @@ function PolicyPrimaryStrip({
               </p>
             ) : null}
             {nextAction.actionHref ? (
-              <Button asChild className="mt-3 min-h-[44px] w-full justify-center">
+              <Button
+                asChild
+                className="mt-3 h-11 min-h-11 w-full justify-center sm:h-11 sm:min-h-11"
+              >
                 <Link href={nextAction.actionHref}>{nextAction.actionLabel}</Link>
               </Button>
             ) : (
               <Button
                 type="button"
-                className="mt-3 min-h-[44px] w-full justify-center"
+                className="mt-3 h-11 min-h-11 w-full justify-center sm:h-11 sm:min-h-11"
                 onClick={nextAction.onAction}
                 disabled={nextAction.actionDisabled}
               >
@@ -669,7 +672,12 @@ export function OperationalPolicyContent() {
                       </span>
                     }
                     control={
-                      <Button asChild variant="outline" size="sm">
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="h-11 min-h-11 sm:h-11 sm:min-h-11"
+                      >
                         <Link href="/dashboard#dashboard-process-now">→ 詰まり管理へ</Link>
                       </Button>
                     }

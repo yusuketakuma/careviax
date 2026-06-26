@@ -9618,3 +9618,23 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-settings-sweep/settings-mobile-before.png`, `artifacts/ui-settings-sweep/settings-mobile-after.png`, and `tools/tests/.artifacts/design-fidelity/new_14_settings.actual.png`.
 - Remaining:
   - Commit the settings UI/UX slice, then commit this ledger update separately and release the `/settings` lock. The broader all-pages UI/UX objective remains incomplete.
+
+### Settings Policy — Codex-only Primary Strip Reproof
+
+- Coordination:
+  - Continued under the Codex-only override. `agmsg` inbox for `phos/codex` had no new messages.
+  - Preserved the existing settings-only dirty slice and staged no unrelated files.
+- Bugs found:
+  - Independent desktop browser proof showed the newly surfaced `/settings` primary-strip action and WIP link still inherited compact `sm:h-*` button heights, measuring below the PH-OS 44px page-body target.
+- Implemented by Codex:
+  - Raised the settings page's primary next-action button, WIP link, safety sensitivity segment buttons, and ON/OFF policy switches to 44px touch targets on desktop and mobile.
+  - Kept the existing right-drawer rail, policy cards, confirmation dialog, API calls, permissions, and setting controls intact.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `pnpm eslint 'src/app/(dashboard)/settings/operational-policy-content.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/settings/operational-policy-content.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`: passed after targeted formatting.
+  - `git diff --check -- 'src/app/(dashboard)/settings/operational-policy-content.tsx' 'src/app/(dashboard)/settings/operational-policy-content.test.tsx'`: passed.
+  - Independent authenticated Playwright verification on `http://localhost:3012/settings` at `390x844` and `1440x1000`: no console/page errors, no error text, no horizontal overflow, one visible `h1`, and page-body `smallTargetCount=0` on both mobile and desktop.
+  - Screenshot evidence: `settings-operational-policy-mobile-after-primary-strip.png` and `settings-operational-policy-desktop-after-primary-strip.png` under `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
+- Remaining:
+  - Commit the settings UI/UX continuation as its own grouped commit, then continue the all-pages UI/UX sweep. The broader objective is not complete.
