@@ -23,6 +23,7 @@ vi.mock('@/server/services/home-care-ops', () => ({
 import type { Prisma } from '@prisma/client';
 import type { ScopedTxRunner } from '@/lib/db/rls';
 import {
+  getPatientHeaderSummary,
   getPatientDocumentsData,
   getPatientOverview,
   getPatientReadinessData,
@@ -73,7 +74,10 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
       findMany: vi.fn().mockResolvedValue([]),
       findFirst: vi.fn().mockResolvedValue(null),
     },
-    visitRecord: { findMany: vi.fn().mockResolvedValue([]) },
+    visitRecord: {
+      findFirst: vi.fn().mockResolvedValue(null),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     careReport: { findMany: vi.fn().mockResolvedValue([]) },
     auditLog: { findMany: vi.fn().mockResolvedValue([]) },
     communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
@@ -110,6 +114,166 @@ beforeEach(() => {
   getPatientHomeCareFeatureSummaryMock.mockResolvedValue({
     states: [],
     highlights: [],
+  });
+});
+
+describe('getPatientHeaderSummary', () => {
+  it('returns read-only header dates and a resolved primary pharmacist name within the scoped cases', async () => {
+    const db = buildDb();
+    db.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      cases: [
+        {
+          id: 'case_1',
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        {
+          id: 'case_2',
+          primary_pharmacist_id: 'pharmacist_2',
+        },
+      ],
+    });
+    db.user.findMany.mockResolvedValue([{ id: 'pharmacist_1', name: '薬剤師 花子' }]);
+    db.visitRecord.findFirst.mockResolvedValue({
+      visit_date: new Date('2026-01-05T09:00:00.000Z'),
+    });
+    db.prescriptionIntake.findFirst.mockResolvedValue({
+      prescribed_date: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const result = await getPatientHeaderSummary(
+      db as unknown as Parameters<typeof getPatientHeaderSummary>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      },
+    );
+
+    expect(result).toEqual({
+      primary_pharmacist_name: '薬剤師 花子',
+      first_visit_date: '2026-01-05T09:00:00.000Z',
+      last_prescribed_date: '2026-06-01T00:00:00.000Z',
+      next_prescription_expected_date: null,
+    });
+    expect(db.patient.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'patient_1',
+          org_id: 'org_1',
+        }),
+        select: expect.objectContaining({
+          cases: expect.objectContaining({
+            orderBy: { updated_at: 'desc' },
+            select: {
+              id: true,
+              primary_pharmacist_id: true,
+            },
+          }),
+        }),
+      }),
+    );
+    expect(db.user.findMany).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', id: { in: ['pharmacist_1'] } },
+      select: { id: true, name: true },
+    });
+    expect(db.visitRecord.findFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        schedule: { case_id: { in: ['case_1', 'case_2'] } },
+      },
+      orderBy: [{ visit_date: 'asc' }, { created_at: 'asc' }],
+      select: { visit_date: true },
+    });
+    expect(db.prescriptionIntake.findFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        cycle: {
+          patient_id: 'patient_1',
+          case_id: { in: ['case_1', 'case_2'] },
+        },
+      },
+      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+      select: { prescribed_date: true },
+    });
+  });
+
+  it('returns null when the patient is outside the readable scope', async () => {
+    const db = buildDb();
+    db.patient.findFirst.mockResolvedValue(null);
+
+    await expect(
+      getPatientHeaderSummary(db as unknown as Parameters<typeof getPatientHeaderSummary>[0], {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      }),
+    ).resolves.toBeNull();
+    expect(db.visitRecord.findFirst).not.toHaveBeenCalled();
+    expect(db.prescriptionIntake.findFirst).not.toHaveBeenCalled();
+    expect(db.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps optional header fields null when no scoped source data exists', async () => {
+    const db = buildDb();
+    db.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      cases: [],
+    });
+
+    await expect(
+      getPatientHeaderSummary(db as unknown as Parameters<typeof getPatientHeaderSummary>[0], {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      }),
+    ).resolves.toEqual({
+      primary_pharmacist_name: null,
+      first_visit_date: null,
+      last_prescribed_date: null,
+      next_prescription_expected_date: null,
+    });
+    expect(db.visitRecord.findFirst).not.toHaveBeenCalled();
+    expect(db.prescriptionIntake.findFirst).not.toHaveBeenCalled();
+    expect(db.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it('does not fall back to an older case pharmacist when the latest scoped case is unassigned', async () => {
+    const db = buildDb();
+    db.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      cases: [
+        {
+          id: 'case_latest',
+          primary_pharmacist_id: null,
+        },
+        {
+          id: 'case_old',
+          primary_pharmacist_id: 'pharmacist_old',
+        },
+      ],
+    });
+    db.visitRecord.findFirst.mockResolvedValue(null);
+    db.prescriptionIntake.findFirst.mockResolvedValue(null);
+
+    await expect(
+      getPatientHeaderSummary(db as unknown as Parameters<typeof getPatientHeaderSummary>[0], {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      }),
+    ).resolves.toEqual({
+      primary_pharmacist_name: null,
+      first_visit_date: null,
+      last_prescribed_date: null,
+      next_prescription_expected_date: null,
+    });
+    expect(db.user.findMany).not.toHaveBeenCalled();
   });
 });
 

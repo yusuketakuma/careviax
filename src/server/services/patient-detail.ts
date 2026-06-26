@@ -101,6 +101,13 @@ function maskFoundationForExternalViewer(foundation: PatientFoundationData): Pat
 
 type DetailArgs = PatientDetailScopeArgs;
 
+export type PatientHeaderSummary = {
+  primary_pharmacist_name: string | null;
+  first_visit_date: string | null;
+  last_prescribed_date: string | null;
+  next_prescription_expected_date: string | null;
+};
+
 /**
  * Row shape of the inline op_history `auditLog.findMany` projection. Declared so
  * the fail-soft `operationHistory` binding has a stable type across the empty
@@ -322,6 +329,69 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
       address_fields_masked: privacy.addressFieldsMasked,
       can_view_detail: privacy.canViewDetail,
     },
+  };
+}
+
+export async function getPatientHeaderSummary(
+  db: DbClient,
+  args: DetailArgs,
+): Promise<PatientHeaderSummary | null> {
+  const assignedCaseWhere = buildAssignedCareCaseWhere(args);
+  const patient = await db.patient.findFirst({
+    where: buildPatientDetailWhere(args),
+    select: {
+      cases: {
+        ...(assignedCaseWhere ? { where: assignedCaseWhere } : {}),
+        orderBy: { updated_at: 'desc' },
+        select: {
+          id: true,
+          primary_pharmacist_id: true,
+        },
+      },
+    },
+  });
+  if (!patient) return null;
+
+  const caseIds = patient.cases.map((item) => item.id);
+  const primaryPharmacistId = patient.cases[0]?.primary_pharmacist_id ?? null;
+
+  const [primaryPharmacistNameMap, firstVisit, lastPrescription] = await Promise.all([
+    primaryPharmacistId
+      ? batchResolveNames(db as typeof prisma, args.orgId, [primaryPharmacistId])
+      : Promise.resolve(new Map<string, string>()),
+    caseIds.length === 0
+      ? Promise.resolve(null)
+      : db.visitRecord.findFirst({
+          where: {
+            org_id: args.orgId,
+            patient_id: args.patientId,
+            ...buildVisitRecordCaseScope(caseIds),
+          },
+          orderBy: [{ visit_date: 'asc' }, { created_at: 'asc' }],
+          select: { visit_date: true },
+        }),
+    caseIds.length === 0
+      ? Promise.resolve(null)
+      : db.prescriptionIntake.findFirst({
+          where: {
+            org_id: args.orgId,
+            cycle: {
+              patient_id: args.patientId,
+              case_id: { in: caseIds },
+            },
+          },
+          orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+          select: { prescribed_date: true },
+        }),
+  ]);
+
+  return {
+    primary_pharmacist_name: primaryPharmacistId
+      ? (primaryPharmacistNameMap.get(primaryPharmacistId) ?? null)
+      : null,
+    first_visit_date: firstVisit?.visit_date.toISOString() ?? null,
+    last_prescribed_date: lastPrescription?.prescribed_date.toISOString() ?? null,
+    next_prescription_expected_date: null,
   };
 }
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  getPatientHeaderSummaryMock,
   getPatientOverviewMock,
   getPatientVisitsDataMock,
   getPatientCommunicationsDataMock,
@@ -13,6 +14,7 @@ const {
   authContextMock,
   authRejectionMock,
 } = vi.hoisted(() => ({
+  getPatientHeaderSummaryMock: vi.fn(),
   getPatientOverviewMock: vi.fn(),
   getPatientVisitsDataMock: vi.fn(),
   getPatientCommunicationsDataMock: vi.fn(),
@@ -45,6 +47,7 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 vi.mock('@/server/services/patient-detail', () => ({
+  getPatientHeaderSummary: getPatientHeaderSummaryMock,
   getPatientOverview: getPatientOverviewMock,
   getPatientVisitsData: getPatientVisitsDataMock,
   getPatientCommunicationsData: getPatientCommunicationsDataMock,
@@ -55,6 +58,7 @@ vi.mock('@/server/services/patient-detail', () => ({
   getPatientWorkflowPreviewData: getPatientWorkflowPreviewDataMock,
 }));
 
+import { GET as headerSummaryGet } from './header-summary/route';
 import { GET as overviewGet } from './overview/route';
 import { GET as visitsGet } from './visits/route';
 import { GET as communicationsGet } from './communications/route';
@@ -231,6 +235,95 @@ describe('patient detail slice routes', () => {
       userId: 'user_1',
     });
     authRejectionMock.mockReturnValue(null);
+  });
+
+  it('returns patient header summary data', async () => {
+    getPatientHeaderSummaryMock.mockResolvedValue({
+      primary_pharmacist_name: '薬剤師 花子',
+      first_visit_date: '2026-01-05T09:00:00.000Z',
+      last_prescribed_date: '2026-06-01T00:00:00.000Z',
+      next_prescription_expected_date: null,
+    });
+
+    const response = await headerSummaryGet(
+      createRequest('http://localhost/api/patients/patient_1/header-summary'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(getPatientHeaderSummaryMock).toHaveBeenCalledWith(
+      {},
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      },
+    );
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toEqual({
+      primary_pharmacist_name: '薬剤師 花子',
+      first_visit_date: '2026-01-05T09:00:00.000Z',
+      last_prescribed_date: '2026-06-01T00:00:00.000Z',
+      next_prescription_expected_date: null,
+    });
+  });
+
+  it('returns no-store for invalid patient header summary ids', async () => {
+    const response = await headerSummaryGet(
+      createRequest('http://localhost/api/patients/%20%20/header-summary'),
+      {
+        params: Promise.resolve({ id: '   ' }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '患者IDが不正です',
+    });
+    expect(getPatientHeaderSummaryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store when patient header summary is not found', async () => {
+    getPatientHeaderSummaryMock.mockResolvedValue(null);
+
+    const response = await headerSummaryGet(
+      createRequest('http://localhost/api/patients/patient_1/header-summary'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '患者が見つかりません',
+    });
+  });
+
+  it('returns a sanitized no-store 500 when patient header summary reads fail', async () => {
+    const rawError = '患者A ワルファリン header summary failure';
+    getPatientHeaderSummaryMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await headerSummaryGet(
+      createRequest('http://localhost/api/patients/patient_1/header-summary'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('ワルファリン');
   });
 
   it('returns patient overview data', async () => {

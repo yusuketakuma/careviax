@@ -12,6 +12,7 @@ const {
   buildPatientVisitRecordsPdfMock,
   buildVisitRecordPdfMock,
   buildPharmacyInvoiceDocumentPdfMock,
+  getPatientHeaderSummaryMock,
   getPatientOverviewMock,
 } = vi.hoisted(() => {
   const createRecord = () => ({
@@ -91,6 +92,7 @@ const {
     buildPatientVisitRecordsPdfMock: vi.fn(),
     buildVisitRecordPdfMock: vi.fn(),
     buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
+    getPatientHeaderSummaryMock: vi.fn(),
     getPatientOverviewMock: vi.fn(),
   };
 });
@@ -127,6 +129,7 @@ vi.mock('@/server/services/patient-detail', async (importOriginal) => {
 
   return {
     ...actual,
+    getPatientHeaderSummary: getPatientHeaderSummaryMock,
     getPatientOverview: getPatientOverviewMock,
   };
 });
@@ -171,6 +174,7 @@ import { GET as patientsGet } from '../patients/route';
 import { GET as patientsBoardGet } from '../patients/board/route';
 import { GET as patientCheckDuplicateGet } from '../patients/check-duplicate/route';
 import { GET as patientGet } from '../patients/[id]/route';
+import { GET as patientHeaderSummaryGet } from '../patients/[id]/header-summary/route';
 import { GET as patientOverviewGet } from '../patients/[id]/overview/route';
 import { GET as patientPrescriptionsGet } from '../patients/[id]/prescriptions/route';
 import { GET as patientSelfReportsGet } from '../patient-self-reports/route';
@@ -650,6 +654,24 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'patients/[id]/header-summary GET',
+    setupSuccess: () => {
+      getPatientHeaderSummaryMock.mockResolvedValueOnce({
+        primary_pharmacist_name: '薬剤師 花子',
+        first_visit_date: '2026-01-05T09:00:00.000Z',
+        last_prescribed_date: '2026-06-01T00:00:00.000Z',
+        next_prescription_expected_date: null,
+      });
+    },
+    handler: () =>
+      patientHeaderSummaryGet(
+        createRequest('http://localhost/api/patients/patient_1/header-summary', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
     name: 'patients/[id]/overview GET',
     setupSuccess: () => {
       getPatientOverviewMock.mockResolvedValueOnce({ id: 'patient_1', name: '患者A' });
@@ -1012,6 +1034,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients GET' ||
         route.name === 'patients/board GET' ||
         route.name === 'patients/check-duplicate GET' ||
+        route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
@@ -1068,6 +1091,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients GET' ||
         route.name === 'patients/board GET' ||
         route.name === 'patients/check-duplicate GET' ||
+        route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
@@ -1111,6 +1135,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(200);
       if (
         route.name === 'visits/today-preparation GET' ||
+        route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
