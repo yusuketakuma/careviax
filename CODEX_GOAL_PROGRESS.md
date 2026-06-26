@@ -59,6 +59,15 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation caveat: `pnpm exec playwright test tools/tests/ui-layout-screenshot-audit.spec.ts --project=chromium --grep "my-day"` timed out waiting for the configured webServer after 60 seconds while starting the Next build, so a fresh screenshot audit was not completed in this slice.
 - Next action: commit the My Day UI slice, commit the Codex-only runtime-state correction separately, then continue screenshot-driven refinement on the next high-frequency operational page.
 
+### 2026-06-26 JST - My Day Containment Reproof
+
+- Re-ran the `/my-day` screenshot loop against the already-running local dev server after the previous configured Playwright webServer path timed out.
+- Fixed the rendered defects found in that proof: the visit/task filter chips no longer shrink to 32px at desktop breakpoints, and the My Day section surfaces/grid columns now opt into `min-w-0` containment so mobile cards do not overflow the 393px viewport.
+- Preserved all existing My Day data fetches, filters, urgent-action cards, visit links, task links, quick links, auth behavior, backend/API behavior, DB behavior, and visible features. No feature was removed.
+- Screenshot evidence: desktop `artifacts/ui-my-day-sweep/my-day-desktop-after.png`; mobile `artifacts/ui-my-day-sweep/my-day-mobile-after.png`.
+- Validation passed: focused `my-day-content` Vitest `1` file / `10` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated browser desktop/mobile proof on `http://localhost:3012/my-day` with page-body undersized interactive count `0`, horizontal overflow count `0`, and all six filter controls measuring `44px` high.
+- Next action: commit the `/my-day` containment fix separately from progress ledgers, then continue the all-pages UI/UX screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Visits First-Fold Clinical Copy
 
 - Refined `/visits` after desktop/mobile browser inspection showed the first visit group exposing internal design language: `今日の訪問 — 準備が9割` and `...確認すればよい設計`.
