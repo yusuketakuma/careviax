@@ -573,7 +573,11 @@ function OfflineSyncRowCard({
             size="sm"
             variant="outline"
             className="min-h-11 w-full text-state-confirm"
-            onClick={() => onResolve(row.id)}
+            onClick={() => {
+              // The branch above guarantees row.id is not null, but the
+              // closure does not preserve property narrowing.
+              if (row.id !== null) onResolve(row.id);
+            }}
           >
             内容を確認
           </Button>

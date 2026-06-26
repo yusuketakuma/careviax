@@ -155,7 +155,7 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
 
   it('reuses already loaded patient rows when resolving the dispense workbench', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-tasks?cycle_id=cycle_1') {
         return jsonResponse({
@@ -204,7 +204,7 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
 
   it('resolves direct /audit entry to the completed dispense task for audit-ready cycles', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-tasks?cycle_id=cycle_1') {
         return jsonResponse({
@@ -258,7 +258,7 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
 
   it('resolves direct /set entry from patient cycle to latest SetPlan calendar', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
         return jsonResponse({
@@ -322,7 +322,7 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
 
   it('fails closed instead of switching patients when the selected patient has no SetPlan', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
         return jsonResponse({
@@ -382,7 +382,7 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
 
   it('uses the first SetPlan-backed patient when the current selection is not a real patient', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
         return jsonResponse({
@@ -425,7 +425,11 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     const result = await loadSetCalendarForPatientAsync('seed_patient_not_in_real_list');
 
     expect(result?.selId).toBe('patient_with_plan');
-    expect(result?.writeContext.planId).toBe('plan_1');
+    // The empty result union branch has no writeContext, so narrow to the
+    // populated branch before asserting the write context.
+    if (!result || !('writeContext' in result))
+      throw new Error('expected populated calendar result');
+    expect(result.writeContext.planId).toBe('plan_1');
     expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/set-plans?patient_id=patient_without_plan',
       expect.any(Object),
@@ -507,7 +511,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
 
   it('maps the internal setp phase to the set URL token with include_set_plan', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?include_set_plan=1&phase=set') {
         return jsonResponse({
@@ -554,7 +558,7 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
 
   it('passes the current org header through the dispense read chain', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url === '/api/dispense-workbench/patients?phase=dispense') {
         return jsonResponse({

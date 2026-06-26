@@ -57,10 +57,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
   },
 );
 
-export async function GET(
-  req: NextRequest,
-  routeContext: { params: Promise<Record<string, string>> },
-) {
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
   } catch {
