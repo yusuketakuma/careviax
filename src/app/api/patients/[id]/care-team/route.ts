@@ -1,10 +1,12 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { updatePatientCareTeamSchema } from '@/lib/validations/patient';
 import {
   applyPatientAssignmentWhere,
@@ -42,7 +44,7 @@ function pickDefaultCaseId(cases: Array<{ id: string; status: string; created_at
   return cases.find((careCase) => careCase.status === 'active')?.id ?? cases[0]?.id ?? null;
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の閲覧権限がありません',
@@ -78,6 +80,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     })),
     data: cases.find((careCase) => careCase.id === caseId)?.care_team_links ?? [],
   });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

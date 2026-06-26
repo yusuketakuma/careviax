@@ -58,6 +58,11 @@ function createGetRequest() {
   return new NextRequest('http://localhost/api/patients/patient_1/insurance');
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 const routeParams = { params: Promise.resolve({ id: 'patient_1' }) };
 const patientAssignmentLookup = {
   where: {
@@ -153,6 +158,7 @@ describe('/api/patients/[id]/insurance', () => {
     if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expectPatientAssignmentLookup();
     expect(patientInsuranceFindManyMock).toHaveBeenCalledWith({
       where: { patient_id: 'patient_1', org_id: 'org_1' },
@@ -204,6 +210,7 @@ describe('/api/patients/[id]/insurance', () => {
       if (!response) throw new Error('response is required');
 
       expect(response.status).toBe(200);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         data: {
           current: [{ id: 'insurance_starts_today' }, { id: 'insurance_ends_today' }],
@@ -228,6 +235,7 @@ describe('/api/patients/[id]/insurance', () => {
     if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expectPatientAssignmentLookup();
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
@@ -268,6 +276,7 @@ describe('/api/patients/[id]/insurance', () => {
     if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -275,6 +284,22 @@ describe('/api/patients/[id]/insurance', () => {
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('GET returns a sanitized no-store 500 when insurance reads fail', async () => {
+    const rawError = '患者A insurance 12345678 read failure';
+    patientInsuranceFindManyMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createGetRequest(), routeParams);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('12345678');
   });
 
   it('POST returns 404 for an inaccessible patient without reading or writing insurance records', async () => {

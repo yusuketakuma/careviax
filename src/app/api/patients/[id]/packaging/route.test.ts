@@ -52,6 +52,11 @@ function createMalformedJsonPutRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/[id]/packaging', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -81,6 +86,7 @@ describe('/api/patients/[id]/packaging', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: {
         packaging_profile: {
@@ -101,10 +107,29 @@ describe('/api/patients/[id]/packaging', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
     expect(prismaMock.patient.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when packaging reads fail', async () => {
+    const rawError = '患者A 一包化 medication box read failure';
+    prismaMock.patient.findFirst.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('一包化');
   });
 
   it('rejects blank patient ids before parsing packaging payloads or upserting', async () => {

@@ -1,10 +1,12 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { z } from 'zod';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -140,7 +142,7 @@ const insuranceSchema = z
     }
   });
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者保険情報の閲覧権限がありません',
@@ -172,6 +174,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { current, upcoming, history, all } = classifyPatientInsurances(insurances, today);
 
   return success({ data: { current, upcoming, history, all } });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

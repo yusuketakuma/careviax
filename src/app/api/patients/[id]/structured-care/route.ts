@@ -1,12 +1,14 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { internalError, success, validationError, notFound } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listPatientStructuredCare } from '@/server/services/patient-structured-care-list';
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の閲覧権限がありません',
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
       { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role }
+      { userId: ctx.userId, role: ctx.role },
     ),
     select: { id: true },
   });
@@ -36,4 +38,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
 
   return success({ data });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
