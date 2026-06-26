@@ -43,10 +43,19 @@ page-local components + each screen's backend (no DB). SSOT
   auto-restore driver killed); medical UI/UX SSOT refresh `9e1cdfbd` (research
   integrated). Patient-detail slices: C1 tabular-nums `02b46cb1`; C2
   not-color-alone risk-tile icon `fc094dea` (both prettier OK, vitest 47/47).
+- Claude (2026-06-27 session, all own-files-only, all gates green): care-team
+  Patient一本化 P4 登録UI `cd347f66`; `/reports/[id]` P0 患者識別 PatientHeader
+  バンド + content warnings 上部要約 `dda3422f`; `/patients` board P1 重大安全
+  タグ(allergy/narcotic)を +N に畳まない `selectVisibleSafetyTags` `07c13773`;
+  `/patients/[id]/safety-check` P1 患者識別 + アレルギー/ハイリスク sticky 再掲
+  `e50a38d3`. PatientHeader を report/safety-check で再利用し at-a-glance 識別を
+  全画面で統一。follow-up: reports 画面の allergy/high-risk は安全データソース
+  未配線(header-summary は safety 非含有)。
 
 Next action: Claude continues the patients lane (deeper at-a-glance refinement
 needs the audit screenshot webServer up), then patients list → reports → admin.
-Codex continues its lane.
+Codex continues its lane (visit-schedule-proposals no-store WIP は本セッション
+開始以来 working tree に未コミットのまま — 要 status 確認 / stall 疑い)。
 
 **How it's used in the loop.**
 
