@@ -39,9 +39,10 @@ page-local components + each screen's backend (no DB). SSOT
 
 - Codex: research/SSOT seed `e0f6bd1e`/`5f116094`; dashboard `beb82a27`;
   app-header `0bceeeff`; my-day `163cd7fd`; visits `648fce78`; tasks in flight.
-- Claude: parallel mechanism + screen partition restored; medical UI/UX SSOT
-  refresh `9e1cdfbd` (research integrated); patient-detail at-a-glance
-  tabular-nums slice C1 `02b46cb1` (prettier OK, vitest 47/47).
+- Claude: parallel mechanism + screen partition restored (rev8 `018f6244`,
+  auto-restore driver killed); medical UI/UX SSOT refresh `9e1cdfbd` (research
+  integrated). Patient-detail slices: C1 tabular-nums `02b46cb1`; C2
+  not-color-alone risk-tile icon `fc094dea` (both prettier OK, vitest 47/47).
 
 Next action: Claude continues the patients lane (deeper at-a-glance refinement
 needs the audit screenshot webServer up), then patients list → reports → admin.
