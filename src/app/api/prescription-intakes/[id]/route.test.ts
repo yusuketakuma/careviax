@@ -56,6 +56,11 @@ function createGetRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/prescription-intakes/intake_1', {
     method: 'PATCH',
@@ -95,6 +100,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '処方受付IDが不正です',
@@ -121,6 +127,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
 
     const findFirstArg = prescriptionIntakeFindFirstMock.mock.calls[0]?.[0] as {
       where: { id: string; org_id: string };
@@ -130,6 +137,115 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
       org_id: 'org_1',
     });
     expect(findFirstArg.where.id).not.toBe(encodeURIComponent(hostileId));
+  });
+
+  it('keeps PHI-rich prescription detail responses no-store', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_phi_1',
+      org_id: 'org_1',
+      source_type: 'qr',
+      lines: [
+        {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          days: 14,
+          quantity: 14,
+        },
+      ],
+      prescriber_institution_ref: {
+        id: 'institution_1',
+        name: 'みなとクリニック',
+      },
+      jahis_supplemental_records: [
+        {
+          id: 'jahis_1',
+          payload: { patient_name: '山田 太郎', insurance_number: '12345678' },
+          raw_line: 'JAHIS RAW 山田 太郎',
+        },
+      ],
+      cycle: {
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '山田 太郎',
+            name_kana: 'ヤマダ タロウ',
+            birth_date: '1950-01-01',
+            gender: 'male',
+          },
+        },
+        inquiries: [
+          {
+            id: 'inquiry_1',
+            inquiry_content: '服用タイミングを確認',
+            change_detail: '朝食後へ変更',
+          },
+        ],
+      },
+    });
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'intake_phi_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'intake_phi_1',
+      lines: [expect.objectContaining({ drug_name: 'アムロジピン錠5mg' })],
+      jahis_supplemental_records: [
+        expect.objectContaining({
+          raw_line: 'JAHIS RAW 山田 太郎',
+          payload: expect.objectContaining({ insurance_number: '12345678' }),
+        }),
+      ],
+      cycle: {
+        case_: {
+          patient: expect.objectContaining({ name: '山田 太郎' }),
+        },
+      },
+    });
+  });
+
+  it('returns no-store 404 when the prescription intake is not found', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'missing_intake' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '処方箋が見つかりません',
+    });
+  });
+
+  it('returns a fixed no-store 500 when prescription intake loading fails without exposing raw PHI', async () => {
+    prescriptionIntakeFindFirstMock.mockRejectedValue(
+      new Error('intake detail failed for patient 山田 太郎 raw JAHIS 12345678'),
+    );
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'intake_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(JSON.parse(bodyText)).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(bodyText).not.toContain('山田');
+    expect(bodyText).not.toContain('JAHIS');
+    expect(bodyText).not.toContain('12345678');
   });
 
   it('rejects blank prescription intake ids before parsing or loading the intake on PATCH', async () => {

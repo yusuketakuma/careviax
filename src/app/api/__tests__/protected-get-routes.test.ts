@@ -971,6 +971,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(401);
       if (
         route.name === 'prescription-intakes GET' ||
+        route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'medication-cycles GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
@@ -1022,6 +1023,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(403);
       if (
         route.name === 'prescription-intakes GET' ||
+        route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'medication-cycles GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||

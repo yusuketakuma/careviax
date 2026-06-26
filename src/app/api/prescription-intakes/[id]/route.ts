@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { updatePrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -42,7 +43,7 @@ function extractInternalFileIdFromPrescriptionUrl(value: string) {
   return match?.[1] ?? null;
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '処方受付の閲覧権限がありません',
@@ -123,6 +124,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!intake) return notFound('処方箋が見つかりません');
 
   return success(intake);
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
