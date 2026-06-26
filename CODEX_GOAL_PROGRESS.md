@@ -10382,3 +10382,27 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-analytics-sweep/baseline/desktop.png`, `artifacts/ui-analytics-sweep/baseline/mobile.png`, `artifacts/ui-analytics-sweep/after/desktop.png`, `artifacts/ui-analytics-sweep/after/mobile.png`, and `artifacts/ui-analytics-sweep/after/metrics.json`.
 - Remaining:
   - Commit the `/admin/analytics` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Admin Realtime — Operational Signal Priority
+
+- Coordination:
+  - Drained `phos/codex` agmsg in Codex-only mode; inbox was empty.
+  - Kept this slice isolated to `/admin/realtime` page/test files. No API route, DB, migration, auth, permission, audit, external-send, or destructive operation was changed.
+- Bugs found:
+  - `/admin/realtime` still showed the generic `最初に見るポイント` header intro and a decorative `Live Operations` explanation card before the operator's actual realtime signals.
+  - Notification detail links and workbench action links rendered as small text targets (`12-16px` high in baseline desktop proof).
+- Implemented by Codex:
+  - Removed the generic admin intro for this page.
+  - Replaced the explanatory card with a first-position `今すぐ見る運用シグナル` surface for urgent notifications, high-priority workbench items, override requests, exceptions, and SSE fallback state.
+  - Kept the detailed route/exception KPI grid as a secondary section and visually prioritized the live workbench before notifications in the two-column work area.
+  - Raised notification detail and workbench action links to 44px-plus targets.
+  - Added focused assertions for no generic intro, signal-before-KPI order, and 44px action target class contracts.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/realtime/page.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `10` tests.
+  - `pnpm eslint 'src/app/(dashboard)/admin/realtime/page.tsx' 'src/app/(dashboard)/admin/realtime/page.test.tsx'`: passed.
+  - `pnpm format:check`: passed for changed files.
+  - Direct route-mocked Playwright proof on `http://localhost:3012/admin/realtime`: no console/page errors, no horizontal overflow, `genericIntro=false`, `Live Operations=false`, and targeted page actions had no undersized controls on desktop/mobile.
+  - Final metrics: desktop signal top `411px`, route KPI top `591px`, workbench top `783px`; mobile signal top `389px`, route KPI top `987px`, workbench top `1563px`. Action targets measured `96x44` for notification details and `54x44` for workbench actions.
+  - Screenshot evidence: `artifacts/ui-realtime-sweep/before/desktop.png`, `artifacts/ui-realtime-sweep/before/mobile.png`, `artifacts/ui-realtime-sweep/final/desktop.png`, `artifacts/ui-realtime-sweep/final/mobile.png`, and metrics JSON under `artifacts/ui-realtime-sweep/`.
+- Remaining:
+  - Commit the `/admin/realtime` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
