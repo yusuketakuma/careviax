@@ -331,7 +331,7 @@ function NoteCard({
                   {reportDraftIds.length > 0 ? (
                     <Link
                       href="/reports"
-                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
                     >
                       報告書を確認
                     </Link>
@@ -340,7 +340,7 @@ function NoteCard({
                     <Link
                       key={reportId}
                       href={buildReportHref(reportId)}
-                      className="inline-flex min-h-[44px] items-center rounded-lg border border-tag-info/30 bg-background px-3 py-1.5 text-xs font-medium text-tag-info hover:bg-tag-info/10 sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-tag-info/30 bg-background px-3 py-1.5 text-xs font-medium text-tag-info hover:bg-tag-info/10"
                     >
                       ドラフト{index + 1}
                     </Link>
@@ -348,7 +348,7 @@ function NoteCard({
                   {note.sync_summary?.billing_candidate_id ? (
                     <Link
                       href="/billing/candidates"
-                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
                     >
                       算定候補を確認
                     </Link>
@@ -356,14 +356,14 @@ function NoteCard({
                   {note.sync_summary?.visit_proposal_id ? (
                     <Link
                       href={buildProposalHref(note.case_id, note.patient_id)}
-                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
                     >
                       訪問候補を確認
                     </Link>
                   ) : note.case_id || note.patient_id ? (
                     <Link
                       href={buildProposalHref(note.case_id, note.patient_id)}
-                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted"
                     >
                       訪問候補を作成
                     </Link>
@@ -377,7 +377,7 @@ function NoteCard({
                 <Link
                   href={buildConferenceNoteApiPath(note.id, '/pdf')}
                   target="_blank"
-                  className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border px-2 text-xs font-medium hover:bg-muted sm:h-7 sm:min-h-0 sm:min-w-0"
+                  className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border px-2 text-xs font-medium hover:bg-muted"
                 >
                   PDF
                 </Link>
@@ -1078,6 +1078,10 @@ export function ConferencesContent({
   const notes = notesQuery.data?.data ?? [];
   const calendarNotes = conferenceCalendarQuery.data?.data ?? [];
   const activities = activitiesQuery.data?.data ?? [];
+  const isConferenceDataLoading =
+    isBootstrappingOrg ||
+    notesQuery.isLoading ||
+    (noteViewMode === 'calendar' && conferenceCalendarQuery.isLoading);
   const contextSummary =
     initialContext === 'dashboard_home'
       ? initialFocus === 'activities'
@@ -1183,59 +1187,6 @@ export function ConferencesContent({
           <AlertDescription className="text-tag-info">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
-      <SectionIntro
-        title="会議と活動の入口"
-        description="カンファレンス記録と地域活動の件数を先に確認し、どちらに着手するかを最初に判断します。"
-      />
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <Card className="border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">多職種カンファレンス</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4 text-sm">
-            <div>
-              <p className="font-medium">{notes.length}件の記録</p>
-              <p className="text-muted-foreground">
-                医師・看護師・ケアマネとの情報共有を一元管理します。
-              </p>
-            </div>
-            <Button size="sm" onClick={() => setNewNoteOpen(true)}>
-              <Plus className="mr-1.5 size-3.5" aria-hidden="true" />
-              新規記録
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">地域活動</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4 text-sm">
-            <div>
-              <p className="font-medium">{activities.length}件の活動</p>
-              <p className="text-muted-foreground">
-                勉強会・地域連携・相談会の実績と紹介導線を記録します。
-              </p>
-            </div>
-            <Button size="sm" variant="outline" onClick={() => setNewActivityOpen(true)}>
-              <Plus className="mr-1.5 size-3.5" aria-hidden="true" />
-              活動登録
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {isBootstrappingOrg ||
-      notesQuery.isLoading ||
-      activitiesQuery.isLoading ||
-      (noteViewMode === 'calendar' && conferenceCalendarQuery.isLoading) ? (
-        <div className="space-y-2">
-          {[1, 2].map((item) => (
-            <div key={item} className="h-32 animate-pulse rounded-lg bg-muted" />
-          ))}
-        </div>
-      ) : null}
-
       <PageSection
         title="カンファレンス記録"
         description="会議記録は一覧またはカレンダーで確認し、タスク化や報告書生成へつなげます。"
@@ -1247,7 +1198,7 @@ export function ConferencesContent({
               <button
                 type="button"
                 aria-pressed={noteViewMode === 'list'}
-                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium sm:min-h-0 sm:min-w-0 ${
+                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium ${
                   noteViewMode === 'list'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground'
@@ -1262,7 +1213,7 @@ export function ConferencesContent({
               <button
                 type="button"
                 aria-pressed={noteViewMode === 'calendar'}
-                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium sm:min-h-0 sm:min-w-0 ${
+                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium ${
                   noteViewMode === 'calendar'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground'
@@ -1294,18 +1245,32 @@ export function ConferencesContent({
               }}
             >
               <TabsList variant="line">
-                <TabsTrigger value="all" className="min-w-11">
+                <TabsTrigger value="all" className="min-h-11 min-w-11 sm:h-11 sm:min-h-11">
                   全て
                 </TabsTrigger>
-                <TabsTrigger value="pre_discharge">退院前</TabsTrigger>
-                <TabsTrigger value="service_manager">担当者会議</TabsTrigger>
-                <TabsTrigger value="death_conference">デスカンファ</TabsTrigger>
-                <TabsTrigger value="care_team">その他</TabsTrigger>
+                <TabsTrigger value="pre_discharge" className="min-h-11 sm:h-11 sm:min-h-11">
+                  退院前
+                </TabsTrigger>
+                <TabsTrigger value="service_manager" className="min-h-11 sm:h-11 sm:min-h-11">
+                  担当者会議
+                </TabsTrigger>
+                <TabsTrigger value="death_conference" className="min-h-11 sm:h-11 sm:min-h-11">
+                  デスカンファ
+                </TabsTrigger>
+                <TabsTrigger value="care_team" className="min-h-11 sm:h-11 sm:min-h-11">
+                  その他
+                </TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
         </div>
-        {noteViewMode === 'list' ? (
+        {isConferenceDataLoading ? (
+          <div className="space-y-2" aria-label="カンファレンス記録を読み込み中">
+            {[1, 2].map((item) => (
+              <div key={item} className="h-20 animate-pulse rounded-lg bg-muted" />
+            ))}
+          </div>
+        ) : noteViewMode === 'list' ? (
           <div className="space-y-4">
             {notes.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -1358,7 +1323,7 @@ export function ConferencesContent({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="size-8"
+                  className="size-11 sm:size-11"
                   aria-label="前月を表示"
                   onClick={() => {
                     setCalendarMonth((current) => subMonths(current, 1));
@@ -1370,7 +1335,7 @@ export function ConferencesContent({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8"
+                  className="min-h-11 sm:h-11 sm:min-h-11"
                   onClick={() => {
                     setCalendarMonth(new Date());
                     setSelectedCalendarDate(null);
@@ -1381,7 +1346,7 @@ export function ConferencesContent({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="size-8"
+                  className="size-11 sm:size-11"
                   aria-label="翌月を表示"
                   onClick={() => {
                     setCalendarMonth((current) => addMonths(current, 1));
@@ -1468,7 +1433,12 @@ export function ConferencesContent({
                       {selectedCalendarNotes.length}件の会議
                     </p>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedCalendarDate(null)}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="min-h-11 sm:h-11 sm:min-h-11"
+                    onClick={() => setSelectedCalendarDate(null)}
+                  >
                     閉じる
                   </Button>
                 </div>
@@ -1516,6 +1486,57 @@ export function ConferencesContent({
           </div>
         )}
       </PageSection>
+
+      <SectionIntro
+        title="会議と活動の入口"
+        description="新規記録と地域活動の登録導線を、作業キューの後にまとめます。"
+      />
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <Card className="border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">多職種カンファレンス</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-4 text-sm">
+            <div>
+              <p className="font-medium">{notes.length}件の記録</p>
+              <p className="text-muted-foreground">
+                医師・看護師・ケアマネとの情報共有を一元管理します。
+              </p>
+            </div>
+            <Button
+              size="sm"
+              className="min-h-11 sm:h-11 sm:min-h-11"
+              onClick={() => setNewNoteOpen(true)}
+            >
+              <Plus className="mr-1.5 size-3.5" aria-hidden="true" />
+              新規記録
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">地域活動</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-4 text-sm">
+            <div>
+              <p className="font-medium">{activities.length}件の活動</p>
+              <p className="text-muted-foreground">
+                勉強会・地域連携・相談会の実績と紹介導線を記録します。
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="min-h-11 sm:h-11 sm:min-h-11"
+              onClick={() => setNewActivityOpen(true)}
+            >
+              <Plus className="mr-1.5 size-3.5" aria-hidden="true" />
+              活動登録
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
 
       <SectionIntro
         title="地域活動と紹介導線"

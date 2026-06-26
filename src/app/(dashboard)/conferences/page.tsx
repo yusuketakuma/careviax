@@ -23,17 +23,9 @@ export default async function ConferencesPage({ searchParams }: ConferencesPageP
   return (
     <PageScaffold>
       <WorkflowPageHeader
-        eyebrow="Conference Notes"
+        eyebrow="カンファレンス"
         title="カンファレンスノート"
-        description="多職種カンファレンスの記録・アクションアイテム管理"
-        supportingContent={
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">最初に見るポイント</p>
-            <p className="text-sm text-muted-foreground">
-              未完了アクション、共有が必要な論点、関連する報告や提案導線を先に整理します。
-            </p>
-          </div>
-        }
+        description="未完了アクション、共有論点、報告・提案導線を同じ作業面で整理します。"
         childrenLabel="関連導線"
       >
         <PageShortcutLinks
@@ -45,11 +37,6 @@ export default async function ConferencesPage({ searchParams }: ConferencesPageP
           ]}
         />
       </WorkflowPageHeader>
-      <CollaborationWorkflowPanel
-        focus="conference"
-        description="カンファレンスで整理した論点を、依頼・照会、訪問時の申し送り、報告書送付へ戻せるようにしています。"
-      />
-
       <Suspense fallback={<Loading />}>
         <ConferencesContent
           initialFocus={initialState.initialFocus}
@@ -58,6 +45,11 @@ export default async function ConferencesPage({ searchParams }: ConferencesPageP
           initialNoteType={initialState.initialNoteType}
         />
       </Suspense>
+
+      <CollaborationWorkflowPanel
+        focus="conference"
+        description="カンファレンスで整理した論点を、依頼・照会、訪問時の申し送り、報告書送付へ戻せるようにしています。"
+      />
     </PageScaffold>
   );
 }
