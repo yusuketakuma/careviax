@@ -17,6 +17,7 @@ export default function ShiftsPage() {
         title="薬剤師シフト管理"
         description="月間シフトの確認・編集"
         shortcuts={getAdminShiftsShortcutLinks()}
+        supportingContent={null}
       />
 
       <Suspense fallback={<Loading />}>

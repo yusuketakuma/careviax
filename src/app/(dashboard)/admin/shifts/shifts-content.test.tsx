@@ -127,6 +127,34 @@ describe('ShiftsContent', () => {
     vi.clearAllMocks();
   });
 
+  it('prioritizes the monthly calendar before secondary summaries and uses full-size primary controls', () => {
+    const { container } = render(<ShiftsContent />);
+
+    const calendarHeading = screen.getByText('月間シフトカレンダー');
+    const candidateSummary = screen.getByText('シフト候補');
+    expect(
+      calendarHeading.compareDocumentPosition(candidateSummary) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    for (const name of ['メンバー招待', '前月をコピー', 'シフト編集']) {
+      const className = screen.getByRole('button', { name }).getAttribute('class') ?? '';
+      expect(className).toContain('h-11');
+      expect(className).toContain('min-h-[44px]');
+      expect(className).toContain('sm:h-11');
+      expect(className).toContain('sm:min-h-[44px]');
+    }
+
+    expect(screen.getByRole('button', { name: '前月' }).getAttribute('class')).toContain('size-11');
+    expect(screen.getByRole('button', { name: '前月' }).getAttribute('class')).toContain(
+      'sm:size-11',
+    );
+    expect(screen.getByRole('button', { name: '翌月' }).getAttribute('class')).toContain('size-11');
+    expect(screen.getByRole('button', { name: '翌月' }).getAttribute('class')).toContain(
+      'sm:size-11',
+    );
+    expect(container.textContent).not.toContain('Pharmacist Operations');
+  });
+
   it('requires confirmation before deleting a shift template', () => {
     render(<ShiftsContent />);
 

@@ -840,122 +840,94 @@ export function ShiftsContent() {
     },
   });
 
+  const controlClass = 'h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]';
+
   return (
-    <div className="space-y-6">
-      <Card className="overflow-hidden border-none bg-[linear-gradient(135deg,rgba(245,248,255,1),rgba(248,250,252,1))] ring-1 ring-slate-200">
-        <CardContent className="flex flex-col gap-5 px-5 py-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Pharmacist Operations
-            </p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900">
-              担当薬剤師制を前提にしたシフトと休日管理
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              月間シフト、所属店舗、休日・祝日を管理します。訪問候補生成ではこの
-              シフトと休日情報を参照し、担当薬剤師で対応できない場合のみ代替割当を行います。
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={openPharmacistDialog}>
-              <UserPlus className="mr-1.5 size-4" />
-              メンバー招待
-            </Button>
-            {editMode ? (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => copyPreviousMonthMutation.mutate()}
-                  disabled={copyPreviousMonthMutation.isPending}
-                >
-                  {copyPreviousMonthMutation.isPending ? '読込中...' : '前月をコピー'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setEditMode(false);
-                    setSelectedShiftKey(null);
-                  }}
-                  disabled={saveMutation.isPending}
-                >
-                  キャンセル
-                </Button>
-                <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-                  {saveMutation.isPending ? '保存中...' : 'シフト保存'}
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => copyPreviousMonthMutation.mutate()}
-                  disabled={shiftPharmacists.length === 0 || copyPreviousMonthMutation.isPending}
-                >
-                  {copyPreviousMonthMutation.isPending ? '読込中...' : '前月をコピー'}
-                </Button>
-                <Button onClick={startEdit} disabled={shiftPharmacists.length === 0}>
-                  シフト編集
-                </Button>
-              </>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <Card size="sm">
-          <CardContent>
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">シフト候補</p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">{shiftPharmacists.length}</p>
-            <p className="mt-1 text-xs text-muted-foreground">訪問・調剤の担当候補</p>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardContent>
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">休日設定</p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">{holidays.length}</p>
-            <p className="mt-1 text-xs text-muted-foreground">当月の祝日・休業日</p>
-          </CardContent>
-        </Card>
-        <Card size="sm">
-          <CardContent>
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">編集状態</p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">
-              {editMode ? '編集中' : '参照'}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {editMode
-                ? 'セル選択で時間と店舗を更新できます'
-                : '編集を開始すると月間シフトを更新できます'}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
+    <div className="space-y-6 [&_[data-slot=select-trigger]]:sm:h-11 [&_[data-slot=select-trigger]]:sm:min-h-[44px] [&_button]:sm:h-11 [&_button]:sm:min-h-[44px] [&_input]:sm:h-11 [&_input]:sm:min-h-[44px]">
       <Card>
         <CardHeader className="flex flex-col gap-4 border-b lg:flex-row lg:items-end lg:justify-between">
           <div>
             <CardTitle className="text-base">月間シフトカレンダー</CardTitle>
-            <CardDescription>休日適用日は赤背景で表示されます</CardDescription>
+            <CardDescription>
+              シフト・休日・所属店舗をこの月間表で確認し、必要な時だけ編集します
+            </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => changeMonth(subMonths(currentMonth, 1))}
-              aria-label="前月"
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <div className="min-w-[120px] text-center text-base font-semibold">{monthLabel}</div>
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => changeMonth(addMonths(currentMonth, 1))}
-              aria-label="翌月"
-            >
-              <ChevronRight className="size-4" />
-            </Button>
+          <div className="flex flex-col gap-3 lg:items-end">
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              <Button className={controlClass} variant="outline" onClick={openPharmacistDialog}>
+                <UserPlus className="mr-1.5 size-4" />
+                メンバー招待
+              </Button>
+              {editMode ? (
+                <>
+                  <Button
+                    className={controlClass}
+                    variant="outline"
+                    onClick={() => copyPreviousMonthMutation.mutate()}
+                    disabled={copyPreviousMonthMutation.isPending}
+                  >
+                    {copyPreviousMonthMutation.isPending ? '読込中...' : '前月をコピー'}
+                  </Button>
+                  <Button
+                    className={controlClass}
+                    variant="outline"
+                    onClick={() => {
+                      setEditMode(false);
+                      setSelectedShiftKey(null);
+                    }}
+                    disabled={saveMutation.isPending}
+                  >
+                    キャンセル
+                  </Button>
+                  <Button
+                    className={controlClass}
+                    onClick={() => saveMutation.mutate()}
+                    disabled={saveMutation.isPending}
+                  >
+                    {saveMutation.isPending ? '保存中...' : 'シフト保存'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    className={controlClass}
+                    variant="outline"
+                    onClick={() => copyPreviousMonthMutation.mutate()}
+                    disabled={shiftPharmacists.length === 0 || copyPreviousMonthMutation.isPending}
+                  >
+                    {copyPreviousMonthMutation.isPending ? '読込中...' : '前月をコピー'}
+                  </Button>
+                  <Button
+                    className={controlClass}
+                    onClick={startEdit}
+                    disabled={shiftPharmacists.length === 0}
+                  >
+                    シフト編集
+                  </Button>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                className="size-11 sm:size-11"
+                size="icon"
+                variant="outline"
+                onClick={() => changeMonth(subMonths(currentMonth, 1))}
+                aria-label="前月"
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <div className="min-w-[120px] text-center text-base font-semibold">{monthLabel}</div>
+              <Button
+                className="size-11 sm:size-11"
+                size="icon"
+                variant="outline"
+                onClick={() => changeMonth(addMonths(currentMonth, 1))}
+                aria-label="翌月"
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1200,6 +1172,36 @@ export function ShiftsContent() {
           )}
         </CardContent>
       </Card>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <Card size="sm">
+          <CardContent>
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">シフト候補</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">{shiftPharmacists.length}</p>
+            <p className="mt-1 text-xs text-muted-foreground">訪問・調剤の担当候補</p>
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardContent>
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">休日設定</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">{holidays.length}</p>
+            <p className="mt-1 text-xs text-muted-foreground">当月の祝日・休業日</p>
+          </CardContent>
+        </Card>
+        <Card size="sm">
+          <CardContent>
+            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">編集状態</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">
+              {editMode ? '編集中' : '参照'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {editMode
+                ? 'セル選択で時間と店舗を更新できます'
+                : '編集を開始すると月間シフトを更新できます'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
