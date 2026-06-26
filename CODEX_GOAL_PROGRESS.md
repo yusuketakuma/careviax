@@ -10330,3 +10330,29 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-capacity-sweep/baseline/desktop.png`, `artifacts/ui-capacity-sweep/baseline/mobile.png`, `artifacts/ui-capacity-sweep/after/desktop.png`, `artifacts/ui-capacity-sweep/after/mobile.png`, and `artifacts/ui-capacity-sweep/after/metrics.json`.
 - Remaining:
   - Commit the `/admin/capacity` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Admin Analytics — KPI Workbench First-Fold Compression
+
+- Coordination:
+  - Continued from a clean tree and drained `phos/codex`; inbox was empty.
+  - Kept this slice isolated to `/admin/analytics` page/content/test files. No API route, DB, migration, auth, permission, audit, external-send, or destructive operation was changed.
+- Bugs found:
+  - `/admin/analytics` still showed the generic `最初に見るポイント` intro above the KPI dashboard.
+  - Mobile stacked all four KPI cards vertically, pushing `月次推移` to `1050px`.
+  - Desktop page-body controls were below the PH-OS 44px target: DataTable search `32px`, emergency playbook link `20px`, and resource filter buttons `28px`.
+- Implemented by Codex:
+  - Removed the generic intro for this page.
+  - Changed the billing KPI grid to two columns on mobile and four on desktop.
+  - Scoped a DataTable input height override to the analytics workbench instead of changing the shared DataTable globally.
+  - Raised the emergency playbook link and resource filter buttons to 44px targets.
+  - Added focused assertions for the analytics workbench, KPI grid, playbook link, and resource filter target contracts.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `8` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/analytics/page.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/analytics/page.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/analytics/page.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx'`: passed.
+  - Direct route-mocked Playwright proof on `http://localhost:3012/admin/analytics`: no console/page errors, no horizontal overflow, `genericIntro=false`, and page-body undersized target count `0` on desktop/mobile.
+  - Final metrics: desktop `月次推移` moved from `694px` to `612px`; mobile moved from `1050px` to `740px`.
+  - Screenshot evidence: `artifacts/ui-analytics-sweep/baseline/desktop.png`, `artifacts/ui-analytics-sweep/baseline/mobile.png`, `artifacts/ui-analytics-sweep/after/desktop.png`, `artifacts/ui-analytics-sweep/after/mobile.png`, and `artifacts/ui-analytics-sweep/after/metrics.json`.
+- Remaining:
+  - Commit the `/admin/analytics` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
