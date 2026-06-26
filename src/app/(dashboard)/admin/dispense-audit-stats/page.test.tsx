@@ -48,6 +48,12 @@ describe('DispenseAuditStatsPage', () => {
     renderPage();
     expect(await screen.findByText('12')).toBeTruthy();
     expect(screen.getByText('数量エラー')).toBeTruthy();
+    expect(screen.queryByText('最初に見るポイント')).toBeNull();
+    for (const label of ['7日', '30日', '90日']) {
+      const button = screen.getByRole('button', { name: label });
+      expect(button.className).toContain('!h-11');
+      expect(button.className).toContain('!min-h-[44px]');
+    }
   });
 
   it('shows ErrorState (not a false-empty) with a retry when the query fails', async () => {

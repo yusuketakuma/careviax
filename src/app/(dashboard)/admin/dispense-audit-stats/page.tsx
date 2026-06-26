@@ -60,15 +60,19 @@ export default function DispenseAuditStatsPage() {
 
   return (
     <PageScaffold>
-      <AdminPageHeader title="調剤鑑査差戻し分析" description="差戻し理由コード別の集計と傾向" />
+      <AdminPageHeader
+        title="調剤鑑査差戻し分析"
+        description="差戻し理由コード別の集計と傾向"
+        supportingContent={null}
+      />
 
-      <div className="flex items-center gap-2 mb-4">
+      <div className="mb-4 flex items-center gap-2">
         {PERIOD_OPTIONS.map((opt) => (
           <Button
             key={opt.days}
             type="button"
             variant={days === opt.days ? 'default' : 'outline'}
-            size="sm"
+            className="!h-11 !min-h-[44px]"
             onClick={() => setDays(opt.days)}
           >
             {opt.label}
