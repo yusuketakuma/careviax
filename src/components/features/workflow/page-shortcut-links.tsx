@@ -26,7 +26,7 @@ export function PageShortcutLinks({ links }: PageShortcutLinksProps) {
             href={link.href}
             className={cn(
               buttonVariants({ variant: 'outline', size: 'sm' }),
-              'min-h-[44px] sm:h-8 sm:min-h-0',
+              'h-auto min-h-[44px] sm:h-auto sm:min-h-[44px]',
             )}
           >
             {link.label}
@@ -63,7 +63,7 @@ export function PageShortcutLinks({ links }: PageShortcutLinksProps) {
                 href={link.href}
                 className={cn(
                   buttonVariants({ variant: 'outline', size: 'sm' }),
-                  'min-h-[44px] sm:h-8 sm:min-h-0',
+                  'h-auto min-h-[44px] sm:h-auto sm:min-h-[44px]',
                 )}
               >
                 {link.label}

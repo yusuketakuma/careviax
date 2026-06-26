@@ -31,9 +31,10 @@ describe('WorkflowPageHeader', () => {
     fireEvent.click(screen.getByRole('button', { name: '患者一覧の説明' }));
     expect(screen.getByText('患者の状況を一覧で確認します。')).toBeTruthy();
     expect(screen.getByText('高リスクと同意不足を先に確認します。')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '新規登録' }).getAttribute('href')).toBe(
-      '/patients/new',
-    );
+    const primaryAction = screen.getByRole('link', { name: '新規登録' });
+    expect(primaryAction.getAttribute('href')).toBe('/patients/new');
+    expect(primaryAction.className).toContain('min-h-[44px]');
+    expect(primaryAction.className).not.toContain('sm:h-10');
     expect(screen.getByText('関連導線')).toBeTruthy();
     expect(screen.getByRole('link', { name: '処方受付' }).getAttribute('href')).toBe(
       '/prescriptions',

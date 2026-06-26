@@ -2,10 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { cn } from '@/lib/utils';
-import {
-  MainWorkflowCompactNav,
-  type MainWorkflowStepKey,
-} from './main-workflow-route';
+import { MainWorkflowCompactNav, type MainWorkflowStepKey } from './main-workflow-route';
 
 type WorkflowPageHeaderAction = {
   href: string;
@@ -74,7 +71,7 @@ export function WorkflowPageHeader({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:h-10 sm:w-auto sm:px-3.5',
+                  'inline-flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-auto sm:px-3.5',
                   index === 0
                     ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                     : 'border border-border bg-background text-foreground hover:bg-muted',

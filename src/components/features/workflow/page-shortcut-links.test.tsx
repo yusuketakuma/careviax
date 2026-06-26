@@ -5,7 +5,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { PageShortcutLinks } from './page-shortcut-links';
 
 vi.mock('next/link', () => ({
-  default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => (
+  default: ({
+    href,
+    children,
+    className,
+  }: {
+    href: string;
+    children: React.ReactNode;
+    className?: string;
+  }) => (
     <a href={href} className={className}>
       {children}
     </a>
@@ -24,8 +32,13 @@ describe('PageShortcutLinks', () => {
     );
 
     expect(screen.queryByText('診療・服薬')).toBeNull();
-    expect(screen.getByRole('link', { name: '患者一覧' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'ワークフロー' })).toBeTruthy();
+    const patients = screen.getByRole('link', { name: '患者一覧' });
+    const workflow = screen.getByRole('link', { name: 'ワークフロー' });
+    expect(patients).toBeTruthy();
+    expect(workflow).toBeTruthy();
+    expect(patients.className).toContain('min-h-[44px]');
+    expect(patients.className).toContain('sm:min-h-[44px]');
+    expect(patients.className).not.toContain('sm:min-h-0');
   });
 
   it('renders grouped shortcut sections when groups are provided', () => {
@@ -40,7 +53,11 @@ describe('PageShortcutLinks', () => {
 
     expect(screen.getByText('服薬・経過')).toBeTruthy();
     expect(screen.getByText('連携・共有')).toBeTruthy();
-    expect(screen.getByRole('link', { name: '処方履歴' })).toBeTruthy();
+    const prescriptionHistory = screen.getByRole('link', { name: '処方履歴' });
+    expect(prescriptionHistory).toBeTruthy();
     expect(screen.getByRole('link', { name: '外部共有' })).toBeTruthy();
+    expect(prescriptionHistory.className).toContain('min-h-[44px]');
+    expect(prescriptionHistory.className).toContain('sm:min-h-[44px]');
+    expect(prescriptionHistory.className).not.toContain('sm:min-h-0');
   });
 });
