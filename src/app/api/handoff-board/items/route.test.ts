@@ -351,4 +351,55 @@ describe('/api/handoff-board/items', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
+
+  it('creates a consult (consult_status=open) and records a handoff_consult_created audit log', async () => {
+    handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
+    const created = {
+      id: 'item_consult',
+      board_id: 'board_1',
+      content: '同成分薬の重複疑い。用法妥当か確認お願いします',
+      recipient_user_id: 'user_2',
+      recipient_label: '山田 太郎(薬剤師)',
+      lifecycle_status: null,
+      consult_status: 'open',
+    };
+    const itemCreateMock = vi.fn().mockResolvedValue(created);
+    const auditCreateMock = vi.fn().mockResolvedValue({ id: 'audit_consult' });
+    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        handoffItem: { create: itemCreateMock },
+        auditLog: { create: auditCreateMock },
+      }),
+    );
+
+    const req = createRequest('http://localhost/api/handoff-board/items', {
+      board_id: 'board_1',
+      consult_status: 'open',
+      content: '同成分薬の重複疑い。用法妥当か確認お願いします',
+      recipient_user_id: 'user_2',
+      recipient_label: '山田 太郎(薬剤師)',
+    });
+    const res = await POST(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(201);
+
+    // 相談は lifecycle を持たず consult_status='open' で作成される。
+    expect(itemCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          consult_status: 'open',
+          lifecycle_status: null,
+        }),
+      }),
+    );
+    // 起票も監査に残す(対応 handoff_consult_resolved と対称)。
+    expect(auditCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'handoff_consult_created',
+          target_type: 'handoff_item',
+          target_id: 'item_consult',
+        }),
+      }),
+    );
+  });
 });

@@ -31,6 +31,7 @@ import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confir
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { hasPermission } from '@/lib/auth/permission-matrix';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { VisitHandoff } from '@/types/visit-brief';
@@ -1119,6 +1120,11 @@ function ConsultWorkspace({
     return fromSelection ?? visibleItems[0] ?? null;
   }, [visibleItems, selectedId]);
 
+  // 相談の「対応」は薬剤師の臨床判断。事務(clerk)は起票・閲覧はできるが対応はできない
+  // (API は canAuthorReport でゲート済。ここはその二重防御の表示制御)。
+  const viewerRole = useAuthStore((state) => state.currentUser.role);
+  const canResolveConsult = viewerRole ? hasPermission(viewerRole, 'canAuthorReport') : false;
+
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-4"
@@ -1178,7 +1184,16 @@ function ConsultWorkspace({
           ) : null}
           <ConsultDetail item={selectedItem} />
         </div>
-        <ConsultResolutionPanel item={selectedItem} orgId={orgId} onResolved={onResolved} />
+        {canResolveConsult ? (
+          <ConsultResolutionPanel item={selectedItem} orgId={orgId} onResolved={onResolved} />
+        ) : (
+          <aside
+            className="rounded-md border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground"
+            data-testid="handoff-consult-resolution-readonly"
+          >
+            相談への対応は薬剤師が行います。事務は起票・確認のみです。
+          </aside>
+        )}
         </div>
       )}
     </section>

@@ -121,6 +121,7 @@ export const POST = withAuthContext(
     }
 
     const isMessage = parsed.data.kind === 'message';
+    const isConsult = !isMessage && Boolean(parsed.data.consult_status);
     const isTransfer =
       !isMessage &&
       !parsed.data.consult_status &&
@@ -175,6 +176,19 @@ export const POST = withAuthContext(
           changes: {
             recipient_user_id: item.recipient_user_id,
             recipient_label: item.recipient_label,
+          },
+        });
+      } else if (isConsult) {
+        // 相談の起票(誰が誰に相談したか)も監査既定方針に沿って記録する。
+        // 対応(resolve)側は handoff_consult_resolved を記録しており、起票/対応で対称にする。
+        await createAuditLogEntry(tx, ctx, {
+          action: 'handoff_consult_created',
+          targetType: 'handoff_item',
+          targetId: item.id,
+          changes: {
+            recipient_user_id: item.recipient_user_id,
+            recipient_label: item.recipient_label,
+            consult_status: item.consult_status,
           },
         });
       }

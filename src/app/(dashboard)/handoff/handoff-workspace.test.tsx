@@ -511,7 +511,8 @@ describe('HandoffWorkspace', () => {
   });
 
   it('renders the pharmacist consultation workspace inside the canonical handoff board', async () => {
-    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    // 相談の「対応」は薬剤師のみ。viewer を薬剤師にして解決パネルの描画を検証する。
+    useAuthStore.getState().setCurrentUser({ id: 'user_1', role: 'pharmacist' });
     const board: HandoffBoardResponse = {
       ...BOARD,
       items: [
@@ -541,6 +542,39 @@ describe('HandoffWorkspace', () => {
     expect(screen.getByTestId('handoff-open-transfer')).toBeTruthy();
     expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
     expect(screen.getByTestId('handoff-incoming-section')).toBeTruthy();
+  });
+
+  it('hides the pharmacist resolution panel from clerks (canAuthorReport gate, FE)', async () => {
+    // 事務(clerk)は相談を閲覧・起票できるが「薬剤師の対応」パネルは見えない(二重防御)。
+    useAuthStore.getState().setCurrentUser({ id: 'user_1', role: 'clerk' });
+    const board: HandoffBoardResponse = {
+      ...BOARD,
+      items: [
+        buildItem({
+          id: 'consult_clerk',
+          content: '用法・用量の確認をお願いします。',
+          created_by: 'user_1',
+          created_by_name: '鈴木 事務',
+          recipient_user_id: 'user_3',
+          recipient_label: '佐藤さん(薬剤師)',
+          consult_status: 'open',
+          direction: 'outgoing',
+        }),
+      ],
+      summary: { outgoing_count: 1, incoming_count: 0 },
+    };
+    stubFetch(board);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-consult-workspace')).toBeTruthy();
+    });
+    // 相談は見える(閲覧・起票は可)
+    expect(screen.getByText('相談一覧')).toBeTruthy();
+    expect(screen.getByTestId('handoff-consult-intake')).toBeTruthy();
+    // 対応パネルは出ず、読み取り専用の説明に置き換わる
+    expect(screen.queryByText('薬剤師の対応')).toBeNull();
+    expect(screen.getByTestId('handoff-consult-resolution-readonly')).toBeTruthy();
   });
 
   it('disables handoff realtime and data loading until org is available', () => {

@@ -130,7 +130,10 @@ export const POST = withAuthContext<{ id: string }>(
     return success({ data: updated });
   },
   {
-    permission: 'canReport',
+    // 相談の「対応」は薬剤師の臨床判断(acknowledged/医師へ確認/事務へ戻す)であり、
+    // 事務(clerk)は起票はできても対応はできない。canReport ではなく canAuthorReport
+    // (薬剤師の専門的書き込み: clerk=false / pharmacist=true)でゲートする。
+    permission: 'canAuthorReport',
     message: '相談に対応する権限がありません',
   },
 );

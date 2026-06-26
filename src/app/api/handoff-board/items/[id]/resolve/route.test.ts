@@ -145,4 +145,20 @@ describe('/api/handoff-board/items/[id]/resolve', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(handoffItemUpdateManyMock).not.toHaveBeenCalled();
   });
+
+  it('forbids clerks from recording a pharmacist consult response (canAuthorReport gate)', async () => {
+    // 相談の対応は薬剤師の臨床判断。事務(clerk, canAuthorReport=false)は 403。
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+
+    const response = await POST(
+      createRequest({
+        resolution_action: 'acknowledged',
+      }),
+      { params: Promise.resolve({ id: 'item_1' }) },
+    );
+
+    expect(response!.status).toBe(403);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(handoffItemUpdateManyMock).not.toHaveBeenCalled();
+  });
 });
