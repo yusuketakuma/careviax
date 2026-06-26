@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1921 JST
+
+- current task: `/admin/institutions` institution master list priority, generic intro removal, and 44px institution controls.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox, design-review skill guidance, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, `src/app/(dashboard)/admin/institutions/page.tsx`, `src/app/(dashboard)/admin/institutions/institutions-content.tsx`, `src/app/(dashboard)/admin/institutions/institutions-content.test.tsx`, route-mocked before/final desktop screenshots under `artifacts/ui-institutions-sweep/`, and gbrain code graph probes for `InstitutionsContent` / `InstitutionsPage`.
+- files changed: `src/app/(dashboard)/admin/institutions/page.tsx`, `src/app/(dashboard)/admin/institutions/page.test.tsx`, `src/app/(dashboard)/admin/institutions/institutions-content.tsx`, `src/app/(dashboard)/admin/institutions/institutions-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/admin/institutions` rendered the generic `最初に見るポイント` admin intro above the medical institution master list. Desktop `新規登録`, search input, and row `編集` / `削除` actions measured `28px-32px`, below the PH-OS 44px page-body target.
+- security risks found: no auth, authorization, org scoping, prescriber-institution APIs, create/update/delete mutation behavior, path-segment encoding, validation, schema, migrations, DB writes, external sends, PHI projection, audit behavior, or secret handling changed. Browser proof used route-mocked APIs and a local session token; no DB reads or writes were performed.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier render loops were introduced. The change removes generic support content and enlarges existing controls.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx' 'src/app/(dashboard)/admin/institutions/page.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/institutions/page.tsx' 'src/app/(dashboard)/admin/institutions/page.test.tsx' 'src/app/(dashboard)/admin/institutions/institutions-content.tsx' 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx'`; `pnpm exec prettier --check ...`; `git diff --check -- ...`; direct route-mocked Playwright proof on `http://localhost:3012/admin/institutions`.
+- validation results: focused InstitutionsContent/Page Vitest passed `2` files / `10` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. Route-mocked browser proof saved `artifacts/ui-institutions-sweep/before/desktop.png` and `after/desktop.png`; final proof had no generic intro, one visible `医療機関マスター` h1, no horizontal overflow, and page-body small-control count `0`.
+- remaining work: commit the `/admin/institutions` UI/test group, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server started for screenshot proof, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only the institutions page/content/test files for the implementation commit, then stage only ledgers for the progress commit.
+
 ### 20260626-1913 JST
 
 - current task: `/admin/pharmacist-credentials` credential expiry first-fold priority and 44px credential actions.
