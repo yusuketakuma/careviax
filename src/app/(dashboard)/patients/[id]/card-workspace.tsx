@@ -465,6 +465,21 @@ const FOUNDATION_STATUS_CLASSES: Record<
   missing: 'border-transparent bg-state-blocked/10 text-state-blocked',
 };
 
+// A2: 各項目タイルは全面塗りを引き算し、左ボーダー + ステータスラベルのみに状態色を限定する
+// (アラート色は 4 段階アラートへ温存。SSOT L406-410)。
+const FOUNDATION_STATUS_ACCENT: Record<PatientOverview['foundation']['summary']['status'], string> =
+  {
+    ready: 'border-l-state-done',
+    needs_confirmation: 'border-l-state-confirm',
+    missing: 'border-l-state-blocked',
+  };
+
+const FOUNDATION_STATUS_TEXT: Record<PatientOverview['foundation']['summary']['status'], string> = {
+  ready: 'text-state-done',
+  needs_confirmation: 'text-state-confirm',
+  missing: 'text-state-blocked',
+};
+
 const FOUNDATION_STATUS_LABELS: Record<PatientOverview['foundation']['summary']['status'], string> =
   {
     ready: '確認済',
@@ -3462,11 +3477,16 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
         {foundation.items.map((item) => (
           <div
             key={item.key}
-            className={cn('rounded-md border p-3 text-sm', FOUNDATION_STATUS_CLASSES[item.status])}
+            className={cn(
+              'rounded-md border border-l-4 bg-card p-3 text-sm text-foreground',
+              FOUNDATION_STATUS_ACCENT[item.status],
+            )}
           >
             <div className="flex items-start justify-between gap-2">
               <p className="font-semibold">{item.label}</p>
-              <span className="text-xs font-medium">{FOUNDATION_STATUS_LABELS[item.status]}</span>
+              <span className={cn('text-xs font-medium', FOUNDATION_STATUS_TEXT[item.status])}>
+                {FOUNDATION_STATUS_LABELS[item.status]}
+              </span>
             </div>
             <p className="mt-1 text-xs leading-5 opacity-85">{item.detail}</p>
             {item.meta ? (
@@ -4419,18 +4439,22 @@ export function CardWorkspace({
 
       {/* 本文を圧迫しないため、補助3点セットは上部バーから開く右ドロワーへ移す。 */}
       <div className="space-y-4">
-        <div className="min-w-0 space-y-4">
-          {/* 患者識別ストリップ: 氏名・年齢・性別・要介護度・在宅状態を Pinned 帯最上部に固定 */}
-          <PatientIdentityStrip patient={patient} />
-          {/* セーフティボード: 最上部固定で常時表示。SSOT Pinned ゾーン(アレルギー/ハイリスク薬/腎機能を fold 内最上部に置き、危険タグは絶対に隠さない) */}
-          <SafetyBoard
-            allergy={workspace.safety.allergy ?? undefined}
-            renal={workspace.safety.renal ?? undefined}
-            handlingTags={workspace.safety.handling_tags}
-            swallowing={workspace.safety.swallowing ?? undefined}
-            cautions={workspace.safety.cautions}
-            safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
-          />
+        <div className="min-w-0 space-y-6">
+          {/* Pinned クラスタ: 識別ストリップ + セーフティボードは密に束ね、以降の主要セクションとは
+              space-y-6 の余白で分離する(SSOT L172 Pinned グルーピング / L279 主要グループ間余白)。 */}
+          <div className="space-y-3">
+            {/* 患者識別ストリップ: 氏名・年齢・性別・要介護度・在宅状態を Pinned 帯最上部に固定 */}
+            <PatientIdentityStrip patient={patient} />
+            {/* セーフティボード: 最上部固定で常時表示。SSOT Pinned ゾーン(アレルギー/ハイリスク薬/腎機能を fold 内最上部に置き、危険タグは絶対に隠さない) */}
+            <SafetyBoard
+              allergy={workspace.safety.allergy ?? undefined}
+              renal={workspace.safety.renal ?? undefined}
+              handlingTags={workspace.safety.handling_tags}
+              swallowing={workspace.safety.swallowing ?? undefined}
+              cautions={workspace.safety.cautions}
+              safetyCheckHref={buildPatientHref(patientId, '/safety-check')}
+            />
+          </div>
 
           {/* 今回の処方: 安全確認の直後に置き、正本/補助パネルより先に実作業へ入れる */}
           <SectionCard aria-label="今回の処方" data-testid="card-prescription-section">
@@ -4468,16 +4492,10 @@ export function CardWorkspace({
                 </TableHeader>
                 <TableBody>
                   {workspace.prescription_lines.map((line) => {
-                    const isNarcotic = line.packaging_instruction_tags.includes('narcotic');
-                    const isCold = line.packaging_instruction_tags.includes('cold_storage');
+                    // 麻薬/冷所 等の取扱い注意は「安全」列のトークンベース バッジで表すため、
+                    // 行全体の生アラート色塗り(非トークン)は引き算する(SSOT L406-410)。
                     return (
-                      <TableRow
-                        key={line.id}
-                        className={cn(
-                          isNarcotic && 'bg-red-50/60 hover:bg-red-50',
-                          !isNarcotic && isCold && 'bg-amber-50/60 hover:bg-amber-50',
-                        )}
-                      >
+                      <TableRow key={line.id}>
                         <TableCell className="font-medium text-foreground">
                           {line.drug_name}
                         </TableCell>
