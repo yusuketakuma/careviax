@@ -92,6 +92,17 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused `schedule-team-board` Vitest `1` file / `17` tests; focused ESLint; focused Prettier check; live browser desktop/mobile checks on `http://localhost:3012/schedules?dev_refresh=176` with `0` horizontal overflow, one visible `h1`, visible `今日の要点`, and no undersized visible controls inside `data-testid="schedule-team-board"`.
 - Next action: run final diff checks including ledgers, commit this schedules UI slice, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Reports First-Fold Draft Priority
+
+- Refined `/reports` after desktop/mobile browser inspection showed the first viewport spending the first interaction budget on the 8-step workflow strip before the actionable report queue.
+- Moved the preserved `主業務フロー上の現在地` compact nav below the `未作成・下書き一覧` card so the first operational action appears before orientation chrome.
+- Made the visible `報告・共有` title the page `h1` and removed the hidden duplicate `共有ワークスペース` `h1`, aligning visual and accessible page orientation.
+- Kept report fetches, template settings link, draft generation, visit links, waiting replies, open issues, created reports, workflow navigation, auth behavior, backend/API behavior, and DB behavior unchanged. No feature was removed.
+- Shared UI hardening from this pass: `MainWorkflowCompactNav` and `HelpPopover` keep 44px controls at desktop and mobile breakpoints instead of shrinking to sub-44px desktop affordances.
+- Screenshot evidence: before desktop/mobile and after desktop/mobile under `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/reports-*.png`.
+- Validation passed: focused `report-share-workspace`, `main-workflow-route`, and `help-popover` Vitest `3` files / `17` tests; focused ESLint; live browser desktop/mobile checks on `http://localhost:3012/reports?dev_refresh=workflow-width-44` with `0` console errors, `0` horizontal overflow, one visible `h1`, `report-today-drafts` before `main-workflow-compact-nav`, and no undersized visible controls inside `data-testid="report-share-workspace"`.
+- Next action: run final Prettier/diff checks including ledgers, commit reports UI and shared control-size groups separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
