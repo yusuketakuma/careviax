@@ -435,12 +435,6 @@ export function BusinessHolidaysContent() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <SummaryCard label="今月の休日数" value={holidays.length} />
-        <SummaryCard label="休業日" value={holidays.filter((h) => h.is_closed).length} />
-        <SummaryCard label="営業日" value={holidays.filter((h) => !h.is_closed).length} />
-      </div>
-
       {/* Bulk registration panel */}
       {bulkMode && bulkDates.size > 0 && (
         <Card>
@@ -568,6 +562,12 @@ export function BusinessHolidaysContent() {
           )}
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <SummaryCard label="今月の休日数" value={holidays.length} />
+        <SummaryCard label="休業日" value={holidays.filter((h) => h.is_closed).length} />
+        <SummaryCard label="営業日" value={holidays.filter((h) => !h.is_closed).length} />
+      </div>
 
       {/* Add/Edit Form Sheet */}
       <Sheet

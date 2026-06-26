@@ -17,6 +17,7 @@ export default function BusinessHolidaysPage() {
         title="休日カレンダー"
         description="薬局の休業日・祝日・イベント日を管理します。"
         shortcuts={getAdminBusinessHolidaysShortcutLinks()}
+        supportingContent={null}
       />
 
       <Suspense fallback={<Loading />}>

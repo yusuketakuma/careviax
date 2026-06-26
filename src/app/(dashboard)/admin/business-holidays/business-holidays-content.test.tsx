@@ -183,9 +183,13 @@ describe('BusinessHolidaysContent', () => {
     await screen.findByLabelText('店舗フィルタ');
 
     const monthTitle = screen.getByText(/年\d+月/);
+    const listTitle = screen.getByText('休日一覧');
     const summaryTitle = screen.getByText('今月の休日数');
     expect(
       monthTitle.compareDocumentPosition(summaryTitle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      listTitle.compareDocumentPosition(summaryTitle) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: '前月を表示' }).className).toContain('sm:size-11');
     expect(screen.getByLabelText('店舗フィルタ').className).toContain('sm:min-h-[44px]');
