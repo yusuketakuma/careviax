@@ -71,30 +71,34 @@ export const CONSULT_STATUS_ORDER: HandoffConsultStatus[] = [
   'resolved',
 ];
 
-/** 相談一覧のグループ見出し(状態色は規約: 未対応=橙 / 確認中=青 / 事務へ戻し=紫 / 完了=灰)。 */
+/**
+ * 相談一覧のグループ見出し。状態色は 6 軸セマンティックトークンへ寄せる(bespoke な Tailwind
+ * 色をベタ書きしない。SSOT 色)。未対応=confirm(橙/要対応) / 確認中=info(青) /
+ * 事務へ戻し=waiting(紫/他者待ち) / 完了=done(緑)。
+ */
 export const CONSULT_STATUS_META: Record<
   HandoffConsultStatus,
   { label: string; countClassName: string; labelClassName: string }
 > = {
   open: {
     label: '未対応',
-    labelClassName: 'text-amber-700',
-    countClassName: 'text-amber-700',
+    labelClassName: 'text-state-confirm',
+    countClassName: 'text-state-confirm',
   },
   checking: {
     label: '確認中',
-    labelClassName: 'text-blue-700',
-    countClassName: 'text-blue-700',
+    labelClassName: 'text-tag-info',
+    countClassName: 'text-tag-info',
   },
   returned_to_clerk: {
     label: '事務へ戻し',
-    labelClassName: 'text-violet-700',
-    countClassName: 'text-violet-700',
+    labelClassName: 'text-state-waiting',
+    countClassName: 'text-state-waiting',
   },
   resolved: {
     label: '完了',
-    labelClassName: 'text-emerald-700',
-    countClassName: 'text-emerald-700',
+    labelClassName: 'text-state-done',
+    countClassName: 'text-state-done',
   },
 };
 
