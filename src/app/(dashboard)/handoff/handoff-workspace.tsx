@@ -489,7 +489,7 @@ function HandoffMessageChannel({
   boardId: string | null;
   orgId: string;
   recipientOptions: HandoffRecipientOption[];
-  viewerUserId: string;
+  viewerUserId: string | null;
   onChanged: () => void;
 }) {
   const [recipientUserId, setRecipientUserId] = useState('');
@@ -564,11 +564,12 @@ function HandoffMessageChannel({
       ) : (
         <ul className="mt-3 space-y-2" role="list">
           {items.map((item) => {
-            const outgoing = item.created_by === viewerUserId;
+            const outgoing = viewerUserId != null && item.created_by === viewerUserId;
             const readByRecipient = item.recipient_user_id
               ? item.read_by.includes(item.recipient_user_id)
               : false;
-            const unreadIncoming = !outgoing && !item.read_by.includes(viewerUserId);
+            const unreadIncoming =
+              !outgoing && viewerUserId != null && !item.read_by.includes(viewerUserId);
             return (
               <li
                 key={item.id}

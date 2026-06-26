@@ -64,6 +64,22 @@ describe('nav badge service', () => {
     ).toBe(2);
   });
 
+  it('counts unread incoming messages but not my own sent or already-read messages', () => {
+    expect(
+      countMyHandoffBadgeItems(
+        [
+          // 自分宛・未読の連絡 → 数える
+          { created_by: 'user_2', read_by: [], recipient_user_id: 'user_1' },
+          // 自分宛だが既読 → 数えない
+          { created_by: 'user_2', read_by: ['user_1'], recipient_user_id: 'user_1' },
+          // 自分が送った連絡 → 数えない
+          { created_by: 'user_1', read_by: [], recipient_user_id: 'user_2' },
+        ],
+        'user_1',
+      ),
+    ).toBe(1);
+  });
+
   it('counts dispense audit badges with the existing assignment scope', async () => {
     const cycleWhere = { assigned_pharmacist_id: 'user_1' };
     buildMedicationCycleAssignmentWhereMock.mockReturnValue(cycleWhere);
@@ -127,10 +143,22 @@ describe('nav badge service', () => {
           org_id: 'org_1',
           shift_date: expect.any(Date),
         },
-        OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
-        AND: [
+        OR: [
           {
-            OR: [{ created_by: 'user_1' }, { NOT: { read_by: { has: 'user_1' } } }],
+            AND: [
+              {
+                OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
+              },
+              {
+                OR: [{ created_by: 'user_1' }, { NOT: { read_by: { has: 'user_1' } } }],
+              },
+            ],
+          },
+          {
+            lifecycle_status: null,
+            consult_status: null,
+            recipient_user_id: 'user_1',
+            NOT: { read_by: { has: 'user_1' } },
           },
         ],
       },
