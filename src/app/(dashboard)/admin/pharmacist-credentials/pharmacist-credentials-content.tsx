@@ -376,8 +376,9 @@ export function PharmacistCredentialsContent() {
         id: 'actions',
         header: '操作',
         cell: ({ row }) => (
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-2">
             <Button
+              className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
               size="sm"
               variant="outline"
               aria-label={`${row.original.user_name} の ${row.original.certification_type} を編集`}
@@ -390,6 +391,7 @@ export function PharmacistCredentialsContent() {
               編集
             </Button>
             <Button
+              className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
               size="sm"
               variant="destructive"
               aria-label={`${row.original.user_name} の ${row.original.certification_type} を失効`}
@@ -405,7 +407,7 @@ export function PharmacistCredentialsContent() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 [&_[data-slot=select-trigger]]:sm:h-11 [&_[data-slot=select-trigger]]:sm:min-h-[44px] [&_button]:sm:h-11 [&_button]:sm:min-h-[44px] [&_input]:sm:h-11 [&_input]:sm:min-h-[44px]">
       {alertItems.length > 0 ? (
         <div className="flex items-start gap-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -429,6 +431,7 @@ export function PharmacistCredentialsContent() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">薬剤師資格一覧</CardTitle>
           <Button
+            className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
             onClick={() => {
               setEditingCredential(null);
               setForm(EMPTY_FORM);

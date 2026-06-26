@@ -17,6 +17,7 @@ export default function PharmacistCredentialsPage() {
         title="かかりつけ薬剤師管理"
         description="研修認定・有効期限・勤務実績の管理"
         shortcuts={getAdminPharmacistCredentialsShortcutLinks()}
+        supportingContent={null}
       />
 
       <Suspense fallback={<Loading />}>

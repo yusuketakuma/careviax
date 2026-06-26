@@ -163,6 +163,22 @@ describe('PharmacistCredentialsContent', () => {
     useQueryMock.mockImplementation(defaultUseQueryImpl);
   });
 
+  it('keeps credential list actions at the full medical touch target size', () => {
+    render(<PharmacistCredentialsContent />);
+
+    for (const name of [
+      '資格を登録',
+      '山田 太郎 の 研修認定 を編集',
+      '山田 太郎 の 研修認定 を失効',
+    ]) {
+      const className = screen.getByRole('button', { name }).getAttribute('class') ?? '';
+      expect(className).toContain('h-11');
+      expect(className).toContain('min-h-[44px]');
+      expect(className).toContain('sm:h-11');
+      expect(className).toContain('sm:min-h-[44px]');
+    }
+  });
+
   it('associates credential dialog fields with visible labels', () => {
     render(<PharmacistCredentialsContent />);
 
