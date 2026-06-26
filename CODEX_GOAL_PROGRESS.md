@@ -142,6 +142,18 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Remaining risk: privacy subagent identified an existing shared logging risk in `withAuthContext`/`logger.error` where raw `error.message` and `stack` may be emitted before the fixed 500 envelope. Treat this as a separate cross-route logging hardening candidate rather than mixing it into this patients route slice.
 - Next action: run final scoped ledger checks, commit the patient list/search API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
 
+### 2026-06-26 JST - PHI-Safe Route Handler Error Logging
+
+- Hardened the shared `withAuthContext` unexpected-error path so route handler failures use the PHI-safe structured `logger.error({ event, route, method }, err)` overload instead of the raw string overload that serializes `Error.message` and `stack`.
+- Added auth-wrapper coverage proving a handler throw with PHI-like text still returns the fixed 500 envelope and passes only safe operational context to the logger.
+- Added logger sink coverage proving production safe structured error logging emits a sanitized Sentry message event, does not call `Sentry.captureException`, and does not write patient names, insurance numbers, `error_message`, or `stack` to console/Sentry payloads.
+- Preserved fixed `INTERNAL_ERROR` response behavior, Next control-flow rethrow behavior, auth/authz behavior, route performance wrapping, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: unexpected route handler errors no longer put raw PHI/secrets embedded in thrown messages or stacks onto the shared auth wrapper logging path.
+- Performance issue improved: none materially changed; the slice changes only failure-path logging and tests.
+- Validation passed: focused auth context/logger/protected GET Vitest `3` files / `208` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
+- Tradeoff: the shared auth wrapper now favors PHI safety over raw exception stack grouping in Sentry for this path. Operators retain safe event, route, method, and error name; richer debugging should add safe structured fields, not raw exception capture.
+- Next action: run final scoped ledger checks, commit the auth/logger hardening slice, commit the progress-ledger slice separately, send agmsg FYI, then return to backend-first API hardening and Claude Stage0 review flow. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.

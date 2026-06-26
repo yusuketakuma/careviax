@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2143 JST
+
+- current task: cross-route PHI-safe logging hardening for unexpected `withAuthContext` route handler failures.
+- files inspected: `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `git status --short --branch --untracked-files=all`, `src/lib/auth/context.ts`, `src/lib/auth/context.test.ts`, `src/lib/utils/logger.ts`, `src/lib/utils/logger.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, gbrain code graph probes for `src/lib/auth/context::withAuthContext`, and read-only security/privacy subagent reviews.
+- files changed: `src/lib/auth/context.ts`, `src/lib/auth/context.test.ts`, `src/lib/utils/logger.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `withAuthContext` used the raw string `logger.error` overload for unexpected handler failures, which serializes `Error.message` and `stack`; thrown DB/client errors can contain patient names, insurance numbers, SQL detail, or other PHI even though the client response is fixed.
+- security risks found: reduced route-wide PHI/secrets leakage risk by switching the shared unexpected-error path to the PHI-safe structured logger overload. Tests prove PHI-like thrown text is omitted from the fixed 500 response, logger context, console payload, and production Sentry message payload, and that `Sentry.captureException` is not used for the safe structured path.
+- performance issues found: none materially changed. The slice changes only failure-path logging and tests; no new normal-path queries, dependencies, polling, or computation were introduced.
+- validation commands: `pnpm vitest run src/lib/auth/context.test.ts src/lib/utils/logger.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/lib/auth/context.ts src/lib/auth/context.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`; `pnpm exec prettier --write src/lib/auth/context.ts src/lib/auth/context.test.ts`; `pnpm exec prettier --check src/lib/auth/context.ts src/lib/auth/context.test.ts src/lib/utils/logger.ts src/lib/utils/logger.test.ts`; `git diff --check -- src/lib/auth/context.ts src/lib/auth/context.test.ts src/lib/utils/logger.test.ts`.
+- validation results: focused auth context/logger/protected GET Vitest passed `3` files / `208` tests; scoped ESLint passed; scoped Prettier check passed after formatting `src/lib/auth/context.ts`; scoped diff-check passed. Security subagent approved the minimal `context.ts` change; privacy subagent requested sink-level Sentry/console assertions, which were added to `logger.test.ts` and passed.
+- remaining work: run final scoped formatting/diff checks including progress ledgers, stage only the auth/logger files for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and continue backend-first hardening. The broader objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2138 JST
 
 - current task: backend-first no-store 500 hardening for `GET /api/patients`.
