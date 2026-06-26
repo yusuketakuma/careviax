@@ -4,31 +4,38 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current runtime override - 2026-06-26 JST
+## Current runtime override - 2026-06-26 JST (rev3: Codex-only UI/UX loop)
 
-The user switched the worktree to **Codex-only operation**. Claude/Codex
-two-supervisor coordination, peer ACK, peer review, and agmsg lock gates are
-suspended unless the user explicitly re-enables them.
+The user switched this worktree back to **Codex-only operation**. Do not route
+new work to Claude, require Claude review/ACK, or wait for Claude gates unless
+the user explicitly re-enables multi-agent operation in a later message.
+Continue using agmsg inbox drains for safety and traceability, but treat an
+empty inbox as enough to proceed.
 
-Codex sent a one-time `PAUSE_REQUEST`/handoff notice to the registered `claude`
-agmsg peer. No ACK had arrived at the time of this state update. Codex should
-continue with non-overlapping work, preserve existing dirty/user/Claude files,
-and avoid broad staging.
+**Active goal (user /goal 2026-06-26).** Refine the UI/UX of _all_ pages to a
+world-top-level ("10M-download") bar using a 足し算と引き算 (add/subtract)
+design philosophy; iterate with screenshots until judged sufficient; no
+compromise. Constraints: **no DB changes** (schema/data/migrations off-limits);
+backend API/service code _may_ be fixed so a screen renders correctly; if any
+existing feature is removed, report what + why at the end; layout may be
+rearranged where operation is hard from the user's perspective. Research
+medical-system best practices and existing-system layout patterns, update the
+design-language SSOT first, then continue screenshot → improve → re-screenshot
+loops.
 
-Pre-existing dirty work observed at the switch:
+**Current Codex progress.**
 
-- `src/app/api/admin/capacity/route.ts`
-- `src/app/api/admin/data-explorer/[table]/route.ts` and tests
-- `src/app/api/admin/data-explorer/models/route.ts` and tests
-- `src/app/api/admin/escalation-rules/route.ts`
-- `src/app/api/admin/external-professionals/**` route/test files
-- `src/app/api/admin/facilities/[id]/contacts/route.ts` and tests
-- untracked `.agent-loop/plans/loop-propose-phase5-design.md`
-- untracked `.agent-loop/plans/loop-runtime-controller-design.md`
+- SSOT research update committed in `e0f6bd1e`.
+- Dashboard mobile condition banner fix committed in `beb82a27`.
+- Current in-flight group: shared app header/chrome refinement in
+  `src/components/layout/app-header.tsx` and `app-header.test.tsx`, with
+  desktop/mobile screenshots captured under
+  `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
+- agmsg delivery for Codex was restored to monitor mode, updating
+  `.codex/hooks.json`.
 
-Next action: Codex may continue backend/API hardening only after inspecting and
-explicitly claiming a non-overlapping path. Use Codex subagents or independent
-review passes for high-risk medical/privacy/auth/RLS changes.
+Next action: commit the app-header UI slice and the runtime-state/monitor-hook
+slice as separate grouped commits, then continue the Codex-only screenshot loop.
 
 **How it's used in the loop.**
 

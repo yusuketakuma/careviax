@@ -3,12 +3,12 @@
 **Purpose.** Edit-conflict ledger. Records which Supervisor owns which paths for an in-flight
 task so the two lanes never edit the same files concurrently.
 
-**Current mode (2026-06-26 JST).** Codex-only operation is active. This lock
-ledger is historical/stale unless the user explicitly re-enables multi-agent
-work. Do not block on old Claude/Codex rows, but do preserve pre-existing dirty
-files and inspect diffs before claiming any path. New Codex work should rely on
-`git status --short --untracked-files=all`, explicit path staging, validation,
-and progress-ledger updates.
+**Current mode (2026-06-26 JST, rev3).** Codex-only operation is active. This
+lock ledger is historical/stale unless the user explicitly re-enables
+multi-agent work. Do not block on old Claude/Codex rows, but do preserve
+pre-existing dirty files and inspect diffs before claiming any path. New Codex
+work should rely on `git status --short --untracked-files=all`, explicit path
+staging, validation, agmsg inbox drains, and progress-ledger updates.
 
 **How it's used in the loop.** This mirrors the live `agmsg` LOCK discipline already in use:
 Claude works the UI lane (`src/app/(dashboard)/**`, `src/components/**`); Codex works the

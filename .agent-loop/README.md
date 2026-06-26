@@ -1,7 +1,7 @@
 # Agent Loop — Operator Guide
 
-> Current mode (2026-06-26 JST): **Codex-only operation** for **careviax (PH-OS Pharmacy)**.
-> Claude/Codex two-supervisor sections in this file are retained as historical reference and are suspended unless the user explicitly re-enables multi-agent operation. Codex owns planning, implementation, review, validation, and progress ledgers; gbrain remains long-term memory subordinate to live repository state.
+> Current mode (2026-06-26 JST, rev3): **Codex-only operation** for **careviax (PH-OS Pharmacy)**.
+> Claude/Codex two-supervisor sections in this file are retained as historical reference and are suspended unless the user explicitly re-enables multi-agent operation. Codex owns planning, implementation, review, validation, grouped commits, and progress ledgers; gbrain remains long-term memory subordinate to live repository state.
 
 This directory holds the human/operator entry points and the live operational artifacts for the loop. Start here.
 
