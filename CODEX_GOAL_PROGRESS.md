@@ -9567,3 +9567,28 @@ Next loop:
   - `pnpm exec prettier --check src/components/features/dispense-workbench/dispensing-workbench.tsx src/components/features/dispense-workbench/use-workbench-view.ts src/components/features/dispense-workbench/use-workbench-view.test.ts`: passed.
 - Remaining:
   - Commit this dispense-workbench false-zero guard, then commit runtime hook configuration separately if validation is sufficient.
+
+### Offline Sync Center — Priority Summary, Mobile Cards, and Conflict Action Targets
+
+- Coordination:
+  - Continued under Codex-only operation and drained agmsg before selecting the slice.
+  - Found and stopped a stale 4h+ Playwright fidelity process that left the local `3012` dev server unresponsive; restarted the dev server before browser proof. No DB writes, migrations, or destructive data operations were performed.
+- Bugs found:
+  - `/offline-sync` only had before screenshots and still rendered the main queue as a raw table on mobile, making the priority order hard to scan.
+  - The page did not summarize how many items required human action before the table.
+  - Desktop queue actions (`再試行`, `すべて再試行`) and conflict actions (`最新の内容を使う`, `自分の入力で上書き`, `あとで決める`) inherited compact desktop button heights and measured below the 44px PH-OS target.
+- Implemented by Codex:
+  - Added a pure `buildOfflineSyncSummary` display model and tests for total / conflict / failed / queued / needs-action counts.
+  - Added first-fold summary cards so conflict and failed items are visible before the queue body.
+  - Replaced the mobile raw table experience with stacked patient/action cards while preserving the desktop table.
+  - Kept all existing sync/conflict actions and raised visible action buttons to 44px on desktop and mobile.
+  - Reframed the conflict screen title around the affected patient and the decision required.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `10` tests.
+  - `pnpm eslint 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`: passed.
+  - Independent Playwright verification on `http://localhost:3012/offline-sync` for queue/conflict states at `390x844` and `1440x1000`: no console/page errors, no error text, no horizontal overflow, one visible `h1`, and `smallCount=0` in all four checks.
+  - Screenshot evidence: `offline-sync-queue-mobile-after.png`, `offline-sync-queue-desktop-after.png`, `offline-sync-conflict-mobile-after.png`, and `offline-sync-conflict-desktop-after.png` under `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
+- Remaining:
+  - Commit the offline-sync UI/UX slice, send agmsg FYI, then continue the all-pages UI/UX sweep. The broader objective is not complete.

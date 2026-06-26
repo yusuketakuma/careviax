@@ -29,10 +29,12 @@ import type { StatusRole } from '@/lib/constants/status-tokens';
 import {
   buildOfflineSyncConflictView,
   buildOfflineSyncRows,
+  buildOfflineSyncSummary,
   collectOfflineSyncScheduleIds,
   getOfflineSyncLocalOverwriteDisabledReason,
   getOfflineSyncRetryAllDisabledReason,
   type OfflineSyncConflictView,
+  type OfflineSyncRow,
   type OfflineSyncRowStatusKey,
 } from './offline-sync.shared';
 import { seedOfflineSyncDemoData } from './offline-sync.demo';
@@ -52,6 +54,12 @@ const STATUS_ROLE: Record<OfflineSyncRowStatusKey, StatusRole> = {
 const OFFLINE_SYNC_LOCAL_OVERWRITE_DISABLED_REASON_ID =
   'offline-sync-local-overwrite-disabled-reason';
 const OFFLINE_SYNC_RETRY_ALL_DISABLED_REASON_ID = 'offline-sync-retry-all-disabled-reason';
+
+const STATUS_TONE: Record<OfflineSyncRowStatusKey, string> = {
+  conflict: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  failed: 'border-destructive/30 bg-destructive/10 text-destructive',
+  queued: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
+};
 
 /** visitBriefCache から必要な scheduleId だけ患者名の解決マップを作る(ベストエフォート)。 */
 async function loadPatientNameMap(scheduleIds: string[]): Promise<Map<string, string>> {
@@ -131,6 +139,7 @@ export function OfflineSyncContent() {
     () => buildOfflineSyncRows(pendingQueue, patientNames),
     [pendingQueue, patientNames],
   );
+  const summary = React.useMemo(() => buildOfflineSyncSummary(rows), [rows]);
 
   const selectedConflict: OfflineSyncConflictView | null = React.useMemo(() => {
     if (selectedConflictId === null) return null;
@@ -205,10 +214,16 @@ export function OfflineSyncContent() {
     });
 
     return (
-      <div className="space-y-5" data-testid="offline-sync-conflict-view">
-        <h1 className="text-2xl font-bold tracking-tight text-state-confirm">
-          他のスタッフが更新しました
-        </h1>
+      <div className="space-y-4" data-testid="offline-sync-conflict-view">
+        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3">
+          <p className="text-xs font-semibold text-state-confirm">競合を確認</p>
+          <h1 className="mt-1 text-xl font-bold tracking-tight text-foreground">
+            {selectedConflict.patientLabel}さんの記録が更新されています
+          </h1>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            最新の内容を残すか、自分の入力で上書きするかを選びます。
+          </p>
+        </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_260px]">
           <section className="rounded-lg border border-border/70 bg-card p-4">
@@ -250,7 +265,7 @@ export function OfflineSyncContent() {
             <div className="mt-3 space-y-2.5">
               <Button
                 type="button"
-                className="min-h-11 w-full"
+                className="min-h-11 w-full sm:h-11 sm:min-h-11"
                 disabled={conflictActionPending}
                 onClick={() => setConfirmingChoice('server')}
               >
@@ -259,7 +274,7 @@ export function OfflineSyncContent() {
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-11 w-full text-primary"
+                className="min-h-11 w-full text-primary sm:h-11 sm:min-h-11"
                 aria-describedby={
                   localOverwriteDisabledReason
                     ? OFFLINE_SYNC_LOCAL_OVERWRITE_DISABLED_REASON_ID
@@ -281,7 +296,7 @@ export function OfflineSyncContent() {
               <Button
                 type="button"
                 variant="ghost"
-                className="min-h-11 w-full"
+                className="min-h-11 w-full sm:h-11 sm:min-h-11"
                 disabled={conflictActionPending}
                 onClick={() => {
                   setSelectedConflictId(null);
@@ -303,6 +318,7 @@ export function OfflineSyncContent() {
                     type="button"
                     size="sm"
                     variant={confirmingChoice === 'server' ? 'destructive' : 'default'}
+                    className="min-h-11 sm:h-11 sm:min-h-11"
                     disabled={conflictActionPending}
                     onClick={() => {
                       if (confirmingChoice === 'server') {
@@ -318,6 +334,7 @@ export function OfflineSyncContent() {
                     type="button"
                     size="sm"
                     variant="outline"
+                    className="min-h-11 sm:h-11 sm:min-h-11"
                     disabled={conflictActionPending}
                     onClick={() => setConfirmingChoice(null)}
                   >
@@ -333,17 +350,71 @@ export function OfflineSyncContent() {
   }
 
   return (
-    <div className="space-y-5" data-testid="offline-sync-page">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">未同期のデータ</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          通信が戻ったら自動で送ります。必要なものだけ再試行できます。
-        </p>
+    <div className="space-y-4" data-testid="offline-sync-page">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">未同期のデータ</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            競合と失敗だけを先に確認し、通信復帰後の送信を安全に再開します。
+          </p>
+        </div>
+        <div
+          className="rounded-full border border-border/70 bg-card px-3 py-1.5 text-sm font-semibold text-foreground"
+          aria-label={`未同期 ${summary.total} 件、要確認 ${summary.needsAction} 件`}
+        >
+          要確認 {summary.needsAction} / 全{summary.total}
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3" aria-label="同期状態の内訳">
+        <SyncSummaryCard
+          label="競合"
+          value={summary.conflict}
+          description="他スタッフの更新あり"
+          tone="border-state-confirm/30 bg-state-confirm/10 text-state-confirm"
+        />
+        <SyncSummaryCard
+          label="失敗"
+          value={summary.failed}
+          description="再送が必要"
+          tone="border-destructive/30 bg-destructive/10 text-destructive"
+        />
+        <SyncSummaryCard
+          label="送信待ち"
+          value={summary.queued}
+          description="通信復帰で自動送信"
+          tone="border-tag-info/30 bg-tag-info/10 text-tag-info"
+        />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="rounded-lg border border-border/70 bg-card">
-          <Table>
+        <section className="rounded-lg border border-border/70 bg-card p-3 sm:p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-bold text-foreground">同期キュー</h2>
+              <p className="text-xs text-muted-foreground">患者別に状態と次の操作を確認します。</p>
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2 md:hidden">
+            {rows.length === 0 ? (
+              <p className="rounded-md border border-state-done/30 bg-state-done/10 px-3 py-4 text-center text-sm text-state-done">
+                未同期のデータはありません。すべて同期済みです。
+              </p>
+            ) : (
+              rows.map((row, index) => (
+                <OfflineSyncRowCard
+                  key={row.id ?? `row-${index}`}
+                  row={row}
+                  retryPending={retryAllMutation.isPending}
+                  onRetry={() => retryAllMutation.mutate()}
+                  onResolve={(id) => setSelectedConflictId(id)}
+                />
+              ))
+            )}
+          </div>
+
+          <Table className="mt-3 hidden md:table">
             <TableHeader>
               <TableRow>
                 <TableHead>種類</TableHead>
@@ -376,7 +447,7 @@ export function OfflineSyncContent() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="text-primary"
+                          className="min-h-11 text-primary sm:h-11 sm:min-h-11"
                           disabled={retryAllMutation.isPending}
                           onClick={() => retryAllMutation.mutate()}
                         >
@@ -387,7 +458,7 @@ export function OfflineSyncContent() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="text-state-confirm"
+                          className="min-h-11 text-state-confirm sm:h-11 sm:min-h-11"
                           onClick={() => setSelectedConflictId(row.id)}
                         >
                           内容を確認
@@ -415,7 +486,7 @@ export function OfflineSyncContent() {
           ) : null}
           <Button
             type="button"
-            className="mt-4 min-h-11 w-full"
+            className="mt-4 min-h-11 w-full sm:h-11 sm:min-h-11"
             aria-describedby={
               retryAllDisabledReason ? OFFLINE_SYNC_RETRY_ALL_DISABLED_REASON_ID : undefined
             }
@@ -435,5 +506,81 @@ export function OfflineSyncContent() {
         </aside>
       </div>
     </div>
+  );
+}
+
+function SyncSummaryCard({
+  label,
+  value,
+  description,
+  tone,
+}: {
+  label: string;
+  value: number;
+  description: string;
+  tone: string;
+}) {
+  return (
+    <article className={`rounded-lg border px-3 py-2.5 ${tone}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-xs font-semibold">{label}</p>
+        <p className="text-2xl font-bold tabular-nums">{value}</p>
+      </div>
+      <p className="mt-1 text-xs opacity-80">{description}</p>
+    </article>
+  );
+}
+
+function OfflineSyncRowCard({
+  row,
+  retryPending,
+  onRetry,
+  onResolve,
+}: {
+  row: OfflineSyncRow;
+  retryPending: boolean;
+  onRetry: () => void;
+  onResolve: (id: number) => void;
+}) {
+  return (
+    <article
+      className={`rounded-lg border px-3 py-3 ${STATUS_TONE[row.statusKey]}`}
+      data-testid="offline-sync-row"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">{row.patientLabel}</p>
+          <p className="mt-1 text-xs opacity-80">{row.kindLabel}</p>
+        </div>
+        <StateBadge role={STATUS_ROLE[row.statusKey]}>{row.statusLabel}</StateBadge>
+      </div>
+      {row.lastError ? <p className="mt-2 text-xs leading-5 opacity-80">{row.lastError}</p> : null}
+      <div className="mt-3">
+        {row.nextActionKey === 'retry' ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="min-h-11 w-full text-primary"
+            disabled={retryPending}
+            onClick={onRetry}
+          >
+            再試行
+          </Button>
+        ) : row.nextActionKey === 'resolve_conflict' && row.id !== null ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="min-h-11 w-full text-state-confirm"
+            onClick={() => onResolve(row.id)}
+          >
+            内容を確認
+          </Button>
+        ) : (
+          <p className="text-sm text-muted-foreground">そのまま送信待ちです。</p>
+        )}
+      </div>
+    </article>
   );
 }

@@ -22,6 +22,14 @@ export type OfflineSyncRow = {
   lastError: string | null;
 };
 
+export type OfflineSyncSummary = {
+  total: number;
+  conflict: number;
+  failed: number;
+  queued: number;
+  needsAction: number;
+};
+
 const ENTITY_KIND_LABELS: Record<string, string> = {
   visit_record: '訪問メモ',
   residual_medication: '残薬調整',
@@ -84,6 +92,22 @@ export function buildOfflineSyncRows(
       lastError: readString(item.lastError),
     };
   });
+}
+
+export function buildOfflineSyncSummary(rows: OfflineSyncRow[]): OfflineSyncSummary {
+  const summary: OfflineSyncSummary = {
+    total: rows.length,
+    conflict: 0,
+    failed: 0,
+    queued: 0,
+    needsAction: 0,
+  };
+
+  for (const row of rows) {
+    summary[row.statusKey] += 1;
+  }
+  summary.needsAction = summary.conflict + summary.failed;
+  return summary;
 }
 
 /** 訪問メモ本文(SOAP の入力済みフィールドを連結)。 */

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1215 JST
+
+- current task: continue the all-pages UI/UX objective with `/offline-sync`, the remaining before-only screenshot surface for offline queue and conflict resolution.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox, screenshot inventory under `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`, `src/app/(dashboard)/offline-sync/page.tsx`, `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`, `src/app/(dashboard)/offline-sync/offline-sync.shared.ts`, `src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts`, `src/app/(dashboard)/offline-sync/offline-sync.demo.ts`, `.next/dev/logs/next-development.log`, current process list for stale Playwright/dev-server state, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`, `src/app/(dashboard)/offline-sync/offline-sync.shared.ts`, `src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/offline-sync` still used a raw mobile table and did not surface conflict/failed counts before the queue. Desktop queue/conflict action buttons measured below 44px. A stale 4h+ Playwright fidelity process had also left the shared `3012` dev server unresponsive, blocking browser proof until it was stopped and the dev server restarted.
+- security risks found: no auth, authorization, org scoping, IndexedDB encryption, sync queue mutation semantics, API endpoints, PHI projection, schema, migration, or DB write behavior changed. Demo seeding was limited to existing dev-only browser helper and IndexedDB state for screenshot proof.
+- performance issues found: no new network calls, polling, DB reads, or heavier sync processing were introduced. The new summary is derived from already-loaded queue rows.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts' --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`; `pnpm exec prettier --check 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`; `git diff --check -- 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`; independent Playwright queue/conflict audits at `390x844` and `1440x1000`.
+- validation results: focused offline-sync shared Vitest passed `1` file / `10` tests; focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed. Independent Playwright checks for queue mobile, queue desktop, conflict mobile, and conflict desktop all had no console/page errors, no error text, no horizontal overflow, one visible `h1`, and zero visible body controls below the 44px target. Screenshots were saved as `offline-sync-queue-mobile-after.png`, `offline-sync-queue-desktop-after.png`, `offline-sync-conflict-mobile-after.png`, and `offline-sync-conflict-desktop-after.png`.
+- remaining work: commit the offline-sync UI/UX slice, send agmsg FYI, then continue the broader all-pages UI/UX objective.
+- next action: grouped commit for offline-sync priority summary, mobile cards, and 44px conflict/queue actions.
+
 ### 20260626-1202 JST
 
 - current task: group and validate the remaining dispense-workbench false-zero guard changes before committing all dirty work by coherent group.

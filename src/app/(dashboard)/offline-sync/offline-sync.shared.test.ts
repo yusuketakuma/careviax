@@ -3,6 +3,7 @@ import type { SyncQueueItemSummary } from '@/lib/stores/sync-engine';
 import {
   buildOfflineSyncConflictView,
   buildOfflineSyncRows,
+  buildOfflineSyncSummary,
   collectOfflineSyncScheduleIds,
   getOfflineSyncLocalOverwriteDisabledReason,
   getOfflineSyncRetryAllDisabledReason,
@@ -56,6 +57,25 @@ describe('buildOfflineSyncRows', () => {
     );
 
     expect(rows.map((row) => row.kindLabel)).toEqual(['訪問メモ', '残薬調整']);
+  });
+
+  it('summarizes action urgency without reading PHI fields', () => {
+    const rows = buildOfflineSyncRows(
+      [
+        buildItem({ id: 1, retryCount: 0 }),
+        buildItem({ id: 2, retryCount: 3, lastError: 'HTTP 500' }),
+        buildItem({ id: 3, conflict_state: 'server_conflict' }),
+      ],
+      NAMES,
+    );
+
+    expect(buildOfflineSyncSummary(rows)).toEqual({
+      total: 3,
+      conflict: 1,
+      failed: 1,
+      queued: 1,
+      needsAction: 2,
+    });
   });
 });
 
