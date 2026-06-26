@@ -3760,6 +3760,50 @@ const PatientCardDocumentsPanelMemo = memo(PatientCardDocumentsPanel);
 const PatientVisitPreparationPanelMemo = memo(PatientVisitPreparationPanel);
 const CardTodayPanelMemo = memo(CardTodayPanel);
 
+/** 介護度コード(care_N / support_N)を要介護N・要支援N へ整形する。未知値はそのまま返す。 */
+function formatCareLevel(careLevel: string): string {
+  const careMatch = /^care_([1-5])$/.exec(careLevel);
+  if (careMatch) return `要介護${careMatch[1]}`;
+  const supportMatch = /^support_([12])$/.exec(careLevel);
+  if (supportMatch) return `要支援${supportMatch[1]}`;
+  return careLevel;
+}
+
+/**
+ * 患者識別情報の Pinned ストリップ(氏名・年齢・性別・要介護度・在宅状態)。
+ * SSOT 情報重力ゾーン: 患者詳細の最上部 Pinned 帯に「誰の・どんな患者か」を常時表示し、
+ * 直下の SafetyBoard(アレルギー/ハイリスク)と合わせて at-a-glance の判断材料を fold 内に固定する。
+ */
+function PatientIdentityStrip({ patient }: { patient: PatientOverview }) {
+  const age = differenceInYears(new Date(), new Date(patient.birth_date));
+  const genderLabel = formatGenderLabel(patient.gender);
+  const intake = getPrimaryHomeVisitIntake(patient);
+  const careLevel = patient.scheduling_preference?.care_level ?? intake?.care_level ?? null;
+  const homeStatus = labelOf(intake?.home_care_status, homeCareStatusLabels);
+
+  return (
+    <div
+      data-testid="patient-identity-strip"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border/70 bg-card px-4 py-2.5"
+    >
+      <span className="text-base font-bold text-foreground">{patient.name} 様</span>
+      <span className="text-sm tabular-nums text-muted-foreground">
+        {age}歳・{genderLabel}
+      </span>
+      {careLevel ? (
+        <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
+          {formatCareLevel(careLevel)}
+        </span>
+      ) : null}
+      {homeStatus !== '—' ? (
+        <span className="inline-flex items-center rounded-full border border-border bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          {homeStatus}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function CardWorkspace({
   patientId,
   initialPatient = null,
@@ -4361,6 +4405,8 @@ export function CardWorkspace({
       {/* 本文を圧迫しないため、補助3点セットは上部バーから開く右ドロワーへ移す。 */}
       <div className="space-y-4">
         <div className="min-w-0 space-y-4">
+          {/* 患者識別ストリップ: 氏名・年齢・性別・要介護度・在宅状態を Pinned 帯最上部に固定 */}
+          <PatientIdentityStrip patient={patient} />
           {/* セーフティボード: 最上部固定で常時表示。SSOT Pinned ゾーン(アレルギー/ハイリスク薬/腎機能を fold 内最上部に置き、危険タグは絶対に隠さない) */}
           <SafetyBoard
             allergy={workspace.safety.allergy ?? undefined}
