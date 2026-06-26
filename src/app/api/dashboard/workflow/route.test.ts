@@ -1014,6 +1014,22 @@ describe('/api/dashboard/workflow GET', () => {
     expect(billingPreviewBatchMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when workflow dashboard reads fail', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+    const rawError = 'raw workflow dashboard read failure';
+    cycleGroupByMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+  });
+
   it('keeps role-specific inbox state out of cross-role cache hits', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock
