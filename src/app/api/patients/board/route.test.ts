@@ -532,6 +532,20 @@ describe('/api/patients/board', () => {
     expect(patientCountMock).not.toHaveBeenCalled();
   });
 
+  it('returns a fixed sensitive no-store error when board patient reads fail', async () => {
+    patientFindManyMock.mockRejectedValueOnce(new Error('raw patient board failure'));
+
+    const response = (await GET(createRequest('?scope=all'), {
+      params: Promise.resolve({}),
+    }))!;
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(body.code).toBe('INTERNAL_ERROR');
+    expect(JSON.stringify(body)).not.toContain('raw patient board failure');
+  });
+
   it.each([
     ['scope', '?scope=mine&scope=all', { scope: ['scope は1つだけ指定してください'] }],
     [
