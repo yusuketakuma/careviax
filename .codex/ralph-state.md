@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1350 JST
+
+- current task: group and validate the remaining `/first-login` UI polish diff after the `/login` authentication entry slice.
+- files inspected: `git status --short --branch --untracked-files=all`, `src/app/(auth)/first-login/page.tsx`, `tools/tests/e2e-auth-flow.spec.ts`, desktop/mobile `/first-login` screenshots, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(auth)/first-login/page.tsx`, `tools/tests/e2e-auth-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the first-login missing-session state previously shared the password setup form shell, making the recovery path less direct. The updated state shows a dedicated recovery card and hides password inputs when the setup session is absent.
+- security risks found: no sign-in provider, Cognito challenge decoding/storage, callback URL guard, password submit behavior, MFA setup navigation, secret handling, auth API, DB behavior, or external send behavior changed.
+- performance issues found: no new network calls, DB reads, polling, or expensive computation were introduced. The UI changes are static render branches around the existing challenge state.
+- validation commands: `pnpm eslint 'src/app/(auth)/first-login/page.tsx' tools/tests/e2e-auth-flow.spec.ts`; `pnpm exec prettier --check 'src/app/(auth)/first-login/page.tsx' tools/tests/e2e-auth-flow.spec.ts`; `git diff --check -- 'src/app/(auth)/first-login/page.tsx' tools/tests/e2e-auth-flow.spec.ts`; `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 DATABASE_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public' pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-auth-flow.spec.ts --grep "missing password setup session"`; direct desktop/mobile browser checks on `http://localhost:3012/first-login`.
+- validation results: focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed; Playwright auth recovery test passed `2` projects / `2` tests; direct browser proof had `0` console/page errors, visible recovery action, `0` password inputs, no horizontal overflow, and no visible controls below 44px. Screenshots were saved under `artifacts/ui-first-login-sweep/`.
+- remaining work: commit the progress-ledger update separately, stop the local `pnpm dev:e2e:local` server started for verification if no longer needed, send agmsg FYI, then continue the broader all-pages UI/UX objective. The broader objective is not complete.
+- next action: grouped commit for progress ledgers, then select the next unverified high-impact route.
+
 ### 20260626-1345 JST
 
 - current task: continue the all-pages UI/UX objective with `/patients/[id]/safety-check`, a patient safety route whose primary actions were hidden behind the workspace rail on mobile.

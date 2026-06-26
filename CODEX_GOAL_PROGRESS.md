@@ -110,6 +110,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused safety-check Vitest `2` files / `34` tests; focused patient-card Vitest `1` file / `47` tests; focused ESLint; focused Prettier checks; focused diff whitespace checks; authenticated desktop/mobile browser checks on `http://localhost:3012/patients/cmnhdemopt001amq9ph-os/safety-check` with no console/page errors, one visible `薬の安全チェック` `h1`, no horizontal overflow, no visible page-body controls below 44px, and mobile primary actions visible at `322px` / `374px`.
 - Next action: commit the progress-ledger slice, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - First Login Recovery Layout
+
+- Grouped and validated the remaining `/first-login` UI polish diff after the `/login` MFA entry slice.
+- Replaced the dense default card shell with a clearer first-login card for the normal password setup path, success path, and missing-session recovery path.
+- When the setup challenge/session is missing, the page now shows a direct `ログインからやり直す` recovery action and hides the password setup inputs instead of presenting a form that cannot be submitted safely.
+- Kept `signIn('credentials')`, Cognito challenge handling, session storage, callback URL guard, MFA setup navigation, password strength checks, submit disabling, auth behavior, backend/API behavior, and DB behavior unchanged.
+- Screenshot evidence: desktop and mobile screenshots under `artifacts/ui-first-login-sweep/`.
+- Validation passed: focused ESLint; focused Prettier check; focused diff whitespace check; Playwright auth recovery test `2` projects / `2` tests; direct desktop/mobile browser checks on `http://localhost:3012/first-login` with no console/page errors, visible recovery action, zero password inputs in missing-session state, no horizontal overflow, and no visible controls below 44px.
+- Next action: commit the progress-ledger slice, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.
