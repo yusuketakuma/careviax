@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1540 JST
+
+- current task: complete the first screenshot-driven UI fix in the active repo-wide UI/UX refinement goal by correcting the dashboard mobile condition banner layout.
+- files inspected: agmsg inbox; `git status --short --branch --untracked-files=all`; `src/app/(dashboard)/layout.tsx`; `src/app/(dashboard)/dashboard/page.tsx`; `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`; `src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx`; `tools/tests/ui-route-mocked-smoke.spec.ts`; `tools/tests/helpers/local-auth.ts`; dashboard before/after screenshots and audit JSON under `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
+- files changed: `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the dashboard condition banner used flex-wrap on mobile, causing the summary sentence to collapse into a 111px-wide column between the status pill and evidence link. This made the first operational condition difficult to scan and violated the new SSOT mobile rule against pressing badge, body text, and link into one row.
+- security risks found: none changed. No API, auth, PHI projection, schema, migration, seed, or DB write path was changed.
+- performance issues found: none changed. The fix is a class-only layout change with no new rendering data, network call, or computation.
+- validation commands: route-mocked Playwright screenshot script for `/dashboard` before/after; `pnpm exec prettier --write 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx'`; `pnpm vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx'`; `git diff --check -- 'src/app/(dashboard)/dashboard/dashboard-cockpit.tsx'`.
+- validation results: before/after screenshots captured with route-mocked `/api/dashboard/cockpit` and no console/page errors. Audit JSON improved the mobile banner paragraph from `111x240` to `332x72` and kept the evidence link at `89x44`. Focused dashboard-cockpit Vitest passed `1` file / `14` tests; focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed.
+- remaining work: commit this single design fix, then continue the UI/UX loop across shared page chrome and additional priority pages. The broader objective is not complete.
+- next action: commit the dashboard mobile condition-banner fix as its own grouped design slice.
+
 ### 20260626-1518 JST
 
 - current task: start the active repo-wide UI/UX refinement goal by completing the required internet-backed medical UI best-practice research and updating the PH-OS UI/UX SSOT before application code changes.

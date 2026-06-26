@@ -30,6 +30,15 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: `pnpm exec prettier --write docs/ui-ux-design-guidelines.md`; `pnpm exec prettier --check docs/ui-ux-design-guidelines.md`; `git diff --check -- docs/ui-ux-design-guidelines.md`.
 - Next action: capture route-mocked screenshots of priority pages, select the highest-impact visual defect from rendered evidence, implement a small shared-primitive or page-level UI fix, re-screenshot, validate, update ledgers, and commit as the next grouped design slice.
 
+### 2026-06-26 JST - Dashboard Mobile Condition Banner
+
+- Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.
+- Changed `ConditionBanner` from flex-wrap to a responsive grid. Mobile now stacks badge, summary, and evidence link in source order; desktop keeps the compact three-part row.
+- Preserved all existing copy, links, data, dashboard API contract, auth behavior, backend behavior, and DB behavior. No feature was removed.
+- Screenshot evidence: before `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/dashboard-before-mobile.png`; after `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/dashboard-after-mobile.png`; audit JSON shows banner text area improved from `111x240` to `332x72` and the evidence link keeps a 44px mobile touch height.
+- Validation passed: route-mocked desktop/mobile screenshots with no console/page errors; focused `dashboard-cockpit` Vitest `1` file / `14` tests; focused ESLint; focused Prettier check; focused diff whitespace check.
+- Next action: commit this single design fix, then continue the screenshot loop with the next highest-impact shared chrome issue, likely PH-OS site identity/trunk-test weakness in the app header and shared page chrome.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.

@@ -100,12 +100,12 @@ function ConditionBanner({ data }: { data: DashboardCockpitResponse }) {
 
   return (
     <div
-      className="flex flex-wrap items-center gap-3 rounded-lg border border-border/70 bg-card px-4 py-3"
+      className="grid gap-2 rounded-lg border border-border/70 bg-card px-4 py-3 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-3"
       data-testid="dashboard-condition-banner"
     >
       <span
         className={cn(
-          'inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-bold',
+          'inline-flex shrink-0 items-center justify-self-start rounded-full px-3 py-1 text-xs font-bold',
           summary.tone === 'conditional'
             ? 'bg-state-confirm/10 text-state-confirm'
             : 'bg-state-done/10 text-state-done',
@@ -126,7 +126,7 @@ function ConditionBanner({ data }: { data: DashboardCockpitResponse }) {
       </p>
       <a
         href="#dashboard-process-now"
-        className="shrink-0 text-sm font-medium text-primary hover:underline"
+        className="inline-flex min-h-11 shrink-0 items-center justify-self-start rounded-md text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9 sm:justify-self-end"
       >
         根拠を見る →
       </a>
