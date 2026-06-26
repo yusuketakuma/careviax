@@ -10283,3 +10283,26 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-alert-rules-sweep/before/desktop.png`, `artifacts/ui-alert-rules-sweep/before/mobile.png`, `artifacts/ui-alert-rules-sweep/after/desktop.png`, `artifacts/ui-alert-rules-sweep/after/mobile.png`, and `artifacts/ui-alert-rules-sweep/after/metrics.json`.
 - Remaining:
   - Commit the `/admin/alert-rules` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Admin Business Holidays — Holiday Review List Priority
+
+- Coordination:
+  - Continued in Codex-only mode from a clean tree after the alert-rules commits.
+  - Kept this slice isolated to `/admin/business-holidays` page/content/test files. No API route, DB, migration, auth, permission, audit, external-send, or destructive operation was changed.
+- Bugs found:
+  - `/admin/business-holidays` still showed the generic `最初に見るポイント` intro above the calendar.
+  - The holiday review/edit list came after aggregate summary cards, pushing mobile `休日一覧` to `1359px`.
+- Implemented by Codex:
+  - Removed the generic intro for this page.
+  - Moved `休日一覧` directly after the calendar/bulk panel and before the aggregate summary cards.
+  - Added focused regression coverage that locks `休日一覧` before `今月の休日数`.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `9` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/business-holidays/page.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/business-holidays/page.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/business-holidays/page.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+  - Direct route-mocked Playwright proof on `http://localhost:3012/admin/business-holidays`: no console/page errors, no horizontal overflow, `genericIntro=false`, and page-body undersized target count `0` on desktop/mobile.
+  - Final metrics: desktop `休日一覧` moved from `1229px` to `1027px`; mobile `休日一覧` moved from `1359px` to `933px`; mocked `棚卸休業` remained visible.
+  - Screenshot evidence: `artifacts/ui-business-holidays-sweep/before/desktop.png`, `artifacts/ui-business-holidays-sweep/before/mobile.png`, `artifacts/ui-business-holidays-sweep/after/desktop.png`, `artifacts/ui-business-holidays-sweep/after/mobile.png`, and `artifacts/ui-business-holidays-sweep/after/metrics.json`.
+- Remaining:
+  - Commit the `/admin/business-holidays` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
