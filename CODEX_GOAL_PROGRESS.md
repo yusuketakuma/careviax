@@ -120,6 +120,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused ESLint; focused Prettier check; focused diff whitespace check; Playwright auth recovery test `2` projects / `2` tests; direct desktop/mobile browser checks on `http://localhost:3012/first-login` with no console/page errors, visible recovery action, zero password inputs in missing-session state, no horizontal overflow, and no visible controls below 44px.
 - Next action: commit the progress-ledger slice, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Password Change Recovery Layout
+
+- Refined `/password/change` after browser inspection showed the old default auth card retained a floating `?` help button pattern and desktop password fields/visibility toggles below the PH-OS 44px interaction target.
+- Replaced the dense card header with an explicit `パスワード変更` badge, operational heading, and neutral password-update panel while keeping the existing current-password/new-password/confirmation flow.
+- Hardened the current/new password inputs, visibility toggles, submit action, success action, and login recovery link to 44px-plus targets across desktop and mobile.
+- Added a clearer password requirement panel that appears during password entry, while preserving existing password strength scoring, 13-character submit gate, mismatch feedback, `PATCH /api/me/password`, success redirect, auth behavior, backend/API behavior, DB behavior, and error handling. No route or feature was removed.
+- Screenshot evidence: desktop and mobile final screenshots under `artifacts/ui-entry-sweep/password-change-final-*.png`.
+- Validation passed: focused ESLint; focused Prettier write; focused diff whitespace check; Playwright password-change auth test `2` projects / `2` tests; direct desktop/mobile browser checks on `http://localhost:3012/password/change` with no console/page errors, no horizontal overflow, no floating question-mark buttons, and no visible controls below 44px.
+- Next action: commit the password-change UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.
@@ -9938,3 +9948,27 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-entry-sweep/password-reset-before-desktop.png`, `artifacts/ui-entry-sweep/password-reset-before-mobile.png`, `artifacts/ui-entry-sweep/password-reset-final-desktop.png`, and `artifacts/ui-entry-sweep/password-reset-final-mobile.png`.
 - Remaining:
   - Commit the `/password/reset` UI group, then commit this ledger update separately and release the `/password/reset` lock. The broader all-pages UI/UX objective remains incomplete.
+
+### Password Change — Auth Update Layout and Fold Control
+
+- Coordination:
+  - Drained `phos/codex` agmsg before staging. No new messages.
+  - Confirmed `src/app/(dashboard)/patients/patients-board.tsx` has an unrelated dirty status-color-area diff and left it unstaged.
+- Bugs found:
+  - `/password/change` still used the older auth `Card` pattern while the surrounding auth recovery pages had moved to explicit framed sections.
+  - Password visibility buttons and primary/back actions needed the same 44px interaction-floor proof as the other auth entry pages.
+  - A persistent password-requirements box duplicated the header guidance and pushed the mobile submit action below the first viewport.
+- Implemented by Codex:
+  - Replaced the card-description pattern with an explicit password-change section, status pill, concise heading, and aligned success state.
+  - Raised current/new/confirm password inputs, password visibility toggles, submit, success, and back controls to 44px targets.
+  - Removed the duplicate always-visible requirements box while preserving password strength feedback, 13-character validation copy, mismatch copy, disabled submit logic, existing `/api/me/password` PATCH behavior, and login navigation.
+  - Strengthened the focused auth E2E so an attached session must render the password-change heading, fields, and submit action.
+- Validation:
+  - `pnpm exec prettier --check 'src/app/(auth)/password/change/page.tsx' tools/tests/e2e-auth-flow.spec.ts`: passed.
+  - `pnpm exec eslint 'src/app/(auth)/password/change/page.tsx' tools/tests/e2e-auth-flow.spec.ts`: passed.
+  - `git diff --check -- 'src/app/(auth)/password/change/page.tsx' tools/tests/e2e-auth-flow.spec.ts`: passed.
+  - `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 DATABASE_URL='postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public' pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-auth-flow.spec.ts --grep "password change page"`: passed, `2` tests across desktop and mobile projects.
+  - Direct Playwright proof on `http://localhost:3012/password/change`: no console/page errors, no horizontal overflow, no undersized visible controls, no floating `?` buttons, and visible `h2` `安全にパスワードを更新します`.
+  - Screenshot evidence: `artifacts/ui-entry-sweep/password-change-final-desktop.png` and `artifacts/ui-entry-sweep/password-change-final-mobile.png`.
+- Remaining:
+  - Commit the `/password/change` UI/test group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
