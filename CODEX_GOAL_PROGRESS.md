@@ -130,6 +130,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused `patients/page` and `patients-board` Vitest `2` files / `15` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated live browser desktop/mobile checks on `http://localhost:3012/patients` with `0` console errors, `0` horizontal overflow, one visible `h1`, `80` rendered patient cards, mobile first card top improved from `1110px` to `780px`, and no undersized visible controls in the mobile page body.
 - Next action: run final Prettier/diff checks including ledgers, commit this patients UI slice, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Workflow Main Route First-Fold
+
+- Refined `/workflow` after mobile browser inspection showed the first viewport dominated by explanatory header support copy and related links while the actual workflow body was not visible.
+- Removed the header support card, localized the eyebrow to `業務フロー`, tightened the page stack spacing, moved the preserved related links below the dashboard body, and kept the main `主業務フロー` section first in the rendered work area.
+- Hardened workflow dashboard action targets by removing desktop-only shrinkage from role inbox, emergency draft, unified workbench, remediation, exception, integration-map, refill proposal, and refresh controls; inquiry metadata/resolution buttons now keep at least 44px height.
+- Preserved all existing workflow dashboard fetches, realtime query behavior, mutation behavior, related link destinations, main workflow route destinations, auth behavior, backend/API behavior, DB behavior, and external sends. No feature was removed.
+- Screenshot evidence: before mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/workflow-mobile-before.png`; after mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/workflow-mobile-after-final.png`; after desktop `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/workflow-desktop-after-final.png`.
+- Validation passed: focused `workflow-dashboard-content`, `workflow-integration-map`, and `main-workflow-route` Vitest `3` files / `11` tests; focused ESLint; focused Prettier check; focused diff whitespace check; live browser desktop/mobile checks on `http://localhost:3012/workflow` using a DB-free static seed JWT cookie with `0` horizontal overflow, one visible `h1`, `workflow-main-route` in the first viewport (`244px` mobile / `252px` desktop), related links below the dashboard body, and no undersized visible controls in the mobile page body. Desktop remaining undersized controls were pre-existing shared app-header chrome outside this workflow body slice.
+- Next action: run final checks including ledgers, commit the workflow UI/touch-target group, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
