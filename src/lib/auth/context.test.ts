@@ -46,15 +46,29 @@ describe('withAuthContext error envelope', () => {
   });
 
   it('converts an unexpected handler throw into the standard 500 {code,message} envelope', async () => {
-    const handler = vi.fn().mockRejectedValue(new Error('boom: internal secret detail'));
+    const rawError = new Error('boom: patient=青葉 花子 insurance=MED-SECRET-1');
+    const handler = vi.fn().mockRejectedValue(rawError);
     const res = await withAuthContext(handler)(authedRequest(), routeContext);
     expect(res.status).toBe(500);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('INTERNAL_ERROR');
     expect(typeof body.message).toBe('string');
     // 生のエラーメッセージ(内部情報)を漏らさない
-    expect(body.message).not.toContain('secret');
+    expect(body.message).not.toContain('青葉');
+    expect(body.message).not.toContain('MED-SECRET-1');
     expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      {
+        event: 'route_handler_unhandled_error',
+        route: '/api/x',
+        method: 'GET',
+      },
+      rawError,
+    );
+    const [logContext] = loggerErrorMock.mock.calls[0] ?? [];
+    expect(typeof logContext).not.toBe('string');
+    expect(JSON.stringify(logContext)).not.toContain('青葉');
+    expect(JSON.stringify(logContext)).not.toContain('MED-SECRET-1');
   });
 
   it('re-throws Next.js redirect/notFound control-flow errors instead of swallowing them', async () => {

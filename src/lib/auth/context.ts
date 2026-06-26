@@ -318,7 +318,7 @@ export async function requireAuthContext(
  *
  * ハンドラ内の想定外 throw は Next の汎用 500(本文不定)になり、クライアントが
  * 期待する {code,message} エンベロープと不一致になる。ここで捕捉して標準 500
- * エンベロープに変換し、観測性のため logger.error(本番は Sentry capture)へ記録する。
+ * エンベロープに変換し、観測性のため PHI-safe structured logger へ記録する。
  * 既存の早期 return(validationError 等の NextResponse)はそのまま素通しする。
  */
 export function withAuthContext<TParams extends Record<string, string>>(
@@ -341,11 +341,14 @@ export function withAuthContext<TParams extends Record<string, string>>(
           // redirect()/notFound()/forbidden()/unauthorized() 等の Next 制御フロー例外は
           // フレームワークに委ねる(該当時のみ再 throw、それ以外は何もしない)
           unstable_rethrow(err);
-          logger.error('route handler unhandled error', err, {
-            event: 'route_handler_unhandled_error',
-            route: req.nextUrl?.pathname,
-            method: req.method,
-          });
+          logger.error(
+            {
+              event: 'route_handler_unhandled_error',
+              route: req.nextUrl?.pathname,
+              method: req.method,
+            },
+            err,
+          );
           return internalError();
         }
       });
