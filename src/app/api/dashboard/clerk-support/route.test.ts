@@ -135,4 +135,17 @@ describe('/api/dashboard/clerk-support', () => {
       { OR: [{ email: null }, { email: '' }] },
     ]);
   });
+
+  it('returns a sanitized no-store 500 when clerk support reads fail', async () => {
+    const rawError = 'raw clerk support dashboard read failure';
+    medicationCycleCountMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+  });
 });
