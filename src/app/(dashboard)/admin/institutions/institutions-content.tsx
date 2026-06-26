@@ -186,18 +186,18 @@ export function InstitutionsContent() {
       id: 'actions',
       header: '操作',
       cell: ({ row }) => (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
-            size="sm"
             variant="outline"
+            className="!h-11 !min-h-[44px]"
             aria-label={`${row.original.name} を編集`}
             onClick={() => openEdit(row.original)}
           >
             編集
           </Button>
           <Button
-            size="sm"
             variant="outline"
+            className="!h-11 !min-h-[44px]"
             aria-label={`${row.original.name} を削除`}
             onClick={() => setDeleteTarget(row.original)}
             disabled={deleteMutation.isPending}
@@ -231,13 +231,16 @@ export function InstitutionsContent() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>医療機関一覧</CardTitle>
-          <Button onClick={openCreate}>新規登録</Button>
+          <Button className="!h-11 !min-h-[44px]" onClick={openCreate}>
+            新規登録
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="max-w-sm">
             <Label htmlFor="institution-search">検索</Label>
             <Input
               id="institution-search"
+              className="!h-11 !min-h-[44px]"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="医療機関名 / コード / 住所"
@@ -338,10 +341,18 @@ export function InstitutionsContent() {
               />
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setSheetOpen(false)}>
+              <Button
+                variant="outline"
+                className="!h-11 !min-h-[44px]"
+                onClick={() => setSheetOpen(false)}
+              >
                 キャンセル
               </Button>
-              <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+              <Button
+                className="!h-11 !min-h-[44px]"
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending}
+              >
                 {saveMutation.isPending ? '保存中...' : '保存'}
               </Button>
             </div>

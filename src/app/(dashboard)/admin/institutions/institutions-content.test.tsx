@@ -192,6 +192,21 @@ describe('InstitutionsContent', () => {
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
+  it('keeps list actions and search at medical touch target size', async () => {
+    renderContent();
+
+    const actionNames = ['新規登録', '在宅内科クリニック を編集', '在宅内科クリニック を削除'];
+
+    for (const name of actionNames) {
+      const control = await screen.findByRole('button', { name });
+      expect(control.className).toContain('!h-11');
+      expect(control.className).toContain('!min-h-[44px]');
+    }
+
+    expect(screen.getByLabelText('検索').className).toContain('!h-11');
+    expect(screen.getByLabelText('検索').className).toContain('!min-h-[44px]');
+  });
+
   it('create (POST) delegates to buildOrgJsonHeaders and preserves the form body', async () => {
     const fetchMock = stubFetchWithInstitution();
     renderContent();

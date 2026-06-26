@@ -17,6 +17,7 @@ export default function InstitutionsPage() {
         title="医療機関マスター"
         description="処方元医療機関を管理し、処方受付・疑義照会・報告書送付へ横展開します。"
         shortcuts={getAdminInstitutionsShortcutLinks()}
+        supportingContent={null}
       />
 
       <Suspense fallback={<Loading />}>
