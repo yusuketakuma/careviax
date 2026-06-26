@@ -30,6 +30,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: `pnpm exec prettier --write docs/ui-ux-design-guidelines.md`; `pnpm exec prettier --check docs/ui-ux-design-guidelines.md`; `git diff --check -- docs/ui-ux-design-guidelines.md`.
 - Next action: capture route-mocked screenshots of priority pages, select the highest-impact visual defect from rendered evidence, implement a small shared-primitive or page-level UI fix, re-screenshot, validate, update ledgers, and commit as the next grouped design slice.
 
+### 2026-06-26 JST - Auth Lockout and MFA Setup Finish
+
+- Refined the remaining auth recovery/setup pages after browser proof showed `/lockout` and `/mfa/setup` still used the older dense Card shell, page-specific headings were not visible as their own section orientation, and desktop primary actions could shrink to 36px or the login return link to 14px.
+- Replaced `/lockout` with the newer auth section shell, clearer lockout recovery copy, larger numbered recovery affordances, a distinct admin-contact block, and a 44px return-to-login action.
+- Replaced `/mfa/setup` with the same auth section language, explicit step-specific heading/copy, larger step indicator, 44px setup/verify/recovery actions, mobile-safe six-digit grid inputs, and moved supplemental supported-app copy below the primary `次へ` action so the setup continuation is visible in the first viewport.
+- Preserved all existing lockout route behavior, login return route, MFA setup POST/verify calls, QR generation, secret copy, recovery-code download, callback URL routing, auth behavior, backend/API behavior, DB behavior, and external-provider semantics. Browser proof for `/mfa/setup` used a Playwright route mock for `/api/me/mfa/setup` to avoid real Cognito/TOTP side effects.
+- Screenshot evidence: before/after desktop and mobile screenshots under `artifacts/ui-auth-remaining-sweep/`, with final MFA proof in `mfa-setup-after3-desktop.png` and `mfa-setup-after3-mobile.png`.
+- Validation passed: focused ESLint; focused Prettier check; focused diff whitespace check; Playwright auth E2E `4` tests passed across desktop/mobile for route-mocked MFA setup and lockout recovery; direct desktop/mobile screenshot metrics had `0` console/page errors, `0` horizontal overflow, and no visible controls below 44px. Mobile `/lockout` return action ended at `823px`; mobile `/mfa/setup` primary `次へ` action moved from `826px` before to `722px` top / `766px` bottom after the second iteration.
+- Next action: commit the auth UI/test slice, commit this progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dispense/Set Workbench Org Scope
 
 - Fixed the live `/dispense` and `/set` workbench display regression found during browser verification.
@@ -9983,3 +9993,27 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-patients-board-sweep/patients-board-final-desktop.png` and `artifacts/ui-patients-board-sweep/patients-board-final-mobile.png`.
 - Remaining:
   - `d152584a` and `b76c4055` contain the patients-board UI/test groups; commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Admin Master Hub — Mobile First-Fold Density and Action Targets
+
+- Coordination:
+  - Drained `phos/codex` agmsg before selecting and before staging.
+  - Acknowledged Claude's active dashboard cockpit lock and kept this slice isolated to `/admin` master hub files.
+- Bugs found:
+  - `/admin` master cards started late on mobile (`431px`), leaving the first fold dominated by header/search/summary instead of the actual master worklist.
+  - Desktop card actions and the cross-master search link measured below the PH-OS 44px target.
+- Implemented by Codex:
+  - Compacted the decision summary into a three-column strip on mobile.
+  - Reduced master-card chrome and replaced the boxed `次にすること` area with a lighter left-accent action row.
+  - Raised master-card action links and cross-master search to 44px-plus targets.
+  - Preserved all master-hub fetches, summary counts, status badges, destinations, action rail, error/retry behavior, auth behavior, backend/API behavior, DB behavior, and displayed master data.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/admin/master-hub-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `9` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/master-hub-content.tsx' 'src/app/(dashboard)/admin/master-hub-content.test.tsx'`: passed.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/master-hub-content.tsx' 'src/app/(dashboard)/admin/master-hub-content.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/master-hub-content.tsx' 'src/app/(dashboard)/admin/master-hub-content.test.tsx'`: passed.
+  - Direct authenticated Playwright proof on `http://localhost:3012/admin`: no console/page errors, no horizontal overflow, mobile no undersized page controls, and master-card actions/search at 44px. Desktop remaining undersized controls are pre-existing app-header chrome outside this admin slice.
+  - Final metrics: mobile first card top improved from `431px` to `295px`; second card became visible within the first viewport.
+  - Screenshot evidence: `artifacts/ui-admin-sweep/admin-before-desktop.png`, `artifacts/ui-admin-sweep/admin-before-mobile.png`, `artifacts/ui-admin-sweep/admin-after-desktop.png`, and `artifacts/ui-admin-sweep/admin-after-mobile.png`.
+- Remaining:
+  - Commit the `/admin` master hub UI/test group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
