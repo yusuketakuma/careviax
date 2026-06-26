@@ -319,7 +319,7 @@ function SummaryTileButton({
     <button
       type="button"
       className={cn(
-        'min-h-24 rounded-lg border bg-card p-3 text-left transition hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'min-h-[84px] rounded-lg border bg-card p-2.5 text-left transition hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-24 sm:p-3',
         tile.className,
         selected && 'ring-2 ring-ring ring-offset-2 ring-offset-background',
       )}
@@ -330,8 +330,12 @@ function SummaryTileButton({
         <Icon className="size-4" aria-hidden="true" />
         {tile.label}
       </span>
-      <span className="mt-2 block text-xl font-bold text-foreground">{tile.value}</span>
-      <span className="mt-1 block text-xs leading-5 text-muted-foreground">{tile.description}</span>
+      <span className="mt-1.5 block text-lg font-bold text-foreground sm:mt-2 sm:text-xl">
+        {tile.value}
+      </span>
+      <span className="mt-1 block text-xs leading-4 text-muted-foreground sm:leading-5">
+        {tile.description}
+      </span>
     </button>
   );
 }
@@ -374,7 +378,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
         <p className="min-w-0 text-sm leading-6">
           <Link
             href={`/patients/${card.patient_id}`}
-            className="font-bold text-foreground hover:underline"
+            className="inline-flex min-h-11 items-center font-bold text-foreground hover:underline"
             data-testid="patient-board-card-link"
           >
             {card.name}
@@ -443,7 +447,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
             {card.foundation_href ? (
               <Link
                 href={card.foundation_href}
-                className="inline-flex min-h-7 shrink-0 items-center text-[11px] font-semibold underline-offset-4 hover:underline"
+                className="inline-flex min-h-11 shrink-0 items-center text-[11px] font-semibold underline-offset-4 hover:underline"
               >
                 正本確認
               </Link>
@@ -462,14 +466,17 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
       <div className="mt-auto flex flex-wrap gap-2 pt-1">
         <Link
           href={card.link_href}
-          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          className={cn(
+            buttonVariants({ variant: 'outline', size: 'sm' }),
+            '!h-auto !min-h-[44px]',
+          )}
           aria-label={`${card.name} ${card.link_label}`}
         >
           → {card.link_label}
         </Link>
         <Link
           href={card.foundation_href ?? `/patients/${card.patient_id}`}
-          className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+          className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '!h-auto !min-h-[44px]')}
         >
           患者詳細
         </Link>
@@ -632,7 +639,7 @@ export function PatientsBoard() {
       <div className="rounded-lg border border-border/70 bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="text-xl font-bold text-foreground">患者一覧</h2>
+            <h1 className="text-xl font-bold text-foreground">患者一覧</h1>
             {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm text-muted-foreground" suppressHydrationWarning>
@@ -659,7 +666,7 @@ export function PatientsBoard() {
 
         {summaryTiles.length > 0 ? (
           <div
-            className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4"
+            className="mt-3 grid grid-cols-2 gap-2 sm:mt-4 sm:grid-cols-2 xl:grid-cols-4"
             aria-label="今日の患者判断サマリー"
           >
             {summaryTiles.map((tile) => (
@@ -719,7 +726,7 @@ export function PatientsBoard() {
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="氏名・状態で検索"
                   aria-label="氏名・状態で検索"
-                  className="h-9 w-56 pl-8"
+                  className="!h-auto !min-h-[44px] w-56 pl-8"
                 />
               </div>
               <p className="sr-only" role="status" aria-live="polite">
@@ -749,17 +756,6 @@ export function PatientsBoard() {
           </div>
         ) : (
           <div className="space-y-4">
-            {data.truncated ? (
-              <div
-                role="note"
-                data-testid="patients-board-truncation-note"
-                className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-2.5 text-xs leading-5 text-state-confirm"
-              >
-                全{data.assigned_total}名のうち取得上限により{data.cards.length}
-                名のみ取得しています。優先度の高い患者が表示範囲外の場合があります。
-                検索も取得済みの患者が対象のため、見つからないときは条件を絞り込んでください。
-              </div>
-            ) : null}
             <div className="min-w-0">
               {visibleCards.length === 0 ? (
                 <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">
@@ -781,6 +777,17 @@ export function PatientsBoard() {
                 </div>
               )}
             </div>
+            {data.truncated ? (
+              <div
+                role="note"
+                data-testid="patients-board-truncation-note"
+                className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-2.5 text-xs leading-5 text-state-confirm"
+              >
+                全{data.assigned_total}名のうち取得上限により{data.cards.length}
+                名のみ取得しています。優先度の高い患者が表示範囲外の場合があります。
+                検索も取得済みの患者が対象のため、見つからないときは条件を絞り込んでください。
+              </div>
+            ) : null}
             <WorkspaceActionRail
               nextAction={buildNextAction(data)}
               blockedReasons={blockedReasons}

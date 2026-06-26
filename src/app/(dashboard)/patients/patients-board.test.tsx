@@ -194,7 +194,7 @@ describe('PatientsBoard', () => {
   it('renders the header with the color legend, scope toggle and filter chips', () => {
     render(<PatientsBoard />);
 
-    expect(screen.getByRole('heading', { name: '患者一覧' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '患者一覧', level: 1 })).toBeTruthy();
     expect(screen.getByText(/6\/12\(金\) 09:42 — カードの色＝いま必要な対応/)).toBeTruthy();
 
     const scopeBar = screen.getByRole('group', { name: '担当範囲の切替' });
@@ -202,6 +202,7 @@ describe('PatientsBoard', () => {
     expect(within(scopeBar).getByRole('button', { name: '全員' })).toBeTruthy();
 
     const summary = screen.getByLabelText('今日の患者判断サマリー');
+    expect(summary.className).toContain('grid-cols-2');
     expect(within(summary).getByText('最初に見る')).toBeTruthy();
     expect(within(summary).getByText('田中 一郎様から確認')).toBeTruthy();
     expect(within(summary).getByText('再開できる')).toBeTruthy();
@@ -223,7 +224,9 @@ describe('PatientsBoard', () => {
     expect(screen.getByTestId('patients-board-scope-note').textContent).toContain(
       '私の担当 28名のうち 5名を表示',
     );
-    expect(screen.getByRole('searchbox', { name: '氏名・状態で検索' })).toBeTruthy();
+    const search = screen.getByRole('searchbox', { name: '氏名・状態で検索' });
+    expect(search).toBeTruthy();
+    expect(search.className).toContain('min-h-[44px]');
   });
 
   it('does not show the truncation note when the board is not truncated', () => {
@@ -251,6 +254,10 @@ describe('PatientsBoard', () => {
     expect(note.textContent).toContain('優先度の高い患者が表示範囲外');
     expect(note.textContent).toContain(`全${data.assigned_total}名`);
     expect(note.textContent).toContain(`${data.cards.length}名`);
+    expect(
+      screen.getByTestId('patients-board-grid').compareDocumentPosition(note) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('renders patient cards with hazard tags, next visit, process dots and step shortcuts', () => {
@@ -262,7 +269,11 @@ describe('PatientsBoard', () => {
     // 今すぐ対応カード: 危険タグを隠さない + 状態自然文 + 工程ショートカット
     const urgent = cards.find((node) => node.getAttribute('data-attention') === 'urgent_now');
     expect(urgent).toBeTruthy();
-    expect(within(urgent as HTMLElement).getByRole('link', { name: '田中 一郎' })).toBeTruthy();
+    const patientNameLink = within(urgent as HTMLElement).getByRole('link', {
+      name: '田中 一郎',
+    });
+    expect(patientNameLink).toBeTruthy();
+    expect(patientNameLink.className).toContain('min-h-11');
     expect(within(urgent as HTMLElement).getByText('今すぐ対応')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('麻薬')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('冷所')).toBeTruthy();
@@ -274,22 +285,22 @@ describe('PatientsBoard', () => {
     expect(within(urgent as HTMLElement).getByText('要介護 3')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('安全確認あり')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('安全タグ4件')).toBeTruthy();
-    expect(
-      within(urgent as HTMLElement)
-        .getByRole('link', { name: '正本確認' })
-        .getAttribute('href'),
-    ).toBe('/patients/pt_tanaka#patient-foundation');
+    const foundationLink = within(urgent as HTMLElement).getByRole('link', {
+      name: '正本確認',
+    });
+    expect(foundationLink.getAttribute('href')).toBe('/patients/pt_tanaka#patient-foundation');
+    expect(foundationLink.className).toContain('min-h-11');
     expect(
       within(urgent as HTMLElement).getByText('麻薬監査 期限12:00 — 持参薬が未確定'),
     ).toBeTruthy();
-    expect(
-      within(urgent as HTMLElement).getByRole('link', { name: '田中 一郎 監査へ' }),
-    ).toBeTruthy();
-    expect(
-      within(urgent as HTMLElement)
-        .getByRole('link', { name: '患者詳細' })
-        .getAttribute('href'),
-    ).toBe('/patients/pt_tanaka#patient-foundation');
+    const workflowLink = within(urgent as HTMLElement).getByRole('link', {
+      name: '田中 一郎 監査へ',
+    });
+    expect(workflowLink).toBeTruthy();
+    expect(workflowLink.className).toContain('!min-h-[44px]');
+    const detailLink = within(urgent as HTMLElement).getByRole('link', { name: '患者詳細' });
+    expect(detailLink.getAttribute('href')).toBe('/patients/pt_tanaka#patient-foundation');
+    expect(detailLink.className).toContain('!min-h-[44px]');
     expect(
       within(urgent as HTMLElement)
         .getByTestId('process-progress-dots')

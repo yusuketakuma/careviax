@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1103 JST
+
+- current task: continue the active repo-wide UI/UX refinement goal with a screenshot-driven `/patients` first-fold patient-card visibility slice.
+- files inspected: agmsg inbox; `git status --short --branch --untracked-files=all`; `docs/ui-ux-design-guidelines.md`; `src/app/(dashboard)/patients/page.tsx`; `src/app/(dashboard)/patients/page.test.tsx`; `src/app/(dashboard)/patients/patients-board.tsx`; `src/app/(dashboard)/patients/patients-board.test.tsx`; authenticated desktop/mobile `/patients` screenshots and DOM/touch-target/overflow audits; `CODEX_GOAL_PROGRESS.md`; this Ralph state file.
+- files changed: `src/app/(dashboard)/patients/page.tsx`, `src/app/(dashboard)/patients/patients-board.tsx`, `src/app/(dashboard)/patients/patients-board.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/patients` with the 100-patient demo seed rendered 80 cards but pushed the first patient card to `1110px` on a `390x844` viewport, making the patient list fail the first-fold workbench test. The page also used a hidden page `h1` plus visible `h2`, and desktop page-specific controls included a 32px search input plus 28px card actions.
+- security risks found: none changed in application logic. No auth, authorization, API, PHI projection, schema, migration, seed, DB write path, external send, or destructive operation was changed. Browser verification used normal protected-page reads only.
+- performance issues found: none materially changed. The fix changes responsive layout order/class names only; it adds no fetch, query, network fan-out, backend work, or expensive computation.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/page.tsx' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`; `pnpm vitest run 'src/app/(dashboard)/patients/page.test.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/app/(dashboard)/patients/page.tsx' 'src/app/(dashboard)/patients/page.test.tsx' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/patients/page.tsx' 'src/app/(dashboard)/patients/page.test.tsx' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/patients/page.tsx' 'src/app/(dashboard)/patients/page.test.tsx' 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`; authenticated Playwright desktop/mobile checks on `http://localhost:3012/patients`.
+- validation results: focused patient page/board Vitest passed `2` files / `15` tests; focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed. Live browser checks had `0` console errors, `0` horizontal overflow, one visible `h1`, `80` rendered patient cards, mobile first card top improved from `1110px` to `780px`, and no undersized visible controls in the mobile page body. Desktop remaining undersized controls are pre-existing app-header chrome outside this patients slice.
+- remaining work: run final focused Prettier/diff checks including ledgers, commit this patients UI slice, notify via agmsg, then continue the all-pages UI/UX objective. The broader objective is not complete.
+- next action: final validation and grouped commit for the `/patients` first-fold patient-card visibility slice.
+
 ### 20260626-1055 JST
 
 - current task: continue the active repo-wide UI/UX refinement goal with a `/prescriptions` detail/history touch-target follow-up found during desktop workspace browser verification.

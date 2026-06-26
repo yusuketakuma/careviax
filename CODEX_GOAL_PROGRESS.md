@@ -121,6 +121,15 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused `prescriptions-workspace`, `prescription-inline-detail`, `patient-history-summary`, and `patient-history-quick-links` Vitest `4` files / `22` tests; focused ESLint; live desktop/mobile browser checks on `/prescriptions` with `0` horizontal overflow, one visible `h1`, the intake table in the first viewport, and no undersized visible controls inside `data-testid="prescriptions-workspace"`.
 - Next action: run final Prettier/diff checks including ledgers, commit this detail/history touch-target slice, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Patients First-Fold Card Visibility
+
+- Refined `/patients` after real-data browser inspection with the 100-patient demo seed showed the first patient card starting at `1110px` on `390x844` mobile, so the patient-list screen did not show an actual patient in the first viewport.
+- Made the visible `患者一覧` title the page `h1`, compacted the four summary tiles into a mobile 2-column grid, moved the truncation note after the patient grid, and kept search plus card actions at 44px minimum target size.
+- Preserved all existing patient-board fetches, filtering, sorting, search, truncation disclosure, patient links, foundation links, action destinations, auth behavior, backend/API behavior, DB behavior, and displayed patient data. No feature was removed.
+- Screenshot evidence: before `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/patients-mobile-before-loaded.png`; after `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/patients-mobile-after-final.png`; desktop after `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/patients-desktop-after-final.png`.
+- Validation passed: focused `patients/page` and `patients-board` Vitest `2` files / `15` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated live browser desktop/mobile checks on `http://localhost:3012/patients` with `0` console errors, `0` horizontal overflow, one visible `h1`, `80` rendered patient cards, mobile first card top improved from `1110px` to `780px`, and no undersized visible controls in the mobile page body.
+- Next action: run final Prettier/diff checks including ledgers, commit this patients UI slice, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
