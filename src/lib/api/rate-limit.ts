@@ -694,6 +694,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/patients/check-duplicate',
   '/api/patients/export',
   '/api/patients/medications/bulk-export',
+  '/api/org/members',
   '/api/pca-pump-rentals',
   '/api/pca-pump-rentals/:id',
   '/api/pca-pumps',

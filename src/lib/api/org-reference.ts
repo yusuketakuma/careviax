@@ -29,7 +29,7 @@ const PHARMACIST_ASSIGNABLE_ROLES = [
 ] as const satisfies readonly MemberRole[];
 
 /** 担当スタッフに割り当て可能な内部メンバーロール（運転手・外部閲覧者を除く）。 */
-const STAFF_ASSIGNABLE_ROLES = [
+export const STAFF_ASSIGNABLE_ROLES = [
   'owner',
   'admin',
   'pharmacist',

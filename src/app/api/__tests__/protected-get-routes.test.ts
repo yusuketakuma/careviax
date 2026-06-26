@@ -170,6 +170,7 @@ import { GET as medicationCyclesGet } from '../medication-cycles/route';
 import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationSetsWorkspaceGet } from '../medication-sets/workspace/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
+import { GET as orgMembersGet } from '../org/members/route';
 import { GET as patientsGet } from '../patients/route';
 import { GET as patientsBoardGet } from '../patients/board/route';
 import { GET as patientCheckDuplicateGet } from '../patients/check-duplicate/route';
@@ -695,6 +696,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
+    name: 'org/members GET',
+    handler: () =>
+      orgMembersGet(
+        createRequest('http://localhost/api/org/members?eligible=staff', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
       ),
   },
   {
