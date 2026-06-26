@@ -41,12 +41,12 @@ Objective: preserve existing external behavior while maximizing maintainability,
 
 ### 2026-06-26 JST - Notification Settings Event Rules First
 
-- Refined `/admin/notification-settings` after route-mocked browser proof showed the primary event notification matrix starting below the browser permission card and a browser-notification hydration mismatch (`非対応` on SSR, `denied` on client).
-- Moved `イベント通知ルール` above the supplemental browser permission card, kept browser notification controls below the event matrix, and stabilized the initial browser-notification state so the client reads `Notification.permission` only after mount.
+- Refined `/admin/notification-settings` after browser proof showed the primary event notification matrix starting below the browser permission card, a browser-notification hydration mismatch (`非対応` on SSR, `denied` on client), and a generic intro consuming first-fold space.
+- Moved `イベント通知ルール` above the supplemental browser permission card, removed the generic `最初に見るポイント` intro for this page, kept browser notification controls below the event matrix, and stabilized the initial browser-notification state so the client reads `Notification.permission` only after mount.
 - Enlarged page-body notification toggles, browser permission buttons, and escalation rule actions to 44px targets across desktop and mobile.
 - Preserved all existing notification-rule fetches, event/channel toggle create/update behavior, browser notification enable/disable behavior, escalation rule create/toggle/delete behavior, validation, auth behavior, backend/API behavior, DB behavior, and displayed settings data. No feature was removed.
 - Screenshot evidence: before/after desktop and mobile screenshots under `artifacts/ui-notification-settings-sweep/`.
-- Validation passed: focused notification-settings/escalation-threshold Vitest `2` files / `14` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/notification-settings` with no mocked-page console/page errors, no horizontal overflow, and page-body small-control count `0`.
+- Validation passed: focused NotificationSettingsContent Vitest `1` file / `3` tests; focused ESLint; focused Prettier check; scoped diff-check; authenticated live mobile browser proof on `http://localhost:3012/admin/notification-settings` with no console/page errors, no hydration mismatch, no generic intro, `イベント通知ルール` before `ブラウザ通知`, no horizontal overflow, and page-body small-control count `0`.
 - Next action: commit the `/admin/notification-settings` UI/test slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
 ### 2026-06-26 JST - Business Holidays Calendar First
