@@ -12,7 +12,7 @@ import { MedicationsContent } from './medications-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 const introActionLinkClassName =
-  'inline-flex h-7 items-center justify-center gap-1 rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium whitespace-nowrap transition-all outline-none hover:bg-muted hover:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50';
+  'inline-flex min-h-[44px] items-center justify-center gap-1 rounded-[min(var(--radius-md),12px)] border border-border bg-background px-3 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-muted hover:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50';
 
 export const metadata: Metadata = {
   title: '服薬管理 — PH-OS',
@@ -26,14 +26,14 @@ export default async function MedicationsPage({ params }: { params: Promise<{ id
       <WorkflowPageIntro
         backHref={`/patients/${id}`}
         backLabel="患者詳細へ戻る"
-        eyebrow="Medication Management"
+        eyebrow="服薬管理"
         title="服薬管理"
-        description="服薬中薬剤・残薬記録を管理します"
+        description="服薬中薬剤・課題・残薬を患者単位で確認します"
         supportingContent={
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">最初に見るポイント</p>
             <p className="text-sm text-muted-foreground">
-              処方要点、共有事項、残薬や介入ポイントを先に確認し、その後に個別薬剤を見ます。
+              服薬中薬剤と未解決課題を先に確認し、共有事項や残薬推移は後段で補足します。
             </p>
           </div>
         }
@@ -59,6 +59,10 @@ export default async function MedicationsPage({ params }: { params: Promise<{ id
       />
 
       <div className="space-y-6">
+        <Suspense fallback={<Loading />}>
+          <MedicationsContent patientId={id} />
+        </Suspense>
+
         <div className="grid gap-6 xl:grid-cols-2">
           <Suspense fallback={<Loading />}>
             <PatientMcsSummarySection
@@ -77,10 +81,6 @@ export default async function MedicationsPage({ params }: { params: Promise<{ id
             />
           </Suspense>
         </div>
-
-        <Suspense fallback={<Loading />}>
-          <MedicationsContent patientId={id} />
-        </Suspense>
 
         <Suspense fallback={<Loading />}>
           <section className="rounded-lg border bg-card p-4">

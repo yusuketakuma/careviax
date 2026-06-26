@@ -157,6 +157,8 @@ const issueStatusLabel: Record<MedicationIssue['status'], string> = {
   dismissed: '却下',
 };
 
+const clinicalActionSizeClass = 'h-auto min-h-[44px] sm:h-auto sm:min-h-[44px]';
+
 function formatMedicationDate(value: string | null) {
   if (!value) return '—';
   return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
@@ -896,18 +898,36 @@ export function MedicationsContent({
   return (
     <div className="space-y-6">
       <section>
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold">服薬中薬剤</h2>
-          <div className="flex items-center gap-2">
-            <Link href="/qr-scan" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/qr-scan"
+              className={buttonVariants({
+                variant: 'outline',
+                size: 'sm',
+                className: clinicalActionSizeClass,
+              })}
+            >
               <QrCode className="size-4" aria-hidden="true" />
               QRスキャン
             </Link>
-            <Button type="button" variant="outline" size="sm" onClick={handleGenerateQrExport}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={clinicalActionSizeClass}
+              onClick={handleGenerateQrExport}
+            >
               <Printer className="size-4" aria-hidden="true" />
               QR発行
             </Button>
-            <Button type="button" size="sm" onClick={() => setShowAddDialog(true)}>
+            <Button
+              type="button"
+              size="sm"
+              className={clinicalActionSizeClass}
+              onClick={() => setShowAddDialog(true)}
+            >
               <Plus className="size-4" aria-hidden="true" />
               薬剤追加
             </Button>
@@ -1033,7 +1053,12 @@ export function MedicationsContent({
                 未解決課題の可視化、課題登録、疑義照会の参照を 1 画面にまとめています。
               </CardDescription>
             </div>
-            <Button type="button" size="sm" onClick={handleCreateIssue}>
+            <Button
+              type="button"
+              size="sm"
+              className={clinicalActionSizeClass}
+              onClick={handleCreateIssue}
+            >
               <ClipboardPlus className="size-4" aria-hidden="true" />
               課題登録
             </Button>
@@ -1084,6 +1109,7 @@ export function MedicationsContent({
                           type="button"
                           variant="outline"
                           size="sm"
+                          className={clinicalActionSizeClass}
                           aria-label={`薬学的課題${index + 1}件目を編集`}
                           onClick={() => handleEditIssue(issue)}
                         >
@@ -1095,6 +1121,7 @@ export function MedicationsContent({
                             type="button"
                             variant="outline"
                             size="sm"
+                            className={clinicalActionSizeClass}
                             onClick={() =>
                               issueStatusMutation.mutate({
                                 issueId: issue.id,
@@ -1111,6 +1138,7 @@ export function MedicationsContent({
                           <Button
                             type="button"
                             size="sm"
+                            className={clinicalActionSizeClass}
                             onClick={() =>
                               issueStatusMutation.mutate({ issueId: issue.id, status: 'resolved' })
                             }
@@ -1137,7 +1165,11 @@ export function MedicationsContent({
                 </div>
                 <Link
                   href="/workflow"
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                  className={buttonVariants({
+                    variant: 'outline',
+                    size: 'sm',
+                    className: clinicalActionSizeClass,
+                  })}
                 >
                   ワークベンチへ
                 </Link>
@@ -1259,7 +1291,11 @@ export function MedicationsContent({
               <CardAction>
                 <Link
                   href={`/patients/${patientId}/residual-adjustment`}
-                  className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                  className={buttonVariants({
+                    variant: 'outline',
+                    size: 'sm',
+                    className: clinicalActionSizeClass,
+                  })}
                 >
                   残薬調整を開く
                 </Link>

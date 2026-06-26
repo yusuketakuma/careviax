@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 
@@ -124,6 +124,9 @@ describe('MedicationsContent', () => {
     );
     expect(screen.getByRole('heading', { level: 2, name: 'お薬手帳QR発行' }).tagName).toBe('H2');
     expect(screen.getAllByText('アムロジピン錠5mg').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'QRスキャン' }).className).toContain('min-h-[44px]');
+    expect(screen.getByRole('button', { name: 'QR発行' }).className).toContain('min-h-[44px]');
+    expect(screen.getByRole('button', { name: '薬剤追加' }).className).toContain('min-h-[44px]');
 
     fireEvent.click(screen.getByRole('button', { name: '薬剤追加' }));
     expect(screen.getByRole('button', { name: 'キャンセル' })).toBeTruthy();
@@ -289,7 +292,9 @@ describe('MedicationsContent url/header convergence', () => {
       expect(JSON.parse(init.body as string)).toEqual({ status: 'resolved' });
       expect(init.body as string).not.toContain(HOSTILE);
       // org-scoped invalidation on success (tenant-isolated cache key)
-      await statusMutation.onSuccess?.();
+      await act(async () => {
+        await statusMutation.onSuccess?.();
+      });
       expect(invalidateQueries).toHaveBeenCalledWith({
         queryKey: ['medication-issues', 'org_1', HOSTILE],
       });
@@ -419,7 +424,9 @@ describe('MedicationsContent url/header convergence', () => {
         source: 'manual',
       });
       // org-scoped invalidation on success (tenant-isolated cache key)
-      await addMutation.onSuccess?.();
+      await act(async () => {
+        await addMutation.onSuccess?.();
+      });
       expect(invalidateQueries).toHaveBeenCalledWith({
         queryKey: ['medication-profiles', 'org_1', HOSTILE],
       });
