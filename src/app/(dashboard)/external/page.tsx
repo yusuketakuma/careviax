@@ -19,6 +19,12 @@ type ExternalViewerPageProps = {
 export default async function ExternalViewerPage({ searchParams }: ExternalViewerPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const initialState = readExternalState(resolvedSearchParams);
+  const relatedLinks = [
+    { href: '/dashboard', label: 'ダッシュボード' },
+    { href: '/conferences', label: '多職種連携' },
+    { href: '/communications/requests', label: '依頼・照会' },
+    { href: '/notifications', label: '通知' },
+  ];
 
   return (
     <PageScaffold>
@@ -26,36 +32,30 @@ export default async function ExternalViewerPage({ searchParams }: ExternalViewe
         eyebrow="External Collaboration"
         title="外部連携ビュー"
         description="外部連携者（ケアマネジャー・医師等）向けの閲覧専用ビュー"
-        supportingContent={
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">画面の役割</p>
-            <p className="text-sm text-muted-foreground">
-              共有先向けの閲覧導線と関連業務への戻り先を明確にし、連携状況を追いやすくします。
-            </p>
-          </div>
-        }
-        childrenLabel="関連導線"
-      >
-        <PageShortcutLinks
-          links={[
-            { href: '/dashboard', label: 'ダッシュボード' },
-            { href: '/conferences', label: '多職種連携' },
-            { href: '/communications/requests', label: '依頼・照会' },
-            { href: '/notifications', label: '通知' },
-          ]}
-        />
-      </WorkflowPageHeader>
-      <CollaborationWorkflowPanel
-        focus="external"
-        description="外部共有、自己申告、地域活動フォローを、訪問時と報告書工程へ戻す横断画面として整理しています。"
       />
-
       <Suspense fallback={<Loading />}>
         <ExternalViewerContent
           initialFocus={initialState.initialFocus}
           initialContext={initialState.initialContext}
         />
       </Suspense>
+
+      <CollaborationWorkflowPanel
+        focus="external"
+        description="外部共有、自己申告、地域活動フォローを、訪問時と報告書工程へ戻す横断画面として整理しています。"
+      />
+
+      <section
+        className="rounded-lg border border-border/70 bg-card p-4"
+        aria-labelledby="external-related-links-heading"
+      >
+        <p id="external-related-links-heading" className="text-sm font-semibold text-foreground">
+          関連導線
+        </p>
+        <div className="mt-3">
+          <PageShortcutLinks links={relatedLinks} />
+        </div>
+      </section>
     </PageScaffold>
   );
 }

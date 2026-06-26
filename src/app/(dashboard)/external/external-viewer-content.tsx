@@ -209,7 +209,7 @@ export function ExternalViewerContent({
       <PageSection
         title="外部連携サマリー"
         description="有効な共有、未解消の自己申告、地域フォローを先に把握する導入グループです。"
-        contentClassName="grid gap-4 xl:grid-cols-3"
+        contentClassName="grid grid-cols-3 gap-2 sm:gap-4"
       >
         <SummaryCard
           title="有効な共有"
@@ -289,7 +289,7 @@ export function ExternalViewerContent({
                   <div className="mt-3">
                     <Link
                       href={`/patients/${grant.patient_id}/share`}
-                      className="inline-flex min-h-11 min-w-11 items-center gap-1 text-sm font-medium text-primary hover:underline sm:min-h-0 sm:min-w-0"
+                      className="inline-flex min-h-11 min-w-11 items-center gap-1 text-sm font-medium text-primary hover:underline"
                     >
                       詳細を開く
                       <ExternalLink className="size-3.5" aria-hidden="true" />
@@ -335,6 +335,7 @@ export function ExternalViewerContent({
                       <Button
                         size="sm"
                         variant="outline"
+                        className="sm:h-11 sm:min-h-[44px]"
                         onClick={() =>
                           updateSelfReportMutation.mutate({
                             id: report.id,
@@ -350,6 +351,7 @@ export function ExternalViewerContent({
                       </Button>
                       <Button
                         size="sm"
+                        className="sm:h-11 sm:min-h-[44px]"
                         onClick={() => createTaskMutation.mutate(report)}
                         disabled={
                           updateSelfReportMutation.isPending || createTaskMutation.isPending
@@ -360,6 +362,7 @@ export function ExternalViewerContent({
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="sm:h-11 sm:min-h-[44px]"
                         onClick={() =>
                           updateSelfReportMutation.mutate({
                             id: report.id,
@@ -425,14 +428,16 @@ function SummaryCard({
   icon: ElementType;
 }) {
   return (
-    <Card>
-      <CardContent className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{value}</p>
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+    <Card size="sm" className="min-w-0">
+      <CardContent className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-medium leading-5 text-muted-foreground sm:text-sm">{title}</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-foreground sm:text-3xl">
+            {value}
+          </p>
+          <p className="mt-1 hidden text-xs text-muted-foreground sm:block">{description}</p>
         </div>
-        <div className="rounded-full border border-border bg-background p-2">
+        <div className="hidden rounded-full border border-border bg-background p-2 sm:block">
           <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
         </div>
       </CardContent>
