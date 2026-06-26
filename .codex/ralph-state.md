@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2111 JST
+
+- current task: backend-first no-store 500 hardening for `GET /api/dashboard/workflow`.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `src/app/api/dashboard/workflow/route.ts`, `src/app/api/dashboard/workflow/route.test.ts`, `src/app/api/dashboard/cockpit/route.ts`, `src/app/api/dashboard/cockpit/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, and gbrain code graph probes for `src/app/api/dashboard/workflow/route::GET`.
+- files changed: `src/app/api/dashboard/workflow/route.ts`, `src/app/api/dashboard/workflow/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `GET /api/dashboard/workflow` could return the standard fixed 500 envelope from an unexpected workflow aggregate read failure without sensitive no-store headers at the exported route boundary.
+- security risks found: reduced cacheability risk for workflow dashboard failure responses by ensuring unexpected 500 responses carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`. No auth, authorization, dashboard permission, strict view validation, scoped workflow cache keys, aggregate query behavior, success payload shape, schema, migrations, DB writes, external sends, PHI projection, or frontend UI behavior changed.
+- performance issues found: none materially changed. The slice adds only failure-path response wrapping and tests; no new normal-path queries, dependencies, polling, or computation were introduced.
+- validation commands: `pnpm vitest run src/app/api/dashboard/workflow/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`; `pnpm exec prettier --check src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`; `git diff --check -- src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`.
+- validation results: focused workflow/protected GET Vitest passed `2` files / `219` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. The failure-path test confirmed the response body omits the raw exception string; the shared auth wrapper still logs unexpected errors according to existing route-handler policy.
+- remaining work: run final scoped formatting/diff checks including progress ledgers, stage only the workflow route/test for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and continue backend-first hardening. The broader objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2108 JST
 
 - current task: backend-first no-store 500 hardening for `GET /api/dashboard/medication-deadlines`.
