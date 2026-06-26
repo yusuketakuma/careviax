@@ -141,6 +141,8 @@ const STATUS_ICONS: Record<PatientStatusIcon, typeof Star> = {
   paused: CirclePause,
 };
 
+const MY_DAY_SECTION_CLASS_NAME = 'min-w-0 overflow-hidden';
+
 type MyDayContentProps = {
   initialFocus?: MyDayFocus;
   initialVisitFilter?: MyDayVisitFilter;
@@ -355,6 +357,7 @@ export function MyDayContent({
       <PageSection
         title="今日の概要"
         description="次にすること、訪問、タスク、パイプライン、緊急件数を最初に把握します。"
+        className={MY_DAY_SECTION_CLASS_NAME}
         contentClassName="space-y-3"
       >
         <MyDayNextStepPanel {...nextStep} />
@@ -383,11 +386,12 @@ export function MyDayContent({
         </div>
       </PageSection>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.38fr)] xl:items-start">
-        <div className="space-y-4">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.38fr)] xl:items-start">
+        <div className="min-w-0 space-y-4">
           <PageSection
             title="優先対応"
             description="緊急アクションと今日の訪問準備を先に処理するための優先グループです。"
+            className={MY_DAY_SECTION_CLASS_NAME}
             contentClassName="space-y-3"
           >
             {actionsQuery.isError ? (
@@ -552,6 +556,7 @@ export function MyDayContent({
           <PageSection
             title="進行中の業務"
             description="パイプラインと未完了タスクを見て、今日の作業順を組み立てるグループです。"
+            className={MY_DAY_SECTION_CLASS_NAME}
             contentClassName="space-y-3"
           >
             {actionsQuery.isError ? (
@@ -706,10 +711,11 @@ export function MyDayContent({
           </PageSection>
         </div>
 
-        <div className="space-y-4 xl:sticky xl:top-4 xl:pt-20">
+        <div className="min-w-0 space-y-4 xl:sticky xl:top-4 xl:pt-20">
           <PageSection
             title="補助情報"
             description="患者ステータス変更やショートカットを確認し、必要な別画面へ移動する補助グループです。"
+            className={MY_DAY_SECTION_CLASS_NAME}
             contentClassName="space-y-3"
             tone="subtle"
           >

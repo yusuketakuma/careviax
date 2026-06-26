@@ -18,7 +18,7 @@ export function InlineFilterButton({ active, label }: { active: boolean; label: 
   return (
     <span
       className={[
-        'inline-flex min-h-[44px] items-center rounded-full border px-3 py-1 text-xs font-medium sm:min-h-[32px]',
+        'inline-flex min-h-[44px] items-center justify-center rounded-full border px-3 py-1 text-xs font-medium',
         active
           ? 'border-primary bg-primary/10 text-primary'
           : 'border-border/70 bg-background text-muted-foreground',
