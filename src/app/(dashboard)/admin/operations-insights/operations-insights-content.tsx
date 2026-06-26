@@ -222,7 +222,7 @@ export function OperationsInsightsContent() {
               }))}
             />
           </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
+          <p className="mt-2 text-xs text-muted-foreground">
             直近30日の平均所要分(作成から更新までの概算)
           </p>
         </section>
