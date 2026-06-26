@@ -1046,6 +1046,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients GET' ||
         route.name === 'patients/board GET' ||
         route.name === 'patients/check-duplicate GET' ||
+        route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1103,6 +1104,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients GET' ||
         route.name === 'patients/board GET' ||
         route.name === 'patients/check-duplicate GET' ||
+        route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1147,6 +1149,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(200);
       if (
         route.name === 'visits/today-preparation GET' ||
+        route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET'
       ) {

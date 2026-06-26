@@ -509,6 +509,8 @@ describe('/api/patients/[id]', () => {
     });
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(medicationProfileFindManyMock).toHaveBeenCalled();
     expect(externalAccessGrantFindManyMock).toHaveBeenCalled();
     expect(taskFindManyMock).toHaveBeenCalled();
@@ -563,6 +565,8 @@ describe('/api/patients/[id]', () => {
     });
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
     expect(careReportFindManyMock).not.toHaveBeenCalled();
@@ -579,6 +583,8 @@ describe('/api/patients/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -588,6 +594,29 @@ describe('/api/patients/[id]', () => {
     expect(careReportFindManyMock).not.toHaveBeenCalled();
     expect(patientRiskSummaryMock).not.toHaveBeenCalled();
     expect(communicationQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when patient detail loading fails unexpectedly', async () => {
+    patientFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 保険番号 1234567890 raw medication detail'),
+    );
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+
+    const json = await response.json();
+    expect(json).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(json)).not.toContain('山田花子');
+    expect(JSON.stringify(json)).not.toContain('1234567890');
+    expect(JSON.stringify(json)).not.toContain('raw medication detail');
   });
 
   it('rejects blank patient ids before parsing patch payloads or loading the patient', async () => {

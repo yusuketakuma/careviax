@@ -1,12 +1,14 @@
 import { format } from 'date-fns';
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { conflict, success, validationError, notFound } from '@/lib/api/response';
+import { conflict, internalError, success, validationError, notFound } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updatePatientSchema, type UpdatePatientData } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
@@ -888,7 +890,7 @@ function mergeHomeVisitIntake(args: {
   return entries.length > 0 ? (Object.fromEntries(entries) as HomeVisitIntake) : null;
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の閲覧権限がありません',
@@ -1622,6 +1624,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       can_view_detail: privacy.canViewDetail,
     },
   });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
