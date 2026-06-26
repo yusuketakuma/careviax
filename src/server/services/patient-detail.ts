@@ -343,6 +343,10 @@ export async function getPatientHeaderSummary(
   const patient = await db.patient.findFirst({
     where: buildPatientDetailWhere(args),
     select: {
+      primary_pharmacist_id: true,
+      backup_pharmacist_id: true,
+      primary_staff_id: true,
+      backup_staff_id: true,
       cases: {
         where: {
           org_id: args.orgId,
@@ -351,10 +355,6 @@ export async function getPatientHeaderSummary(
         orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
-          primary_pharmacist_id: true,
-          backup_pharmacist_id: true,
-          primary_staff_id: true,
-          backup_staff_id: true,
         },
       },
     },
@@ -362,12 +362,11 @@ export async function getPatientHeaderSummary(
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
-  const latestCase = patient.cases[0] ?? null;
   const assignedUserIds = [
-    latestCase?.primary_pharmacist_id,
-    latestCase?.backup_pharmacist_id,
-    latestCase?.primary_staff_id,
-    latestCase?.backup_staff_id,
+    patient.primary_pharmacist_id,
+    patient.backup_pharmacist_id,
+    patient.primary_staff_id,
+    patient.backup_staff_id,
   ].filter((value): value is string => Boolean(value));
   const uniqueAssignedUserIds = [...new Set(assignedUserIds)];
 
@@ -402,17 +401,17 @@ export async function getPatientHeaderSummary(
   ]);
 
   return {
-    primary_pharmacist_name: latestCase?.primary_pharmacist_id
-      ? (assignedNameMap.get(latestCase.primary_pharmacist_id) ?? null)
+    primary_pharmacist_name: patient.primary_pharmacist_id
+      ? (assignedNameMap.get(patient.primary_pharmacist_id) ?? null)
       : null,
-    backup_pharmacist_name: latestCase?.backup_pharmacist_id
-      ? (assignedNameMap.get(latestCase.backup_pharmacist_id) ?? null)
+    backup_pharmacist_name: patient.backup_pharmacist_id
+      ? (assignedNameMap.get(patient.backup_pharmacist_id) ?? null)
       : null,
-    primary_staff_name: latestCase?.primary_staff_id
-      ? (assignedNameMap.get(latestCase.primary_staff_id) ?? null)
+    primary_staff_name: patient.primary_staff_id
+      ? (assignedNameMap.get(patient.primary_staff_id) ?? null)
       : null,
-    backup_staff_name: latestCase?.backup_staff_id
-      ? (assignedNameMap.get(latestCase.backup_staff_id) ?? null)
+    backup_staff_name: patient.backup_staff_id
+      ? (assignedNameMap.get(patient.backup_staff_id) ?? null)
       : null,
     first_visit_date: firstVisit?.visit_date.toISOString() ?? null,
     last_prescribed_date: lastPrescription?.prescribed_date.toISOString() ?? null,

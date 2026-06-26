@@ -118,26 +118,15 @@ beforeEach(() => {
 });
 
 describe('getPatientHeaderSummary', () => {
-  it('returns read-only header dates and a resolved primary pharmacist name within the scoped cases', async () => {
+  it('returns read-only header dates and resolved patient-level care team names within the scoped cases', async () => {
     const db = buildDb();
     db.patient.findFirst.mockResolvedValue({
       id: 'patient_1',
-      cases: [
-        {
-          id: 'case_1',
-          primary_pharmacist_id: 'pharmacist_1',
-          backup_pharmacist_id: 'pharmacist_2',
-          primary_staff_id: 'staff_1',
-          backup_staff_id: 'staff_2',
-        },
-        {
-          id: 'case_2',
-          primary_pharmacist_id: 'pharmacist_2',
-          backup_pharmacist_id: null,
-          primary_staff_id: null,
-          backup_staff_id: null,
-        },
-      ],
+      primary_pharmacist_id: 'pharmacist_1',
+      backup_pharmacist_id: 'pharmacist_2',
+      primary_staff_id: 'staff_1',
+      backup_staff_id: 'staff_2',
+      cases: [{ id: 'case_1' }, { id: 'case_2' }],
     });
     db.user.findMany.mockResolvedValue([
       { id: 'pharmacist_1', name: '薬剤師 花子' },
@@ -178,6 +167,10 @@ describe('getPatientHeaderSummary', () => {
           org_id: 'org_1',
         }),
         select: expect.objectContaining({
+          primary_pharmacist_id: true,
+          backup_pharmacist_id: true,
+          primary_staff_id: true,
+          backup_staff_id: true,
           cases: expect.objectContaining({
             where: expect.objectContaining({
               org_id: 'org_1',
@@ -185,10 +178,6 @@ describe('getPatientHeaderSummary', () => {
             orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
             select: {
               id: true,
-              primary_pharmacist_id: true,
-              backup_pharmacist_id: true,
-              primary_staff_id: true,
-              backup_staff_id: true,
             },
           }),
         }),
@@ -244,15 +233,11 @@ describe('getPatientHeaderSummary', () => {
     const db = buildDb();
     db.patient.findFirst.mockResolvedValue({
       id: 'patient_1',
-      cases: [
-        {
-          id: 'case_1',
-          primary_pharmacist_id: 'shared_user',
-          backup_pharmacist_id: 'shared_user',
-          primary_staff_id: 'missing_staff',
-          backup_staff_id: null,
-        },
-      ],
+      primary_pharmacist_id: 'shared_user',
+      backup_pharmacist_id: 'shared_user',
+      primary_staff_id: 'missing_staff',
+      backup_staff_id: null,
+      cases: [{ id: 'case_1' }],
     });
     db.user.findMany.mockResolvedValue([{ id: 'shared_user', name: '薬剤師 花子' }]);
     db.visitRecord.findFirst.mockResolvedValue(null);
@@ -287,6 +272,10 @@ describe('getPatientHeaderSummary', () => {
     const db = buildDb();
     db.patient.findFirst.mockResolvedValue({
       id: 'patient_1',
+      primary_pharmacist_id: null,
+      backup_pharmacist_id: null,
+      primary_staff_id: null,
+      backup_staff_id: null,
       cases: [],
     });
 
@@ -311,24 +300,20 @@ describe('getPatientHeaderSummary', () => {
     expect(db.user.findMany).not.toHaveBeenCalled();
   });
 
-  it('does not fall back to an older case pharmacist when the latest scoped case is unassigned', async () => {
+  it('does not fall back to case-level assignments when patient-level care team fields are empty', async () => {
     const db = buildDb();
     db.patient.findFirst.mockResolvedValue({
       id: 'patient_1',
+      primary_pharmacist_id: null,
+      backup_pharmacist_id: null,
+      primary_staff_id: null,
+      backup_staff_id: null,
       cases: [
         {
           id: 'case_latest',
-          primary_pharmacist_id: null,
-          backup_pharmacist_id: null,
-          primary_staff_id: null,
-          backup_staff_id: null,
         },
         {
           id: 'case_old',
-          primary_pharmacist_id: 'pharmacist_old',
-          backup_pharmacist_id: 'pharmacist_backup_old',
-          primary_staff_id: 'staff_old',
-          backup_staff_id: 'staff_backup_old',
         },
       ],
     });
