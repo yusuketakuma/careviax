@@ -9678,3 +9678,31 @@ Next loop:
   - Screenshot evidence: `pharmacy-cooperation-workflow-mobile-before.png`, `pharmacy-cooperation-workflow-desktop-before.png`, `pharmacy-cooperation-workflow-mobile-after-responsive-tables.png`, and `pharmacy-cooperation-workflow-desktop-after-responsive-tables.png` under `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
 - Remaining:
   - Commit this workflow UI/UX group, send agmsg FYI, then continue the all-pages UI/UX sweep. The broader objective is not complete.
+
+### Conferences — First-Fold Work Queue
+
+- Coordination:
+  - Drained agmsg before editing and acknowledged Claude's disjoint admin lock.
+  - Continued under the Codex-only operation and avoided unrelated dirty `admin/users` and dispense-workbench files.
+  - No DB writes, migrations, external sends, production actions, or destructive data operations were performed.
+- Bugs found:
+  - `/conferences` pushed the actual `カンファレンス記録` work queue below the first screen: baseline proof measured it at `1314px` on desktop and `2299px` on mobile.
+  - The collaboration workflow panel and creation-entry cards appeared before the primary queue, so the first viewport showed explanation/entry points rather than the work surface.
+  - Desktop page-body controls inherited compact `sm:h-*` Button/Tabs sizing, leaving note action links, create buttons, view toggles, and note-type tabs below the 44px target.
+  - Loading skeletons rendered above the work section and could duplicate empty-state space while pushing the queue down.
+- Implemented by Codex:
+  - Moved the conference work queue ahead of the collaboration workflow panel and creation-entry cards.
+  - Kept the related shortcuts, new conference note action, activity registration action, workflow panel, list/calendar mode, note-type filters, and calendar controls intact.
+  - Removed duplicated header support copy and replaced it with a shorter page description.
+  - Raised page-body note links, buttons, tabs, and calendar controls to the 44px interaction floor on desktop and mobile.
+  - Moved loading placeholders inside the work section and reduced their height so the section identity stays visible during load.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' 'src/app/(dashboard)/conferences/conferences-query-state.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `12` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/conferences/page.tsx' 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx' 'src/app/(dashboard)/conferences/conferences-query-state.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/conferences/page.tsx' 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx' 'src/app/(dashboard)/conferences/conferences-query-state.test.ts'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/conferences/page.tsx' 'src/app/(dashboard)/conferences/conferences-content.tsx'`: passed.
+  - Direct authenticated Playwright verification on `http://localhost:3012/conferences` at `1440x1000` and `390x844` with route-mocked page APIs: no console/page errors, no horizontal overflow, and no page-body undersized targets beyond shared hidden/header chrome.
+  - Final screenshot metrics: `カンファレンス記録` improved to `411px` on desktop and `431px` on mobile.
+  - Screenshot evidence: `artifacts/ui-conferences-sweep/conferences-desktop-before.png`, `artifacts/ui-conferences-sweep/conferences-mobile-before.png`, `artifacts/ui-conferences-sweep/conferences-desktop-after.png`, and `artifacts/ui-conferences-sweep/conferences-mobile-after.png`.
+- Remaining:
+  - Commit this conferences UI/UX group, then commit this ledger update separately and continue the all-pages UI/UX sweep. The broader objective is not complete.
