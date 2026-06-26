@@ -1,6 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { seedDesignFidelityDemo } from './seed-design-demo';
+import { seedBulkDemoPatients, seedDesignFidelityDemo } from './seed-design-demo';
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -889,13 +889,23 @@ async function main() {
     sourceOfTruthEntries: DEFAULT_SOURCE_OF_TRUTH_MATRIX.length,
   });
 
-  await seedDesignFidelityDemo(prisma, {
+  const demoSeedContext = {
     orgId: org.id,
     siteId: site.id,
     userId: user.id,
     dispenserUserId: userSato.id,
     clerkUserId: SEED_IDS.userSuzukiClerk,
-  });
+  };
+  await seedDesignFidelityDemo(prisma, demoSeedContext);
+
+  // 患者一覧のデータ密度・フィルタ分布・取得上限表示を FE/BE 両面で検証するための
+  // 大量デモ患者。env SEED_DEMO_BULK_PATIENTS(数値)が設定された時のみ実行する
+  // (本番 seed は汚さない。主に local e2e DB での描画確認用)。
+  const bulkDemoPatientCount = Number.parseInt(process.env.SEED_DEMO_BULK_PATIENTS ?? '', 10);
+  if (Number.isFinite(bulkDemoPatientCount) && bulkDemoPatientCount > 0) {
+    await seedBulkDemoPatients(prisma, demoSeedContext, bulkDemoPatientCount);
+    console.log(`✅ Seeded ${bulkDemoPatientCount} bulk demo patients (SEED_DEMO_BULK_PATIENTS)`);
+  }
 
   await prisma.visitSchedule.updateMany({
     where: {

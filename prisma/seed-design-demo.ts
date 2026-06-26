@@ -698,6 +698,139 @@ async function upsertDemoBoardPatient(
   }
 }
 
+// ── 大量デモ患者(既定100名)──────────────────────────────────────────
+// 患者一覧の現実的なデータ密度・フィルタ分布・取得上限(切り詰め)表示を
+// FE/BE 両面で検証するためのバルク seed。env SEED_DEMO_BULK_PATIENTS(数値)が
+// 設定された時のみ実行する(本番 seed は汚さない)。既存の精緻なデモ(田中ほか)
+// とは別 id レンジ `cmnhdemobulk*` を使い衝突しない。冪等 upsert。
+const BULK_DEMO_SURNAMES = [
+  '佐藤',
+  '鈴木',
+  '高橋',
+  '田中',
+  '伊藤',
+  '渡辺',
+  '山本',
+  '中村',
+  '小林',
+  '加藤',
+  '吉田',
+  '山田',
+  '佐々木',
+  '山口',
+  '松本',
+  '井上',
+  '木村',
+  '林',
+  '斎藤',
+  '清水',
+];
+const BULK_DEMO_KANA_SURNAMES = [
+  'サトウ',
+  'スズキ',
+  'タカハシ',
+  'タナカ',
+  'イトウ',
+  'ワタナベ',
+  'ヤマモト',
+  'ナカムラ',
+  'コバヤシ',
+  'カトウ',
+  'ヨシダ',
+  'ヤマダ',
+  'ササキ',
+  'ヤマグチ',
+  'マツモト',
+  'イノウエ',
+  'キムラ',
+  'ハヤシ',
+  'サイトウ',
+  'シミズ',
+];
+const BULK_DEMO_GIVEN_MALE = ['一郎', '健', '武', '茂', '勇', '博', '清', '実', '正', '豊'];
+const BULK_DEMO_GIVEN_FEMALE = [
+  '花子',
+  '幸子',
+  '和子',
+  '洋子',
+  '京子',
+  '久美子',
+  '恵子',
+  '美智子',
+  '節子',
+  '春子',
+];
+const BULK_DEMO_KANA_GIVEN_MALE = [
+  'イチロウ',
+  'ケン',
+  'タケシ',
+  'シゲル',
+  'イサム',
+  'ヒロシ',
+  'キヨシ',
+  'ミノル',
+  'タダシ',
+  'ユタカ',
+];
+const BULK_DEMO_KANA_GIVEN_FEMALE = [
+  'ハナコ',
+  'サチコ',
+  'カズコ',
+  'ヨウコ',
+  'キョウコ',
+  'クミコ',
+  'ケイコ',
+  'ミチコ',
+  'セツコ',
+  'ハルコ',
+];
+
+const BULK_DEMO_DISTRIBUTION: Array<{
+  caseStatus: DemoCaseStatus;
+  cycleStatus?: DemoCycleStatus;
+  exceptionStatus?: string | null;
+}> = [
+  { caseStatus: 'active', cycleStatus: 'visit_ready' },
+  { caseStatus: 'active', cycleStatus: 'reported' },
+  { caseStatus: 'active', cycleStatus: 'setting' },
+  { caseStatus: 'active', cycleStatus: 'visit_completed' },
+  { caseStatus: 'active', cycleStatus: 'set_audited', exceptionStatus: 'awaiting_reply' },
+  { caseStatus: 'on_hold', cycleStatus: 'on_hold', exceptionStatus: 'hospitalized' },
+  { caseStatus: 'referral_received' },
+];
+
+/** 既定100名のバルクデモ患者を冪等 upsert する(患者 + ケース + 任意でサイクル)。 */
+export async function seedBulkDemoPatients(
+  prisma: PrismaClient,
+  ctx: DemoSeedContext,
+  count: number,
+): Promise<void> {
+  for (let i = 0; i < count; i += 1) {
+    const pad = String(i + 1).padStart(3, '0');
+    const isMale = i % 2 === 0;
+    const surnameIdx = i % BULK_DEMO_SURNAMES.length;
+    const givenIdx = Math.floor(i / BULK_DEMO_SURNAMES.length) % BULK_DEMO_GIVEN_MALE.length;
+    const dist = BULK_DEMO_DISTRIBUTION[i % BULK_DEMO_DISTRIBUTION.length];
+    const hasAllergy = i % 4 === 0;
+
+    await upsertDemoBoardPatient(prisma, ctx, {
+      patientId: `cmnhdemobulkp${pad}`,
+      caseId: `cmnhdemobulkc${pad}`,
+      cycleId: dist.cycleStatus ? `cmnhdemobulky${pad}` : null,
+      name: `${BULK_DEMO_SURNAMES[surnameIdx]} ${isMale ? BULK_DEMO_GIVEN_MALE[givenIdx] : BULK_DEMO_GIVEN_FEMALE[givenIdx]}`,
+      nameKana: `${BULK_DEMO_KANA_SURNAMES[surnameIdx]} ${isMale ? BULK_DEMO_KANA_GIVEN_MALE[givenIdx] : BULK_DEMO_KANA_GIVEN_FEMALE[givenIdx]}`,
+      age: 65 + (i % 31),
+      gender: isMale ? 'male' : 'female',
+      caseStatus: dist.caseStatus,
+      cycleStatus: dist.cycleStatus,
+      exceptionStatus: dist.exceptionStatus ?? null,
+      allergyInfo: hasAllergy
+        ? [{ substance: 'ペニシリン系', reaction: '発疹', severity: 'moderate' }]
+        : undefined,
+    });
+  }
+}
+
 type DemoLineSpec = {
   id: string;
   lineNumber: number;
