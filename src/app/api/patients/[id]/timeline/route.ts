@@ -1,10 +1,12 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createScopedTxRunner } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { getPatientTimelineData } from '@/server/services/patient-detail';
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -28,3 +30,12 @@ export const GET = withAuthContext(
     message: '患者情報の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

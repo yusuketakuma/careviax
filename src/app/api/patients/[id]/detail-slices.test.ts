@@ -589,6 +589,7 @@ describe('patient detail slice routes', () => {
       const response = await callSliceRoute(routeCase);
 
       expect(response.status).toBe(404);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'WORKFLOW_NOT_FOUND',
         message: '患者が見つかりません',
@@ -603,6 +604,7 @@ describe('patient detail slice routes', () => {
       const response = await callSliceRoute(routeCase, '%20%20', '   ');
 
       expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         message: '患者IDが不正です',
       });
@@ -621,6 +623,7 @@ describe('patient detail slice routes', () => {
     const response = await callSliceRoute(routeCase, 'patient_custom');
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject(routeCase.expectedBody as object);
     expect(routeCase.serviceMock).toHaveBeenCalledWith(
       'expectedFirstArg' in routeCase ? routeCase.expectedFirstArg : {},
@@ -643,7 +646,26 @@ describe('patient detail slice routes', () => {
       const response = await callSliceRoute(routeCase);
 
       expect(response.status).toBe(403);
+      expectSensitiveNoStore(response);
       expectNoServiceCalls();
+    },
+  );
+
+  it.each(sliceRoutes)(
+    'returns a sanitized no-store 500 when the $name service fails',
+    async (routeCase) => {
+      const rawError = `患者A ワルファリン ${routeCase.name} failure`;
+      routeCase.serviceMock.mockRejectedValueOnce(new Error(rawError));
+
+      const response = await callSliceRoute(routeCase);
+
+      expect(response.status).toBe(500);
+      expectSensitiveNoStore(response);
+      const body = await response.json();
+      expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+      expect(JSON.stringify(body)).not.toContain(rawError);
+      expect(JSON.stringify(body)).not.toContain('患者A');
+      expect(JSON.stringify(body)).not.toContain('ワルファリン');
     },
   );
 });
