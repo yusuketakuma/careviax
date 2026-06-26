@@ -79,6 +79,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused prescription-intake Vitest `2` files / `20` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/prescriptions/intake` with `0` console/page errors, visible `処方取込` `h1`, no horizontal overflow, no visible page-body controls below 44px, desktop table rows visible, and mobile cards visible instead of the clipped table.
 - Next action: commit the prescription-intake UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Patient Card Prescription Workspace First
+
+- Refined `/patients/[id]` prescription card workspace after browser proof showed the active prescription card buried below secondary panels: `card-prescription-section` started at `3227px` on desktop and `12962px` on mobile before this pass.
+- Made the visible `処方カード作業台` title the page `h1`, kept header actions at 44px-plus target size, surfaced the patient identity strip's next visit marker, and moved the preserved `今回の処方` section directly after the safety board before foundation/profile/home-operation panels.
+- Hardened visible patient-card body actions in this first fold by keeping the safety-check and foundation review links/buttons at 44px-plus target size.
+- Preserved all existing patient overview fetches, prescription cycle data, safety board data, foundation/profile/home-operation panels, task creation mutation behavior, card links, auth behavior, backend/API behavior, DB behavior, and displayed patient data. No route or feature was removed; secondary panels were reordered after the active prescription work area.
+- Screenshot evidence: before/after desktop and mobile screenshots under `artifacts/ui-patient-card-sweep/`.
+- Validation passed: focused patient-card/SafetyBoard Vitest `2` files / `56` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/patients/cmnhdemopt001amq9ph-os` with no console/page errors, one visible `処方カード作業台` `h1`, no horizontal overflow, no undersized visible controls in the patient-card body, and prescription card top improved to `432px` desktop / `716px` mobile.
+- Next action: commit the patient-card UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.

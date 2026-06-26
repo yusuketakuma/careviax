@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1333 JST
+
+- current task: continue the all-pages UI/UX objective with `/patients/[id]` prescription card workspace, preserving existing dirty work and prioritizing the prescription card content in the first fold.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, `tools/tests/helpers/local-auth.ts`, `src/app/(dashboard)/patients/[id]/card-workspace.tsx`, `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`, `src/components/features/workspace/safety-board.tsx`, `src/components/features/workspace/safety-board.test.tsx`, authenticated desktop/mobile `/patients/cmnhdemopt001amq9ph-os` screenshots, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/patients/[id]/card-workspace.tsx`, `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`, `src/components/features/workspace/safety-board.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the prescription card workspace had no visible page `h1`, the current prescription card was buried after foundation/profile/home-operation panels (`3227px` desktop and `12962px` mobile before this pass), and visible desktop patient-card body links/buttons could shrink below the 44px PH-OS target.
+- security risks found: no auth, authorization, permission, RLS, API, PHI projection, audit logging, schema, migration, DB write, external send, or mutation behavior changed. Browser verification used authenticated local reads only.
+- performance issues found: no new fetches, DB reads, polling, render loops, or backend work were introduced. Existing sections were reordered so the clinical prescription card renders before supplemental foundation panels.
+- validation commands: `pnpm vitest run 'src/components/features/workspace/safety-board.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/components/features/workspace/safety-board.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`; `pnpm exec prettier --check 'src/components/features/workspace/safety-board.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`; `git diff --check -- 'src/components/features/workspace/safety-board.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`; authenticated Playwright desktop/mobile checks on `http://localhost:3012/patients/cmnhdemopt001amq9ph-os`.
+- validation results: focused patient-card/SafetyBoard Vitest passed `2` files / `56` tests; focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed. Browser proof had `0` console/page errors, one visible `処方カード作業台` `h1`, no horizontal overflow, the page-body controls in this patient-card slice at 44px or larger, and prescription card top improved to `432px` desktop / `716px` mobile. Screenshots were saved under `artifacts/ui-patient-card-sweep/`.
+- remaining work: commit the patient-card UI slice and progress-ledger update separately, leave unrelated dirty `select-site` files untouched, stop the locally started `pnpm dev:e2e:local` session if no longer needed, then continue the broader all-pages UI/UX objective. The broader objective is not complete.
+- next action: grouped commits for patient card workspace priority and progress ledgers.
+
 ### 20260626-1321 JST
 
 - current task: continue the all-pages UI/UX objective with `/prescriptions/intake`, an unverified high-value prescription intake triage route from the design screen map.
