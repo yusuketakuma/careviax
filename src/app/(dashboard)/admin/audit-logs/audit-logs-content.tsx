@@ -204,89 +204,26 @@ export function AuditLogsContent() {
   return (
     <div className="space-y-4">
       <PageSection
-        title="絞り込み"
-        description="操作者、対象、操作、期間を指定し、監査ログ一覧と出力対象を同じ条件に揃えます。"
-        tone="subtle"
-      >
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="actor-filter">操作者</Label>
-            <div className="relative">
-              <Search
-                className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <Input
-                id="actor-filter"
-                value={actorFilter}
-                onChange={(e) => setActorFilter(e.target.value)}
-                placeholder="ユーザーIDで検索"
-                className="pl-8"
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="target-type-filter">対象種別</Label>
-            <Select value={targetTypeFilter} onValueChange={(v) => setTargetTypeFilter(v ?? '')}>
-              <SelectTrigger id="target-type-filter">
-                <SelectValue placeholder="すべて" />
-              </SelectTrigger>
-              <SelectContent>
-                {AUDIT_LOG_TARGET_TYPE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="action-filter">操作</Label>
-            <Select value={actionFilter} onValueChange={(value) => setActionFilter(value ?? '')}>
-              <SelectTrigger id="action-filter">
-                <SelectValue placeholder="すべて" />
-              </SelectTrigger>
-              <SelectContent>
-                {AUDIT_LOG_ACTION_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value || 'all'} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="date-from">開始日</Label>
-            <Input
-              id="date-from"
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="date-to">終了日</Label>
-            <Input
-              id="date-to"
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </div>
-        </div>
-      </PageSection>
-
-      <PageSection
         title="監査ログ一覧"
         description="現在の絞り込み条件に一致する監査ログを確認し、同じ条件で JSON または CSV に出力します。"
         tone="subtle"
         actions={
           <ActionRail>
-            <Button size="sm" variant="outline" onClick={() => void handleExport('json')}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-11 sm:h-11 sm:min-h-[44px]"
+              onClick={() => void handleExport('json')}
+            >
               <Download className="mr-1.5 size-3.5" aria-hidden="true" />
               JSON出力
             </Button>
-            <Button size="sm" variant="outline" onClick={() => void handleExport('csv')}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-11 sm:h-11 sm:min-h-[44px]"
+              onClick={() => void handleExport('csv')}
+            >
               <Download className="mr-1.5 size-3.5" aria-hidden="true" />
               CSV出力
             </Button>
@@ -313,6 +250,86 @@ export function AuditLogsContent() {
               ...(actorFilter ? [{ label: '操作者', value: actorFilter }] : []),
             ]}
           />
+          <details className="rounded-md border border-border bg-surface-subtle/60 [&:not([open])>div]:hidden">
+            <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm font-medium text-foreground marker:hidden [&::-webkit-details-marker]:hidden">
+              表示条件を変更
+              <Filter className="size-4 text-muted-foreground" aria-hidden="true" />
+            </summary>
+            <div className="grid gap-4 border-t border-border px-4 py-4 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="space-y-1.5">
+                <Label htmlFor="actor-filter">操作者</Label>
+                <div className="relative">
+                  <Search
+                    className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    id="actor-filter"
+                    value={actorFilter}
+                    onChange={(e) => setActorFilter(e.target.value)}
+                    placeholder="ユーザーIDで検索"
+                    className="h-11 pl-8 sm:h-11 sm:min-h-[44px]"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="target-type-filter">対象種別</Label>
+                <Select
+                  value={targetTypeFilter}
+                  onValueChange={(v) => setTargetTypeFilter(v ?? '')}
+                >
+                  <SelectTrigger id="target-type-filter" className="h-11 sm:h-11 sm:min-h-[44px]">
+                    <SelectValue placeholder="すべて" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUDIT_LOG_TARGET_TYPE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="action-filter">操作</Label>
+                <Select
+                  value={actionFilter}
+                  onValueChange={(value) => setActionFilter(value ?? '')}
+                >
+                  <SelectTrigger id="action-filter" className="h-11 sm:h-11 sm:min-h-[44px]">
+                    <SelectValue placeholder="すべて" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUDIT_LOG_ACTION_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value || 'all'} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="date-from">開始日</Label>
+                <Input
+                  id="date-from"
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="h-11 sm:h-11 sm:min-h-[44px]"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="date-to">終了日</Label>
+                <Input
+                  id="date-to"
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="h-11 sm:h-11 sm:min-h-[44px]"
+                />
+              </div>
+            </div>
+          </details>
           {isError ? (
             // 取得失敗を「ログがありません」(空)に見せない。監査ログは安全証跡のため
             // 失敗と空を明確に分離し、再試行導線を出す。

@@ -17,6 +17,7 @@ export default function AuditLogsPage() {
         title="監査ログ"
         description="操作履歴の閲覧・フィルタリング・CSV出力（3省2ガイドライン対応）"
         shortcuts={getAdminAuditLogsShortcutLinks()}
+        supportingContent={null}
       />
 
       <Suspense fallback={<Loading />}>

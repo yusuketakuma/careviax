@@ -33,8 +33,14 @@ vi.mock('@/components/ui/select', async () => {
     }: PropsWithChildren<{ value?: string; onValueChange?: (value: string) => void }>) => (
       <SelectContext.Provider value={{ value, onValueChange }}>{children}</SelectContext.Provider>
     ),
-    SelectTrigger: ({ children, id }: PropsWithChildren<{ id?: string }>) => (
-      <div id={id}>{children}</div>
+    SelectTrigger: ({
+      children,
+      id,
+      className,
+    }: PropsWithChildren<{ id?: string; className?: string }>) => (
+      <div id={id} className={className}>
+        {children}
+      </div>
     ),
     SelectValue: ({ placeholder }: { placeholder?: string }) => {
       const context = React.useContext(SelectContext);
@@ -160,6 +166,25 @@ describe('AuditLogsContent', () => {
     ]) {
       expect(screen.getAllByRole('button', { name: label }).length).toBeGreaterThan(0);
     }
+  });
+
+  it('prioritizes the audit list before detailed display filters and keeps primary controls at page-body target size', async () => {
+    stubFetch();
+    renderContent();
+
+    await screen.findByText('ログがありません');
+
+    const listTitle = screen.getByText('監査ログ一覧');
+    const filterTitle = screen.getByText('表示条件を変更');
+    expect(
+      listTitle.compareDocumentPosition(filterTitle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(filterTitle.closest('summary')?.className).toContain('min-h-[44px]');
+    expect(screen.getByRole('button', { name: 'JSON出力' }).className).toContain('sm:min-h-[44px]');
+    expect(screen.getByRole('button', { name: 'CSV出力' }).className).toContain('sm:min-h-[44px]');
+    expect(screen.getByPlaceholderText('ユーザーIDで検索').className).toContain('sm:min-h-[44px]');
+    expect(document.getElementById('target-type-filter')?.className).toContain('sm:min-h-[44px]');
+    expect(document.getElementById('action-filter')?.className).toContain('sm:min-h-[44px]');
   });
 
   it('passes selected consent audit filters to list and export requests', async () => {
