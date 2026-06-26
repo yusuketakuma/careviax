@@ -111,6 +111,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused patient prescriptions/protected GET Vitest `2` files / `213` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
 - Next action: run final scoped ledger checks, commit the patient-prescriptions API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Patient Duplicate Check 500 No-Store
+
+- Hardened `GET /api/patients/check-duplicate` so unexpected patient duplicate lookup failures return a fixed `INTERNAL_ERROR` envelope with sensitive no-store headers.
+- Added route coverage proving raw duplicate lookup exception text is absent from the response body and the 500 carries `Cache-Control: private, no-store, max-age=0` plus `Pragma: no-cache`.
+- Preserved existing required query validation, duplicate query-key rejection, unsupported gender rejection, impossible birth-date rejection, auth/permission behavior, duplicate candidate PHI projection, protected GET matrix behavior, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: sensitive patient duplicate lookup failure responses are no longer cacheable at the HTTP boundary.
+- Performance issue improved: none materially changed; the slice adds only failure-path response wrapping and tests.
+- Validation passed: focused patient check-duplicate/protected GET Vitest `2` files / `213` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
+- Next action: run final scoped ledger checks, commit the patient-check-duplicate API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.
