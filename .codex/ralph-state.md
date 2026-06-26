@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1019 JST
+
+- current task: continue the active repo-wide UI/UX refinement goal with a screenshot-driven `/tasks` first-fold action-summary slice.
+- files inspected: agmsg inbox; `git status --short --branch --untracked-files=all`; `docs/ui-ux-design-guidelines.md`; `src/app/(dashboard)/tasks/page.tsx`; `src/app/(dashboard)/tasks/tasks-content.tsx`; `src/app/(dashboard)/tasks/tasks-content.test.tsx`; live desktop/mobile `/tasks` browser screenshots and DOM/touch-target/overflow audits; `CODEX_GOAL_PROGRESS.md`; this Ralph state file.
+- files changed: `src/app/(dashboard)/tasks/page.tsx`, `src/app/(dashboard)/tasks/tasks-content.tsx`, `src/app/(dashboard)/tasks/tasks-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/tasks` first viewport was dominated by explanatory header content, shortcut chrome, and staff workload cards while the actual task list started far below the fold on mobile. The page also used an English eyebrow (`Operational Tasks`) inside an otherwise Japanese operational screen.
+- security risks found: none changed in application logic. No auth, authorization, API, PHI projection, schema, migration, seed, DB write path, external send, or destructive operation was changed. Browser verification used normal protected-page reads only.
+- performance issues found: none materially changed. The fix uses already-loaded task data to compute first-fold counts; it adds no new fetch, query, network fan-out, long-running computation, or backend work.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/tasks/page.tsx' 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx'`; `pnpm vitest run 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/app/(dashboard)/tasks/page.tsx' 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx'`; live browser desktop/mobile checks on `http://localhost:3012/tasks`.
+- validation results: focused tasks Vitest passed `1` file / `8` tests after scoping duplicate summary text assertions; focused ESLint passed. Live browser checks had `0` console errors, `0` horizontal overflow, one visible `h1`, and mobile visible touch targets at 44px or larger. Screenshots were saved under `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
+- remaining work: run final focused Prettier/diff checks including ledgers, commit the tasks UI slice, release/notify via agmsg, then continue the all-pages UI/UX objective. The broader objective is not complete.
+- next action: final validation and grouped commit for the `/tasks` first-fold action-summary slice.
+
 ### 20260626-1016 JST
 
 - current task: stop the rogue Codex monitor bridge that was auto-running extra Codex turns and rewriting coordination state while the live user directive has Claude+Codex parallel screen-partitioned work active.

@@ -365,6 +365,11 @@ export function TasksContent({
   const dedicatedCompletionCount = selectedTasks.filter(
     (t) => t.status !== 'completed' && t.status !== 'cancelled' && t.can_complete_inline === false,
   ).length;
+  const overdueTasks = tasks.filter((task) => {
+    const due = task.sla_due_at ?? task.due_date;
+    return due && task.status !== 'completed' && new Date(due) < new Date();
+  }).length;
+  const highPriorityTasks = tasks.filter((task) => task.priority === 'high').length;
   const contextSummary =
     initialContext === 'dashboard_home'
       ? assignedToMe
@@ -464,6 +469,37 @@ export function TasksContent({
           <AlertDescription className="text-tag-info">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
+      <PageSection
+        title="今すぐ処理"
+        description="未完了タスクの量、期限超過、高優先度を先に確認します。"
+        tone="subtle"
+        actions={
+          <>
+            <Button asChild size="sm" variant="outline" className="min-h-[44px]">
+              <a href="#tasks-list">一覧へ移動</a>
+            </Button>
+            <Button asChild size="sm" variant="ghost" className="min-h-[44px]">
+              <Link href="/my-day">My Day</Link>
+            </Button>
+            <Button asChild size="sm" variant="ghost" className="min-h-[44px]">
+              <Link href="/workflow">ワークフロー</Link>
+            </Button>
+          </>
+        }
+      >
+        <FilterSummaryBar
+          items={[
+            { label: '表示件数', value: `${tasks.length}件` },
+            { label: '期限超過', value: `${overdueTasks}件` },
+            { label: '高優先度', value: `${highPriorityTasks}件` },
+            {
+              label: '担当',
+              value: assignedToMe ? '自分' : '全員',
+            },
+          ]}
+        />
+      </PageSection>
+
       <PageSection
         title="スタッフ別の抱え込み"
         description="今日の訪問、未完了タスク、調剤中の件数をスタッフごとに見て、依頼先の負荷を確認します。"
@@ -792,6 +828,7 @@ export function TasksContent({
       </PageSection>
 
       <PageSection
+        id="tasks-list"
         title="タスク一覧"
         description="選択した条件に合うタスクを一覧し、各業務画面へ直接移動できます。"
         tone="subtle"

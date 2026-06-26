@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
@@ -196,6 +196,20 @@ describe('TasksContent', () => {
     expect(screen.getByText('佐藤 薬剤師')).toBeTruthy();
     expect(screen.getByText('訪問: 山田 花子')).toBeTruthy();
     expect(screen.getByText('依頼: 監査依頼')).toBeTruthy();
+    const immediateSection = screen.getByRole('heading', { name: '今すぐ処理' }).closest('section');
+    expect(immediateSection).toBeTruthy();
+    expect(within(immediateSection as HTMLElement).getByText('表示件数 2件')).toBeTruthy();
+    expect(
+      within(immediateSection as HTMLElement)
+        .getByRole('link', { name: '一覧へ移動' })
+        .getAttribute('href'),
+    ).toBe('#tasks-list');
+    expect(
+      within(immediateSection as HTMLElement).getByRole('link', { name: 'My Day' }),
+    ).toBeTruthy();
+    expect(
+      within(immediateSection as HTMLElement).getByRole('link', { name: 'ワークフロー' }),
+    ).toBeTruthy();
     expect(screen.getByTestId('tasks-table').textContent).toContain('訪問準備');
   });
 

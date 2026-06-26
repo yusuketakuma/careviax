@@ -69,6 +69,17 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused `visits-today` Vitest `1` file / `5` tests; focused ESLint; focused Prettier check; focused diff whitespace check; live browser desktop/mobile checks on `http://localhost:3012/visits` with `0` console errors, `0` horizontal overflow, one visible `h1`, and mobile visible touch targets at 44px or larger.
 - Next action: commit the visits UI slice, commit the Codex-only runtime-state correction separately, then continue the screenshot loop on the next high-frequency operational page.
 
+### 2026-06-26 JST - Tasks First-Fold Action Summary
+
+- Refined `/tasks` after desktop/mobile browser inspection showed the first viewport consumed by explanatory header cards, shortcut chrome, and staff workload, while the actual `78` task list started far below the fold on mobile.
+- Removed the page-header instruction card and moved the preserved `My Day` / `ワークフロー` shortcuts into a new first content group.
+- Added an `今すぐ処理` first-fold summary showing displayed task count, overdue count, high-priority count, and current assignee scope, with a direct `一覧へ移動` anchor to the task list.
+- Localized the page eyebrow from `Operational Tasks` to `運用タスク`.
+- Preserved all existing task fetches, filters, staff workload, work-request form, bulk completion behavior, shortcut destinations, auth behavior, backend/API behavior, and DB behavior. No feature was removed.
+- Screenshot evidence: before mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/tasks-mobile-before.png`; after mobile `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/tasks-mobile-after.png`; desktop after `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/tasks-desktop-after.png`.
+- Validation passed: focused `tasks-content` Vitest `1` file / `8` tests; focused ESLint; live browser desktop/mobile checks on `http://localhost:3012/tasks` with `0` console errors, `0` horizontal overflow, one visible `h1`, and mobile visible touch targets at 44px or larger.
+- Next action: run final Prettier/diff checks, commit this tasks UI slice, then continue the screenshot loop on the next high-frequency operational page.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
