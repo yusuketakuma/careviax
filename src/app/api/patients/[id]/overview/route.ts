@@ -1,5 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -27,5 +27,10 @@ const authenticatedGET = withAuthContext(
   },
 );
 
-export const GET: typeof authenticatedGET = async (req, routeContext) =>
-  withSensitiveNoStore(await authenticatedGET(req, routeContext));
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+};

@@ -309,6 +309,24 @@ describe('patient detail slice routes', () => {
     expect(getPatientOverviewMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when patient overview reads fail', async () => {
+    const rawError = 'raw patient overview read failure';
+    getPatientOverviewMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await overviewGet(
+      createRequest('http://localhost/api/patients/patient_1/overview'),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+  });
+
   it('returns patient visits data', async () => {
     getPatientVisitsDataMock.mockResolvedValue({ monthly_visit_count: 2 });
 
