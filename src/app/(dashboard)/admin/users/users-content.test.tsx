@@ -149,6 +149,31 @@ describe('UsersContent', () => {
     expect(screen.getByRole('button', { name: '山田 太郎を停止' })).toBeTruthy();
   });
 
+  it('keeps the user list workflow before supplemental filters', () => {
+    render(<UsersContent />);
+
+    const listTitle = screen.getByText('ユーザー一覧');
+    const inviteButton = screen.getByRole('button', { name: 'ユーザーを招待' });
+    const searchInput = screen.getByLabelText('検索');
+    const detailButton = screen.getByRole('button', { name: '山田 太郎の詳細を開く' });
+    const detailFilter = screen.getByText('詳細フィルタ');
+
+    expect(
+      Boolean(listTitle.compareDocumentPosition(inviteButton) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(
+      Boolean(listTitle.compareDocumentPosition(searchInput) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(
+      Boolean(searchInput.compareDocumentPosition(detailButton) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(
+      Boolean(
+        detailButton.compareDocumentPosition(detailFilter) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+  });
+
   it('associates invite form fields with visible labels', () => {
     render(<UsersContent />);
 
