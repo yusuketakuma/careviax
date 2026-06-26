@@ -10117,6 +10117,15 @@ Next loop:
 - Remaining:
   - Commit the `/admin/users` implementation group, then commit this ledger update separately. The broader all-pages UI/UX objective remains incomplete.
 
+### Admin Users — Worklist Order Regression Coverage
+
+- Rechecked `/admin/users` with route-mocked desktop/mobile screenshots after the account worklist priority slice.
+- Added a focused regression test that locks the intended source order: `ユーザー一覧` → invite action/search → row detail action → supplemental `詳細フィルタ`.
+- Preserved the already-committed users UI body, user reads, Cognito invite/update flows, role/site validation, visit-limit validation, action dialogs, mutation handlers, backend/API behavior, DB behavior, and displayed data. No route or feature was removed.
+- Screenshot evidence: `artifacts/ui-admin-users-sweep/admin-users-after-desktop.png`, `artifacts/ui-admin-users-sweep/admin-users-after-mobile.png`, and metrics JSON `artifacts/ui-admin-users-sweep/admin-users-proof.json`.
+- Validation passed: focused UsersContent Vitest `1` file / `7` tests; scoped ESLint; scoped Prettier check; scoped diff whitespace check; direct route-mocked desktop/mobile browser proof with no console/page errors and no horizontal overflow.
+- Next action: commit the regression test separately, commit this progress-ledger update separately, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+
 ### Admin Drug Masters — Supplemental Checkbox Target Addendum
 
 - Rechecked `/admin/drug-masters` with route-mocked desktop/mobile screenshots after the search/list priority slice.

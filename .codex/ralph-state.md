@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1451 JST
+
+- current task: `/admin/users` user-account worklist verification and regression coverage addendum.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/admin/users/page.tsx`, `src/app/(dashboard)/admin/users/users-content.tsx`, `src/app/(dashboard)/admin/users/users-content.test.tsx`, route-mocked desktop/mobile screenshots and metrics under `artifacts/ui-admin-users-sweep/`, and existing commits `d3f89fca` / `628bc1f5`.
+- files changed: `src/app/(dashboard)/admin/users/users-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. The already-committed users UI body remained unchanged in this addendum.
+- bugs found: no new runtime UI bug after the users worklist commit; route-mocked proof confirmed the list workflow renders before supplemental filters. Added test coverage because the UI order is the purpose of the slice and should not regress silently.
+- security risks found: no auth, authorization, org scoping, admin API, invite/update/suspend mutations, PHI projection, audit behavior, schema, migrations, DB writes, external sends, or secret handling changed. Browser proof used route-mocked APIs and a route-mock local session; no DB reads or writes were required.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier loops were introduced. The test-only addendum does not affect runtime.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/users/page.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/admin/users/page.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/admin/users/page.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`; direct route-mocked Playwright proof on `http://localhost:3012/admin/users`.
+- validation results: focused UsersContent Vitest passed `1` file / `7` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. Route-mocked browser proof saved `artifacts/ui-admin-users-sweep/admin-users-after-desktop.png`, `artifacts/ui-admin-users-sweep/admin-users-after-mobile.png`, and `artifacts/ui-admin-users-sweep/admin-users-proof.json`; final proof had no console/page errors and no horizontal overflow.
+- remaining work: commit the users regression test separately, commit this ledger update separately, send agmsg FYI, stop the dev server started for screenshot proof, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only `src/app/(dashboard)/admin/users/users-content.test.tsx` for the test commit, then stage only ledgers for the progress commit.
+
 ### 20260626-1443 JST
 
 - current task: `/admin/users` first-fold priority and 44px interaction-floor pass for account/permission administration.
