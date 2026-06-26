@@ -177,6 +177,27 @@ describe('BusinessHolidaysContent', () => {
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
+  it('places the calendar workspace before summary cards and keeps desktop controls at page-body target size', async () => {
+    renderContent();
+
+    await screen.findByLabelText('店舗フィルタ');
+
+    const monthTitle = screen.getByText(/年\d+月/);
+    const summaryTitle = screen.getByText('今月の休日数');
+    expect(
+      monthTitle.compareDocumentPosition(summaryTitle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: '前月を表示' }).className).toContain('sm:size-11');
+    expect(screen.getByLabelText('店舗フィルタ').className).toContain('sm:min-h-[44px]');
+    expect(screen.getByRole('button', { name: '一括登録' }).className).toContain('sm:min-h-[44px]');
+    await screen.findByText('年始休業');
+    expect(
+      screen.getByRole('button', {
+        name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を編集',
+      }).className,
+    ).toContain('sm:min-h-[44px]');
+  });
+
   it('create (POST) delegates to buildOrgJsonHeaders and posts to the static collection path', async () => {
     const fetchMock = stubFetchWithHoliday();
     renderContent();

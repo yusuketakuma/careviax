@@ -304,27 +304,36 @@ export function BusinessHolidaysContent() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
-        <SummaryCard label="今月の休日数" value={holidays.length} />
-        <SummaryCard label="休業日" value={holidays.filter((h) => h.is_closed).length} />
-        <SummaryCard label="営業日" value={holidays.filter((h) => !h.is_closed).length} />
-      </div>
-
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Button size="icon" variant="ghost" aria-label="前月を表示" onClick={prevMonth}>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="sm:size-11"
+                aria-label="前月を表示"
+                onClick={prevMonth}
+              >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <CardTitle className="text-base">{formatYearMonth(viewYear, viewMonth)}</CardTitle>
-              <Button size="icon" variant="ghost" aria-label="翌月を表示" onClick={nextMonth}>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="sm:size-11"
+                aria-label="翌月を表示"
+                onClick={nextMonth}
+              >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
             <div className="flex items-center gap-2">
               <Select value={filterSiteId} onValueChange={(v) => setFilterSiteId(v ?? '')}>
-                <SelectTrigger className="w-40" aria-label="店舗フィルタ">
+                <SelectTrigger
+                  className="h-11 w-40 sm:h-11 sm:min-h-[44px]"
+                  aria-label="店舗フィルタ"
+                >
                   <SelectValue placeholder="全店舗" />
                 </SelectTrigger>
                 <SelectContent>
@@ -339,6 +348,7 @@ export function BusinessHolidaysContent() {
               <Button
                 size="sm"
                 variant={bulkMode ? 'default' : 'outline'}
+                className="h-11 sm:h-11 sm:min-h-[44px]"
                 onClick={() => {
                   setBulkMode(!bulkMode);
                   setBulkDates(new Set());
@@ -402,7 +412,7 @@ export function BusinessHolidaysContent() {
                         <button
                           key={h.id}
                           type="button"
-                          className={`block w-full truncate rounded px-1 text-left text-[10px] leading-4 ${
+                          className={`block min-h-[44px] w-full truncate rounded px-1.5 text-left text-xs leading-5 ${
                             h.is_closed
                               ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                               : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
@@ -424,6 +434,12 @@ export function BusinessHolidaysContent() {
           )}
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <SummaryCard label="今月の休日数" value={holidays.length} />
+        <SummaryCard label="休業日" value={holidays.filter((h) => h.is_closed).length} />
+        <SummaryCard label="営業日" value={holidays.filter((h) => !h.is_closed).length} />
+      </div>
 
       {/* Bulk registration panel */}
       {bulkMode && bulkDates.size > 0 && (
@@ -531,6 +547,7 @@ export function BusinessHolidaysContent() {
                   <Button
                     size="sm"
                     variant="outline"
+                    className="h-11 sm:h-11 sm:min-h-[44px]"
                     aria-label={`${holidaySummary(h)}を編集`}
                     onClick={() => openEdit(h)}
                   >
@@ -539,6 +556,7 @@ export function BusinessHolidaysContent() {
                   <Button
                     size="sm"
                     variant="destructive"
+                    className="h-11 sm:h-11 sm:min-h-[44px]"
                     onClick={() => setDeleteTarget(h)}
                     aria-label={`${holidaySummary(h)}を削除`}
                   >
