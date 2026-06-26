@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1913 JST
+
+- current task: `/admin/pharmacist-credentials` credential expiry first-fold priority and 44px credential actions.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox, design-review skill guidance, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, `src/app/(dashboard)/admin/pharmacist-credentials/page.tsx`, `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`, `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`, related API/test paths discovered with `rg`, route-mocked before/final desktop/mobile screenshots under `artifacts/ui-pharmacist-credentials-sweep/`, and gbrain code graph probes for `PharmacistCredentialsContent` / `PharmacistCredentialsPage`.
+- files changed: `src/app/(dashboard)/admin/pharmacist-credentials/page.tsx`, `src/app/(dashboard)/admin/pharmacist-credentials/page.test.tsx`, `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`, `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/admin/pharmacist-credentials` rendered the generic `最初に見るポイント` admin intro above the credential expiry alert and certification list. Desktop `資格を登録`, row `編集`, and row `失効` actions measured `28px-32px`, below the PH-OS 44px page-body target.
+- security risks found: no auth, authorization, org scoping, pharmacist credential APIs, pharmacist option APIs, create/update/delete mutation behavior, validation, schema, migrations, DB writes, external sends, PHI projection, audit behavior, or secret handling changed. Browser proof used route-mocked APIs and a local session token; no DB reads or writes were performed.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier render loops were introduced. The change removes generic support content and enlarges existing controls.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/page.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacist-credentials/page.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/page.test.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`; `pnpm exec prettier --write ...`; `pnpm exec prettier --check ...`; `git diff --check -- ...`; direct route-mocked Playwright proof on `http://localhost:3012/admin/pharmacist-credentials`.
+- validation results: focused PharmacistCredentialsContent/Page Vitest passed `2` files / `7` tests; scoped ESLint passed; scoped Prettier write/check passed; scoped diff-check passed. Route-mocked browser proof saved `artifacts/ui-pharmacist-credentials-sweep/before/desktop.png`, `before/mobile.png`, `after/desktop.png`, and `after/mobile.png`; final proof had no generic intro, one visible `かかりつけ薬剤師管理` h1, no horizontal overflow, page-body small-control count `0`, and credential expiry/list content moved up.
+- remaining work: `/admin/pharmacist-credentials` UI/test group is committed as `bb0fcc3d`; commit this progress-ledger update separately, send agmsg FYI, stop the local dev server started for screenshot proof, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the progress commit.
+
 ### 20260626-1907 JST
 
 - current task: `/admin/shifts` calendar-first ordering, generic intro removal, and 44px shift administration controls.

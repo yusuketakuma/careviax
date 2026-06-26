@@ -68,6 +68,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused ShiftsContent/Page Vitest `2` files / `6` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/shifts` with no generic intro, no `Pharmacist Operations` hero, one visible `薬剤師シフト管理` h1, no horizontal overflow, and page-body small-control count `0`.
 - Next action: commit the `/admin/shifts` UI/test slice, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server, and continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Pharmacist Credentials Expiry First
+
+- Refined `/admin/pharmacist-credentials` after route-mocked browser proof showed the generic admin intro consuming first-fold space above the credential expiry alert and certification list, while desktop credential actions measured `28px-32px`.
+- Removed the generic `最初に見るポイント` support block from this compliance page so expiring credential evidence and the credential list move up immediately under the page header.
+- Enlarged visible credential actions to 44px targets, including `資格を登録`, row `編集`, row `失効`, and form/select/input actions inside the credential workflow.
+- Preserved all existing pharmacist credential fetches, pharmacist option fetches, create/update/delete behavior, form validation, error-vs-empty handling, org headers, auth behavior, backend/API behavior, DB behavior, and displayed credential data. No feature was removed; only generic admin support copy was hidden.
+- Screenshot evidence: before/final desktop and mobile screenshots under `artifacts/ui-pharmacist-credentials-sweep/`, including `before/desktop.png`, `before/mobile.png`, `after/desktop.png`, and `after/mobile.png`.
+- Validation passed: focused PharmacistCredentialsContent/Page Vitest `2` files / `7` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/pharmacist-credentials` with no generic intro, one visible `かかりつけ薬剤師管理` h1, no horizontal overflow, and page-body small-control count `0`.
+- Next action: commit the `/admin/pharmacist-credentials` UI/test slice, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server, and continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Communication Requests Reply Follow-up First
 
 - Refined `/communications/requests` after browser proof showed the first viewport spent the first interaction budget on status/context filters before the reply follow-up queue.
