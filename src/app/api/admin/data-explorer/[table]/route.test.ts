@@ -44,10 +44,29 @@ describe('/api/admin/data-explorer/[table] GET', () => {
     });
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(listDataExplorerRowsMock).toHaveBeenCalledWith('org_1', 'Patient', {
       limit: 10,
       search: '花子',
     });
+  });
+
+  it('returns a sanitized 500 with no-store headers when the explorer query throws', async () => {
+    const rawError = 'raw data-explorer read failure';
+    listDataExplorerRowsMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ table: 'Patient' }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
   });
 
   it('passes through validated offset parameters', async () => {

@@ -34,9 +34,27 @@ describe('/api/admin/data-explorer/models', () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: [{ tableName: 'Patient', rowCount: 12 }],
     });
     expect(listDataExplorerModelsMock).toHaveBeenCalledWith('org_1');
+  });
+
+  it('returns a sanitized 500 with no-store headers when the read fails', async () => {
+    listDataExplorerModelsMock.mockRejectedValueOnce(
+      new Error('raw data-explorer/models read failure'),
+    );
+
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('raw data-explorer/models read failure');
   });
 });

@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext, type AuthRouteContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { optionalBlankableBoundedIntegerSearchParam } from '@/lib/api/validation';
 import { DATA_EXPLORER_MAX_OFFSET, listDataExplorerRows } from '@/server/services/data-explorer';
 
@@ -11,7 +12,10 @@ const searchParamsSchema = z.object({
   search: z.string().optional(),
 });
 
-export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ table: string }>) {
+async function dataExplorerGET(
+  req: NextRequest,
+  routeContext: AuthRouteContext<{ table: string }>,
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
     message: 'データ探索画面の利用権限がありません',
@@ -37,5 +41,13 @@ export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ tab
       return validationError('対象テーブルが不正です');
     }
     throw error;
+  }
+}
+
+export async function GET(req: NextRequest, routeContext: AuthRouteContext<{ table: string }>) {
+  try {
+    return withSensitiveNoStore(await dataExplorerGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
   }
 }
