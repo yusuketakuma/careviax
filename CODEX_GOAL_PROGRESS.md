@@ -50,6 +50,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused billing/DataTable Vitest `2` files / `12` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/billing` with one visible `算定チェック` heading, no horizontal overflow, one next-action occurrence, no duplicate rail panels, and no page-body controls below the 44px target.
 - Next action: commit the billing implementation slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Patient Medications Workspace First
+
+- Refined `/patients/[id]/medications` after browser proof showed the actual `服薬中薬剤` workspace was buried below MCS and visit-brief supplemental summaries.
+- Moved `MedicationsContent` directly under the page intro, so the user sees medication presence/empty state, QR scan/export, medication add, and unresolved medication issues before secondary MCS/visit context.
+- Localized the page eyebrow from English to Japanese, tightened the header description around medication safety work, and kept PDF/print plus medication issue actions at 44px or larger across desktop and mobile.
+- Preserved all existing medication profile fetches, issue fetches/mutations, QR scan/export, PDF/print links, MCS summary, visit brief, intervention panel, auth behavior, backend/API behavior, DB behavior, and displayed patient data. No route or feature was removed; supplemental summaries were moved later in the page.
+- Screenshot evidence: before/after desktop and mobile screenshots under `test-results/codex-patient-medications-sweep/`.
+- Validation passed: focused medication page/content Vitest `2` files / `14` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/patients/cmnhdemopt001amq9ph-os/medications` with no console/page errors, one visible `服薬管理` `h1`, no horizontal overflow, no visible page-body controls below 44px, and `服薬中薬剤` moved from `3045px` to `622px` on mobile and from `1844px` to `440px` on desktop.
+- Next action: commit the patient-medications UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.
