@@ -103,6 +103,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused `report-share-workspace`, `main-workflow-route`, and `help-popover` Vitest `3` files / `17` tests; focused ESLint; live browser desktop/mobile checks on `http://localhost:3012/reports?dev_refresh=workflow-width-44` with `0` console errors, `0` horizontal overflow, one visible `h1`, `report-today-drafts` before `main-workflow-compact-nav`, and no undersized visible controls inside `data-testid="report-share-workspace"`.
 - Next action: run final Prettier/diff checks including ledgers, commit reports UI and shared control-size groups separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Prescriptions First-Fold Intake Queue
+
+- Refined `/prescriptions` after desktop/mobile browser inspection showed the first viewport spent space on verbose header support copy, duplicated shortcut links, and workflow orientation before the prescription intake queue.
+- Simplified the page header to Japanese operational copy and placed the preserved `主業務フロー上の現在地` compact nav below the prescription workspace, so受付状況, 疑義, and 調剤待ち appear before orientation chrome.
+- Removed the duplicate header shortcut group from the first fold; the destinations remain available through the workspace actions and workflow navigation. No route, data fetch, auth behavior, backend/API behavior, DB behavior, QR draft access, dispense queue access, or prescription detail behavior was removed.
+- Shared UI hardening from this pass: `PageShortcutLinks` and `WorkflowPageHeader` primary actions now keep 44px minimum height at desktop and mobile breakpoints instead of shrinking below the PH-OS touch target.
+- Screenshot evidence: before/after desktop and mobile screenshots under `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/prescriptions-*.png`.
+- Validation passed: focused `prescriptions-workspace`, `page-shortcut-links`, and `workflow-page-header` Vitest `3` files / `11` tests; focused ESLint; live browser desktop/mobile checks on `http://localhost:3012/prescriptions?dev_refresh=prescription-polish-final` with `0` console errors, `0` horizontal overflow, one visible `h1`, `prescriptions-workspace` before `main-workflow-compact-nav`, and no undersized visible controls in the mobile page body. Desktop page-specific controls were 44px or larger; remaining undersized controls were pre-existing app-header chrome outside this prescriptions slice.
+- Next action: run final Prettier/diff checks including ledgers, commit prescriptions UI, shared control-size, and progress-ledger groups separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
