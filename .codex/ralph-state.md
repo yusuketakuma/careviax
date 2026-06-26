@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1518 JST
+
+- current task: start the active repo-wide UI/UX refinement goal by completing the required internet-backed medical UI best-practice research and updating the PH-OS UI/UX SSOT before application code changes.
+- files inspected: agmsg inbox; `git status --short --branch --untracked-files=all`; `docs/ui-ux-design-guidelines.md`; `.codex/ralph-state.md`; `CODEX_GOAL_PROGRESS.md`; local Next.js `page.md` and `use-client.md` docs; `/Users/yusuke/.agents/skills/gstack/design-review/SKILL.md`; `/Users/yusuke/.codex/plugins/cache/claude-plugins-official/frontend-design/local/skills/frontend-design/SKILL.md`; gbrain search/list outputs; external guidance from ONC SAFER Guides, NIST Health IT UI guidance, NHS Design System, NHS App Design System, NHS WCAG 2.2 update guidance, VA.gov IA/layout/components, JMIR Human Factors 2025 CDSS HCI review, and EHR visual display research.
+- files changed: `docs/ui-ux-design-guidelines.md`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the existing SSOT had useful PH-OS workbench principles but did not yet encode the active user-required internet research as explicit implementation gates for EHR safety, trunk-test orientation, source-order preservation, WCAG 2.2 interaction details, alert/reminder separation, and shared-pattern governance.
+- security risks found: no application security behavior changed. Added SSOT guidance that UI changes for patient, medication, audit, and billing surfaces must prioritize safe judgment, PHI-aware state handling, visible failure modes, and no false-empty presentation.
+- performance issues found: no runtime performance behavior changed. Added SSOT guidance to reduce cognitive load and avoid decorative chrome that competes with clinical work.
+- validation commands: `pnpm exec prettier --write docs/ui-ux-design-guidelines.md`; `pnpm exec prettier --check docs/ui-ux-design-guidelines.md`; `git diff --check -- docs/ui-ux-design-guidelines.md`.
+- validation results: focused SSOT Prettier write/check passed and focused whitespace diff check passed. No DB, migration, seed, API mutation, or backend command was run.
+- remaining work: capture route-mocked screenshots of priority pages, choose the highest-impact rendered UI defect, implement the smallest complete visual fix using shared primitives where possible, re-screenshot desktop/mobile, validate focused tests/checks, update ledgers, and commit each coherent design slice separately.
+- next action: commit the SSOT research slice, then start the first screenshot-driven UI fix pass.
+
 ### 20260626-0852 JST
 
 - current task: implement disjoint backend/API hardening in the new implementation-only parallel mode by hardening `GET /api/tracing-reports` while Claude worked separately on day-board explicit 500 handling.
