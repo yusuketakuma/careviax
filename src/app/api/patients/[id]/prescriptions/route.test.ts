@@ -267,6 +267,21 @@ describe('/api/patients/[id]/prescriptions', () => {
     expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when prescription reads fail', async () => {
+    const rawError = 'raw patient prescriptions read failure';
+    patientFindFirstMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = (await GET(createGetRequest('patient_1', 'limit=5'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+  });
+
   it.each([
     {
       query: 'limit=5&case_id=',
