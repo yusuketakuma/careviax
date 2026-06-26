@@ -139,9 +139,13 @@ describe('PrescriptionInlineDetail', () => {
     expect(screen.getByRole('link', { name: /詳細/ }).getAttribute('href')).toBe(
       encodedPrescriptionHref,
     );
+    expect(screen.getByRole('link', { name: /詳細/ }).className).toContain('!min-h-11');
+    expect(screen.getByRole('link', { name: /詳細/ }).className).toContain('sm:!min-h-11');
     expect(screen.getByRole('link', { name: '全画面表示' }).getAttribute('href')).toBe(
       encodedPrescriptionHref,
     );
+    expect(screen.getByRole('link', { name: '全画面表示' }).className).toContain('!min-h-11');
+    expect(screen.getByRole('link', { name: '全画面表示' }).className).toContain('sm:!min-h-11');
     expect(screen.getByRole('link', { name: /処方歴/ }).getAttribute('href')).toBe(
       '/patients/patient_1/prescriptions',
     );
@@ -299,6 +303,8 @@ describe('PrescriptionInlineDetail', () => {
       expect(screen.getByRole('link', { name: '患者' }).getAttribute('href')).toBe(
         '/patients/__s_patient_1__',
       );
+      expect(screen.getByRole('link', { name: '患者' }).className).toContain('!min-h-11');
+      expect(screen.getByRole('link', { name: '患者' }).className).toContain('sm:!min-h-11');
       // shared const -> buildPrescriptionHref invoked exactly once for data.id.
       expect(vi.mocked(buildPrescriptionHref).mock.calls).toEqual([['rx_1']]);
       expect(vi.mocked(buildPatientHref).mock.calls).toContainEqual(['patient_1']);

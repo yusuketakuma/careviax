@@ -149,6 +149,8 @@ describe('PatientHistorySummary', () => {
     expect(screen.getByRole('link', { name: '2026/04/01' }).getAttribute('href')).toBe(
       '/prescriptions/previous_intake',
     );
+    expect(screen.getByRole('link', { name: '2026/04/01' }).className).toContain('min-h-11');
+    expect(screen.getByRole('link', { name: '2026/04/01' }).className).not.toContain('sm:min-h-0');
     expect(screen.getByText(/アムロジピン錠5mg、ロキソプロフェン錠60mg 他1剤/)).toBeTruthy();
     expect(screen.getByText(/眠気なく継続可/)).toBeTruthy();
   });
@@ -187,6 +189,9 @@ describe('PatientHistorySummary', () => {
         expect(
           screen.getByRole('link', { name: /処方履歴をすべて見る/ }).getAttribute('href'),
         ).toBe('/patients/__sentinel_patient_1__/prescriptions');
+        expect(screen.getByRole('link', { name: /処方履歴をすべて見る/ }).className).not.toContain(
+          'sm:min-h-0',
+        );
         expect(
           screen.getByRole('link', { name: /訪問履歴をすべて見る/ }).getAttribute('href'),
         ).toBe('/patients/__sentinel_patient_1__#card-recent-activities');

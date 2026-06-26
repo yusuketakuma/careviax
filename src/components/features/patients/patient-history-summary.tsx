@@ -137,7 +137,7 @@ export function PatientHistorySummary({
               <div className="space-y-0.5 text-[11px]">
                 <Link
                   href={buildPrescriptionHref(previousPrescription.id)}
-                  className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline sm:min-h-0 sm:min-w-0"
+                  className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline"
                 >
                   {formatDate(previousPrescription.prescribed_date)}
                 </Link>
@@ -162,7 +162,7 @@ export function PatientHistorySummary({
               <div className="space-y-0.5 text-[11px]">
                 <Link
                   href={buildVisitHref(previousVisit.id)}
-                  className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline sm:min-h-0 sm:min-w-0"
+                  className="inline-flex min-h-11 min-w-11 items-center font-medium text-primary hover:underline"
                 >
                   {formatDate(previousVisit.visit_date)}
                 </Link>
@@ -190,14 +190,14 @@ export function PatientHistorySummary({
       <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
         <Link
           href={buildPatientHref(patientId, '/prescriptions')}
-          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline sm:min-h-0 sm:min-w-0"
+          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline"
         >
           <FileText className="size-3" aria-hidden="true" />
           処方履歴をすべて見る
         </Link>
         <Link
           href={buildPatientHref(patientId, '#card-recent-activities')}
-          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline sm:min-h-0 sm:min-w-0"
+          className="inline-flex min-h-11 min-w-11 items-center gap-1 text-primary hover:underline"
         >
           <History className="size-3" aria-hidden="true" />
           訪問履歴をすべて見る

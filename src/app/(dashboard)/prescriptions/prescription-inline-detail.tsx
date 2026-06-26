@@ -174,7 +174,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
           <Button
             variant="ghost"
             size="sm"
-            className="min-h-11 min-w-11 px-2 text-[10px] sm:h-6 sm:min-h-0 sm:min-w-0"
+            className="!h-auto !min-h-11 !min-w-11 px-2 text-[10px] sm:!h-auto sm:!min-h-11 sm:!min-w-11"
             asChild
           >
             <Link href={prescriptionDetailHref}>
@@ -185,7 +185,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
           <Button
             variant="ghost"
             size="sm"
-            className="min-h-11 min-w-11 px-2 text-[10px] sm:h-6 sm:min-h-0 sm:min-w-0"
+            className="!h-auto !min-h-11 !min-w-11 px-2 text-[10px] sm:!h-auto sm:!min-h-11 sm:!min-w-11"
             asChild
           >
             <Link href={buildPatientHref(patient.id)}>患者</Link>
@@ -353,10 +353,20 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
 
       {/* ── フッタ: アクション ── */}
       <div className="flex items-center gap-2 border-t bg-muted/20 px-3 py-1.5">
-        <Button variant="default" size="sm" className="h-6 px-3 text-[11px]" asChild>
+        <Button
+          variant="default"
+          size="sm"
+          className="!h-auto !min-h-11 px-3 text-[11px] sm:!h-auto sm:!min-h-11"
+          asChild
+        >
           <Link href="/dispense">調剤キューへ</Link>
         </Button>
-        <Button variant="outline" size="sm" className="h-6 px-3 text-[11px]" asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="!h-auto !min-h-11 px-3 text-[11px] sm:!h-auto sm:!min-h-11"
+          asChild
+        >
           <Link href={prescriptionDetailHref}>全画面表示</Link>
         </Button>
       </div>
