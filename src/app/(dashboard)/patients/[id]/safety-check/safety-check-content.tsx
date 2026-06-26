@@ -18,7 +18,6 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
-import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
@@ -154,6 +153,63 @@ function SafetyStepList({ issues }: { issues: SafetyIssueRecord[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+function SafetyPrimaryAction({
+  concern,
+  issue,
+  consultationPending,
+  resolvePending,
+  onConsult,
+  onResolve,
+}: {
+  concern: SafetyConcern | null;
+  issue: SafetyIssueRecord | null;
+  consultationPending: boolean;
+  resolvePending: boolean;
+  onConsult: () => void;
+  onResolve: () => void;
+}) {
+  return (
+    <section
+      aria-label="選択中の安全確認"
+      className="rounded-lg border border-primary/20 bg-primary/5 p-4"
+      data-testid="safety-primary-action"
+    >
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-primary">次にやること</p>
+          <p className="mt-1 text-base font-bold leading-6 text-foreground">
+            {concern ? concern.label : '気になる点を選択'}
+          </p>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            {concern
+              ? `${concern.subLabel}を、処方医への確認から記録完了まで進めます。`
+              : '気になる点を選ぶと、この場で確認記録へ進めます。'}
+          </p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:min-w-80">
+          <Button
+            type="button"
+            className="!h-auto !min-h-11 px-4 py-2"
+            onClick={onConsult}
+            disabled={!concern || consultationPending}
+          >
+            医師への確認を記録
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="!h-auto !min-h-11 px-4 py-2 text-primary hover:text-primary"
+            onClick={onResolve}
+            disabled={!issue || resolvePending}
+          >
+            問題なしにする
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -375,13 +431,13 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
 
   return (
     <section aria-label="薬の安全チェック" data-testid="safety-check">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-foreground">薬の安全チェック</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm leading-6 text-muted-foreground">
             {patientName
-              ? `${patientName}さん — 気になる点を処方医への相談から報告書反映まで進めます`
-              : '気になる点を処方医への相談から報告書反映まで進めます'}
+              ? `${patientName}さん — リスクを選び、その場で確認記録へ進めます`
+              : 'リスクを選び、その場で確認記録へ進めます'}
           </p>
         </div>
         <WorkflowBackLink href={buildPatientHref(patientId)} label="患者詳細へ戻る" />
@@ -401,59 +457,59 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)]">
-            <section
-              aria-labelledby="safety-concerns-heading"
-              className="rounded-lg border border-border/70 bg-card p-4"
-              data-testid="safety-concerns"
-            >
-              <h2 id="safety-concerns-heading" className="text-base font-semibold text-foreground">
-                気になる点
-              </h2>
-              {concerns.length === 0 ? (
-                <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                  気になる点はありません。新しい課題は服薬管理画面から登録できます。
-                </p>
-              ) : (
-                <ul className="mt-4 space-y-4" role="list">
-                  {concerns.map((concern) => (
-                    <ConcernCard
-                      key={concern.category}
-                      concern={concern}
-                      selected={selectedConcern?.category === concern.category}
-                      onSelect={() => setSelectedCategory(concern.category)}
-                    />
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section
-              aria-labelledby="safety-steps-heading"
-              className="rounded-lg border border-border/70 bg-card p-4"
-              data-testid="safety-steps"
-            >
-              <h2 id="safety-steps-heading" className="text-base font-semibold text-foreground">
-                確認の流れ
-              </h2>
-              <div className="mt-4">
-                <SafetyStepList issues={issues} />
-              </div>
-            </section>
-
-            <WorkspaceActionRail
-              nextAction={{
-                actionLabel: '医師への確認を記録',
-                onAction: () => setConsultDialogOpen(true),
-                actionDisabled: !selectedConcern || consultationMutation.isPending,
-                secondaryActionLabel: '問題なしにする',
-                onSecondaryAction: () => setResolveDialogOpen(true),
-                secondaryActionDisabled: !selectedIssue || resolveMutation.isPending,
-                description: selectedConcern
-                  ? `対象: ${selectedConcern.label}(${selectedConcern.subLabel})`
-                  : undefined,
-              }}
+          <div className="space-y-4">
+            <SafetyPrimaryAction
+              concern={selectedConcern}
+              issue={selectedIssue}
+              consultationPending={consultationMutation.isPending}
+              resolvePending={resolveMutation.isPending}
+              onConsult={() => setConsultDialogOpen(true)}
+              onResolve={() => setResolveDialogOpen(true)}
             />
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)]">
+              <section
+                aria-labelledby="safety-concerns-heading"
+                className="rounded-lg border border-border/70 bg-card p-4"
+                data-testid="safety-concerns"
+              >
+                <h2
+                  id="safety-concerns-heading"
+                  className="text-base font-semibold text-foreground"
+                >
+                  気になる点
+                </h2>
+                {concerns.length === 0 ? (
+                  <p className="mt-4 text-sm leading-6 text-muted-foreground">
+                    気になる点はありません。新しい課題は服薬管理画面から登録できます。
+                  </p>
+                ) : (
+                  <ul className="mt-4 space-y-4" role="list">
+                    {concerns.map((concern) => (
+                      <ConcernCard
+                        key={concern.category}
+                        concern={concern}
+                        selected={selectedConcern?.category === concern.category}
+                        onSelect={() => setSelectedCategory(concern.category)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </section>
+
+              <section
+                aria-labelledby="safety-steps-heading"
+                className="rounded-lg border border-border/70 bg-card p-4"
+                data-testid="safety-steps"
+              >
+                <h2 id="safety-steps-heading" className="text-base font-semibold text-foreground">
+                  確認の流れ
+                </h2>
+                <div className="mt-4">
+                  <SafetyStepList issues={issues} />
+                </div>
+              </section>
+            </div>
           </div>
         )}
       </div>

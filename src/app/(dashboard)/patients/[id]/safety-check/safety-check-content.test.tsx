@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import type { SafetyIssueRecord } from './safety-check.shared';
@@ -93,6 +93,15 @@ describe('SafetyCheckContent', () => {
     render(<SafetyCheckContent patientId="patient_1" />);
 
     expect(screen.getByRole('heading', { level: 1, name: '薬の安全チェック' }).tagName).toBe('H1');
+    const primaryAction = screen.getByTestId('safety-primary-action');
+    const concerns = screen.getByTestId('safety-concerns');
+    expect(within(primaryAction).getByText('次にやること')).toBeTruthy();
+    expect(within(primaryAction).getByText('飲み合わせ')).toBeTruthy();
+    expect(within(primaryAction).getByRole('button', { name: '医師への確認を記録' })).toBeTruthy();
+    expect(within(primaryAction).getByRole('button', { name: '問題なしにする' })).toBeTruthy();
+    expect(
+      Boolean(primaryAction.compareDocumentPosition(concerns) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
     expect(screen.getByTestId('safety-concern-interaction')).toBeTruthy();
     expect(screen.getByTestId('safety-steps')).toBeTruthy();
   });
