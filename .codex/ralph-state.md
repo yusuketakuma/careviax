@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1454 JST
+
+- current task: `/communications/requests` first-fold priority pass for reply follow-up work.
+- files inspected: agmsg inbox, `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, frontend-design skill guidance, `src/app/(dashboard)/communications/page.tsx`, `src/app/(dashboard)/communications/requests/page.tsx`, `src/app/(dashboard)/communications/requests/requests-content.tsx`, `src/app/(dashboard)/communications/requests/requests-content.test.tsx`, `src/app/(dashboard)/communications/requests/page.test.tsx`, `src/components/layout/page-section.tsx`, and before/after desktop/mobile screenshots under `artifacts/ui-communications-requests-sweep/`.
+- files changed: `src/app/(dashboard)/communications/requests/requests-content.tsx`, `src/app/(dashboard)/communications/requests/requests-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/communications/requests` placed the filter/context section before the actionable reply follow-up workspace. Browser proof showed the first follow-up option starting at `689px` desktop and `782px` mobile, while the reply form started at `759px` desktop and `1603px` mobile.
+- security risks found: no auth, authorization, org scoping, communication request API, resolve-followup mutation behavior, audit behavior, PHI projection, schema, migrations, DB writes, external sends, or secret handling changed. Browser proof used a local authenticated read-only session token and a read-only user lookup.
+- performance issues found: no new fetches, polling, subscriptions, DB reads beyond the existing local-auth SELECT helper, dependencies, or heavier render loops were introduced. The change reorders already-rendered sections.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/communications/requests/requests-content.test.tsx' 'src/app/(dashboard)/communications/requests/page.test.tsx' 'src/app/(dashboard)/communications/requests/requests-query-state.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/communications/requests/requests-content.tsx' 'src/app/(dashboard)/communications/requests/requests-content.test.tsx'`; direct authenticated Playwright proof on `http://localhost:3012/communications/requests`.
+- validation results: focused Communications requests Vitest passed `3` files / `14` tests; scoped ESLint passed. Direct browser proof had no console/page errors and no horizontal overflow. Reply follow-up improved to `503px` desktop / `511px` mobile for the first option; the reply form improved to `572px` desktop / `1332px` mobile; mobile page-body small-target count was `0`. Screenshots: `artifacts/ui-communications-requests-sweep/before-desktop.png`, `before-mobile.png`, `after-desktop.png`, and `after-mobile.png`.
+- remaining work: commit the `/communications/requests` implementation group, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server started for screenshot proof if no longer needed, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only the communication requests content/test files for implementation commit, then stage only ledgers for progress commit.
+
 ### 20260626-1451 JST
 
 - current task: `/admin/users` user-account worklist verification and regression coverage addendum.
