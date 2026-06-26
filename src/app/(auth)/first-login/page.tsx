@@ -4,12 +4,11 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, Eye, EyeOff, Info, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowLeft, CheckCircle2, Eye, EyeOff, Info, ShieldCheck } from 'lucide-react';
 import {
   COGNITO_CHALLENGE_STORAGE_KEY,
   decodeCognitoChallenge,
@@ -59,6 +58,7 @@ export default function FirstLoginPage() {
     invalid: '初回パスワード設定セッションが無効です。ログインからやり直してください。',
   });
   const error = submitError ?? challengeError;
+  const hasChallenge = Boolean(challenge);
 
   const strength = evaluatePasswordStrength(newPassword);
   const passwordsMatch = newPassword === confirmPassword;
@@ -112,161 +112,226 @@ export default function FirstLoginPage() {
 
   if (passwordChanged) {
     return (
-      <div className="w-full max-w-md">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
-              <CardTitle>MFA設定のご案内</CardTitle>
-            </div>
-            <CardDescription>
+      <section
+        aria-labelledby="first-login-success-title"
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-sm"
+      >
+        <div className="border-b border-border/70 bg-slate-50/80 p-5 sm:p-6">
+          <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-state-done/20 bg-state-done/10 px-3 text-sm font-semibold text-state-done">
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+            パスワード設定完了
+          </div>
+          <div className="mt-5 space-y-2">
+            <h2 id="first-login-success-title" className="text-2xl font-semibold text-foreground">
+              MFA設定へ進みます
+            </h2>
+            <p className="text-sm leading-6 text-muted-foreground">
               パスワードの設定が完了しました。セキュリティ強化のため、二要素認証（MFA）の設定をお願いします。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Alert className="mb-6 border-tag-info/30 bg-tag-info/10">
-              <Info className="h-4 w-4 text-tag-info" />
-              <AlertDescription className="text-tag-info">
-                MFA設定により、不正アクセスからアカウントを保護できます。 認証アプリ（Google
-                Authenticator等）をご準備ください。
-              </AlertDescription>
-            </Alert>
+            </p>
+          </div>
+        </div>
+        <div className="p-5 sm:p-6">
+          <Alert className="mb-6 border-tag-info/30 bg-tag-info/10">
+            <Info className="h-4 w-4 text-tag-info" />
+            <AlertDescription className="text-tag-info">
+              MFA設定により、不正アクセスからアカウントを保護できます。 認証アプリ（Google
+              Authenticator等）をご準備ください。
+            </AlertDescription>
+          </Alert>
 
-            <div className="flex flex-col gap-3">
-              <Button
-                size="lg"
-                className="w-full"
-                onClick={() =>
-                  router.push(`/mfa/setup?callbackUrl=${encodeURIComponent(callbackUrl)}`)
-                }
-              >
-                <ShieldCheck className="mr-2 h-4 w-4" />
-                MFAを設定する
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          <div className="flex flex-col gap-3">
+            <Button
+              size="lg"
+              className="h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+              onClick={() =>
+                router.push(`/mfa/setup?callbackUrl=${encodeURIComponent(callbackUrl)}`)
+              }
+            >
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              MFAを設定する
+            </Button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (!hasChallenge) {
+    return (
+      <section
+        aria-labelledby="first-login-recovery-title"
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-sm"
+      >
+        <div className="border-b border-border/70 bg-slate-50/80 p-5 sm:p-6">
+          <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-primary">
+            <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+            初回パスワード設定
+          </div>
+          <div className="mt-5 space-y-2">
+            <h2 id="first-login-recovery-title" className="text-2xl font-semibold text-foreground">
+              ログインからやり直してください
+            </h2>
+            <p className="text-sm leading-6 text-muted-foreground">
+              初回設定用のセッションが確認できません。安全のため、もう一度ログインして本人確認をやり直します。
+            </p>
+          </div>
+        </div>
+        <div className="space-y-4 p-5 sm:p-6">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {error ??
+                '初回パスワード設定セッションが見つかりません。ログインからやり直してください。'}
+            </AlertDescription>
+          </Alert>
+          <Button
+            type="button"
+            size="lg"
+            className="h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+            onClick={() => router.push('/login')}
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            ログインからやり直す
+          </Button>
+        </div>
+      </section>
     );
   }
 
   return (
-    <div className="w-full max-w-md">
-      <Card>
-        <CardHeader>
-          <CardTitle>初回ログイン - パスワード設定</CardTitle>
-          <CardDescription>
-            セキュリティのため、初回ログイン時にパスワードの変更が必要です。
-            13文字以上の安全なパスワードを設定してください。
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+    <section
+      aria-labelledby="first-login-title"
+      className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border/80 bg-card text-card-foreground shadow-sm"
+    >
+      <div className="border-b border-border/70 bg-slate-50/80 p-5 sm:p-6">
+        <div className="inline-flex min-h-11 items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-primary">
+          <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+          初回パスワード設定
+        </div>
+        <div className="mt-5 space-y-2">
+          <h2
+            id="first-login-title"
+            className="text-2xl font-semibold leading-tight text-foreground"
+          >
+            業務用の新しいパスワードを設定します
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            13文字以上で、他サービスと共有していないパスワードを入力してください。入力内容はエラー後も保持されます。
+          </p>
+        </div>
+      </div>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {/* New password */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="first-new-password">新しいパスワード</Label>
-              <div className="relative">
-                <Input
-                  id="first-new-password"
-                  type={showNewPassword ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  disabled={isLoading}
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  aria-label={showNewPassword ? 'パスワードを隠す' : 'パスワードを表示'}
-                >
-                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
+      <div className="p-5 sm:p-6">
+        {error && (
+          <Alert variant="destructive" className="mb-4">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-              {newPassword.length > 0 && (
-                <div className="mt-1 space-y-1.5">
-                  <div className="flex gap-1">
-                    {[0, 1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        className={`h-1.5 flex-1 rounded-full transition-colors ${
-                          i < strength.score ? strength.bgColor : 'bg-muted'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <p className={`text-xs ${strength.color}`}>パスワード強度: {strength.label}</p>
-                </div>
-              )}
-
-              {newPassword.length > 0 && !isLongEnough && (
-                <p className="text-xs text-destructive">パスワードは13文字以上で入力してください</p>
-              )}
-            </div>
-
-            {/* Confirm password */}
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="first-confirm-password">新しいパスワード（確認）</Label>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* New password */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="first-new-password">新しいパスワード</Label>
+            <div className="relative">
               <Input
-                id="first-confirm-password"
-                type="password"
+                className="h-11 min-h-[44px] pr-12 sm:h-11 sm:min-h-[44px]"
+                id="first-new-password"
+                type={showNewPassword ? 'text' : 'password'}
                 autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
                 required
                 disabled={isLoading}
+                autoFocus
               />
-              {confirmPassword.length > 0 && !passwordsMatch && (
-                <p className="text-xs text-destructive">パスワードが一致しません</p>
-              )}
+              <button
+                type="button"
+                className="absolute right-0.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                aria-label={showNewPassword ? 'パスワードを隠す' : 'パスワードを表示'}
+              >
+                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
 
-            {/* Requirements hint */}
-            <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground space-y-1">
-              <p className="font-medium text-foreground">パスワード要件:</p>
-              <ul className="list-disc pl-4 space-y-0.5">
-                <li className={isLongEnough ? 'text-state-done' : ''}>13文字以上</li>
-                <li
-                  className={
-                    /[A-Z]/.test(newPassword) && /[a-z]/.test(newPassword) ? 'text-state-done' : ''
-                  }
-                >
-                  大文字と小文字を含む
-                </li>
-                <li className={/\d/.test(newPassword) ? 'text-state-done' : ''}>数字を含む</li>
-                <li className={/[^a-zA-Z0-9]/.test(newPassword) ? 'text-state-done' : ''}>
-                  記号を含む（推奨）
-                </li>
-              </ul>
-            </div>
+            {newPassword.length > 0 && (
+              <div className="mt-1 space-y-1.5">
+                <div className="flex gap-1">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className={`h-1.5 flex-1 rounded-full transition-colors ${
+                        i < strength.score ? strength.bgColor : 'bg-muted'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p className={`text-xs ${strength.color}`}>パスワード強度: {strength.label}</p>
+              </div>
+            )}
 
-            <Button
-              type="submit"
-              size="lg"
-              className="mt-2 w-full"
-              disabled={!canSubmit || isLoading}
-              aria-busy={isLoading}
-            >
-              {isLoading ? '設定中...' : 'パスワードを設定する'}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-      <p className="mt-4 text-center text-sm text-muted-foreground">
-        <Link href="/login" className="text-primary hover:underline">
+            {newPassword.length > 0 && !isLongEnough && (
+              <p className="text-xs text-destructive">パスワードは13文字以上で入力してください</p>
+            )}
+          </div>
+
+          {/* Confirm password */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="first-confirm-password">新しいパスワード（確認）</Label>
+            <Input
+              className="h-11 min-h-[44px] sm:h-11 sm:min-h-[44px]"
+              id="first-confirm-password"
+              type="password"
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              disabled={isLoading}
+            />
+            {confirmPassword.length > 0 && !passwordsMatch && (
+              <p className="text-xs text-destructive">パスワードが一致しません</p>
+            )}
+          </div>
+
+          {/* Requirements hint */}
+          <div className="space-y-1 rounded-xl border border-border/70 bg-muted/70 p-4 text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">パスワード要件:</p>
+            <ul className="list-disc pl-4 space-y-0.5">
+              <li className={isLongEnough ? 'text-state-done' : ''}>13文字以上</li>
+              <li
+                className={
+                  /[A-Z]/.test(newPassword) && /[a-z]/.test(newPassword) ? 'text-state-done' : ''
+                }
+              >
+                大文字と小文字を含む
+              </li>
+              <li className={/\d/.test(newPassword) ? 'text-state-done' : ''}>数字を含む</li>
+              <li className={/[^a-zA-Z0-9]/.test(newPassword) ? 'text-state-done' : ''}>
+                記号を含む（推奨）
+              </li>
+            </ul>
+          </div>
+
+          <Button
+            type="submit"
+            size="lg"
+            className="mt-2 h-11 min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
+            disabled={!canSubmit || isLoading}
+            aria-busy={isLoading}
+          >
+            {isLoading ? '設定中...' : 'パスワードを設定する'}
+          </Button>
+        </form>
+      </div>
+      <div className="border-t border-border/70 px-5 py-3 text-center sm:px-6">
+        <Link
+          href="/login"
+          className="inline-flex min-h-11 items-center rounded px-3 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           ログイン画面に戻る
         </Link>
-      </p>
-    </div>
+      </div>
+    </section>
   );
 }

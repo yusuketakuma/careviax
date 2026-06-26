@@ -96,6 +96,23 @@ test.describe('auth: MFA page', () => {
   });
 });
 
+test.describe('auth: first login page', () => {
+  test('missing password setup session shows recovery action', async ({ context }) => {
+    const { page, errors } = await createInstrumentedPage(context, {
+      captureHttpErrors: false,
+    });
+    await openStableRoute(page, '/first-login');
+
+    await expect(
+      page.getByRole('heading', { name: /ログインからやり直してください/i }),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: /ログインからやり直す/i })).toBeVisible();
+    await expect(page.getByLabel(/新しいパスワード/i)).toHaveCount(0);
+
+    expect(errors).toEqual([]);
+  });
+});
+
 test.describe('auth: password reset flow', () => {
   test('password reset page renders email input', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context, {
