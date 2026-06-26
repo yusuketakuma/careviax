@@ -126,14 +126,25 @@ describe('getPatientHeaderSummary', () => {
         {
           id: 'case_1',
           primary_pharmacist_id: 'pharmacist_1',
+          backup_pharmacist_id: 'pharmacist_2',
+          primary_staff_id: 'staff_1',
+          backup_staff_id: 'staff_2',
         },
         {
           id: 'case_2',
           primary_pharmacist_id: 'pharmacist_2',
+          backup_pharmacist_id: null,
+          primary_staff_id: null,
+          backup_staff_id: null,
         },
       ],
     });
-    db.user.findMany.mockResolvedValue([{ id: 'pharmacist_1', name: '薬剤師 花子' }]);
+    db.user.findMany.mockResolvedValue([
+      { id: 'pharmacist_1', name: '薬剤師 花子' },
+      { id: 'pharmacist_2', name: '薬剤師 太郎' },
+      { id: 'staff_1', name: '事務 ひかり' },
+      { id: 'staff_2', name: '事務 まこと' },
+    ]);
     db.visitRecord.findFirst.mockResolvedValue({
       visit_date: new Date('2026-01-05T09:00:00.000Z'),
     });
@@ -153,6 +164,9 @@ describe('getPatientHeaderSummary', () => {
 
     expect(result).toEqual({
       primary_pharmacist_name: '薬剤師 花子',
+      backup_pharmacist_name: '薬剤師 太郎',
+      primary_staff_name: '事務 ひかり',
+      backup_staff_name: '事務 まこと',
       first_visit_date: '2026-01-05T09:00:00.000Z',
       last_prescribed_date: '2026-06-01T00:00:00.000Z',
       next_prescription_expected_date: null,
@@ -165,17 +179,26 @@ describe('getPatientHeaderSummary', () => {
         }),
         select: expect.objectContaining({
           cases: expect.objectContaining({
-            orderBy: { updated_at: 'desc' },
+            where: expect.objectContaining({
+              org_id: 'org_1',
+            }),
+            orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
             select: {
               id: true,
               primary_pharmacist_id: true,
+              backup_pharmacist_id: true,
+              primary_staff_id: true,
+              backup_staff_id: true,
             },
           }),
         }),
       }),
     );
     expect(db.user.findMany).toHaveBeenCalledWith({
-      where: { org_id: 'org_1', id: { in: ['pharmacist_1'] } },
+      where: {
+        org_id: 'org_1',
+        id: { in: ['pharmacist_1', 'pharmacist_2', 'staff_1', 'staff_2'] },
+      },
       select: { id: true, name: true },
     });
     expect(db.visitRecord.findFirst).toHaveBeenCalledWith({
@@ -217,6 +240,49 @@ describe('getPatientHeaderSummary', () => {
     expect(db.user.findMany).not.toHaveBeenCalled();
   });
 
+  it('deduplicates assigned user lookups and leaves missing assigned names null', async () => {
+    const db = buildDb();
+    db.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      cases: [
+        {
+          id: 'case_1',
+          primary_pharmacist_id: 'shared_user',
+          backup_pharmacist_id: 'shared_user',
+          primary_staff_id: 'missing_staff',
+          backup_staff_id: null,
+        },
+      ],
+    });
+    db.user.findMany.mockResolvedValue([{ id: 'shared_user', name: '薬剤師 花子' }]);
+    db.visitRecord.findFirst.mockResolvedValue(null);
+    db.prescriptionIntake.findFirst.mockResolvedValue(null);
+
+    await expect(
+      getPatientHeaderSummary(db as unknown as Parameters<typeof getPatientHeaderSummary>[0], {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      }),
+    ).resolves.toEqual({
+      primary_pharmacist_name: '薬剤師 花子',
+      backup_pharmacist_name: '薬剤師 花子',
+      primary_staff_name: null,
+      backup_staff_name: null,
+      first_visit_date: null,
+      last_prescribed_date: null,
+      next_prescription_expected_date: null,
+    });
+    expect(db.user.findMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['shared_user', 'missing_staff'] },
+      },
+      select: { id: true, name: true },
+    });
+  });
+
   it('keeps optional header fields null when no scoped source data exists', async () => {
     const db = buildDb();
     db.patient.findFirst.mockResolvedValue({
@@ -233,6 +299,9 @@ describe('getPatientHeaderSummary', () => {
       }),
     ).resolves.toEqual({
       primary_pharmacist_name: null,
+      backup_pharmacist_name: null,
+      primary_staff_name: null,
+      backup_staff_name: null,
       first_visit_date: null,
       last_prescribed_date: null,
       next_prescription_expected_date: null,
@@ -250,10 +319,16 @@ describe('getPatientHeaderSummary', () => {
         {
           id: 'case_latest',
           primary_pharmacist_id: null,
+          backup_pharmacist_id: null,
+          primary_staff_id: null,
+          backup_staff_id: null,
         },
         {
           id: 'case_old',
           primary_pharmacist_id: 'pharmacist_old',
+          backup_pharmacist_id: 'pharmacist_backup_old',
+          primary_staff_id: 'staff_old',
+          backup_staff_id: 'staff_backup_old',
         },
       ],
     });
@@ -269,6 +344,9 @@ describe('getPatientHeaderSummary', () => {
       }),
     ).resolves.toEqual({
       primary_pharmacist_name: null,
+      backup_pharmacist_name: null,
+      primary_staff_name: null,
+      backup_staff_name: null,
       first_visit_date: null,
       last_prescribed_date: null,
       next_prescription_expected_date: null,

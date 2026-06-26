@@ -240,6 +240,9 @@ describe('patient detail slice routes', () => {
   it('returns patient header summary data', async () => {
     getPatientHeaderSummaryMock.mockResolvedValue({
       primary_pharmacist_name: '薬剤師 花子',
+      backup_pharmacist_name: '薬剤師 太郎',
+      primary_staff_name: '事務 ひかり',
+      backup_staff_name: '事務 まこと',
       first_visit_date: '2026-01-05T09:00:00.000Z',
       last_prescribed_date: '2026-06-01T00:00:00.000Z',
       next_prescription_expected_date: null,
@@ -266,6 +269,9 @@ describe('patient detail slice routes', () => {
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toEqual({
       primary_pharmacist_name: '薬剤師 花子',
+      backup_pharmacist_name: '薬剤師 太郎',
+      primary_staff_name: '事務 ひかり',
+      backup_staff_name: '事務 まこと',
       first_visit_date: '2026-01-05T09:00:00.000Z',
       last_prescribed_date: '2026-06-01T00:00:00.000Z',
       next_prescription_expected_date: null,

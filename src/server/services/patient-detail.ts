@@ -103,6 +103,9 @@ type DetailArgs = PatientDetailScopeArgs;
 
 export type PatientHeaderSummary = {
   primary_pharmacist_name: string | null;
+  backup_pharmacist_name: string | null;
+  primary_staff_name: string | null;
+  backup_staff_name: string | null;
   first_visit_date: string | null;
   last_prescribed_date: string | null;
   next_prescription_expected_date: string | null;
@@ -341,11 +344,17 @@ export async function getPatientHeaderSummary(
     where: buildPatientDetailWhere(args),
     select: {
       cases: {
-        ...(assignedCaseWhere ? { where: assignedCaseWhere } : {}),
-        orderBy: { updated_at: 'desc' },
+        where: {
+          org_id: args.orgId,
+          ...(assignedCaseWhere ?? {}),
+        },
+        orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
           primary_pharmacist_id: true,
+          backup_pharmacist_id: true,
+          primary_staff_id: true,
+          backup_staff_id: true,
         },
       },
     },
@@ -353,11 +362,18 @@ export async function getPatientHeaderSummary(
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
-  const primaryPharmacistId = patient.cases[0]?.primary_pharmacist_id ?? null;
+  const latestCase = patient.cases[0] ?? null;
+  const assignedUserIds = [
+    latestCase?.primary_pharmacist_id,
+    latestCase?.backup_pharmacist_id,
+    latestCase?.primary_staff_id,
+    latestCase?.backup_staff_id,
+  ].filter((value): value is string => Boolean(value));
+  const uniqueAssignedUserIds = [...new Set(assignedUserIds)];
 
-  const [primaryPharmacistNameMap, firstVisit, lastPrescription] = await Promise.all([
-    primaryPharmacistId
-      ? batchResolveNames(db as typeof prisma, args.orgId, [primaryPharmacistId])
+  const [assignedNameMap, firstVisit, lastPrescription] = await Promise.all([
+    uniqueAssignedUserIds.length > 0
+      ? batchResolveNames(db as typeof prisma, args.orgId, uniqueAssignedUserIds)
       : Promise.resolve(new Map<string, string>()),
     caseIds.length === 0
       ? Promise.resolve(null)
@@ -386,8 +402,17 @@ export async function getPatientHeaderSummary(
   ]);
 
   return {
-    primary_pharmacist_name: primaryPharmacistId
-      ? (primaryPharmacistNameMap.get(primaryPharmacistId) ?? null)
+    primary_pharmacist_name: latestCase?.primary_pharmacist_id
+      ? (assignedNameMap.get(latestCase.primary_pharmacist_id) ?? null)
+      : null,
+    backup_pharmacist_name: latestCase?.backup_pharmacist_id
+      ? (assignedNameMap.get(latestCase.backup_pharmacist_id) ?? null)
+      : null,
+    primary_staff_name: latestCase?.primary_staff_id
+      ? (assignedNameMap.get(latestCase.primary_staff_id) ?? null)
+      : null,
+    backup_staff_name: latestCase?.backup_staff_id
+      ? (assignedNameMap.get(latestCase.backup_staff_id) ?? null)
       : null,
     first_visit_date: firstVisit?.visit_date.toISOString() ?? null,
     last_prescribed_date: lastPrescription?.prescribed_date.toISOString() ?? null,
