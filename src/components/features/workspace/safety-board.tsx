@@ -134,7 +134,7 @@ export function SafetyBoard({
         {safetyCheckHref ? (
           <Link
             href={safetyCheckHref}
-            className="ml-auto inline-flex items-center gap-0.5 self-center rounded-md px-1.5 py-0.5 text-xs font-medium text-red-700 underline-offset-2 hover:bg-red-100/70 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            className="ml-auto inline-flex min-h-11 items-center gap-1 self-center rounded-md px-2.5 py-2 text-xs font-medium text-red-700 underline-offset-2 hover:bg-red-100/70 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
             data-testid="safety-board-safety-check-link"
           >
             薬の安全チェック
