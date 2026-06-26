@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1931 JST
+
+- current task: `/admin/dispense-audit-stats` rejection-stat evidence priority and 44px period filters.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `node_modules/next/dist/docs/01-app/index.md`, `src/app/(dashboard)/admin/dispense-audit-stats/page.tsx`, `src/app/(dashboard)/admin/dispense-audit-stats/page.test.tsx`, route-mocked before/final desktop/mobile screenshots under `artifacts/ui-dispense-audit-stats-sweep/`, and gbrain code graph probes for `DispenseAuditStatsPage`.
+- files changed: `src/app/(dashboard)/admin/dispense-audit-stats/page.tsx`, `src/app/(dashboard)/admin/dispense-audit-stats/page.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/admin/dispense-audit-stats` rendered the generic `最初に見るポイント` admin intro above the rejection-stat evidence and desktop period filters measured `28px`, below the PH-OS 44px page-body target.
+- security risks found: no auth, authorization, org scoping, reject-reason stats API, query behavior, error-vs-empty behavior, validation, schema, migrations, DB writes, external sends, PHI projection, audit behavior, or secret handling changed. Browser proof used route-mocked APIs and a local session token; no DB reads or writes were performed.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier render loops were introduced. The change removes generic support content and enlarges existing filters.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/dispense-audit-stats/page.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/dispense-audit-stats/page.tsx' 'src/app/(dashboard)/admin/dispense-audit-stats/page.test.tsx'`; `pnpm exec prettier --check ...`; `git diff --check -- ...`; direct route-mocked Playwright proof on `http://localhost:3012/admin/dispense-audit-stats`.
+- validation results: focused DispenseAuditStatsPage Vitest passed `1` file / `4` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. Route-mocked browser proof saved `artifacts/ui-dispense-audit-stats-sweep/before/desktop.png`, `before/mobile.png`, `after/desktop.png`, and `after/mobile.png`; final proof had no generic intro, one visible `調剤鑑査差戻し分析` h1, stats visible, no console/page errors, no horizontal overflow, and page-body small-control count `0`.
+- remaining work: commit the `/admin/dispense-audit-stats` UI/test group, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server started for screenshot proof, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only the dispense-audit-stats page/test files for the implementation commit, then stage only ledgers for the progress commit.
+
 ### 20260626-1927 JST
 
 - current task: `/admin/pharmacy-cooperation` contract-renewal alert priority and 44px cooperation setup controls.
