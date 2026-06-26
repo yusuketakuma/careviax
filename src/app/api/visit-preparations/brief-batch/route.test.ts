@@ -57,25 +57,39 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 const brief = {
   patient: { id: 'patient_1', name: '患者A' },
   context: 'schedule',
   generated_at: '2026-03-27T00:00:00.000Z',
   last_prescribed_date: null,
   medication_changes: [],
-  medications: [],
-  dispensing_items: [],
-  multidisciplinary_updates: [],
-  unresolved_items: [],
+  medications: [{ drug_name: 'ワルファリン', dose_text: '1錠' }],
+  dispensing_items: [{ note: '一包化注意' }],
+  multidisciplinary_updates: [{ body: '訪問看護メモ' }],
+  jahis_supplemental_records: [{ raw_line: 'JAHIS RAW LINE' }],
+  unresolved_items: [{ title: '未解決SOAP詳細' }],
   must_check_today: [],
   ai_summary: {
+    generation_id: 'generation_1',
     provider: 'rule',
+    requested_provider: 'rule',
     is_fallback: true,
+    model: null,
+    fallback_reason: null,
     headline: '要点なし',
     bullets: [],
     must_check_today: [],
     source_refs: [],
     generated_at: '2026-03-27T00:00:00.000Z',
+    duration_ms: null,
+    recent_generation_count_24h: 0,
+    recent_failure_count_24h: 0,
+    recent_failure_rate_24h: null,
   },
 };
 
@@ -166,12 +180,46 @@ describe('/api/visit-preparations/brief-batch POST', () => {
     });
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toEqual({
       data: {
-        schedule_1: { context: 'schedule' },
-        schedule_2: { context: 'schedule' },
+        schedule_1: {
+          ai_summary: {
+            headline: '要点なし',
+            must_check_today: [],
+            source_refs: [],
+            generated_at: '2026-03-27T00:00:00.000Z',
+            provider: 'rule',
+            is_fallback: true,
+          },
+        },
+        schedule_2: {
+          ai_summary: {
+            headline: '要点なし',
+            must_check_today: [],
+            source_refs: [],
+            generated_at: '2026-03-27T00:00:00.000Z',
+            provider: 'rule',
+            is_fallback: true,
+          },
+        },
       },
     });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('patient');
+    expect(serialized).not.toContain('patient_1');
+    expect(serialized).not.toContain('患者A');
+    expect(serialized).not.toContain('medications');
+    expect(serialized).not.toContain('ワルファリン');
+    expect(serialized).not.toContain('dispensing_items');
+    expect(serialized).not.toContain('multidisciplinary_updates');
+    expect(serialized).not.toContain('jahis_supplemental_records');
+    expect(serialized).not.toContain('raw_line');
+    expect(serialized).not.toContain('JAHIS RAW LINE');
+    expect(serialized).not.toContain('unresolved_items');
+    expect(serialized).not.toContain('generation_id');
+    expect(serialized).not.toContain('duration_ms');
   });
 
   it('returns forbidden when any requested schedule is outside assignment scope', async () => {
@@ -188,12 +236,14 @@ describe('/api/visit-preparations/brief-batch POST', () => {
 
     expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
   });
 
   it('rejects non-object batch payloads before loading schedules', async () => {
     const response = await POST(createRequest([], { 'x-org-id': 'org_1' }));
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
     expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
     expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
@@ -203,6 +253,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
     const response = await POST(createMalformedJsonRequest({ 'x-org-id': 'org_1' }));
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -218,6 +269,7 @@ describe('/api/visit-preparations/brief-batch POST', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
     expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
     expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
@@ -248,5 +300,93 @@ describe('/api/visit-preparations/brief-batch POST', () => {
 
     expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+  });
+
+  it('returns no-store auth failure before reading the body', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'UNAUTHORIZED' }), { status: 401 }),
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_ids: ['schedule_1'],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    expectSensitiveNoStore(response);
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
+    expect(scheduleVisitBriefsForSchedulesMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store not found when any schedule brief cannot be generated', async () => {
+    scheduleVisitBriefsForSchedulesMock.mockResolvedValueOnce(new Map([['schedule_1', brief]]));
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_ids: ['schedule_1', 'schedule_2'],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '患者が見つかりません',
+    });
+  });
+
+  it('returns a fixed no-store 500 when batch brief generation fails with PHI text', async () => {
+    scheduleVisitBriefsForSchedulesMock.mockRejectedValueOnce(
+      new Error('患者A ワルファリン SOAP詳細 の一括訪問要約生成に失敗しました'),
+    );
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_ids: ['schedule_1', 'schedule_2'],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('患者A');
+    expect(serialized).not.toContain('ワルファリン');
+    expect(serialized).not.toContain('SOAP詳細');
+    expect(serialized).not.toContain('一括訪問要約生成');
+  });
+
+  it('rethrows Next.js control-flow errors instead of converting them to fixed 500', async () => {
+    const redirectError = Object.assign(new Error('NEXT_REDIRECT'), {
+      digest: 'NEXT_REDIRECT;replace;/login;307;',
+    });
+    scheduleVisitBriefsForSchedulesMock.mockRejectedValueOnce(redirectError);
+
+    await expect(
+      POST(
+        createRequest(
+          {
+            schedule_ids: ['schedule_1', 'schedule_2'],
+          },
+          { 'x-org-id': 'org_1' },
+        ),
+      ),
+    ).rejects.toBe(redirectError);
   });
 });

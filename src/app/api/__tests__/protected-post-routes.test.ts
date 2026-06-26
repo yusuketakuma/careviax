@@ -82,6 +82,11 @@ function createRequest(headers?: Record<string, string>, body: unknown = {}) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 const routes: RouteEntry[] = [
   { name: 'cases POST', handler: (req) => casesPost(req, emptyRouteContext) },
   { name: 'patients POST', handler: (req) => patientsPost(req, emptyRouteContext) },
@@ -212,6 +217,9 @@ describe('protected POST routes auth/body matrix', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(401);
+      if (route.name === 'visit-preparations/brief-batch POST') {
+        expectSensitiveNoStore(response);
+      }
     });
 
     it(`${route.name} returns 403 when role lacks permission`, async () => {
@@ -222,6 +230,9 @@ describe('protected POST routes auth/body matrix', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(403);
+      if (route.name === 'visit-preparations/brief-batch POST') {
+        expectSensitiveNoStore(response);
+      }
     });
 
     it(`${route.name} returns 400 for invalid body`, async () => {
@@ -232,6 +243,9 @@ describe('protected POST routes auth/body matrix', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(400);
+      if (route.name === 'visit-preparations/brief-batch POST') {
+        expectSensitiveNoStore(response);
+      }
     });
 
     if (route.successBody) {
