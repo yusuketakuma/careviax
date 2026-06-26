@@ -1,8 +1,10 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { internalError, success, validationError, notFound } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -56,7 +58,7 @@ async function validateSourceVisitRecord(args: {
   });
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の閲覧権限がありません',
@@ -102,6 +104,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
 
   return success({ data: labs });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

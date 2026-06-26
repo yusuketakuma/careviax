@@ -67,6 +67,11 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/[id]/conditions PUT', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -98,11 +103,45 @@ describe('/api/patients/[id]/conditions PUT', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(findManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store condition data on read', async () => {
+    findManyMock.mockResolvedValue([{ id: 'condition_1', name: '高血圧' }]);
+
+    const response = await GET(createGetRequest({ 'x-org-id': 'corg1234567890123456789012' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'condition_1', name: '高血圧' }],
+    });
+  });
+
+  it('returns a sanitized no-store 500 when condition reads fail', async () => {
+    const rawError = '患者A ワルファリン condition read failure';
+    findManyMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createGetRequest({ 'x-org-id': 'corg1234567890123456789012' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('ワルファリン');
   });
 
   it('rejects blank patient ids before parsing condition payloads or replacing conditions', async () => {

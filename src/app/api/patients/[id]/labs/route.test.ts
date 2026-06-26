@@ -78,6 +78,11 @@ function createGetRequest(url = 'http://localhost/api/patients/patient_1/labs') 
   return new NextRequest(url);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/[id]/labs GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,6 +97,7 @@ describe('/api/patients/[id]/labs GET', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
   });
@@ -102,6 +108,7 @@ describe('/api/patients/[id]/labs GET', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -118,6 +125,7 @@ describe('/api/patients/[id]/labs GET', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientLabObservationFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -135,6 +143,7 @@ describe('/api/patients/[id]/labs GET', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'クエリパラメータが不正です',
@@ -155,6 +164,7 @@ describe('/api/patients/[id]/labs GET', () => {
     ))!;
 
     expect(lowerResponse.status).toBe(400);
+    expectSensitiveNoStore(lowerResponse);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
 
@@ -166,6 +176,7 @@ describe('/api/patients/[id]/labs GET', () => {
     ))!;
 
     expect(upperResponse.status).toBe(400);
+    expectSensitiveNoStore(upperResponse);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationFindManyMock).not.toHaveBeenCalled();
   });
@@ -176,6 +187,7 @@ describe('/api/patients/[id]/labs GET', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientLabObservationFindManyMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         take: 50,
@@ -190,6 +202,7 @@ describe('/api/patients/[id]/labs GET', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -208,6 +221,23 @@ describe('/api/patients/[id]/labs GET', () => {
     expect(JSON.stringify(patientLabObservationFindManyMock.mock.calls)).not.toContain(
       encodeURIComponent(rawPatientId),
     );
+  });
+
+  it('returns a sanitized no-store 500 when lab reads fail', async () => {
+    const rawError = '患者A eGFR ワルファリン lab read failure';
+    patientLabObservationFindManyMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('ワルファリン');
   });
 });
 
