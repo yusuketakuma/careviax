@@ -289,9 +289,7 @@ describe('HandoffWorkspace', () => {
     expect(incomingEmpty.textContent).toBe('受け取り待ちの仕事はありません');
     expect(incomingEmpty.className).not.toContain('state-done');
     expect(incomingEmpty.className).toContain('text-muted-foreground');
-    expect(
-      screen.getByText(/口頭やメモではなくハンドオフで渡すのがチームのルールです/),
-    ).toBeTruthy();
+    expect(screen.getByText(/対応は監査ログに残ります/)).toBeTruthy();
 
     // 3点セットのルール帯
     expect(screen.getByTestId('handoff-rule-bar').textContent).toContain(
@@ -418,6 +416,42 @@ describe('HandoffWorkspace', () => {
     });
     expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
     expect(screen.queryByTestId('handoff-incoming-empty')).toBeNull();
+  });
+
+  it('keeps the newest incoming item primary and tucks the rest behind a receipt backlog disclosure', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    const incoming = (id: string, content: string) =>
+      buildItem({
+        id,
+        content,
+        created_by: 'user_2',
+        created_by_name: '鈴木 一郎',
+        recipient_user_id: 'user_1',
+        recipient_label: '山田さん(薬剤師)',
+        lifecycle_status: 'proposed',
+        rationale: '判断が必要なため',
+        direction: 'incoming',
+      });
+    const board: HandoffBoardResponse = {
+      ...BOARD,
+      items: [
+        incoming('item_in_1', '同成分薬の重複疑いについて確認をお願いします'),
+        incoming('item_in_2', 'FAX番号の確認が弱いため、送付前に判断してください'),
+        incoming('item_in_3', '報告書に入れるべき確認事項か判断をお願いします'),
+      ],
+      summary: { outgoing_count: 0, incoming_count: 3 },
+    };
+    stubFetch(board);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByText(/同成分薬の重複疑いについて確認をお願いします/)).toBeTruthy();
+    });
+    const overflow = screen.getByTestId('handoff-incoming-overflow');
+    expect(overflow.textContent).toContain('残りの受領待ち');
+    expect(overflow.textContent).toContain('2件');
+    expect(overflow.textContent).toContain('FAX番号の確認が弱いため');
+    expect(overflow.textContent).toContain('報告書に入れるべき確認事項');
   });
 
   it('keeps transfer submission disabled when no active recipient options are available', async () => {

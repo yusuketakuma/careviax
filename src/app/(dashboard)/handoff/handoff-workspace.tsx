@@ -504,7 +504,7 @@ function ConsultStatusList({
 }) {
   return (
     <section
-      className="rounded-lg border border-border/70 bg-card p-4"
+      className="order-3 rounded-lg border border-border/70 bg-card p-4 lg:order-none"
       aria-labelledby="handoff-consult-list-heading"
       data-testid="handoff-consult-list"
     >
@@ -623,13 +623,18 @@ function ConsultResolutionPanel({
 
   return (
     <section
-      className="rounded-lg border border-border/70 bg-card p-4"
+      className="order-1 rounded-lg border border-border/70 bg-card p-4 lg:order-none"
       aria-labelledby="handoff-consult-resolution-heading"
       data-testid="handoff-consult-resolution"
     >
       <h3 id="handoff-consult-resolution-heading" className="text-base font-bold text-foreground">
         薬剤師の対応
       </h3>
+      {item ? (
+        <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
+          {item.created_by_name} から: {item.content}
+        </p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         {RESOLUTION_ACTIONS.map(({ action, buttonClassName }) => (
           <Button
@@ -722,7 +727,7 @@ function ConsultWorkspace({
             setSelectedId(null);
           }}
         />
-        <div className="min-w-0 space-y-3">
+        <div className="order-2 min-w-0 space-y-3 lg:order-none">
           {visibleItems.length > 1 ? (
             <div className="flex flex-wrap gap-2" data-testid="handoff-consult-picker">
               {visibleItems.map((item) => (
@@ -965,6 +970,8 @@ export function HandoffWorkspace() {
       incomingItems: items.filter((item) => item.direction === 'incoming'),
     };
   }, [board?.items]);
+  const primaryIncomingItem = incomingItems[0] ?? null;
+  const remainingIncomingItems = incomingItems.slice(1);
 
   return (
     <section aria-label="ハンドオフボード" data-testid="handoff-workspace">
@@ -1019,22 +1026,44 @@ export function HandoffWorkspace() {
                   >
                     受け取り待ちの仕事はありません
                   </div>
-                ) : (
+                ) : primaryIncomingItem ? (
                   <div className="mt-3 space-y-2">
-                    {incomingItems.map((item) => (
-                      <HandoffItemCard
-                        key={item.id}
-                        item={item}
-                        now={now}
-                        viewerUserId={userId}
-                        onConfirmReceipt={(itemId) => confirmReceiptMutation.mutate(itemId)}
-                        confirmPending={confirmReceiptMutation.isPending}
-                      />
-                    ))}
+                    <HandoffItemCard
+                      item={primaryIncomingItem}
+                      now={now}
+                      viewerUserId={userId}
+                      onConfirmReceipt={(itemId) => confirmReceiptMutation.mutate(itemId)}
+                      confirmPending={confirmReceiptMutation.isPending}
+                    />
+                    {remainingIncomingItems.length > 0 ? (
+                      <details
+                        className="rounded-lg border border-border/70 bg-muted/20"
+                        data-testid="handoff-incoming-overflow"
+                      >
+                        <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-foreground marker:hidden">
+                          <span>残りの受領待ち</span>
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                            {remainingIncomingItems.length}件
+                          </span>
+                        </summary>
+                        <div className="space-y-2 border-t border-border/70 p-2">
+                          {remainingIncomingItems.map((item) => (
+                            <HandoffItemCard
+                              key={item.id}
+                              item={item}
+                              now={now}
+                              viewerUserId={userId}
+                              onConfirmReceipt={(itemId) => confirmReceiptMutation.mutate(itemId)}
+                              confirmPending={confirmReceiptMutation.isPending}
+                            />
+                          ))}
+                        </div>
+                      </details>
+                    ) : null}
                   </div>
-                )}
-                <p className="mt-3 rounded-md border border-tag-info/30 bg-tag-info/10 px-3 py-2.5 text-sm leading-6 text-tag-info">
-                  事務から薬剤師への依頼(疑義・判断・確認)もここに届きます。口頭やメモではなくハンドオフで渡すのがチームのルールです。
+                ) : null}
+                <p className="mt-3 rounded-md border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-xs leading-5 text-tag-info">
+                  事務からの疑義・判断もここに届き、対応は監査ログに残ります。
                 </p>
               </section>
 
