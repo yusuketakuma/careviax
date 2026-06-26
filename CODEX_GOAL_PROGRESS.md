@@ -99,6 +99,17 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused ESLint; focused Prettier check; focused diff whitespace check; direct desktop/mobile browser checks on `http://localhost:3012/login` with no console/page errors, visible login form and password reset link, no horizontal overflow, and no visible controls below 44px.
 - Next action: commit the login UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Patient Safety Check Primary Action
+
+- Refined `/patients/[id]/safety-check` after browser proof showed the page listed risks and workflow steps but hid the actual `医師への確認を記録` / `問題なしにする` actions behind the auxiliary workspace rail, especially on mobile.
+- Added a first-fold `次にやること` action panel bound to the currently selected safety concern, so the user can immediately record a prescriber consultation or mark the selected issue as resolved.
+- Shortened the page header copy from process explanation to operational instruction: select a risk and record the confirmation in place.
+- Removed the hidden workspace-rail-only dependency from this route while preserving the existing consultation POST, issue PATCH, selected concern behavior, dialogs, org headers, fail-closed path encoding, auth behavior, backend/API behavior, DB behavior, and displayed risk data.
+- Related patient-card polish: reduced raw alert color noise by grouping pinned patient/safety context, removing full-row prescription alert fills in favor of safety badges, and limiting foundation item status color to a left accent plus status label.
+- Screenshot evidence: before/after desktop and mobile screenshots under `artifacts/ui-safety-check-sweep/`.
+- Validation passed: focused safety-check Vitest `2` files / `34` tests; focused patient-card Vitest `1` file / `47` tests; focused ESLint; focused Prettier checks; focused diff whitespace checks; authenticated desktop/mobile browser checks on `http://localhost:3012/patients/cmnhdemopt001amq9ph-os/safety-check` with no console/page errors, one visible `薬の安全チェック` `h1`, no horizontal overflow, no visible page-body controls below 44px, and mobile primary actions visible at `322px` / `374px`.
+- Next action: commit the progress-ledger slice, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.
