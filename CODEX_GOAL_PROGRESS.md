@@ -21,6 +21,26 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Patient Overview Care-Team IDs for Edit Pre-Populate
+
+- Coordination:
+  - Drained `phos/codex` and received Claude's P4 dependency request for edit-form care-team pre-populate safety.
+  - Preserved Claude-owned dirty `src/components/features/patients/patient-form.tsx` and `src/lib/validations/patient.ts`; Codex did not edit or stage those files.
+  - Prioritized this dependency over the next backend no-store candidate because missing default values could overwrite existing Patient-level care-team assignments to `null` during PATCH.
+- Added Patient-level `primary_pharmacist_id`, `backup_pharmacist_id`, `primary_staff_id`, and `backup_staff_id` to the `getPatientOverview` base select.
+- Added the same four nullable root fields to the `PatientOverview` type so Claude's `buildDefaultValues(patient-edit-content.tsx)` wiring can read the IDs directly from Patient root.
+- Updated overview and consumer fixture tests so typed `PatientOverview` objects include the new root fields.
+- Preserved existing response shape except for the additive root fields; no schema, migration, DB write, frontend UI, auth, or validation behavior was changed by Codex.
+- Security risk reduced: prevents silent loss of Patient-level care-team assignments during edit-save pre-populate work; no new staff names, emails, phones, roles, permissions, or cross-org data are exposed.
+- Performance issue improved: none materially changed. This slice adds four scalar columns to the existing patient overview select and fixture/type coverage only; no new queries, dependencies, polling, DB writes, migrations, or external sends were introduced.
+- Validation passed:
+  - `pnpm vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-facility-multi-visit-card.test.tsx' --reporter=dot --testTimeout=30000` passed `4` files / `180` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the overview select, overview test, PatientOverview type, and two PatientOverview consumer fixture tests.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned Patient overview/type/test files, commit progress ledgers separately, send `agmsg` FYI to Claude so it can finish edit-form pre-populate wiring, then continue the next non-overlapping backend candidate (`GET /api/visit-schedule-proposals/:id`) unless a newer `agmsg` request takes priority. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Visit Preparation Detail GET No-Store Hardening
 
 - Coordination:
