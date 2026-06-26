@@ -213,7 +213,8 @@ export function ContactProfilesContent() {
             <Label htmlFor="contact-kind-filter">種別</Label>
             <Select value={kind} onValueChange={(value) => setKind(value as typeof kind)}>
               <SelectTrigger id="contact-kind-filter">
-                <SelectValue />
+                {/* Radix は SSR で既定値のラベルを解決できず生 enum('all') を出すため、表示文言を明示する */}
+                <SelectValue>{kind === 'all' ? 'すべて' : KIND_LABELS[kind]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">すべて</SelectItem>
