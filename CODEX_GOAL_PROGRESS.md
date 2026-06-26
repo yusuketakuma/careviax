@@ -21,6 +21,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Patient MCS Build Blocker and Rate-Limit Catalog Fix
+
+- Coordination:
+  - Drained `phos/codex`, ACKed Claude's restart briefing, and returned `APPROVE` for Claude-owned `card-workspace` v2 after read-only focused validation.
+  - Preserved Claude-owned dirty UI files `src/app/(dashboard)/patients/[id]/card-workspace.tsx` and `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`; Codex did not edit or stage those files.
+  - No DB schema, migration, DB data mutation, frontend UI, or external sends were introduced by this backend slice.
+- Fixed the shared build/typecheck blocker in `GET /api/patients/:id/mcs` by making `authenticatedGET` return `Promise<Response>`, tightening `loadVisibleMcsPatient`'s union return type, and exporting `GET` as `typeof authenticatedGET` before applying the sensitive no-store/fixed-500 wrapper.
+- Preserved the existing MCS read behavior, `canVisit` plus sensitive-patient permission checks, assignment-scoped patient lookup, `limit` validation, response shape, PATCH write behavior, audit logging, and service call arguments.
+- Added the missing `/api/patients/:id/header-summary` entry to `API_ROUTE_TEMPLATES`, restoring the route catalog/rate-limit self-consistency test after the new header summary API was added.
+- The previously reported systemic route sweep did not reproduce after the MCS fix: full TypeScript and `pnpm build` both passed without additional route-handler type errors.
+- Security risk reduced: the MCS read route now has the same sensitive no-store exported-route envelope and sanitized fixed 500 behavior proven by the existing MCS route tests.
+- Performance issue improved: none materially changed. The slice changes route typing/catalog metadata and response wrapping only; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/patients/[id]/mcs/route.test.ts' src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `44` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm build` passed.
+  - Scoped ESLint passed for `src/app/api/patients/[id]/mcs/route.ts`, `src/app/api/patients/[id]/mcs/route.test.ts`, `src/lib/api/rate-limit.ts`, and `src/lib/api/rate-limit.test.ts`.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed.
+  - Read-only Claude UI review validation: `pnpm vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` passed `1` file / `49` tests.
+- Next action: commit the Codex-owned MCS/rate-limit backend slice, then commit this progress-ledger update separately. Claude-owned `card-workspace` remains dirty and unstaged by Codex.
+
 ### 2026-06-27 JST - Patient Detail Workflow Read Slice No-Store Hardening
 
 - Coordination:
