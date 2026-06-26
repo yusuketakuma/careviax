@@ -334,7 +334,7 @@ export function MyDayContent({
       : null;
 
   return (
-    <div className="w-full space-y-4 p-3 sm:p-4 lg:p-6" data-testid="my-day-content">
+    <div className="w-full space-y-3 p-3 sm:p-4 lg:space-y-4 lg:p-5" data-testid="my-day-content">
       {contextSummary ? (
         <Alert
           className="border-tag-info/30 bg-tag-info/10 text-tag-info"
@@ -354,30 +354,33 @@ export function MyDayContent({
       ) : null}
       <PageSection
         title="今日の概要"
-        description="今日の訪問、タスク、パイプライン、緊急件数を最初に把握する導入グループです。"
-        contentClassName="grid grid-cols-2 gap-2 sm:grid-cols-4"
+        description="次にすること、訪問、タスク、パイプライン、緊急件数を最初に把握します。"
+        contentClassName="space-y-3"
       >
-        <QuickStat
-          label="訪問"
-          value={todayVisits.length}
-          loading={visitsQuery.isLoading || visitsQuery.isError || isUserPending}
-        />
-        <QuickStat
-          label="タスク"
-          value={pendingTasks.length}
-          loading={tasksQuery.isLoading || tasksQuery.isError || isUserPending}
-        />
-        <QuickStat
-          label="パイプライン"
-          value={totalPipeline}
-          loading={actionsQuery.isLoading || actionsQuery.isError}
-        />
-        <QuickStat
-          label="緊急"
-          value={urgentActions.length}
-          loading={actionsQuery.isLoading || actionsQuery.isError}
-          urgent={urgentActions.length > 0}
-        />
+        <MyDayNextStepPanel {...nextStep} />
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <QuickStat
+            label="訪問"
+            value={todayVisits.length}
+            loading={visitsQuery.isLoading || visitsQuery.isError || isUserPending}
+          />
+          <QuickStat
+            label="タスク"
+            value={pendingTasks.length}
+            loading={tasksQuery.isLoading || tasksQuery.isError || isUserPending}
+          />
+          <QuickStat
+            label="パイプライン"
+            value={totalPipeline}
+            loading={actionsQuery.isLoading || actionsQuery.isError}
+          />
+          <QuickStat
+            label="緊急"
+            value={urgentActions.length}
+            loading={actionsQuery.isLoading || actionsQuery.isError}
+            urgent={urgentActions.length > 0}
+          />
+        </div>
       </PageSection>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.38fr)] xl:items-start">
@@ -387,8 +390,6 @@ export function MyDayContent({
             description="緊急アクションと今日の訪問準備を先に処理するための優先グループです。"
             contentClassName="space-y-3"
           >
-            <MyDayNextStepPanel {...nextStep} />
-
             {actionsQuery.isError ? (
               <MyDaySectionError
                 title="優先アクションを取得できません"

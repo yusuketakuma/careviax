@@ -49,6 +49,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: authenticated local `/dashboard` desktop/mobile screenshots on `http://localhost:3012` with no console errors after using the e2e local session token; focused `app-header` Vitest `1` file / `19` tests; focused ESLint; focused Prettier check; focused diff whitespace check.
 - Next action: commit the header shared-chrome fix as its own design slice, commit the Codex-only/agmsg monitor state update separately, then continue the screenshot loop on the next highest-impact operational page or shared primitive.
 
+### 2026-06-26 JST - My Day First-Fold Scan Path
+
+- Refined `/my-day` so the operational "next step" appears in the first summary group instead of below the priority section, letting users see the immediate action before scanning counts, visits, tasks, or pipeline state.
+- Removed the header shortcut cluster and extra instructional support copy from the page intro, keeping the first viewport focused on page identity and work status instead of duplicating navigation and explanatory text.
+- Tightened the page shell spacing on mobile/desktop while preserving all existing My Day data fetches, filters, urgent-action cards, visit links, task links, quick links, auth behavior, backend/API behavior, and DB behavior. No feature was removed.
+- Added a focused regression assertion that the "次にすること" panel belongs to `今日の概要` and is not duplicated inside `優先対応`.
+- Validation passed: focused `my-day-content` Vitest `1` file / `10` tests; focused ESLint; focused Prettier check; focused diff whitespace check.
+- Validation caveat: `pnpm exec playwright test tools/tests/ui-layout-screenshot-audit.spec.ts --project=chromium --grep "my-day"` timed out waiting for the configured webServer after 60 seconds while starting the Next build, so a fresh screenshot audit was not completed in this slice.
+- Next action: commit the My Day UI slice, commit the Codex-only runtime-state correction separately, then continue screenshot-driven refinement on the next high-frequency operational page.
+
 ### 2026-06-26 JST - Tracing Reports GET Hardening
 
 - Implemented sensitive response hardening for `GET /api/tracing-reports`: handled 200/400/401/403 responses and unexpected 500 fallbacks now carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.

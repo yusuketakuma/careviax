@@ -169,6 +169,11 @@ describe('MyDayContent', () => {
   it('shows a visible next step for unprepared visits', () => {
     render(<MyDayContent />);
 
+    const overviewSection = screen.getByRole('heading', { name: '今日の概要' }).closest('section');
+    const prioritySection = screen.getByRole('heading', { name: '優先対応' }).closest('section');
+
+    expect(overviewSection?.textContent).toContain('次にすること');
+    expect(prioritySection?.textContent).not.toContain('次にすること');
     expect(screen.getByText('次にすること')).toBeTruthy();
     expect(screen.getByText('訪問前準備を完了')).toBeTruthy();
     expect(screen.getByText(/1件の訪問で準備が未完了です/)).toBeTruthy();
