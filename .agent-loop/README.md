@@ -1,7 +1,7 @@
 # Agent Loop — Operator Guide
 
-> Current mode (2026-06-26 JST, rev3): **Codex-only operation** for **careviax (PH-OS Pharmacy)**.
-> Claude/Codex two-supervisor sections in this file are retained as historical reference and are suspended unless the user explicitly re-enables multi-agent operation. Codex owns planning, implementation, review, validation, grouped commits, and progress ledgers; gbrain remains long-term memory subordinate to live repository state.
+> Current mode (2026-06-26 JST, rev4): **Claude + Codex implementation-only PARALLEL mode** for **careviax (PH-OS Pharmacy)** — re-enabled by the user, superseding the same-day rev3 Codex-only override (Codex confirmed it will not auto-revert this banner).
+> Both lanes refine **disjoint screens** end-to-end (frontend as the entry point, fixing through to backend where needed; **no DB changes**), driven by a screenshot → improve → re-screenshot loop toward a world-top-level UI/UX bar (足し算と引き算). **No mutual review** — neither lane sends or waits on PLAN/PATCH/VERIFY verdicts; disjointness is held purely by agmsg `LOCK` / `HANDOFF` of exact files before editing. The peer-review / maker-checker sections below are retained as historical reference and are **not active** in this mode. Screen partition + active goal: see `STATE.md` "Current runtime override (rev4)". gbrain remains long-term memory subordinate to live repository state.
 
 This directory holds the human/operator entry points and the live operational artifacts for the loop. Start here.
 

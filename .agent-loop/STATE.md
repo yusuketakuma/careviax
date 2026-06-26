@@ -4,13 +4,16 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current runtime override - 2026-06-26 JST (rev3: Codex-only UI/UX loop)
+## Current runtime override - 2026-06-26 JST (rev4: parallel UI/UX→BE re-enabled)
 
-The user switched this worktree back to **Codex-only operation**. Do not route
-new work to Claude, require Claude review/ACK, or wait for Claude gates unless
-the user explicitly re-enables multi-agent operation in a later message.
-Continue using agmsg inbox drains for safety and traceability, but treat an
-empty inbox as enough to proceed.
+The user **re-enabled Claude** alongside Codex in **implementation-only PARALLEL
+mode** (supersedes the same-day rev3 Codex-only override). Both lanes refine
+**disjoint screens** end-to-end (frontend as the entry point, fixing through to
+backend where a screen renders/behaves wrong; **no DB changes**), driven by a
+screenshot → improve → re-screenshot loop. **No mutual review** — neither lane
+sends or waits on PLAN/PATCH/VERIFY verdicts. Disjointness is held purely via
+agmsg `LOCK` / `HANDOFF` of exact files before editing. Codex confirmed
+(2026-06-26 01:01Z) it will not auto-revert this banner to Codex-only.
 
 **Active goal (user /goal 2026-06-26).** Refine the UI/UX of _all_ pages to a
 world-top-level ("10M-download") bar using a 足し算と引き算 (add/subtract)
@@ -18,24 +21,38 @@ design philosophy; iterate with screenshots until judged sufficient; no
 compromise. Constraints: **no DB changes** (schema/data/migrations off-limits);
 backend API/service code _may_ be fixed so a screen renders correctly; if any
 existing feature is removed, report what + why at the end; layout may be
-rearranged where operation is hard from the user's perspective. Research
-medical-system best practices and existing-system layout patterns, update the
-design-language SSOT first, then continue screenshot → improve → re-screenshot
-loops.
+rearranged where operation is hard from the user's perspective. Begin with the
+highest-frequency user screens first. Research medical-system best practices and
+existing-system layout patterns, refresh the design-language SSOT first, then
+continue screenshot → improve → re-screenshot loops.
 
-**Current Codex progress.**
+**Screen partition (agreed with Codex 2026-06-26, no review).**
 
-- SSOT research update committed in `e0f6bd1e`.
-- Dashboard mobile condition banner fix committed in `beb82a27`.
-- Current in-flight group: shared app header/chrome refinement in
-  `src/components/layout/app-header.tsx` and `app-header.test.tsx`, with
-  desktop/mobile screenshots captured under
-  `/Users/yusuke/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/`.
-- agmsg delivery for Codex was restored to monitor mode, updating
-  `.codex/hooks.json`.
+- **Codex lane** (operational/field, full FE→BE per screen): dashboard, my-day,
+  visits/**, schedules/**, prescriptions/**, dispense, set, set-audit, tasks,
+  workflow, handoff, qr-scan, notifications, search, select-mode, select-site,
+  offline-sync, conferences, communications/** — plus shared design-system
+  ownership of `src/components/ui/**` and global shell `src/components/layout/**`.
+- **Claude lane** (patient records / admin / reports, full FE→BE per screen):
+  patients/** (list + detail + all subroutes), reports/**, billing/**, admin/**,
+  statistics, audit, clerk-support, external, referrals, views — plus page-local
+  components co-located under those routes.
+- **Single-owner shared artifacts.** `docs/ui-ux-design-guidelines.md` (design
+  language SSOT) is owned by Claude for the research-driven refresh; Codex adopts
+  the refreshed SSOT on its next slice. Shared-primitive (`components/ui`,
+  `components/layout`) changes requested by Claude go through a LOCK handshake.
 
-Next action: commit the app-header UI slice and the runtime-state/monitor-hook
-slice as separate grouped commits, then continue the Codex-only screenshot loop.
+**Progress so far (both lanes).**
+
+- Codex: SSOT research update `e0f6bd1e`; dashboard mobile banner `beb82a27`;
+  app-header refinement `0bceeeff`; my-day first-fold slice in flight (LOCKed).
+- Claude: parallel-mode mechanism + partition restored to durable docs; medical
+  UI/UX research in flight (→ `docs/research/medical-uiux-research-2026-06-26.md`),
+  SSOT refresh pending behind it.
+
+Next action: Claude refreshes the SSOT from the research, releases the SSOT lock,
+then runs the screenshot-driven FE→BE refinement loop on its lane starting with
+the patient detail/list screens. Codex continues its lane.
 
 **How it's used in the loop.**
 
