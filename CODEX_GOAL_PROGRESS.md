@@ -21,6 +21,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-26 JST - Patient Detail Clinical Read Slice No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new inbox message was pending at slice start.
+  - Worktree was clean before this slice. No DB schema, migration, DB data mutation, frontend UI, or Claude-owned files were edited.
+- Hardened `GET /api/patients/:id/conditions`, `GET /api/patients/:id/contacts`, and `GET /api/patients/:id/labs` so success, auth/validation/not-found responses, and ordinary unexpected read failures are wrapped with sensitive no-store headers.
+- Added fixed sanitized `INTERNAL_ERROR` fallbacks with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage proving:
+  - conditions success and invalid-id responses are no-store;
+  - contacts read success and invalid-id responses are no-store;
+  - labs validation and success responses are no-store;
+  - all three GET routes return sanitized no-store 500 responses that omit raw patient/drug/contact-like thrown text.
+- Preserved existing canVisit auth, assignment-scoped patient lookup, external-viewer contact masking, lab query validation, response body shapes, PUT/POST write semantics, DB reads, schema/migrations/data, and frontend behavior.
+- Fixed an existing full-TypeScript blocker in previously committed Codex-owned routes by removing optional second route-handler params from `src/app/api/medication-sets/workspace/route.ts` and `src/app/api/qr-scan-drafts/route.ts`; Next generated route types require the context parameter not to be typed as `undefined`.
+- Security risk reduced: patient conditions, contact channels/addresses, and lab observations are no longer cacheable at the HTTP boundary, and raw read failures cannot leak PHI-like details to clients.
+- Performance issue improved: none materially changed. The slice adds only response wrapping and tests; no new normal-path DB queries, dependencies, polling, frontend rendering work, schema changes, migrations, DB writes, or external sends were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/patients/[id]/conditions/route.test.ts' 'src/app/api/patients/[id]/contacts/route.test.ts' 'src/app/api/patients/[id]/labs/route.test.ts' --reporter=dot --testTimeout=30000` passed `3` files / `42` tests.
+  - `pnpm vitest run src/app/api/medication-sets/workspace/route.test.ts src/app/api/qr-scan-drafts/route.test.ts 'src/app/api/patients/[id]/conditions/route.test.ts' 'src/app/api/patients/[id]/contacts/route.test.ts' 'src/app/api/patients/[id]/labs/route.test.ts' --reporter=dot --testTimeout=30000` passed `5` files / `80` tests.
+  - Scoped ESLint passed.
+  - Scoped Prettier check passed after formatting the three patient GET route files.
+  - Full `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed after the route-handler context type fix.
+  - Scoped diff whitespace check passed.
+- Next action: commit the patient detail clinical read hardening, commit the Next route-handler type fix separately, commit this progress-ledger update separately, send agmsg FYI, then continue backend-first support for the UI/UX objective. The broader all-pages UI/UX objective remains incomplete.
+
 ### 2026-06-26 JST - Patient Detail Sub-Slice No-Store 500 Hardening
 
 - Coordination:
