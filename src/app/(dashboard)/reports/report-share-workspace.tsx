@@ -237,7 +237,7 @@ function WaitingReplyRow({ reply }: { reply: ReportWaitingReply }) {
       data-testid="report-waiting-reply"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex shrink-0 items-center rounded-full bg-state-waiting/10 px-2 py-0.5 text-[11px] font-bold text-state-waiting">
+        <span className="inline-flex shrink-0 items-center rounded-full bg-state-waiting/10 px-2 py-0.5 text-xs font-bold tabular-nums text-state-waiting">
           {waitingBadgeLabel(reply.waiting_days)}
         </span>
         <p className="min-w-0 flex-1 text-sm font-bold leading-5 text-foreground">{reply.title}</p>
@@ -307,7 +307,7 @@ function WaitingBoxesSection({ data }: { data: ReportsTodayWorkspaceResponse }) 
                 data-testid="report-resolved-row"
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex shrink-0 items-center rounded-full bg-state-done/10 px-2 py-0.5 text-[11px] font-bold text-state-done">
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-state-done/10 px-2 py-0.5 text-xs font-bold tabular-nums text-state-done">
                     回答受領 {formatTimeOfDay(item.received_at)}
                   </span>
                   <p className="min-w-0 flex-1 text-sm font-bold leading-5 text-foreground">
@@ -353,7 +353,7 @@ function ReportOpenIssuesSection({ issues }: { issues: ReportOpenIssue[] }) {
             <li key={issue.id} className="flex flex-wrap items-start gap-3 py-3">
               <span
                 className={cn(
-                  'inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold',
+                  'inline-flex shrink-0 rounded-full border px-2 py-0.5 text-xs font-bold',
                   ISSUE_TONE_CLASSES[issue.severity],
                 )}
               >
