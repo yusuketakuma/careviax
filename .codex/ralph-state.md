@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1316 JST
+
+- current task: continue the all-pages UI/UX objective with `/search`, preserving an existing search UI polish diff and completing it with screenshot-driven fixes.
+- files inspected: `git status --short --branch --untracked-files=all`, agmsg inbox, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/search/page.tsx`, `src/app/(dashboard)/search/search-content.tsx`, `src/app/(dashboard)/search/search-content.test.tsx`, `src/app/(dashboard)/search/advanced-filter-modal.test.tsx`, `src/app/(dashboard)/search/search-result-builders.test.ts`, `src/components/ui/input.tsx`, `src/components/features/workspace/filter-chip-bar.tsx`, `src/components/features/workspace/list-open-card.tsx`, authenticated desktop/mobile `/search` screenshots, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/search/search-content.tsx`, `src/app/(dashboard)/search/search-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/search` had no explicit result-region heading/status summary and the main search input measured `32px` on desktop because the shared `Input` desktop small-size class overrode the page-level `h-12`. Browser proof also showed a misleading state where `アムロジピン` produced `全カテゴリ 1件` while the default patient category still showed a generic no-results message.
+- security risks found: no auth, authorization, permission, RLS, API, PHI projection, audit logging, schema, migration, DB write, external send, or mutation behavior changed. Browser verification used authenticated local reads only.
+- performance issues found: no new fetches, DB reads, polling, render loops, or backend work were introduced. The result summary and cross-category hint use already-loaded category counts.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/search/search-content.test.tsx' 'src/app/(dashboard)/search/advanced-filter-modal.test.tsx' 'src/app/(dashboard)/search/search-result-builders.test.ts' --reporter=dot --testTimeout=30000`; `pnpm eslint 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`; authenticated Playwright desktop/mobile checks on `http://localhost:3012/search`.
+- validation results: focused search Vitest passed `3` files / `53` tests; focused ESLint passed; focused Prettier check passed; focused diff whitespace check passed. Browser proof had `0` console/page errors, one visible `全体検索` `h1`, visible `検索結果` `h2`, no horizontal overflow, and no visible page-body controls below 44px. Query proof for `アムロジピン` showed `患者 0件 / 全カテゴリ 1件` with a visible `薬剤 1件` jump action instead of a dead generic empty state. Screenshots were saved under `test-results/codex-search-sweep/`.
+- remaining work: commit the search UI slice, commit this progress-ledger update separately, send agmsg FYI, then continue the broader all-pages UI/UX objective. The broader objective is not complete.
+- next action: grouped commits for search result orientation and progress ledgers.
+
 ### 20260626-1312 JST
 
 - current task: continue the all-pages UI/UX objective with `/patients/[id]/medications`, a patient-detail medication-management page where the primary medication workspace was buried below supplemental summaries.
@@ -5300,3 +5313,16 @@ Backup directory:
 - validation results: focused SearchContent Vitest passed `1` file / `16` tests; scoped ESLint passed; targeted Prettier write passed unchanged after the final simplification. Direct browser proof saved `artifacts/ui-search-sweep/search-desktop-before.png`, `artifacts/ui-search-sweep/search-mobile-before.png`, `artifacts/ui-search-sweep/search-desktop-after.png`, and `artifacts/ui-search-sweep/search-mobile-after.png`; final proof had no console/page errors, no horizontal overflow, mobile page-body small target count `0`, desktop `/search` page-body target correction from `28px` to `44px`, desktop `listTop=371px`, and mobile `listTop=543px`.
 - remaining work: run final scoped Prettier/diff/status including ledgers, stage only the `/search` UI file for the code commit, stage only ledgers for the progress commit, send agmsg FYI/DONE, and continue the all-pages UI/UX sweep. The broader objective remains incomplete.
 - next action: commit `style(search): surface search result workload`, then commit the `/search` progress ledger update.
+
+### 20260626-1315 JST
+
+- current task: `/search` cross-category empty-state follow-up after a page-local dirty diff appeared post-commit.
+- files inspected: agmsg inbox, `git status --short --branch --untracked-files=all`, post-commit `src/app/(dashboard)/search/search-content.tsx` diff, `src/app/(dashboard)/search/search-content.test.tsx`, focused validation output, and direct mobile browser screenshot proof.
+- files changed: `src/app/(dashboard)/search/search-content.tsx`, `src/app/(dashboard)/search/search-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: when the selected category had no results but another category did, `/search` could fall through to a generic no-result empty state even though actionable results existed behind another chip.
+- security risks found: no auth, permission, org scoping, API route, mutation path, DB behavior, PHI projection, audit behavior, schema, migration, external send, or destructive operation changed. Browser proof used route-mocked page APIs and existing local-auth session setup only; no DB writes or page API mutations were performed.
+- performance issues found: no new fetches, polling, subscriptions, or loops were introduced. The hint uses already computed category counts and visible client results.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`; `pnpm vitest run 'src/app/(dashboard)/search/search-content.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`; direct authenticated Playwright proof on `http://localhost:3012/search` with route-mocked patient-empty/drug-result APIs.
+- validation results: focused SearchContent Vitest passed `1` file / `18` tests; scoped ESLint passed; targeted Prettier write passed. Direct browser proof saved `artifacts/ui-search-sweep/search-mobile-cross-category-hint.png`; it had no console/page errors, no horizontal overflow, no mobile page-body undersized targets, and the cross-category hint rendered at `543px`.
+- remaining work: run final scoped diff/status including ledgers, stage only the `/search` follow-up code/test files for the code commit, stage only ledgers for the progress commit, send agmsg FYI/DONE, and continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: commit `style(search): guide cross-category results`, then commit the follow-up progress ledger update.

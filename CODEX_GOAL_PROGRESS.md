@@ -60,6 +60,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused medication page/content Vitest `2` files / `14` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/patients/cmnhdemopt001amq9ph-os/medications` with no console/page errors, one visible `服薬管理` `h1`, no horizontal overflow, no visible page-body controls below 44px, and `服薬中薬剤` moved from `3045px` to `622px` on mobile and from `1844px` to `440px` on desktop.
 - Next action: commit the patient-medications UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Search Result Orientation
+
+- Refined `/search` so the page now has a clear result status pill, a dedicated `検索結果` region, and a larger clinical-safe search input.
+- Fixed the desktop input target that measured `32px` by forcing the search field to keep a 44px-plus height across breakpoints.
+- Added a cross-category hint for searches where the selected category has no results but another category does. Example proof: `アムロジピン` now shows `患者 0件 / 全カテゴリ 1件` plus a visible `薬剤 1件` jump action instead of a dead generic empty state.
+- Preserved all existing search fetches, debounce/abort behavior, category chips, advanced filters, result cards, routing, auth behavior, backend/API behavior, DB behavior, and displayed data. No search feature was removed.
+- Screenshot evidence: blank/query desktop and mobile screenshots under `test-results/codex-search-sweep/`.
+- Validation passed: focused search Vitest `3` files / `53` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/search` with no console/page errors, one visible `全体検索` `h1`, visible `検索結果` `h2`, no horizontal overflow, and no visible page-body controls below 44px.
+- Next action: commit the search UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.
@@ -9762,3 +9772,22 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-search-sweep/search-desktop-before.png`, `artifacts/ui-search-sweep/search-mobile-before.png`, `artifacts/ui-search-sweep/search-desktop-after.png`, and `artifacts/ui-search-sweep/search-mobile-after.png`.
 - Remaining:
   - Run final focused Prettier/diff checks including this ledger update, commit the `/search` UI group, then commit the progress ledger update separately and release the `/search` lock. The broader all-pages UI/UX objective remains incomplete.
+
+### Global Search — Cross-Category Empty-State Follow-up
+
+- Coordination:
+  - After the first `/search` commits, a page-local dirty diff appeared in `search-content.tsx`.
+  - Re-drained agmsg, re-sent a `/search` lock, and kept the follow-up limited to `SearchContent` plus its focused test and ledgers.
+- Bugs found:
+  - When the selected category had no results but another category did, the page could still show a generic no-result empty state even though useful results existed one chip away.
+- Implemented by Codex:
+  - Added a cross-category hint state that says the selected category has no match, reports the total result count in other categories, and provides 44px category-switch buttons for the categories with results.
+  - Added a focused test that verifies the hint and the category-switch action for a patient-empty / drug-result search.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/search/search-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `18` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`: passed.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`: passed.
+  - Direct authenticated Playwright proof on `http://localhost:3012/search` with route-mocked patient-empty/drug-result APIs: no console/page errors, no horizontal overflow, no mobile page-body undersized targets, and the cross-category hint rendered at `543px`.
+  - Screenshot evidence: `artifacts/ui-search-sweep/search-mobile-cross-category-hint.png`.
+- Remaining:
+  - Run final scoped diff/status including ledgers, commit this follow-up code/test group, then commit this ledger update separately and release the `/search` lock. The broader all-pages UI/UX objective remains incomplete.
