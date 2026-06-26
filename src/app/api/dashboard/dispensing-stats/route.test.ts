@@ -86,4 +86,18 @@ describe('/api/dashboard/dispensing-stats', () => {
       },
     });
   });
+
+  it('returns a sanitized no-store 500 when metric reads fail', async () => {
+    const rawError = 'raw dispensing dashboard count failure';
+    dispenseTaskCountMock.mockReset();
+    dispenseTaskCountMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = (await GET(createRequest()))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+  });
 });
