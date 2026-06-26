@@ -9825,3 +9825,28 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-entry-sweep/select-mode-mobile-before.png`, `artifacts/ui-entry-sweep/select-mode-desktop-before.png`, `artifacts/ui-entry-sweep/select-mode-mobile-after.png`, and `artifacts/ui-entry-sweep/select-mode-desktop-after.png`.
 - Remaining:
   - Run final scoped Prettier/diff/status including ledgers, commit this `/select-mode` code/test group, then commit this ledger update separately and release the `/select-mode` lock. The broader all-pages UI/UX objective remains incomplete.
+
+### Select Site — Pharmacy Load Summary and Frame Proof
+
+- Coordination:
+  - Drained `phos/codex` agmsg before selecting the slice and before editing.
+  - Sent `/select-site` lock; no conflicting inbound message arrived. The slice stayed page-local and disjoint from Claude's patient card-workspace lock.
+- Bugs found:
+  - `/select-site` cards were flush to the viewport edge on mobile and desktop, weakening the initial entry-flow frame.
+  - The page showed per-pharmacy visit counts but no first-fold summary of selected pharmacy, total visit load, or how many pharmacies had home-visit work.
+  - Desktop proof showed all three page-body pharmacy buttons measured `32px` high, below the PH-OS 44px interaction target.
+  - A first summary pass used a tall mobile stack (`162px`) and pushed the third card below the bottom navigation; it was revised to a 3-column compact summary before final proof.
+- Implemented by Codex:
+  - Added a compact pharmacy-selection summary for selected pharmacy, total visits, and home-visit-enabled pharmacy count.
+  - Added responsive page padding and max-width so the pharmacy entry flow has a stable frame.
+  - Raised pharmacy selection buttons to the 44px interaction floor and changed the current-site action to `この薬局で続ける`.
+  - Extended the focused SelectSite test to lock the summary, current-site action label, and target class.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/select-site/select-site-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `2` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/select-site/select-site-content.tsx' 'src/app/(dashboard)/select-site/select-site-content.test.tsx'`: passed.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/select-site/select-site-content.tsx' 'src/app/(dashboard)/select-site/select-site-content.test.tsx'`: passed.
+  - Direct authenticated Playwright proof on `http://localhost:3012/select-site` with route-mocked site/shell APIs: no console/page errors and no horizontal overflow on desktop or mobile.
+  - Final metrics: mobile summary height `66px`, third-card `bottom=721px`, cards `left=12/right=378`, desktop root centered at `1152px`, and page-body pharmacy buttons no longer appear in the undersized target list.
+  - Screenshot evidence: `artifacts/ui-entry-sweep/select-site-mobile-before.png`, `artifacts/ui-entry-sweep/select-site-desktop-before.png`, `artifacts/ui-entry-sweep/select-site-mobile-after.png`, and `artifacts/ui-entry-sweep/select-site-desktop-after.png`.
+- Remaining:
+  - Run final scoped Prettier/diff/status including ledgers, commit this `/select-site` code/test group, then commit this ledger update separately and release the `/select-site` lock. The broader all-pages UI/UX objective remains incomplete.
