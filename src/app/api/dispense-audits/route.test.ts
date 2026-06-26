@@ -102,6 +102,11 @@ function createGetRequest(search = '') {
   return new NextRequest(`http://localhost/api/dispense-audits${search}`);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function doubleCountResultRow(
   overrides: Partial<{
     line_id: string;
@@ -298,6 +303,7 @@ describe('/api/dispense-audits GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const payload = (await response.json()) as {
       data: Array<{ id: string; facility_label: string | null; is_overdue: boolean }>;
     };
@@ -339,6 +345,7 @@ describe('/api/dispense-audits GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toEqual({ data: { count: 2 } });
     expect(dispenseTaskCountMock).toHaveBeenCalledWith({
       where: {
@@ -352,6 +359,25 @@ describe('/api/dispense-audits GET', () => {
       },
     });
     expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 when audit queue loading fails without exposing raw PHI', async () => {
+    dispenseTaskFindManyMock.mockRejectedValue(
+      new Error('audit queue failed for patient 佐藤 花子 insurance 98765432'),
+    );
+
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(JSON.parse(bodyText)).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(bodyText).not.toContain('佐藤');
+    expect(bodyText).not.toContain('98765432');
   });
 });
 

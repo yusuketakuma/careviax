@@ -3,7 +3,16 @@ import { withAuthContext } from '@/lib/auth/context';
 import { ADMIN_MEMBER_ROLES, DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound, conflict, forbidden, error } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  conflict,
+  forbidden,
+  error,
+  internalError,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
@@ -21,7 +30,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const now = new Date();
     const { searchParams } = new URL(req.url);
@@ -170,6 +179,14 @@ export const GET = withAuthContext(
     message: '調剤鑑査の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch {
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 const REJECT_REASON_CODES = [
   'drug_name_mismatch',
