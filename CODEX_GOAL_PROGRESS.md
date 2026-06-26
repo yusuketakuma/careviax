@@ -70,6 +70,15 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused search Vitest `3` files / `53` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/search` with no console/page errors, one visible `全体検索` `h1`, visible `検索結果` `h2`, no horizontal overflow, and no visible page-body controls below 44px.
 - Next action: commit the search UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Prescription Intake Mobile Triage
+
+- Refined `/prescriptions/intake` after desktop/mobile browser inspection showed the intake route had no visible page `h1`, desktop workflow actions were shrinking below the PH-OS 44px target, and mobile relied on a clipped table that hid status/action context off-screen.
+- Made the visible `処方取込` title the page `h1`, kept the manual intake and desktop row actions at forced 44px-plus height, and added responsive mobile row cards that show patient/content, source, lane, status, auto-read confidence, and the row action without horizontal table scanning.
+- Preserved all existing triage fetches, cockpit fetches, lane filtering, duplicate notice, process strip, row destinations, manual-entry link, auth behavior, backend/API behavior, DB behavior, and displayed data. No route or feature was removed.
+- Screenshot evidence: before/after desktop and mobile screenshots under `artifacts/ui-prescription-intake-sweep/`.
+- Validation passed: focused prescription-intake Vitest `2` files / `20` tests; focused ESLint; focused Prettier check; focused diff whitespace check; authenticated desktop/mobile browser checks on `http://localhost:3012/prescriptions/intake` with `0` console/page errors, visible `処方取込` `h1`, no horizontal overflow, no visible page-body controls below 44px, desktop table rows visible, and mobile cards visible instead of the clipped table.
+- Next action: commit the prescription-intake UI slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Dashboard Mobile Condition Banner
 
 - Fixed the first rendered UI/UX defect from the active screenshot loop: the dashboard condition banner squeezed its summary into a 111px column on mobile, making the opening operational condition hard to scan.
@@ -9791,3 +9800,28 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-search-sweep/search-mobile-cross-category-hint.png`.
 - Remaining:
   - Run final scoped diff/status including ledgers, commit this follow-up code/test group, then commit this ledger update separately and release the `/search` lock. The broader all-pages UI/UX objective remains incomplete.
+
+### Select Mode — Entry Decision Clarity and Target Proof
+
+- Coordination:
+  - Drained `phos/codex` agmsg before selecting the slice and before editing.
+  - Sent `/select-mode` lock twice because no ACK arrived within the next iterations; kept the slice page-local and disjoint from Claude's patient card-workspace lock.
+- Bugs found:
+  - `/select-mode` used the same helper copy (`よく使う画面だけを先に表示します`) on all three cards, so users had to infer what actually changes after choosing a mode.
+  - Desktop proof showed all three page-body mode buttons measured `32px` high, below the PH-OS 44px interaction target.
+  - The page body was flush to the viewport edge, weakening the initial PH-OS trunk-test screen and making the mobile H1/card stack feel unfinished.
+  - A first pass with visible mobile header support copy pushed the third card below the bottom navigation; the support copy was kept desktop-only and the card density was tightened.
+- Implemented by Codex:
+  - Replaced duplicate helper copy with mode-specific `最初に見る` evidence and operational outcome text for pharmacist, clerk-support, and management modes.
+  - Added responsive page padding and max-width so the entry flow has a stable content frame on mobile and desktop.
+  - Raised all mode action buttons to the 44px interaction floor with `!min-h-11`.
+  - Extended the focused SelectMode test to lock the new decision copy and target class.
+- Validation:
+  - `pnpm vitest run 'src/app/(dashboard)/select-mode/select-mode-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `3` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/select-mode/select-mode-content.tsx' 'src/app/(dashboard)/select-mode/select-mode-content.test.tsx'`: passed.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/select-mode/select-mode-content.tsx' 'src/app/(dashboard)/select-mode/select-mode-content.test.tsx'`: passed.
+  - Direct authenticated Playwright proof on `http://localhost:3012/select-mode` with route-mocked shell APIs: no console/page errors and no horizontal overflow on desktop or mobile.
+  - Final metrics: mobile cards render with `left=12`, `right=378`, and third-card `bottom=769px`; desktop root is centered at `1152px` width; page-body mode buttons no longer appear in the undersized target list.
+  - Screenshot evidence: `artifacts/ui-entry-sweep/select-mode-mobile-before.png`, `artifacts/ui-entry-sweep/select-mode-desktop-before.png`, `artifacts/ui-entry-sweep/select-mode-mobile-after.png`, and `artifacts/ui-entry-sweep/select-mode-desktop-after.png`.
+- Remaining:
+  - Run final scoped Prettier/diff/status including ledgers, commit this `/select-mode` code/test group, then commit this ledger update separately and release the `/select-mode` lock. The broader all-pages UI/UX objective remains incomplete.
