@@ -33,6 +33,11 @@ function createRequest(search = '') {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 const params = { params: Promise.resolve({ id: 'patient_1' }) };
 
 const baseRow = {
@@ -70,6 +75,7 @@ describe('GET /api/patients/[id]/field-revisions', () => {
   it('変更履歴を整形し更新者名を解決して返す', async () => {
     const response = await GET(createRequest(), params);
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const body = (await response.json()) as { data: Array<Record<string, unknown>> };
     expect(body.data).toHaveLength(1);
     expect(body.data[0]).toMatchObject({
@@ -100,6 +106,7 @@ describe('GET /api/patients/[id]/field-revisions', () => {
     patientFindFirstMock.mockResolvedValue(null);
     const response = await GET(createRequest(), params);
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(fieldRevisionFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -109,5 +116,21 @@ describe('GET /api/patients/[id]/field-revisions', () => {
     });
     const response = await GET(createRequest(), params);
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+  });
+
+  it('raw details are omitted from sanitized no-store 500 responses', async () => {
+    const rawError = '患者A care_level モルヒネ field revision failure';
+    fieldRevisionFindManyMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await GET(createRequest(), params);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('モルヒネ');
   });
 });
