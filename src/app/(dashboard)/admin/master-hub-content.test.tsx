@@ -317,6 +317,7 @@ describe('MasterHubContent', () => {
     render(<MasterHubContent />);
 
     const summary = screen.getByTestId('master-hub-summary');
+    expect(summary.querySelector('.grid')?.className).toContain('grid-cols-3');
     expect(within(summary).getByText('今日の判定')).toBeTruthy();
     expect(within(summary).getByText('確認あり')).toBeTruthy();
     expect(within(summary).getByText('2マスターに注意')).toBeTruthy();
@@ -324,6 +325,19 @@ describe('MasterHubContent', () => {
     expect(within(summary).getByText('2件')).toBeTruthy();
     expect(within(summary).getByText('医療機関マスター')).toBeTruthy();
     expect(within(summary).getByText('やまもと内科の送付先FAXを確認する')).toBeTruthy();
+  });
+
+  it('keeps card and search actions at the PH-OS 44px target size', () => {
+    render(<MasterHubContent />);
+
+    expect(screen.getByRole('link', { name: 'マスター横断検索' }).className).toContain(
+      'min-h-[44px]',
+    );
+
+    const firstCard = screen.getAllByTestId('master-hub-card')[0];
+    expect(within(firstCard).getByRole('link', { name: '→ 医薬品へ' }).className).toContain(
+      'min-h-[44px]',
+    );
   });
 
   it('renders the action rail with a single primary action and 根拠・記録 rows', () => {

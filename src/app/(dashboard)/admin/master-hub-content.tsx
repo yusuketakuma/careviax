@@ -60,19 +60,19 @@ function statusBadgeLabel(card: MasterHubCard): string {
 function MasterCard({ card }: { card: MasterHubCard }) {
   return (
     <article
-      className="flex flex-col gap-3 rounded-lg border border-border/70 bg-card p-4"
+      className="flex min-w-0 flex-col gap-2.5 rounded-lg border border-border/70 bg-card p-3.5 sm:p-4"
       data-testid="master-hub-card"
       data-master-key={card.key}
       data-status={card.status}
     >
       <div className="flex items-start justify-between gap-2">
         {/* ページ h1「マスター」直下のカード見出し。h2 を飛ばさない（guideline 見出し階層）。 */}
-        <h2 className="text-[15px] font-bold leading-6 text-foreground">{card.title}</h2>
+        <h2 className="min-w-0 text-[15px] font-bold leading-6 text-foreground">{card.title}</h2>
         <StateBadge role={STATUS_ROLE[card.status]} className="shrink-0">
           {statusBadgeLabel(card)}
         </StateBadge>
       </div>
-      <p className="text-xs leading-5">
+      <p className="text-xs leading-5" data-testid="master-hub-card-meta">
         <span className="font-semibold text-foreground">
           {card.count.toLocaleString('ja-JP')}
           {card.count_unit}
@@ -82,20 +82,27 @@ function MasterCard({ card }: { card: MasterHubCard }) {
           / 最終更新 {formatLastUpdatedLabel(card.last_updated_at)}
         </span>
       </p>
-      <p className="flex-1 text-sm leading-6 text-muted-foreground">{card.note}</p>
-      <div className="rounded-md border border-border/70 bg-muted/35 px-3 py-2">
-        <p className="text-xs font-bold text-muted-foreground">次にすること</p>
-        <p className="mt-1 text-sm font-semibold leading-5 text-foreground">
+      <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">{card.note}</p>
+      <div className="border-l-2 border-primary/35 pl-3">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+          次にすること
+        </p>
+        <p className="mt-0.5 line-clamp-2 text-sm font-semibold leading-5 text-foreground">
           {card.next_action_hint}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-0.5 text-xs text-muted-foreground">
           {card.issue_count > 0
             ? `未処理 ${card.issue_count.toLocaleString('ja-JP')}件`
             : '未処理なし'}
         </p>
       </div>
-      <div>
-        <Button asChild variant="outline" size="sm" className="min-h-9 text-primary">
+      <div className="pt-0.5">
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className="h-11 min-h-[44px] text-primary sm:h-11 sm:min-h-[44px]"
+        >
           <Link href={card.action_href}>{card.action_label}</Link>
         </Button>
       </div>
@@ -177,7 +184,12 @@ export function MasterHubContent() {
             · {data ? data.masters.length : 10}マスター — 鮮度がすべて
           </p>
         </div>
-        <Button asChild variant="outline" size="sm" className="rounded-full">
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className="h-11 min-h-[44px] rounded-full sm:h-11 sm:min-h-[44px]"
+        >
           <Link href="/admin/data-explorer">
             <Search className="size-3.5" aria-hidden="true" />
             マスター横断検索
@@ -200,37 +212,37 @@ export function MasterHubContent() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="min-w-0 space-y-4">
+            <div className="min-w-0 space-y-3 sm:space-y-4">
               {summary ? (
                 <div
-                  className="rounded-lg border border-border/70 bg-card p-4"
+                  className="rounded-lg border border-border/70 bg-card p-3 sm:p-4"
                   data-testid="master-hub-summary"
                 >
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
+                  <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    <div className="min-w-0">
                       <p className="text-xs font-bold text-muted-foreground">今日の判定</p>
                       <p className="mt-1 text-lg font-bold text-foreground">
                         {summary.attentionCards.length > 0 ? '確認あり' : '健全'}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs leading-5 text-muted-foreground">
                         {summary.attentionCards.length}マスターに注意
                       </p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs font-bold text-muted-foreground">未処理</p>
                       <p className="mt-1 text-lg font-bold text-foreground">
                         {summary.issueCount.toLocaleString('ja-JP')}件
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs leading-5 text-muted-foreground">
                         送付先確認・点検予約・取込の残件
                       </p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs font-bold text-muted-foreground">最初に見る項目</p>
-                      <p className="mt-1 text-sm font-bold leading-5 text-foreground">
+                      <p className="mt-1 truncate text-sm font-bold leading-5 text-foreground">
                         {summary.primaryAttention?.title ?? '全マスター'}
                       </p>
-                      <p className="text-xs leading-5 text-muted-foreground">
+                      <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">
                         {summary.primaryAttention?.next_action_hint ??
                           '変更履歴と鮮度ルールだけ確認してください'}
                       </p>
