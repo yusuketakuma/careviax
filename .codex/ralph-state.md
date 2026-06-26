@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1907 JST
+
+- current task: `/admin/shifts` calendar-first ordering, generic intro removal, and 44px shift administration controls.
+- files inspected: `git status --short --branch --untracked-files=all`, `$agmsg` inbox, design-review skill guidance, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/admin/shifts/page.tsx`, `src/app/(dashboard)/admin/shifts/shifts-content.tsx`, `src/app/(dashboard)/admin/shifts/shifts-content.test.tsx`, related admin page tests discovered with `rg`, route-mocked before/final desktop/mobile screenshots under `artifacts/ui-shifts-sweep/`, and gbrain code graph probes for `ShiftsContent` / `ShiftsPage`.
+- files changed: `src/app/(dashboard)/admin/shifts/page.tsx`, `src/app/(dashboard)/admin/shifts/page.test.tsx`, `src/app/(dashboard)/admin/shifts/shifts-content.tsx`, `src/app/(dashboard)/admin/shifts/shifts-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/admin/shifts` rendered the generic `最初に見るポイント` admin intro and a decorative `Pharmacist Operations` hero before the actual monthly shift calendar. Desktop primary shift actions, month navigation, lower member/template/holiday actions, inputs, and select triggers measured `28px-32px`; mobile month navigation wrapped with the next-month button isolated on its own row after the first improvement pass.
+- security risks found: no auth, authorization, org scoping, pharmacist APIs, shift APIs, holiday APIs, template APIs, mutation behavior, validation, schema, migrations, DB writes, external sends, PHI projection, audit behavior, or secret handling changed. Browser proof used route-mocked APIs and a local session token; no DB reads or writes were performed.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier render loops were introduced. The change removes a decorative section, reorders already-rendered content, and enlarges existing controls.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/shifts/page.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/shifts/page.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/shifts/page.test.tsx'`; `pnpm exec prettier --write ...`; `pnpm exec prettier --check ...`; `git diff --check -- ...`; direct route-mocked Playwright proof on `http://localhost:3012/admin/shifts`.
+- validation results: focused ShiftsContent/Page Vitest passed `2` files / `6` tests; scoped ESLint passed; scoped Prettier write/check passed; scoped diff-check passed. Route-mocked browser proof saved `artifacts/ui-shifts-sweep/before/desktop.png`, `before/mobile.png`, `after/desktop.png`, and `after/mobile.png`; final proof had no generic intro, no `Pharmacist Operations` hero, one visible `薬剤師シフト管理` h1, no horizontal overflow, page-body small-control count `0`, and the monthly calendar before KPI/member/template/holiday administration.
+- remaining work: `/admin/shifts` UI/test group is committed as `7beb6efa`; commit this progress-ledger update separately, send agmsg FYI, stop the local dev server started for screenshot proof, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the progress commit.
+
 ### 20260626-1856 JST
 
 - current task: `/admin/pca-pumps` return-inspection-first ordering and 44px action target hardening.

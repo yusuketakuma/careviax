@@ -58,6 +58,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused PcaPumpsContent/Page Vitest `2` files / `11` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/pca-pumps` with no console/page errors, no generic intro, one visible `PCAポンプレンタル` h1, no horizontal overflow, and page-body small-control count `0`. Final proof placed `返却検品待ち` at `366px` desktop / `338px` mobile and `検品` at `465px` desktop / `509px` mobile.
 - Next action: commit the `/admin/pca-pumps` UI/test slice, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server, and continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Pharmacist Shifts Calendar First
+
+- Refined `/admin/shifts` after route-mocked browser proof showed the generic admin intro and decorative `Pharmacist Operations` hero consuming the first fold before the monthly shift calendar, with desktop page-body controls measuring `28px-32px`.
+- Removed the generic `最初に見るポイント` support block and the decorative hero, moved the preserved `月間シフトカレンダー` to the primary position, placed member/copy/edit actions beside the calendar, moved KPI summaries after the calendar, and separated mobile month navigation from action buttons so previous/current/next month stay on one row.
+- Enlarged visible shift administration controls to 44px targets, including primary member/copy/edit actions, month navigation, lower member/template/holiday actions, inputs, and select triggers.
+- Preserved all existing pharmacy-site fetches, pharmacist fetches/mutations, shift fetch/save/copy behavior, holiday fetch/create/update/delete behavior, template fetch/save/apply/delete behavior, org headers, auth behavior, backend/API behavior, DB behavior, and displayed shift data. No feature was removed; only duplicate/decorative page copy was hidden and sections were reordered.
+- Screenshot evidence: before/final desktop and mobile screenshots under `artifacts/ui-shifts-sweep/`, including `before/desktop.png`, `before/mobile.png`, `after/desktop.png`, and `after/mobile.png`.
+- Validation passed: focused ShiftsContent/Page Vitest `2` files / `6` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/shifts` with no generic intro, no `Pharmacist Operations` hero, one visible `薬剤師シフト管理` h1, no horizontal overflow, and page-body small-control count `0`.
+- Next action: commit the `/admin/shifts` UI/test slice, commit this progress-ledger update separately, send agmsg FYI, stop the local dev server, and continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - Communication Requests Reply Follow-up First
 
 - Refined `/communications/requests` after browser proof showed the first viewport spent the first interaction budget on status/context filters before the reply follow-up queue.
