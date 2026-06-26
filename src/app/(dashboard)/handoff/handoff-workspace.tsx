@@ -881,13 +881,129 @@ function ConsultResolutionPanel({
   );
 }
 
+/** 相談先は薬剤師系ロールに限定する(相談=薬剤師の判断を仰ぐ行為)。 */
+const CONSULT_RECIPIENT_ROLES = new Set(['owner', 'admin', 'pharmacist', 'pharmacist_trainee']);
+
+/** 薬剤師に相談を起票する composer(事務→薬剤師)。consult_status='open' で作成する。 */
+function ConsultIntake({
+  boardId,
+  orgId,
+  recipientOptions,
+  onCreated,
+}: {
+  boardId: string | null;
+  orgId: string;
+  recipientOptions: HandoffRecipientOption[];
+  onCreated: () => void;
+}) {
+  const pharmacistOptions = useMemo(
+    () => recipientOptions.filter((option) => CONSULT_RECIPIENT_ROLES.has(option.role)),
+    [recipientOptions],
+  );
+  const [recipientUserId, setRecipientUserId] = useState('');
+  const [content, setContent] = useState('');
+  const canSelectRecipient = pharmacistOptions.length > 0;
+  const isComplete = content.trim().length > 0 && Boolean(recipientUserId);
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      if (!boardId) throw new Error('ボードが見つかりません');
+      const recipient = pharmacistOptions.find((option) => option.id === recipientUserId);
+      const res = await fetch('/api/handoff-board/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          board_id: boardId,
+          consult_status: 'open',
+          content: content.trim(),
+          recipient_user_id: recipientUserId,
+          recipient_label: recipient ? `${recipient.name}(${recipient.role_label})` : '',
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.message ?? '相談を起票できませんでした');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('薬剤師に相談を送りました。');
+      setContent('');
+      onCreated();
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  return (
+    <form
+      className="mt-3 space-y-2 rounded-md border border-border/60 bg-muted/20 p-3"
+      data-testid="handoff-consult-intake"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!isComplete || createMutation.isPending) return;
+        createMutation.mutate();
+      }}
+    >
+      <p className="text-sm font-semibold text-foreground">薬剤師に相談する</p>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Select
+          value={recipientUserId}
+          disabled={!canSelectRecipient}
+          onValueChange={(value) => setRecipientUserId(value ?? '')}
+        >
+          <SelectTrigger className="w-full sm:w-56" aria-label="相談先の薬剤師">
+            <SelectValue placeholder="相談先の薬剤師" />
+          </SelectTrigger>
+          <SelectContent>
+            {pharmacistOptions.map((option) => (
+              <SelectItem key={option.id} value={option.id}>
+                {option.name}({option.role_label})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Textarea
+          value={content}
+          onChange={(event) => setContent(event.target.value)}
+          placeholder="例: 同成分薬の重複疑い。用法は妥当か確認をお願いします"
+          rows={2}
+          className="flex-1 resize-none text-sm"
+          aria-label="相談内容"
+        />
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        {!canSelectRecipient ? (
+          <p className="text-xs text-state-confirm" role="alert">
+            相談できる薬剤師がいません。
+          </p>
+        ) : (
+          <span aria-hidden="true" />
+        )}
+        <Button
+          type="submit"
+          size="sm"
+          className="min-h-[40px]"
+          disabled={!isComplete || createMutation.isPending || !boardId || !canSelectRecipient}
+          data-testid="handoff-consult-submit"
+        >
+          {createMutation.isPending ? '送信中...' : '相談する'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function ConsultWorkspace({
   items,
   orgId,
+  boardId,
+  recipientOptions,
   onResolved,
 }: {
   items: HandoffBoardItem[];
   orgId: string;
+  boardId: string | null;
+  recipientOptions: HandoffRecipientOption[];
   onResolved: () => void;
 }) {
   const consultItems = useMemo(() => consultItemsOf(items), [items]);
@@ -907,8 +1023,6 @@ function ConsultWorkspace({
     return fromSelection ?? visibleItems[0] ?? null;
   }, [visibleItems, selectedId]);
 
-  if (consultItems.length === 0) return null;
-
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-4"
@@ -923,7 +1037,20 @@ function ConsultWorkspace({
           事務員からの相談に薬剤師が対応します。対応は監査ログに記録されます。
         </p>
       </div>
-      <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(240px,300px)]">
+
+      <ConsultIntake
+        boardId={boardId}
+        orgId={orgId}
+        recipientOptions={recipientOptions}
+        onCreated={onResolved}
+      />
+
+      {consultItems.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground" data-testid="handoff-consult-empty">
+          未対応の相談はありません。上から薬剤師に相談を送れます。
+        </p>
+      ) : (
+        <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(240px,300px)]">
         <ConsultStatusList
           counts={counts}
           selectedStatus={selectedStatus}
@@ -956,7 +1083,8 @@ function ConsultWorkspace({
           <ConsultDetail item={selectedItem} />
         </div>
         <ConsultResolutionPanel item={selectedItem} orgId={orgId} onResolved={onResolved} />
-      </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -1284,7 +1412,13 @@ export function HandoffWorkspace() {
                 onChanged={invalidateBoard}
               />
 
-              <ConsultWorkspace items={board.items} orgId={orgId} onResolved={invalidateBoard} />
+              <ConsultWorkspace
+                items={board.items}
+                orgId={orgId}
+                boardId={board.id}
+                recipientOptions={board.recipient_options}
+                onResolved={invalidateBoard}
+              />
 
               <section
                 className="rounded-lg border border-border/70 bg-card p-4"
