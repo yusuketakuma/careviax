@@ -320,6 +320,8 @@ describe('PrescriptionsWorkspace', () => {
   it('uses a mobile-first stacked master-detail layout before widening on large screens', () => {
     render(<PrescriptionsWorkspace />);
 
+    expect(screen.getByTestId('prescriptions-workspace')).toBeTruthy();
+
     const masterDetailClass = screen.getByTestId('prescriptions-master-detail').className;
     expect(masterDetailClass).toContain('flex-col');
     expect(masterDetailClass).toContain('lg:flex-row');
@@ -331,5 +333,16 @@ describe('PrescriptionsWorkspace', () => {
     expect(masterPaneClass).toContain('lg:h-auto');
 
     expect(screen.getByTestId('prescriptions-detail-pane').className).toContain('min-h-[18rem]');
+  });
+
+  it('keeps first-fold prescription actions at the 44px target across breakpoints', () => {
+    render(<PrescriptionsWorkspace />);
+
+    for (const name of ['新規受付', 'QR下書き', '調剤キュー']) {
+      const links = screen.getAllByRole('link', { name });
+      expect(links.length).toBeGreaterThan(0);
+      expect(links.every((link) => link.className.includes('min-h-[44px]'))).toBe(true);
+      expect(links.some((link) => link.className.includes('sm:!min-h-[44px]'))).toBe(true);
+    }
   });
 });

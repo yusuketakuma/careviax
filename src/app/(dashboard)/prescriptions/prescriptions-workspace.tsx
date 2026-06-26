@@ -88,7 +88,7 @@ function PrescriptionFilterGroup({
             type="button"
             onClick={() => onSelect(opt.value)}
             className={cn(
-              'inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded px-2 text-[10px] font-medium transition-colors sm:h-5 sm:min-h-0 sm:min-w-0 sm:px-1.5',
+              'inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded px-2 text-[10px] font-medium transition-colors sm:px-1.5',
               isActive ? activeClassName : inactiveClassName,
             )}
           >
@@ -120,7 +120,7 @@ function PrescriptionShortcutRail() {
             <kbd className="rounded border bg-background px-1 font-mono">{shortcut.key}</kbd>{' '}
             <Link
               href={shortcut.href}
-              className="inline-flex min-h-[44px] min-w-[44px] items-center hover:underline sm:min-h-0 sm:min-w-0"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center hover:underline"
             >
               {shortcut.label}
             </Link>
@@ -236,7 +236,10 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
   const intakeErrorMessage = error instanceof Error ? error.message : undefined;
 
   return (
-    <div className={cn('flex h-[calc(100dvh-64px)] flex-col overflow-hidden', className)}>
+    <div
+      className={cn('flex h-[calc(100dvh-64px)] flex-col overflow-hidden', className)}
+      data-testid="prescriptions-workspace"
+    >
       <div className="flex flex-col gap-2 border-b bg-muted/40 px-3 py-2 lg:flex-row lg:items-center">
         <div className="flex shrink-0 items-center gap-2">
           <FileText className="size-4 text-primary" aria-hidden="true" />
@@ -263,7 +266,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
               <Button
                 variant="default"
                 size="sm"
-                className="h-10 gap-1 px-2.5 text-xs sm:h-7"
+                className="!h-auto !min-h-[44px] gap-1 px-2.5 text-xs sm:!h-auto sm:!min-h-[44px]"
                 asChild
               >
                 <Link href="/prescriptions/new">
@@ -271,10 +274,20 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
                   新規受付
                 </Link>
               </Button>
-              <Button variant="outline" size="sm" className="h-10 px-2 text-xs sm:h-7" asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="!h-auto !min-h-[44px] px-2 text-xs sm:!h-auto sm:!min-h-[44px]"
+                asChild
+              >
                 <Link href="/prescriptions/qr-drafts">QR下書き</Link>
               </Button>
-              <Button variant="outline" size="sm" className="h-10 px-2 text-xs sm:h-7" asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="!h-auto !min-h-[44px] px-2 text-xs sm:!h-auto sm:!min-h-[44px]"
+                asChild
+              >
                 <Link href="/dispense">調剤キュー</Link>
               </Button>
             </ActionRail>
@@ -327,7 +340,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-9 w-full text-xs"
+                className="!h-auto !min-h-[44px] w-full text-xs sm:!h-auto sm:!min-h-[44px]"
                 onClick={() => void fetchNextPage()}
                 disabled={isFetchingNextPage}
               >

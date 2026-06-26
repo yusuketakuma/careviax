@@ -1,6 +1,6 @@
 import { type Metadata } from 'next';
 import { FilePlus } from 'lucide-react';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { PrescriptionsWorkspace } from './prescriptions-workspace';
@@ -11,36 +11,25 @@ export const metadata: Metadata = {
 
 export default function PrescriptionsPage() {
   return (
-    <PageScaffold variant="bare" className="pb-0">
+    <PageScaffold variant="bare" className="pb-0" stackClassName="space-y-3">
       <WorkflowPageHeader
-        eyebrow="Prescription Intake"
+        eyebrow="処方受付"
         title="処方受付"
-        description="受付状況、疑義、調剤待ちを先に確認し、一覧と詳細を往復しながらそのまま次工程へつなげるワークスペースです。"
+        description="受付状況、疑義、調剤待ちを見て、対象処方の詳細確認へ進みます。"
         action={{
           href: '/prescriptions/new',
           label: '新規受付',
           icon: <FilePlus className="size-4" aria-hidden="true" />,
         }}
-        supportingContent={
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-foreground">確認順序</p>
-            <p className="text-sm text-muted-foreground">
-              受付件数、疑義、調剤待ちを見て、状態フィルタで絞り込みながら対象処方の詳細確認へ進みます。
-            </p>
-          </div>
-        }
-        mainWorkflowSteps={['prescriptions']}
-        childrenLabel="関連導線"
-      >
-        <PageShortcutLinks
-          links={[
-            { href: '/prescriptions/qr-drafts', label: 'QR下書き' },
-            { href: '/dispense', label: '調剤キュー' },
-            { href: '/workflow', label: 'ワークフロー' },
-          ]}
+        className="space-y-3"
+      />
+      <PrescriptionsWorkspace className="h-[calc(100dvh-9rem)] min-h-[34rem]" />
+      <div className="pb-6">
+        <MainWorkflowCompactNav
+          currentSteps={['prescriptions']}
+          description="この画面が主業務フローのどこにあるかを固定表示し、前後工程を見失わないようにしています。"
         />
-      </WorkflowPageHeader>
-      <PrescriptionsWorkspace className="h-[calc(100dvh-12rem)] min-h-[34rem]" />
+      </div>
     </PageScaffold>
   );
 }
