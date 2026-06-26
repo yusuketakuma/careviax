@@ -19,11 +19,11 @@ const CAPTURED_AT = new Date(2026, 5, 13, 10, 30, 45);
 describe('CAPTURE_CATEGORY_OPTIONS', () => {
   it('target の 3 チップ(残薬写真=紫 / セット設置=緑 / 説明資料=紫)を表示順で持つ', () => {
     expect(
-      CAPTURE_CATEGORY_OPTIONS.map((option) => ({ label: option.label, tone: option.tone })),
+      CAPTURE_CATEGORY_OPTIONS.map((option) => ({ label: option.label })),
     ).toEqual([
-      { label: '残薬写真', tone: 'violet' },
-      { label: 'セット設置', tone: 'emerald' },
-      { label: '説明資料', tone: 'violet' },
+      { label: '残薬写真' },
+      { label: 'セット設置' },
+      { label: '説明資料' },
     ]);
   });
 

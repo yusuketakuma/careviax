@@ -20,7 +20,6 @@ import {
   buildCaptureStatusSummary,
   buildEvidenceDraftFileName,
   resolveCapturePatientContext,
-  type CaptureCategoryTone,
   type CapturePatientContext,
 } from './capture.shared';
 
@@ -31,17 +30,6 @@ import {
  * ファイル選択へフォールバック)。撮影画像は暗号化してオフラインドラフトに保存し、
  * オンライン復帰時に既存 files API で自動送信する。
  */
-
-const CAPTURE_TONE_TEXT: Record<CaptureCategoryTone, string> = {
-  violet: 'text-violet-600',
-  emerald: 'text-emerald-600',
-};
-
-/** 選択中チップ(色だけに依存しないよう枠線で示し、aria-pressed も併用) */
-const CAPTURE_TONE_SELECTED: Record<CaptureCategoryTone, string> = {
-  violet: 'border-violet-300 bg-violet-50',
-  emerald: 'border-emerald-300 bg-emerald-50',
-};
 
 function readBlobAsDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -286,9 +274,9 @@ export function EvidenceCaptureContent({
               className={cn(
                 'inline-flex min-h-11 items-center rounded-full border px-4 text-[13px] font-bold transition-colors',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
-                CAPTURE_TONE_TEXT[option.tone],
+                'text-foreground',
                 selected
-                  ? CAPTURE_TONE_SELECTED[option.tone]
+                  ? 'border-primary/25 bg-primary/10'
                   : 'border-transparent bg-muted hover:bg-muted/70',
               )}
               onClick={() => setSelectedCategory(option.id)}

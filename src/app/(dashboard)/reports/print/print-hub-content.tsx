@@ -541,7 +541,7 @@ function MedicationLabelSheet({
                 {card.usageLabel} / {card.slotLabel}
               </p>
               <p className="text-muted-foreground">{card.quantityLabel}</p>
-              {card.note && <p className="mt-0.5 text-[10px] text-red-700">{card.note}</p>}
+              {card.note && <p className="mt-0.5 text-[10px] text-state-blocked">{card.note}</p>}
             </div>
           ))}
         </div>

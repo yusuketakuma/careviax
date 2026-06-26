@@ -1050,13 +1050,13 @@ export function ShiftsContent() {
                             </div>
                           ) : shift.available ? (
                             <div className="flex flex-col items-center gap-0.5">
-                              <Check className="size-3.5 text-emerald-600" />
+                              <Check className="size-3.5 text-state-done" />
                               <span className="text-[9px] text-muted-foreground">
                                 {shift.available_from}
                               </span>
                             </div>
                           ) : (
-                            <X className="mx-auto size-3.5 text-slate-300" />
+                            <X className="mx-auto size-3.5 text-muted-foreground" />
                           );
 
                           return (

@@ -43,12 +43,12 @@ export const SYSTEM_SETTING_STATUS_LABELS: Record<SystemSettingCandidateStatus, 
 };
 
 export const SYSTEM_SETTING_STATUS_TONE: Record<SystemSettingCandidateStatus, string> = {
-  managed: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  partial: 'border-blue-200 bg-blue-50 text-blue-800',
-  local_only: 'border-violet-200 bg-violet-50 text-violet-800',
-  env_only: 'border-slate-200 bg-slate-50 text-slate-700',
-  hardcoded: 'border-amber-200 bg-amber-50 text-amber-800',
-  missing: 'border-rose-200 bg-rose-50 text-rose-800',
+  managed: 'border-state-done/30 bg-state-done/10 text-state-done',
+  partial: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
+  local_only: 'border-state-waiting/30 bg-state-waiting/10 text-state-waiting',
+  env_only: 'border-state-readonly/30 bg-state-readonly/10 text-state-readonly',
+  hardcoded: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  missing: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
 };
 
 export const SYSTEM_SETTING_CANDIDATES: readonly SystemSettingCandidate[] = [

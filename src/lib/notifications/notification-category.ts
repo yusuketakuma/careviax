@@ -14,13 +14,13 @@ export const NOTIFICATION_CATEGORY_LABELS: Record<NotificationCategory, string> 
   unsynced: '未同期',
 };
 
-/** バッジ色: 急ぎ=赤 / 事務で対応=橙 / 薬剤師確認=青 / 返信待ち=紫 / 未同期=灰 */
+/** バッジ色: 急ぎ=赤 / 事務で対応=橙 / 薬剤師確認=紫 / 返信待ち=青 / 未同期=灰 */
 export const NOTIFICATION_CATEGORY_BADGE_CLASSES: Record<NotificationCategory, string> = {
-  urgent: 'bg-red-50 text-red-700 border-red-200',
-  pharmacist: 'bg-blue-50 text-blue-700 border-blue-200',
-  clerk: 'bg-amber-50 text-amber-700 border-amber-200',
-  reply: 'bg-violet-50 text-violet-700 border-violet-200',
-  unsynced: 'bg-slate-100 text-slate-600 border-slate-200',
+  urgent: 'bg-state-blocked/10 text-state-blocked border-state-blocked/20',
+  pharmacist: 'bg-state-waiting/10 text-state-waiting border-state-waiting/20',
+  clerk: 'bg-state-confirm/10 text-state-confirm border-state-confirm/20',
+  reply: 'bg-tag-info/10 text-tag-info border-tag-info/20',
+  unsynced: 'bg-state-readonly/10 text-state-readonly border-state-readonly/20',
 };
 
 const PHARMACIST_EVENT_PATTERNS = [

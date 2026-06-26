@@ -7,14 +7,10 @@ import type { EvidenceCategoryId } from '../../evidence/evidence-gallery.shared'
  * 同期後にサーバー側ギャラリーのファイル名射影でも同じ区分へ戻るよう設計する。
  */
 
-export type CaptureCategoryTone = 'violet' | 'emerald';
-
 export type CaptureCategoryOption = {
   /** p0_33 の証跡区分 ID(サブセット) */
   id: EvidenceCategoryId;
   label: string;
-  /** target の文字色(残薬写真=紫 / セット設置=緑 / 説明資料=紫) */
-  tone: CaptureCategoryTone;
 };
 
 /**
@@ -23,9 +19,9 @@ export type CaptureCategoryOption = {
  * 説明資料は文書交付(document_delivery)へ対応づける。
  */
 export const CAPTURE_CATEGORY_OPTIONS: readonly CaptureCategoryOption[] = [
-  { id: 'residual_photo', label: '残薬写真', tone: 'violet' },
-  { id: 'set_photo', label: 'セット設置', tone: 'emerald' },
-  { id: 'document_delivery', label: '説明資料', tone: 'violet' },
+  { id: 'residual_photo', label: '残薬写真' },
+  { id: 'set_photo', label: 'セット設置' },
+  { id: 'document_delivery', label: '説明資料' },
 ];
 
 export const DEFAULT_CAPTURE_CATEGORY: EvidenceCategoryId = 'residual_photo';
