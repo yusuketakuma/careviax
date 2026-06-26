@@ -193,6 +193,60 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     );
   });
 
+  it('resolves direct /audit entry to the completed dispense task for audit-ready cycles', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/dispense-tasks?cycle_id=cycle_1') {
+        return jsonResponse({
+          data: [
+            { id: 'task_old_pending', cycle_id: 'cycle_1', status: 'pending' },
+            { id: 'task_audit_ready', cycle_id: 'cycle_1', status: 'completed' },
+          ],
+        });
+      }
+      if (url === '/api/dispense-tasks/task_audit_ready/workbench') {
+        return jsonResponse({
+          ...workbenchBody(),
+          task: { id: 'task_audit_ready', status: 'completed', priority: 'normal', due_date: null },
+          cycle: { id: 'cycle_1', overall_status: 'dispensed', version: 2 },
+        });
+      }
+      return new Response('unexpected task resolution', { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadWorkbenchAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadWorkbenchAsync('audit', 'patient_1', {
+      patientRows: [
+        {
+          patient_id: 'patient_1',
+          cycle_id: 'cycle_1',
+          name: '佐藤 花子',
+          name_kana: 'サトウ ハナコ',
+          overall_status: 'dispensed',
+          badge: 'in_progress',
+          start_date: '2026-06-17',
+          registered_date: '2026-06-01',
+          latest_set_plan_id: null,
+          latest_set_plan_cycle_id: null,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      writeContext: {
+        taskId: 'task_audit_ready',
+        cycleId: 'cycle_1',
+      },
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/dispense-tasks/task_audit_ready/workbench',
+      expect.any(Object),
+    );
+  });
+
   it('resolves direct /set entry from patient cycle to latest SetPlan calendar', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

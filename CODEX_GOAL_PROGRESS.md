@@ -9476,3 +9476,25 @@ Next loop:
   - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/external-desktop-before.png`, `external-mobile-before.png`, `external-desktop-after-final.png`, and `external-mobile-after-final.png`.
 - Remaining:
   - Run final diff/agmsg checks, commit the external UI slice, commit this ledger update separately, release the external lock, then continue the all-pages UI/UX sweep on the next non-conflicting route.
+
+### Audit Workbench Render Stability — Completed Task Priority and 44px Controls
+
+- Coordination:
+  - Drained agmsg after Claude's legacy BE-FLAG that `/audit` could show `実データ未取得 / 取得失敗` despite seeded audit queue rows.
+  - Treated the message as Codex-only handoff context, did not wait on Claude gates, and avoided the statistics/clerk-support/views lanes.
+- Bugs found:
+  - The audit patient list correctly returned 7 audit-ready patients, but the workbench adapter resolved a cycle's representative task with a dispense-first priority that did not explicitly prefer `completed` tasks for the audit phase.
+  - `/audit` also had multiple workbench body controls below the 44px PH-OS target: sort buttons, compare/add-group actions, select/date/number inputs, row checkbox controls, and audit footer actions.
+- Implemented by Codex:
+  - Made representative task resolution phase-aware: `/dispense` still prefers active dispense tasks, while `/audit` prefers the completed dispense task that anchors the audit-ready workbench.
+  - Added a regression test for direct `/audit` entry selecting the completed task even when a stale pending task is present.
+  - Lifted workbench-root button/link/select/input/textarea targets to 44px across desktop and mobile without changing API, DB, workflow semantics, or feature availability.
+- Validation:
+  - `pnpm vitest run src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/app/api/dispense-workbench/patients/route.test.ts src/app/api/dispense-tasks/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `45` tests.
+  - `pnpm eslint src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`: passed.
+  - `pnpm exec prettier --check src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/components/features/dispense-workbench/dispensing-workbench.module.css`: passed.
+  - `git diff --check -- src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts src/components/features/dispense-workbench/dispensing-workbench.module.css`: passed.
+  - Browser audit on `/audit`: desktop and `390x844` mobile both rendered `調剤監査` with 7 patients, no `実データ取得に失敗`, no horizontal overflow, and zero page-body/workbench controls below the 44px target after excluding the shared app-header chrome.
+  - Screenshot evidence: `~/.gstack/projects/yusuketakuma-careviax/designs/design-audit-20260626/screenshots/audit-after-task-priority-desktop.png` and `audit-after-task-priority-mobile.png`.
+- Remaining:
+  - Commit the audit workbench render-stability/touch-target slice, send agmsg FYI, then continue the all-pages UI/UX sweep. The broader objective is not complete.

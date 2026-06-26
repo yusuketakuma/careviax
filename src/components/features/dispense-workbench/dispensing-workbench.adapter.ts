@@ -169,19 +169,26 @@ type DispenseTaskListResponse = {
 
 type DispenseWorkbenchPatientRow = DispenseWorkbenchPatientsResponse['data'][number];
 
-/** 監査・完了済を後回しにして「進行中の調剤タスク」を優先選択する順序。 */
-const ACTIVE_TASK_STATUS_PRIORITY = ['in_progress', 'pending', 'open', 'ready'];
+/** 工程別に代表タスクを選ぶ順序。監査工程は調剤完了タスクを優先して詳細を開く。 */
+const ACTIVE_TASK_STATUS_PRIORITY: Record<'dispense' | 'audit', string[]> = {
+  dispense: ['in_progress', 'pending', 'completed'],
+  audit: ['completed', 'in_progress', 'pending'],
+};
 
 /** cycle_id から代表の DispenseTask id を解決（無ければ null）。 */
-async function resolveTaskId(cycleId: string): Promise<string | null> {
+async function resolveTaskId(
+  cycleId: string,
+  phase: Extract<Phase, 'dispense' | 'audit'>,
+): Promise<string | null> {
   const body = await fetchJson<DispenseTaskListResponse>(
     `/api/dispense-tasks?cycle_id=${encodeURIComponent(cycleId)}`,
   );
   const tasks = body?.data;
   if (!tasks || tasks.length === 0) return null;
+  const priority = ACTIVE_TASK_STATUS_PRIORITY[phase];
   const ranked = [...tasks].sort((a, b) => {
-    const ra = ACTIVE_TASK_STATUS_PRIORITY.indexOf(a.status);
-    const rb = ACTIVE_TASK_STATUS_PRIORITY.indexOf(b.status);
+    const ra = priority.indexOf(a.status);
+    const rb = priority.indexOf(b.status);
     return (ra === -1 ? Number.MAX_SAFE_INTEGER : ra) - (rb === -1 ? Number.MAX_SAFE_INTEGER : rb);
   });
   return ranked[0]?.id ?? null;
@@ -212,7 +219,8 @@ export async function loadWorkbenchAsync(
   const listRows = options.patientRows ?? (await loadWorkbenchPatientRowsAsync({ phase })).rows;
   const row = listRows.find((r) => r.patient_id === patientId);
   if (!row || !row.cycle_id) return null;
-  const taskId = await resolveTaskId(row.cycle_id);
+  if (phase !== 'dispense' && phase !== 'audit') return null;
+  const taskId = await resolveTaskId(row.cycle_id, phase);
   if (!taskId) return null;
   const data = await fetchJson<DispenseWorkbenchData>(
     `/api/dispense-tasks/${encodeURIComponent(taskId)}/workbench`,
