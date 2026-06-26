@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-1516 JST
+
+- current task: `/admin/business-holidays` calendar-first ordering and 44px holiday controls.
+- files inspected: `git status --short --branch --untracked-files=all`, `docs/ui-ux-design-guidelines.md`, `src/app/(dashboard)/admin/business-holidays/page.tsx`, `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`, `src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx`, route-mocked before/after desktop/mobile screenshots under `artifacts/ui-business-holidays-sweep/`, `src/components/ui/button.tsx`, and `CODEX_GOAL_PROGRESS.md`.
+- files changed: `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`, `src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `/admin/business-holidays` rendered summary cards before the primary calendar workspace, and desktop month navigation/site filter/bulk registration/calendar holiday chips/list edit/delete controls measured `16px-32px`, below the PH-OS 44px page-body target.
+- security risks found: no auth, authorization, org scoping, business-holidays API, pharmacy-sites API, create/update/delete mutation behavior, bulk registration behavior, path-segment encoding, schema, migrations, DB writes, external sends, PHI projection, or secret handling changed. Browser proof used route-mocked APIs and a local session token; no DB writes were performed.
+- performance issues found: no new fetches, polling, subscriptions, DB reads, dependencies, or heavier render loops were introduced. The change reorders already-rendered summary cards after the calendar and enlarges existing controls.
+- validation commands: `pnpm vitest run 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`; `pnpm exec prettier --write 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`; `git diff --check -- 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`; direct route-mocked Playwright proof on `http://localhost:3012/admin/business-holidays`.
+- validation results: focused BusinessHolidaysContent Vitest passed `1` file / `9` tests; scoped ESLint passed; scoped Prettier write/check passed; scoped diff-check passed. Route-mocked browser proof saved `artifacts/ui-business-holidays-sweep/business-holidays-before-desktop.png`, `business-holidays-before-mobile.png`, `business-holidays-after-desktop.png`, and `business-holidays-after-mobile.png`; final proof had no mocked-page console/page errors, no horizontal overflow, one visible `休日カレンダー` `h1`, calendar before summary, and page-body small-control count `0` on desktop and mobile.
+- remaining work: commit the `/admin/business-holidays` UI/test group, commit this progress-ledger update separately, send agmsg FYI, then continue the all-pages UI/UX sweep. The broader objective remains incomplete.
+- next action: stage only the business-holidays code/test files for the implementation commit, then stage only ledgers for the progress commit.
+
 ### 20260626-1512 JST
 
 - current task: `/admin/notification-settings` event-rule priority, hydration stability, and 44px settings controls.

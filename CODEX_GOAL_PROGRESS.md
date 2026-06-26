@@ -49,6 +49,15 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused notification-settings/escalation-threshold Vitest `2` files / `14` tests; focused ESLint; focused Prettier write/check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/notification-settings` with no mocked-page console/page errors, no horizontal overflow, and page-body small-control count `0`.
 - Next action: commit the `/admin/notification-settings` UI/test slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
 
+### 2026-06-26 JST - Business Holidays Calendar First
+
+- Refined `/admin/business-holidays` after route-mocked browser proof showed the calendar workspace starting after summary cards and desktop calendar/list controls measuring `16px-32px`.
+- Moved the month calendar before the summary cards so the primary holiday editing workspace appears first, then enlarged month navigation, site filter, bulk registration, calendar holiday chips, and holiday list edit/delete actions to 44px targets.
+- Preserved all existing business-holiday fetches, site filtering, date selection, bulk mode, create/update/delete behavior, path-segment encoding, auth behavior, backend/API behavior, DB behavior, and displayed holiday data. No feature was removed.
+- Screenshot evidence: before/after desktop and mobile screenshots under `artifacts/ui-business-holidays-sweep/`.
+- Validation passed: focused BusinessHolidaysContent Vitest `1` file / `9` tests; focused ESLint; focused Prettier check; scoped diff-check; route-mocked desktop/mobile browser proof on `http://localhost:3012/admin/business-holidays` with no mocked-page console/page errors, no horizontal overflow, calendar before summary, and page-body small-control count `0`.
+- Next action: commit the `/admin/business-holidays` UI/test slice and progress-ledger slice separately, then continue the all-pages screenshot loop. The broader objective is not complete.
+
 ### 2026-06-26 JST - UI/UX Research SSOT Update
 
 - Implemented the first required step of the active UI/UX goal: researched medical/public-sector UI guidance and encoded the findings into `docs/ui-ux-design-guidelines.md` before starting code-level page changes.
