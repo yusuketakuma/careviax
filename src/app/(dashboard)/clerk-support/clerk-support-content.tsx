@@ -127,7 +127,8 @@ export function ClerkSupportContent() {
                     </TableRow>
                   ) : (
                     data.tasks.map((task) => (
-                      <TableRow key={task.id}>
+                      // 医療データテーブルの走査性: 行数が増えても目で追えるよう zebra stripe(SSOT)
+                      <TableRow key={task.id} className="even:bg-muted/30">
                         <TableCell className="font-medium text-foreground">
                           {task.kind_label}
                         </TableCell>
