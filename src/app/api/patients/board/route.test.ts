@@ -532,7 +532,7 @@ describe('/api/patients/board', () => {
     expect(patientCountMock).not.toHaveBeenCalled();
   });
 
-  it('returns a fixed sensitive no-store error when board patient reads fail', async () => {
+  it('returns a fixed sensitive no-store error when board aggregate reads fail', async () => {
     patientFindManyMock.mockRejectedValueOnce(new Error('raw patient board failure'));
 
     const response = (await GET(createRequest('?scope=all'), {
@@ -543,6 +543,7 @@ describe('/api/patients/board', () => {
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
     expect(body.code).toBe('INTERNAL_ERROR');
+    expect(body.message).toBe('サーバー内部でエラーが発生しました');
     expect(JSON.stringify(body)).not.toContain('raw patient board failure');
   });
 
