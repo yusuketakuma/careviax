@@ -31,6 +31,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Validation passed: focused Data Explorer table-route Vitest `1` file / `9` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
 - Next action: run final scoped ledger checks, commit the Data Explorer API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
 
+### 2026-06-26 JST - Dispensing Stats 500 No-Store
+
+- Hardened `GET /api/dashboard/dispensing-stats` so unexpected metric read failures still return the standard fixed `INTERNAL_ERROR` envelope with sensitive no-store headers.
+- Added route coverage proving a raw metric-read exception string is not present in the response body and the 500 carries `Cache-Control: private, no-store, max-age=0` plus `Pragma: no-cache`.
+- Preserved existing dashboard permission behavior, org-scoped count filters, success payload shape, protected GET matrix behavior, schema, migrations, DB writes, external sends, and frontend UI behavior.
+- Security risk reduced: sensitive dashboard failure responses are no longer cacheable at the HTTP boundary.
+- Performance issue improved: none materially changed; the slice adds only failure-path response wrapping and tests.
+- Validation passed: focused dispensing-stats/protected GET Vitest `2` files / `203` tests; focused ESLint; focused Prettier check; scoped diff whitespace check.
+- Next action: run final scoped ledger checks, commit the dispensing-stats API/test slice, commit the progress-ledger slice separately, send agmsg FYI, then continue backend-first hardening. The broader objective remains incomplete.
+
 ### 2026-06-26 JST - Admin Jobs Failure Worklist First
 
 - Refined `/admin/jobs` after route-mocked browser proof showed the generic admin intro above the job monitor, failure rows near the fold bottom, filters before the table, and desktop job actions/details measuring `28px-32px`.

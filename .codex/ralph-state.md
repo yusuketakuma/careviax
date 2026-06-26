@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260626-2100 JST
+
+- current task: backend-first no-store 500 hardening for `GET /api/dashboard/dispensing-stats`.
+- files inspected: `git status --short --branch --untracked-files=all`, `src/app/api/dashboard/clerk-support/route.ts`, `src/app/api/dashboard/clerk-support/route.test.ts`, `src/app/api/dashboard/dispensing-stats/route.ts`, `src/app/api/dashboard/dispensing-stats/route.test.ts`, `src/app/api/dashboard/overdue/route.ts`, `src/app/api/dashboard/overdue/route.test.ts`, `src/app/api/dashboard/monthly-stats/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/lib/auth/context.ts`, route-catalog/rate-limit references discovered with `rg`, and gbrain code graph probes for `src/app/api/dashboard/dispensing-stats/route::GET` / `authenticatedGET`.
+- files changed: `src/app/api/dashboard/dispensing-stats/route.ts`, `src/app/api/dashboard/dispensing-stats/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `GET /api/dashboard/dispensing-stats` used the standard auth wrapper's fixed 500 envelope on unexpected metric-read failures, but the exported route did not wrap that failure response with sensitive no-store headers.
+- security risks found: reduced cacheability risk for dashboard metric failure responses by ensuring unexpected 500 responses carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`. No auth, authorization, dashboard permission, org filters, success payload shape, schema, migrations, DB writes, external sends, PHI projection, or frontend UI behavior changed.
+- performance issues found: none materially changed. The slice adds only failure-path response wrapping and tests; no new normal-path queries, dependencies, polling, or computation were introduced.
+- validation commands: `pnpm vitest run src/app/api/dashboard/dispensing-stats/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts`; `pnpm exec prettier --check src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts`; `git diff --check -- src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts`.
+- validation results: focused dispensing-stats/protected GET Vitest passed `2` files / `203` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. The failure-path test confirmed the response body omits the raw exception string; the shared auth wrapper still logs unexpected errors according to existing route-handler policy.
+- remaining work: run final scoped formatting/diff checks including progress ledgers, stage only the dispensing-stats route/test for the implementation commit, then stage only progress ledgers for the ledger commit, send agmsg FYI, and continue backend-first hardening. The broader objective remains incomplete.
+- next action: final scoped checks, grouped commits, agmsg FYI.
+
 ### 20260626-2058 JST
 
 - current task: backend-first Data Explorer query contract hardening for `GET /api/admin/data-explorer/:table`.
