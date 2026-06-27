@@ -1,7 +1,9 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { error, notFound, validationError } from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { recordDataExportAudit } from '@/server/services/export-audit';
@@ -14,11 +16,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     permission: 'canReport',
     message: 'カンファレンス記録 PDF の閲覧権限がありません',
   });
-  if ('response' in authResult) return authResult.response;
+  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
 
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('カンファレンス記録IDが不正です');
+  if (!id) return withSensitiveNoStore(validationError('カンファレンス記録IDが不正です'));
 
   try {
     const rendered = await buildConferenceNotePdf(authResult.ctx.orgId, id, {
@@ -35,16 +37,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ipAddress: authResult.ctx.ipAddress,
       userAgent: authResult.ctx.userAgent,
     });
-    return pdfResponse(rendered.buffer, rendered.fileName);
+    return withSensitiveNoStore(pdfResponse(rendered.buffer, rendered.fileName));
   } catch (cause) {
+    unstable_rethrow(cause);
     if (cause instanceof Error && cause.message.includes('見つかりません')) {
-      return notFound(cause.message);
+      return withSensitiveNoStore(notFound(cause.message));
     }
 
-    return error(
-      'EXTERNAL_PDF_RENDER_FAILED',
-      'カンファレンス記録 PDF を生成できませんでした',
-      500,
+    return withSensitiveNoStore(
+      error('EXTERNAL_PDF_RENDER_FAILED', 'カンファレンス記録 PDF を生成できませんでした', 500),
     );
   }
 }

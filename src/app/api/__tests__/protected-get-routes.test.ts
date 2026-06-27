@@ -9,6 +9,10 @@ const {
   patientVisitBriefMock,
   scheduleVisitBriefMock,
   buildBillingDocumentPdfMock,
+  buildCareReportPdfMock,
+  buildConferenceNotePdfMock,
+  buildMedicationCalendarPdfMock,
+  buildMedicationHistoryPdfMock,
   buildPatientVisitRecordsPdfMock,
   buildVisitRecordPdfMock,
   buildPharmacyInvoiceDocumentPdfMock,
@@ -92,6 +96,10 @@ const {
     patientVisitBriefMock: vi.fn(),
     scheduleVisitBriefMock: vi.fn(),
     buildBillingDocumentPdfMock: vi.fn(),
+    buildCareReportPdfMock: vi.fn(),
+    buildConferenceNotePdfMock: vi.fn(),
+    buildMedicationCalendarPdfMock: vi.fn(),
+    buildMedicationHistoryPdfMock: vi.fn(),
     buildPatientVisitRecordsPdfMock: vi.fn(),
     buildVisitRecordPdfMock: vi.fn(),
     buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
@@ -139,6 +147,10 @@ vi.mock('@/server/services/home-care-ops', async (importOriginal) => {
 
 vi.mock('@/server/services/pdf-documents', () => ({
   buildBillingDocumentPdf: buildBillingDocumentPdfMock,
+  buildCareReportPdf: buildCareReportPdfMock,
+  buildConferenceNotePdf: buildConferenceNotePdfMock,
+  buildMedicationCalendarPdf: buildMedicationCalendarPdfMock,
+  buildMedicationHistoryPdf: buildMedicationHistoryPdfMock,
   buildPatientVisitRecordsPdf: buildPatientVisitRecordsPdfMock,
   buildVisitRecordPdf: buildVisitRecordPdfMock,
 }));
@@ -167,6 +179,7 @@ import { GET as billingCandidatesExportGet } from '../billing-candidates/export/
 import { GET as businessHolidaysGet } from '../business-holidays/route';
 import { GET as careReportsGet } from '../care-reports/route';
 import { GET as careReportGet } from '../care-reports/[id]/route';
+import { GET as careReportPdfGet } from '../care-reports/[id]/pdf/route';
 import { GET as careReportsAnalyticsGet } from '../care-reports/analytics/route';
 import { GET as careReportsTodayWorkspaceGet } from '../care-reports/today-workspace/route';
 import { GET as casesGet } from '../cases/route';
@@ -180,6 +193,7 @@ import { GET as commentsGet } from '../comments/route';
 import { GET as commentsRecentGet } from '../comments/recent/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
 import { GET as conferenceNoteGet } from '../conference-notes/[id]/route';
+import { GET as conferenceNotePdfGet } from '../conference-notes/[id]/pdf/route';
 import { GET as consentRecordsGet } from '../consent-records/route';
 import { GET as consentRecordGet } from '../consent-records/[id]/route';
 import { GET as contactProfilesGet } from '../contact-profiles/route';
@@ -218,6 +232,8 @@ import { GET as patientsBoardGet } from '../patients/board/route';
 import { GET as patientCheckDuplicateGet } from '../patients/check-duplicate/route';
 import { GET as patientGet } from '../patients/[id]/route';
 import { GET as patientHeaderSummaryGet } from '../patients/[id]/header-summary/route';
+import { GET as patientMedicationCalendarPdfGet } from '../patients/[id]/medication-calendar/pdf/route';
+import { GET as patientMedicationsPdfGet } from '../patients/[id]/medications/pdf/route';
 import { GET as patientOverviewGet } from '../patients/[id]/overview/route';
 import { GET as patientPrescriptionsGet } from '../patients/[id]/prescriptions/route';
 import { GET as patientShareCaseCorrectionRequestsGet } from '../patient-share-cases/[id]/correction-requests/route';
@@ -421,6 +437,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'care-reports/[id]/pdf GET',
+    handler: () =>
+      careReportPdfGet(
+        createRequest('http://localhost/api/care-reports/report_1/pdf', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'report_1' }) },
+      ),
+  },
+  {
     name: 'care-reports/analytics GET',
     handler: () =>
       careReportsAnalyticsGet(
@@ -569,6 +593,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       conferenceNoteGet(
         createRequest('http://localhost/api/conference-notes/note_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'note_1' }) },
+      ),
+  },
+  {
+    name: 'conference-notes/[id]/pdf GET',
+    handler: () =>
+      conferenceNotePdfGet(
+        createRequest('http://localhost/api/conference-notes/note_1/pdf', {
+          'x-org-id': 'org_1',
+        }),
         { params: Promise.resolve({ id: 'note_1' }) },
       ),
   },
@@ -1045,6 +1079,27 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       patientHeaderSummaryGet(
         createRequest('http://localhost/api/patients/patient_1/header-summary', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
+    name: 'patients/[id]/medication-calendar/pdf GET',
+    handler: () =>
+      patientMedicationCalendarPdfGet(
+        createRequest(
+          'http://localhost/api/patients/patient_1/medication-calendar/pdf?month=2026-03',
+          { 'x-org-id': 'org_1' },
+        ),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
+    name: 'patients/[id]/medications/pdf GET',
+    handler: () =>
+      patientMedicationsPdfGet(
+        createRequest('http://localhost/api/patients/patient_1/medications/pdf', {
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'patient_1' }) },
@@ -1623,6 +1678,23 @@ describe('protected GET routes auth matrix', () => {
       buffer: Buffer.from('%PDF-billing-receipt'),
       fileName: 'billing-receipt.pdf',
     });
+    buildCareReportPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-care-report'),
+      fileName: 'care-report.pdf',
+      reportUpdatedAt: new Date('2026-06-12T09:00:00.000Z'),
+    });
+    buildConferenceNotePdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-conference-note'),
+      fileName: 'conference-note.pdf',
+    });
+    buildMedicationCalendarPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-medication-calendar'),
+      fileName: 'medication-calendar.pdf',
+    });
+    buildMedicationHistoryPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-medication-history'),
+      fileName: 'medications.pdf',
+    });
     buildPharmacyInvoiceDocumentPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-pharmacy-invoice'),
       fileName: 'pharmacy-invoice.pdf',
@@ -1690,6 +1762,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'patients/[id]/medication-calendar/pdf GET' ||
+        route.name === 'patients/[id]/medications/pdf GET' ||
         route.name === 'communication-events GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
@@ -1698,6 +1772,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'comments/recent GET' ||
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
+        route.name === 'conference-notes/[id]/pdf GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
@@ -1722,6 +1797,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'first-visit-documents GET' ||
         route.name === 'incident-reports GET' ||
         route.name === 'care-reports/[id] GET' ||
+        route.name === 'care-reports/[id]/pdf GET' ||
         route.name === 'care-reports/analytics GET' ||
         route.name === 'care-reports/today-workspace GET' ||
         route.name === 'cases GET' ||
@@ -1804,6 +1880,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'patients/[id]/medication-calendar/pdf GET' ||
+        route.name === 'patients/[id]/medications/pdf GET' ||
         route.name === 'communication-events GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
@@ -1812,6 +1890,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'comments/recent GET' ||
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
+        route.name === 'conference-notes/[id]/pdf GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
@@ -1836,6 +1915,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'first-visit-documents GET' ||
         route.name === 'incident-reports GET' ||
         route.name === 'care-reports/[id] GET' ||
+        route.name === 'care-reports/[id]/pdf GET' ||
         route.name === 'care-reports/analytics GET' ||
         route.name === 'care-reports/today-workspace GET' ||
         route.name === 'cases GET' ||
@@ -1902,6 +1982,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'patients/[id]/medication-calendar/pdf GET' ||
+        route.name === 'patients/[id]/medications/pdf GET' ||
         route.name === 'communication-events GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
@@ -1910,6 +1992,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'comments/recent GET' ||
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
+        route.name === 'conference-notes/[id]/pdf GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
@@ -1918,6 +2001,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'medication-issues GET' ||
         route.name === 'medication-profiles GET' ||
         route.name === 'incident-reports GET' ||
+        route.name === 'care-reports/[id]/pdf GET' ||
         route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||
         route.name === 'dispense-workbench/patients GET' ||

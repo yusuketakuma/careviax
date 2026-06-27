@@ -41,6 +41,11 @@ function createRequest() {
   return new NextRequest('http://localhost/api/conference-notes/note_1/pdf');
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/conference-notes/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,6 +76,7 @@ describe('/api/conference-notes/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(buildConferenceNotePdfMock).toHaveBeenCalledWith('org_1', 'note_1', {
       userId: 'user_1',
       role: 'pharmacist',
@@ -88,6 +94,7 @@ describe('/api/conference-notes/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'カンファレンス記録IDが不正です',
     });
@@ -104,6 +111,42 @@ describe('/api/conference-notes/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('adds no-store headers to auth rejection responses', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 }),
+    });
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'note_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(buildConferenceNotePdfMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking raw render failures', async () => {
+    buildConferenceNotePdfMock.mockRejectedValue(
+      new Error('note_1 raw conference patient render failure'),
+    );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'note_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('EXTERNAL_PDF_RENDER_FAILED');
+    expect(body).toContain('カンファレンス記録 PDF を生成できませんでした');
+    expect(body).not.toContain('note_1 raw conference patient render failure');
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });

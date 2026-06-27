@@ -41,6 +41,11 @@ function createRequest() {
   return new NextRequest('http://localhost/api/care-reports/report_1/pdf');
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/care-reports/[id]/pdf', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,6 +68,7 @@ describe('/api/care-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(buildCareReportPdfMock).toHaveBeenCalledWith('org_1', 'report_1', {
       userId: 'user_1',
       role: 'pharmacist',
@@ -94,6 +100,7 @@ describe('/api/care-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
       permission: 'canSendCareReport',
       message: '報告書 PDF の出力権限がありません',
@@ -109,6 +116,7 @@ describe('/api/care-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '報告書IDが不正です',
@@ -126,6 +134,7 @@ describe('/api/care-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
@@ -138,6 +147,7 @@ describe('/api/care-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '薬剤師確認済みの報告書のみPDF出力できます',
@@ -156,6 +166,7 @@ describe('/api/care-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
     const body = await response.json();
     expect(body).toMatchObject({
       code: 'EXTERNAL_PDF_RENDER_FAILED',
@@ -180,6 +191,7 @@ describe('/api/care-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'CARE_REPORT_PDF_EXPORT_AUDIT_FAILED',
       message: '報告書 PDF 出力監査を記録できませんでした',
