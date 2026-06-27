@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientReadinessCard } from './patient-readiness-card';
 
 setupDomTestEnv();
@@ -17,6 +18,11 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 vi.mock('next/link', () => ({
   default: ({
@@ -99,6 +105,44 @@ describe('PatientReadinessCard', () => {
       expect(url).not.toContain('#z');
       expect(url).not.toContain('%25');
       expect((init.headers as Record<string, string>)['x-org-id']).toBe('org_1');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('routes readiness fetches through the shared patient API path helper', async () => {
+    const patientId = 'patient_1';
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce(
+      '/api/patients/__helper_patient_1__/readiness',
+    );
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured = config;
+        return { data: undefined, isLoading: true, error: null };
+      },
+    );
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientReadinessCard patientId={patientId} />);
+
+      await captured?.queryFn();
+
+      expect(buildPatientApiPath).toHaveBeenCalledWith(patientId, '/readiness');
+      expect(fetchMock).toHaveBeenCalledWith('/api/patients/__helper_patient_1__/readiness', {
+        headers: { 'x-org-id': 'org_1' },
+      });
+      expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}/readiness`, {
+        headers: { 'x-org-id': 'org_1' },
+      });
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

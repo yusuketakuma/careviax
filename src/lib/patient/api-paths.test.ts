@@ -22,6 +22,7 @@ describe('buildPatientApiPath', () => {
       '/documents',
       '/labs',
       '/prescriptions',
+      '/readiness',
       '/mcs',
       '/mcs-sync',
       '/mcs/logs',
