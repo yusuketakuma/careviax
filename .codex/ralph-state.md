@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0735 JST
+
+- current task: patient edit success redirect and back navigation href helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, Next client/server component docs under `node_modules/next/dist/docs/01-app/01-getting-started/`, raw patient href scans, `src/lib/patient/navigation.ts`, `src/lib/patient/navigation.test.ts`, `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx`, `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx`, `src/app/(dashboard)/patients/[id]/edit/page.tsx`, and `src/app/(dashboard)/patients/[id]/edit/page.test.tsx`.
+- files changed: `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx`, `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx`, `src/app/(dashboard)/patients/[id]/edit/page.tsx`, `src/app/(dashboard)/patients/[id]/edit/page.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: patient edit success redirect and page back navigation still interpolated raw patient ids into `/patients/${id}` hrefs. The normal opaque-id route was unchanged, but hostile ids could shape navigation URLs differently from the guarded patient navigation helper.
+- security risks found: reduced patient navigation route-confusion risk by routing edit success `redirectTo` and edit page `backHref` through shared `buildPatientHref`. Added tests proving both call sites consume the helper return value instead of raw interpolation. Existing overview API helper hardening, query key semantics, edit default mapping, shortcut generation, UI labels, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure href-construction helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/page.tsx' 'src/app/(dashboard)/patients/[id]/edit/page.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/page.test.tsx' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped diff whitespace check for changed implementation/test files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
+- validation results: Prettier write passed. Focused patient edit content/page + patient navigation Vitest passed `4` files / `13` tests. Scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
+- remaining work: state commit is pending for implementation commit `e1035aa3`, then send Claude a `PATCH_REVIEW_REQUEST`. Claude's conditions helper convergence review remains pending. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0727 JST
 
 - current task: patient edit overview GET API path helper convergence and raw patient id URL hardening.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing overview fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' src/lib/patient/api-paths.test.ts`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped diff whitespace check for changed implementation/test files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
 - validation results: Prettier write passed. Focused patient edit content + patient API path + path-segment Vitest passed `4` files / `20` tests. Scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
-- remaining work: state commit is pending for implementation commit `a2530969`, then send Claude a `PATCH_REVIEW_REQUEST`. Claude's conditions helper convergence review remains pending. Non-blocking follow-up: edit-page navigation hrefs still interpolate raw patient ids and should be considered in a separate UI/navigation helper slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+- remaining work: implementation commit `a2530969` and state commit `d8a31e4b` are complete; Claude approved the slice. The edit-page navigation href follow-up was handled in the subsequent slice. Claude's conditions helper convergence review remains pending. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: monitor agmsg for Claude's conditions review result while continuing non-overlapping backend/API hardening.
 
 ### 20260628-0716 JST
 

@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Edit Navigation Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger/commit phase.
+  - ACKed Claude's approval of patient edit overview API path hardening before continuing this adjacent navigation href slice.
+  - Used medical safety and privacy read-only reviewers because the surface controls patient edit success redirects and back navigation.
+- Hardened/converged patient edit navigation route construction:
+  - Routed `PatientForm` edit-success `redirectTo` through shared `buildPatientHref(patientId)`.
+  - Routed patient edit page `WorkflowPageIntro.backHref` through shared `buildPatientHref(id)`.
+  - Added tests proving both call sites consume the shared patient href helper return value instead of raw `/patients/${id}` interpolation.
+  - Preserved raw patient id prop/query-key semantics, overview API helper hardening, edit default mapping, shortcut generation, route params, UI labels, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: edit success/back navigation no longer interpolates raw patient ids directly into patient detail hrefs; hostile ids now flow through the same encoded/fail-closed navigation helper used by adjacent patient links.
+- Performance issue improved: none. This is a pure href-construction helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/page.tsx' 'src/app/(dashboard)/patients/[id]/edit/page.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' 'src/app/(dashboard)/patients/[id]/edit/page.test.tsx' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `13` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `e1035aa3` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Edit Overview API Path Helper Convergence
 
 - Coordination:
@@ -48,8 +74,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
 - Non-blocking follow-up noted by reviewer: adjacent edit-page navigation URLs still interpolate raw patient ids in UI hrefs (`redirectTo` / page `backHref`). This slice only hardens the overview GET API path; navigation hrefs should be handled as a separate UI/navigation helper slice.
-- Commit status: implementation commit `a2530969` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `a2530969` and state commit `d8a31e4b` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient Visit Constraints API Path Helper Convergence
 
