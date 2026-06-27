@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { buildDocumentDeliveryRuleApiPath } from '@/lib/document-templates/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type DeliveryChannel = 'email' | 'fax' | 'mcs';
@@ -118,7 +119,7 @@ export function DocumentDeliveryRuleManager() {
     mutationFn: async () => {
       const fallbackChannels = normalizeFallbackChannels(form.fallbackChannelsText, form.channel);
       const res = await fetch(
-        form.id ? `/api/document-delivery-rules/${form.id}` : '/api/document-delivery-rules',
+        form.id ? buildDocumentDeliveryRuleApiPath(form.id) : '/api/document-delivery-rules',
         {
           method: form.id ? 'PATCH' : 'POST',
           headers: {
@@ -151,7 +152,7 @@ export function DocumentDeliveryRuleManager() {
 
   const deleteMutation = useMutation({
     mutationFn: async (ruleId: string) => {
-      const res = await fetch(`/api/document-delivery-rules/${ruleId}`, {
+      const res = await fetch(buildDocumentDeliveryRuleApiPath(ruleId), {
         method: 'DELETE',
         headers: { 'x-org-id': orgId },
       });

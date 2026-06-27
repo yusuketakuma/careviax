@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { buildDocumentTemplateApiPath } from '@/lib/document-templates/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 
@@ -84,7 +85,7 @@ export function TemplateBodyEditor({ templates }: { templates: TemplateBodyEdito
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!selected) throw new Error('テンプレートを選択してください');
-      const res = await fetch(`/api/templates/${selected.id}`, {
+      const res = await fetch(buildDocumentTemplateApiPath(selected.id), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ content: { ...selected.content, body_text: bodyText } }),

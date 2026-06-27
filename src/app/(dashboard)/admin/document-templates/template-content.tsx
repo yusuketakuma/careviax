@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
+import { buildDocumentTemplateApiPath } from '@/lib/document-templates/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 import { PageScaffold } from '@/components/layout/page-scaffold';
@@ -172,7 +173,9 @@ export function DocumentTemplateContent() {
         is_default: form.isDefault,
         content: parsedContent,
       };
-      const url = editingTemplateId ? `/api/templates/${editingTemplateId}` : '/api/templates';
+      const url = editingTemplateId
+        ? buildDocumentTemplateApiPath(editingTemplateId)
+        : '/api/templates';
       const method = editingTemplateId ? 'PATCH' : 'POST';
 
       const res = await fetch(url, {
@@ -203,7 +206,7 @@ export function DocumentTemplateContent() {
 
   const deleteMutation = useMutation({
     mutationFn: async (templateId: string) => {
-      const res = await fetch(`/api/templates/${templateId}`, {
+      const res = await fetch(buildDocumentTemplateApiPath(templateId), {
         method: 'DELETE',
         headers: { 'x-org-id': orgId },
       });

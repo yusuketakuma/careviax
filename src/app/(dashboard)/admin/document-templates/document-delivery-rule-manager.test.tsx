@@ -120,6 +120,89 @@ describe('DocumentDeliveryRuleManager', () => {
     });
   });
 
+  it('single-encodes delivery-rule update/delete paths and preserves payloads', async () => {
+    const hostileId = 'rule/1?x=y#frag';
+    const encodedId = encodeURIComponent(hostileId);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/api/document-delivery-rules' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: hostileId,
+                  document_type: 'care_report',
+                  target_role: 'physician',
+                  channel: 'fax',
+                  fallback_channels: ['mcs'],
+                  is_active: true,
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (url === `/api/document-delivery-rules/${encodedId}` && init?.method) {
+          return new Response(JSON.stringify({ data: { id: hostileId } }), { status: 200 });
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderManager();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '報告書 / 医師 / FAX の送達ルールを編集',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '更新する' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '報告書 / 医師 / FAX の送達ルールを削除',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(
+        vi
+          .mocked(global.fetch)
+          .mock.calls.filter(
+            ([url]) => String(url) === `/api/document-delivery-rules/${encodedId}`,
+          ),
+      ).toHaveLength(2);
+    });
+
+    const mutationCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter(
+        ([url]) => String(url) === `/api/document-delivery-rules/${encodedId}`,
+      ) as Array<[string, RequestInit]>;
+    expect(mutationCalls.map(([, init]) => init.method)).toEqual(['PATCH', 'DELETE']);
+    expect(mutationCalls[0][1].headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(JSON.parse(String(mutationCalls[0][1].body))).toEqual({
+      document_type: 'care_report',
+      target_role: 'physician',
+      channel: 'fax',
+      fallback_channels: ['mcs'],
+      is_active: true,
+    });
+    expect(mutationCalls[1][1].headers).toEqual({ 'x-org-id': 'org_1' });
+    for (const [url, init] of mutationCalls) {
+      expect(url).not.toContain('%25');
+      expect(String(init.body ?? '')).not.toContain(hostileId);
+    }
+  });
+
   it('names the edit action and loads the selected delivery rule into the form', async () => {
     renderManager();
 

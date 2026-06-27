@@ -141,6 +141,86 @@ describe('DocumentTemplateContent', () => {
     });
   });
 
+  it('single-encodes template update paths and preserves payloads', async () => {
+    const hostileId = 'template/1?x=y#frag';
+    const encodedId = encodeURIComponent(hostileId);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/api/templates' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: hostileId,
+                  name: '主治医報告 基本',
+                  template_type: 'care_report',
+                  target_role: 'physician',
+                  format: 'html',
+                  version: 2,
+                  effective_from: null,
+                  effective_to: null,
+                  content: { sections: ['summary'] },
+                  is_default: true,
+                  created_at: '2026-06-19T10:00:00.000Z',
+                  updated_at: '2026-06-19T10:30:00.000Z',
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (url === `/api/templates/${encodedId}` && init?.method) {
+          return new Response(JSON.stringify({ data: { id: hostileId } }), { status: 200 });
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+
+    const [editButton] = await screen.findAllByRole('button', {
+      name: '主治医報告 基本 を編集',
+    });
+    fireEvent.click(editButton);
+    fireEvent.click(screen.getByRole('button', { name: '更新する' }));
+
+    await waitFor(() => {
+      expect(
+        vi
+          .mocked(global.fetch)
+          .mock.calls.filter(([url]) => String(url) === `/api/templates/${encodedId}`),
+      ).toHaveLength(1);
+    });
+
+    const mutationCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter(([url]) => String(url) === `/api/templates/${encodedId}`) as Array<
+      [string, RequestInit]
+    >;
+    expect(mutationCalls.map(([, init]) => init.method)).toEqual(['PATCH']);
+    expect(mutationCalls[0][1].headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(JSON.parse(String(mutationCalls[0][1].body))).toMatchObject({
+      name: '主治医報告 基本',
+      template_type: 'care_report',
+      target_role: 'physician',
+      format: 'html',
+      version: 2,
+      is_default: true,
+    });
+    for (const [url, init] of mutationCalls) {
+      expect(url).not.toContain('%25');
+      expect(String(init.body ?? '')).not.toContain(hostileId);
+    }
+  });
+
   it('shows ErrorState (not a false-empty list) with retry when the templates query fails', async () => {
     let templatesCalls = 0;
     vi.stubGlobal(
