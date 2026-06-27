@@ -361,7 +361,11 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
                     scope="col"
                     aria-label={medicationCalendarColumnLabel(i)}
                     className={`border border-border px-1 py-1 text-center font-medium ${
-                      i === 0 ? 'text-red-600' : i === 6 ? 'text-blue-600' : 'text-muted-foreground'
+                      i === 0
+                        ? 'text-weekend-sun'
+                        : i === 6
+                          ? 'text-weekend-sat'
+                          : 'text-muted-foreground'
                     }`}
                   >
                     {d}
@@ -392,7 +396,11 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
                       >
                         <div
                           className={`mb-1 text-right text-xs font-medium ${
-                            isSun ? 'text-red-600' : isSat ? 'text-blue-600' : 'text-foreground'
+                            isSun
+                              ? 'text-weekend-sun'
+                              : isSat
+                                ? 'text-weekend-sat'
+                                : 'text-foreground'
                           }`}
                         >
                           <time dateTime={day.date}>
