@@ -73,6 +73,16 @@
 - 服薬時間帯（朝昼夕眠前）: 代替案 `--chart-*` か `--time-slot-*`。※調剤台 workbench は別系統 `--wb-*` 既存なので統一可否も検討
 - 調剤方法（一包化/粉砕）: **状態 or 識別の判定が必要**（粉砕=注意喚起なら `tag-hazard`、純カテゴリなら識別トークン）
 
+#### Phase 2 grounding 結果（2026-06-27・対象8ファイル再 read、Codex 確定待ち）
+
+実使用を行番号付きで列挙した結果、§8 の family リストは不完全と判明。確定/新規/要判定を分離（DESIGN_CONSULT 送信済）:
+
+- **確定 family（実使用一致・要 oklch+AA）**: `--route-internal/external/injection`(3, ROUTE_CONFIG)、`--intervention-*`(6 semantic, INTERVENTION_TYPE_COLORS, 1対1)、`--role-patient/clerk/institution`(3, action-rail BLOCKED_CATEGORY_TONES)、`--time-slot-morning/noon/evening/bedtime`(4, SLOT_COLORS。朝昼夕眠前=4で確定)。
+- **新 family（§8 に無い・要判定）**: `--method-standard/unit-dose/crushed`(3, METHOD_CONFIG。履歴の記述カテゴリ=識別と解釈、粉砕の hazard 化是非を確認)、`--drug-classification-narcotic/psychotropic/high-risk/lasa`(4, Drug Master インライン。一覧で4分類区別が要るため独立 family 案。麻薬を safety-board の tag-hazard と揃えるか確認)。
+- **コード現実との矛盾**: SOAP は既に `text-chart-1/2/5/3` 使用中（§8 の「専用 --soap-_ 新設・chart流用禁止」と矛盾）。新設 vs 据置を確認（推奨: §8 通り --soap-_ 新設）。
+- **識別でない/装飾（トークン化しない案）**: `select-mode` の work-mode 見出し色（薬剤師/事務/管理 3）は専用 `--work-mode-*` 小族 or 中立化、care-team panel emerald・shared-viewer section アイコン（emerald/sky/indigo/rose）は純装飾 → 中立化（新トークン不要）。
+- **既に移行済（対象外）**: prescription-history の CHANGE_BADGES は state トークン(tag-info/state-blocked/state-confirm)化済。
+
 ### Phase 3 — 識別トークンの展開（挙動不変置換）
 
 Phase 2 で確定したトークンで各ファイルの生 Tailwind を置換:
