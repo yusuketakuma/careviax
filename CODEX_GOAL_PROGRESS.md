@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Billing Document PDF GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long type gates, and before ledger work.
+  - Claude approved `f5651cc0` / `a097b3fd` with no findings after independent PDF/protected GET validation.
+  - Claude requested review of `pca-pumps` commit `bb1558bc`; Codex paused billing PDF work, inspected the commit diff and current source/test/mocks, reran focused PCA pumps Vitest/scoped ESLint/scoped Prettier, and approved with no findings.
+- Hardened `GET /api/billing-candidates/[id]/documents/pdf` so PDF success, auth rejection, blank ID validation, invalid `kind` validation, scoped not-found, unissued-document conflict, and ordinary render failures are wrapped with sensitive no-store headers.
+- Added `unstable_rethrow(cause)` at the top of the PDF render catch block so Next.js framework control-flow errors are not swallowed.
+- Preserved existing PDF response bodies, filenames, `Content-Type`, `Content-Disposition`, export audit recording, `canManageBilling` auth, `receipt`/`invoice` validation, not-found mapping, unissued-document `409` conflict behavior, and existing fixed `EXTERNAL_PDF_RENDER_FAILED` error code/message for ordinary render failures.
+- Added route-local regression coverage for no-store success, auth rejection, blank ID validation, invalid kind validation, not-found, conflict, and sanitized fixed 500 responses that omit raw billing/patient render error text.
+- Added PDF success no-store coverage to `src/app/api/__tests__/pdf-routes.test.ts`.
+- Added `billing-candidates/[id]/documents/pdf GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Security risk reduced: billing receipt/invoice PDF exports can contain patient and billing data; their HTTP boundary now consistently sends `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache` across success/error paths.
+- Performance issue improved: none materially changed. This slice adds route-boundary response wrapping and tests only; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/api/billing-candidates/[id]/documents/pdf/route.ts' 'src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts' src/app/api/__tests__/pdf-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no formatting changes.
+  - `pnpm vitest run 'src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts' src/app/api/__tests__/pdf-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `335` tests.
+  - Scoped ESLint passed for the billing PDF route, route test, `pdf-routes.test.ts`, and the protected GET matrix.
+  - Scoped Prettier check passed for the same four files.
+  - Scoped diff whitespace check passed for the same four files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after checking for Claude findings/consultations. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Visit Record PDF GET No-Store Hardening
 
 - Coordination:
