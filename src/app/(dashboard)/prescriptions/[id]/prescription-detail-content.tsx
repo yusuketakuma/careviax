@@ -18,8 +18,8 @@ import {
 import Link from 'next/link';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -156,7 +156,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['prescription-intake-detail', orgId, intakeId],
     queryFn: async () => {
-      const res = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
+      const res = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('処方受付の取得に失敗しました');

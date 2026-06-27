@@ -65,6 +65,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { cn } from '@/lib/utils';
 import { CASE_STATUS_LABELS } from '@/lib/constants/status-labels';
@@ -3866,7 +3867,7 @@ export function CardWorkspace({
 
   const markFaxOriginalCollectedMutation = useMutation({
     mutationFn: async (intakeId: string) => {
-      const response = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
+      const response = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
@@ -3896,16 +3897,13 @@ export function CardWorkspace({
       if (!input.documentUrl) {
         throw new Error('処方せん画像/PDF URLを入力してください');
       }
-      const response = await fetch(
-        `/api/prescription-intakes/${encodePathSegment(input.intakeId)}`,
-        {
-          method: 'PATCH',
-          headers: buildOrgJsonHeaders(orgId),
-          body: JSON.stringify({
-            original_document_url: input.documentUrl,
-          }),
-        },
-      );
+      const response = await fetch(buildPrescriptionIntakeApiPath(input.intakeId), {
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({
+          original_document_url: input.documentUrl,
+        }),
+      });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.message ?? '処方せん画像/PDFの保存に失敗しました');
@@ -3976,25 +3974,22 @@ export function CardWorkspace({
 
   const recordPrescriptionOriginalManagementMutation = useMutation({
     mutationFn: async (input: PrescriptionOriginalManagementFormInput) => {
-      const response = await fetch(
-        `/api/prescription-intakes/${encodePathSegment(input.intakeId)}`,
-        {
-          method: 'PATCH',
-          headers: buildOrgJsonHeaders(orgId),
-          body: JSON.stringify({
-            original_collected_at: input.originalCollectedAt,
-            original_management: {
-              reconciliation_result: input.reconciliationResult,
-              discrepancy_note: input.discrepancyNote,
-              storage_location: input.storageLocation,
-              e_prescription_exchange_number: input.ePrescriptionExchangeNumber,
-              e_prescription_acquired_status: input.ePrescriptionAcquiredStatus,
-              dispensing_result_registration: input.dispensingResultRegistration,
-              note: input.note,
-            },
-          }),
-        },
-      );
+      const response = await fetch(buildPrescriptionIntakeApiPath(input.intakeId), {
+        method: 'PATCH',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({
+          original_collected_at: input.originalCollectedAt,
+          original_management: {
+            reconciliation_result: input.reconciliationResult,
+            discrepancy_note: input.discrepancyNote,
+            storage_location: input.storageLocation,
+            e_prescription_exchange_number: input.ePrescriptionExchangeNumber,
+            e_prescription_acquired_status: input.ePrescriptionAcquiredStatus,
+            dispensing_result_registration: input.dispensingResultRegistration,
+            note: input.note,
+          },
+        }),
+      });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.message ?? '処方せん原本管理の保存に失敗しました');

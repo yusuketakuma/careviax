@@ -44,6 +44,7 @@ import { formatDateKey } from '@/lib/date-key';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import { Loading } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
@@ -1241,7 +1242,7 @@ export function PrescriptionHistoryContent() {
 
   const markOriginalCollectedMutation = useMutation({
     mutationFn: async (intakeId: string) => {
-      const response = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
+      const response = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({

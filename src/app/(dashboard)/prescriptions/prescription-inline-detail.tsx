@@ -10,8 +10,8 @@ import { Button } from '@/components/ui/button';
 import { PatientHistoryQuickLinks } from '@/components/features/patients/patient-history-quick-links';
 import { PatientHistorySummary } from '@/components/features/patients/patient-history-summary';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { cn } from '@/lib/utils';
@@ -117,7 +117,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['prescription-intake-detail', orgId, intakeId],
     queryFn: async () => {
-      const res = await fetch(`/api/prescription-intakes/${encodePathSegment(intakeId)}`, {
+      const res = await fetch(buildPrescriptionIntakeApiPath(intakeId), {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('取得失敗');
