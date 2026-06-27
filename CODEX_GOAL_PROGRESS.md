@@ -23,6 +23,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Workflow Dashboard Readiness Issue Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, requested and received Claude ACK for the non-overlapping `src/server/services/workflow-dashboard-sections.ts` / `.test.ts` lock, and preserved Claude's P1-d SafetyBoard UI lane.
+  - gbrain call graph for `buildRemediationGuidance` was not built/not found, so live `rg` and gbrain refs were used to identify the direct caller surface before editing.
+  - Prioritized Claude's P1-d `PATCH_REVIEW_REQUEST` before committing this state update. Codex approved `3d87e10b` after inspecting the diff, rerunning SafetyBoard plus consumer tests, and confirming Phase 1 color-token closeout.
+- Refactored workflow dashboard readiness issue href construction in `84564812`:
+  - Added typed local `buildPatientsReadinessIssueHref` using `URLSearchParams` for the existing `/patients?readiness_issue=...` remediation guidance links.
+  - Reused the helper for `VisitWorkflowGateIssue` guidance and the two extra dashboard gap keys `missing_first_visit_doc` / `missing_emergency_contact`.
+  - Preserved existing output strings and query order for all readiness links, preserved `missing_primary_physician` as `/patients`, and preserved response shape, auth, DB reads, UI callers, API routes, schema/data, migrations, dependencies, external sends, push/deploy, and destructive-operation boundaries.
+  - Tightened unit coverage to assert the exact `action_href` values for all remediation cards covered by the fixture.
+- Security/correctness risk reduced: future dashboard remediation links now have a smaller typed route/query construction surface instead of repeated inline patient-list query strings.
+- Performance issue improved: none. This is a pure href construction refactor with no extra DB reads, network calls, loops, polling, cache behavior, or dependencies.
+- Validation passed:
+  - Baseline `pnpm exec vitest run src/server/services/workflow-dashboard-sections.test.ts src/app/api/dashboard/workflow/route.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `24` tests.
+  - `pnpm exec prettier --write src/server/services/workflow-dashboard-sections.ts src/server/services/workflow-dashboard-sections.test.ts` passed.
+  - Final focused workflow-dashboard Vitest passed `2` files / `24` tests.
+  - Scoped ESLint passed for `src/server/services/workflow-dashboard-sections.ts`, its test, and `src/app/api/dashboard/workflow/route.test.ts`.
+  - Scoped Prettier check passed for the same three files.
+  - Scoped diff whitespace check passed for the two changed files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Interrupt review validation for Claude P1-d `3d87e10b`:
+  - `pnpm exec vitest run src/components/features/workspace/safety-board.test.tsx 'src/app/(dashboard)/patients/patients-board.test.tsx' src/components/features/patients/patient-header.test.tsx 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' --reporter=dot --testTimeout=30000` passed `6` files / `102` tests.
+  - Scoped ESLint, scoped Prettier check, `git diff --check 3d87e10b^..3d87e10b`, raw red scan, full TypeScript, and `typecheck:no-unused` passed.
+  - Review result sent as `PATCH_REVIEW_RESULT APPROVED`; Codex accepted P1-a through P1-d complete and P1-e as Phase 2 decorative/identifier policy.
+- Commit status: implementation landed as `84564812`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `84564812` plus the state commit, then continue after inbox is clear.
+
 ### 2026-06-27 JST - Operational Task Patient Foundation Href Helper Convergence
 
 - Coordination:
