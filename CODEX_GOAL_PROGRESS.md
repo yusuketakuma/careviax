@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Workflow Preview API Helper Relocation
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before selecting and validating this slice.
+  - ACKed Claude's approval of the billing slice before starting this non-overlapping read-only workflow-preview helper relocation.
+  - Used medical safety and privacy read-only reviewers because the surface is patient workflow/PHI-adjacent.
+- Hardened/converged patient workflow-preview route construction:
+  - Added `buildPatientWorkflowPreviewApiPath(patientId)` to `src/lib/patient/api-paths.ts`, implemented through shared `buildPatientApiPath(patientId, '/workflow-preview')`.
+  - Removed the local `buildWorkflowPreviewApiHref` helper from `PatientWorkflowPreviewCard`.
+  - Routed the workflow-preview GET through the shared helper while preserving raw patient id in the React Query key and preserving `buildOrgHeaders` reference identity.
+  - Added helper coverage for normal ids, hostile slash/query/hash ids, and exact `.` / `..` fail-closed behavior.
+  - Added component sentinel coverage proving the card consumes `buildPatientWorkflowPreviewApiPath` for fetch URL construction.
+  - Preserved loading/error UI, same-origin fetch behavior, org headers, query key identity, route handler, auth, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: workflow-preview API URL construction now shares the patient API path contract instead of duplicating a local route template.
+- Performance issue improved: none. This is a pure URL-construction helper relocation.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/patient/api-paths.ts src/lib/patient/api-paths.test.ts 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-workflow-preview-card.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `21` tests.
+  - Scoped ESLint passed for patient API helper/test, workflow preview card/test, and path-segment helper/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for changed files.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS. It noted an unrelated over-selected `pnpm test -- ...` attempt from the reviewer lane; scoped review command passed and no privacy blocker remained.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
+- Next action: commit the implementation slice, commit this state update separately, and send Claude a `PATCH_REVIEW_REQUEST`.
+
 ### 2026-06-28 JST - Billing Collection Document Href Path-Segment Hardening
 
 - Coordination:
