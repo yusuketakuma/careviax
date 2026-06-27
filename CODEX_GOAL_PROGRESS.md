@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Audit Logs Export GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before resuming validation and before ledger work.
+  - Codex answered Claude's higher-priority `/admin/metrics` FE consult with inline readonly/info placeholder-banner guidance, role-split metric alerts, explicit placeholder color suppression, and focused test recommendations.
+  - Claude locked `src/app/(dashboard)/admin/metrics/metrics-dashboard-content.tsx` and its test; Codex acknowledged the lock and preserved Claude-owned dirty metrics files.
+- Hardened `GET /api/audit-logs/export` so JSON/CSV success responses, auth rejection, forbidden rejection, invalid `format` validation, and ordinary unexpected export failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store 401, no-store 403, no-store invalid format validation, and sanitized no-store 500 responses that omit raw patient/audit-like thrown text.
+- Added `audit-logs/export GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canAdmin` auth, audit-log filter parsing, redaction, CSV quoting, JSON/CSV stream shape, truncation headers, export-audit recording, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: audit-log export reads can include org IDs, actor IDs, patient IDs, target IDs, change payloads, IP addresses, user agents, timestamps, export filenames, and truncation metadata; these responses are now consistently private no-store at the HTTP boundary and unexpected export failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run src/app/api/audit-logs/export/route.test.ts --reporter=dot --testTimeout=30000` passed the baseline audit-export suite, `1` file / `14` tests.
+  - `pnpm exec prettier --write src/app/api/audit-logs/export/route.ts src/app/api/audit-logs/export/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no formatting changes.
+  - `pnpm vitest run src/app/api/audit-logs/export/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `324` tests. The new sanitized 500 test emitted the existing PHI-safe `route_handler_unhandled_error` logger line on stderr.
+  - Scoped ESLint passed for the audit export route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Ledger-aware scoped Prettier check passed for the audit export implementation/test files, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Ledger-aware scoped diff whitespace check passed for the same Codex-owned files.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations and preserving the active `/admin/metrics` lock. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Prescriber Institutions GET No-Store Hardening
 
 - Coordination:
