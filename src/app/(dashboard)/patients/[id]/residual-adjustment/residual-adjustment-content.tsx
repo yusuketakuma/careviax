@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { BlockedReasonsPanel } from '@/components/features/workspace/action-rail';
+import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   buildAdjustmentConfirmDescription,
@@ -38,7 +39,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
     queryKey: ['residual-adjustment', orgId, patientId],
     queryFn: async () => {
       const res = await fetch(`/api/residual-medications?patient_id=${patientId}&limit=100`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('残薬データの取得に失敗しました');
       return res.json() as Promise<{ data: ResidualMedicationRecord[] }>;
@@ -50,7 +51,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
     queryKey: ['residual-adjustment-instructions', orgId, patientId],
     queryFn: async () => {
       const res = await fetch(`/api/inquiry-records?patient_id=${patientId}&status=resolved`, {
-        headers: { 'x-org-id': orgId },
+        headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('医師の指示記録の取得に失敗しました');
       return res.json() as Promise<{ data: PhysicianInstructionSource[] }>;
@@ -67,7 +68,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
     mutationFn: async () => {
       const res = await fetch('/api/interventions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           patient_id: patientId,
           type: 'dose_adjustment',
@@ -95,7 +96,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
     try {
       const presignRes = await fetch('/api/files/presigned-upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           purpose: 'visit-photo',
           file_name: file.name,
@@ -118,7 +119,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
 
       const completeRes = await fetch('/api/files/complete', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
           file_id: presignJson.data.id,
           etag: uploadRes.headers.get('etag') ?? undefined,
@@ -167,8 +168,7 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
       className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.7fr)_minmax(0,1fr)]"
       data-testid="residual-adjustment-page"
     >
-      <h1 className="sr-only">残薬調整</h1>
-
+      {/* 可視 h1 は WorkflowPageIntro が供給するため、ここでは見出しを重複させない。 */}
       {/* 左: 残薬の確認 */}
       <section
         aria-labelledby="residual-check-heading"
