@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
-import { success, notFound, validationError } from '@/lib/api/response';
+import { success, notFound, validationError, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
@@ -27,7 +29,7 @@ function hasKnownNarcoticClassificationTag(tags: readonly string[]): boolean {
  *
  * 読み取り専用のため確定操作・監査証跡の書込は行わない(確定は bulk-set / set-audits 側)。
  */
-export const GET = withAuthContext<{ id: string }>(
+const authenticatedGET = withAuthContext<{ id: string }>(
   async (_req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const rawId = (await routeContext.params).id;
     const planId = normalizeRequiredRouteParam(rawId);
@@ -200,3 +202,12 @@ export const GET = withAuthContext<{ id: string }>(
   },
   { permission: 'canSet' },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

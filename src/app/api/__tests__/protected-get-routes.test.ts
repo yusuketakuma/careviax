@@ -220,6 +220,7 @@ import { GET as qrScanDraftGet } from '../qr-scan-drafts/[id]/route';
 import { GET as residualMedicationsGet } from '../residual-medications/route';
 import { GET as setPlansGet } from '../set-plans/route';
 import { GET as setPlanGet } from '../set-plans/[id]/route';
+import { GET as setPlanCalendarGet } from '../set-plans/[id]/calendar/route';
 import { GET as staffWorkloadGet } from '../staff-workload/route';
 import { GET as tasksGet } from '../tasks/route';
 import { GET as tracingReportsGet } from '../tracing-reports/route';
@@ -893,6 +894,30 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       }),
   },
   {
+    name: 'set-plans/[id]/calendar GET',
+    handler: () =>
+      setPlanCalendarGet(
+        createRequest('http://localhost/api/set-plans/plan_1/calendar', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'plan_1' }) },
+      ),
+    setupSuccess: () => {
+      prismaMock.setPlan.findFirst.mockResolvedValueOnce({
+        id: 'plan_1',
+        cycle_id: 'cycle_1',
+        target_period_start: new Date('2026-04-01T00:00:00.000Z'),
+        target_period_end: new Date('2026-04-07T00:00:00.000Z'),
+        set_method: 'custom',
+        cycle: {
+          id: 'cycle_1',
+          overall_status: 'setting',
+          version: 1,
+        },
+      });
+      prismaMock.setBatch.findMany.mockResolvedValueOnce([]);
+      prismaMock.prescriptionIntake.findMany.mockResolvedValueOnce([]);
+    },
+  },
+  {
     name: 'staff-workload GET',
     handler: () =>
       staffWorkloadGet(
@@ -1265,6 +1290,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-plans GET' ||
         route.name === 'set-plans/[id] GET' ||
+        route.name === 'set-plans/[id]/calendar GET' ||
         route.name === 'staff-workload GET' ||
         route.name === 'tracing-reports GET' ||
         route.name === 'dashboard/clerk-support GET' ||
@@ -1331,6 +1357,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-plans GET' ||
         route.name === 'set-plans/[id] GET' ||
+        route.name === 'set-plans/[id]/calendar GET' ||
         route.name === 'staff-workload GET' ||
         route.name === 'tracing-reports GET' ||
         route.name === 'dashboard/clerk-support GET' ||
@@ -1367,7 +1394,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
-        route.name === 'set-plans/[id] GET'
+        route.name === 'set-plans/[id] GET' ||
+        route.name === 'set-plans/[id]/calendar GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
