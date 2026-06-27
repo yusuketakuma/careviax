@@ -163,6 +163,19 @@ describe('/api/visit-records/[id]/handoff', () => {
       expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
     });
 
+    it('returns a sanitized no-store 500 when handoff lookup fails unexpectedly', async () => {
+      visitRecordFindFirstMock.mockRejectedValueOnce(new Error('raw handoff secret'));
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
+      const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+      expect(res!.status).toBe(500);
+      expectSensitiveNoStore(res!);
+      const bodyText = await res!.text();
+      expect(bodyText).toContain('INTERNAL_ERROR');
+      expect(bodyText).not.toContain('raw handoff secret');
+    });
+
     it('returns 403 before reading extraction state when assignment access is denied', async () => {
       canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
       visitRecordFindFirstMock.mockResolvedValue({

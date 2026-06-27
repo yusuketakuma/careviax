@@ -1722,6 +1722,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||
+        route.name === 'visit-records/[id]/handoff GET' ||
         route.name === 'visit-records/[id]/reflected-fields GET' ||
         route.name === 'visit-schedules GET' ||
         route.name === 'visit-schedules/[id] GET' ||
@@ -1827,6 +1828,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||
+        route.name === 'visit-records/[id]/handoff GET' ||
         route.name === 'visit-records/[id]/reflected-fields GET' ||
         route.name === 'visit-schedules GET' ||
         route.name === 'visit-schedules/[id] GET' ||
@@ -1914,6 +1916,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
         route.name === 'prescriber-institutions GET' ||
+        route.name === 'visit-records/[id]/handoff GET' ||
         route.name === 'visit-records/[id]/reflected-fields GET' ||
         route.name === 'visit-schedules GET' ||
         route.name === 'visit-schedules/[id] GET' ||
