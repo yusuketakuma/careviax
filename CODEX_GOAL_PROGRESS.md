@@ -23,6 +23,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Visit Schedule Path-Segment Hardening
+
+- Coordination:
+  - Received Claude approval for `25ff0f81` / `9dbbaa7c`.
+  - Accepted Claude's non-blocking nit that `buildVisitScheduleHref` should align with the path-segment hardening contract used by `encodePathSegment`.
+  - Preserved Claude-owned dirty `prescription-history-content.tsx` under the P3-prescription-history UI lock.
+- Hardened visit schedule href construction in `be4030ed`:
+  - Changed `buildVisitScheduleHref(scheduleId)` to use `encodePathSegment`.
+  - Kept `buildScheduleFocusHref` and `buildScheduleProposalDetailHref` on `encodeURIComponent`, because they encode query values rather than path segments.
+  - Added exact `.` / `..` fail-closed coverage for visit schedule path ids.
+  - Preserved raw schedule ids for DB filters and notification dedupe keys.
+- Security/correctness risk reduced: visit schedule path links now reject exact dot segments before browser/URL normalization can reshape the route.
+- Performance issue improved: none. This is a pure helper hardening.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/schedules/navigation.ts src/lib/schedules/navigation.test.ts src/server/jobs/evening.test.ts` passed unchanged.
+  - `pnpm exec vitest run src/lib/schedules/navigation.test.ts src/server/jobs/evening.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `9` tests.
+  - Scoped ESLint passed for the schedules navigation helper/test and evening job/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation landed as `be4030ed`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `be4030ed` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Shared Schedule Navigation Helpers
 
 - Coordination:

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0245 JST
+
+- current task: visit schedule path-segment hardening follow-up after Claude review nit on shared schedule navigation helpers.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, Claude approval/nit for `25ff0f81` + `9dbbaa7c`, gbrain `code_blast` for `buildVisitScheduleHref` (not resolved), `src/lib/http/path-segment.ts`, `src/lib/http/path-segment.test.ts`, `src/lib/schedules/navigation.ts`, `src/lib/schedules/navigation.test.ts`, and `src/server/jobs/evening.ts`.
+- files changed: `src/lib/schedules/navigation.ts`, `src/lib/schedules/navigation.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx` is currently dirty under the accepted P3-prescription-history lock and was not edited by Codex.
+- bugs found: no known production bug was changed. Claude correctly noted that `buildVisitScheduleHref` used plain `encodeURIComponent` for a route path segment, unlike newer path-segment helper contracts that fail closed for exact `.` / `..`.
+- security risks found: reduced path normalization and route-confusion risk by changing `buildVisitScheduleHref` to use `encodePathSegment`, while keeping `buildScheduleFocusHref` and `buildScheduleProposalDetailHref` as query-value helpers with `encodeURIComponent`. Raw schedule ids remain unchanged for DB filters and notification dedupe keys. No auth, permission, route response shape, job scheduling semantics, DB schema/data, migration, external send, secret, cookie, PHI logging, unsafe HTML, push/deploy, or destructive behavior changed.
+- performance issues found: none. This is a pure helper hardening with no new DB reads, loops, network calls, cache keys, polling, dependencies, or render behavior.
+- validation commands: `pnpm exec prettier --write src/lib/schedules/navigation.ts src/lib/schedules/navigation.test.ts src/server/jobs/evening.test.ts`; `pnpm exec vitest run src/lib/schedules/navigation.test.ts src/server/jobs/evening.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the schedules navigation helper/test and evening job/test; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused schedules navigation + evening job Vitest passed `2` files / `9` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `be4030ed` plus this state commit. The broader all-page PH-OS UI/UX polish and backend helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the visit schedule path-segment state commit, then send Claude the review request and continue after inbox is clear.
+
 ### 20260628-0238 JST
 
 - current task: shared schedule navigation helper convergence for schedule focus links, proposal detail links, and visit schedule notification links.
