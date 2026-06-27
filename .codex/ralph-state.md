@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0456 JST
+
+- current task: comment DELETE API path helper convergence for shared comment threads.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex`, gbrain `code_blast` / `code_refs` for `CommentThread` and `/api/comments`, `src/components/features/comments/comment-thread.tsx`, `src/components/features/comments/comment-thread.test.tsx`, `src/app/api/comments/[id]/route.ts`, `src/app/api/comments/[id]/route.test.ts`, `src/app/api/comments/route.test.ts`, and existing path-segment helper tests.
+- files changed: `src/lib/comments/api-paths.ts`, `src/lib/comments/api-paths.test.ts`, `src/components/features/comments/comment-thread.tsx`, `src/components/features/comments/comment-thread.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `CommentThread` delete mutations built `/api/comments/:id` with raw `commentId` interpolation. Normal DB ids are safe, but malformed ids containing slash/query/hash characters could confuse route construction before request dispatch, and exact dot segments would not fail closed under plain path interpolation.
+- security risks found: reduced path-normalization and route-confusion risk by adding `buildCommentApiPath` on top of `encodePathSegment`, then routing comment DELETE fetches through it. Added coverage proving hostile comment ids are single-encoded for DELETE and exact `.` / `..` ids fail before fetch. Existing comment list GET query construction, create POST body, delete method/header, realtime invalidation, route handler authorization/ownership checks, DB schema/data, migrations, PHI logging, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing user-triggered comment deletion, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write src/lib/comments/api-paths.ts src/lib/comments/api-paths.test.ts src/components/features/comments/comment-thread.tsx src/components/features/comments/comment-thread.test.tsx`; `pnpm exec vitest run src/lib/comments/api-paths.test.ts src/components/features/comments/comment-thread.test.tsx 'src/app/api/comments/[id]/route.test.ts' src/app/api/comments/route.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the comment helper/test, component/test, comments id route test, comments route test, and path-segment test; scoped Prettier check for the same files; scoped diff whitespace check for the changed files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed. Focused comment API path + component + API route/path-segment tests passed `5` files / `39` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. Mapper also ranked document-template/delivery-rule API path helper convergence as a possible next candidate. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the four implementation files for the implementation commit, then stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0450 JST
 
 - current task: saved views API path helper convergence for rename/share/delete mutations.

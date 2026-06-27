@@ -82,6 +82,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit and verifier read-only review.
 - Next action: wait for verifier, commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. Mapper ranked `comments` and document-template/delivery-rule API path helper convergence as possible next non-DB/non-billing candidates. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Comments API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before selecting and validating this slice.
+  - Picked Mapper's second-ranked next non-DB/non-billing candidate after the saved-views slice.
+  - Kept this to comment DELETE API path construction; no DB mutation, migration, push, deploy, auth/billing change, visual/layout change, route handler change, or destructive operation.
+- Hardened/converged comment route construction:
+  - Added `src/lib/comments/api-paths.ts` with `buildCommentApiPath(commentId)` on top of `encodePathSegment`.
+  - Replaced local `/api/comments/:id` URL construction in `CommentThread` delete mutation.
+  - Added helper coverage for normal ids, hostile slash/query/hash ids, and exact `.` / `..` fail-closed behavior.
+  - Added component coverage proving hostile comment ids are single-encoded for DELETE with the existing org header and exact dot ids fail before fetch.
+  - Preserved comments list GET query construction, create POST body, delete method/header, realtime invalidation, route ownership checks, DB schema/data, migrations, PHI logging, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: shared comment deletion now uses the canonical path-segment contract instead of raw comment id interpolation.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/comments/api-paths.ts src/lib/comments/api-paths.test.ts src/components/features/comments/comment-thread.tsx src/components/features/comments/comment-thread.test.tsx` passed.
+  - `pnpm exec vitest run src/lib/comments/api-paths.test.ts src/components/features/comments/comment-thread.test.tsx 'src/app/api/comments/[id]/route.test.ts' src/app/api/comments/route.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000` passed `5` files / `39` tests.
+  - Scoped ESLint passed for the helper/test, component/test, comments id route test, comments route test, and path-segment test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the changed files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/API-path slice.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
+- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. Mapper ranked document-template/delivery-rule API path helper convergence as a possible next non-DB/non-billing candidate. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Offline Evidence Sync Path-Segment Hardening
 
 - Coordination:
