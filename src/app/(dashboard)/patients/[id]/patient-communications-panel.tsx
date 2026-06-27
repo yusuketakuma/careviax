@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { PatientContactsPanel } from './patient-contacts-panel';
 import { PatientCareTeamPanel } from './patient-care-team-panel';
@@ -55,7 +55,7 @@ export function PatientCommunicationsPanel({
     queryKey: ['patient-contacts', patientId, orgId],
     enabled: Boolean(orgId && patientId && enabled),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/contacts`, {
+      const response = await fetch(buildPatientApiPath(patientId, '/contacts'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
@@ -68,7 +68,7 @@ export function PatientCommunicationsPanel({
     queryKey: ['patient-communications', patientId, orgId],
     enabled: Boolean(orgId && patientId && enabled),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/communications`, {
+      const response = await fetch(buildPatientApiPath(patientId, '/communications'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {

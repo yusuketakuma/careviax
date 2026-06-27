@@ -2,6 +2,7 @@
 
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -25,6 +26,11 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 vi.mock('./patient-contacts-panel', () => ({
   PatientContactsPanel: () => <div data-testid="contacts-panel" />,
@@ -176,6 +182,52 @@ describe('PatientCommunicationsPanel', () => {
         expect(url).not.toContain('#z');
         expect(url).not.toContain('%25');
         expect((init.headers as Record<string, string>)['x-org-id']).toBe('org_1');
+      } finally {
+        vi.unstubAllGlobals();
+        vi.clearAllMocks();
+      }
+    },
+  );
+
+  it.each([
+    ['patient-contacts', 'contacts'],
+    ['patient-communications', 'communications'],
+  ])(
+    'routes %s fetches through the shared patient API path helper',
+    async (queryKeyHead, segment) => {
+      const patientId = 'patient_1';
+      vi.mocked(buildPatientApiPath).mockImplementationOnce(
+        (id, suffix = '') => `/api/patients/__helper_${id}__${suffix}`,
+      );
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+      useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+      const captured = new Map<string, { queryKey: unknown[]; queryFn: () => Promise<unknown> }>();
+      useQueryMock.mockImplementation(
+        (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+          captured.set(String(config.queryKey[0]), config);
+          return { data: undefined, isLoading: true, error: null };
+        },
+      );
+
+      const fetchMock = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+      vi.stubGlobal('fetch', fetchMock);
+
+      try {
+        render(<PatientCommunicationsPanel patientId={patientId} cases={[]} enabled />);
+
+        await captured.get(queryKeyHead)?.queryFn();
+
+        expect(buildPatientApiPath).toHaveBeenCalledWith(patientId, `/${segment}`);
+        expect(fetchMock).toHaveBeenCalledWith(`/api/patients/__helper_${patientId}__/${segment}`, {
+          headers: { 'x-org-id': 'org_1' },
+        });
+        expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}/${segment}`, {
+          headers: { 'x-org-id': 'org_1' },
+        });
       } finally {
         vi.unstubAllGlobals();
         vi.clearAllMocks();

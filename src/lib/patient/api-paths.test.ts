@@ -18,6 +18,7 @@ describe('buildPatientApiPath', () => {
     for (const suffix of [
       '/care-team',
       '/contacts',
+      '/communications',
       '/documents',
       '/prescriptions',
       '/mcs',
