@@ -51,14 +51,24 @@ export function getAdminInstitutionsShortcutLinks(): PageShortcutLink[] {
 
 export function getAdminBusinessHolidaysShortcutLinks(): PageShortcutLink[] {
   return [
+    { href: '/admin/operating-hours', label: '稼働日設定' },
     { href: '/admin/pharmacy-sites', label: '薬局情報' },
     { href: '/admin/shifts', label: 'シフト' },
     { href: '/schedules', label: 'スケジュール' },
   ];
 }
 
+export function getAdminOperatingHoursShortcutLinks(): PageShortcutLink[] {
+  return [
+    { href: '/admin/business-holidays', label: '休日カレンダー' },
+    { href: '/admin/pharmacy-sites', label: '薬局情報' },
+    { href: '/admin/shifts', label: 'シフト' },
+  ];
+}
+
 export function getAdminPharmacySitesShortcutLinks(): PageShortcutLink[] {
   return [
+    { href: '/admin/operating-hours', label: '稼働日設定' },
     { href: '/admin/business-holidays', label: '休日カレンダー' },
     { href: '/admin/service-areas', label: '訪問エリア' },
     { href: '/admin/billing-rules', label: '請求ルール' },
@@ -197,6 +207,7 @@ export function getAdminUatShortcutLinks(): PageShortcutLink[] {
 export function getAdminShiftsShortcutLinks(): PageShortcutLink[] {
   return [
     { href: '/admin/staff', label: 'スタッフ' },
+    { href: '/admin/operating-hours', label: '稼働日設定' },
     { href: '/admin/business-holidays', label: '休日カレンダー' },
     { href: '/schedules', label: 'スケジュール' },
   ];
