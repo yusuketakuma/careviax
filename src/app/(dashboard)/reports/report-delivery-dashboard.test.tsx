@@ -206,6 +206,15 @@ describe('ReportDeliveryDashboard', () => {
     expect(screen.getByText('8日経過')).toBeTruthy();
     expect(screen.getByLabelText('未確認報告の超過日数')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'リマインドタスク起票' })).toBeTruthy();
+
+    // action-first: 行動対象(未確認報告書一覧)は参照系の集計テーブルより DOM 順で前に置く。
+    const overdueListTitle = screen.getByText('未確認報告書一覧');
+    const monthlyTableTitle = screen.getAllByText('月別送達成功率')[0];
+    expect(
+      overdueListTitle.compareDocumentPosition(monthlyTableTitle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
     expect(screen.queryByRole('link', { name: '送達分析ページを開く' })).toBeNull();
   });
 

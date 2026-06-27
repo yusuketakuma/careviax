@@ -256,41 +256,8 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
             </Card>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr_0.8fr]">
-            <AnalyticsTableCard
-              title="月別送達成功率"
-              headers={['月', '成功率', '確認率', '失敗', '返信待ち']}
-              rows={(analytics?.monthly_trend ?? []).map((item) => [
-                item.month,
-                `${item.success_rate}% (${item.success_count}/${item.attempted_count})`,
-                `${item.confirmed_rate}%`,
-                `${item.failed_count}件`,
-                `${item.response_waiting_count}件`,
-              ])}
-              emptyMessage={isLoading ? '集計中です…' : '送達データがありません'}
-            />
-            <AnalyticsTableCard
-              title="医師別送達"
-              headers={['送付先', '成功率', '確認率']}
-              rows={(analytics?.physician_breakdown ?? []).map((item) => [
-                item.recipient_name,
-                `${item.success_rate}% (${item.success_count}/${item.total_count})`,
-                `${item.confirmed_count}件`,
-              ])}
-              emptyMessage={isLoading ? '集計中です…' : '医師宛送達がありません'}
-            />
-            <AnalyticsTableCard
-              title="チャネル別送達"
-              headers={['チャネル', '成功率', '失敗']}
-              rows={(analytics?.channel_breakdown ?? []).map((item) => [
-                CHANNEL_LABELS[item.channel] ?? item.channel,
-                `${item.success_rate}% (${item.success_count}/${item.total_count})`,
-                `${item.failed_count}件`,
-              ])}
-              emptyMessage={isLoading ? '集計中です…' : 'チャネル別データがありません'}
-            />
-          </div>
-
+          {/* 行動対象(未確認報告書一覧)はフォロー操作カードと同じ意思決定単位なので */}
+          {/* 集計(参照・振り返り)より前=KPI/フォロー直下へ置く(action-first)。 */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">未確認報告書一覧</CardTitle>
@@ -361,6 +328,41 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
               )}
             </CardContent>
           </Card>
+
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr_0.8fr]">
+            <AnalyticsTableCard
+              title="月別送達成功率"
+              headers={['月', '成功率', '確認率', '失敗', '返信待ち']}
+              rows={(analytics?.monthly_trend ?? []).map((item) => [
+                item.month,
+                `${item.success_rate}% (${item.success_count}/${item.attempted_count})`,
+                `${item.confirmed_rate}%`,
+                `${item.failed_count}件`,
+                `${item.response_waiting_count}件`,
+              ])}
+              emptyMessage={isLoading ? '集計中です…' : '送達データがありません'}
+            />
+            <AnalyticsTableCard
+              title="医師別送達"
+              headers={['送付先', '成功率', '確認率']}
+              rows={(analytics?.physician_breakdown ?? []).map((item) => [
+                item.recipient_name,
+                `${item.success_rate}% (${item.success_count}/${item.total_count})`,
+                `${item.confirmed_count}件`,
+              ])}
+              emptyMessage={isLoading ? '集計中です…' : '医師宛送達がありません'}
+            />
+            <AnalyticsTableCard
+              title="チャネル別送達"
+              headers={['チャネル', '成功率', '失敗']}
+              rows={(analytics?.channel_breakdown ?? []).map((item) => [
+                CHANNEL_LABELS[item.channel] ?? item.channel,
+                `${item.success_rate}% (${item.success_count}/${item.total_count})`,
+                `${item.failed_count}件`,
+              ])}
+              emptyMessage={isLoading ? '集計中です…' : 'チャネル別データがありません'}
+            />
+          </div>
         </>
       )}
     </div>
