@@ -1,10 +1,16 @@
 # 共通月次カレンダー部品化 計画（R3 / 稼働日カレンダー基盤の続き）
 
-**Status:** PLAN（Codex レビュー前）
+**Status:** ✅ R3 CLOSED（R3a + R3b landed、R3c は合意により skip）
 **Owner:** claude-lead（FE レーン）
 **Reviewer:** codex-lead
 **親計画:** `docs/operating-day-calendar-plan.md` §9 スライス表 R3
 **前提:** 挙動不変リファクタ（visual / DOM 構造 / アクセシビリティ属性を可能な限り保持）
+
+**完了サマリ（2026-06-27）:**
+
+- **R3a** done — `src/components/ui/month-grid.tsx`（useMonthGrid / MonthGrid / MonthGridNav）新設 + 稼働日カレンダー採用。commit `9876cd80` + review fix `fe02817f`（weekStartsOn ラベル回転・docs §5 整合）。codex APPROVED。
+- **R3b** done — MonthGrid に後方互換 `renderWeekdayHeader` slot 追加 + 休業日カレンダー採用（clickable 日セルは getDayCellProps、ナビは据え置き）。commit `cb09f466`。codex APPROVED（指摘なし）。
+- **R3c** skipped（合意）— medication-calendar(患者) は read-only 評価の結果、手書き重複が無く（date-fns 使用）、週行テーブル + leading/trailing pad + DailySchedule セルで flat MonthGrid とモデルが異なるため、useMonthGrid 強制適用は dedup 効果ほぼゼロ・複雑化＋ C3 リスクのみ。両 supervisor 合意で R3 を R3a+R3b で close（§6 参照）。
 
 ---
 
@@ -83,11 +89,11 @@ function useMonthGrid(params: {
 
 ## 2. リファクタ工程（段階移行・各スライス独立 green）
 
-| Slice   | 内容                                                                                                                  | owner  | 検証                                                                                                                    |
-| ------- | --------------------------------------------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
-| **R3a** | `month-grid.tsx` 新設 + 単体テスト（cells 構築・閏年/月跨ぎ・weekStartsOn・nav aria）→ **#2 稼働日** を共通部品へ置換 | claude | 既存 `operating-hours-content.test.tsx`（resolved 状態の calendar 表示テスト）が無改変で green、+ month-grid 単体テスト |
-| **R3b** | **#1 休業日** を共通部品へ置換（独自 red/blue 配色は renderDay 内に保持）                                             | claude | business-holidays テスト green（無ければ最小追加）                                                                      |
-| **R3c** | **#3 服薬カレンダー(患者)** を共通部品へ置換（SLOT 配色は renderDay 内に保持）                                        | claude | medication-calendar テスト green                                                                                        |
+| Slice             | 内容                                                                                                                  | owner  | 状態                                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- |
+| **R3a** ✅        | `month-grid.tsx` 新設 + 単体テスト（cells 構築・閏年/月跨ぎ・weekStartsOn・nav aria）→ **#2 稼働日** を共通部品へ置換 | claude | done `9876cd80`+`fe02817f`。operating-hours-content.test.tsx 無改変 green + month-grid 単体 test。codex APPROVED |
+| **R3b** ✅        | **#1 休業日** を共通部品へ置換（独自 red/blue 配色は renderDay、clickable セルは getDayCellProps、ナビ据え置き）      | claude | done `cb09f466`。renderWeekdayHeader slot 追加。business-holidays test 無改変 green。codex APPROVED（指摘なし）  |
+| **R3c** ⤫ skipped | **#3 服薬カレンダー(患者)** — 評価の結果 skip（§6）                                                                   | claude | read-only 評価のみ。手書き重複なし・週行テーブルで model 相違 → 適用非推奨。両 supervisor 合意で skip            |
 
 - 各スライスで「共通部品へ寄せる前後で DOM/visual が変わらない」ことを既存テスト + 目視（/browse）で確認。
 - スライス間に barrier は置かず、R3a 承認後に R3b/R3c を順次。
@@ -112,11 +118,13 @@ function useMonthGrid(params: {
 - 週開始曜日は `weekStartsOn` で外部設定可能に（i18n/運用差吸収）。日本の保険薬局運用では日曜始まりが既定。`weekdayLabels` 省略時は `weekStartsOn` 起点に既定ラベルを回転（ヘッダとセルの曜日ずれ防止）。
 - ARIA grid pattern を将来導入する場合は実装前に Context7/公式 ARIA APG で裏取りしてから確定。
 
-## 6. R3 スコープ外（将来 R3'）
+## 6. R3 スコープ外 / 将来 R3'（確定）
 
-- #4 schedules: 月曜始まり + 隣月日表示モデルを `useMonthGrid` の `weekStartsOn:1` + `showAdjacentDays` 拡張で吸収できるか別途評価。
-- #5 shifts: table matrix は別パターン。共通化せず据え置き。
-- #6 workbench: 専用色/inline style、7 日×時間帯。据え置き。
+- **#3 medication-calendar(患者) — R3c skip 確定（2026-06-27 両 supervisor 合意）。** 理由: 手書き getDaysInMonth/getFirstDayOfWeek/calendarCells を持たず date-fns で日列挙（除去すべき手書き重複が元々ない）。desktop は thead/tbody/tr/td の意味的テーブル（role=grid + print 専用サイズ）、mobile は DaySlotList 共有の日別リストで、flat MonthGrid と model が異なる。weeks: DailySchedule[][] は leading **かつ trailing** の空 pad を持ち、useMonthGrid（trailing null なし・{day,dateKey} 返却）の適用は cells→schedule 写像を増やすだけで dedup 価値が乏しく、C3 の print/a11y regression リスクを伴う。→ 触らない。
+- **将来 R3'（weeks-table helper）:** 週行テーブル + trailing padding + Date/DailySchedule セマンティクスを要する **2 つ目以降の consumer が現れた場合のみ**、`chunkWeeks` / `padTrailing` / Date 返却を備えた別ヘルパーとして切り出す。現状は単一 consumer のため不要。
+- **#4 schedules: 別 PLAN（PLAN_ONLY / read-only design）。** 月曜始まり + 隣月日（前後月の実日）表示という別モデルのため、本 R3 とは別計画で設計する。`useMonthGrid` を `weekStartsOn:1` + `showAdjacentDays` 拡張で吸収できるかを read-only で先に評価する。
+- **#5 shifts:** 薬剤師×日付の table matrix は別パターン。共通化せず据え置き。
+- **#6 workbench:** 専用色/inline style、7 日×時間帯。据え置き。
 
 ---
 
