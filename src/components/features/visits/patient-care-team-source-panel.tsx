@@ -43,15 +43,15 @@ export function PatientCareTeamSourcePanel({
   const missingRoles = REQUIRED_REPORT_ROLES.filter((role) => !roleSet.has(role));
 
   return (
-    <Card className={cn('border-emerald-200 bg-emerald-50/50', className)}>
+    <Card className={cn('border-border bg-card', className)}>
       <CardHeader className={cn('space-y-2', compact ? 'p-3 pb-2' : undefined)}>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-sm text-emerald-950">
-              <UsersRound className="size-4 text-emerald-700" aria-hidden="true" />
+            <CardTitle className="flex items-center gap-2 text-sm text-foreground">
+              <UsersRound className="size-4 text-muted-foreground" aria-hidden="true" />
               患者情報から取得した連携先
             </CardTitle>
-            <p className="text-xs leading-5 text-emerald-900/80">
+            <p className="text-xs leading-5 text-muted-foreground">
               クリニック・訪問看護・ケアマネジャーを患者情報から参照し、訪問時メモと報告書送付先の判断に使います。
             </p>
           </div>
@@ -64,15 +64,9 @@ export function PatientCareTeamSourcePanel({
         {contacts.length > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {contacts.map((contact) => (
-              <div
-                key={contact.id}
-                className="rounded-xl border border-emerald-200 bg-white/85 p-3 text-sm"
-              >
+              <div key={contact.id} className="rounded-xl border border-border bg-card p-3 text-sm">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className="border-emerald-200 bg-emerald-50 text-emerald-800"
-                  >
+                  <Badge variant="outline" className="border-border bg-muted text-muted-foreground">
                     {ROLE_LABELS[normalizeCareTeamRole(contact.role)] ?? contact.role}
                   </Badge>
                   <span className="font-medium text-foreground">{contact.name}</span>
@@ -86,7 +80,7 @@ export function PatientCareTeamSourcePanel({
                 {contact.phone ? (
                   <a
                     href={`tel:${contact.phone}`}
-                    className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-emerald-800 sm:min-h-8"
+                    className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-primary sm:min-h-8"
                   >
                     <Phone className="size-3.5" aria-hidden="true" />
                     {contact.phone}
