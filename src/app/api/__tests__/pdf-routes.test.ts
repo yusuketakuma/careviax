@@ -70,6 +70,11 @@ function createRequest(url: string) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('PDF routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -293,6 +298,7 @@ describe('PDF routes', () => {
     });
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
+    expectSensitiveNoStore(response);
   });
 
   it('passes date filters to the patient visit records pdf response', async () => {
@@ -326,6 +332,7 @@ describe('PDF routes', () => {
     );
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
+    expectSensitiveNoStore(response);
   });
 
   it('maps pdf not found errors to 404', async () => {

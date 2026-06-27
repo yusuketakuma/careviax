@@ -1704,6 +1704,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patients/[id]/visit-brief GET' ||
+        route.name === 'patients/[id]/visit-records/pdf GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'patient-self-reports GET' ||
         route.name === 'patient-self-reports/[id] GET' ||
@@ -1724,6 +1725,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||
         route.name === 'visit-records/[id]/handoff GET' ||
+        route.name === 'visit-records/[id]/pdf GET' ||
         route.name === 'visit-records/[id]/reflected-fields GET' ||
         route.name === 'visit-schedules GET' ||
         route.name === 'visit-schedules/[id] GET' ||
@@ -1811,6 +1813,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patients/[id]/visit-brief GET' ||
+        route.name === 'patients/[id]/visit-records/pdf GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'patient-self-reports GET' ||
         route.name === 'patient-self-reports/[id] GET' ||
@@ -1831,6 +1834,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||
         route.name === 'visit-records/[id]/handoff GET' ||
+        route.name === 'visit-records/[id]/pdf GET' ||
         route.name === 'visit-records/[id]/reflected-fields GET' ||
         route.name === 'visit-schedules GET' ||
         route.name === 'visit-schedules/[id] GET' ||
@@ -1911,6 +1915,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patient-self-reports GET' ||
         route.name === 'patient-self-reports/[id] GET' ||
         route.name === 'patients/[id]/visit-brief GET' ||
+        route.name === 'patients/[id]/visit-records/pdf GET' ||
         route.name === 'facilities/[id]/contacts GET' ||
         route.name === 'facilities/[id]/patients GET' ||
         route.name === 'partner-visit-records GET' ||
@@ -1920,6 +1925,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'pca-pump-rentals GET' ||
         route.name === 'prescriber-institutions GET' ||
         route.name === 'visit-records/[id]/handoff GET' ||
+        route.name === 'visit-records/[id]/pdf GET' ||
         route.name === 'visit-records/[id]/reflected-fields GET' ||
         route.name === 'visit-schedules GET' ||
         route.name === 'visit-schedules/[id] GET' ||

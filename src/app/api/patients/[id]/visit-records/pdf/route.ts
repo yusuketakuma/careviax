@@ -1,8 +1,10 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { error, notFound, validationError } from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -26,11 +28,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     permission: 'canVisit',
     message: '訪問記録一覧 PDF の閲覧権限がありません',
   });
-  if ('response' in authResult) return authResult.response;
+  if ('response' in authResult) return withSensitiveNoStore(authResult.response);
 
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
-  if (!id) return validationError('患者IDが不正です');
+  if (!id) return withSensitiveNoStore(validationError('患者IDが不正です'));
 
   const url = new URL(req.url);
   const parsedQuery = visitRecordsPdfQuerySchema.safeParse({
@@ -38,7 +40,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ...(url.searchParams.has('date_to') ? { date_to: url.searchParams.get('date_to') } : {}),
   });
   if (!parsedQuery.success) {
-    return validationError('検索条件が不正です', parsedQuery.error.flatten().fieldErrors);
+    return withSensitiveNoStore(
+      validationError('検索条件が不正です', parsedQuery.error.flatten().fieldErrors),
+    );
   }
   const { date_from: dateFrom, date_to: dateTo } = parsedQuery.data;
 
@@ -61,12 +65,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ipAddress: authResult.ctx.ipAddress,
       userAgent: authResult.ctx.userAgent,
     });
-    return pdfResponse(rendered.buffer, rendered.fileName);
+    return withSensitiveNoStore(pdfResponse(rendered.buffer, rendered.fileName));
   } catch (cause) {
+    unstable_rethrow(cause);
     if (cause instanceof Error && cause.message.includes('見つかりません')) {
-      return notFound(cause.message);
+      return withSensitiveNoStore(notFound(cause.message));
     }
 
-    return error('EXTERNAL_PDF_RENDER_FAILED', '訪問記録一覧 PDF を生成できませんでした', 500);
+    return withSensitiveNoStore(
+      error('EXTERNAL_PDF_RENDER_FAILED', '訪問記録一覧 PDF を生成できませんでした', 500),
+    );
   }
 }
