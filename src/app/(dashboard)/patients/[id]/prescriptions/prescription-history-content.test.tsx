@@ -152,6 +152,68 @@ describe('PrescriptionHistoryContent', () => {
     ).toBe(true);
   });
 
+  it('surfaces drug-master fetch failure as a non-blocking notice with retry (no false-empty)', () => {
+    const refetchMaster = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: undefined, isError: true, isLoading: false, refetch: refetchMaster };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_1',
+              cycle_id: 'cycle_1',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines: [
+                {
+                  id: 'line_1',
+                  drug_name: 'アムロジピン',
+                  drug_code: 'YJ1234567890',
+                  dose: '5mg',
+                  frequency: '1日1回',
+                  days: 14,
+                  quantity: 14,
+                  unit: '錠',
+                  route: 'internal',
+                },
+              ],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    // 取得失敗を空表示に潰さず、エンリッチ欠落の可能性を明示し再試行できる(履歴本体は描画継続)。
+    const notice = screen.getByTestId('drug-master-error-notice');
+    expect(notice).toBeTruthy();
+    expect(notice.textContent).toContain('薬剤マスタを取得できませんでした');
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMaster).toHaveBeenCalledTimes(1);
+  });
+
   it('renders prescription intake card toggles as native buttons without PHI in the name', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'patient_1' });

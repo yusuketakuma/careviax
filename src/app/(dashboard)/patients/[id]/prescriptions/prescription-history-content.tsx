@@ -1212,7 +1212,11 @@ export function PrescriptionHistoryContent() {
     return Array.from(codes);
   }, [data]);
 
-  const { data: masterData } = useQuery({
+  const {
+    data: masterData,
+    isError: isMasterError,
+    refetch: refetchMaster,
+  } = useQuery({
     queryKey: ['drug-masters-batch', orgId, allDrugCodes],
     queryFn: async () => {
       if (allDrugCodes.length === 0) return {};
@@ -1221,7 +1225,9 @@ export function PrescriptionHistoryContent() {
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ yj_codes: allDrugCodes }),
       });
-      if (!res.ok) return {};
+      // 取得失敗を黙って {} に潰さず error 状態へ。エンリッチは補助なので画面全体は止めず、
+      // timeline 上部に非ブロッキング通知を出して「薬剤情報が欠けている可能性」を可視化する。
+      if (!res.ok) throw new Error('薬剤マスタの取得に失敗しました');
       return res.json() as Promise<Record<string, DrugMasterInfo>>;
     },
     enabled: !!orgId && allDrugCodes.length > 0,
@@ -1452,6 +1458,28 @@ export function PrescriptionHistoryContent() {
           ))}
         </select>
       </div>
+
+      {/* p1 slice2: 薬剤マスタ取得失敗を false-empty にしない。エンリッチは補助なので
+          画面は止めず、薬剤情報が欠ける可能性を非ブロッキングで明示し再試行導線を出す。 */}
+      {isMasterError ? (
+        <div
+          role="status"
+          data-testid="drug-master-error-notice"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-transparent bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm print:hidden"
+        >
+          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            薬剤マスタを取得できませんでした。一部の薬剤情報（後発・ハイリスク・相互作用等）が表示されない可能性があります。
+          </span>
+          <button
+            type="button"
+            onClick={() => void refetchMaster()}
+            className="inline-flex min-h-[44px] items-center rounded-md border border-state-confirm/40 px-3 text-xs font-medium text-state-confirm hover:bg-state-confirm/10 sm:min-h-0 sm:py-1"
+          >
+            再試行
+          </button>
+        </div>
+      ) : null}
 
       {/* Timeline（処方履歴: 主データ） */}
       {filteredIntakes.length === 0 ? (
