@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { VisitBriefCard } from '@/components/visit-brief/visit-brief-card';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { VisitBrief } from '@/types/visit-brief';
 
 export function PatientVisitBriefSection({
@@ -22,7 +23,7 @@ export function PatientVisitBriefSection({
   const { data, isLoading, error } = useQuery({
     queryKey: ['patient-visit-brief', patientId, orgId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/visit-brief`, {
+      const response = await fetch(buildPatientApiPath(patientId, '/visit-brief'), {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) {
@@ -37,11 +38,6 @@ export function PatientVisitBriefSection({
   if (error || !data?.data) return null;
 
   return (
-    <VisitBriefCard
-      brief={data.data}
-      title={title}
-      description={description}
-      compact={compact}
-    />
+    <VisitBriefCard brief={data.data} title={title} description={description} compact={compact} />
   );
 }
