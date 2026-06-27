@@ -868,7 +868,19 @@ function derivePackagingMethod(intake?: { medication_support_methods?: string[] 
 export type CreatePatientData = z.infer<typeof createPatientSchema>;
 
 export async function createPatientWithIntake(orgId: string, data: CreatePatientData) {
-  const { address, birth_date, intake, requester, ...rest } = data;
+  const {
+    address,
+    birth_date,
+    intake,
+    requester,
+    primary_pharmacist_id,
+    backup_pharmacist_id,
+    primary_staff_id,
+    backup_staff_id,
+    ...rest
+  } = data;
+  const normalizeAssignmentId = (value: string | undefined) =>
+    value === undefined || value === '' ? null : value;
 
   const preparedContacts =
     rest.contacts?.map((contact) => ({
@@ -1065,6 +1077,10 @@ export async function createPatientWithIntake(orgId: string, data: CreatePatient
         medical_insurance_number: rest.medical_insurance_number || null,
         care_insurance_number: rest.care_insurance_number || null,
         billing_support_flag: rest.billing_support_flag ?? false,
+        primary_pharmacist_id: normalizeAssignmentId(primary_pharmacist_id),
+        backup_pharmacist_id: normalizeAssignmentId(backup_pharmacist_id),
+        primary_staff_id: normalizeAssignmentId(primary_staff_id),
+        backup_staff_id: normalizeAssignmentId(backup_staff_id),
         allergy_info: rest.allergy_info ? toPrismaJsonInput(rest.allergy_info) : undefined,
         notes: rest.notes || null,
       },

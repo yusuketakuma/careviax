@@ -4,6 +4,7 @@ import { conflict, internalError, success, validationError } from '@/lib/api/res
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { caseStatusSchema } from '@/lib/patient/case-status';
 import { prisma } from '@/lib/db/client';
@@ -159,6 +160,10 @@ function validatePatientMatchQuery(query: string | undefined) {
   });
 }
 
+function normalizeAssignmentId(value: string | undefined) {
+  return value === undefined ? undefined : value === '' ? null : value;
+}
+
 const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -294,6 +299,24 @@ export const POST = withAuthContext(
     const parsed = createPatientSchema.safeParse(normalizedBody);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    }
+    const normalizedPrimaryPharmacistId = normalizeAssignmentId(parsed.data.primary_pharmacist_id);
+    const normalizedBackupPharmacistId = normalizeAssignmentId(parsed.data.backup_pharmacist_id);
+    const normalizedPrimaryStaffId = normalizeAssignmentId(parsed.data.primary_staff_id);
+    const normalizedBackupStaffId = normalizeAssignmentId(parsed.data.backup_staff_id);
+    const careTeamPharmacistIds = [
+      normalizedPrimaryPharmacistId,
+      normalizedBackupPharmacistId,
+    ].filter((value): value is string => Boolean(value));
+    const careTeamStaffIds = [normalizedPrimaryStaffId, normalizedBackupStaffId].filter(
+      (value): value is string => Boolean(value),
+    );
+    if (careTeamPharmacistIds.length > 0 || careTeamStaffIds.length > 0) {
+      const refResult = await validateOrgReferences(ctx.orgId, {
+        ...(careTeamPharmacistIds.length > 0 ? { pharmacist_ids: careTeamPharmacistIds } : {}),
+        ...(careTeamStaffIds.length > 0 ? { staff_ids: careTeamStaffIds } : {}),
+      });
+      if (!refResult.ok) return refResult.response;
     }
     const duplicateAcknowledged = raw.duplicate_acknowledged === true;
     const birthDate = parsePatientDuplicateBirthDate(parsed.data.birth_date);

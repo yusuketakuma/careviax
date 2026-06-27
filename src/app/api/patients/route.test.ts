@@ -22,6 +22,7 @@ const {
   patientSchedulePreferenceCreateMock,
   careCaseCreateMock,
   careTeamLinkCreateManyMock,
+  validateOrgReferencesMock,
 } = vi.hoisted(() => ({
   withAuthContextMock: vi.fn(),
   patientFindManyMock: vi.fn(),
@@ -43,6 +44,7 @@ const {
   patientSchedulePreferenceCreateMock: vi.fn(),
   careCaseCreateMock: vi.fn(),
   careTeamLinkCreateManyMock: vi.fn(),
+  validateOrgReferencesMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -111,6 +113,10 @@ vi.mock('@/server/services/patient-risk', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/api/org-reference', () => ({
+  validateOrgReferences: validateOrgReferencesMock,
 }));
 
 vi.mock('@/lib/patient/facility-reference', () => ({
@@ -197,6 +203,7 @@ describe('/api/patients GET', () => {
     patientSchedulePreferenceCreateMock.mockResolvedValue({ id: 'schedule_pref_new' });
     careCaseCreateMock.mockResolvedValue({ id: 'case_new' });
     careTeamLinkCreateManyMock.mockResolvedValue({ count: 2 });
+    validateOrgReferencesMock.mockResolvedValue({ ok: true });
     getFacilityVisitDefaultsMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -1581,6 +1588,78 @@ describe('/api/patients GET', () => {
         ]),
       }),
     );
+  });
+
+  it('validates and persists patient-level care team assignments on creation', async () => {
+    patientFindManyMock.mockResolvedValueOnce([]);
+    patientCreateMock.mockResolvedValue({
+      id: 'patient_new',
+      name: '訪問 花子',
+    });
+
+    const response = (await POST(
+      createJsonRequest({
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: '1944-04-01',
+        gender: 'female',
+        primary_pharmacist_id: 'pharmacist_primary',
+        backup_pharmacist_id: '',
+        primary_staff_id: 'staff_primary',
+        backup_staff_id: 'staff_backup',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      pharmacist_ids: ['pharmacist_primary'],
+      staff_ids: ['staff_primary', 'staff_backup'],
+    });
+    expect(patientCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          primary_pharmacist_id: 'pharmacist_primary',
+          backup_pharmacist_id: null,
+          primary_staff_id: 'staff_primary',
+          backup_staff_id: 'staff_backup',
+        }),
+      }),
+    );
+  });
+
+  it('rejects patient-level care team assignments outside the organization before creating', async () => {
+    validateOrgReferencesMock.mockResolvedValueOnce({
+      ok: false,
+      response: Response.json(
+        {
+          code: 'VALIDATION_ERROR',
+          message: '指定されたスタッフはこの組織に所属していません',
+        },
+        { status: 400 },
+      ),
+    });
+
+    const response = (await POST(
+      createJsonRequest({
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: '1944-04-01',
+        gender: 'female',
+        primary_staff_id: 'outside_staff',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '指定されたスタッフはこの組織に所属していません',
+    });
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      staff_ids: ['outside_staff'],
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientCreateMock).not.toHaveBeenCalled();
   });
 
   it('returns 409 before creating when a patient identity duplicate is not acknowledged', async () => {
