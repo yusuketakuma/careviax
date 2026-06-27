@@ -1423,6 +1423,72 @@ export function PrescriptionHistoryContent() {
         </div>
       )}
 
+      {/* p1: 処方履歴(主データ)を KPI 直後の Primary zone へ。要点(変更ダッシュボード/調剤
+          ワンビュー)は補助としてこの下に置く。DOM 順=視覚順を保ち CSS order は使わない。 */}
+      {/* Filters */}
+      <div className="flex items-center gap-3 print:hidden">
+        <select
+          value={routeFilter}
+          onChange={(e) => setRouteFilter(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          aria-label="剤形フィルタ"
+        >
+          {ROUTE_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <select
+          value={methodFilter}
+          onChange={(e) => setMethodFilter(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+          aria-label="調剤方法フィルタ"
+        >
+          {METHOD_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Timeline（処方履歴: 主データ） */}
+      {filteredIntakes.length === 0 ? (
+        <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed">
+          <p className="text-sm text-muted-foreground">処方履歴がありません</p>
+        </div>
+      ) : (
+        <div className="relative space-y-3">
+          <div
+            className="absolute left-[19px] top-4 bottom-4 w-px bg-border print:hidden"
+            aria-hidden="true"
+          />
+          {filteredIntakes.map((intake, idx) => {
+            const prevIntake = idx < filteredIntakes.length - 1 ? filteredIntakes[idx + 1] : null;
+            return (
+              <div key={intake.id} className="relative pl-10 print:pl-0">
+                <div
+                  className="absolute left-3.5 top-4 size-2.5 rounded-full border-2 border-primary bg-background print:hidden"
+                  aria-hidden="true"
+                />
+                <PrescriptionIntakeCard
+                  intake={intake}
+                  prevIntake={prevIntake}
+                  overlapSet={overlapSet}
+                  masterMap={masterMap}
+                  onMarkOriginalCollected={(intakeId) =>
+                    markOriginalCollectedMutation.mutate(intakeId)
+                  }
+                  isMarkingOriginalCollected={markOriginalCollectedMutation.isPending}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 要点(補助): 処方変更ダッシュボード / 調剤方法ワンビュー */}
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="border-border shadow-sm">
           <CardHeader>
@@ -1545,69 +1611,6 @@ export function PrescriptionHistoryContent() {
           </div>
         </div>
       ) : null}
-
-      {/* Filters */}
-      <div className="flex items-center gap-3 print:hidden">
-        <select
-          value={routeFilter}
-          onChange={(e) => setRouteFilter(e.target.value)}
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-          aria-label="剤形フィルタ"
-        >
-          {ROUTE_FILTER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={methodFilter}
-          onChange={(e) => setMethodFilter(e.target.value)}
-          className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-          aria-label="調剤方法フィルタ"
-        >
-          {METHOD_FILTER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Timeline */}
-      {filteredIntakes.length === 0 ? (
-        <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-dashed">
-          <p className="text-sm text-muted-foreground">処方履歴がありません</p>
-        </div>
-      ) : (
-        <div className="relative space-y-3">
-          <div
-            className="absolute left-[19px] top-4 bottom-4 w-px bg-border print:hidden"
-            aria-hidden="true"
-          />
-          {filteredIntakes.map((intake, idx) => {
-            const prevIntake = idx < filteredIntakes.length - 1 ? filteredIntakes[idx + 1] : null;
-            return (
-              <div key={intake.id} className="relative pl-10 print:pl-0">
-                <div
-                  className="absolute left-3.5 top-4 size-2.5 rounded-full border-2 border-primary bg-background print:hidden"
-                  aria-hidden="true"
-                />
-                <PrescriptionIntakeCard
-                  intake={intake}
-                  prevIntake={prevIntake}
-                  overlapSet={overlapSet}
-                  masterMap={masterMap}
-                  onMarkOriginalCollected={(intakeId) =>
-                    markOriginalCollectedMutation.mutate(intakeId)
-                  }
-                  isMarkingOriginalCollected={markOriginalCollectedMutation.isPending}
-                />
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }

@@ -101,6 +101,57 @@ describe('PrescriptionHistoryContent', () => {
     expect(screen.getByText('山田花子')).toBeTruthy();
   });
 
+  it('places the prescription history (primary) above the auxiliary summary cards in DOM order', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_1',
+              cycle_id: 'cycle_1',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines: [],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    // 履歴ゾーン(剤形フィルタ)が補助の処方変更ダッシュボードより前。CSS order ではなく DOM 順で担保。
+    const historyFilter = screen.getByLabelText('剤形フィルタ');
+    const auxDashboard = screen.getByRole('heading', { level: 2, name: '処方変更ダッシュボード' });
+    expect(
+      Boolean(
+        historyFilter.compareDocumentPosition(auxDashboard) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+  });
+
   it('renders prescription intake card toggles as native buttons without PHI in the name', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'patient_1' });
