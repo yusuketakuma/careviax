@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type ConditionRow = {
@@ -80,7 +80,7 @@ export function PatientConditionsCard({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/conditions`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/conditions'), {
         method: 'PUT',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
