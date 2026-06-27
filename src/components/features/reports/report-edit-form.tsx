@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
 import { deriveReportComplianceChecks } from './compliance-checklist';
 
@@ -580,7 +581,7 @@ export function ReportEditForm({ reportId, reportType, updatedAt, content, onSav
   const saveMutation = useMutation({
     mutationFn: async () => {
       const updatedContent = buildUpdatedContent();
-      const res = await fetch(`/api/care-reports/${reportId}`, {
+      const res = await fetch(buildCareReportApiPath(reportId), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

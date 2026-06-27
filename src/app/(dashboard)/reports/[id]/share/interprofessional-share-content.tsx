@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
 import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import {
@@ -62,10 +63,6 @@ type ShareReplyDetail = {
     responded_at: string;
   }>;
 };
-
-function buildCareReportApiPath(reportId: string) {
-  return `/api/care-reports/${encodePathSegment(reportId)}`;
-}
 
 function buildPatientApiPath(patientId: string, suffix: string) {
   return `/api/patients/${encodePathSegment(patientId)}${suffix}`;

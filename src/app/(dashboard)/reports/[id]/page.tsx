@@ -37,6 +37,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
+import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import {
   REPORT_TYPE_LABELS,
@@ -236,10 +237,6 @@ function hasStringFields(value: unknown, fields: string[]) {
 
 function hasReportWarnings(value: Record<string, unknown>) {
   return Array.isArray(value.warnings) && value.warnings.every((item) => typeof item === 'string');
-}
-
-function buildCareReportApiPath(reportId: string, suffix = '') {
-  return `/api/care-reports/${encodePathSegment(reportId)}${suffix}`;
 }
 
 function isPhysicianReportContent(content: unknown): content is PhysicianReportContent {

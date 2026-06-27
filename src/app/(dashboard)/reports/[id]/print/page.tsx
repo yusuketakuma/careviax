@@ -10,7 +10,7 @@ import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildCareReportPrintAuditApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
 import type {
   PhysicianReportContent,
@@ -453,10 +453,6 @@ function AudienceReportPrint({ content }: { content: AudienceReportContent }) {
 
 // ─── Print page ───────────────────────────────────────────────────────────────
 
-function buildCareReportPrintAuditPath(reportId: string) {
-  return `/api/care-reports/${encodePathSegment(reportId)}/print-audit`;
-}
-
 export default function ReportPrintPage() {
   const params = useParams<{ id: string }>();
   const reportId = params.id;
@@ -469,7 +465,7 @@ export default function ReportPrintPage() {
   >({
     queryKey: ['care-report-print-audit', orgId, reportId, auditRunId],
     queryFn: async () => {
-      const res = await fetch(buildCareReportPrintAuditPath(reportId), {
+      const res = await fetch(buildCareReportPrintAuditApiPath(reportId), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({ intent: 'preview_rendered' }),
@@ -494,7 +490,7 @@ export default function ReportPrintPage() {
     printAuditQuery.error.message === 'PRINT_FORBIDDEN';
 
   const recordPrintRequestedAudit = useCallback(async () => {
-    const res = await fetch(buildCareReportPrintAuditPath(reportId), {
+    const res = await fetch(buildCareReportPrintAuditApiPath(reportId), {
       method: 'POST',
       headers: buildOrgJsonHeaders(orgId),
       body: JSON.stringify({ intent: 'print_requested' }),
