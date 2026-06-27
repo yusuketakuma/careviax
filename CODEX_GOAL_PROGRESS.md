@@ -11960,6 +11960,31 @@ Next loop:
 - Result:
   - The full-gate defer recorded for `f3626178` / `3b52055c` is resolved.
 
+### Patient Self Reports GET — Sensitive List No-Store
+
+- Coordination:
+  - Drained `phos/codex` agmsg repeatedly during the slice.
+  - Claude is actively holding `/admin/inventory-forecast` FE lock with dirty WIP, so Codex did not run long full-project type gates that would include that intermediate work.
+- Bugs found:
+  - `GET /api/patient-self-reports` returned sensitive patient self-report responses through an exported `withAuthContext` handler without a route-local wrapper covering auth-boundary and unexpected-error responses.
+  - The protected GET matrix did not assert no-store for `patient-self-reports GET`.
+- Implemented by Codex:
+  - Split the existing authenticated GET handler into `authenticatedGET` and exported a wrapper that applies `withSensitiveNoStore()` to all normal responses.
+  - Added `unstable_rethrow()` plus `withSensitiveNoStore(internalError())` for sanitized unexpected failures while preserving Next.js control-flow exceptions.
+  - Added a sanitized 500 regression that confirms a thrown raw self-report secret is not reflected in the response body.
+  - Added `patient-self-reports GET` to the protected GET no-store matrix.
+- Validation:
+  - Baseline `pnpm vitest run src/app/api/patient-self-reports/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `14` tests.
+  - `pnpm exec prettier --write src/app/api/patient-self-reports/route.ts src/app/api/patient-self-reports/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed, unchanged.
+  - `pnpm vitest run src/app/api/patient-self-reports/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `333` tests.
+  - `pnpm exec eslint src/app/api/patient-self-reports/route.ts src/app/api/patient-self-reports/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/patient-self-reports/route.ts src/app/api/patient-self-reports/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `git diff --check -- src/app/api/patient-self-reports/route.ts src/app/api/patient-self-reports/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed after Claude committed `/admin/inventory-forecast` and sent STABLE.
+  - `pnpm typecheck:no-unused`: passed after Claude committed `/admin/inventory-forecast` and sent STABLE.
+- Remaining:
+  - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST` with full validation results.
+
 ### Medication Profiles GET — Sensitive List No-Store
 
 - Coordination:
