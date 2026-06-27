@@ -21,6 +21,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Patient-Level Access Helper Migration (P3 First Slice)
+
+- Coordination:
+  - Kept the main agent focused on `agmsg` coordination and review traffic, per the user's instruction.
+  - Read-only reviewed Claude's report-share-workspace accessibility follow-up `3caabbb3` and returned `APPROVE` after focused validation.
+  - Read-only reviewed Claude's P4b FE create-mode care-team Select commit `de8a410a` and returned `APPROVE` after focused validation.
+  - Took `LOCK(Codex P3 patient-level assignment access helper)` for `src/lib/auth/visit-schedule-access.ts` and `src/lib/auth/__tests__/visit-schedule-access.test.ts`; a maintainer subagent implemented the bounded patch and a privacy reviewer subagent approved it.
+- Added `buildPersonalPatientAssignmentWhere(ctx)` for Patient-root assignment access.
+- Changed only the Patient-level helpers: `buildPatientAssignmentWhere` and `applyPatientAssignmentWhere` now scope non-org-wide roles by Patient root `primary_pharmacist_id`, `backup_pharmacist_id`, `primary_staff_id`, `backup_staff_id`, plus a scheduled-visit pharmacist fallback.
+- Preserved CareCase, schedule, proposal, and visit-record assignment helpers unchanged so historical case-scoped resources remain case-scoped in this first slice.
+- Updated unit coverage for Patient-root pharmacist/staff OR shape, scheduled pharmacist fallback, existing `cases.some` preservation, existing `AND` preservation, and org-wide no-op behavior.
+- Security risk reduced: patient-level read/write guards that depend on `applyPatientAssignmentWhere` now use the Patient assignment SSOT while still preserving existing predicates, reducing stale CareCase assignment exposure for Patient-level resources.
+- Performance issue improved: Patient root scalar assignment checks are cheaper than requiring every Patient access path to traverse CareCase assignment columns; the scheduled-visit fallback remains an `EXISTS` relation for actual scheduled work access.
+- Validation passed:
+  - `pnpm vitest run src/lib/auth/__tests__/visit-schedule-access.test.ts --reporter=dot --testTimeout=30000` passed `1` file / `14` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed after replacing an invalid test fixture field with `archived_at`.
+  - Scoped ESLint passed for `src/lib/auth/visit-schedule-access.ts` and `src/lib/auth/__tests__/visit-schedule-access.test.ts`.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed.
+  - `privacy_compliance_reviewer` returned `APPROVE` with no blocking PHI/access findings.
+- Next action: wait for Claude's maker/checker review response, then commit Codex-owned P3 files and this ledger separately, send `agmsg` FYI, and continue the next non-overlapping backend slice. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Patient Create Care-Team Assignment Persistence
 
 - Coordination:

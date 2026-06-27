@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-0755 JST
+
+- current task: P3 first slice for Patient-level assignment access helpers, keeping the main agent available for Claude agmsg coordination and delegating implementation/review to subagents.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox/send via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `src/lib/auth/visit-schedule-access.ts`, `src/lib/auth/__tests__/visit-schedule-access.test.ts`, mapper output from a read-only `code_mapper` subagent, maintainer implementation output, privacy reviewer output, and read-only Claude commits `3caabbb3` / `de8a410a`.
+- files changed: `src/lib/auth/visit-schedule-access.ts`, `src/lib/auth/__tests__/visit-schedule-access.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned patient-form/report-share files were not edited or staged by Codex.
+- bugs found: Patient-level access helpers still derived patient access from CareCase assignment columns after Patient-level assignment fields became the SSOT for current patient ownership. This could leave Patient-level resources scoped by stale case-level assignment data.
+- security risks found: reduced stale assignment access risk for Patient-level resources by moving only `buildPatientAssignmentWhere` and `applyPatientAssignmentWhere` to Patient root `primary_pharmacist_id`, `backup_pharmacist_id`, `primary_staff_id`, `backup_staff_id`, plus scheduled pharmacist fallback, while preserving all existing `where` predicates under `AND`.
+- performance issues found: improved Patient-level access predicate shape by using Patient root scalar columns first; retained a scheduled-visit relation fallback for actual scheduled work access. No DB writes, schema changes, migrations, external sends, dependencies, or UI changes were introduced by Codex.
+- validation commands: `pnpm vitest run src/lib/auth/__tests__/visit-schedule-access.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint src/lib/auth/visit-schedule-access.ts src/lib/auth/__tests__/visit-schedule-access.test.ts`; `pnpm exec prettier --check src/lib/auth/visit-schedule-access.ts src/lib/auth/__tests__/visit-schedule-access.test.ts`; `git diff --check -- src/lib/auth/visit-schedule-access.ts src/lib/auth/__tests__/visit-schedule-access.test.ts`; read-only Claude review validations `pnpm vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`, `pnpm vitest run src/components/features/patients/patient-form.test.tsx --reporter=dot --testTimeout=30000`, and scoped eslint/prettier for those Claude files.
+- validation results: P3 focused Vitest passed `1` file / `14` tests; full TypeScript passed after fixing an invalid test fixture field; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. Privacy reviewer subagent approved. Claude report-share follow-up focused Vitest passed `1` file / `13` tests and was approved. Claude P4b FE patient-form focused Vitest passed `1` file / `11` tests and was approved. Claude maker/checker review for P3 was requested and is pending at this entry.
+- remaining work: receive Claude P3 review, commit P3 implementation files, commit progress ledgers separately, send agmsg FYI, then continue non-overlapping backend work. The all-pages UI/UX objective remains incomplete.
+- next action: wait for Claude APPROVE/FINDINGS, then grouped commits.
+
 ### 20260627-0735 JST
 
 - current task: implement P4b backend support for Patient-level care-team assignment persistence on new patient creation while coordinating with Claude through agmsg maker/checker review.
