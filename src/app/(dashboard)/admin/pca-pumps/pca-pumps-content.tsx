@@ -1468,7 +1468,10 @@ export function PcaPumpsContent() {
                           aria-invalid={Boolean(statusError)}
                           aria-describedby={statusError ? statusErrorId : undefined}
                         >
-                          <SelectValue />
+                          {/* default は非空 enum(unchecked)。bare SelectValue の生 enum 漏れ防止に明示ラベル。 */}
+                          <SelectValue>
+                            {ACCESSORY_STATUS_LABELS[value.status] ?? value.status}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {Object.entries(ACCESSORY_STATUS_LABELS).map(([status, label]) => (
