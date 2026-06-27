@@ -86,6 +86,8 @@ describe('/api/pharmacy-partnerships GET', () => {
     const response = await GET(createGetRequest('?limit=20'));
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(pharmacyPartnershipFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { org_id: 'org_1' },
@@ -126,6 +128,8 @@ describe('/api/pharmacy-partnerships GET', () => {
       const response = await GET(createGetRequest(query));
 
       expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '検索条件が不正です',
@@ -140,6 +144,8 @@ describe('/api/pharmacy-partnerships GET', () => {
     const response = await GET(createGetRequest('?status=deleted'));
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -147,6 +153,26 @@ describe('/api/pharmacy-partnerships GET', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(pharmacyPartnershipFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when partnership listing fails unexpectedly', async () => {
+    pharmacyPartnershipFindManyMock.mockRejectedValueOnce(
+      new Error('raw pharmacy partnership contact snapshot secret'),
+    );
+
+    const response = await GET(createGetRequest('?limit=20'));
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('raw pharmacy partnership');
+    expect(JSON.stringify(body)).not.toContain('contact snapshot');
+    expect(JSON.stringify(body)).not.toContain('secret');
   });
 });
 
