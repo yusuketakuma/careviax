@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Patient Detail Timeline Href Builder Convergence
+
+- Coordination:
+  - Drained `phos/codex` before and during the slice. Claude ACKed the backend/service lock for `src/server/services/patient-detail-timeline-events.ts`, `src/server/services/patient-detail-timeline-registry.ts`, `src/server/services/patient-detail.test.ts`, and ledgers.
+  - Prioritized Claude's `PATCH_REVIEW_REQUEST` for inventory-forecast FE commit `c8131d97` before committing this state update. Codex approved it after inspecting `docs/ui-ux-design-guidelines.md`, the commit diff, and rerunning focused FE validation. Inventory forecast is now end-to-end complete across backend `ed4a11f4` and FE `c8131d97`.
+  - A verifier subagent reviewed the timeline href diff read-only and reported no blocking findings.
+- Refactored patient timeline href construction in `bf036b5c`:
+  - Added `buildPatientBillingCandidatesHref` and `buildPatientConferencesHref` so timeline query hrefs are built through named helpers instead of inline string interpolation.
+  - Kept path-segment routes on existing `buildPatientHref` / prescription/report/visit helpers, and kept query values on `URLSearchParams`.
+  - Preserved existing billing-candidate query order (`billing_month` before `patient_id` when month is present), raw patient identity use in DB filters, timeline event IDs/metadata, response shape, DB schema/data, migrations, UI files, dependencies, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: future timeline adapters now have a smaller, named surface for route-vs-query href construction, reducing the chance of mixing raw path segments with encoded query values.
+- Performance issue improved: none. This is a pure string-construction refactor with no data-path or query changes.
+- Validation passed:
+  - `pnpm exec prettier --write src/server/services/patient-detail-timeline-events.ts src/server/services/patient-detail-timeline-registry.ts` passed.
+  - `pnpm exec vitest run src/server/services/patient-detail.test.ts src/server/services/patient-detail-timeline-query.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `71` tests.
+  - Scoped ESLint passed for `src/server/services/patient-detail-timeline-events.ts`, `src/server/services/patient-detail-timeline-registry.ts`, `src/server/services/patient-detail.test.ts`, and `src/server/services/patient-detail-timeline-query.test.ts`.
+  - Scoped Prettier check passed for the same four files.
+  - Scoped diff whitespace check passed for the two implementation files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Verifier reran `pnpm exec vitest run src/server/services/patient-detail.test.ts 'src/app/api/patients/[id]/route.test.ts' --reporter=dot --testTimeout=30000` and passed `2` files / `106` tests, plus scoped ESLint/Prettier/diff and full `tsc`.
+- Interrupt review validation for Claude inventory-forecast FE `c8131d97`:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx' --reporter=dot --testTimeout=30000` passed `1` file / `4` tests.
+  - Scoped ESLint and Prettier check passed for the two FE files.
+  - Review result sent as `PATCH_REVIEW_RESULT APPROVED`; no findings.
+- Commit status: implementation landed as `bf036b5c`; this entry plus FEATURE_QUEUE/Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `bf036b5c` plus the state commit, then continue after inbox is clear.
+
 ### 2026-06-27 JST - RLS List-Read Session Context Unification
 
 - Coordination:
