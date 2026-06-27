@@ -46,6 +46,11 @@ import { GET } from './route';
 const createRequest = () =>
   new NextRequest('http://localhost/api/external-professionals/ep_1/communications');
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/external-professionals/[id]/communications', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -78,6 +83,7 @@ describe('/api/external-professionals/[id]/communications', () => {
     const response = (await GET(createRequest(), { params: Promise.resolve({ id: 'ep_1' }) }))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(careTeamLinkFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -126,5 +132,6 @@ describe('/api/external-professionals/[id]/communications', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    expectNoStore(response);
   });
 });

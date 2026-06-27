@@ -37,6 +37,11 @@ import { GET } from './route';
 const createRequest = () =>
   new NextRequest('http://localhost/api/admin/external-professionals/external_1/communications');
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/admin/external-professionals/[id]/communications', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,6 +80,7 @@ describe('/api/admin/external-professionals/[id]/communications', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(communicationRequestFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -115,5 +121,34 @@ describe('/api/admin/external-professionals/[id]/communications', () => {
         events: [{ id: 'event_1' }],
       },
     });
+  });
+
+  it('returns a no-store 404 when the professional is missing', async () => {
+    externalProfessionalFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'missing' }),
+    }))!;
+
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+  });
+
+  it('returns a sanitized no-store 500 when communication history lookup fails unexpectedly', async () => {
+    externalProfessionalFindFirstMock.mockRejectedValueOnce(
+      new Error('raw external professional patient communication secret'),
+    );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'external_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('patient communication secret');
   });
 });

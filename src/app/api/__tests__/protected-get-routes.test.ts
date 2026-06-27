@@ -159,6 +159,7 @@ vi.mock('@/server/services/patient-detail', async (importOriginal) => {
 
 import { GET as auditLogsGet } from '../audit-logs/route';
 import { GET as auditLogsExportGet } from '../audit-logs/export/route';
+import { GET as adminExternalProfessionalCommunicationsGet } from '../admin/external-professionals/[id]/communications/route';
 import { GET as billingCandidatesGet } from '../billing-candidates/route';
 import { GET as billingDocumentPdfGet } from '../billing-candidates/[id]/documents/pdf/route';
 import { GET as billingCandidatesExportGet } from '../billing-candidates/export/route';
@@ -192,6 +193,7 @@ import { GET as dispenseResultGet } from '../dispense-results/[id]/route';
 import { GET as dispenseTasksGet } from '../dispense-tasks/route';
 import { GET as dispenseTaskGet } from '../dispense-tasks/[id]/route';
 import { GET as dispenseTaskWorkbenchGet } from '../dispense-tasks/[id]/workbench/route';
+import { GET as externalProfessionalCommunicationsGet } from '../external-professionals/[id]/communications/route';
 import { GET as firstVisitDocumentsGet } from '../first-visit-documents/route';
 import { GET as handoffBoardGet } from '../handoff-board/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
@@ -276,6 +278,46 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       auditLogsExportGet(
         createRequest('http://localhost/api/audit-logs/export', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'admin/external-professionals/[id]/communications GET',
+    setupSuccess: () => {
+      prismaMock.externalProfessional.findFirst.mockResolvedValueOnce({
+        id: 'external_1',
+        name: '佐藤医師',
+        organization_name: 'あおばクリニック',
+      });
+      prismaMock.communicationRequest.findMany.mockResolvedValueOnce([
+        {
+          id: 'request_1',
+          request_type: 'care_report_followup',
+          recipient_name: '佐藤医師',
+          recipient_role: 'physician',
+          subject: '報告書確認',
+          status: 'sent',
+          requested_at: new Date('2026-03-30T00:00:00.000Z'),
+        },
+      ]);
+      prismaMock.communicationEvent.findMany.mockResolvedValueOnce([
+        {
+          id: 'event_1',
+          event_type: 'phone_call',
+          channel: 'phone',
+          direction: 'outbound',
+          counterpart_name: '佐藤医師',
+          subject: '電話確認',
+          occurred_at: new Date('2026-03-29T00:00:00.000Z'),
+        },
+      ]);
+    },
+    handler: () =>
+      adminExternalProfessionalCommunicationsGet(
+        createRequest(
+          'http://localhost/api/admin/external-professionals/external_1/communications',
+          { 'x-org-id': 'org_1' },
+        ),
+        { params: Promise.resolve({ id: 'external_1' }) },
       ),
   },
   {
@@ -723,6 +765,35 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'task_1' }) },
+      ),
+  },
+  {
+    name: 'external-professionals/[id]/communications GET',
+    setupSuccess: () => {
+      prismaMock.externalProfessional.findFirst.mockResolvedValueOnce({
+        id: 'external_1',
+        name: '佐藤医師',
+        organization_name: 'あおばクリニック',
+      });
+      prismaMock.communicationRequest.findMany.mockResolvedValueOnce([
+        {
+          id: 'request_1',
+          request_type: 'care_report_followup',
+          recipient_name: '佐藤医師',
+          recipient_role: 'physician',
+          subject: '報告書確認',
+          status: 'sent',
+          requested_at: new Date('2026-03-30T00:00:00.000Z'),
+        },
+      ]);
+      prismaMock.communicationEvent.findMany.mockResolvedValueOnce([]);
+    },
+    handler: () =>
+      externalProfessionalCommunicationsGet(
+        createRequest('http://localhost/api/external-professionals/external_1/communications', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'external_1' }) },
       ),
   },
   {
@@ -1487,6 +1558,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(401);
       if (
         route.name === 'audit-logs GET' ||
+        route.name === 'admin/external-professionals/[id]/communications GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'prescription-intakes/triage GET' ||
@@ -1557,7 +1629,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dashboard/monthly-stats GET' ||
         route.name === 'dispense-audits GET' ||
         route.name === 'dispense-queue GET' ||
-        route.name === 'dispense-workbench/patients GET'
+        route.name === 'dispense-workbench/patients GET' ||
+        route.name === 'external-professionals/[id]/communications GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -1575,6 +1648,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(403);
       if (
         route.name === 'audit-logs GET' ||
+        route.name === 'admin/external-professionals/[id]/communications GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'prescription-intakes/triage GET' ||
@@ -1645,7 +1719,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dashboard/monthly-stats GET' ||
         route.name === 'dispense-audits GET' ||
         route.name === 'dispense-queue GET' ||
-        route.name === 'dispense-workbench/patients GET'
+        route.name === 'dispense-workbench/patients GET' ||
+        route.name === 'external-professionals/[id]/communications GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -1664,6 +1739,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(200);
       if (
         route.name === 'audit-logs GET' ||
+        route.name === 'admin/external-professionals/[id]/communications GET' ||
         route.name === 'prescription-intakes/triage GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||
@@ -1681,6 +1757,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||
         route.name === 'dispense-workbench/patients GET' ||
+        route.name === 'external-professionals/[id]/communications GET' ||
         route.name === 'dispense-results/[id] GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'partner-visit-records GET' ||
