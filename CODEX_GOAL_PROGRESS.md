@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - S2 Operating-Day Calendar Migration Foundation
+
+- Coordination:
+  - Drained `phos/codex` before implementation and after each long gate. Claude approved R1 `9d960e7d` / `955cb84e`, and Codex ACKed/released the R1 lock before starting S2.
+  - Claude reported user approval for local-dev S2 migration apply in commit `43e499d4` with conditions: add-only/non-destructive, `PharmacyOperatingHours`, nullable `BusinessHoliday.open_time/close_time`, two `BusinessHoliday` partial unique indexes, duplicate cleanup only if real duplicates, maker/checker, and no prod RDS apply.
+  - A db_steward subagent reviewed the S2 diff read-only. Its MEDIUM finding about missing BusinessHoliday duplicate precheck was fixed by extending `tools/scripts/verify-migration-preconditions.ts` and its unit tests. Its LOW seed note is intentionally left as all-days-open sample data to preserve the legacy default-open fallback until S3 explicitly introduces weekly-hours behavior.
+- Added `PharmacyOperatingHours` to Prisma schema with org/site relations, composite `(site_id, org_id)` FK contract, weekday, open/close time windows, note, timestamps, `@@unique([site_id, weekday])`, and org/site indexes.
+- Added `BusinessHoliday.open_time` and `BusinessHoliday.close_time` as nullable `@db.Time()` fields for later short-hours / temporary-open support without changing existing holiday behavior.
+- Added migration `20260627090000_add_pharmacy_operating_hours` with nullable `BusinessHoliday` time columns, guarded `PharmacySite(id, org_id)` unique repair for local drift / composite FK support, `PharmacyOperatingHours` table/checks/FKs/indexes, `BusinessHoliday` time-pair check, two `BusinessHoliday` partial unique indexes, RLS/FORCE, tenant policy, and audit trigger.
+- Updated `prisma/rls-policies.sql` so the snapshot includes `PharmacyOperatingHours` RLS and FORCE RLS.
+- Updated seed so the sample site gets 7 default operating-hour rows (`09:00`-`18:00`, all days open) with `skipDuplicates`; the insert runs in a transaction that sets `app.current_org_id` and `app.rls_context_applied` for the new FORCE-RLS table.
+- Extended `tools/scripts/verify-migration-preconditions.ts` to load `.env` like other DB precheck scripts and to fail on duplicate BusinessHoliday groups that would block S2's two partial unique indexes. Added unit coverage for org-wide and site-specific duplicate groups.
+- Security risk reduced: new org/site operating-hours rows are tenant-isolated at DB level, audit logged, and protected against cross-org site mismatch by composite FK. BusinessHoliday duplicates that would make org-wide/site-specific operating-day resolution ambiguous are now prevented by DB partial unique indexes and checked in the precondition gate.
+- Performance issue improved: no app runtime path changed. Added indexes needed for deterministic site/day lookups and uniqueness; no new normal-path DB queries, frontend behavior, external sends, prod DB writes, destructive cleanup, or dependency changes were introduced.
+- Validation passed / classified:
+  - BusinessHoliday duplicate preflight via Node/pg: org-wide duplicate groups `0`, site-specific duplicate groups `0`; no cleanup was needed.
+  - `pnpm exec prisma format` passed.
+  - `pnpm exec prisma validate` passed.
+  - Local dev DB apply: `pnpm exec prisma db execute --file prisma/migrations/20260627090000_add_pharmacy_operating_hours/migration.sql` passed after local-only drift repair for previously missing RLS/audit support and after guarding the missing `PharmacySite_id_org_id_key` constraint in the S2 migration.
+  - DB catalog verification confirmed S2 columns, constraints, indexes, partial indexes, RLS/FORCE, policy, and audit trigger.
+  - `pnpm db:generate` passed.
+  - `pnpm exec vitest run tools/scripts/verify-migration-preconditions.test.ts --reporter=dot --testTimeout=30000` passed `1` file / `12` tests.
+  - Manual BusinessHoliday duplicate read-only query after precondition-script update returned org-wide `0`, site-specific `0`.
+  - Scoped ESLint, scoped Prettier check, and scoped diff whitespace check passed for S2 files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm --config.verify-deps-before-run=false db:verify-migration-preconditions` now reads `.env` but is blocked on this local dev DB's pre-existing schema drift (`PatientInsurance.public_program_code` missing). This is not attributed to the S2 diff; S2's BusinessHoliday duplicate precheck was verified separately as above.
+- Commit status: implementation/precondition files are ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware checks, commit implementation/precondition files, commit ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, and keep S2 under review until Claude responds.
+
 ### 2026-06-27 JST - R1 Operating-Day Planner Refactor
 
 - Coordination:
