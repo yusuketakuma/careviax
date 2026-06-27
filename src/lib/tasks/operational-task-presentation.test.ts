@@ -37,6 +37,18 @@ describe('describeOperationalTask', () => {
     ).toBe('/audit?taskId=task-tanaka');
   });
 
+  it('encodes audit task ids while keeping raw identity out of the href', () => {
+    const taskId = '../task with space?x=1#frag';
+
+    expect(
+      describeOperationalTask({
+        task_type: 'staff_work_request_audit',
+        related_entity_type: 'dispense_task',
+        related_entity_id: taskId,
+      }).actionHref,
+    ).toBe(`/audit?taskId=${encodeURIComponent(taskId)}`);
+  });
+
   it('links generic communication follow-up tasks back to communication requests', () => {
     expect(
       describeOperationalTask({

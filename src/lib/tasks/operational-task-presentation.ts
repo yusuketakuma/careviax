@@ -1,3 +1,4 @@
+import { buildAuditTaskHref } from '@/lib/audit/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 
@@ -30,7 +31,7 @@ export function describeOperationalTask(
       return {
         actionHref:
           task.related_entity_type === 'dispense_task' && task.related_entity_id
-            ? `/audit?taskId=${encodeURIComponent(task.related_entity_id)}`
+            ? buildAuditTaskHref(task.related_entity_id)
             : '/audit',
         actionLabel: '監査依頼を確認',
         queueLabel: '監査依頼',

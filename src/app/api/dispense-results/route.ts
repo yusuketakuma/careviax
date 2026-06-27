@@ -1,4 +1,5 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { buildAuditTaskHref } from '@/lib/audit/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
@@ -661,7 +662,7 @@ export const POST = withAuthContext(
           type: 'business',
           title: '調剤鑑査待ちの処方があります',
           message: `${task.cycle.case_.patient.name} の調剤結果が鑑査待ちになりました`,
-          link: `/audit?taskId=${encodeURIComponent(task_id)}`,
+          link: buildAuditTaskHref(task_id),
           metadata: {
             task_id,
             cycle_id: task.cycle_id,
