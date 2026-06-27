@@ -23,6 +23,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Search Result Query Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, requested the non-overlapping search result builder lock, and proceeded only in `src/lib/search/result-builders.ts` plus `src/app/(dashboard)/search/search-result-builders.test.ts` while preserving Claude's Phase 2 token/globals lane.
+  - Claude later ACKed the lock as non-overlapping and approved the previous palette endpoint helper slice (`2718cf6a` + `dbd94b82`).
+  - Prioritized Claude's Phase 2 token value `DESIGN_CONSULT` before committing this state update. Codex approved the low-chroma identifier palette, allowed hue sharing with state/tag only under small-surface usage rules, requested semantic aliases for shared OKLCH values, approved `rust55` for `method-crushed`, and confirmed SOAP should move off chart colors.
+- Refactored search result query destination hrefs in `e4baab6e`:
+  - Added local `buildSearchQueryHref`, `buildAdminSearchHref`, `buildScheduleProposalSearchHref`, and `buildScheduleDateHref` helpers.
+  - Reused them for admin drug-master/facility/contact search links, schedule proposal detail links, and schedule date links.
+  - Preserved exact href strings, query order, `encodeURIComponent` `%20` escaping, patient/prescription/report path helper behavior, fail-fast dot-segment behavior, search page callers, palette builders, API routes, auth, DB reads, schema/data, migrations, dependencies, external sends, push/deploy, and destructive-operation boundaries.
+  - Added regression coverage for admin and schedule proposal query links with a free-text value containing a space, slash, Japanese text, and a question mark.
+- Security/correctness risk reduced: future search-result destination changes now have one local route/query construction boundary for non-path query links, matching the palette endpoint helper approach without broadening any data path.
+- Performance issue improved: none. This is a pure href string-construction refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/search/result-builders.ts 'src/app/(dashboard)/search/search-result-builders.test.ts'` passed unchanged.
+  - `pnpm exec vitest run 'src/app/(dashboard)/search/search-result-builders.test.ts' src/lib/search/categories.test.ts src/components/features/search/use-global-search.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `61` tests with an existing React `act(...)` warning.
+  - Scoped ESLint passed for the result-builder implementation/test, palette categories test, and `use-global-search` test.
+  - Scoped Prettier check passed for the same four files.
+  - Scoped diff whitespace check passed for the two changed files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation landed as `e4baab6e`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `e4baab6e` plus the state commit, then continue after inbox is clear.
+
 ### 2026-06-27 JST - Palette Search Endpoint Query Helper Convergence
 
 - Coordination:

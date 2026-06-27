@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-2051 JST
+
+- current task: search result query href helper convergence: centralize non-path search-result destination query links while preserving exact output, query order, and `encodeURIComponent` escaping.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain search for prior search-result href context, gbrain `code_blast` probes for the affected builders (not indexed), `src/lib/search/result-builders.ts`, `src/app/(dashboard)/search/search-result-builders.test.ts`, `src/app/(dashboard)/search/search-content.tsx`, `src/lib/search/categories.test.ts`, `docs/ui-ux-design-guidelines.md`, `docs/color-token-remediation-plan.md`, and Claude Phase 2 token value consultation.
+- files changed: `src/lib/search/result-builders.ts`, `src/app/(dashboard)/search/search-result-builders.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: no production behavior bug was changed. The maintainability/safety gap was that search result rows still hand-built five non-path query hrefs with repeated inline `encodeURIComponent` templates after the palette endpoint slice had already centralized its query construction.
+- security risks found: reduced route/query construction drift by adding one local query href helper that encodes keys/values with `encodeURIComponent`, then using it for admin drug/facility/contact search links, schedule proposal detail links, and schedule date links. Existing patient/prescription/report path helpers, fail-fast dot-segment behavior, raw response builders, UI callers, API routes, auth, DB reads/writes, schema/data, migrations, dependencies, external sends, push/deploy, and destructive operations were not changed.
+- performance issues found: none. This is a pure string-construction refactor with no additional reads, network calls, loops, cache behavior, polling, dependencies, or render work.
+- validation commands: `pnpm exec prettier --write src/lib/search/result-builders.ts 'src/app/(dashboard)/search/search-result-builders.test.ts'`; `pnpm exec vitest run 'src/app/(dashboard)/search/search-result-builders.test.ts' src/lib/search/categories.test.ts src/components/features/search/use-global-search.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for `src/lib/search/result-builders.ts`, `src/app/(dashboard)/search/search-result-builders.test.ts`, `src/lib/search/categories.test.ts`, and `src/components/features/search/use-global-search.test.ts`; scoped Prettier check for the same four files; scoped diff whitespace check for the two changed files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused search/palette/global-search Vitest passed `3` files / `61` tests with the existing React `act(...)` warning. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed. Codex also received Claude approval for the previous palette endpoint helper slice and answered Claude's Phase 2 token value consultation, approving low-chroma identifier hue sharing, semantic aliases with shared underlying OKLCH values, rust55 for `method-crushed`, and SOAP token replacement for chart colors.
+- remaining work: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `e4baab6e` plus the state commit, then continue after inbox is clear.
+- next action: state commit and Claude review request for the search result query href helper convergence slice.
+
 ### 20260627-2044 JST
 
 - current task: palette search endpoint query helper convergence: centralize palette category endpoint query construction while preserving exact endpoint output, query order, and `encodeURIComponent` escaping.
