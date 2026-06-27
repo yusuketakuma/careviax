@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0430 JST
+
+- current task: patient share API path hardening for patient overview/support fetches and reply-detail fetches.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` / `code_callers` for `ExternalShareContent` (not resolved / graph not built), `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`, `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`, `src/lib/patient/navigation.ts`, `src/lib/patient/navigation.test.ts`, and existing communication request API path helper tests.
+- files changed: `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`, `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: patient share overview, care-team, contacts, and reply-detail fetches built API paths with raw `patientId` / local request-id interpolation. Normal route IDs are safe, but malformed IDs with slash/query/hash characters could confuse route construction before request dispatch.
+- security risks found: reduced path-normalization and route-confusion risk by adding `buildPatientApiPath` on top of `encodePathSegment`, routing patient share overview/support fetches through it, and routing reply detail fetches through the shared communication request API helper. Added coverage proving hostile patient/request ids are encoded in API paths while list query identity remains raw. Existing external-access generation, task creation body, OTP/share URL handling, org headers, auth, permissions, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing patient-share fetches, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write src/lib/patient/api-paths.ts src/lib/patient/api-paths.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx'`; `pnpm exec vitest run src/lib/patient/api-paths.test.ts src/lib/communications/api-paths.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' --reporter=dot --testTimeout=30000`; scoped ESLint for the patient/communication helpers and patient share component/test; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused patient API path + communication API path + patient share tests passed `3` files / `14` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the four implementation files for the implementation commit, then stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0425 JST
 
 - current task: communication request API path helper convergence for reply-detail fetches and resolve-followup mutations.

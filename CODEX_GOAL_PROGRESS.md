@@ -126,6 +126,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
 - Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Patient Share API Path Hardening
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `patient-share-api-path` lock notice, and continued after the inbox stayed clear.
+  - Kept this to patient share API path construction; no DB mutation, migration, push, deploy, auth/billing change, external-access generation change, task body change, visual/layout change, or destructive operation.
+- Hardened patient-share route construction:
+  - Added `src/lib/patient/api-paths.ts` with `buildPatientApiPath(patientId, suffix)` on top of `encodePathSegment`.
+  - Replaced raw patient overview, care-team, and contacts fetch URLs in `ExternalShareContent`.
+  - Reused the shared communication request API helper for reply-detail fetches.
+  - Added helper coverage for hostile slash/query/hash ids, suffix placement outside the encoded segment, and exact `.` / `..` fail-closed behavior.
+  - Added patient-share coverage proving hostile patient/request ids are encoded in API paths while the communication list query keeps the raw patient identity.
+  - Preserved external-access generation, task creation body, OTP/share URL handling, org headers, auth, permissions, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient share no longer interpolates raw patient IDs into `/api/patients/:id` paths and reply detail fetches share the communication request path contract.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/patient/api-paths.ts src/lib/patient/api-paths.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx'` passed unchanged.
+  - `pnpm exec vitest run src/lib/patient/api-paths.test.ts src/lib/communications/api-paths.test.ts 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' --reporter=dot --testTimeout=30000` passed `3` files / `14` tests.
+  - Scoped ESLint passed for patient/communication helpers and patient share component/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/API-path slice.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
+- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Partner Visit Record API Path Helper Hardening
 
 - Coordination:
