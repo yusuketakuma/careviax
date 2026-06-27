@@ -48,6 +48,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation landed as `e0f4a79f`; this entry plus Ralph updates are the separate progress-ledger update.
 - Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `e0f4a79f` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Visit Record PDF Href Path-Segment Hardening
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `visit-record-pdf-href` lock notice, and continued after the inbox stayed clear.
+  - Started with the billing collection route as a candidate, but Claude correctly hard-stopped it as billing/auth/security sensitive without human approval. Codex cleared that WIP completely and did not commit or land any billing change.
+  - Kept this slice to visit-record PDF URL construction only; no DB mutation, migration, push, deploy, external send, or destructive operation.
+- Hardened visit-record PDF URL construction in `771db59e`:
+  - Added `buildVisitRecordPdfHref(recordId)` in `src/lib/visits/navigation.ts` on top of `encodePathSegment`.
+  - Reused the helper when creating new first-visit document `document_url` values.
+  - Reused the helper for the visit-record detail page's PDF output link.
+  - Added helper coverage for hostile slash/query/hash ids and exact `.` / `..` fail-closed behavior.
+  - Added first-visit document route coverage proving hostile visit record ids are encoded in the generated PDF URL while raw visit record identity is preserved in audit changes.
+  - Preserved existing stored document URLs, PDF route authorization/org scoping, raw DB identities, schema/data, migrations, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: first-visit document URLs and the visit detail PDF link no longer interpolate raw visit record ids as path segments.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/visits/navigation.ts src/lib/visits/navigation.test.ts src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts 'src/app/(dashboard)/visits/[id]/visit-record-detail.tsx'` passed unchanged.
+  - `pnpm exec vitest run src/lib/visits/navigation.test.ts src/app/api/visit-records/route.test.ts 'src/app/api/visit-records/[id]/pdf/route.test.ts' --reporter=dot --testTimeout=30000` passed `3` files / `76` tests.
+  - Scoped ESLint passed for the helper/test, visit-records route/test, PDF route test, and visit-record detail component.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/link slice.
+- Commit status: implementation landed as `771db59e`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `771db59e` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Shared File Download Href Builder
 
 - Coordination:

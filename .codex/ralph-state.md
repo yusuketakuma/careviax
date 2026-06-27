@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0340 JST
+
+- current task: visit record PDF href path-segment hardening for first-visit document URLs and the visit-record detail PDF link.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, Next route handler docs under `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, gbrain `code_blast` for `createFirstVisitDocument` (not resolved), raw `/api/visit-records/:id/pdf` grep, `src/lib/http/path-segment.ts`, `src/lib/http/path-segment.test.ts`, `src/lib/visits/navigation.ts`, `src/lib/visits/navigation.test.ts`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `src/app/api/visit-records/[id]/pdf/route.test.ts`, and `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`.
+- files changed: `src/lib/visits/navigation.ts`, `src/lib/visits/navigation.test.ts`, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: new first-visit document records and the visit-record detail PDF link both built `/api/visit-records/:id/pdf` with a raw visit record id path segment. Normal DB ids are safe, but hostile or malformed ids containing slash/query/hash/dot-segment-like text could confuse route construction.
+- security risks found: reduced path-normalization and route-confusion risk by adding `buildVisitRecordPdfHref(recordId)` on top of `encodePathSegment`, using it for newly generated first-visit document URLs and the detail-page PDF link, and adding coverage that hostile ids are encoded while raw visit record identity remains unchanged in audit metadata. Existing PDF route authorization, org scoping, DB schema/data, migrations, stored existing document URLs, external sends, PHI logging, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render work.
+- validation commands: `pnpm exec prettier --write src/lib/visits/navigation.ts src/lib/visits/navigation.test.ts src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts 'src/app/(dashboard)/visits/[id]/visit-record-detail.tsx'`; `pnpm exec vitest run src/lib/visits/navigation.test.ts src/app/api/visit-records/route.test.ts 'src/app/api/visit-records/[id]/pdf/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint for the helper/test, visit-records route/test, PDF route test, and visit-record detail component; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused visit navigation + visit-records route + PDF route Vitest passed `3` files / `76` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `771db59e` plus the state commit. The broader all-page PH-OS UI/UX polish and backend helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit, then send Claude the review request and continue after inbox is clear.
+
 ### 20260628-0332 JST
 
 - current task: offline evidence draft sync path-segment hardening for visit schedule and visit record API URLs.
