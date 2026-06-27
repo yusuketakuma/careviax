@@ -23,6 +23,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Prescription Intake API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final validation/state phase.
+  - Used read-only subagents for next-candidate mapping, backend risk review, medical safety review, and privacy review.
+  - Kept this to prescription-intake API path construction; no DB mutation, migration, push, deploy, auth/billing change, external send, visual/layout change, route handler change, or destructive operation.
+- Hardened/converged prescription intake route construction:
+  - Added `src/lib/prescriptions/api-paths.ts` with `buildPrescriptionIntakeApiPath(intakeId)` on top of `encodePathSegment`.
+  - Replaced local detail GET URLs in prescription detail and inline detail components.
+  - Replaced patient prescription history's mark-original-collected PATCH URL.
+  - Replaced card-workspace FAX-original, prescription-document, and original-management PATCH URLs.
+  - Added helper coverage for normal ids, hostile slash/query/hash ids, and exact `.` / `..` fail-closed behavior.
+  - Removed the initially proposed generic suffix parameter after privacy review flagged future suffix misuse risk; no current callsite needs child-route suffixes.
+  - Preserved existing query keys, `buildOrgHeaders` / `buildOrgJsonHeaders`, methods, PATCH body shapes, toasts, query invalidation, route handlers, auth, permissions, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: prescription-intake GET/PATCH callers now share one path-segment contract and no longer carry duplicated local route templates for intake ids.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/prescriptions/api-paths.ts src/lib/prescriptions/api-paths.test.ts 'src/app/(dashboard)/prescriptions/prescription-inline-detail.tsx' 'src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.tsx'` passed unchanged.
+  - `pnpm exec vitest run src/lib/prescriptions/api-paths.test.ts 'src/app/(dashboard)/prescriptions/[id]/prescription-detail-content.test.tsx' 'src/app/(dashboard)/prescriptions/prescription-inline-detail.test.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000` passed `5` files / `79` tests.
+  - Scoped ESLint passed for the helper/test and four consumer/test pairs.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Review results:
+  - Backend reviewer classified the slice as low-to-medium risk and safe when method/header/body/query invalidation remain unchanged.
+  - Medical safety reviewer found no patient/medication workflow issue after the helper convergence.
+  - Privacy reviewer found no high/medium PHI regression; the low future suffix-misuse concern was fixed before commit.
+- Build status: not rerun by Codex for this targeted helper/API-path slice.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
+- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. Mapper ranked `saved-views`, `comments`, and document-template/delivery-rule API path helper convergence as possible next non-DB/non-billing candidates. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Offline Evidence Sync Path-Segment Hardening
 
 - Coordination:
