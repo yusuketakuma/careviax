@@ -150,4 +150,24 @@ describe('NotificationSettingsContent', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     expect(reopenedThresholdInput.getAttribute('aria-invalid')).toBeNull();
   });
+
+  it('shows escalation option labels, not raw enum values, in the add-rule dialog selects', async () => {
+    // bare <SelectValue /> は非空 enum default(trigger/action/role)の生値を漏らす。
+    // 明示 children で日本語ラベルを表示することを固定する(SSR enum 漏れ封止)。
+    render(<NotificationSettingsContent />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ルール追加' }));
+
+    const trigger = screen.getByLabelText('トリガー');
+    expect(trigger.textContent).toContain('連携返信期限超過');
+    expect(trigger.textContent).not.toContain('communication_response_overdue');
+
+    const action = screen.getByLabelText('アクション');
+    expect(action.textContent).toContain('アプリ内通知');
+    expect(action.textContent).not.toContain('in_app_notification');
+
+    const role = screen.getByLabelText('通知先');
+    expect(role.textContent).toContain('管理者');
+    expect(role.textContent).not.toContain('admin');
+  });
 });

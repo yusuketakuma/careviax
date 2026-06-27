@@ -891,7 +891,11 @@ export function NotificationSettingsContent() {
                 }
               >
                 <SelectTrigger id="escalation-trigger" className="w-full">
-                  <SelectValue />
+                  {/* default は非空 enum。bare SelectValue の生 enum 漏れ防止に明示ラベル(既存 find パターン)。 */}
+                  <SelectValue>
+                    {ESCALATION_TRIGGER_OPTIONS.find((item) => item.value === newEscalationTrigger)
+                      ?.label ?? newEscalationTrigger}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {ESCALATION_TRIGGER_OPTIONS.map((option) => (
@@ -912,7 +916,10 @@ export function NotificationSettingsContent() {
                   }
                 >
                   <SelectTrigger id="escalation-action" className="w-full">
-                    <SelectValue />
+                    <SelectValue>
+                      {ESCALATION_ACTION_OPTIONS.find((item) => item.value === newEscalationAction)
+                        ?.label ?? newEscalationAction}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ESCALATION_ACTION_OPTIONS.map((option) => (
@@ -932,7 +939,10 @@ export function NotificationSettingsContent() {
                   }
                 >
                   <SelectTrigger id="escalation-role" className="w-full">
-                    <SelectValue />
+                    <SelectValue>
+                      {ESCALATION_ROLE_OPTIONS.find((item) => item.value === newEscalationRole)
+                        ?.label ?? newEscalationRole}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ESCALATION_ROLE_OPTIONS.map((option) => (
