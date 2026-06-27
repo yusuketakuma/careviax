@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import { PatientVisitsPanel } from './patient-visits-panel';
@@ -23,6 +24,11 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@/components/home-care/home-care-feature-board', () => ({
   HomeCareFeatureBoard: () => <div>訪問支援サマリー</div>,
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 vi.mock('next/link', () => ({
   default: ({
@@ -250,6 +256,65 @@ describe('PatientVisitsPanel', () => {
       expect((init.headers as Record<string, string>)['x-org-id']).toBe('org_1');
     } finally {
       vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('routes visits fetch and PDF export through the shared patient API path helper', async () => {
+    const patientId = 'patient_1';
+    const realPatientApiPath = vi.mocked(buildPatientApiPath).getMockImplementation();
+    vi.mocked(buildPatientApiPath).mockImplementation((_id, suffix = '') => {
+      if (suffix === '/visits') return '/api/patients/__helper_patient__/visits';
+      if (suffix === '/visit-records/pdf') {
+        return '/api/patients/__helper_patient__/visit-records/pdf';
+      }
+      return `/api/patients/__unexpected__${suffix}`;
+    });
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let capturedConfig: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        if (Array.isArray(config.queryKey) && config.queryKey[0] === 'patient-visits-panel') {
+          capturedConfig = config;
+        }
+        if (config.queryKey[0] === 'patient-visits-panel') {
+          return { data: visitsSnapshot, isLoading: false, error: null };
+        }
+        return { data: { data: visitsSnapshot.visit_records }, isLoading: false, error: null };
+      },
+    );
+
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(visitsSnapshot),
+    } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <PatientVisitsPanel
+          patientId={patientId}
+          medicalInsuranceNumber="medical_1"
+          careInsuranceNumber={null}
+          enabled
+        />,
+      );
+
+      await capturedConfig?.queryFn();
+
+      expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/patients/__helper_patient__/visits');
+      expect(screen.getByRole('link', { name: 'PDF' }).getAttribute('href')).toBe(
+        '/api/patients/__helper_patient__/visit-records/pdf',
+      );
+      expect(buildPatientApiPath).toHaveBeenCalledWith(patientId, '/visits');
+      expect(buildPatientApiPath).toHaveBeenCalledWith(patientId, '/visit-records/pdf');
+      expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}/visits`, {
+        headers: { 'x-org-id': 'org_1' },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      if (realPatientApiPath) vi.mocked(buildPatientApiPath).mockImplementation(realPatientApiPath);
       vi.clearAllMocks();
     }
   });

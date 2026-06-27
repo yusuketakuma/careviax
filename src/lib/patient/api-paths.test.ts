@@ -25,6 +25,8 @@ describe('buildPatientApiPath', () => {
       '/mcs',
       '/mcs-sync',
       '/mcs/logs',
+      '/visits',
+      '/visit-records/pdf',
     ]) {
       expect(buildPatientApiPath(patientId, suffix)).toBe(
         `/api/patients/${encodeURIComponent(patientId)}${suffix}`,

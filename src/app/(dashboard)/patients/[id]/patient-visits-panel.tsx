@@ -16,7 +16,7 @@ import { Loading } from '@/components/ui/loading';
 import { HomeCareFeatureBoard } from '@/components/home-care/home-care-feature-board';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildVisitHref, buildVisitRecordHref } from '@/lib/visits/navigation';
 import { cn } from '@/lib/utils';
@@ -68,7 +68,7 @@ export function PatientVisitsPanel({
     queryKey: ['patient-visits-panel', patientId, orgId],
     enabled: Boolean(orgId && patientId && enabled),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/visits`, {
+      const response = await fetch(buildPatientApiPath(patientId, '/visits'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
@@ -127,7 +127,7 @@ export function PatientVisitsPanel({
   const exportQuery = new URLSearchParams();
   if (dateFrom) exportQuery.set('date_from', dateFrom);
   if (dateTo) exportQuery.set('date_to', dateTo);
-  const exportHref = `/api/patients/${encodePathSegment(patientId)}/visit-records/pdf${exportQuery.size > 0 ? `?${exportQuery.toString()}` : ''}`;
+  const exportHref = `${buildPatientApiPath(patientId, '/visit-records/pdf')}${exportQuery.size > 0 ? `?${exportQuery.toString()}` : ''}`;
   const printHref = buildPatientHref(
     patientId,
     `/visit-records/print${
