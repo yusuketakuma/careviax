@@ -9,7 +9,12 @@ const { taskCommentFindManyMock, userFindManyMock } = vi.hoisted(() => ({
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
     return (req: NextRequest) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' });
+      handler(req, {
+        orgId: 'org_1',
+        userId: 'user_1',
+        ipAddress: '127.0.0.1',
+        userAgent: 'vitest',
+      });
   },
 }));
 
@@ -26,6 +31,11 @@ function createRequest() {
   return new NextRequest('http://localhost/api/comments/recent', {
     headers: { 'x-org-id': 'org_1' },
   });
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/comments/recent', () => {
@@ -61,6 +71,7 @@ describe('/api/comments/recent', () => {
 
     const res = await GET(createRequest(), { params: Promise.resolve({}) });
     expect(res!.status).toBe(200);
+    expectNoStore(res!);
     const json = await res!.json();
 
     // viewer の関与条件で絞り込んでいる(author=自分 OR mentions に自分)
@@ -93,8 +104,23 @@ describe('/api/comments/recent', () => {
 
     const res = await GET(createRequest(), { params: Promise.resolve({}) });
     expect(res!.status).toBe(200);
+    expectNoStore(res!);
     const json = await res!.json();
     expect(json.data).toEqual([]);
     expect(userFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when recent comment loading fails', async () => {
+    taskCommentFindManyMock.mockRejectedValueOnce(
+      new Error('raw patient comment recent feed secret'),
+    );
+
+    const res = await GET(createRequest(), { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(500);
+    expectNoStore(res!);
+    const bodyText = await res!.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw patient comment recent feed secret');
   });
 });

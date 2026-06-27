@@ -1,6 +1,8 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { success } from '@/lib/api/response';
+import { internalError, success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 /**
  * 薬局内のやり取り(TaskComment)を handoff ハブへ集約するための横断フィード。
@@ -13,7 +15,7 @@ import { prisma } from '@/lib/db/client';
 const RECENT_COMMENT_LIMIT = 20;
 const RECENT_COMMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx) => {
     const since = new Date(Date.now() - RECENT_COMMENT_WINDOW_MS);
 
@@ -57,3 +59,12 @@ export const GET = withAuthContext(
     message: 'コメントの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

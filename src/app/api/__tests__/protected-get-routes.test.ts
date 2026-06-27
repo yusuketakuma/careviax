@@ -176,6 +176,7 @@ import { GET as communicationRequestGet } from '../communication-requests/[id]/r
 import { GET as communicationRequestResponsesGet } from '../communication-requests/[id]/responses/route';
 import { GET as communicationRequestsExportGet } from '../communication-requests/export/route';
 import { GET as commentsGet } from '../comments/route';
+import { GET as commentsRecentGet } from '../comments/recent/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
 import { GET as conferenceNoteGet } from '../conference-notes/[id]/route';
 import { GET as consentRecordsGet } from '../consent-records/route';
@@ -505,6 +506,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         createRequest('http://localhost/api/comments?entity_type=dispense_task&entity_id=task_1', {
           'x-org-id': 'org_1',
         }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'comments/recent GET',
+    handler: () =>
+      commentsRecentGet(
+        createRequest('http://localhost/api/comments/recent', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
       ),
   },
@@ -1631,6 +1640,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'comments GET' ||
+        route.name === 'comments/recent GET' ||
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
@@ -1726,6 +1736,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'comments GET' ||
+        route.name === 'comments/recent GET' ||
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
@@ -1807,6 +1818,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'comments GET' ||
+        route.name === 'comments/recent GET' ||
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
