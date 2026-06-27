@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient MCS API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger phase.
+  - ACKed Claude's approval of print hub patient API path helper convergence before continuing this non-overlapping MCS slice.
+  - Used medical safety and privacy read-only reviewers because the surface loads and mutates patient MCS linkage/check-log/profile data.
+- Hardened/converged patient MCS route construction:
+  - Routed MCS overview GET through shared `buildPatientApiPath(patientId, '/mcs')` while preserving `?limit=` query construction and `cache: 'no-store'`.
+  - Routed MCS sync POST, check-log POST, and profile PATCH through shared `buildPatientApiPath` suffixes `/mcs-sync`, `/mcs/logs`, and `/mcs`.
+  - Added sentinel tests proving both the query helper and `PatientMcsContent` consume the shared patient API helper return value.
+  - Extended patient API helper suffix coverage for `/mcs`, `/mcs-sync`, and `/mcs/logs`.
+  - Preserved raw patient id in React Query keys and invalidation prefixes, org headers, JSON body shapes, MCS source URL semantics, error mapping, route handlers, auth, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: MCS patient GET/POST/PATCH URLs now share the central patient API path contract instead of duplicating patient route templates in the MCS query/component code.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing MCS fetch/mutation behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/patient-mcs/query.ts src/lib/patient-mcs/query.test.ts 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.tsx' 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx' src/lib/patient/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run src/lib/patient-mcs/query.test.ts 'src/app/(dashboard)/patients/[id]/mcs/mcs-content.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `34` tests.
+  - Scoped diff whitespace check passed for changed files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `4ab752f1` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Print Hub Patient API Path Helper Convergence
 
 - Coordination:
