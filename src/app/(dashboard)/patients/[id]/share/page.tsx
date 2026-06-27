@@ -6,6 +6,7 @@ import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-
 import { Loading } from '@/components/ui/loading';
 import { ExternalShareContent } from './external-share-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 export const metadata: Metadata = {
   title: '他職種向け共有 — PH-OS',
@@ -17,7 +18,7 @@ export default async function ExternalSharePage({ params }: { params: Promise<{ 
   return (
     <PageScaffold>
       <WorkflowPageIntro
-        backHref={`/patients/${id}`}
+        backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
         eyebrow="External Sharing"
         title="他職種向け共有ページ"

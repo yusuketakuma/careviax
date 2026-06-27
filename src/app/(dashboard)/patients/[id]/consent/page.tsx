@@ -3,6 +3,7 @@ import { getPatientConsentShortcutLinks } from '@/components/features/workflow/p
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { ConsentRecordsContent } from './consent-records-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 export const metadata: Metadata = {
   title: '同意記録 — PH-OS',
@@ -14,7 +15,7 @@ export default async function ConsentPage({ params }: { params: Promise<{ id: st
   return (
     <PageScaffold>
       <WorkflowPageIntro
-        backHref={`/patients/${id}`}
+        backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
         eyebrow="Consent Records"
         title="同意記録"

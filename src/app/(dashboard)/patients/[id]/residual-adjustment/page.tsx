@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { ResidualAdjustmentContent } from './residual-adjustment-content';
 
 export const metadata: Metadata = {
@@ -19,7 +20,7 @@ export default async function ResidualAdjustmentPage({
   return (
     <PageScaffold variant="bare">
       <WorkflowPageIntro
-        backHref={`/patients/${id}`}
+        backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
         eyebrow="Residual Adjustment"
         title="残薬調整"

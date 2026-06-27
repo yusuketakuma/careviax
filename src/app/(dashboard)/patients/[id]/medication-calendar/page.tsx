@@ -4,6 +4,7 @@ import { getPatientMedicationCalendarShortcutLinks } from '@/components/features
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Skeleton } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { MedicationCalendarContent } from './medication-calendar-content';
 
 export const metadata: Metadata = {
@@ -33,7 +34,7 @@ export default async function MedicationCalendarPage({
   return (
     <PageScaffold className="print:p-2">
       <WorkflowPageIntro
-        backHref={`/patients/${id}`}
+        backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
         eyebrow="Medication Calendar"
         title="服薬カレンダー"
