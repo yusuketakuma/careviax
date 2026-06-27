@@ -142,6 +142,19 @@ describe('MonthGrid', () => {
     expect(firstBodyCell.textContent).toBe('1');
   });
 
+  it('colors the default weekend headers with the dedicated weekend tokens (not state colors)', () => {
+    const { container } = render(
+      <MonthGrid year={2026} month={5} renderDay={(cell) => <span>{cell.day}</span>} />,
+    );
+    const headerCells = Array.from(container.firstElementChild!.children).slice(0, 7);
+    // weekStartsOn=0 default → index 0 = 日(Sun), index 6 = 土(Sat).
+    expect(headerCells[0].className).toContain('text-weekend-sun');
+    expect(headerCells[6].className).toContain('text-weekend-sat');
+    // must not reuse state/alert colors for the weekend identifier
+    expect(container.innerHTML).not.toContain('text-state-blocked');
+    expect(container.innerHTML).not.toContain('text-tag-info');
+  });
+
   it('renders custom weekday headers via renderWeekdayHeader', () => {
     render(
       <MonthGrid

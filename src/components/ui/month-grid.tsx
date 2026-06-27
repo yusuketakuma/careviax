@@ -101,7 +101,7 @@ export type MonthGridProps = {
   weekStartsOn?: 0 | 1;
   /** 省略時は weekStartsOn を起点に既定ラベル（日..土）を回転して使う。 */
   weekdayLabels?: string[];
-  /** 日=text-state-blocked / 土=text-tag-info で曜日見出しを着色（実曜日基準）。 */
+  /** 日=text-weekend-sun / 土=text-weekend-sat で曜日見出しを着色（実曜日基準・慣習色トークン）。 */
   weekendHeaderColors?: boolean;
   /** 曜日見出しセルを丸ごと差し替える（省略時は既定の見出しを描画）。 */
   renderWeekdayHeader?: (args: { label: string; weekday: number; index: number }) => ReactNode;
@@ -160,9 +160,9 @@ export function MonthGrid({
         }
         const weekendClass = weekendHeaderColors
           ? weekday === 0
-            ? 'text-state-blocked'
+            ? 'text-weekend-sun'
             : weekday === 6
-              ? 'text-tag-info'
+              ? 'text-weekend-sat'
               : ''
           : '';
         return (

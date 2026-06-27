@@ -355,9 +355,9 @@ export function BusinessHolidaysContent() {
                 <div
                   className={`bg-muted px-2 py-1.5 text-center text-xs font-medium ${
                     weekday === 0
-                      ? 'text-red-500'
+                      ? 'text-weekend-sun'
                       : weekday === 6
-                        ? 'text-blue-500'
+                        ? 'text-weekend-sat'
                         : 'text-muted-foreground'
                   }`}
                 >
@@ -389,7 +389,7 @@ export function BusinessHolidaysContent() {
                   <>
                     <div
                       className={`text-xs font-medium ${
-                        dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : ''
+                        dow === 0 ? 'text-weekend-sun' : dow === 6 ? 'text-weekend-sat' : ''
                       }`}
                     >
                       {cell.day}
