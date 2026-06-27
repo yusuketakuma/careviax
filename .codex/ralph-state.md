@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1829 JST
+
+- current task:案A master-hub permanent navigation slice: add a `稼働日設定` card to the admin master hub after S4 landed, while leaving the S4 operating-hours UI implementation untouched.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox/send via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, code_mapper read-only report, gbrain search/code probes, `src/types/master-hub.ts`, `src/app/api/admin/master-hub/route.ts`, `src/app/(dashboard)/admin/master-hub-content.tsx`, `src/app/(dashboard)/admin/master-hub-content.test.tsx`, and the existing S4 operating-hours route/page/test context read-only.
+- files changed: `src/types/master-hub.ts`, `src/app/api/admin/master-hub/route.ts`, `src/app/(dashboard)/admin/master-hub-content.tsx`, `src/app/(dashboard)/admin/master-hub-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: after S4, `/admin/operating-hours` was reachable through interim shortcut links but the `/admin` master hub still exposed only 10 cards and no permanent `稼働日設定` card, leaving the new scheduling calendar settings outside the main admin hub.
+- security risks found: no auth or PHI boundary changed. The existing `GET /api/admin/master-hub` `canAdmin` boundary was preserved, and `PharmacyOperatingHours` / `BusinessHoliday` were added only to the admin master change-log target list so operating-day configuration changes are counted in the existing evidence panel.
+- performance issues found: none materially changed. The slice adds a data-driven card using existing pharmacy-site/service-area aggregate values and adds no new normal-path DB queries, dependencies, migrations, writes, frontend data fetches, polling, or destructive operations.
+- validation commands: `pnpm exec prettier --write src/types/master-hub.ts src/app/api/admin/master-hub/route.ts 'src/app/(dashboard)/admin/master-hub-content.tsx' 'src/app/(dashboard)/admin/master-hub-content.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/admin/master-hub-content.test.tsx' --reporter=dot --testTimeout=30000`; scoped ESLint for the four changed implementation/test files; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write/check passed; focused master-hub Vitest passed `1` file / `9` tests; scoped ESLint passed; scoped diff whitespace check passed; full TypeScript passed; `typecheck:no-unused` passed.
+- remaining work: run ledger-aware checks, stage only Codex-owned案A files and ledgers, commit implementation and state separately, send Claude a `PATCH_REVIEW_REQUEST`, then move to S6 generate holiday check/override after inbox is clear.
+- next action: grouped commits and Claude review request for案A.
+
 ### 20260627-1809 JST
 
 - current task: backend/test support slice for UI reliability: add patient-detail workspace card GET routes (`home-operations`, `readiness`, `visits`, and `workflow-preview`) to the protected GET auth/no-store matrix while preserving Claude's S4 operating-hours UI WIP.

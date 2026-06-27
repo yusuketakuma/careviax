@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Master Hub Operating Hours Card
+
+- Coordination:
+  - Drained `phos/codex` before editing and during long gates.
+  - Claude approved the patient workspace matrix commits `4784a26c` / `61a85d55`.
+  - Claude and Codex agreed on the next ordering:案A master-hub `稼働日設定` card first, then Codex takes S6 generate holiday check/override while Claude investigates R3 FE common-calendar refactor with explicit path locks before edits.
+  - A code_mapper subagent confirmed the minimal write set and that S4 operating-hours page files do not need to be touched.
+- Added an `operating_hours` master-hub card key and surfaced a permanent `稼働日設定` card in `/api/admin/master-hub`.
+- The card links to `/admin/operating-hours`, uses the existing pharmacy-site count as the configured-scope count, and keeps the card healthy when at least one pharmacy site exists.
+- Added `PharmacyOperatingHours` and `BusinessHoliday` to the master-hub audit target list so operating-day setting changes contribute to the existing evidence/change-log count.
+- Updated master-hub skeleton/header fallback from `10` to `11` cards and locked the new card/link in the master-hub content fixture test.
+- Preserved S4 operating-hours UI implementation, route behavior, DB schema/data, migrations, dependencies, external sends, and destructive operations.
+- Security risk reduced: no new data exposure. The existing `canAdmin` BFF boundary remains unchanged, and operating-day configuration changes are now visible in the admin master evidence surface.
+- Performance issue improved: none. This is a navigation/evidence-surface update with no new normal-path DB queries.
+- Validation passed:
+  - `pnpm exec prettier --write src/types/master-hub.ts src/app/api/admin/master-hub/route.ts 'src/app/(dashboard)/admin/master-hub-content.tsx' 'src/app/(dashboard)/admin/master-hub-content.test.tsx'` passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/master-hub-content.test.tsx' --reporter=dot --testTimeout=30000` passed `1` file / `9` tests.
+  - Scoped ESLint passed for the four changed implementation/test files.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation ready for grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then start S6 only after inbox is clear.
+
 ### 2026-06-27 JST - Patient Detail Workspace GET Matrix No-Store Coverage
 
 - Coordination:
