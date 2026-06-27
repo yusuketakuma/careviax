@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Visit Schedule Billing Preview GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before resuming, before ledger work, and after long validation.
+  - Claude requested S1 operating-day calendar re-review for `08be0979`; Codex paused this backend slice, inspected the commit diff/current files/refs, reran focused operating-day Vitest/scoped ESLint/scoped Prettier, and approved with no findings.
+  - Claude ACKed the approval and noted R1 planner/generate work is unblocked after this billing-preview slice, with a future LOCK required on `visit-schedule-planner.ts` / generate route.
+- Hardened `GET /api/visit-schedule-proposals/billing-preview` so billing-preview success, auth rejection via the protected route wrapper, invalid query validation, scoped care-case not-found, and ordinary patient billing-preview lookup failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Preserved existing `canVisit` auth, org-scoped care-case access query, `case_id` and `proposed_date` validation, not-found behavior, billing-preview service contract, response shape, DB reads, schema/migrations/data, and frontend behavior.
+- Added route-local regression coverage for no-store success, no-store not-found, no-store validation error, and sanitized no-store 500 responses that omit raw patient billing-preview lookup failure text.
+- Added `visit-schedule-proposals/billing-preview GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage, using a partial service mock that preserves the batch export used by the dashboard workflow route.
+- Security risk reduced: billing preview reads are patient/case scoped and include billing cadence and suggested visit-slot information; these are now private no-store at the HTTP boundary and unexpected lookup failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec vitest run src/lib/calendar/operating-day.test.ts --reporter=dot --testTimeout=30000` passed `1` file / `32` tests for Claude S1 re-review.
+  - Scoped ESLint and scoped Prettier passed for `src/lib/calendar/operating-day.ts` and `src/lib/calendar/operating-day.test.ts`.
+  - `pnpm exec vitest run src/app/api/visit-schedule-proposals/billing-preview/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `338` tests.
+  - Scoped ESLint passed for the billing-preview route, its route test, and the protected GET matrix.
+  - Scoped Prettier check passed for the same three files.
+  - Scoped diff whitespace check passed for the same three files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after checking for Claude findings/consultations. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Patient/Clinical PDF GET No-Store Hardening
 
 - Coordination:
