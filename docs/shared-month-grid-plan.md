@@ -118,8 +118,38 @@ function useMonthGrid(params: {
 
 ---
 
-## 7. Codex への質問
+## 7. Codex への質問（回答済み）
 
-1. slot 方式（`renderDay` で consumer が状態描画、状態色 harmonize は本 R3 でやらない）で合意か? それとも 6 軸トークンへの統一を R3 内に含めるべきか?
-2. 配置は `src/components/ui/month-grid.tsx`（汎用 UI）で良いか? `src/components/features/calendar/` の方が良いか?
-3. R3a の対象を **#2 稼働日（claude 既知・テスト有）** から始める順序で異論ないか?
+1. slot 方式（`renderDay` で consumer が状態描画、状態色 harmonize は本 R3 でやらない）で合意か? → **合意。** harmonize/6 軸統一は R3 外。新部品の default のみ PH-OS token に寄せ、consumer 固有色は renderDay 側に閉じる。
+2. 配置は `src/components/ui/month-grid.tsx`（汎用 UI）で良いか? → **OK。** ただし business holiday / medication の業務セマンティクスを部品へ持ち込まない。
+3. R3a の対象を **#2 稼働日（claude 既知・テスト有）** から始める順序で異論ないか? → **OK。** 非 interactive で primitive の最小検証に向く。
+
+## 8. Codex レビュー条件（R3a 実装前に反映・APPROVED_WITH_CONDITIONS）
+
+- **C1: `getDayCellProps(cell) => HTMLAttributes` を最初から実装。** cell `<div>` へ merge し、R3b の business-holidays（日セル自体が clickable / keyboard / `aria-pressed` / selected / cursor）を nested button 化せず吸収する。R3a では未使用でも test で props passthrough を検証する。
+- **C2: ARIA `role=grid/row/gridcell` は付けない。** 既存に無い grid role を「非破壊」とは扱わない。静的表示の R3a は container `aria-label` + 日番号の `<time dateTime>` マークアップに留める。role=grid を付けるなら keyboard/focus 実装と test をセットで（今回は見送り）。
+- **C3: R3c medication-calendar は table/print セマンティクスを維持。** `useMonthGrid` のロジック共有のみ許容し、div `<MonthGrid>` への強制移行はしない（DOM/print/a11y が不変でなくなるため）。
+- **C4: `<MonthGridNav>` の aria-label は consumer 上書き可。** `prevLabel`/`nextLabel` prop（既定 `前月`/`翌月`）。
+
+### 確定 API（条件反映後）
+
+```tsx
+type MonthGridCell = { day: number; dateKey: string };
+
+useMonthGrid({ year, month, weekStartsOn?: 0 | 1 }): {
+  cells: Array<MonthGridCell | null>; daysInMonth: number; firstWeekday: number;
+};
+
+<MonthGridNav year month onPrev onNext prevLabel? nextLabel? />
+
+<MonthGrid
+  year month weekStartsOn?
+  weekdayLabels?            // 既定 ['日'..'土']
+  weekendHeaderColors?      // 既定 true（日=text-state-blocked / 土=text-tag-info、実曜日基準）
+  ariaLabel?               // container aria-label（C2）
+  className? cellClassName? emptyCellClassName?
+  getDayCellProps?         // (cell) => HTMLAttributes（C1: clickable/selectable セル用 passthrough）
+  renderDay                // (cell) => ReactNode（セル内容。日番号<time>含め consumer 制御）
+  renderEmpty?             // 空セル全体を上書き
+/>
+```

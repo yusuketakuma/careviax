@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,6 +19,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
 import { StatCard } from '@/components/ui/stat-card';
 import { StatusDot } from '@/components/ui/status-dot';
+import { MonthGrid, MonthGridNav } from '@/components/ui/month-grid';
 import { PageSection } from '@/components/layout/page-section';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -81,10 +81,6 @@ function monthDateKey(year: number, month: number, day: number) {
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
-}
-
-function getFirstDayOfWeek(year: number, month: number) {
-  return new Date(year, month, 1).getDay();
 }
 
 function toEditableRow(row: WeeklyRow): EditableRow {
@@ -304,13 +300,6 @@ export function OperatingHoursContent() {
     (day) => !day.open && day.reason === 'holiday',
   ).length;
 
-  const firstWeekday = getFirstDayOfWeek(viewYear, viewMonth);
-  const daysInMonth = getDaysInMonth(viewYear, viewMonth);
-  const calendarCells: Array<number | null> = [
-    ...Array.from({ length: firstWeekday }, () => null),
-    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
-  ];
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3">
@@ -420,17 +409,7 @@ export function OperatingHoursContent() {
         title="稼働日カレンダー"
         description="営業時間・定休・休業日を反映した実際の稼働日です。休業日は休日カレンダーで編集します。"
         actions={
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={prevMonth} aria-label="前月">
-              <ChevronLeft className="size-4" />
-            </Button>
-            <span className="min-w-24 text-center text-sm font-medium">
-              {viewYear}年{viewMonth + 1}月
-            </span>
-            <Button type="button" variant="outline" size="sm" onClick={nextMonth} aria-label="翌月">
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
+          <MonthGridNav year={viewYear} month={viewMonth} onPrev={prevMonth} onNext={nextMonth} />
         }
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -457,56 +436,49 @@ export function OperatingHoursContent() {
             action={{ label: '再読み込み', onClick: () => void operatingQuery.refetch() }}
           />
         ) : (
-          <div className="mt-4 grid grid-cols-7 gap-px overflow-hidden rounded-md border border-border/70 bg-border/70">
-            {WEEKDAY_LABELS.map((label, index) => (
-              <div
-                key={label}
-                className={`bg-card py-1 text-center text-xs font-medium ${
-                  index === 0 ? 'text-state-blocked' : index === 6 ? 'text-tag-info' : ''
-                }`}
-              >
-                {label}
-              </div>
-            ))}
-            {calendarCells.map((day, index) => {
-              if (day === null) {
-                return <div key={`empty-${index}`} className="min-h-16 bg-card" />;
-              }
-              const key = monthDateKey(viewYear, viewMonth, day);
-              const resolved = resolvedByDate.get(key);
-              const role = resolved ? resolvedRole(resolved) : null;
-              return (
-                <div
-                  key={key}
-                  className={`min-h-16 bg-card p-1 ${role ? 'border-l-4 ' : ''}${
-                    role === 'blocked'
-                      ? 'border-l-state-blocked'
-                      : role === 'readonly'
-                        ? 'border-l-state-readonly'
-                        : role === 'confirm'
-                          ? 'border-l-state-confirm'
-                          : ''
-                  }`}
-                >
-                  <div className="text-xs font-medium">{day}</div>
-                  {resolved ? (
-                    <div
-                      className={`mt-1 text-[11px] ${
-                        role === 'blocked'
-                          ? 'text-state-blocked'
-                          : role === 'readonly'
-                            ? 'text-muted-foreground'
+          <div className="mt-4">
+            <MonthGrid
+              year={viewYear}
+              month={viewMonth}
+              ariaLabel="稼働日カレンダー"
+              getDayCellProps={(cell) => {
+                const resolved = resolvedByDate.get(cell.dateKey);
+                const role = resolved ? resolvedRole(resolved) : null;
+                const borderClass =
+                  role === 'blocked'
+                    ? 'border-l-4 border-l-state-blocked'
+                    : role === 'readonly'
+                      ? 'border-l-4 border-l-state-readonly'
+                      : role === 'confirm'
+                        ? 'border-l-4 border-l-state-confirm'
+                        : undefined;
+                return borderClass ? { className: borderClass } : {};
+              }}
+              renderDay={(cell) => {
+                const resolved = resolvedByDate.get(cell.dateKey);
+                const role = resolved ? resolvedRole(resolved) : null;
+                return (
+                  <>
+                    <time dateTime={cell.dateKey} className="block text-xs font-medium">
+                      {cell.day}
+                    </time>
+                    {resolved ? (
+                      <div
+                        className={`mt-1 text-[11px] ${
+                          role === 'blocked'
+                            ? 'text-state-blocked'
                             : role === 'confirm'
                               ? 'text-state-confirm'
                               : 'text-muted-foreground'
-                      }`}
-                    >
-                      {resolvedLabel(resolved)}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+                        }`}
+                      >
+                        {resolvedLabel(resolved)}
+                      </div>
+                    ) : null}
+                  </>
+                );
+              }}
+            />
           </div>
         )}
       </PageSection>
