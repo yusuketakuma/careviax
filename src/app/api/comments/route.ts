@@ -6,6 +6,9 @@ import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildReportHref } from '@/lib/reports/navigation';
+import { buildSetPlanHref } from '@/lib/set/navigation';
+import { buildVisitHref } from '@/lib/visits/navigation';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
@@ -74,18 +77,17 @@ async function buildCommentMentionLink(
     return cycle ? buildPatientHref(cycle.patient_id) : null;
   }
 
-  const entityId = encodeURIComponent(args.entityId);
   switch (args.entityType) {
     case 'patient':
       return buildPatientHref(args.entityId);
     case 'dispense_task':
       return buildDispenseTaskHref(args.entityId);
     case 'set_plan':
-      return `/set?planId=${entityId}`;
+      return buildSetPlanHref(args.entityId);
     case 'visit_record':
-      return `/visits/${entityId}`;
+      return buildVisitHref(args.entityId);
     case 'care_report':
-      return `/reports/${entityId}`;
+      return buildReportHref(args.entityId);
     default:
       return null;
   }
