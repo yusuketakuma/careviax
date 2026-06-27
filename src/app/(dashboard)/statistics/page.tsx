@@ -5,6 +5,7 @@ import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { StatisticsContent } from './statistics-content';
 import {
   STATISTICS_SURFACES,
@@ -39,12 +40,10 @@ export default async function StatisticsPage() {
 
   return (
     <PageScaffold>
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold tracking-tight">統計</h1>
-        <p className="text-sm text-muted-foreground">
-          システム内の統計情報を種別ごとに集約。各カードから詳細画面に移動できます（表示は権限に従います）。
-        </p>
-      </header>
+      <WorkflowPageHeader
+        title="統計"
+        description="システム内の統計情報を種別ごとに集約。各カードから詳細画面に移動できます（表示は権限に従います）。"
+      />
 
       {canEnterStatisticsHub(can) ? (
         <StatisticsContent surfaces={filterStatisticsSurfaces(STATISTICS_SURFACES, can)} />

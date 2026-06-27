@@ -57,6 +57,16 @@ describe('StatisticsPage (server permission gate)', () => {
     expect(screen.queryByText(FORBIDDEN_TITLE)).toBeNull();
   });
 
+  it('renders the shared WorkflowPageHeader h1 「統計」 (description moves into the HelpPopover)', async () => {
+    setupRole(MemberRole.admin);
+
+    render(await StatisticsPage());
+
+    // ヘッダは共通 WorkflowPageHeader 化。見出し「統計」は h1 として可視のまま維持する
+    // (説明文は HelpPopover へ集約され既定では非表示)。
+    expect(screen.getByRole('heading', { level: 1, name: '統計' })).toBeTruthy();
+  });
+
   it('resolves the role via an org-scoped, active-membership query (access boundary)', async () => {
     setupRole(MemberRole.admin);
 

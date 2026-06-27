@@ -341,4 +341,57 @@ describe('StatisticsContent', () => {
     expect(document.querySelector('a[href="/admin/metrics"]')).toBeNull();
     expect(screen.queryByRole('heading', { name: '経営' })).toBeNull();
   });
+
+  it('shows a single aggregated 「HH:mm 時点」 fetched-at stamp under the strip after a successful load', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => dispensingSuccess()),
+    );
+
+    renderContent();
+
+    expect(await screen.findByText('調剤 未着手')).toBeTruthy();
+    // 取得時刻は各カード hint に散らさず、ストリップに 1 回だけ「HH:mm 時点」で集約表示する。
+    const stamps = screen.getAllByText(/\d{2}:\d{2}\s*時点/);
+    expect(stamps).toHaveLength(1);
+  });
+
+  it('shows one 最新化中 indicator during a background refetch while retaining the previous values', async () => {
+    let call = 0;
+    let releaseSecond: ((response: Response) => void) | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => {
+        call += 1;
+        if (call === 1) return Promise.resolve(dispensingSuccess());
+        // 2回目(背景再取得)はあえて解決させず in-flight(isFetching) 状態を保持する。
+        return new Promise<Response>((resolve) => {
+          releaseSecond = resolve;
+        });
+      }),
+    );
+
+    const queryClient = makeClient();
+    renderWithClient(queryClient);
+
+    expect(await screen.findByText('調剤 未着手')).toBeTruthy();
+    expect(screen.getByText('5')).toBeTruthy();
+
+    // 背景再取得を発火(解決は待たない = in-flight のまま検証)。
+    act(() => {
+      void queryClient.refetchQueries({ queryKey: ['statistics-dispensing-kpi', 'org_1'] });
+    });
+
+    // 集約された「最新化中…」が 1 つだけ出て、前回値(5/2/7)は維持される。
+    expect(await screen.findByText('最新化中…')).toBeTruthy();
+    expect(screen.getAllByText('最新化中…')).toHaveLength(1);
+    expect(screen.getByText('5')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.getByText('7')).toBeTruthy();
+
+    // クリーンアップ: hanging fetch を解放する。
+    act(() => {
+      releaseSecond?.(dispensingSuccess());
+    });
+  });
 });

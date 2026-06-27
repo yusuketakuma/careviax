@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, BarChart3, ClipboardCheck, FileCheck2, ListChecks } from 'lucide-react';
+import { format } from 'date-fns';
+import { ja } from 'date-fns/locale';
 import { z } from 'zod';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StatCard } from '@/components/ui/stat-card';
 import { ErrorState } from '@/components/ui/error-state';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
@@ -36,47 +38,24 @@ type DispensingKpiResult =
   | { locked: true }
   | { locked: false; data: z.infer<typeof dispensingStatsSchema> };
 
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: number;
-}) {
-  return (
-    <Card size="sm">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Icon className="size-4" aria-hidden="true" />
-          {label}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-3xl font-bold tabular-nums">{value.toLocaleString()}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
 function DispensingKpiStrip() {
   const orgId = useOrgId();
 
-  const { data, isError, isLoading, refetch } = useQuery<DispensingKpiResult>({
-    queryKey: ['statistics-dispensing-kpi', orgId],
-    queryFn: async () => {
-      const res = await fetch(DISPENSING_STATS_URL, { headers: buildOrgHeaders(orgId) });
-      // 403 = no permission for this org: render a locked state, not a false-empty zero.
-      if (res.status === 403) return { locked: true };
-      const payload = await readApiJson(res, {
-        schema: dispensingStatsSchema,
-        fallbackMessage: '調剤指標を取得できませんでした。',
-      });
-      return { locked: false, data: payload };
-    },
-    enabled: !!orgId,
-  });
+  const { data, isError, isLoading, isFetching, dataUpdatedAt, refetch } =
+    useQuery<DispensingKpiResult>({
+      queryKey: ['statistics-dispensing-kpi', orgId],
+      queryFn: async () => {
+        const res = await fetch(DISPENSING_STATS_URL, { headers: buildOrgHeaders(orgId) });
+        // 403 = no permission for this org: render a locked state, not a false-empty zero.
+        if (res.status === 403) return { locked: true };
+        const payload = await readApiJson(res, {
+          schema: dispensingStatsSchema,
+          fallbackMessage: '調剤指標を取得できませんでした。',
+        });
+        return { locked: false, data: payload };
+      },
+      enabled: !!orgId,
+    });
 
   const hasData = data !== undefined;
 
@@ -96,14 +75,18 @@ function DispensingKpiStrip() {
   // While the org id is still hydrating (''), the query is disabled — show the loading
   // skeleton, not a blank area.
   if (!orgId || (isLoading && !hasData)) {
+    // ロード中は本番 StatCard と同じグリッド・おおよその高さの shell でスケルトンを出し、
+    // 偽のラベル/数値は描かない(CLS 回避 + false データ防止)。
     return (
       <div role="status" aria-label="調剤指標を読み込み中" className="grid gap-4 sm:grid-cols-3">
         {Array.from({ length: 3 }).map((_, index) => (
-          <Card key={index} size="sm">
-            <CardContent className="py-8">
-              <div className="h-8 w-20 animate-pulse rounded bg-muted" />
-            </CardContent>
-          </Card>
+          <div
+            key={index}
+            className="rounded-md border border-l-2 border-l-transparent bg-card p-3 ring-1 ring-foreground/10"
+          >
+            <div className="h-3 w-20 animate-pulse rounded bg-muted" />
+            <div className="mt-2 h-7 w-16 animate-pulse rounded bg-muted" />
+          </div>
         ))}
       </div>
     );
@@ -125,6 +108,21 @@ function DispensingKpiStrip() {
 
   return (
     <div className="space-y-3">
+      {/* 取得時刻/再取得状況はカード毎に散らさず、ストリップ見出し直下に1回だけ集約表示する。
+          isStale は staleTime=0 で成功直後も true になるため使わず、実際の再取得(isFetching)で判定。 */}
+      {(dataUpdatedAt > 0 || (isFetching && hasData)) && (
+        <p
+          className="flex items-center justify-end gap-2 text-xs text-muted-foreground"
+          aria-live="polite"
+        >
+          {isFetching && hasData ? <span>最新化中…</span> : null}
+          {dataUpdatedAt > 0 ? (
+            <span className="tabular-nums">
+              {format(new Date(dataUpdatedAt), 'HH:mm', { locale: ja })} 時点
+            </span>
+          ) : null}
+        </p>
+      )}
       {isError && hasData && (
         <ErrorState
           variant="server"
@@ -140,9 +138,21 @@ function DispensingKpiStrip() {
         />
       )}
       <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard icon={ListChecks} label="調剤 未着手" value={data.data.pendingTasks} />
-        <KpiCard icon={ClipboardCheck} label="鑑査待ち" value={data.data.auditPendingTasks} />
-        <KpiCard icon={FileCheck2} label="本日完了" value={data.data.completedToday} />
+        <StatCard
+          icon={<ListChecks className="size-4" aria-hidden="true" />}
+          label="調剤 未着手"
+          value={data.data.pendingTasks.toLocaleString('ja-JP')}
+        />
+        <StatCard
+          icon={<ClipboardCheck className="size-4" aria-hidden="true" />}
+          label="鑑査待ち"
+          value={data.data.auditPendingTasks.toLocaleString('ja-JP')}
+        />
+        <StatCard
+          icon={<FileCheck2 className="size-4" aria-hidden="true" />}
+          label="本日完了"
+          value={data.data.completedToday.toLocaleString('ja-JP')}
+        />
       </div>
     </div>
   );
