@@ -287,10 +287,10 @@ export function SharedViewerContent({ token }: { token: string }) {
 
   return (
     <div className="space-y-6">
-      <Card className="border-slate-200 shadow-sm">
+      <Card className="border-border shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
-            <ShieldCheck className="size-5 text-emerald-600" aria-hidden="true" />
+            <ShieldCheck className="size-5 text-muted-foreground" aria-hidden="true" />
             外部共有ポータル
           </CardTitle>
         </CardHeader>
@@ -386,17 +386,17 @@ export function SharedViewerContent({ token }: { token: string }) {
           </div>
 
           {data.shared_summary ? (
-            <Card className="border-sky-200 bg-sky-50/60">
+            <Card className="border-border bg-muted/40">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <Sparkles className="size-4 text-sky-700" aria-hidden="true" />
+                  <Sparkles className="size-4 text-muted-foreground" aria-hidden="true" />
                   共有サマリー
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <p className="font-medium text-sky-950">{data.shared_summary.headline}</p>
+                <p className="font-medium text-foreground">{data.shared_summary.headline}</p>
                 {data.shared_summary.bullets.length > 0 ? (
-                  <ul className="space-y-1 text-sky-900">
+                  <ul className="space-y-1 text-foreground">
                     {data.shared_summary.bullets.map((item) => (
                       <li key={item}>- {item}</li>
                     ))}
@@ -404,12 +404,12 @@ export function SharedViewerContent({ token }: { token: string }) {
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   {data.shared_summary.key_medications.map((item) => (
-                    <Badge key={item} variant="secondary" className="bg-white/80 text-sky-900">
+                    <Badge key={item} variant="secondary">
                       {item}
                     </Badge>
                   ))}
                   {data.shared_summary.next_visit_date ? (
-                    <Badge variant="outline" className="border-sky-300 bg-white/80 text-sky-900">
+                    <Badge variant="outline">
                       次回訪問{' '}
                       {format(new Date(data.shared_summary.next_visit_date), 'M月d日(E)', {
                         locale: ja,
@@ -425,7 +425,7 @@ export function SharedViewerContent({ token }: { token: string }) {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <HeartHandshake className="size-4 text-emerald-600" aria-hidden="true" />
+                  <HeartHandshake className="size-4 text-muted-foreground" aria-hidden="true" />
                   過去の自己申告
                 </CardTitle>
               </CardHeader>
@@ -475,13 +475,13 @@ export function SharedViewerContent({ token }: { token: string }) {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <Pill className="size-4 text-sky-700" aria-hidden="true" />
+                  <Pill className="size-4 text-muted-foreground" aria-hidden="true" />
                   服薬情報
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 {data.medication_profiles.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                  <div key={item.id} className="rounded-lg border border-border p-3 text-sm">
                     <p className="font-medium">{item.drug_name}</p>
                     <p className="text-muted-foreground">
                       {item.dose ?? '用量未登録'} / {item.frequency ?? '用法未登録'}
@@ -497,7 +497,7 @@ export function SharedViewerContent({ token }: { token: string }) {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <CalendarClock className="size-4 text-indigo-700" aria-hidden="true" />
+                    <CalendarClock className="size-4 text-muted-foreground" aria-hidden="true" />
                     直近の訪問予定
                   </CardTitle>
                 </CardHeader>
@@ -506,7 +506,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                     <p className="text-sm text-muted-foreground">予定は登録されていません。</p>
                   ) : (
                     data.visit_schedules.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                      <div key={item.id} className="rounded-lg border border-border p-3 text-sm">
                         <p className="font-medium">
                           {format(new Date(item.scheduled_date), 'yyyy年M月d日(E)', { locale: ja })}
                         </p>
@@ -522,7 +522,7 @@ export function SharedViewerContent({ token }: { token: string }) {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <FileText className="size-4 text-emerald-700" aria-hidden="true" />
+                    <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
                     共有済み報告書
                   </CardTitle>
                 </CardHeader>
@@ -531,7 +531,7 @@ export function SharedViewerContent({ token }: { token: string }) {
                     <p className="text-sm text-muted-foreground">共有できる報告書はありません。</p>
                   ) : (
                     data.care_reports.map((item) => (
-                      <div key={item.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+                      <div key={item.id} className="rounded-lg border border-border p-3 text-sm">
                         <p className="font-medium">{item.report_type}</p>
                         <p className="text-muted-foreground">
                           {format(new Date(item.created_at), 'yyyy年M月d日', { locale: ja })} /{' '}
@@ -548,7 +548,7 @@ export function SharedViewerContent({ token }: { token: string }) {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <HeartHandshake className="size-4 text-rose-700" aria-hidden="true" />
+                <HeartHandshake className="size-4 text-muted-foreground" aria-hidden="true" />
                 患者・ご家族からの連絡
               </CardTitle>
             </CardHeader>
