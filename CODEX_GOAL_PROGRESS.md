@@ -21,6 +21,27 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Visit Schedule Proposal Detail GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new messages were pending.
+  - Preserved Claude-owned dirty `src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx`, `src/components/features/patients/patient-form.tsx`, and `src/lib/validations/patient.ts`; Codex did not edit or stage those files.
+  - Continued the previously ranked backend no-store/fixed-500 list after completing Claude's P4 patient overview dependency.
+- Hardened `GET /api/visit-schedule-proposals/:id` so success, auth rejection, validation, not-found, and ordinary unexpected read failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store invalid-id, no-store not-found before enrichment fan-out, and sanitized no-store 500 responses that omit raw patient/address/phone/drug/workflow-like thrown text.
+- Added `visit-schedule-proposals/[id] GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage, with a stable success fixture.
+- Preserved existing `canVisit` auth, proposal assignment scoping, response body redaction, route preview calculation, contact log minimization, PATCH behavior, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: visit schedule proposal detail includes patient names/addresses, contact logs, related proposals, day schedules, route-preview context, and creation diagnostics; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice only adds response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `275` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the visit schedule proposal detail route, route test, and protected GET matrix.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned visit schedule proposal detail GET hardening, commit progress ledgers separately, send `agmsg` FYI, then continue with the next non-overlapping backend candidate (`GET /api/cases/:id` or `GET /api/dispense-results/:id`) unless a newer `agmsg` request takes priority. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Patient Overview Care-Team IDs for Edit Pre-Populate
 
 - Coordination:
