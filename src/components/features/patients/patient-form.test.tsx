@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { PatientForm } from './patient-form';
 
 setupDomTestEnv();
@@ -41,10 +42,16 @@ vi.mock('@/lib/hooks/use-unsaved-changes-guard', () => ({
   useUnsavedChangesGuard: unsavedGuardMock,
 }));
 
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+
 describe('PatientForm', () => {
   beforeEach(() => {
     window.history.replaceState(null, '', '/patients/new');
     vi.stubGlobal('fetch', vi.fn());
+    vi.mocked(buildPatientHref).mockClear();
   });
 
   function fillRequiredPatientFields() {
@@ -306,40 +313,49 @@ describe('PatientForm', () => {
   it('offers an open-existing-patient link in the duplicate alert (keeping それでも登録する)', async () => {
     useOrgIdMock.mockReturnValue('org_1');
     useQueryMock.mockReturnValue({ data: [], isLoading: false });
-    const fetchMock = vi.mocked(fetch);
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 409,
-      json: async () => ({
-        message: '重複',
-        details: {
-          duplicate_type: 'patient_identity',
-          duplicates: [
-            {
-              id: 'patient_existing',
-              name: '山田 太郎',
-              name_kana: 'ヤマダ タロウ',
-              birth_date: '1950-01-01T00:00:00.000Z',
-              gender: 'male',
-            },
-          ],
-        },
-      }),
-    } as Response);
+    const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockImplementation((id: string) => `/patients/__sentinel_${id}__`);
+    try {
+      const fetchMock = vi.mocked(fetch);
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: async () => ({
+          message: '重複',
+          details: {
+            duplicate_type: 'patient_identity',
+            duplicates: [
+              {
+                id: 'patient_existing',
+                name: '山田 太郎',
+                name_kana: 'ヤマダ タロウ',
+                birth_date: '1950-01-01T00:00:00.000Z',
+                gender: 'male',
+              },
+            ],
+          },
+        }),
+      } as Response);
 
-    render(<PatientForm />);
-    fillRequiredPatientFields();
-    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+      render(<PatientForm />);
+      fillRequiredPatientFields();
+      fireEvent.click(screen.getByRole('button', { name: '登録する' }));
 
-    await waitFor(() => {
-      expect(screen.getByText('同名の患者が存在します:')).toBeTruthy();
-    });
+      await waitFor(() => {
+        expect(screen.getByText('同名の患者が存在します:')).toBeTruthy();
+      });
 
-    // 「それでも登録する」は維持。
-    expect(screen.getByRole('button', { name: 'それでも登録する' })).toBeTruthy();
-    // 「既存患者を開く」で患者詳細へ遷移。
-    fireEvent.click(screen.getByRole('button', { name: '既存患者を開く' }));
-    expect(routerPushMock).toHaveBeenCalledWith('/patients/patient_existing');
+      // 「それでも登録する」は維持。
+      expect(screen.getByRole('button', { name: 'それでも登録する' })).toBeTruthy();
+      // 「既存患者を開く」で患者詳細へ遷移。
+      fireEvent.click(screen.getByRole('button', { name: '既存患者を開く' }));
+      expect(routerPushMock).toHaveBeenCalledWith('/patients/__sentinel_patient_existing__');
+      expect(vi.mocked(buildPatientHref).mock.calls).toEqual([['patient_existing']]);
+    } finally {
+      if (realImpl) {
+        vi.mocked(buildPatientHref).mockImplementation(realImpl);
+      }
+    }
   });
 
   it('ignores a superseded duplicate-check response after the inputs change (stale race)', async () => {

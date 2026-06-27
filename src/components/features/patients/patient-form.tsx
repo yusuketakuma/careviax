@@ -7,6 +7,7 @@ import { useForm, useWatch, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { createPatientSchema, type CreatePatientInput } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { Button } from '@/components/ui/button';
@@ -2353,7 +2354,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                       className="h-auto p-0 text-state-confirm underline-offset-2"
                       onClick={() => {
                         allowNavigation();
-                        router.push(`/patients/${encodeURIComponent(d.id)}`);
+                        router.push(buildPatientHref(d.id));
                       }}
                     >
                       既存患者を開く
