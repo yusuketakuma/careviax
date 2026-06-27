@@ -4,6 +4,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
@@ -78,7 +79,7 @@ async function buildCommentMentionLink(
     case 'patient':
       return buildPatientHref(args.entityId);
     case 'dispense_task':
-      return `/dispense?taskId=${entityId}`;
+      return buildDispenseTaskHref(args.entityId);
     case 'set_plan':
       return `/set?planId=${entityId}`;
     case 'visit_record':

@@ -15,6 +15,7 @@ import {
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { formatDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
+import { buildDispenseTaskHref } from '@/lib/dispense/navigation';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { annotateDispenseTask, sortDispenseTasks } from '@/server/services/dispense-task-list';
@@ -882,7 +883,7 @@ export const POST = withAuthContext(
             type: 'urgent',
             title: '調剤鑑査で差戻しが発生しました',
             message: `${task.cycle.case_.patient.name} の調剤結果が差戻しになりました${task.due_date ? `（期限 ${formatDateKey(task.due_date)}）` : ''}`,
-            link: `/dispense?taskId=${encodeURIComponent(task.id)}`,
+            link: buildDispenseTaskHref(task.id),
             metadata: {
               task_id,
               cycle_id: task.cycle_id,
