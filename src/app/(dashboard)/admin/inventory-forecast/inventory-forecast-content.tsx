@@ -6,6 +6,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { Badge } from '@/components/ui/badge';
+import { StatCard } from '@/components/ui/stat-card';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { StateBadge } from '@/components/ui/state-badge';
@@ -56,16 +57,6 @@ function StatusBadge({ status }: { status: DrugForecastStatus }) {
     );
   }
   return <StateBadge role={role}>{DRUG_FORECAST_STATUS_LABELS[status]}</StateBadge>;
-}
-
-function SummaryCard({ label, value, caption }: { label: string; value: string; caption: string }) {
-  return (
-    <div className="rounded-md border border-border/70 bg-background px-4 py-3">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-bold tracking-tight text-foreground">{value}</p>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{caption}</p>
-    </div>
-  );
 }
 
 const drugForecastColumns: ColumnDef<DrugForecastRow>[] = [
@@ -172,33 +163,49 @@ export function InventoryForecastContent() {
           </div>
         }
       />
-      <section className="rounded-lg border border-border/70 bg-card p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard
-            label="要発注"
-            value={`${summary.orderRequiredCount}件`}
-            caption="在庫が必要見込みの半分未満"
-          />
-          <SummaryCard
-            label="発注候補"
-            value={`${summary.orderCandidateCount}件`}
-            caption="来週必要量に対して在庫不足"
-          />
-          <SummaryCard
-            label="影響患者"
-            value={`${summary.affectedPatientCount}件`}
-            caption="不足側の薬を使う訪問予定"
-          />
-          <SummaryCard
-            label="最優先"
-            value={summary.priorityDrug?.drugKey ?? '不足なし'}
-            caption={
-              summary.priorityDrug
-                ? `充足率 ${coveragePercent(summary.priorityDrug)}%`
-                : '現時点では通常確認'
-            }
-          />
-        </div>
+      {/* 共通 StatCard へ統一(card-in-card を避け bare grid)。状態色は意味のある時のみ(0件は中立)。 */}
+      <section aria-label="在庫予測サマリー" className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="要発注"
+          value={summary.orderRequiredCount.toLocaleString('ja-JP')}
+          unit="件"
+          role={summary.orderRequiredCount > 0 ? 'blocked' : undefined}
+          hint="在庫が必要見込みの半分未満"
+        />
+        <StatCard
+          label="発注候補"
+          value={summary.orderCandidateCount.toLocaleString('ja-JP')}
+          unit="件"
+          role={summary.orderCandidateCount > 0 ? 'confirm' : undefined}
+          hint="来週必要量に対して在庫不足"
+        />
+        <StatCard
+          label="影響患者"
+          value={summary.affectedPatientCount.toLocaleString('ja-JP')}
+          unit="件"
+          hint="不足側の薬を使う訪問予定"
+        />
+        <StatCard
+          label="最優先"
+          // 薬剤ベース名は数値でないため、長名でも溢れないよう小さめ・折返し可で描く(StatCard 本体は不変)。
+          value={
+            <span className="text-base leading-snug break-words">
+              {summary.priorityDrug?.drugKey ?? '不足なし'}
+            </span>
+          }
+          role={
+            summary.priorityDrug?.status === 'order_required'
+              ? 'blocked'
+              : summary.priorityDrug
+                ? 'confirm'
+                : undefined
+          }
+          hint={
+            summary.priorityDrug
+              ? `充足率 ${coveragePercent(summary.priorityDrug)}%`
+              : '現時点では通常確認'
+          }
+        />
       </section>
 
       <div className="grid items-start gap-4 xl:grid-cols-5">
@@ -260,8 +267,10 @@ export function InventoryForecastContent() {
                       <p className="text-sm font-semibold text-foreground">{patient.label} 様</p>
                       <p className="mt-1 text-xs text-muted-foreground">次回処方予定あり</p>
                     </div>
+                    {/* AffectedPatientCard は来週初回訪問日のみ保持。薬切れ予定日/緊急度の真値は
+                        持たないため、捏造せず「訪問予定 M/D」と明示する(緊急度バッジは出さない)。 */}
                     <span className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
-                      {patient.firstVisitDateKey.slice(5).replace('-', '/')}
+                      訪問予定 {patient.firstVisitDateKey.slice(5).replace('-', '/')}
                     </span>
                   </div>
                 </li>

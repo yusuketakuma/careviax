@@ -92,4 +92,31 @@ describe('InventoryForecastContent', () => {
     expect(screen.getByText('患者A 様')).toBeTruthy();
     expect(screen.queryByLabelText('影響患者内検索')).toBeNull();
   });
+
+  it('renders the decision summary as shared StatCards (state color only where meaningful)', async () => {
+    renderContent();
+
+    await screen.findByRole('heading', { name: '在庫と定期処方の予測' });
+
+    // 旧 SummaryCard の語彙を共通 StatCard でも維持する。
+    expect(screen.getAllByText('要発注').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('発注候補')).toBeTruthy();
+    expect(screen.getByText('影響患者')).toBeTruthy();
+    expect(screen.getByText('最優先')).toBeTruthy();
+    // 単位は value に埋め込まず「件」を分離(StatCard の数値整列を活かす)。
+    expect(screen.getAllByText('件').length).toBeGreaterThanOrEqual(3);
+    // 最優先は薬剤ベース名(非数値) + 充足率 hint。アムロジピンは表と StatCard の双方に出る。
+    expect(screen.getAllByText('アムロジピン').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/充足率/).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('labels the affected-patient chip as 訪問予定 and invents no run-out/urgency from patient-only data', async () => {
+    renderContent();
+
+    expect(await screen.findByText('患者A 様')).toBeTruthy();
+    // 来週初回訪問日を「訪問予定 M/D」と明示する(データに忠実)。
+    expect(screen.getByText(/訪問予定\s*06\/23/)).toBeTruthy();
+    // AffectedPatientCard は患者×薬の run-out/緊急度を持たないため、緊急度系の語は出さない。
+    expect(screen.queryByText(/切れ予定|緊急度/)).toBeNull();
+  });
 });
