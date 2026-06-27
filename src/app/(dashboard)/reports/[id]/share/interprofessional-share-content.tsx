@@ -14,6 +14,7 @@ import { PageScaffold } from '@/components/layout/page-scaffold';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildCommunicationRequestApiPath } from '@/lib/communications/api-paths';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
@@ -66,10 +67,6 @@ type ShareReplyDetail = {
 
 function buildPatientApiPath(patientId: string, suffix: string) {
   return `/api/patients/${encodePathSegment(patientId)}${suffix}`;
-}
-
-function buildCommunicationRequestApiPath(requestId: string) {
-  return `/api/communication-requests/${encodePathSegment(requestId)}`;
 }
 
 export function InterprofessionalShareContent({ reportId }: { reportId: string }) {
