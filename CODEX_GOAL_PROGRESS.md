@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Admin Facilities GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation and before long gates. Claude ACKed the non-DB lock for `src/app/api/admin/facilities/route.ts`, `src/app/api/admin/facilities/[id]/route.ts`, their tests, the protected GET matrix, and ledgers.
+  - Claude approved S2 after Codex clarified the local-dev-only `prisma db execute` apply, read-only catalog verification, duplicate preflight `0/0`, and prod/RDS gate preservation. S2 is done; the remaining `PatientInsurance.public_program_code` precondition blocker is classified as pre-existing local drift and not part of this facilities slice.
+  - A verifier subagent reviewed the facilities diff read-only, reran focused Vitest and `git diff --check`, and approved with no blocking findings.
+- Hardened root `GET /api/admin/facilities` and detail `GET /api/admin/facilities/[id]` by preserving their authenticated handlers and wrapping the exported `GET` boundary with `withSensitiveNoStore`.
+- Added fixed no-store `INTERNAL_ERROR` fallbacks with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Preserved existing `canVisit` auth, search/list/detail query shapes, patient-count enrichment, facility serialization, POST/PATCH/DELETE behavior, schema/migrations/data, DB writes, and frontend behavior.
+- Added route-local coverage for no-store 403, list success, bounded search success, detail success, detail 404, and sanitized fixed 500 responses that omit raw facility failure text.
+- Added `admin/facilities GET` and `admin/facilities/[id] GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Security risk reduced: facility master reads include facility addresses, phone/FAX values, contacts, acceptance windows, notes, regular visit weekdays, and patient counts. These reads now consistently send private no-store headers across success/auth/error paths and unexpected failures no longer serialize raw facility error details to clients.
+- Performance issue improved: none materially changed. This slice adds route-boundary response wrapping and tests only; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/admin/facilities/route.ts 'src/app/api/admin/facilities/[id]/route.ts' src/app/api/admin/facilities/route.test.ts 'src/app/api/admin/facilities/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts` completed with no formatting changes.
+  - `pnpm exec vitest run src/app/api/admin/facilities/route.test.ts 'src/app/api/admin/facilities/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `357` tests, with expected PHI-safe route-handler stderr from the new sanitized 500 test.
+  - Scoped ESLint passed for the two routes, their route tests, and the protected GET matrix.
+  - Scoped Prettier check passed for the same five files.
+  - Scoped diff whitespace check passed for the same five files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Verifier subagent approved with no blocking findings after read-only diff review, focused Vitest, and diff check.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after checking for Claude findings/consultations.
+
 ### 2026-06-27 JST - S2 Operating-Day Calendar Migration Foundation
 
 - Coordination:
@@ -50,8 +75,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
   - `pnpm typecheck:no-unused` passed.
   - `pnpm --config.verify-deps-before-run=false db:verify-migration-preconditions` now reads `.env` but is blocked on this local dev DB's pre-existing schema drift (`PatientInsurance.public_program_code` missing). This is not attributed to the S2 diff; S2's BusinessHoliday duplicate precheck was verified separately as above.
-- Commit status: implementation/precondition files are ready for a grouped commit; this entry is the separate progress-ledger update.
-- Next action: run ledger-aware checks, commit implementation/precondition files, commit ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, and keep S2 under review until Claude responds.
+- Commit status: implementation/precondition files landed as `f2353f7c`; state landed as `7d0fa744`.
+- Next action: S2 is done after Claude approval and Codex local-dev apply confirmation. Continue to S3 only after the current non-DB facilities slice is committed and review-requested.
 
 ### 2026-06-27 JST - R1 Operating-Day Planner Refactor
 
