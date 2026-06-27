@@ -104,6 +104,11 @@ function createInvalidJsonPostRequest() {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 type CommentMentionNotificationPayload = {
   orgId: string;
   eventType: string;
@@ -184,6 +189,7 @@ describe('/api/comments', () => {
         emptyRouteContext,
       ))!;
       expect(response.status).toBe(404);
+      expectNoStore(response);
       expect(taskCommentFindManyMock).not.toHaveBeenCalled();
     });
 
@@ -213,6 +219,7 @@ describe('/api/comments', () => {
       ))!;
 
       expect(response.status).toBe(200);
+      expectNoStore(response);
       const body = await response.json();
       expect(body.data).toHaveLength(1);
       expect(body.data[0].author_name).toBe('テスト薬剤師');
@@ -228,6 +235,22 @@ describe('/api/comments', () => {
       const response = (await GET(createGetRequest(), emptyRouteContext))!;
 
       expect(response.status).toBe(400);
+      expectNoStore(response);
+    });
+
+    it('returns a sanitized no-store 500 when comment listing fails unexpectedly', async () => {
+      taskCommentFindManyMock.mockRejectedValueOnce(new Error('raw patient comment secret'));
+
+      const response = (await GET(
+        createGetRequest('entity_type=dispense_task&entity_id=dt_1'),
+        emptyRouteContext,
+      ))!;
+
+      expect(response.status).toBe(500);
+      expectNoStore(response);
+      const bodyText = await response.text();
+      expect(bodyText).toContain('INTERNAL_ERROR');
+      expect(bodyText).not.toContain('raw patient comment secret');
     });
   });
 

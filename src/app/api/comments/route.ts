@@ -1,6 +1,7 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import type { MemberRole, Prisma } from '@prisma/client';
@@ -13,6 +14,7 @@ import {
   collaborationEntityTypeSchema,
 } from '@/server/services/collaboration-access';
 import { z } from 'zod';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 const COMMENT_THREAD_LIMIT = 100;
 const COMMENT_MENTION_LIMIT = 20;
@@ -87,7 +89,7 @@ async function buildCommentMentionLink(
   }
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const parsedRef = collaborationEntityRefSchema.safeParse({
@@ -138,6 +140,15 @@ export const GET = withAuthContext(
     message: 'コメントの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext(
   async (req, ctx) => {
