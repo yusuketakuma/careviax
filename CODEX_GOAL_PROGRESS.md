@@ -12028,6 +12028,29 @@ Next loop:
 - Remaining:
   - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`. The broader API no-store sweep remains incomplete.
 
+### Visit Record Reflected Fields GET — Sensitive Detail No-Store
+
+- Coordination:
+  - Received Claude approval for `patient-self-reports/[id]` (`760de7c8` / `219692e3`) and ACKed it before committing this next slice.
+  - Ran gbrain caller/blast checks for `src/app/api/visit-records/[id]/reflected-fields/route::GET`; no direct callers were found and code graph freshness was `fresh`.
+- Bugs found:
+  - `GET /api/visit-records/[id]/reflected-fields` already no-stored normal/auth/validation/not-found/forbidden/success responses, but unexpected lookup failures were not converted by a route-local sanitized no-store 500 wrapper.
+  - The protected GET matrix did not assert no-store for `visit-records/[id]/reflected-fields GET`.
+- Implemented by Codex:
+  - Moved the existing GET body into `authenticatedGET` and exported a wrapper that catches unexpected failures with `unstable_rethrow()` plus `withSensitiveNoStore(internalError())`.
+  - Added a sanitized 500 regression that confirms a thrown raw reflected-field secret is not reflected in the response body.
+  - Added `visit-records/[id]/reflected-fields GET` to the protected GET no-store matrix for 401, 403, and 200 cases.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/visit-records/[id]/reflected-fields/route.ts src/app/api/visit-records/[id]/reflected-fields/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/visit-records/[id]/reflected-fields/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `324` tests.
+  - `pnpm exec eslint src/app/api/visit-records/[id]/reflected-fields/route.ts src/app/api/visit-records/[id]/reflected-fields/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/visit-records/[id]/reflected-fields/route.ts src/app/api/visit-records/[id]/reflected-fields/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `git diff --check -- src/app/api/visit-records/[id]/reflected-fields/route.ts src/app/api/visit-records/[id]/reflected-fields/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`. The broader API no-store sweep remains incomplete.
+
 ### Medication Profiles GET — Sensitive List No-Store
 
 - Coordination:
