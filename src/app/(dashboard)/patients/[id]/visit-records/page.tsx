@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 export default async function PatientVisitRecordsPage({
   params,
@@ -6,5 +7,5 @@ export default async function PatientVisitRecordsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  redirect(`/patients/${id}`);
+  redirect(buildPatientHref(id));
 }
