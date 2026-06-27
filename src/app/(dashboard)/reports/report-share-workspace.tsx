@@ -654,7 +654,16 @@ export function ReportShareWorkspace() {
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-            <div className="order-2 min-w-0 space-y-4 lg:order-1">
+            {/* p1: 次にやること/止まっている理由を fold 内へ。DOM/フォーカス順も rail→本文に
+                統一し(モバイル優先=論理順、WCAG 2.4.3/1.3.2)、デスクトップは grid 配置で右 sticky 列へ。 */}
+            <aside
+              aria-label="次にやること・止まっている理由"
+              className="lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1"
+              data-testid="report-action-rail-slot"
+            >
+              {actionRail}
+            </aside>
+            <div className="min-w-0 space-y-4 lg:col-start-1 lg:row-start-1">
               <TodayDraftsCard
                 data={data}
                 onGenerateDraft={(visitRecordId, visitRecordUpdatedAt) =>
@@ -683,13 +692,6 @@ export function ReportShareWorkspace() {
                 テンプレートは宛先ごとに自動選択されます(医師向け/ケアマネ向け/施設向け)。印象ではなく事実を書く構成です:
                 実施したこと → 観察したこと → 提案。
               </p>
-            </div>
-            {/* p1: 次にやること/止まっている理由を fold 内へ。モバイルは先頭、デスクトップは sticky 右レール。 */}
-            <div
-              className="order-1 lg:order-2 lg:sticky lg:top-4"
-              data-testid="report-action-rail-slot"
-            >
-              {actionRail}
             </div>
           </div>
         )}

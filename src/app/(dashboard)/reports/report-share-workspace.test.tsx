@@ -390,16 +390,21 @@ describe('ReportShareWorkspace', () => {
     );
   });
 
-  it('promotes the action rail into the fold (mobile-first order, desktop sticky)', async () => {
+  it('promotes the action rail into the fold ahead of the main content in DOM order', async () => {
     stubFetch();
     renderWorkspace();
 
     const railSlot = await screen.findByTestId('report-action-rail-slot');
-    // モバイルでは next-action(レール)を本文より前に出す(order-1)。
-    expect(railSlot.className).toContain('order-1');
-    // デスクトップは sticky 右レールで fold 内に固定。
+    const drafts = await screen.findByTestId('report-today-drafts');
+    // CSS order ではなく DOM/フォーカス/SR 順でも rail を本文より先に出す
+    // (視覚順=論理順を一致、WCAG 2.4.3/1.3.2)。
+    expect(
+      Boolean(railSlot.compareDocumentPosition(drafts) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    // 補助領域はランドマーク(aside)として公開し、デスクトップは grid 配置で右 sticky 列へ。
+    expect(railSlot.tagName).toBe('ASIDE');
     expect(railSlot.className).toContain('lg:sticky');
-    expect(railSlot.className).toContain('lg:order-2');
+    expect(railSlot.className).toContain('lg:col-start-2');
   });
 
   it('renders resolved-today rows as left-border accents, not full state-color fills', async () => {
