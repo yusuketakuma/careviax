@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { FileText, Printer } from 'lucide-react';
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
-import { buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button-variants';
 import { getPatientMedicationShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
