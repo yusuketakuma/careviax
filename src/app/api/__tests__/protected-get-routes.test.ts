@@ -175,6 +175,7 @@ import { GET as communicationRequestGet } from '../communication-requests/[id]/r
 import { GET as communicationRequestResponsesGet } from '../communication-requests/[id]/responses/route';
 import { GET as communicationRequestsExportGet } from '../communication-requests/export/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
+import { GET as conferenceNoteGet } from '../conference-notes/[id]/route';
 import { GET as consentRecordsGet } from '../consent-records/route';
 import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
 import { GET as dashboardCockpitGet } from '../dashboard/cockpit/route';
@@ -451,6 +452,40 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       conferenceNotesGet(
         createRequest('http://localhost/api/conference-notes', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'conference-notes/[id] GET',
+    setupSuccess: () => {
+      prismaMock.conferenceNote.findFirst.mockResolvedValueOnce({
+        id: 'note_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        facility_id: 'facility_1',
+        note_type: 'service_manager',
+        title: '担当者会議',
+        content: '会議目的',
+        structured_content: null,
+        metadata: {
+          billing: { link_status: 'candidate', code: 'MED_INFO_PROVISION_2_HA' },
+        },
+        billing_eligible: false,
+        billing_code: null,
+        follow_up_date: null,
+        follow_up_completed: false,
+        generated_report_id: null,
+        participants: [],
+        conference_date: new Date('2026-03-30T10:00:00.000Z'),
+        action_items: [],
+        created_at: new Date('2026-03-30T11:00:00.000Z'),
+        updated_at: new Date('2026-03-30T11:30:00.000Z'),
+      });
+    },
+    handler: () =>
+      conferenceNoteGet(
+        createRequest('http://localhost/api/conference-notes/note_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'note_1' }) },
       ),
   },
   {
@@ -1378,6 +1413,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'conference-notes GET' ||
+        route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1457,6 +1493,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'conference-notes GET' ||
+        route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1522,6 +1559,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'conference-notes GET' ||
+        route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||

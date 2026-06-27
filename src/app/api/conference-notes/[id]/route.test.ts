@@ -75,6 +75,17 @@ vi.mock('@/server/services/operational-tasks', () => ({
 
 import { GET, PATCH } from './route';
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
+function createGetRequest() {
+  return new NextRequest('http://localhost/api/conference-notes/note_1', {
+    method: 'GET',
+  });
+}
+
 function createRequest(body?: unknown) {
   return new NextRequest('http://localhost/api/conference-notes/note_1', {
     method: 'PATCH',
@@ -509,10 +520,11 @@ describe('/api/conference-notes/[id] GET', () => {
   });
 
   it('returns full conference note detail scoped to the current org', async () => {
-    const response = await GET(createRequest(), { params: Promise.resolve({ id: 'note_1' }) });
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'note_1' }) });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -548,17 +560,36 @@ describe('/api/conference-notes/[id] GET', () => {
   it('returns 404 when the conference note is not visible in the org', async () => {
     conferenceNoteFindFirstMock.mockResolvedValueOnce(null);
 
-    const response = await GET(createRequest(), { params: Promise.resolve({ id: 'missing' }) });
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'missing' }) });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectNoStore(response);
   });
 
   it('rejects an invalid conference note id before querying', async () => {
-    const response = await GET(createRequest(), { params: Promise.resolve({ id: '   ' }) });
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: '   ' }) });
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when conference note detail lookup fails unexpectedly', async () => {
+    conferenceNoteFindFirstMock.mockRejectedValueOnce(
+      new Error('raw conference-note detail participant secret'),
+    );
+
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'note_1' }) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('participant secret');
   });
 });
