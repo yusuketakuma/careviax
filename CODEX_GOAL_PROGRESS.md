@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Edit Overview API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger/commit phase.
+  - ACKed Claude's approval of patient visit-constraints API path helper convergence before continuing this non-overlapping patient edit overview GET slice.
+  - Used medical safety and privacy read-only reviewers because the surface reads patient overview PHI/PII into edit defaults.
+- Hardened/converged patient edit overview route construction:
+  - Routed patient overview GET through shared `buildPatientApiPath(patientId, '/overview')`.
+  - Added a component fetch test proving the query function consumes the shared patient API helper return value.
+  - Added hostile-id and exact dot-segment coverage for the edit overview fetch path.
+  - Extended patient API helper suffix coverage for `/overview`.
+  - Preserved raw patient id in React Query keys and existing `PatientForm` redirect identity, `x-org-id` header behavior, overview response parsing, edit default mapping, route handler, `canVisit` auth, sensitive no-store response behavior, service/org scoping, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient edit overview GET no longer interpolates a raw patient id directly into the network URL; the URL now uses the central patient API path helper and fail-closes for exact dot segments before fetch.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing overview fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' src/lib/patient/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.fetch.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `20` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Non-blocking follow-up noted by reviewer: adjacent edit-page navigation URLs still interpolate raw patient ids in UI hrefs (`redirectTo` / page `backHref`). This slice only hardens the overview GET API path; navigation hrefs should be handled as a separate UI/navigation helper slice.
+- Commit status: implementation commit `a2530969` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Visit Constraints API Path Helper Convergence
 
 - Coordination:
@@ -46,8 +74,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `e3409e8d` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `e3409e8d` and state commit `7a2273c2` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient Timeline API Path Helper Convergence
 
