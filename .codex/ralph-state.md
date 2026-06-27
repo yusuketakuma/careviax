@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1050 JST
+
+- current task: backend-first PHI/cache hardening for `GET /api/set-batches/:id` while preserving Claude-owned medication-calendar slice2 dirty work.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox/send via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `src/app/api/set-batches/[id]/route.ts`, `src/app/api/set-batches/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, and gbrain code graph probes for `src/app/api/set-batches/[id]/route::GET` (fresh blast returned no graph nodes; caller index was not built for this symbol).
+- files changed: `src/app/api/set-batches/[id]/route.ts`, `src/app/api/set-batches/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned dirty `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx` and `page.tsx` were preserved and not staged by Codex.
+- bugs found: the set-batch detail GET returned drug line names/codes, dosage, packaging instructions/tags, notes, quantity, carry type, slot, version, and set/audit state without the sensitive no-store exported-route envelope; ordinary unexpected detail lookup failures lacked a route-level fixed no-store `INTERNAL_ERROR` fallback; and the protected GET matrix did not cover the dynamic set-batch detail route.
+- security risks found: reduced set-batch detail PHI/medication-workflow cacheability and error-leakage risk by wrapping the exported GET with `withSensitiveNoStore`, adding a sanitized fixed `internalError()` fallback, preserving Next control-flow via `unstable_rethrow(err)`, and proving raw patient/set-batch/drug-line-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/set-batches/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint 'src/app/api/set-batches/[id]/route.ts' 'src/app/api/set-batches/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check 'src/app/api/set-batches/[id]/route.ts' 'src/app/api/set-batches/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- 'src/app/api/set-batches/[id]/route.ts' 'src/app/api/set-batches/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused set-batch detail/protected GET Vitest passed `2` files / `256` tests before and after formatting; full TypeScript passed; scoped ESLint passed; scoped Prettier check passed after formatting the protected GET matrix; scoped diff-check passed.
+- remaining work: commit Codex-owned set-batch detail hardening, commit progress ledgers separately, send `agmsg` FYI, then await/review Claude's medication-calendar slice2 if requested or continue the next backend/API PHI no-store candidate. The all-pages UI/UX objective remains incomplete.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260627-1040 JST
 
 - current task: backend-first PHI/cache hardening for `GET /api/set-plans/:id/calendar` while prioritizing Claude medication-calendar slice1 review.
