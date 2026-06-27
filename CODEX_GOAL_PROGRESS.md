@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Facility Contacts GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before candidate selection, before long gates, and before ledger work.
+  - Claude approved `8aa59922` / `a3a3cf2d` with no findings after independent focused validation.
+  - Claude requested review of `/admin/audit-logs` commit `13c64dcd`; Codex paused this backend slice, inspected the FE diff, reran focused audit-logs Vitest/scoped ESLint/scoped Prettier, and approved with no findings before continuing.
+- Hardened public `GET /api/facilities/[id]/contacts` so success, not-found, auth rejection, forbidden rejection, and ordinary unexpected contact-loading failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store facility 404, and sanitized no-store 500 responses that omit raw facility-contact-like thrown text.
+- Added `facilities/[id]/contacts GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canVisit` auth, facility org scoping, contact ordering, contact projection, PUT update behavior, DB reads/writes, schema/migrations/data, and frontend behavior. The admin contacts route was already no-store-wrapped and was left unchanged.
+- Security risk reduced: facility contact reads include contact names, roles, phone numbers, emails, FAX numbers, primary flags, and notes; these are now no-store at the HTTP boundary and unexpected list failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/facilities/[id]/contacts/route.test.ts' --reporter=dot --testTimeout=30000` passed the baseline facility-contacts suite, `1` file / `5` tests.
+  - `pnpm exec prettier --write 'src/app/api/facilities/[id]/contacts/route.ts' 'src/app/api/facilities/[id]/contacts/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts` completed with no formatting changes.
+  - `pnpm vitest run 'src/app/api/facilities/[id]/contacts/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `325` tests. The new sanitized 500 test emitted the existing PHI-safe `route_handler_unhandled_error` logger line on stderr.
+  - Scoped ESLint passed for the facility contacts route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Ledger-aware scoped Prettier check passed for the facility contacts implementation/test files, the protected GET matrix, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Ledger-aware scoped diff whitespace check passed for the same Codex-owned files.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Facility Patients GET No-Store Hardening
 
 - Coordination:
