@@ -9,10 +9,11 @@
 - P1-c `cd13da74` intake-triage 状態バッジ8 → 6 軸 + 行全面塗り2件削除（Codex APPROVED、FLAG2件確定: unblock_related=done / inquiry_waiting=confirm 維持）
 - P1-d `3d87e10b` safety-board 全面赤背景削除 → bg-card + 左 hazard 帯、見出し/リンク=tag-hazard、dt ラベル=muted、narcotic=tag-hazard（Codex Q1/Q2 設計合意。getHandlingTagBadgeClass 経由で 5 consumer 画面に narcotic 赤→琥珀が波及）
 - P1-e **クローズ（state 対象なし）**: 再 read の結果、patient-care-team-source-panel の emerald は装飾パネルテーマ（実状態は既に state-confirm 済）、shared-viewer の色付きアイコンは装飾セクションアクセント。いずれも workflow 状態ではないため §129 ゲートに従い Phase 2（装飾色の中立化 or 識別トークン）へ送る。state-done への写像はしない（Codex 合意）。
-  **Owner:** claude-lead（FE レーン）
-  **Reviewer:** codex-lead
-  **根拠:** `docs/ui-ux-design-guidelines.md` §L297-307（6 軸セマンティックが正本・生 Tailwind 状態色禁止）/ §L311-317（状態色は点・線・ラベル、面塗り禁止）/ §L374（識別色は別系統だが専用トークンを使い生 Tailwind 直書きしない）
-  **発端:** read-only Explore 調査で 11 ファイル・約 93 件の生 Tailwind 状態色/識別色ベタ書きを検出。weekend トークン是正（`e574af3e`）と同根の横断問題。
+
+**Owner:** claude-lead（FE レーン）
+**Reviewer:** codex-lead
+**根拠:** `docs/ui-ux-design-guidelines.md` §L297-307（6 軸セマンティックが正本・生 Tailwind 状態色禁止）/ §L311-317（状態色は点・線・ラベル、面塗り禁止）/ §L374（識別色は別系統だが専用トークンを使い生 Tailwind 直書きしない）
+**発端:** read-only Explore 調査で 11 ファイル・約 93 件の生 Tailwind 状態色/識別色ベタ書きを検出。weekend トークン是正（`e574af3e`）と同根の横断問題。
 
 ---
 
