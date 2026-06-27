@@ -219,6 +219,7 @@ import { GET as qrScanDraftsGet } from '../qr-scan-drafts/route';
 import { GET as qrScanDraftGet } from '../qr-scan-drafts/[id]/route';
 import { GET as residualMedicationsGet } from '../residual-medications/route';
 import { GET as setPlansGet } from '../set-plans/route';
+import { GET as setPlanGet } from '../set-plans/[id]/route';
 import { GET as staffWorkloadGet } from '../staff-workload/route';
 import { GET as tasksGet } from '../tasks/route';
 import { GET as tracingReportsGet } from '../tracing-reports/route';
@@ -885,6 +886,13 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'set-plans/[id] GET',
+    handler: () =>
+      setPlanGet(createRequest('http://localhost/api/set-plans/plan_1', { 'x-org-id': 'org_1' }), {
+        params: Promise.resolve({ id: 'plan_1' }),
+      }),
+  },
+  {
     name: 'staff-workload GET',
     handler: () =>
       staffWorkloadGet(
@@ -1256,6 +1264,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-plans GET' ||
+        route.name === 'set-plans/[id] GET' ||
         route.name === 'staff-workload GET' ||
         route.name === 'tracing-reports GET' ||
         route.name === 'dashboard/clerk-support GET' ||
@@ -1321,6 +1330,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-plans GET' ||
+        route.name === 'set-plans/[id] GET' ||
         route.name === 'staff-workload GET' ||
         route.name === 'tracing-reports GET' ||
         route.name === 'dashboard/clerk-support GET' ||
@@ -1356,7 +1366,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dispense-queue GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
-        route.name === 'visit-schedule-proposals/[id] GET'
+        route.name === 'visit-schedule-proposals/[id] GET' ||
+        route.name === 'set-plans/[id] GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');

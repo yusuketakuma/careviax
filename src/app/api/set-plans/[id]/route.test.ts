@@ -120,6 +120,8 @@ describe('/api/set-plans/[id]', () => {
     if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: 'plan_1',
@@ -144,6 +146,8 @@ describe('/api/set-plans/[id]', () => {
     if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(prismaMock.setPlan.findFirst).toHaveBeenCalledWith({
       where: {
         id: 'plan_1',
@@ -151,6 +155,29 @@ describe('/api/set-plans/[id]', () => {
       },
       select: expect.any(Object),
     });
+  });
+
+  it('returns a sanitized no-store 500 when set plan detail lookup fails unexpectedly', async () => {
+    prismaMock.setPlan.findFirst.mockRejectedValueOnce(
+      new Error('患者 山田太郎 東京都千代田区 raw set plan packaging detail'),
+    );
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('東京都千代田区');
+    expect(JSON.stringify(body)).not.toContain('raw set plan packaging detail');
   });
 
   it('updates set plan metadata', async () => {

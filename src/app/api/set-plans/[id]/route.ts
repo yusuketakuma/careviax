@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -145,7 +147,7 @@ const setPlanSelect = {
   },
 } satisfies Prisma.SetPlanSelect;
 
-export const GET = withAuthContext<{ id: string }>(
+const authenticatedGET = withAuthContext<{ id: string }>(
   async (_req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
     const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
@@ -186,6 +188,15 @@ export const GET = withAuthContext<{ id: string }>(
   },
   { permission: 'canSet' },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const PATCH = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
