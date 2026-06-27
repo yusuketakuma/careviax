@@ -220,6 +220,18 @@ describe('/api/patient-self-reports', () => {
     expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when self report listing fails unexpectedly', async () => {
+    patientSelfReportFindManyMock.mockRejectedValueOnce(new Error('raw self report secret'));
+
+    const response = (await GET(createGetRequest(), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw self report secret');
+  });
+
   it.each([
     ['patient_id', '?patient_id=', { patient_id: ['患者IDを指定してください'] }],
     ['blank patient_id', '?patient_id=%20%20', { patient_id: ['患者IDを指定してください'] }],
