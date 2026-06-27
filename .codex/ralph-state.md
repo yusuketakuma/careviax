@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1757 JST
+
+- current task: backend/test support slice for UI reliability: add patient-detail documents, contacts, and care-team GET routes to the protected GET auth/no-store matrix while preserving Claude's S4 operating-hours UI WIP.
+- files inspected: `git status --short --untracked-files=all`, `git log --oneline -n 8`, `agmsg` inbox/send via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/app/api/patients/[id]/documents/route.ts`, `src/app/api/patients/[id]/contacts/route.ts`, `src/app/api/patients/[id]/care-team/route.ts`, route-local patient detail tests, `src/app/api/admin/master-hub/route.ts`, admin shortcut/nav references, and a code_mapper subagent read-only report.
+- files changed: `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned S4 WIP files `src/components/features/admin/admin-page-shortcut-presets.ts` and `src/app/(dashboard)/admin/operating-hours/page.tsx` appeared during validation and were preserved untouched.
+- bugs found: `patients/[id]/documents GET`, `patients/[id]/contacts GET`, and `patients/[id]/care-team GET` already had route-local no-store/fixed-error handling, but were absent from the shared protected GET auth/no-store matrix, leaving patient-document/contact/care-team cache regressions less visible in the cross-route gate.
+- security risks found: reduced PHI/contact/care-team document cacheability regression risk by adding the three patient-detail routes to the matrix for 401, 403, and success no-store assertions. No production code, DB schema/data, migrations, external sends, frontend UI, or destructive operations were changed.
+- performance issues found: none. This is a test-only matrix update plus a patient-detail service mock for matrix success setup.
+- validation commands: `pnpm exec prettier --write src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/api/patients/[id]/contacts/route.test.ts' 'src/app/api/patients/[id]/care-team/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the protected matrix; scoped Prettier check for the protected matrix; scoped diff whitespace check for the protected matrix; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: focused patient-detail/protected GET Vitest passed `4` files / `436` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff whitespace check passed; full TypeScript passed; `typecheck:no-unused` passed, including the currently dirty Claude S4 WIP.
+- remaining work: run ledger-aware checks after this update, stage only Codex-owned protected matrix and ledgers, commit the test-only slice and state separately, and send Claude a `PATCH_REVIEW_REQUEST`.
+- next action: ledger checks, grouped commits, and Claude review request while preserving Claude S4 files.
+
 ### 20260627-1743 JST
 
 - current task: S3 pharmacy operating hours API: add admin-only GET/PUT for weekly pharmacy operating hours and resolved operating-day reads on top of the S2 schema foundation.

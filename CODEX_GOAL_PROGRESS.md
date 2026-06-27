@@ -23,6 +23,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Patient Detail GET Matrix No-Store Coverage
+
+- Coordination:
+  - Drained `phos/codex` before selecting the slice and during long gates.
+  - Claude approved S3 `055fa57e` / `a723406b`; Codex ACKed and released the S3 lock.
+  - Claude requested S4 operating-hours UI lock and nav guidance. Codex granted `src/app/(dashboard)/admin/operating-hours/**` to Claude's FE lane, recommended temporary FE shortcuts first, and committed to adding the permanent master-hub card as a later Codex backend/test slice after the initial S4 page route exists.
+  - A code_mapper subagent identified patient-detail documents/contacts/care-team GET routes as the highest-value backend/test support gap for UI reliability.
+- Added `patients/[id]/documents GET`, `patients/[id]/contacts GET`, and `patients/[id]/care-team GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Added a matrix-local `getPatientDocumentsData` mock so the documents route success path stays focused and does not depend on the full patient-detail service graph.
+- Preserved existing route implementations, UI files, DB behavior, schema/migrations/data, and external behavior.
+- Security risk reduced: patient documents, contacts, and care-team reads are PHI/contact-heavy UI dependencies. Their route-local no-store handling is now also pinned by the shared protected GET regression matrix.
+- Performance issue improved: none. This is a test-only coverage slice.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/__tests__/protected-get-routes.test.ts` passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' 'src/app/api/patients/[id]/contacts/route.test.ts' 'src/app/api/patients/[id]/care-team/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `4` files / `436` tests.
+  - Scoped ESLint passed for `src/app/api/__tests__/protected-get-routes.test.ts`.
+  - Scoped Prettier check passed for the protected matrix.
+  - Scoped diff whitespace check passed for the protected matrix.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed, including current Claude S4 WIP files.
+- Commit status: implementation ready for a grouped test-only commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit the protected matrix and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then remain available for S4 API/UI contract consultations.
+
 ### 2026-06-27 JST - Admin Facilities GET No-Store Hardening
 
 - Coordination:
