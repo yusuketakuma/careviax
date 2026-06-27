@@ -6,6 +6,7 @@ import { MessageSquare, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { buildCommentApiPath } from '@/lib/comments/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { MentionInput } from './mention-input';
@@ -86,7 +87,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
 
   const deleteMutation = useMutation({
     mutationFn: async (commentId: string) => {
-      const res = await fetch(`/api/comments/${commentId}`, {
+      const res = await fetch(buildCommentApiPath(commentId), {
         method: 'DELETE',
         headers: { 'x-org-id': orgId },
       });

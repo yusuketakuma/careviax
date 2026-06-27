@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
+const fetchMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -38,7 +39,9 @@ function renderWithQueryClient(ui: React.ReactElement) {
 describe('CommentThread', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ deleted: true }) });
     useRealtimeQueryMock.mockReturnValue({
       data: { data: [] },
       isLoading: false,
@@ -58,4 +61,63 @@ describe('CommentThread', () => {
       }),
     );
   });
+
+  it('single-encodes comment delete paths and preserves delete headers', async () => {
+    const hostileCommentId = 'comment/1?x=y#frag';
+    const encodedCommentId = encodeURIComponent(hostileCommentId);
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: hostileCommentId,
+            author_id: 'user_1',
+            author_name: '田中',
+            content: '確認お願いします',
+            mentions: [],
+            created_at: '2026-06-13T09:30:00+09:00',
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'コメントを削除' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(`/api/comments/${encodedCommentId}`, {
+        method: 'DELETE',
+        headers: { 'x-org-id': 'org_1' },
+      });
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain('%25');
+  });
+
+  it.each(['.', '..'])(
+    'fails closed before delete fetch for exact dot comment id %p',
+    async (dotId) => {
+      useRealtimeQueryMock.mockReturnValue({
+        data: {
+          data: [
+            {
+              id: dotId,
+              author_id: 'user_1',
+              author_name: '田中',
+              content: '確認お願いします',
+              mentions: [],
+              created_at: '2026-06-13T09:30:00+09:00',
+            },
+          ],
+        },
+        isLoading: false,
+      });
+
+      renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'コメントを削除' }));
+
+      await Promise.resolve();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 });
