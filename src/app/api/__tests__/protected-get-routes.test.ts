@@ -1679,6 +1679,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/[id]/documents/pdf GET' ||
         route.name === 'billing-candidates/export GET' ||
+        route.name === 'business-holidays GET' ||
         route.name === 'dispense-results/[id] GET' ||
         route.name === 'dispense-tasks GET' ||
         route.name === 'dispense-tasks/[id] GET' ||
@@ -1714,6 +1715,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'pharmacist-shifts GET' ||
         route.name === 'pharmacist-shifts/available GET' ||
         route.name === 'pharmacy-partnerships GET' ||
+        route.name === 'pharmacy-sites GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
         route.name === 'prescriber-institutions GET' ||
@@ -1791,6 +1793,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/[id]/documents/pdf GET' ||
         route.name === 'billing-candidates/export GET' ||
+        route.name === 'business-holidays GET' ||
         route.name === 'dispense-results/[id] GET' ||
         route.name === 'dispense-tasks GET' ||
         route.name === 'dispense-tasks/[id] GET' ||
@@ -1826,6 +1829,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'pharmacist-shifts GET' ||
         route.name === 'pharmacist-shifts/available GET' ||
         route.name === 'pharmacy-partnerships GET' ||
+        route.name === 'pharmacy-sites GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
         route.name === 'prescriber-institutions GET' ||
@@ -1893,6 +1897,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'admin/external-professionals/[id]/communications GET' ||
         route.name === 'admin/facilities/[id]/patients GET' ||
         route.name === 'billing-candidates/[id]/documents/pdf GET' ||
+        route.name === 'business-holidays GET' ||
         route.name === 'prescription-intakes/triage GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||
@@ -1930,6 +1935,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'pharmacist-shifts GET' ||
         route.name === 'pharmacist-shifts/available GET' ||
         route.name === 'pharmacy-partnerships GET' ||
+        route.name === 'pharmacy-sites GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
         route.name === 'prescriber-institutions GET' ||

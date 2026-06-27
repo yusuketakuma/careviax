@@ -1,9 +1,11 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { createBusinessHolidaySchema } from '@/lib/validations/business-holiday';
@@ -24,7 +26,7 @@ const businessHolidayQuerySchema = z
     message: 'date_to は date_from 以降を指定してください',
   });
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const parsed = businessHolidayQuerySchema.safeParse({
@@ -74,6 +76,15 @@ export const GET = withAuthContext(
     message: '休日設定の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext(
   async (req, ctx) => {

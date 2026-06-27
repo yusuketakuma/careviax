@@ -81,6 +81,11 @@ function createMalformedJsonPostRequest() {
   } satisfies NextRequestInit);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/business-holidays', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -107,6 +112,7 @@ describe('/api/business-holidays', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toEqual({
       data: [{ id: 'holiday_1', name: '祝日' }],
     });
@@ -141,6 +147,7 @@ describe('/api/business-holidays', () => {
   it('uses a default list bound and clamps overly large limits', async () => {
     const defaultResponse = (await GET(createGetRequest()))!;
     expect(defaultResponse.status).toBe(200);
+    expectSensitiveNoStore(defaultResponse);
     expect(businessHolidayFindManyMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         take: 100,
@@ -149,6 +156,7 @@ describe('/api/business-holidays', () => {
 
     const clampedResponse = (await GET(createGetRequest('?limit=9999')))!;
     expect(clampedResponse.status).toBe(200);
+    expectSensitiveNoStore(clampedResponse);
     expect(businessHolidayFindManyMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         take: 400,
@@ -160,6 +168,7 @@ describe('/api/business-holidays', () => {
     const response = (await GET(createGetRequest('?date_from=2026-02-31')))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -174,6 +183,7 @@ describe('/api/business-holidays', () => {
     const response = (await GET(createGetRequest('?date_from=2026-04-20&date_to=2026-04-01')))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -188,7 +198,22 @@ describe('/api/business-holidays', () => {
     const response = (await GET(createGetRequest('?site_id=%20%20')))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(businessHolidayFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking raw holiday lookup failures', async () => {
+    businessHolidayFindManyMock.mockRejectedValueOnce(
+      new Error('raw business holiday lookup failure for site_1'),
+    );
+
+    const response = (await GET(createGetRequest()))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw business holiday lookup failure for site_1');
   });
 
   it('creates a business holiday and records an audit log', async () => {

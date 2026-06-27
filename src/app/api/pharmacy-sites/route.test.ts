@@ -31,6 +31,11 @@ import { GET } from './route';
 const emptyRouteContext = { params: Promise.resolve({}) };
 const routeGET = (req: NextRequest) => GET(req, emptyRouteContext);
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/pharmacy-sites', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -56,6 +61,7 @@ describe('/api/pharmacy-sites', () => {
     const response = (await routeGET(new NextRequest('http://localhost/api/pharmacy-sites')))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [
         {
@@ -101,6 +107,7 @@ describe('/api/pharmacy-sites', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -152,6 +159,7 @@ describe('/api/pharmacy-sites', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -164,5 +172,19 @@ describe('/api/pharmacy-sites', () => {
         holiday_gap_sites: 0,
       }),
     });
+  });
+
+  it('returns a no-store fixed error without leaking raw site lookup failures', async () => {
+    pharmacySiteFindManyMock.mockRejectedValueOnce(
+      new Error('raw pharmacy site lookup failure for org_1'),
+    );
+
+    const response = (await routeGET(new NextRequest('http://localhost/api/pharmacy-sites')))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw pharmacy site lookup failure for org_1');
   });
 });

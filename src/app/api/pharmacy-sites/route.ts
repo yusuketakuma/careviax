@@ -1,11 +1,13 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
-import { success } from '@/lib/api/response';
+import { internalError, success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const view = searchParams.get('view');
@@ -180,3 +182,12 @@ export const GET = withAuthContext(
     message: '店舗情報の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
