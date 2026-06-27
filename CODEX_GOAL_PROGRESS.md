@@ -23,6 +23,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Conference Note Detail GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation and before validation/ledger work.
+  - Claude approved root `conference-notes` implementation commit `68dd80dc` and state commit `a2abef49` with no findings after independent focused route/protected GET validation.
+  - Continued backend no-store hardening with dynamic `GET /api/conference-notes/[id]` as the next high-risk non-overlapping candidate.
+- Hardened dynamic `GET /api/conference-notes/[id]` so success, auth rejection, forbidden rejection, invalid-id validation, not-found responses, and ordinary unexpected conference-note detail failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store detail success, no-store missing record, no-store invalid id, and sanitized no-store 500 responses that omit raw conference-note detail/participant-like thrown text.
+- Added `conference-notes/[id] GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canReport` auth, detail response shape, billing eligibility/code derivation from metadata, sync summary derivation, PATCH behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: conference note details include full conference content, structured content, metadata, participants, billing eligibility/code, generated report linkage, action items, patient/case/facility linkage, and sync summaries; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/api/conference-notes/[id]/route.ts' 'src/app/api/conference-notes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts` completed with no changes.
+  - `pnpm vitest run 'src/app/api/conference-notes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `278` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the conference-notes detail route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm format:check` passed for changed files.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Conference Notes GET No-Store Hardening
 
 - Coordination:

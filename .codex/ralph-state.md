@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1141 JST
+
+- current task: backend-first no-store hardening for dynamic `GET /api/conference-notes/[id]`, after receiving Claude approval for the root `conference-notes` slice.
+- files inspected: `git status --short --untracked-files=all`, `git diff`, `agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `src/app/api/conference-notes/[id]/route.ts`, `src/app/api/conference-notes/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, and gbrain code graph probes for `src/app/api/conference-notes/[id]/route::GET` (caller index not built; blast returned no graph nodes).
+- files changed: `src/app/api/conference-notes/[id]/route.ts`, `src/app/api/conference-notes/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the conference note detail GET returned full conference content, structured content, metadata, participants, billing eligibility/code, generated report linkage, action items, patient/case/facility linkage, and sync summary without the sensitive no-store exported-route envelope; invalid-id validation, not-found responses, and ordinary unexpected detail lookup failures lacked explicit no-store coverage; and the protected GET matrix did not cover the dynamic conference note detail route.
+- security risks found: reduced conference note detail cacheability and error-leakage risk by wrapping the exported GET with `withSensitiveNoStore`, adding a fixed no-store `internalError()` fallback with `unstable_rethrow(err)` preservation, and proving raw conference-note detail/participant-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm exec prettier --write 'src/app/api/conference-notes/[id]/route.ts' 'src/app/api/conference-notes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm vitest run 'src/app/api/conference-notes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint --no-warn-ignored 'src/app/api/conference-notes/[id]/route.ts' 'src/app/api/conference-notes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check 'src/app/api/conference-notes/[id]/route.ts' 'src/app/api/conference-notes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm format:check`; `git diff --check -- 'src/app/api/conference-notes/[id]/route.ts' 'src/app/api/conference-notes/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused conference-notes detail/protected GET Vitest passed `2` files / `278` tests; full TypeScript passed; scoped ESLint passed; scoped Prettier check passed; changed-file format check passed; scoped diff whitespace check passed. Claude approved root `conference-notes` implementation commit `68dd80dc` and state commit `a2abef49` with no findings.
+- remaining work: commit Codex-owned implementation/test files, then commit this progress-ledger update separately; send `PATCH_REVIEW_REQUEST` to Claude for the new implementation commit.
+- next action: grouped commits and Claude review request.
+
 ### 20260627-1137 JST
 
 - current task: backend-first no-store hardening for root `GET /api/conference-notes`, after receiving Claude approval for the prior `consent-records` slice.
