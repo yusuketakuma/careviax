@@ -87,7 +87,7 @@
 
 Codex 合意で **23 識別トークン**を確定（除外: drug-classification=麻薬等は tag-hazard 流用 / work-mode=中立化 / 装飾アイコン=中立化）。値が同一の family も将来の個別調整のため別トークンで定義。実装は `src/app/globals.css`（`:root` light / `.dark` dark / `@theme inline` で `--color-*` 公開）。
 
-**識別トークンであり status ではない**（緊急/警告/状態は `--state-*`/`--tag-*` を使う）。全て低彩度（C≤0.12）で state（高彩度・アラート）と弁別し、使用は text/border/dot/小チップのみ・大面積塗り禁止（§L311-317）。赤系は state-blocked と競合しないよう side_effect_management=rose(H12) / method-crushed=rust(H55) に退避。
+**識別トークンであり status ではない**（緊急/警告/状態は `--state-*`/`--tag-*` を使う）。全て低彩度で state（高彩度・アラート）と弁別し（light は C≤0.12、dark は AA/可読性のため text インクを C≤0.13 まで許容）、使用は text/border/dot/小チップのみ・大面積塗り禁止（§L311-317）。赤系は state-blocked と競合しないよう side_effect_management=rose(H12) / method-crushed=rust(H55) に退避。
 
 AA は oklch→linear sRGB→相対輝度で計算（weekend と同手法）。12px=normal text 扱い ≥4.5:1。**全 23 トークン合格**（binding=最小値、light の on muted=oklch(0.95) が最厳）:
 
