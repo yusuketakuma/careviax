@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Legacy Redirect Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger/commit phase.
+  - ACKed Claude's approval of patient medication/prescription page link helper convergence before continuing this non-overlapping legacy redirect slice.
+  - Used medical safety and privacy read-only reviewers because the surface controls patient legacy route redirects.
+- Hardened/converged patient legacy redirects:
+  - Routed legacy management-plan redirect through shared `buildPatientHref(id)`.
+  - Routed legacy visit-records redirect through shared `buildPatientHref(id)`.
+  - Added tests proving both pages consume the shared helper return value instead of raw `/patients/${id}` interpolation.
+  - Preserved normal redirect destination, route params, redirect semantics, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: legacy redirects no longer interpolate raw patient ids into patient detail hrefs; hostile ids now flow through the encoded/fail-closed patient navigation helper.
+- Performance issue improved: none. This is a pure redirect-href helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/management-plan/page.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/page.test.ts' 'src/app/(dashboard)/patients/[id]/visit-records/page.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/page.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/management-plan/page.test.ts' 'src/app/(dashboard)/patients/[id]/visit-records/page.test.ts' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `7` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `1dc64a74` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Medication/Prescription Page Link Helper Convergence
 
 - Coordination:
@@ -50,8 +76,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Medical safety reviewer: PASS.
   - Privacy reviewer: initial FAIL on raw prescription shortcut `patient_id` query interpolation; fixed with `URLSearchParams`; re-review PASS.
 - Residual privacy note: `/prescriptions/new?patient_id=...` intentionally carries a patient identifier in the URL query for workflow context. This slice fixes boundary injection and does not add logging/storage/export paths.
-- Commit status: implementation commit `9206a16d` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `9206a16d` and state commit `10fb2eb6` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient Edit Navigation Href Helper Convergence
 
