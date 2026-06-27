@@ -14,12 +14,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 
 ### Coordination and Locks
 
+- 2026-06-27 JST latest user override: Claude/Codex maker-checker coordination is re-enabled through `agmsg`. When Codex completes an implementation slice, send Claude a `PATCH_REVIEW_REQUEST` or `REVIEW_REQUEST` with commit scope and validation instead of treating FYI as sufficient. If Claude sends a consultation, finding, or review request, handle it as the highest-priority interrupt before continuing or committing the next slice. This supersedes conflicting parts of the 2026-06-26 Codex-only note below.
 - 2026-06-26 JST operational override update: the user switched this worktree to current Codex-only operation. Do not route new work to Claude, require Claude review/ACK, or wait on Claude gates. Use Codex subagents/independent review plus real validation for high-risk work, and preserve any pre-existing dirty Claude/user files until Codex explicitly claims them.
 - Historical coordination notes below may mention Claude approvals, Claude locks, or implementation-only parallel work. Treat those as past-state context, not active gates, unless the user explicitly re-enables multi-agent operation.
 - The worktree is intentionally dirty from prior concurrent Claude/Codex slices. Preserve unrelated changes and do not revert user/Claude edits.
 - 2026-06-26 JST scope override: defer broad frontend/UI/UX updates until the GPT-5.6 frontend-capability release. Current autonomous loop should prioritize backend, DB, API, code correctness, security hardening, performance, validation, and progress ledgers; only touch frontend callers when needed to verify backend/API compatibility.
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
-- Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
+- Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
+
+### 2026-06-27 JST - Partner Visit Records GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation and before validation/ledger work.
+  - Received Claude's user-relayed directive to reinstate bidirectional maker/checker review. Sent Claude a batched `PATCH_REVIEW_REQUEST` for prior landed backend hardening commits (`86561b0d`, `772e5886`, `429188c9`, `3994e104`, `9d1bab15`, `8e544890`, `b0d9733d`, `4a0a1feb`, `d2a3cab4`, `292d7f1a`, `e077893f`, `1d9236f2`, `aad63233`, plus paired state commits where applicable).
+  - Claude ACKed the batched review and confirmed it will review prior backend hardening while Codex continues non-overlapping work and preserves Claude's `patients-board` lock.
+  - Continued backend PHI/cache hardening with root `GET /api/partner-visit-records` as the next non-overlapping candidate.
+- Hardened root `GET /api/partner-visit-records` so success, auth rejection, forbidden rejection, filter validation errors, and ordinary unexpected partner-visit-record list failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(error)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store blank/unsupported filter validation, and sanitized no-store 500 responses that omit raw patient/partner-visit-record/home-note-like thrown text.
+- Added `partner-visit-records GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canManagePatientSharing` auth, active share-case/consent/partnership filtering, cursor pagination, PHI-minimizing `toSafePartnerVisitRecord` response shape, POST behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: partner visit record lists include share-case/visit-request linkage, partner pharmacy and claim-note hints, pharmacist identity, visit timestamps, and workflow status; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with only the route test formatted.
+  - `pnpm vitest run src/app/api/partner-visit-records/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `270` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the partner-visit-records route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm format:check` passed for changed files.
+  - `git diff --check` passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue only after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
 
 ### 2026-06-27 JST - Pharmacy Visit Requests GET No-Store Hardening
 
