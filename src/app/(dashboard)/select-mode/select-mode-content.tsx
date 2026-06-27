@@ -36,7 +36,7 @@ export const WORK_MODE_OPTIONS: WorkModeOption[] = [
     firstView: '今日の運用・鑑査・訪問準備',
     actionLabel: '薬剤師として入る',
     landingHref: '/dashboard',
-    titleClass: 'text-blue-600',
+    titleClass: 'text-foreground',
     primary: true,
   },
   {
@@ -47,7 +47,7 @@ export const WORK_MODE_OPTIONS: WorkModeOption[] = [
     firstView: '受付・配送・日程確認',
     actionLabel: '事務として入る',
     landingHref: '/clerk-support',
-    titleClass: 'text-violet-600',
+    titleClass: 'text-foreground',
     primary: false,
   },
   {
@@ -58,7 +58,7 @@ export const WORK_MODE_OPTIONS: WorkModeOption[] = [
     firstView: '詰まり・件数・スタッフ負荷',
     actionLabel: '管理画面へ',
     landingHref: '/admin',
-    titleClass: 'text-emerald-600',
+    titleClass: 'text-foreground',
     primary: false,
   },
 ];
