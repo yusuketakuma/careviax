@@ -48,6 +48,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
 - Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after checking for Claude findings/consultations.
 
+### 2026-06-27 JST - S3 Pharmacy Operating Hours API
+
+- Coordination:
+  - Drained `phos/codex` repeatedly before implementation, during long gates, and before ledger work. No new Claude consultation or finding arrived during this slice.
+  - Claude granted the S3 lock for `src/app/api/pharmacy-operating-hours/route.ts`, `src/lib/validations/pharmacy-operating-hours.ts`, `src/lib/calendar/operating-day-adapter.ts`, their tests, the protected GET matrix, and ledgers; Codex preserved `src/lib/calendar/operating-day.ts` as Claude/S1-owned and did not edit it.
+  - An implementation_planner subagent produced the S3 contract and risk plan. A verifier subagent reviewed the implemented diff read-only, reran focused Vitest/scoped ESLint/diff check, and reported no blocking issues; its non-blocking duplicate-query note was fixed with route validation and regression coverage.
+- Added `GET /api/pharmacy-operating-hours` behind `canAdmin`, requiring `site_id` and optionally accepting `date_from/date_to` as a pair for resolved calendar reads.
+- GET returns normalized weekly rows, visibly materialized default-open fallback rows with `configured:false`, exact-site weekly settings, optional resolved days, and `BusinessHoliday` rows loaded with `OR: [{ site_id: S }, { site_id: null }]` for org-wide plus site-specific overrides.
+- Added `PUT /api/pharmacy-operating-hours` behind `canAdmin`, requiring exactly seven unique weekdays, validating `HH:mm` windows, rejecting closed rows with times, validating the site/org reference before writes, and idempotently upserting by `site_id_weekday` inside `withOrgContext`.
+- Added a DB adapter that keeps `@db.Time()` `Date` values at the route/DB boundary and converts them to/from canonical `HH:mm`; pure operating-day resolver inputs remain Date-free.
+- Added route-level sensitive no-store wrapping and fixed no-store `INTERNAL_ERROR` fallbacks with `unstable_rethrow(err)` preservation for GET and PUT.
+- Added audit logging for successful PUTs with normalized before/after weekly rows and no PHI.
+- Added duplicate single-value GET query rejection for `site_id`, `date_from`, and `date_to` so ambiguous multi-value queries fail before reference checks or DB reads.
+- Added `pharmacy-operating-hours GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Security/medical-safety risk reduced: pharmacy operating calendars affect visit scheduling. This slice enforces admin-only access, org-scoped site validation, org RLS write context, no-store responses, deterministic org-wide/site holiday precedence, visible unconfigured defaults, closed-day time rejection, and auditability.
+- Performance issue improved: no material normal-path performance change beyond bounded date expansion capped at 366 days. The route uses indexed org/site/date predicates and adds no dependencies, polling, frontend rendering work, migrations, prod DB access, external sends, or destructive operations.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/pharmacy-operating-hours/route.ts src/app/api/pharmacy-operating-hours/route.test.ts src/lib/calendar/operating-day-adapter.ts src/lib/calendar/operating-day-adapter.test.ts src/lib/validations/pharmacy-operating-hours.ts src/app/api/__tests__/protected-get-routes.test.ts` passed.
+  - `pnpm exec vitest run src/lib/calendar/operating-day-adapter.test.ts src/app/api/pharmacy-operating-hours/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `357` tests after adding duplicate-query coverage.
+  - Scoped ESLint passed for the new route, route test, adapter, adapter test, validation schema, and protected GET matrix.
+  - Scoped Prettier check passed for the same six files.
+  - Scoped diff whitespace check passed for the same six files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Verifier subagent approved with no blocking issues after read-only review and focused checks; duplicate-query note was resolved.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after checking for Claude findings/consultations.
+
 ### 2026-06-27 JST - S2 Operating-Day Calendar Migration Foundation
 
 - Coordination:
