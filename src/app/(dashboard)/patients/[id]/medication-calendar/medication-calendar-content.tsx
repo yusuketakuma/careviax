@@ -45,11 +45,13 @@ const SLOT_LABELS: Record<TimeSlot, string> = {
   bedtime: '眠前',
 };
 
+// 服薬時間帯の識別色(カテゴリ区別であり status ではない)。--time-slot-* トークン。
+// 小ピル限定: 最小 fill(/10) + text。
 const SLOT_COLORS: Record<TimeSlot, string> = {
-  morning: 'bg-yellow-50 text-yellow-800',
-  noon: 'bg-blue-50 text-blue-800',
-  evening: 'bg-orange-50 text-orange-800',
-  bedtime: 'bg-purple-50 text-purple-800',
+  morning: 'bg-time-slot-morning/10 text-time-slot-morning',
+  noon: 'bg-time-slot-noon/10 text-time-slot-noon',
+  evening: 'bg-time-slot-evening/10 text-time-slot-evening',
+  bedtime: 'bg-time-slot-bedtime/10 text-time-slot-bedtime',
 };
 
 const SLOTS: TimeSlot[] = ['morning', 'noon', 'evening', 'bedtime'];
