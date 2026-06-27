@@ -15,7 +15,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { buildCommunicationRequestApiPath } from '@/lib/communications/api-paths';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
 import { buildReportHref } from '@/lib/reports/navigation';
@@ -64,10 +64,6 @@ type ShareReplyDetail = {
     responded_at: string;
   }>;
 };
-
-function buildPatientApiPath(patientId: string, suffix: string) {
-  return `/api/patients/${encodePathSegment(patientId)}${suffix}`;
-}
 
 export function InterprofessionalShareContent({ reportId }: { reportId: string }) {
   const orgId = useOrgId();

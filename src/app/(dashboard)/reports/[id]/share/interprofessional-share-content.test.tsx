@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { InterprofessionalShareContent } from './interprofessional-share-content';
@@ -29,6 +30,11 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
     buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
     buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
   };
+});
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
 });
 
 // Actual-backed spy: real encode/guard output for the hostile-id test, plus
@@ -562,6 +568,37 @@ describe('InterprofessionalShareContent', () => {
     } finally {
       if (realImpl) {
         vi.mocked(buildPatientHref).mockImplementation(realImpl);
+      }
+    }
+  });
+
+  it('patient support GETs consume the shared buildPatientApiPath return value', async () => {
+    const fetchMock = stubFetch();
+    const realImpl = vi.mocked(buildPatientApiPath).getMockImplementation();
+    vi.mocked(buildPatientApiPath).mockImplementation(
+      (id: string, suffix = '') => `/api/patients/__sentinel_${id}__${suffix}`,
+    );
+    try {
+      renderShare();
+
+      await waitFor(() => {
+        expect(
+          fetchMock.mock.calls.some(
+            ([input]) =>
+              String(input) === '/api/patients/__sentinel_pt_1__/care-team?case_id=case_1',
+          ),
+        ).toBe(true);
+        expect(
+          fetchMock.mock.calls.some(
+            ([input]) => String(input) === '/api/patients/__sentinel_pt_1__/contacts',
+          ),
+        ).toBe(true);
+      });
+      expect(vi.mocked(buildPatientApiPath)).toHaveBeenCalledWith('pt_1', '/care-team');
+      expect(vi.mocked(buildPatientApiPath)).toHaveBeenCalledWith('pt_1', '/contacts');
+    } finally {
+      if (realImpl) {
+        vi.mocked(buildPatientApiPath).mockImplementation(realImpl);
       }
     }
   });
