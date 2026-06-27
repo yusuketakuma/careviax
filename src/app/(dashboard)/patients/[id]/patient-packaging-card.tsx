@@ -25,7 +25,7 @@ import {
   type PackagingMethodValue,
 } from '@/lib/dispensing/packaging';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type PackagingResponse = {
@@ -80,7 +80,7 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
   const { data, isLoading, isError, refetch } = useQuery<PackagingResponse>({
     queryKey: ['patient-packaging', orgId, patientId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/packaging`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/packaging'), {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者配薬設定の取得に失敗しました');
@@ -94,7 +94,7 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/packaging`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/packaging'), {
         method: 'PUT',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({

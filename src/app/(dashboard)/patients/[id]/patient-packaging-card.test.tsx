@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -21,6 +22,11 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 import { PatientPackagingCard } from './patient-packaging-card';
 
@@ -180,6 +186,40 @@ describe('PatientPackagingCard', () => {
         notes: '朝だけ別包',
         special_instructions: '手渡し順に注意',
         cognitive_note: '飲み忘れ傾向あり',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('routes packaging reads and writes through the shared patient API path helper', async () => {
+    const patientId = 'patient_1';
+    vi.mocked(buildPatientApiPath)
+      .mockReturnValueOnce('/api/patients/__helper_patient_1__/packaging')
+      .mockReturnValueOnce('/api/patients/__helper_patient_1__/packaging');
+    const { queryConfigs, mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientPackagingCard patientId={patientId} orgId="org_1" />);
+
+      await queryConfigs[0]?.queryFn?.();
+      await mutationConfigs[0]?.mutationFn?.();
+
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/packaging');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId, '/packaging');
+      expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/patients/__helper_patient_1__/packaging', {
+        headers: buildOrgHeaders('org_1'),
+      });
+      expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/patients/__helper_patient_1__/packaging', {
+        method: 'PUT',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: expect.any(String),
+      });
+      expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}/packaging`, {
+        headers: buildOrgHeaders('org_1'),
       });
     } finally {
       vi.unstubAllGlobals();
