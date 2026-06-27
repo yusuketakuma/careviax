@@ -212,6 +212,7 @@ import { GET as patientVisitRecordsPdfGet } from '../patients/[id]/visit-records
 import { GET as pharmacistsGet } from '../pharmacists/route';
 import { GET as pharmacistShiftsGet } from '../pharmacist-shifts/route';
 import { GET as pharmacistShiftsAvailableGet } from '../pharmacist-shifts/available/route';
+import { GET as partnerVisitRecordsGet } from '../partner-visit-records/route';
 import { GET as pharmacyVisitRequestsGet } from '../pharmacy-visit-requests/route';
 import { GET as pharmacyInvoicePdfGet } from '../pharmacy-invoices/[id]/pdf/route';
 import { GET as pharmacySitesGet } from '../pharmacy-sites/route';
@@ -853,6 +854,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'partner-visit-records GET',
+    handler: () =>
+      partnerVisitRecordsGet(
+        createRequest('http://localhost/api/partner-visit-records', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
     name: 'pharmacy-visit-requests GET',
     handler: () =>
       pharmacyVisitRequestsGet(
@@ -1332,6 +1341,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
+        route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'care-reports/[id] GET' ||
@@ -1406,6 +1416,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
+        route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'care-reports/[id] GET' ||
@@ -1465,6 +1476,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'dispense-queue GET' ||
+        route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'visit-schedules GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||

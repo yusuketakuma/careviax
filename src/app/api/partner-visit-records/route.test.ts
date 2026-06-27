@@ -172,6 +172,8 @@ describe('/api/partner-visit-records', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     const where = partnerVisitRecordFindManyMock.mock.calls[0]?.[0]?.where;
     expect(where).toEqual(
       expect.objectContaining({
@@ -248,6 +250,8 @@ describe('/api/partner-visit-records', () => {
     const response = await GET(createGetRequest(query));
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -261,6 +265,8 @@ describe('/api/partner-visit-records', () => {
     const response = await GET(createGetRequest('?status=deleted'));
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -268,6 +274,26 @@ describe('/api/partner-visit-records', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(partnerVisitRecordFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when partner visit record listing fails unexpectedly', async () => {
+    partnerVisitRecordFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 raw partner visit record home note'),
+    );
+
+    const response = await GET(createGetRequest('?limit=8'));
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('raw partner visit record');
+    expect(JSON.stringify(body)).not.toContain('home note');
   });
 
   it('creates a partner-owned draft record for an accepted request without auditing clinical content', async () => {
