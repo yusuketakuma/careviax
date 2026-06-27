@@ -70,6 +70,11 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 const rentalRecord = {
   id: 'rental_1',
   org_id: 'org_1',
@@ -153,6 +158,7 @@ describe('/api/pca-pump-rentals', () => {
     );
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({ orgId: 'org_1' }),
       maxWaitMs: 10_000,
@@ -218,6 +224,7 @@ describe('/api/pca-pump-rentals', () => {
     );
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(pcaPumpRentalFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -229,6 +236,7 @@ describe('/api/pca-pump-rentals', () => {
     );
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(pcaPumpRentalFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -239,6 +247,7 @@ describe('/api/pca-pump-rentals', () => {
     const response = await GET(createRequest(url));
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '貸出先医療機関の指定が不正です',
@@ -261,6 +270,22 @@ describe('/api/pca-pump-rentals', () => {
         },
       }),
     );
+  });
+
+  it('returns a sanitized no-store 500 when PCA pump rental listing fails unexpectedly', async () => {
+    pcaPumpRentalFindManyMock.mockRejectedValueOnce(
+      new Error('raw PCA rental contact phone serial secret'),
+    );
+
+    const response = await GET(createRequest('http://localhost/api/pca-pump-rentals'));
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('contact phone serial secret');
   });
 
   it('creates a rental and marks the pump as rented in the same org transaction', async () => {

@@ -1,7 +1,9 @@
+import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { createPcaPumpRentalSchema } from '@/lib/validations/pca-pump-rental';
 import { createDefaultPcaRentalAccessories } from '@/server/services/pca-rental-accessories';
@@ -50,7 +52,7 @@ function parseInstitutionIdFilter(searchParams: URLSearchParams) {
   return { ok: true as const, institutionId };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const statusParam = req.nextUrl.searchParams.get('status')?.trim();
     const parsedStatus = parseRentalStatusParam(statusParam);
@@ -116,6 +118,15 @@ export const GET = withAuthContext(
     message: 'PCAポンプレンタルの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext(
   async (req, ctx) => {
