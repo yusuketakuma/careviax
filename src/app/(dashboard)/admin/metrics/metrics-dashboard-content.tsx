@@ -1,12 +1,25 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, Users, Home, FileText, Activity } from 'lucide-react';
+import {
+  TrendingUp,
+  Users,
+  Home,
+  FileText,
+  Activity,
+  AlertTriangle,
+  AlertCircle,
+  Info,
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { cn } from '@/lib/utils';
+
+/** 指標カードの注意文。重大度(role)で色とアイコンを分け、色だけに依存させない。 */
+type MetricAlert = { text: string; role: 'confirm' | 'blocked' };
 
 // --- Types ---
 
@@ -69,7 +82,7 @@ function MetricCard({
   target,
   icon: Icon,
   colorClass,
-  alertText,
+  alert,
 }: {
   title: string;
   description: string;
@@ -80,7 +93,7 @@ function MetricCard({
   target?: string;
   icon: React.ElementType;
   colorClass: string;
-  alertText?: string;
+  alert?: MetricAlert;
 }) {
   return (
     <Card>
@@ -111,7 +124,21 @@ function MetricCard({
             {unit}
           </span>
         </div>
-        {alertText && <p className="text-xs text-state-confirm">{alertText}</p>}
+        {alert && (
+          <p
+            className={cn(
+              'flex items-start gap-1 text-xs',
+              alert.role === 'blocked' ? 'text-state-blocked' : 'text-state-confirm',
+            )}
+          >
+            {alert.role === 'blocked' ? (
+              <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+            ) : (
+              <AlertCircle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+            )}
+            <span>{alert.text}</span>
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -175,14 +202,21 @@ export function MetricsDashboardContent() {
 
   // Suppress threshold alerts on placeholder/no-data (404 or pre-data): firing them on
   // zeros would tell operators a metric is "below threshold" when the API has no data.
-  const genericAlert =
+  // 目標未達は confirm(橙)、基準超過は blocked(赤)で重大度を分離する。
+  const genericAlert: MetricAlert | undefined =
     !isPlaceholder && metrics.generic_dispensing_rate < GENERIC_TARGET
-      ? `目標（${GENERIC_TARGET}%）未達。後発品の積極的な提案を検討してください。`
+      ? {
+          text: `目標（${GENERIC_TARGET}%）未達。後発品の積極的な提案を検討してください。`,
+          role: 'confirm',
+        }
       : undefined;
 
-  const prescriptionsAlert =
+  const prescriptionsAlert: MetricAlert | undefined =
     !isPlaceholder && metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
-      ? `基準（${PRESCRIPTIONS_LIMIT}枚/日）超過。人員配置を見直してください。`
+      ? {
+          text: `基準（${PRESCRIPTIONS_LIMIT}枚/日）超過。人員配置を見直してください。`,
+          role: 'blocked',
+        }
       : undefined;
 
   return (
@@ -200,6 +234,22 @@ export function MetricsDashboardContent() {
           }}
           live="polite"
         />
+      )}
+      {isPlaceholder && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+          data-testid="metrics-placeholder-notice"
+        >
+          <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
+          <div>
+            <p className="font-medium text-foreground">サンプル表示（実データ未接続）</p>
+            <p className="mt-0.5">
+              値はすべて0のプレースホルダです。API接続後に実測値が表示されます。
+            </p>
+          </div>
+        </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <MetricCard
@@ -228,7 +278,7 @@ export function MetricsDashboardContent() {
                 ? 'bg-state-done'
                 : 'bg-state-confirm'
           }
-          alertText={genericAlert}
+          alert={genericAlert}
         />
         <MetricCard
           title="薬剤師1人あたり処方箋枚数"
@@ -240,11 +290,13 @@ export function MetricsDashboardContent() {
           target={`基準: ${PRESCRIPTIONS_LIMIT}枚/日`}
           icon={Users}
           colorClass={
-            metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
-              ? 'bg-state-blocked'
-              : 'bg-chart-1'
+            isPlaceholder
+              ? 'bg-chart-1'
+              : metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
+                ? 'bg-state-blocked'
+                : 'bg-chart-1'
           }
-          alertText={prescriptionsAlert}
+          alert={prescriptionsAlert}
         />
         <MetricCard
           title="在宅訪問実績回数"
