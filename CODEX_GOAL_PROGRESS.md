@@ -21,6 +21,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Set Batch List GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new Claude consultation was pending before validation and ledger work.
+  - During the pre-commit inbox check, read-only reviewed and approved Claude's residual-adjustment P1 commit `a7a624e4` after inspecting the PageScaffold/WorkflowPageIntro contracts, tenant header helper migration, and rerunning focused UI/API-header validations.
+  - Preserved Claude-owned residual-adjustment dirty files and untracked residual-adjustment header test; Codex edits stayed scoped to backend API files.
+  - Continued the read-only mapper-ranked candidate list; root `GET /api/set-batches` was the next PHI/cache boundary after `GET /api/set-audits`.
+- Hardened root `GET /api/set-batches` so success, auth rejection, forbidden rejection, validation errors, and ordinary unexpected list lookup failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store missing `plan_id` validation, and sanitized no-store 500 responses that omit raw patient/set-batch/drug-packaging-like thrown text.
+- Added `set-batches GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canSet` auth, set-plan assignment scoping, response body shape, POST behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: set-batch list rows include drug names/codes, dosage, packaging instructions/tags, notes, quantity, carry type, slot, version, and set/audit state; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run src/app/api/set-batches/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `267` tests after formatting.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the set-batches route, route test, and protected GET matrix.
+  - Scoped Prettier check passed after formatting `src/app/api/set-batches/route.test.ts`.
+  - Scoped diff whitespace check passed.
+  - Claude residual-adjustment review validation passed: focused residual-adjustment Vitest `2` files / `15` tests, scoped ESLint, scoped Prettier, full TypeScript, and `pnpm typecheck:no-unused`.
+- Commit status: implementation landed as `9d1bab15`; this entry is the separate progress-ledger update.
+- Next action: commit progress ledgers, send `agmsg` FYI, then continue with the next backend/API PHI no-store candidate unless Claude needs another review. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Set Audits GET No-Store Hardening
 
 - Coordination:
