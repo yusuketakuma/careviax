@@ -55,6 +55,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
 - Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. Mapper ranked `saved-views`, `comments`, and document-template/delivery-rule API path helper convergence as possible next non-DB/non-billing candidates. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Saved Views API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before selecting and validating this slice.
+  - Picked Mapper's top-ranked next non-DB/non-billing candidate after the prescription-intake slice.
+  - Kept this to saved-view client API path construction; no DB mutation, migration, push, deploy, auth/billing change, visual/layout change, route handler change, or destructive operation.
+- Hardened/converged saved-view route construction:
+  - Added `src/lib/views/api-paths.ts` with `buildSavedViewApiPath(viewId)` on top of `encodePathSegment`.
+  - Replaced local `/api/saved-views/:id` URL templates for rename PATCH, share-toggle PATCH, and delete DELETE in `SavedViewsContent`.
+  - Added helper coverage for normal ids, hostile slash/query/hash ids, and exact `.` / `..` fail-closed behavior.
+  - Added page coverage proving hostile saved-view ids are single-encoded for all three mutations, methods/headers/bodies are preserved, raw ids are not serialized into mutation bodies, and exact dot ids fail before mutation fetch.
+  - Preserved saved-view list GET, create POST, preferences API, current-filter behavior, owner-only actions, route auth/permissions/RLS/audit behavior, DB schema/data, migrations, PHI logging, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: saved-view mutation callers now share one path-segment contract and no longer interpolate raw view ids into `/api/saved-views/:id`.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - Initial focused test run failed because the new dot-id test waited for exact `/api/saved-views` while the list request includes `?scope=schedules`; fixed the test wait condition only.
+  - `pnpm exec prettier --write src/lib/views/api-paths.ts src/lib/views/api-paths.test.ts 'src/app/(dashboard)/views/saved-views-content.tsx' 'src/app/(dashboard)/views/saved-views-content.test.tsx'` passed.
+  - `pnpm exec vitest run src/lib/views/api-paths.test.ts 'src/app/(dashboard)/views/saved-views-content.test.tsx' 'src/app/api/saved-views/route.test.ts' src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000` passed `4` files / `32` tests after the test fix.
+  - Scoped ESLint passed for the helper/test, page/test, saved-views route test, and path-segment test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the changed files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/API-path slice.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit and verifier read-only review.
+- Next action: wait for verifier, commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. Mapper ranked `comments` and document-template/delivery-rule API path helper convergence as possible next non-DB/non-billing candidates. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Offline Evidence Sync Path-Segment Hardening
 
 - Coordination:
