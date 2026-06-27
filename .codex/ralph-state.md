@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0546 JST
+
+- current task: print hub patient documents and prescriptions API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, Next client component and fetch docs under `node_modules/next/dist/docs/01-app/`, gbrain `code_blast` for `usePrintHubData`, `src/app/(dashboard)/reports/print/print-hub-content.tsx`, `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`, `src/app/(dashboard)/reports/print/print-hub.shared.test.ts`, `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, and `src/lib/http/path-segment.test.ts`.
+- files changed: `src/app/(dashboard)/reports/print/print-hub-content.tsx`, `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`, `src/lib/patient/api-paths.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `PrintHubContent` still built patient prescription and first-visit document API URLs with local `/api/patients/${encodePathSegment(id)}` templates. The paths already encoded hostile IDs, but duplicated the shared patient API path contract and could drift from the helper used by adjacent patient API surfaces.
+- security risks found: reduced route-construction drift by routing patient documents and prescriptions GETs through shared `buildPatientApiPath`. Added sentinel tests proving the component consumes the helper return value for `/documents` and `/prescriptions`, while keeping query keys and first-visit print-history POST bodies on raw patient ids where required. Preserved care-report print-audit `encodePathSegment` handling, org headers, print-readiness/audit gates, route handlers, auth, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing read-only print hub fetches, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' src/lib/patient/api-paths.test.ts`; `pnpm exec vitest run 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/reports/print/print-hub.shared.test.ts' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped diff whitespace check for changed implementation/test files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
+- validation results: Prettier write passed unchanged. Initial focused Vitest failed because the first edit removed `encodePathSegment` while visit-report print-audit still needed it; restored the import. Final focused print hub/shared/patient API path/path-segment Vitest passed `4` files / `67` tests. Scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, lint, format check, medical safety review, and privacy review passed.
+- remaining work: state commit is pending for implementation commit `2bfab2d6`, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0534 JST
 
 - current task: patient workflow preview API path helper relocation to the shared patient API path module.

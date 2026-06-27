@@ -23,6 +23,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Print Hub Patient API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger phase.
+  - ACKed Claude's workflow-preview approval before selecting this non-overlapping print hub read-only fetch slice.
+  - Used medical safety and privacy read-only reviewers because the surface loads patient documents and prescriptions for print previews.
+- Hardened/converged print hub patient route construction:
+  - Routed patient prescription GETs through shared `buildPatientApiPath(patientId, '/prescriptions')` and appended `?limit=20` outside the encoded patient-id segment.
+  - Routed first-visit patient document GETs through shared `buildPatientApiPath(explicitPatientId, '/documents')`.
+  - Kept care-report print-audit route construction on `encodePathSegment` for care-report IDs.
+  - Added sentinel component tests proving `PrintHubContent` consumes the shared patient API helper return value for documents and prescriptions.
+  - Extended patient API helper suffix coverage for `/documents` and `/prescriptions`.
+  - Preserved raw patient id in React Query keys and first-visit print-history POST body, org headers, print-readiness behavior, visit-report audit/readiness guards, route handlers, auth, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: print hub patient document/prescription GET URLs now share the central patient API path contract instead of duplicating patient route templates in the component.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing read-only print hub fetches, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' src/lib/patient/api-paths.test.ts`: passed unchanged.
+  - Initial focused Vitest failed because `encodePathSegment` was accidentally removed from `print-hub-content.tsx` while visit-report print-audit still used it; restored that import.
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/reports/print/print-hub.shared.test.ts' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `67` tests.
+  - Scoped diff whitespace check passed for changed files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `2bfab2d6` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Workflow Preview API Helper Relocation
 
 - Coordination:
