@@ -329,9 +329,9 @@ export function buildOperatingCalendar(holidayRows, weeklyRows, opts): Operating
 **Codex review (2026-06-27) で決定済:** org-wide precedence（→§1.1 保守的固定）/ スライド方向 Q4（→前倒し原則で合意）/ 祝日 lib Q7（→`@holiday-jp/holiday_jp` v2.5.1、依存ゲート付きで採用可）/ 規制薬 carve-out（→§5.2 強化）。残る未決:
 
 - **Q1:** 短縮/臨時営業（§2.2 の BusinessHoliday open/close 列）を初版に含めるか、MVP は is_closed boolean のみか。
-- **Q2:** operating-hours 未設定拠点のフォールバック（全日営業 vs 強制初期設定）。
+- **Q2:** operating-hours 未設定拠点のフォールバック（全日営業 vs 強制初期設定）。**未決の製品判断（S2/S3 で確定）。ただし Q2 が決まるまで S1/R1 実装者は pure resolver のフォールバックを §1 のとおり（=既定 open）に厳密に従わせること**（Codex review rev2 ノート）。
 - **Q3:** 祝日データソース（同梱CSV / 算出 / ハイブリッド）と更新運用。egress 制約との整合。
-- **Q4:** スライド方向の既定（前倒し原則で合意か。後ろ倒しを許す業務ケースはあるか）。
+- **Q4:** （→決定済: 前倒し（backward スライド＝薬切れ防止）を既定で合意。§5.2/§14.3 参照。後ろ倒しを許す例外業務ケースは後続 PLAN で扱う残課題のみ。）
 - **Q5:** 営業時間マスタ UI は `business-holidays` に統合するか独立ページか（§13.2 の「稼働日設定ハブ」案で統合を推奨。最終確認）。
 - **Q6:** `PharmacistShiftTemplate` と `PharmacyOperatingHours` の責務分離の最終確認（薬局営業 vs 個人勤務）。§12.4 の責務境界図で整理。
 - **Q7:** （→決定済: `@holiday-jp/holiday_jp` v2.5.1 採用、§14.1 の依存ゲート付き。残課題は依存追加レビューでの bundle/license 最終確認のみ。）
