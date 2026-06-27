@@ -155,6 +155,37 @@ function SlotCell({ drugs }: { drugs?: string[] }) {
   );
 }
 
+/** その日に1つでも服薬スロットがあるか。desktop セル/モバイルカードの「服薬予定なし」判定に使う。 */
+export function hasAnyMedicationSlot(day: { slots: Partial<Record<TimeSlot, string[]>> }): boolean {
+  return SLOTS.some((slot) => (day.slots[slot]?.length ?? 0) > 0);
+}
+
+/**
+ * 1 日分の服薬スロット（朝/昼/夕/眠前）の共有レンダラ。
+ * desktop の月グリッドセルと mobile の日次リストカードの双方から使い、
+ * スロット→薬剤のマッピングを 1 箇所に保つ（DRY）。
+ */
+function DaySlotList({ day }: { day: DailySchedule }) {
+  return (
+    <div className="space-y-0.5">
+      {SLOTS.map((slot) => {
+        const drugs = day.slots[slot];
+        if (!drugs || drugs.length === 0) return null;
+        return (
+          <div
+            key={slot}
+            aria-label={medicationCalendarSlotLabel(day.date, slot)}
+            className={`rounded px-1 py-0.5 ${SLOT_COLORS[slot]}`}
+          >
+            <span className="font-medium">{SLOT_LABELS[slot]}</span>
+            <SlotCell drugs={drugs} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // --- Main ---
 
 export function MedicationCalendarContent({ patientId }: { patientId: string }) {
@@ -295,7 +326,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
       {!medicationQuery.isLoading &&
       !(medicationQuery.error instanceof Error) &&
       profiles.length > 0 ? (
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto md:block">
           <table
             className="min-w-full border-collapse text-xs print:text-[9px]"
             role="grid"
@@ -351,22 +382,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
                             </span>
                           </time>
                         </div>
-                        <div className="space-y-0.5">
-                          {SLOTS.map((slot) => {
-                            const drugs = day.slots[slot];
-                            if (!drugs || drugs.length === 0) return null;
-                            return (
-                              <div
-                                key={slot}
-                                aria-label={medicationCalendarSlotLabel(day.date, slot)}
-                                className={`rounded px-1 py-0.5 ${SLOT_COLORS[slot]}`}
-                              >
-                                <span className="font-medium">{SLOT_LABELS[slot]}</span>
-                                <SlotCell drugs={drugs} />
-                              </div>
-                            );
-                          })}
-                        </div>
+                        <DaySlotList day={day} />
                       </td>
                     );
                   })}
@@ -375,6 +391,35 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
             </tbody>
           </table>
         </div>
+      ) : null}
+
+      {/* p1: モバイルは横スクロールの月グリッドではなく日次の縦リスト（その日の服薬を上から
+          確認する在宅運用に合わせる）。table(hidden md:block) と list(md:hidden) を display で
+          切替し、各 viewport で a11y ツリーに片方のみ残す（aria-hidden 不要）。スロット描画は
+          DaySlotList をセルと共有。 */}
+      {!medicationQuery.isLoading &&
+      !(medicationQuery.error instanceof Error) &&
+      profiles.length > 0 ? (
+        <ul className="space-y-2 md:hidden" aria-label={`${monthLabel}の服薬カレンダー（日次）`}>
+          {weeks
+            .flat()
+            .filter((day) => day.date)
+            .map((day) => (
+              <li key={day.date} className="rounded-lg border border-border bg-card p-3">
+                <time
+                  dateTime={day.date}
+                  className="mb-2 block text-sm font-semibold text-foreground"
+                >
+                  {formatMedicationCalendarDayLabel(day.date)}
+                </time>
+                {hasAnyMedicationSlot(day) ? (
+                  <DaySlotList day={day} />
+                ) : (
+                  <p className="text-xs text-muted-foreground">服薬予定なし</p>
+                )}
+              </li>
+            ))}
+        </ul>
       ) : null}
     </div>
   );
