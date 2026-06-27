@@ -1876,6 +1876,8 @@ describe('/api/set-audits GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     const body = await response.json();
     expect(body.data).toHaveLength(1);
     expect(body.data[0].cell_summary).toEqual({ total: 3, unaudited: 1, ok: 1, ng: 1 });
@@ -1887,6 +1889,27 @@ describe('/api/set-audits GET', () => {
         }),
       }),
     );
+  });
+
+  it('returns a sanitized no-store 500 when set audit queue lookup fails unexpectedly', async () => {
+    setPlanFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw set audit queue drug reject_reason'),
+    );
+
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw set audit queue');
+    expect(JSON.stringify(body)).not.toContain('drug reject_reason');
   });
 
   it('filters by plan_id when provided', async () => {

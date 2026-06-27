@@ -218,6 +218,7 @@ import { GET as prescriptionIntakeGet } from '../prescription-intakes/[id]/route
 import { GET as qrScanDraftsGet } from '../qr-scan-drafts/route';
 import { GET as qrScanDraftGet } from '../qr-scan-drafts/[id]/route';
 import { GET as residualMedicationsGet } from '../residual-medications/route';
+import { GET as setAuditsGet } from '../set-audits/route';
 import { GET as setBatchGet } from '../set-batches/[id]/route';
 import { GET as setPlansGet } from '../set-plans/route';
 import { GET as setPlanGet } from '../set-plans/[id]/route';
@@ -880,6 +881,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'set-audits GET',
+    handler: () =>
+      setAuditsGet(
+        createRequest('http://localhost/api/set-audits', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
     name: 'set-plans GET',
     handler: () =>
       setPlansGet(
@@ -1299,6 +1308,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
+        route.name === 'set-audits GET' ||
         route.name === 'set-plans GET' ||
         route.name === 'set-batches/[id] GET' ||
         route.name === 'set-plans/[id] GET' ||
@@ -1367,6 +1377,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
+        route.name === 'set-audits GET' ||
         route.name === 'set-plans GET' ||
         route.name === 'set-batches/[id] GET' ||
         route.name === 'set-plans/[id] GET' ||
@@ -1407,6 +1418,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
+        route.name === 'set-audits GET' ||
         route.name === 'set-batches/[id] GET' ||
         route.name === 'set-plans/[id] GET' ||
         route.name === 'set-plans/[id]/calendar GET'
