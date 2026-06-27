@@ -22,6 +22,7 @@ import {
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { createManyNotifications } from './shared';
+import { buildVisitHref } from '@/lib/visits/navigation';
 
 export async function checkVisitRecordRetention() {
   return runJob('visit_record_retention_check', async () => {
@@ -94,7 +95,7 @@ export async function checkVisitRecordRetention() {
       const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
       const thresholdLabel = daysUntilExpiry <= 7 ? '7日以内' : '30日以内';
       const patientName = patientById.get(record.patient_id) ?? record.patient_id;
-      const visitRecordHref = `/visits/${encodeURIComponent(record.id)}`;
+      const visitRecordHref = buildVisitHref(record.id);
 
       for (const adminId of adminsByOrg.get(record.org_id) ?? []) {
         notificationData.push({
