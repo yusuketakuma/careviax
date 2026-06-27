@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Care Team Save API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger/commit phase.
+  - ACKed Claude's approval of patient visits API path helper convergence before continuing this non-overlapping care-team PUT slice.
+  - Used medical safety and privacy read-only reviewers because the surface mutates patient care-team links and professional contact details.
+- Hardened/converged patient care-team save route construction:
+  - Routed care-team PUT through shared `buildPatientApiPath(patientId, '/care-team')`.
+  - Added a sentinel component test proving the save mutation consumes the shared patient API helper return value.
+  - Preserved static external-professional GET/POST paths, method `PUT`, `buildOrgJsonHeaders`, raw `case_id` body semantics, care-team link body fields, warning/reliability toasts, raw patient id invalidation, route handlers, auth/write guards, patient/case/org binding, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient care-team PUT URL construction now shares the central patient API path contract instead of duplicating the patient route template in the component.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing care-team save behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `22` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `61052686` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Visits API Path Helper Convergence
 
 - Coordination:
@@ -48,8 +73,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `a89b4f0b` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `a89b4f0b` and state commit `51f44f17` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient Labs API Path Helper Convergence
 
