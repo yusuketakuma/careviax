@@ -1,18 +1,20 @@
 import { NextResponse } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
-import { validationError } from '@/lib/api/response';
+import { internalError, validationError } from '@/lib/api/response';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { quotedCsvRow as toCsvRow } from '@/lib/csv/safe-csv';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 const querySchema = z.object({
   format: z.enum(['csv', 'json']).default('csv'),
 });
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const searchParams = req.nextUrl.searchParams;
     const parsed = querySchema.safeParse({
@@ -161,3 +163,12 @@ export const GET = withAuthContext(
     message: '監査ログのエクスポートには管理者権限が必要です',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

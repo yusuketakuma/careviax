@@ -1605,6 +1605,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(401);
       if (
         route.name === 'audit-logs GET' ||
+        route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
@@ -1699,6 +1700,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(403);
       if (
         route.name === 'audit-logs GET' ||
+        route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
@@ -1794,6 +1796,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(200);
       if (
         route.name === 'audit-logs GET' ||
+        route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
         route.name === 'prescription-intakes/triage GET' ||
         route.name === 'visits/today-preparation GET' ||

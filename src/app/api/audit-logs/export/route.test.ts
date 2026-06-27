@@ -51,7 +51,7 @@ function createRequest(headers?: Record<string, string>, search = 'format=csv') 
 }
 
 function expectNoStore(response: Response) {
-  expect(response.headers.get('Cache-Control')).toBe('no-store');
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
@@ -145,6 +145,61 @@ describe('/api/audit-logs/export GET', () => {
         action: 'export',
       }),
     ]);
+  });
+
+  it('returns no-store 401 when unauthenticated', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+  });
+
+  it('returns no-store 403 when the role cannot export audit logs', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(403);
+    expectNoStore(response);
+  });
+
+  it('returns no-store validation errors for invalid export formats', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=xlsx'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+  });
+
+  it('returns a sanitized no-store 500 when audit export fails unexpectedly', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockRejectedValueOnce(new Error('raw patient audit export secret'));
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=json'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw patient audit export secret');
   });
 
   it.each([
