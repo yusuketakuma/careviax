@@ -39,6 +39,11 @@ import { GET, POST } from './route';
 
 const routeCtx = { params: Promise.resolve({}) };
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function makePostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/incident-reports', {
     method: 'POST',
@@ -65,6 +70,7 @@ describe('/api/incident-reports', () => {
     );
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(listIncidentReportsMock).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: 'org_1' }),
       'reviewed',
@@ -78,7 +84,24 @@ describe('/api/incident-reports', () => {
     );
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(listIncidentReportsMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when incident report listing fails unexpectedly', async () => {
+    listIncidentReportsMock.mockRejectedValueOnce(
+      new Error('raw incident report medication safety narrative secret'),
+    );
+
+    const response = await GET(new NextRequest('http://localhost/api/incident-reports'), routeCtx);
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('safety narrative secret');
   });
 
   it('creates a report after request validation', async () => {
