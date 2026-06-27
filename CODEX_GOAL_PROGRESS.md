@@ -11924,6 +11924,30 @@ Next loop:
 - Remaining:
   - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`. The broader API sensitive-list no-store sweep remains incomplete.
 
+### Medication Issues GET — Sensitive List No-Store
+
+- Coordination:
+  - Drained `phos/codex` agmsg repeatedly during the slice.
+  - Claude is actively holding `/statistics` FE lock with dirty WIP, so Codex did not run long full-project type gates that would include that intermediate work.
+- Bugs found:
+  - `GET /api/medication-issues` returned sensitive patient medication issue responses through an exported `withAuthContext` handler without a route-local wrapper covering auth-boundary and unexpected-error responses.
+  - The protected GET matrix did not assert no-store for `medication-issues GET`.
+- Implemented by Codex:
+  - Split the existing authenticated GET handler into `authenticatedGET` and exported a wrapper that applies `withSensitiveNoStore()` to all normal responses.
+  - Added `unstable_rethrow()` plus `withSensitiveNoStore(internalError())` for sanitized unexpected failures while preserving Next.js control-flow exceptions.
+  - Added a sanitized 500 regression that confirms a thrown raw medication-issue secret is not reflected in the response body.
+  - Added `medication-issues GET` to the protected GET no-store matrix.
+- Validation:
+  - Baseline `pnpm vitest run src/app/api/medication-issues/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `17` tests.
+  - `pnpm exec prettier --write src/app/api/medication-issues/route.ts src/app/api/medication-issues/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed, unchanged.
+  - `pnpm vitest run src/app/api/medication-issues/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `336` tests.
+  - `pnpm exec eslint src/app/api/medication-issues/route.ts src/app/api/medication-issues/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/medication-issues/route.ts src/app/api/medication-issues/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `git diff --check -- src/app/api/medication-issues/route.ts src/app/api/medication-issues/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - Full `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` and `pnpm typecheck:no-unused` are pending because Claude has active `/statistics` dirty WIP under lock.
+- Remaining:
+  - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST` with the explicit full-gate defer reason. Run full gates once `/statistics` reaches a stable point.
+
 ### Medication Profiles GET — Sensitive List No-Store
 
 - Coordination:
