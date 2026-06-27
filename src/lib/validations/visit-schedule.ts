@@ -102,6 +102,12 @@ export const generateVisitSchedulesSchema = z
     time_window_start: timeWindowSchema.optional(),
     time_window_end: timeWindowSchema.optional(),
     vehicle_resource_id: z.string().trim().min(1).optional(),
+    operating_day_override_reason: z
+      .string()
+      .trim()
+      .min(1, '休業日上書き理由は必須です')
+      .max(500, '休業日上書き理由は500文字以内で入力してください')
+      .optional(),
   })
   .superRefine(validateTimeWindowOrder);
 

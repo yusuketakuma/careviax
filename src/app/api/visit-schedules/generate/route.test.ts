@@ -10,11 +10,14 @@ const {
   careCaseFindFirstMock,
   medicationCycleFindFirstMock,
   pharmacistShiftFindManyMock,
+  pharmacyOperatingHoursFindManyMock,
+  businessHolidayFindManyMock,
   visitVehicleResourceFindFirstMock,
   visitScheduleCountMock,
   visitScheduleFindManyMock,
   visitScheduleCreateMock,
   visitScheduleProposalFindManyMock,
+  auditLogCreateMock,
   patientInsuranceFindFirstMock,
   patientInsuranceFindManyMock,
   evaluateVisitWorkflowGatesMock,
@@ -27,11 +30,14 @@ const {
   careCaseFindFirstMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
+  pharmacyOperatingHoursFindManyMock: vi.fn(),
+  businessHolidayFindManyMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleCreateMock: vi.fn(),
   visitScheduleProposalFindManyMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   patientInsuranceFindFirstMock: vi.fn(),
   patientInsuranceFindManyMock: vi.fn(),
   evaluateVisitWorkflowGatesMock: vi.fn(),
@@ -57,6 +63,12 @@ vi.mock('@/lib/db/client', () => ({
     },
     pharmacistShift: {
       findMany: pharmacistShiftFindManyMock,
+    },
+    pharmacyOperatingHours: {
+      findMany: pharmacyOperatingHoursFindManyMock,
+    },
+    businessHoliday: {
+      findMany: businessHolidayFindManyMock,
     },
     visitVehicleResource: {
       findFirst: visitVehicleResourceFindFirstMock,
@@ -155,6 +167,52 @@ function buildShift(
   };
 }
 
+function buildOperatingHours(
+  weekday: number,
+  overrides?: Partial<{
+    site_id: string;
+    is_open: boolean;
+    open_time: Date | null;
+    close_time: Date | null;
+    note: string | null;
+  }>,
+) {
+  return {
+    id: `hours_${weekday}`,
+    site_id: 'site_1',
+    weekday,
+    is_open: true,
+    open_time: null,
+    close_time: null,
+    note: null,
+    ...overrides,
+  };
+}
+
+function buildBusinessHoliday(
+  date: string,
+  overrides?: Partial<{
+    site_id: string | null;
+    name: string;
+    holiday_type: string;
+    is_closed: boolean;
+    open_time: Date | null;
+    close_time: Date | null;
+  }>,
+) {
+  return {
+    id: `holiday_${date}`,
+    site_id: null,
+    date: new Date(`${date}T00:00:00.000Z`),
+    name: '臨時休業',
+    holiday_type: 'org_event',
+    is_closed: true,
+    open_time: null,
+    close_time: null,
+    ...overrides,
+  };
+}
+
 function buildInsuranceRecord(insuranceType: 'medical' | 'care', number = `${insuranceType}_1`) {
   return {
     id: `insurance_${insuranceType}`,
@@ -199,6 +257,8 @@ describe('/api/visit-schedules/generate POST', () => {
       const dates = Array.isArray(where.date?.in) ? where.date.in : [];
       return dates.map((date: Date) => buildShift(format(date, 'yyyy-MM-dd')));
     });
+    pharmacyOperatingHoursFindManyMock.mockResolvedValue([]);
+    businessHolidayFindManyMock.mockResolvedValue([]);
     visitVehicleResourceFindFirstMock.mockResolvedValue({
       id: 'vehicle_1',
       site_id: 'site_1',
@@ -208,6 +268,7 @@ describe('/api/visit-schedules/generate POST', () => {
     visitScheduleCountMock.mockResolvedValue(0);
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleProposalFindManyMock.mockResolvedValue([]);
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     visitScheduleCreateMock.mockImplementation(async ({ data }) => ({
       id: `schedule_${String(data.scheduled_date)}`,
       ...data,
@@ -223,6 +284,9 @@ describe('/api/visit-schedules/generate POST', () => {
         },
         visitScheduleProposal: {
           findMany: visitScheduleProposalFindManyMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -427,6 +491,9 @@ describe('/api/visit-schedules/generate POST', () => {
           },
           visitScheduleProposal: {
             findMany: visitScheduleProposalFindManyMock,
+          },
+          auditLog: {
+            create: auditLogCreateMock,
           },
         }),
       );
@@ -1140,5 +1207,116 @@ describe('/api/visit-schedules/generate POST', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects generation on an org-wide pharmacy holiday unless an override reason is provided', async () => {
+    businessHolidayFindManyMock.mockResolvedValueOnce([buildBusinessHoliday('2026-04-07')]);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message:
+        '2026-04-07: 訪問拠点が休業日のため訪問予定を生成できません。生成するには上書き理由を入力してください',
+    });
+    expect(businessHolidayFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          date: { in: [new Date('2026-04-07T00:00:00.000Z')] },
+          OR: [{ site_id: { in: ['site_1'] } }, { site_id: null }],
+        }),
+      }),
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects generation on a regular closed operating weekday unless an override reason is provided', async () => {
+    pharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([
+      buildOperatingHours(2, { is_open: false }),
+    ]);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message:
+        '2026-04-07: 訪問拠点が定休日のため訪問予定を生成できません。生成するには上書き理由を入力してください',
+    });
+    expect(pharmacyOperatingHoursFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          site_id: { in: ['site_1'] },
+        },
+      }),
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows pharmacy holiday generation with an override reason and records the audit entry', async () => {
+    businessHolidayFindManyMock.mockResolvedValueOnce([buildBusinessHoliday('2026-04-07')]);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+        operating_day_override_reason: '緊急訪問のため休日訪問を薬剤師が確認済み',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitScheduleCreateMock).toHaveBeenCalledTimes(1);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        patient_id: 'patient_1',
+        action: 'visit_schedule_operating_day_override_applied',
+        target_type: 'VisitSchedule',
+        target_id: expect.any(String),
+        changes: expect.objectContaining({
+          case_id: 'case_1',
+          cycle_id: 'cycle_1',
+          scheduled_date: '2026-04-07',
+          pharmacist_id: 'pharmacist_1',
+          site_id: 'site_1',
+          operating_day_reason: 'holiday',
+          override_reason: '緊急訪問のため休日訪問を薬剤師が確認済み',
+          recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        }),
+      }),
+    });
   });
 });

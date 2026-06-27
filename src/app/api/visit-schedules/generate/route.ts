@@ -2,10 +2,13 @@ import { differenceInCalendarDays, format, startOfWeek } from 'date-fns';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { conflict, forbiddenResponse, success, validationError } from '@/lib/api/response';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
+import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
+import { resolveOperatingState } from '@/lib/calendar/operating-day';
 import { generateVisitSchedulesSchema } from '@/lib/validations/visit-schedule';
 import { parseSimpleRruleDates } from '@/lib/visits/rrule';
 import { timeDateToString } from '@/lib/visits/time-of-day';
@@ -78,6 +81,22 @@ function normalizeWeekdays(value: unknown) {
       ),
     ),
   );
+}
+
+type GeneratedVisitOperatingDayViolation = {
+  dateKey: string;
+  siteId: string;
+  reason: 'holiday' | 'regular_closed';
+};
+
+function operatingDayClosedReasonLabel(reason: GeneratedVisitOperatingDayViolation['reason']) {
+  return reason === 'holiday' ? '休業日' : '定休日';
+}
+
+function operatingDayClosedMessage(violation: GeneratedVisitOperatingDayViolation) {
+  return `${violation.dateKey}: 訪問拠点が${operatingDayClosedReasonLabel(
+    violation.reason,
+  )}のため訪問予定を生成できません。生成するには上書き理由を入力してください`;
 }
 
 function toTimeString(value: Date | null | undefined) {
@@ -296,6 +315,7 @@ export const POST = withAuthContext(
       time_window_start,
       time_window_end,
       vehicle_resource_id,
+      operating_day_override_reason,
     } = parsed.data;
 
     const startDate = new Date(start_date);
@@ -424,6 +444,9 @@ export const POST = withAuthContext(
       if (!shift) {
         return validationError(`${dateKey}: 選択した薬剤師のシフトがありません`);
       }
+      if (!shift.site_id) {
+        return validationError(`${dateKey}: 選択した薬剤師のシフトに訪問拠点がありません`);
+      }
       const shiftValidationError = validateScheduleTimeStringsFitShift(
         shift,
         mergedTimeWindow.from,
@@ -433,6 +456,77 @@ export const POST = withAuthContext(
         return validationError(`${dateKey}: ${shiftValidationError}`);
       }
     }
+
+    const siteIds = Array.from(
+      new Set(shifts.map((shift) => shift.site_id).filter((siteId): siteId is string => !!siteId)),
+    );
+    const [operatingWeeklyRows, operatingHolidayRows] = await Promise.all([
+      prisma.pharmacyOperatingHours.findMany({
+        where: {
+          org_id: ctx.orgId,
+          site_id: { in: siteIds },
+        },
+        select: {
+          id: true,
+          site_id: true,
+          weekday: true,
+          is_open: true,
+          open_time: true,
+          close_time: true,
+          note: true,
+        },
+      }),
+      prisma.businessHoliday.findMany({
+        where: {
+          org_id: ctx.orgId,
+          date: { in: candidateDates },
+          OR: [{ site_id: { in: siteIds } }, { site_id: null }],
+        },
+        select: {
+          id: true,
+          site_id: true,
+          date: true,
+          name: true,
+          holiday_type: true,
+          is_closed: true,
+          open_time: true,
+          close_time: true,
+        },
+      }),
+    ]);
+    const operatingCalendarBySite = new Map(
+      siteIds.map((siteId) => [
+        siteId,
+        buildOperatingCalendarFromDbRows(
+          siteId,
+          operatingWeeklyRows.filter((row) => row.site_id === siteId),
+          operatingHolidayRows.filter((row) => row.site_id === null || row.site_id === siteId),
+        ),
+      ]),
+    );
+    const operatingDayViolations: GeneratedVisitOperatingDayViolation[] = [];
+    for (const candidateDate of candidateDates) {
+      const dateKey = buildDateKey(candidateDate);
+      const shift = shiftByDate.get(dateKey);
+      if (!shift?.site_id) continue;
+      const calendar = operatingCalendarBySite.get(shift.site_id);
+      if (!calendar) continue;
+      const operatingState = resolveOperatingState(calendar, dateKey);
+      if (!operatingState.open) {
+        operatingDayViolations.push({
+          dateKey,
+          siteId: shift.site_id,
+          reason: operatingState.reason,
+        });
+      }
+    }
+    if (operatingDayViolations.length > 0 && !operating_day_override_reason) {
+      return validationError(operatingDayClosedMessage(operatingDayViolations[0]!));
+    }
+    const operatingDayViolationByDate = new Map(
+      operatingDayViolations.map((violation) => [violation.dateKey, violation]),
+    );
+
     if (vehicle_resource_id) {
       const vehicleValidationError = await validateGeneratedVisitVehicleResource({
         orgId: ctx.orgId,
@@ -573,6 +667,29 @@ export const POST = withAuthContext(
           });
         }),
       );
+      if (operating_day_override_reason && operatingDayViolationByDate.size > 0) {
+        for (const [index, schedule] of created.entries()) {
+          const dateKey = buildDateKey(candidateDates[index]!);
+          const violation = operatingDayViolationByDate.get(dateKey);
+          if (!violation) continue;
+          await createAuditLogEntry(tx, ctx, {
+            action: 'visit_schedule_operating_day_override_applied',
+            targetType: 'VisitSchedule',
+            targetId: schedule.id,
+            patientId: careCase.patient_id,
+            changes: {
+              case_id,
+              cycle_id: medicationCycle.id,
+              scheduled_date: dateKey,
+              pharmacist_id,
+              site_id: violation.siteId,
+              operating_day_reason: violation.reason,
+              override_reason: operating_day_override_reason,
+              recurrence_rule,
+            },
+          });
+        }
+      }
       return created;
     }).catch((cause: unknown) => {
       if (cause instanceof VisitScheduleGenerateRetryLimitError) {
