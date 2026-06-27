@@ -21,6 +21,27 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Case Detail GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new messages were pending after responding to Claude's `/patients/[id]/prescriptions` P1 reorder design consultation.
+  - Sent `LOCK(Codex backend cases detail no-store)` for `src/app/api/cases/[id]/route.ts`, `src/app/api/cases/[id]/route.test.ts`, and `src/app/api/__tests__/protected-get-routes.test.ts`.
+  - Preserved Claude-owned dirty `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx` and `.test.tsx`; Codex did not edit or stage those UI files.
+- Hardened `GET /api/cases/:id` so success, auth rejection, validation, not-found, and ordinary unexpected read failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, first-visit-document serialization with no-store, no-store invalid-id, no-store not-found before first-visit-document lookup, and sanitized no-store 500 responses that omit raw patient/address/drug/case-detail-like thrown text.
+- Added `cases/[id] GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canVisit` auth, CareCase assignment scoping, response body shape, first-visit document lookup, PATCH behavior, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: case detail includes patient name/kana and first-visit document delivery/document URL context; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice only adds response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/cases/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `246` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the case detail route, route test, and protected GET matrix.
+  - Scoped Prettier check passed after formatting the case detail route and protected GET matrix.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned case detail GET hardening, commit progress ledgers separately, send `agmsg` FYI, then continue with the next non-overlapping backend candidate unless a newer `agmsg` request takes priority. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Patient-Level Access Helper Migration (P3 First Slice)
 
 - Coordination:

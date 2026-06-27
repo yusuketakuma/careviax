@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-0935 JST
+
+- current task: backend-first PHI/cache hardening for `GET /api/cases/:id` while prioritizing Claude agmsg consultation and preserving Claude-owned prescription UI dirty work.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox/send via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, Next route handler docs at `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`, `src/app/api/cases/[id]/route.ts`, `src/app/api/cases/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, nearby sensitive GET patterns in `src/app/api/communication-requests/[id]/route.ts` and `src/app/api/visit-schedule-proposals/[id]/route.ts`, and gbrain code graph probes for `src/app/api/cases/[id]/route::GET` (fresh blast returned no graph nodes; caller index was not built for this symbol).
+- files changed: `src/app/api/cases/[id]/route.ts`, `src/app/api/cases/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned dirty `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx` and `.test.tsx` were preserved and not staged by Codex.
+- bugs found: the case detail GET returned patient name/kana and first-visit document delivery/document URL context without the sensitive no-store exported-route envelope, and ordinary unexpected read failures lacked a route-level fixed no-store `INTERNAL_ERROR` fallback.
+- security risks found: reduced case detail PHI/document workflow cacheability and error-leakage risk by wrapping the detail GET with `withSensitiveNoStore`, adding a sanitized fixed `internalError()` fallback, preserving Next control-flow via `unstable_rethrow(err)`, and proving raw patient/address/drug/case-detail-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/cases/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint 'src/app/api/cases/[id]/route.ts' 'src/app/api/cases/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check 'src/app/api/cases/[id]/route.ts' 'src/app/api/cases/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- 'src/app/api/cases/[id]/route.ts' 'src/app/api/cases/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused case detail/protected GET Vitest passed `2` files / `246` tests; full TypeScript passed; scoped ESLint passed; scoped Prettier check passed after formatting the case detail route and protected GET matrix; scoped diff-check passed. Claude's P1 prescriptions design consultation was answered with a two-slice reorder/state recommendation before this implementation work.
+- remaining work: commit Codex-owned case detail GET hardening, commit progress ledgers separately, send `agmsg` FYI, then continue non-overlapping backend hardening unless a newer Claude consultation takes priority. The all-pages UI/UX objective remains incomplete.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260627-0755 JST
 
 - current task: P3 first slice for Patient-level assignment access helpers, keeping the main agent available for Claude agmsg coordination and delegating implementation/review to subagents.
