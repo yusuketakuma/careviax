@@ -179,6 +179,7 @@ import { GET as conferenceNotesGet } from '../conference-notes/route';
 import { GET as conferenceNoteGet } from '../conference-notes/[id]/route';
 import { GET as consentRecordsGet } from '../consent-records/route';
 import { GET as consentRecordGet } from '../consent-records/[id]/route';
+import { GET as contactProfilesGet } from '../contact-profiles/route';
 import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
 import { GET as dashboardCockpitGet } from '../dashboard/cockpit/route';
 import { GET as dashboardDispensingStatsGet } from '../dashboard/dispensing-stats/route';
@@ -576,6 +577,19 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'consent_1' }) },
+      ),
+  },
+  {
+    name: 'contact-profiles GET',
+    setupSuccess: () => {
+      prismaMock.externalProfessional.findMany.mockResolvedValueOnce([]);
+    },
+    handler: () =>
+      contactProfilesGet(
+        createRequest('http://localhost/api/contact-profiles?kind=external_professional&limit=8', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
       ),
   },
   {
@@ -1586,6 +1600,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
+        route.name === 'contact-profiles GET' ||
         route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1676,6 +1691,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
+        route.name === 'contact-profiles GET' ||
         route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1752,6 +1768,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
+        route.name === 'contact-profiles GET' ||
         route.name === 'handoff-board GET' ||
         route.name === 'incident-reports GET' ||
         route.name === 'cases/[id] GET' ||
