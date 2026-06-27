@@ -1,9 +1,19 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
+import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  conflict,
+  internalError,
+  forbidden,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import {
   transitionCycleStatus,
@@ -60,10 +70,17 @@ function touchesDispenseResultSafetyFields(data: z.infer<typeof updateDispenseRe
   );
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
+  if (
+    !hasPermission(ctx.role, 'canDispense') &&
+    !hasPermission(ctx.role, 'canAuditDispense') &&
+    !hasPermission(ctx.role, 'canReport')
+  ) {
+    return forbidden('調剤実績の閲覧権限がありません');
+  }
 
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
@@ -87,8 +104,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return success(result);
 }
 
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authResult = await requireAuthContext(req);
+  const authResult = await requireAuthContext(req, {
+    permission: 'canDispense',
+    message: '調剤実績の更新権限がありません',
+  });
   if ('response' in authResult) return authResult.response;
   const ctx = authResult.ctx;
 

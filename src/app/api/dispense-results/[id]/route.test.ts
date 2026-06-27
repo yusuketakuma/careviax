@@ -192,6 +192,8 @@ describe('/api/dispense-results/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(dispenseResultFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'result_1',
@@ -210,6 +212,8 @@ describe('/api/dispense-results/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       message: '調剤実績IDが不正です',
     });
@@ -224,6 +228,51 @@ describe('/api/dispense-results/[id]', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+  });
+
+  it('returns a sanitized no-store 500 when result lookup fails unexpectedly', async () => {
+    dispenseResultFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 アムロジピン 14錠 raw dispense result detail'),
+    );
+
+    const response = (await GET(createRequest('http://localhost/api/dispense-results/result_1'), {
+      params: Promise.resolve({ id: 'result_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body)).not.toContain('14錠');
+    expect(JSON.stringify(body)).not.toContain('raw dispense result detail');
+  });
+
+  it('rejects result updates when the caller lacks dispense permission', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'driver' });
+
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_1', {
+        actual_drug_name: 'Drug B',
+      }),
+      {
+        params: Promise.resolve({ id: 'result_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤実績の更新権限がありません',
+    });
+    expect(dispenseResultFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('patches a dispense result only after a rejected audit and resets statuses', async () => {

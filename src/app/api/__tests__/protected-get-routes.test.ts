@@ -183,6 +183,7 @@ import { GET as dashboardMonthlyStatsGet } from '../dashboard/monthly-stats/rout
 import { GET as dashboardOverdueGet } from '../dashboard/overdue/route';
 import { GET as dispenseAuditsGet } from '../dispense-audits/route';
 import { GET as dispenseQueueGet } from '../dispense-queue/route';
+import { GET as dispenseResultGet } from '../dispense-results/[id]/route';
 import { GET as dispenseTasksGet } from '../dispense-tasks/route';
 import { GET as dispenseTaskGet } from '../dispense-tasks/[id]/route';
 import { GET as dispenseTaskWorkbenchGet } from '../dispense-tasks/[id]/workbench/route';
@@ -496,6 +497,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       dispenseQueueGet(
         createRequest('http://localhost/api/dispense-queue', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dispense-results/[id] GET',
+    handler: () =>
+      dispenseResultGet(
+        createRequest('http://localhost/api/dispense-results/result_1', { 'x-org-id': 'org_1' }),
+        { params: Promise.resolve({ id: 'result_1' }) },
       ),
   },
   {
@@ -1217,6 +1226,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'medication-sets/workspace GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
+        route.name === 'dispense-results/[id] GET' ||
         route.name === 'dispense-tasks GET' ||
         route.name === 'dispense-tasks/[id] GET' ||
         route.name === 'dispense-tasks/[id]/workbench GET' ||
@@ -1279,6 +1289,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'medication-sets/workspace GET' ||
         route.name === 'billing-candidates GET' ||
         route.name === 'billing-candidates/export GET' ||
+        route.name === 'dispense-results/[id] GET' ||
         route.name === 'dispense-tasks GET' ||
         route.name === 'dispense-tasks/[id] GET' ||
         route.name === 'dispense-tasks/[id]/workbench GET' ||
