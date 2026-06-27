@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientActivityTimeline } from './patient-activity-timeline';
 import type { PatientTimelineSnapshot } from './patient-detail.types';
 
@@ -21,7 +21,7 @@ export function PatientTimelinePanel({
     queryKey: ['patient-timeline', patientId, orgId],
     enabled: Boolean(orgId && patientId && enabled),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/timeline`, {
+      const response = await fetch(buildPatientApiPath(patientId, '/timeline'), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
