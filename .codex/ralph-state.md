@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0837 JST
+
+- current task: patient history summary prescriptions API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex`, `src/components/features/patients/patient-history-summary.tsx`, `src/components/features/patients/patient-history-summary.test.tsx`, `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, and `src/lib/http/path-segment.test.ts`.
+- files changed: `src/components/features/patients/patient-history-summary.tsx`, `src/components/features/patients/patient-history-summary.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `PatientHistorySummary` still interpolated raw `patientId` into `/api/patients/${patientId}/prescriptions?limit=5`. Hostile ids containing `/`, `?`, or `#` could alter the network URL shape before reaching the server route.
+- security risks found: reduced prescription history URL route-confusion risk by routing the GET through shared `buildPatientApiPath(patientId, '/prescriptions')`. Added a test proving raw patient id remains in query key/component data flow while the network URL consumes the helper return value. Existing `x-org-id` header behavior, `limit=5`, visits query `URLSearchParams`, href behavior, rendering/order, route handlers, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing prescription summary fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write src/components/features/patients/patient-history-summary.tsx src/components/features/patients/patient-history-summary.test.tsx`; `pnpm exec vitest run src/components/features/patients/patient-history-summary.test.tsx src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; `git diff --check -- src/components/features/patients/patient-history-summary.tsx src/components/features/patients/patient-history-summary.test.tsx`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
+- validation results: Prettier write passed. Focused history summary + patient API/path-segment Vitest passed `3` files / `18` tests. Scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
+- remaining work: state commit is pending for implementation commit `73cf53ba`, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0829 JST
 
 - current task: patient visit brief API path helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing visit brief fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write src/components/visit-brief/patient-visit-brief-section.tsx src/components/visit-brief/patient-visit-brief-section.test.tsx`; `pnpm exec vitest run src/components/visit-brief/patient-visit-brief-section.test.tsx src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
 - validation results: Prettier write passed. Focused visit brief + patient API/path-segment Vitest passed `3` files / `15` tests. Full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
-- remaining work: state commit is pending for implementation commit `a4cbc619`, then send Claude a `PATCH_REVIEW_REQUEST`. Claude's MedicationCalendarContent re-review and conditions helper convergence review remain pending. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+- remaining work: implementation commit `a4cbc619` and state commit `a7b2f435` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: continue non-overlapping API path helper convergence while monitoring agmsg for Claude interrupts.
 
 ### 20260628-0820 JST
 
