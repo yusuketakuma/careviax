@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
 import { formatDateLabel as formatDate } from '@/lib/ui/date-format';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildVisitHref } from '@/lib/visits/navigation';
@@ -66,7 +67,7 @@ export function PatientHistorySummary({
   const prescriptionsQuery = useQuery({
     queryKey: ['patient-history-summary-prescriptions', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/prescriptions?limit=5`, {
+      const response = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=5`, {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('処方履歴の取得に失敗しました');

@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildVisitHref } from '@/lib/visits/navigation';
@@ -35,6 +36,10 @@ vi.mock('next/link', () => ({
 
 // Actual-backed spies: real encode/guard output for existing + hostile tests,
 // plus return-value delegation teeth for the four browser hrefs.
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 vi.mock('@/lib/patient/navigation', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/patient/navigation')>();
   return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
@@ -158,6 +163,41 @@ describe('PatientHistorySummary', () => {
   describe('shared href helper convergence (F-043)', () => {
     beforeEach(() => {
       vi.clearAllMocks();
+    });
+
+    it('routes the prescriptions summary fetch through the shared patient API path helper', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [] }),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      vi.mocked(buildPatientApiPath).mockReturnValueOnce(
+        '/api/patients/__helper_pt__/prescriptions',
+      );
+      let capturedQueryFn: (() => Promise<unknown>) | undefined;
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryMock.mockImplementation(
+        ({ queryKey, queryFn }: { queryKey: string[]; queryFn: () => Promise<unknown> }) => {
+          if (queryKey[0] === 'patient-history-summary-prescriptions') {
+            capturedQueryFn = queryFn;
+          }
+          return { data: { data: [] }, isLoading: false, error: null };
+        },
+      );
+
+      render(<PatientHistorySummary patientId="pt/1?tab=x#frag" />);
+      await capturedQueryFn?.();
+
+      expect(buildPatientApiPath).toHaveBeenCalledWith('pt/1?tab=x#frag', '/prescriptions');
+      expect(fetchMock).toHaveBeenCalledWith('/api/patients/__helper_pt__/prescriptions?limit=5', {
+        headers: { 'x-org-id': 'org_1' },
+      });
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        '/api/patients/pt/1?tab=x#frag/prescriptions?limit=5',
+        expect.anything(),
+      );
+
+      vi.unstubAllGlobals();
     });
 
     it('all four browser links consume the shared helper return values', () => {
