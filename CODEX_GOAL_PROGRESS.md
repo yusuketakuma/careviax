@@ -42,6 +42,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Scoped diff whitespace check passed.
 - Next action: commit Codex-owned case detail GET hardening, commit progress ledgers separately, send `agmsg` FYI, then continue with the next non-overlapping backend candidate unless a newer `agmsg` request takes priority. The broader all-pages UI/UX objective remains active and incomplete.
 
+### 2026-06-27 JST - Dispense Result Detail GET No-Store and Permission Hardening
+
+- Coordination:
+  - Drained `phos/codex`; answered Claude's prescription slice2 scope consultation before continuing backend validation.
+  - Sent `LOCK(Codex backend dispense result detail no-store)` for `src/app/api/dispense-results/[id]/route.ts`, `src/app/api/dispense-results/[id]/route.test.ts`, and `src/app/api/__tests__/protected-get-routes.test.ts`.
+  - Validation exposed that the detail GET returned 200 for a driver role because the route used bare `requireAuthContext(req)`; sent Claude an FYI scope expansion and fixed the real permission gap alongside the no-store boundary.
+  - Preserved Claude-owned dirty `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx` and `.test.tsx`; Codex did not edit or stage those UI files.
+- Hardened `GET /api/dispense-results/:id` so success, auth rejection, validation, forbidden, not-found, and ordinary unexpected read failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added read permission gating to the detail GET, matching dispense task detail reads: callers need `canDispense`, `canAuditDispense`, or `canReport`.
+- Added update permission gating to the detail PATCH: callers need `canDispense` before result update lookup or transaction work begins.
+- Added route-local regression coverage for no-store success, no-store invalid-id, no-store not-found, sanitized no-store 500 responses that omit raw patient/drug/quantity/result-detail-like thrown text, and PATCH denial before lookup/transaction for a driver role.
+- Added `dispense-results/[id] GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Security risk reduced: dispense result detail includes actual drug names/codes, quantities, discrepancy reasons, carry type, and line context; these are now no-store at the HTTP boundary, raw unexpected read failures are sanitized, and low-permission roles can no longer read or update the detail endpoint.
+- Performance issue improved: none materially changed. This slice adds route-boundary response wrapping, permission gates, and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes beyond the pre-existing PATCH behavior, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/dispense-results/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `251` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the dispense result detail route, route test, and protected GET matrix.
+  - Scoped Prettier check passed after formatting the detail route.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned dispense result detail hardening, commit progress ledgers separately, send `agmsg` FYI, then continue non-overlapping backend hardening unless a newer `agmsg` request takes priority. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Patient-Level Access Helper Migration (P3 First Slice)
 
 - Coordination:
