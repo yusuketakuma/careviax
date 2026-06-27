@@ -50,6 +50,11 @@ import { GET } from './route';
 const emptyRouteContext = { params: Promise.resolve({}) };
 const withAuthRegistrationCalls = [...withAuthContextMock.mock.calls];
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-schedule-proposals/billing-preview GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -84,6 +89,7 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     // 組織横断アクセスロール(pharmacist)は担当割当スコープが撤廃され、
     // ケースアクセスは org_id ベースの組織内検索のみ(AND 担当割当句なし)。
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
@@ -127,6 +133,7 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(buildVisitScheduleBillingPreviewMock).not.toHaveBeenCalled();
   });
 
@@ -140,6 +147,7 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
@@ -148,6 +156,27 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
       },
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(buildVisitScheduleBillingPreviewMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking raw lookup failures', async () => {
+    careCaseFindFirstMock.mockRejectedValueOnce(
+      new Error('raw patient billing preview lookup failure'),
+    );
+
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-04-03',
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw patient billing preview lookup failure');
     expect(buildVisitScheduleBillingPreviewMock).not.toHaveBeenCalled();
   });
 });

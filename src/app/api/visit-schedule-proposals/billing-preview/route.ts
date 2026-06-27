@@ -1,6 +1,8 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { buildVisitScheduleProposalCaseAccessWhere } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
 import { buildVisitScheduleBillingPreview } from '@/server/services/visit-schedule-billing-preview';
@@ -8,7 +10,7 @@ import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 
 const proposedDateSchema = visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const caseId = searchParams.get('case_id');
@@ -55,3 +57,12 @@ export const GET = withAuthContext(
     message: '訪問候補の算定プレビュー権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

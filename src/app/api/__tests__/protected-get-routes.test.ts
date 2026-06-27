@@ -16,6 +16,7 @@ const {
   buildPatientVisitRecordsPdfMock,
   buildVisitRecordPdfMock,
   buildPharmacyInvoiceDocumentPdfMock,
+  buildVisitScheduleBillingPreviewMock,
   getPatientHeaderSummaryMock,
   getPatientOverviewMock,
   listBillingEvidenceBlockersMock,
@@ -103,6 +104,7 @@ const {
     buildPatientVisitRecordsPdfMock: vi.fn(),
     buildVisitRecordPdfMock: vi.fn(),
     buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
+    buildVisitScheduleBillingPreviewMock: vi.fn(),
     getPatientHeaderSummaryMock: vi.fn(),
     getPatientOverviewMock: vi.fn(),
     listBillingEvidenceBlockersMock: vi.fn(),
@@ -158,6 +160,15 @@ vi.mock('@/server/services/pdf-documents', () => ({
 vi.mock('@/server/services/pdf-pharmacy-invoice', () => ({
   buildPharmacyInvoiceDocumentPdf: buildPharmacyInvoiceDocumentPdfMock,
 }));
+
+vi.mock('@/server/services/visit-schedule-billing-preview', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/server/services/visit-schedule-billing-preview')>();
+  return {
+    ...actual,
+    buildVisitScheduleBillingPreview: buildVisitScheduleBillingPreviewMock,
+  };
+});
 
 vi.mock('@/server/services/patient-detail', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/server/services/patient-detail')>();
@@ -271,6 +282,7 @@ import { GET as visitRecordGet } from '../visit-records/[id]/route';
 import { GET as visitRecordHandoffGet } from '../visit-records/[id]/handoff/route';
 import { GET as visitRecordPdfGet } from '../visit-records/[id]/pdf/route';
 import { GET as visitRecordReflectedFieldsGet } from '../visit-records/[id]/reflected-fields/route';
+import { GET as visitScheduleProposalBillingPreviewGet } from '../visit-schedule-proposals/billing-preview/route';
 import { GET as visitScheduleProposalsGet } from '../visit-schedule-proposals/route';
 import { GET as visitScheduleProposalGet } from '../visit-schedule-proposals/[id]/route';
 import { GET as visitSchedulesGet } from '../visit-schedules/route';
@@ -1458,6 +1470,17 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'visit-schedule-proposals/billing-preview GET',
+    handler: () =>
+      visitScheduleProposalBillingPreviewGet(
+        createRequest(
+          'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-06-12',
+          { 'x-org-id': 'org_1' },
+        ),
+        emptyRouteContext,
+      ),
+  },
+  {
     name: 'visit-schedule-proposals/[id] GET',
     setupSuccess: () => {
       prismaMock.visitScheduleProposal.findFirst.mockResolvedValueOnce({
@@ -1709,6 +1732,15 @@ describe('protected GET routes auth matrix', () => {
         patient_display_mode: 'management_number',
       },
     });
+    buildVisitScheduleBillingPreviewMock.mockResolvedValue({
+      suggested_schedule_slot_count: 1,
+      cadence: {
+        current_month_count: 1,
+        monthly_cap: 4,
+        scheduled_dates_current_month: ['2026-06-12'],
+        next_billable_date: '2026-06-12',
+      },
+    });
     buildPatientVisitRecordsPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-patient-visits'),
       fileName: 'visit-records.pdf',
@@ -1815,6 +1847,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals GET' ||
+        route.name === 'visit-schedule-proposals/billing-preview GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-audits GET' ||
         route.name === 'set-batches GET' ||
@@ -1933,6 +1966,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals GET' ||
+        route.name === 'visit-schedule-proposals/billing-preview GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-audits GET' ||
         route.name === 'set-batches GET' ||
@@ -2030,6 +2064,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-schedules/[id] GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
+        route.name === 'visit-schedule-proposals/billing-preview GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-audits GET' ||
         route.name === 'set-batches GET' ||
