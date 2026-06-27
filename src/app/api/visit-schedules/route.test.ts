@@ -204,6 +204,8 @@ describe('/api/visit-schedules', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     const payload = await response.json();
 
     expect(payload).toMatchObject({
@@ -247,6 +249,8 @@ describe('/api/visit-schedules', () => {
     const response = (await GET(createRequest('http://localhost/api/visit-schedules?limit=10.0')))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'クエリパラメータが不正です',
@@ -263,6 +267,8 @@ describe('/api/visit-schedules', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'クエリパラメータが不正です',
@@ -271,6 +277,26 @@ describe('/api/visit-schedules', () => {
       },
     });
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when schedule listing fails unexpectedly', async () => {
+    visitScheduleFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw visit schedule list facility address'),
+    );
+
+    const response = (await GET(createRequest('http://localhost/api/visit-schedules')))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw visit schedule');
+    expect(JSON.stringify(body)).not.toContain('facility address');
   });
 
   it('supports the active schedule scope filter', async () => {

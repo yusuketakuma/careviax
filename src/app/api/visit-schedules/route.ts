@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import {
@@ -27,7 +29,7 @@ const visitScheduleQuerySchema = z.object({
   order: z.enum(['asc', 'desc']).optional(),
 });
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const parsed = parseSearchParams(visitScheduleQuerySchema, searchParams);
@@ -42,6 +44,15 @@ export const GET = withAuthContext(
     message: '訪問予定の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {

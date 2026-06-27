@@ -1311,6 +1311,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||
+        route.name === 'visit-schedules GET' ||
         route.name === 'visit-schedules/[id] GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
@@ -1382,6 +1383,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||
+        route.name === 'visit-schedules GET' ||
         route.name === 'visit-schedules/[id] GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
@@ -1429,6 +1431,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'dispense-queue GET' ||
+        route.name === 'visit-schedules GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
