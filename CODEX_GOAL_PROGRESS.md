@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Shared Audit Task Navigation Helper
+
+- Coordination:
+  - Requested and received Claude's non-overlapping `audit-navigation-helper` lock while Claude continued P3-decorative UI neutralization.
+  - Prioritized Claude P3-prescription-history review for `2ff1f7e6`; Codex approved after focused Vitest, scoped static checks, token grep, and raw hue negative grep.
+  - Did not run `pnpm build` for this backend helper slice because Claude's P3-decorative build was active.
+- Refactored audit task href construction in `994f8747`:
+  - Added `src/lib/audit/navigation.ts` with `buildAuditTaskHref`.
+  - Added helper tests covering normal ids and hostile slash/space/query/fragment ids, including `%20` rather than `+` space escaping.
+  - Replaced operational task audit action links and dispense result audit-pending notification links with the shared helper.
+  - Preserved raw task ids for DB filters, notification metadata, dedupe keys, auth/access behavior, dispense result persistence, schema/data, migrations, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: current audit task query links now share a named construction boundary and can no longer drift independently on escaping semantics.
+- Performance issue improved: none. This is a pure string-construction refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/audit/navigation.ts src/lib/audit/navigation.test.ts src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts src/app/api/dispense-results/route.ts src/app/api/dispense-results/route.test.ts` passed unchanged.
+  - `pnpm exec vitest run src/lib/audit/navigation.test.ts src/lib/tasks/operational-task-presentation.test.ts src/app/api/dispense-results/route.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `37` tests with existing expected `webhook.org_dispatch_failed` stderr in dispense-results tests.
+  - Scoped ESLint passed for the helper/test and two consumer/test files.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Claude P3-prescription-history review validation passed: focused Vitest `1` file / `15` tests, scoped ESLint/Prettier/diff-check, token presence grep, and raw hue negative grep.
+- Commit status: implementation landed as `994f8747`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `994f8747` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Visit Schedule Path-Segment Hardening
 
 - Coordination:
