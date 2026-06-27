@@ -1947,6 +1947,56 @@ describe('/api/visit-records POST', () => {
     });
   });
 
+  it('encodes first-visit document PDF URLs while preserving raw visit record identity', async () => {
+    const visitRecordId = 'record/../1?x=1#frag';
+    visitRecordCreateMock.mockResolvedValueOnce({ id: visitRecordId, version: 1 });
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'initial',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+          structured_soap: completedInitialVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    const encodedDocumentUrl = `/api/visit-records/${encodeURIComponent(visitRecordId)}/pdf`;
+    expect(firstVisitDocumentCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        document_url: encodedDocumentUrl,
+      }),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          visit_record_id: visitRecordId,
+          document_url: encodedDocumentUrl,
+        }),
+      }),
+    });
+  });
+
   it('updates existing first-visit documents without duplicating generated history', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',

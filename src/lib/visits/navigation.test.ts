@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildVisitHref, buildVisitRecordHref } from './navigation';
+import { buildVisitHref, buildVisitRecordHref, buildVisitRecordPdfHref } from './navigation';
 
 describe('visit navigation helpers', () => {
   it('encodes only the visit id path segment', () => {
@@ -20,8 +20,17 @@ describe('visit navigation helpers', () => {
     );
   });
 
+  it('builds visit record PDF hrefs with the PDF suffix outside the encoded record id', () => {
+    const visitRecordId = 'record/1?mode=x#frag';
+
+    expect(buildVisitRecordPdfHref(visitRecordId)).toBe(
+      `/api/visit-records/${encodeURIComponent(visitRecordId)}/pdf`,
+    );
+  });
+
   it.each(['.', '..'])('rejects exact dot-segment visit id %s', (visitId) => {
     expect(() => buildVisitHref(visitId)).toThrow(RangeError);
     expect(() => buildVisitRecordHref(visitId)).toThrow(RangeError);
+    expect(() => buildVisitRecordPdfHref(visitId)).toThrow(RangeError);
   });
 });

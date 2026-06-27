@@ -55,6 +55,7 @@ import {
   canUseAutomaticReportGeneration,
   findDraftReportForType,
 } from './visit-record-report-generation';
+import { buildVisitRecordPdfHref } from '@/lib/visits/navigation';
 
 type ResidualMedication = {
   id: string;
@@ -847,7 +848,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
 
             <div className="flex flex-col gap-2 sm:flex-row">
               <Link
-                href={`/api/visit-records/${recordId}/pdf`}
+                href={buildVisitRecordPdfHref(recordId)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={buttonVariants({

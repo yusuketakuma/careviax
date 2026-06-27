@@ -23,6 +23,7 @@ import {
 import { buildAllSoapTexts } from '@/lib/utils/soap-text-builder';
 import { transitionCycleStatus } from '@/lib/db/cycle-transition';
 import { getNextSimpleRruleOccurrence } from '@/lib/visits/rrule';
+import { buildVisitRecordPdfHref } from '@/lib/visits/navigation';
 import {
   getMissingHomeVisit2026CompletionItems,
   isHomeVisit2026CompletionOutcome,
@@ -413,7 +414,7 @@ async function upsertFirstVisitDocument(args: {
     },
   });
 
-  const documentUrl = existing?.document_url ?? `/api/visit-records/${args.recordId}/pdf`;
+  const documentUrl = existing?.document_url ?? buildVisitRecordPdfHref(args.recordId);
   const deliveredAt = args.receiptAt ? new Date(args.receiptAt) : (existing?.delivered_at ?? null);
   const deliveredTo = args.receiptPersonName?.trim() || existing?.delivered_to || null;
 
