@@ -102,6 +102,18 @@ describe('ClerkSupportContent', () => {
     expect(within(table).getByRole('link', { name: '候補日時を電話で確認' })).toBeTruthy();
     expect(within(table).getByText('2026-06-13')).toBeTruthy();
 
+    // モバイルは横スクロールを避け、同じタスクを縦カードで提示する(同一 source order)。
+    const mobileList = screen.getByTestId('clerk-task-mobile-list');
+    expect(within(mobileList).getByText('鈴木 修')).toBeTruthy();
+    expect(within(mobileList).getByText('日程確認')).toBeTruthy();
+    const mobileLink = within(mobileList).getByRole('link', { name: '候補日時を電話で確認' });
+    expect(mobileLink.getAttribute('href')).toBe('/schedules/proposals?detail=proposal-1');
+    expect(mobileLink.className).toContain('min-h-11');
+    expect(within(mobileList).getByText('2026-06-13')).toBeTruthy();
+    // 期限なしタスクはダッシュで欠落を明示。
+    const intakeCard = within(mobileList).getByTestId('clerk-task-mobile-card-intake-1');
+    expect(within(intakeCard).getByText('—')).toBeTruthy();
+
     const consult = screen.getByTestId('clerk-consult-card');
     expect(within(consult).getByText('薬剤師に相談が必要')).toBeTruthy();
     expect(within(consult).getByText(/算定できるかの判断/)).toBeTruthy();
@@ -138,6 +150,8 @@ describe('ClerkSupportContent', () => {
 
     // 件数に ad-hoc 状態色を塗らない（赤=危険等の偽シグナル回避）。
     expect(grid.innerHTML).not.toMatch(/text-(red|amber|blue|emerald|violet|sky)-\d/);
+    // 要対応 KPI に状態色の点/左罫を入れない判断(偽シグナル回避)の回帰防止。
+    expect(grid.innerHTML).not.toMatch(/(border-l-state|bg-state|text-state)/);
   });
 
   it('shows the empty-task message when no clerk work is pending', () => {
@@ -149,7 +163,11 @@ describe('ClerkSupportContent', () => {
     });
 
     render(<ClerkSupportContent />);
-    expect(screen.getByText('いま事務側で止まっている作業はありません。')).toBeTruthy();
+    // CSS hidden は Testing Library 上は可視のため、desktop/mobile を container 別に検証。
+    const table = screen.getByTestId('clerk-task-table');
+    expect(within(table).getByText('いま事務側で止まっている作業はありません。')).toBeTruthy();
+    const mobileList = screen.getByTestId('clerk-task-mobile-list');
+    expect(within(mobileList).getByText('いま事務側で止まっている作業はありません。')).toBeTruthy();
   });
 
   it('fetches the clerk-support dashboard with shared org headers and raw query key', async () => {

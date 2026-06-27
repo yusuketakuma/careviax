@@ -107,45 +107,84 @@ export function ClerkSupportContent() {
             <section
               aria-label="事務の作業リスト"
               className="rounded-lg border border-border/70 bg-card"
-              data-testid="clerk-task-table"
+              data-testid="clerk-task-section"
             >
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-28">内容</TableHead>
-                    <TableHead>患者さん</TableHead>
-                    <TableHead>次にやること</TableHead>
-                    <TableHead className="w-28">期限</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.tasks.length === 0 ? (
+              {/* デスクトップ: 走査性重視の表。モバイルは横溢れするため sm 以上で表示。 */}
+              <div className="hidden sm:block" data-testid="clerk-task-table">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={4} className="text-sm text-muted-foreground">
-                        いま事務側で止まっている作業はありません。
-                      </TableCell>
+                      <TableHead className="w-28">内容</TableHead>
+                      <TableHead>患者さん</TableHead>
+                      <TableHead>次にやること</TableHead>
+                      <TableHead className="w-28">期限</TableHead>
                     </TableRow>
-                  ) : (
-                    data.tasks.map((task) => (
-                      // 医療データテーブルの走査性: 行数が増えても目で追えるよう zebra stripe(SSOT)
-                      <TableRow key={task.id} className="even:bg-muted/30">
-                        <TableCell className="font-medium text-foreground">
-                          {task.kind_label}
-                        </TableCell>
-                        <TableCell>{task.patient_name}</TableCell>
-                        <TableCell>
-                          <Link href={task.href} className="text-primary hover:underline">
-                            {task.next_action}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {task.due_label ?? '—'}
+                  </TableHeader>
+                  <TableBody>
+                    {data.tasks.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                          いま事務側で止まっている作業はありません。
                         </TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    ) : (
+                      data.tasks.map((task) => (
+                        // 医療データテーブルの走査性: 行数が増えても目で追えるよう zebra stripe(SSOT)
+                        <TableRow key={task.id} className="even:bg-muted/30">
+                          <TableCell className="font-medium text-foreground">
+                            {task.kind_label}
+                          </TableCell>
+                          <TableCell>{task.patient_name}</TableCell>
+                          <TableCell>
+                            <Link href={task.href} className="text-primary hover:underline">
+                              {task.next_action}
+                            </Link>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {task.due_label ?? '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              {/* モバイル: 同一 source order の縦カード。横スクロールを避け次アクションを明示。 */}
+              <ul
+                className="divide-y divide-border/70 sm:hidden"
+                role="list"
+                data-testid="clerk-task-mobile-list"
+              >
+                {data.tasks.length === 0 ? (
+                  <li className="px-4 py-3 text-sm text-muted-foreground">
+                    いま事務側で止まっている作業はありません。
+                  </li>
+                ) : (
+                  data.tasks.map((task) => (
+                    <li
+                      key={task.id}
+                      className="px-4 py-3"
+                      data-testid={`clerk-task-mobile-card-${task.id}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium text-foreground">
+                          {task.kind_label}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {task.due_label ?? '—'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-foreground">{task.patient_name}</p>
+                      <Link
+                        href={task.href}
+                        className="mt-1 inline-flex min-h-11 items-center text-sm font-semibold text-primary hover:underline"
+                      >
+                        {task.next_action}
+                      </Link>
+                    </li>
+                  ))
+                )}
+              </ul>
             </section>
 
             <section
