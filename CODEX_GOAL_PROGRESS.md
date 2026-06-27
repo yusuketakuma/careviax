@@ -21,6 +21,26 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Set Plan Detail GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new messages were pending after the medications review/calendar consultation responses.
+  - Preserved Claude-owned dirty `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx` and `.test.ts` while Codex worked only on backend API files.
+- Hardened `GET /api/set-plans/:id` so success, auth rejection, forbidden rejection, not-found, and ordinary unexpected detail lookup failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store not-found, and sanitized no-store 500 responses that omit raw patient/address/set-plan-packaging-like thrown text.
+- Added `set-plans/[id] GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canSet` auth, set-plan assignment scoping, response body shape, PATCH behavior, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: set-plan detail includes patient identity, packaging profile notes/instructions, prescription lines, pending inquiry indicators, audit summary, batch freshness, and recent change-log snapshots; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/set-plans/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `250` tests after formatting.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the set-plan detail route, route test, and protected GET matrix.
+  - Scoped Prettier check passed after formatting the protected GET matrix.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned set-plan detail hardening, commit progress ledgers separately, send `agmsg` FYI, then await/review Claude's medication-calendar slice if requested or continue the next backend/API PHI no-store candidate. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Dispense Queue GET No-Store Hardening
 
 - Coordination:

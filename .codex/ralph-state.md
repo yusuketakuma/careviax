@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1030 JST
+
+- current task: backend-first PHI/cache hardening for `GET /api/set-plans/:id` while preserving Claude-owned medication-calendar dirty work.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox/send via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, Next route handler docs at `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`, `src/app/api/set-plans/[id]/route.ts`, `src/app/api/set-plans/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, set-plan route inventory under `src/app/api/set-plans` and `src/app/api/set-batches`, and gbrain code graph probes for `src/app/api/set-plans/[id]/route::GET` (fresh blast returned no graph nodes; caller index was not built for this symbol).
+- files changed: `src/app/api/set-plans/[id]/route.ts`, `src/app/api/set-plans/[id]/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned dirty `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx` and `.test.ts` were preserved and not staged by Codex.
+- bugs found: the set-plan detail GET returned patient identity, packaging profile notes/instructions, prescription lines, pending inquiry indicators, audit summary, batch freshness, and recent change-log snapshots without the sensitive no-store exported-route envelope; ordinary unexpected detail lookup failures lacked a route-level fixed no-store `INTERNAL_ERROR` fallback; and the protected GET matrix did not cover the dynamic set-plan detail route.
+- security risks found: reduced set-plan detail PHI/medication-workflow cacheability and error-leakage risk by wrapping the exported GET with `withSensitiveNoStore`, adding a sanitized fixed `internalError()` fallback, preserving Next control-flow via `unstable_rethrow(err)`, and proving raw patient/address/set-plan-packaging-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm vitest run 'src/app/api/set-plans/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint 'src/app/api/set-plans/[id]/route.ts' 'src/app/api/set-plans/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check 'src/app/api/set-plans/[id]/route.ts' 'src/app/api/set-plans/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- 'src/app/api/set-plans/[id]/route.ts' 'src/app/api/set-plans/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused set-plan detail/protected GET Vitest passed `2` files / `250` tests before and after formatting; full TypeScript passed; scoped ESLint passed; scoped Prettier check passed after formatting the protected GET matrix; scoped diff-check passed.
+- remaining work: commit Codex-owned set-plan detail hardening, commit progress ledgers separately, send `agmsg` FYI, then await/review Claude's medication-calendar slice if requested or continue the next backend/API PHI no-store candidate. The all-pages UI/UX objective remains incomplete.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260627-1020 JST
 
 - current task: backend-first PHI/cache hardening for `GET /api/dispense-queue` while prioritizing Claude agmsg review/consultation.
