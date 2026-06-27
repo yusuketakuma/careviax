@@ -1,5 +1,7 @@
+import { unstable_rethrow } from 'next/navigation';
 import { prisma } from '@/lib/db/client';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext } from '@/lib/auth/context';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { buildPagination } from '@/lib/api/search';
@@ -11,7 +13,7 @@ const DEFAULT_AUDIT_LOG_LIMIT = 20;
 const MAX_AUDIT_LOG_PAGE = 10_000;
 const MAX_AUDIT_LOG_LIMIT = 100;
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const url = 'nextUrl' in req && req.nextUrl ? req.nextUrl : new URL(req.url);
     const filters = parseAuditLogFilters(url.searchParams);
@@ -73,3 +75,12 @@ export const GET = withAuthContext(
   },
   { permission: 'canAdmin' },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

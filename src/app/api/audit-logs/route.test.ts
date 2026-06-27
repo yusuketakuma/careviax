@@ -28,6 +28,11 @@ import { GET } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createRequest(headers?: Record<string, string>, search = 'limit=10') {
   return new NextRequest(`http://localhost/api/audit-logs?${search}`, {
     headers,
@@ -47,6 +52,7 @@ describe('/api/audit-logs GET', () => {
     const response = (await GET(createRequest(), emptyRouteContext)) as Response;
 
     expect(response.status).toBe(401);
+    expectNoStore(response);
   });
 
   it('returns 403 when the role lacks permission', async () => {
@@ -59,6 +65,7 @@ describe('/api/audit-logs GET', () => {
     )) as Response;
 
     expect(response.status).toBe(403);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
     });
@@ -74,8 +81,43 @@ describe('/api/audit-logs GET', () => {
     )) as Response;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(findManyMock).toHaveBeenCalledOnce();
     expect(countMock).toHaveBeenCalledOnce();
+  });
+
+  it('returns no-store validation errors for invalid date filters before querying audit logs', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'date_from=not-a-date'),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(findManyMock).not.toHaveBeenCalled();
+    expect(countMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when audit log listing fails unexpectedly', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockRejectedValueOnce(new Error('raw audit log patient action secret'));
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('patient action secret');
   });
 
   it('defaults malformed pagination params before querying audit logs', async () => {

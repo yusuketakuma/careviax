@@ -1433,6 +1433,7 @@ describe('protected GET routes auth matrix', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(401);
       if (
+        route.name === 'audit-logs GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'qr-scan-drafts GET' ||
@@ -1515,6 +1516,7 @@ describe('protected GET routes auth matrix', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(403);
       if (
+        route.name === 'audit-logs GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'qr-scan-drafts GET' ||
@@ -1598,6 +1600,7 @@ describe('protected GET routes auth matrix', () => {
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(200);
       if (
+        route.name === 'audit-logs GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
