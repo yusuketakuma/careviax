@@ -21,6 +21,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Set Audits GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; reviewed and approved Claude's medication-calendar slice2 commit `d2fd1b37`, then answered Claude's residual-adjustment P1 layout/header-helper consultation.
+  - Spawned a read-only `code_mapper` subagent for remaining backend PHI/cache gaps; it ranked `GET /api/set-audits` as the top next candidate.
+  - Acknowledged Claude's residual-adjustment lock and kept Codex edits scoped to backend API files.
+- Hardened `GET /api/set-audits` so success, auth rejection, forbidden rejection, and ordinary unexpected queue lookup failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success and sanitized no-store 500 responses that omit raw patient/set-audit-queue/drug-reject-reason-like thrown text.
+- Added `set-audits GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canAuditSet` auth, set-plan assignment scoping, set audit queue response body shape, POST behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: set audit queue includes patient names/kana, cycle patient IDs, drug names/doses/frequencies, set/audit cell states, latest audit result, and reject reasons; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run src/app/api/set-audits/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `284` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the set audits route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+- Independent review: privacy reviewer subagent approved the diff with no findings, confirming auth stayed `canAuditSet`, GET no-store covers success/auth/permission paths, unexpected failures are sanitized, and POST behavior is unchanged.
+- Next action: commit Codex-owned set-audits hardening, commit progress ledgers separately, send `agmsg` FYI, then continue with the next backend/API PHI no-store candidate unless Claude needs another review. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Set Batch Detail GET No-Store Hardening
 
 - Coordination:
