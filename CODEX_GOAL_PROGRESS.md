@@ -23,6 +23,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Visit Workflow Patient Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, requested and received Claude ACK for the non-overlapping `src/lib/visits/visit-workflow-projection.ts` / `.test.ts` lock, and preserved Claude's P1-c intake-triage UI lane.
+  - Prioritized Claude color-token reviews/locks while working: approved P1-b `71c0e5b3` after focused validation, ACKed comments review approval for `563a3ceb`/`6ab4f67e`, and granted P1-c lock before committing this slice.
+  - gbrain call graph for `buildPostVisitWorkflowActions` was unavailable/not indexed, so live `rg` was used to identify the caller surface before editing.
+- Refactored visit workflow href construction in `8e0fb100`:
+  - `buildPatientCollaborationHref` now delegates to `buildPatientHref(patientId, '/collaboration')`.
+  - Added `buildVisitConferenceHref` and reused one computed conference href for both primary action and top-level action href.
+  - Preserved billing-candidate query order (`billing_month`, `patient_id`, `workflow_from`, `visit_record_id`, optional `schedule_id`), raw query identities for billing/conference query params, report/visit route helpers, response shape, UI callers, API routes, DB/schema/data, migrations, dependencies, external sends, push/deploy, and destructive-operation boundaries.
+  - Added regression coverage that exact dot-segment patient IDs fail closed through the shared patient href helper, matching existing report/schedule path-segment guard tests.
+- Security/correctness risk reduced: patient collaboration links now share the app-wide patient href helper contract, and conference query construction is no longer duplicated at the action object boundary.
+- Performance issue improved: none. This is a pure href construction refactor with no extra DB reads, loops, network calls, polling, cache changes, or dependencies.
+- Validation passed:
+  - Baseline `pnpm exec vitest run src/lib/visits/visit-workflow-projection.test.ts --reporter=dot --testTimeout=30000` passed `1` file / `10` tests.
+  - `pnpm exec prettier --write src/lib/visits/visit-workflow-projection.ts src/lib/visits/visit-workflow-projection.test.ts` passed.
+  - Final focused visit workflow projection Vitest passed `1` file / `12` tests.
+  - Scoped ESLint passed for `src/lib/visits/visit-workflow-projection.ts` and its test.
+  - Scoped Prettier check passed for the same two files.
+  - Scoped diff whitespace check passed for the same two files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Interrupt review validation for Claude P1-b `71c0e5b3`:
+  - Focused business-holidays Vitest passed `1` file / `10` tests.
+  - Scoped ESLint, Prettier check, raw color scan, and diff whitespace check passed for the business-holidays content/test files.
+  - Review result sent as `PATCH_REVIEW_RESULT APPROVED`; no findings.
+- Commit status: implementation landed as `8e0fb100`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `8e0fb100` plus the state commit, then continue after inbox is clear.
+
 ### 2026-06-27 JST - Comments Mention Patient Href Helper Convergence
 
 - Coordination:
