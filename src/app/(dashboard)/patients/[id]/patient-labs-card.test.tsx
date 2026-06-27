@@ -4,6 +4,7 @@ import * as React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientLabsCard } from './patient-labs-card';
 
 setupDomTestEnv();
@@ -65,6 +66,11 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 vi.mock('@/components/ui/select', async () => {
   type SelectProps = {
@@ -337,6 +343,44 @@ describe('PatientLabsCard', () => {
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
       queryKey: ['patient-labs', 'org_1', hostilePatientId],
     });
+  });
+
+  it('routes lab reads and writes through the shared patient API path helper', async () => {
+    const patientId = 'patient_1';
+    const labId = 'lab_1';
+    vi.mocked(buildPatientApiPath)
+      .mockReturnValueOnce('/api/patients/__helper_get__/labs')
+      .mockReturnValueOnce('/api/patients/__helper_post__/labs')
+      .mockReturnValueOnce('/api/patients/__helper_patch__/labs/lab_1');
+
+    const { queryOptions, mutationOptions } = setupComponent({
+      patientId,
+      labs: [{ ...baseLab, id: labId }],
+    });
+
+    await queryOptions.at(-1)?.queryFn();
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/patients/__helper_get__/labs?limit=30');
+
+    fireEvent.click(screen.getByRole('button', { name: '検査値を追加' }));
+    fireEvent.change(screen.getByLabelText('測定日時'), {
+      target: { value: '2026-04-10T09:30' },
+    });
+    const create = latestCreateMutation(mutationOptions);
+    await create.mutationFn();
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/patients/__helper_post__/labs');
+
+    fireEvent.click(screen.getByRole('button', { name: '補正' }));
+    const update = latestUpdateMutation(mutationOptions);
+    await update.mutationFn(labId);
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe('/api/patients/__helper_patch__/labs/lab_1');
+
+    expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/labs');
+    expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId, '/labs');
+    expect(buildPatientApiPath).toHaveBeenNthCalledWith(3, patientId, '/labs/lab_1');
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      `/api/patients/${patientId}/labs`,
+      expect.anything(),
+    );
   });
 
   it.each(['.', '..'])('fails before fetch for dot-segment patient ids (%s)', async (patientId) => {

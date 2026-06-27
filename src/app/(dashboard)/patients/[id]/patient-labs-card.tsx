@@ -22,6 +22,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildVisitHref } from '@/lib/visits/navigation';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
@@ -316,7 +317,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
   const labsQuery = useQuery<LabsResponse>({
     queryKey: ['patient-labs', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/labs?limit=30`, {
+      const response = await fetch(`${buildPatientApiPath(patientId, '/labs')}?limit=30`, {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('検査値一覧の取得に失敗しました');
@@ -327,7 +328,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/labs`, {
+      const response = await fetch(buildPatientApiPath(patientId, '/labs'), {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(buildCreatePayload(createForm)),
@@ -355,7 +356,7 @@ export function PatientLabsCard({ patientId, orgId }: { patientId: string; orgId
   const updateMutation = useMutation({
     mutationFn: async (labId: string) => {
       const response = await fetch(
-        `/api/patients/${encodePathSegment(patientId)}/labs/${encodePathSegment(labId)}`,
+        buildPatientApiPath(patientId, `/labs/${encodePathSegment(labId)}`),
         {
           method: 'PATCH',
           headers: buildOrgJsonHeaders(orgId),
