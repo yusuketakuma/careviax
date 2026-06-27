@@ -1,6 +1,17 @@
 # 配色トークン是正 段階計画（生 Tailwind 状態色の撲滅）
 
-**Status:** Phase 1 **完了** + Phase 2 **globals.css 実装完了**（23 識別トークン land、AA 全件合格・Codex 値合意済）。次は Phase 3（各ファイルの生 Tailwind を family 単位で識別トークンへ置換）。
+**Status:** Phase 1 **完了** + Phase 2 **完了**（23 識別トークン globals.css land）+ Phase 3 **完了**（6 family 展開 + drug-class=tag-hazard 流用 + 装飾中立化、全 commit land・全 Codex APPROVED）。残課題: ①横断 visual QA（/browse）②合意6 family 外の残留識別色 2 群（safety-board handling tones / intake lane）の family 判断（Codex 相談中）。
+
+**Phase 3 実装記録（2026-06-28）:**
+
+- P3-soap `5780ded7` SOAP step 色 chart-\* → --soap-\*（APPROVED）
+- P3-intervention `2e5a730c` INTERVENTION_TYPE_COLORS → --intervention-\*（APPROVED）
+- P3-time-slot `47b31527` SLOT_COLORS → --time-slot-\*（APPROVED）
+- P3-role `47455d10` action-rail BLOCKED_CATEGORY_TONES → --role-\*、container 色パネル撤去→左帯（APPROVED）
+- P3-prescription-history `2ff1f7e6` route→--route-\* / method→--method-\* / drug 安全分類→tag-hazard 流用（APPROVED）
+- P3-decorative `9d3ee3c0`/`492b0de0`/`e6225e86` care-team / shared-viewer / select-mode の装飾色中立化（APPROVED）
+- 関連: build-blocker（buttonVariants server-call）を `4776d257` で修正（buttonVariants を非 client の button-variants.ts へ抽出、HEAD build green 回復、APPROVED）
+- **残留識別色（合意6 family 外・要 family 判断）**: safety-board の cold/unitDose/caution handling tones（teal/blue/amber）と intake-triage の lane バッジ（fax/online/walk_in）。いずれも P1 で「Phase2/3 識別へ」と deferred したが 6 family scoping に含めていなかった分。Codex と family 方針を確定後に Phase 3b として展開予定。medication-calendar の print patient-id は純中立だったので `text-muted-foreground` へ即修正（別 commit）。
 
 **Phase 1 実装記録（2026-06-27）:**
 
