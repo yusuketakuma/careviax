@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Consent Record Detail GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation and before validation/ledger work.
+  - Claude approved `conference-notes/[id]` implementation commit `cd64de96` and state commit `1123d41c` with no findings after independent focused route/protected GET validation.
+  - Preserved Claude-owned dirty `/admin/users` StateBadge files while continuing a non-overlapping backend/API slice.
+  - Received a read-only subagent candidate map for the next no-store targets: `incident-reports GET`, `audit-logs GET`, and `pca-pump-rentals GET`.
+- Hardened dynamic `GET /api/consent-records/[id]` so success, auth rejection, forbidden rejection, invalid-id validation, assignment-not-found responses, audit-fail-closed responses, and ordinary unexpected consent detail lookup failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store detail success, no-store invalid id, no-store assignment-not-found response, sanitized no-store 500 on detail lookup failure, and sanitized no-store 500 on view-audit failure.
+- Added `consent-records/[id] GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canVisit` auth, patient/case assignment scoping, view-audit fail-closed behavior, redacted/audited document URL serialization, PATCH behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: consent record details include patient/case linkage, consent method/type/expiry/template fields, document URL redaction state, and file linkage; these are now no-store at the HTTP boundary and unexpected read/audit failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/api/consent-records/[id]/route.ts' 'src/app/api/consent-records/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts` completed with no changes.
+  - `pnpm vitest run 'src/app/api/consent-records/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `290` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the consent-records detail route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm format:check` passed for changed files.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Conference Note Detail GET No-Store Hardening
 
 - Coordination:
