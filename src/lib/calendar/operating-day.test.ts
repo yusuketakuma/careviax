@@ -59,6 +59,21 @@ describe('weekdayOfDateKey', () => {
     expect(() => weekdayOfDateKey('2026-6-1')).toThrow(RangeError);
     expect(() => weekdayOfDateKey('not-a-date')).toThrow(RangeError);
   });
+
+  it('fails closed on non-existent calendar dates instead of silently normalizing', () => {
+    // JS Date would normalize these (e.g. 2026-02-31 -> 2026-03-03); they must throw.
+    expect(() => weekdayOfDateKey('2026-02-31')).toThrow(RangeError);
+    expect(() => weekdayOfDateKey('2026-04-31')).toThrow(RangeError);
+    expect(() => weekdayOfDateKey('2026-00-01')).toThrow(RangeError);
+    expect(() => weekdayOfDateKey('2026-13-01')).toThrow(RangeError);
+  });
+
+  it('propagates the same validation through shiftDateKey / resolveOperatingState', () => {
+    expect(() => shiftDateKey('2026-02-31', 1)).toThrow(RangeError);
+    expect(() => resolveOperatingState(calendar(), '2026-13-01')).toThrow(RangeError);
+    expect(() => nearestOperatingDay(calendar(), '2026-02-31', 'forward')).toThrow(RangeError);
+    expect(() => addOperatingDays(calendar(), '2026-02-31', 1)).toThrow(RangeError);
+  });
 });
 
 describe('shiftDateKey', () => {
@@ -75,21 +90,40 @@ describe('timeStringToMinutes / isValidOperatingWindow', () => {
     expect(timeStringToMinutes('09:00')).toBe(540);
     expect(timeStringToMinutes('18:30')).toBe(1110);
     expect(timeStringToMinutes('09:00:00')).toBe(540);
+    expect(timeStringToMinutes('23:59')).toBe(1439);
+    expect(timeStringToMinutes('00:00')).toBe(0);
     expect(timeStringToMinutes(null)).toBeNull();
     expect(timeStringToMinutes('')).toBeNull();
     expect(timeStringToMinutes('bad')).toBeNull();
   });
 
-  it('treats null open/close as a valid (all-day) window', () => {
+  it('rejects out-of-range and malformed times (strict HH:mm boundary)', () => {
+    expect(timeStringToMinutes('24:00')).toBeNull();
+    expect(timeStringToMinutes('99:99')).toBeNull();
+    expect(timeStringToMinutes('-1:00')).toBeNull();
+    expect(timeStringToMinutes('07:5')).toBeNull();
+    expect(timeStringToMinutes('09:30abc')).toBeNull();
+    expect(timeStringToMinutes('09:60')).toBeNull();
+    expect(timeStringToMinutes('09:00:99')).toBeNull();
+  });
+
+  it('treats null/empty open/close as a valid (all-day) window', () => {
     expect(isValidOperatingWindow(null, null)).toBe(true);
     expect(isValidOperatingWindow('09:00', null)).toBe(true);
     expect(isValidOperatingWindow(null, '18:00')).toBe(true);
+    expect(isValidOperatingWindow('', '')).toBe(true);
   });
 
   it('rejects from >= to', () => {
     expect(isValidOperatingWindow('09:00', '18:00')).toBe(true);
     expect(isValidOperatingWindow('18:00', '09:00')).toBe(false);
     expect(isValidOperatingWindow('09:00', '09:00')).toBe(false);
+  });
+
+  it('is invalid when a present side is malformed (not treated as all-day)', () => {
+    expect(isValidOperatingWindow('24:00', '18:00')).toBe(false);
+    expect(isValidOperatingWindow('09:00', '99:99')).toBe(false);
+    expect(isValidOperatingWindow('09:30abc', null)).toBe(false);
   });
 });
 

@@ -16,6 +16,8 @@ import { formatUtcDateKey } from '@/lib/date-key';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+/** 'HH:mm' / 'HH:mm:ss'、時 00-23・分秒 00-59 のみ許可（24:00 等は不可）。 */
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/;
 
 /** PharmacyOperatingHours（週次の既定営業/定休）の解決済み行。 */
 export type OperatingHoursRow = {
@@ -64,19 +66,26 @@ export type OperatingStateOpen = {
 
 export type OperatingState = OperatingStateClosed | OperatingStateOpen;
 
-function assertDateKey(dateKey: string): void {
+/**
+ * dateKey を UTC 深夜 Date に変換する。フォーマット regex に加え、
+ * JS の暗黙正規化（2026-02-31 → 2026-03-03 等）を round-trip で弾き **fail-closed** する。
+ * 不正カレンダー日（存在しない日 / 範囲外の月）は RangeError。
+ */
+function dateKeyToUtc(dateKey: string): Date {
   if (!DATE_KEY_PATTERN.test(dateKey)) {
     throw new RangeError(`Invalid date key (expected YYYY-MM-DD): ${dateKey}`);
   }
-}
-
-function dateKeyToUtc(dateKey: string): Date {
-  assertDateKey(dateKey);
-  const date = new Date(`${dateKey}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime())) {
-    throw new RangeError(`Invalid date key: ${dateKey}`);
+  const [year, month, day] = dateKey.split('-').map((part) => Number.parseInt(part, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  // 構築結果を再整形して一致しなければ正規化が起きた=存在しない日付。
+  if (Number.isNaN(date.getTime()) || formatUtcDateKey(date) !== dateKey) {
+    throw new RangeError(`Invalid calendar date: ${dateKey}`);
   }
   return date;
+}
+
+function assertDateKey(dateKey: string): void {
+  dateKeyToUtc(dateKey);
 }
 
 /** dateKey の曜日（0=日 .. 6=土）を TZ 非依存に返す。 */
@@ -91,26 +100,33 @@ export function shiftDateKey(dateKey: string, days: number): string {
 }
 
 /**
- * 'HH:mm' / 'HH:mm:ss' を 0 時起点の分に変換する（既存 timeStringToMinutes と同義）。
- * 不正値・空は null。秒は分へ切り捨てず分単位比較に用いるため無視する。
+ * 'HH:mm' / 'HH:mm:ss'（時 00-23・分秒 00-59）を 0 時起点の分に変換する。
+ * フォーマット不正・範囲外（24:00 / 99:99 / -1:00 / 07:5 / 09:30abc）・空は **null**。
+ * 秒は分単位比較に用いるため値には反映しない（形式の妥当性だけ検証する）。
  */
 export function timeStringToMinutes(value: string | null | undefined): number | null {
   if (!value) return null;
-  const [hours, minutes] = value.split(':').map((part) => Number.parseInt(part, 10));
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-  return hours * 60 + minutes;
+  const matched = TIME_PATTERN.exec(value);
+  if (!matched) return null;
+  return Number.parseInt(matched[1], 10) * 60 + Number.parseInt(matched[2], 10);
 }
 
 /**
- * 営業時間窓が妥当か（from < to）。どちらか null（終日扱い）は妥当とみなす。
- * from >= to は invalid。
+ * 営業時間窓が妥当か（from < to）。
+ * - どちらか absent（null/undefined/空）= 終日扱いで妥当。
+ * - 片側でも present かつ malformed（不正フォーマット）なら invalid。
+ * - 両側 present なら from < to を要求（from >= to は invalid）。
  */
 export function isValidOperatingWindow(
   from: string | null | undefined,
   to: string | null | undefined,
 ): boolean {
-  const start = timeStringToMinutes(from);
-  const end = timeStringToMinutes(to);
+  const fromMissing = from == null || from === '';
+  const toMissing = to == null || to === '';
+  if (!fromMissing && timeStringToMinutes(from) == null) return false;
+  if (!toMissing && timeStringToMinutes(to) == null) return false;
+  const start = fromMissing ? null : timeStringToMinutes(from);
+  const end = toMissing ? null : timeStringToMinutes(to);
   if (start == null || end == null) return true;
   return start < end;
 }
