@@ -62,6 +62,23 @@ function compact(values: Array<string | null | undefined | false>) {
   return values.filter((value): value is string => Boolean(value && value.trim()));
 }
 
+function buildPatientBillingCandidatesHref(patientId: string, billingMonth?: string) {
+  const params: Array<[string, string]> = [['patient_id', patientId]];
+  if (billingMonth) {
+    params.push(['billing_month', billingMonth]);
+  }
+  return `/billing/candidates?${new URLSearchParams(params).toString()}`;
+}
+
+function buildPatientConferencesHref(args: { patientId: string; activeCaseId: string | null }) {
+  const params: Array<[string, string]> = [['patient_id', args.patientId]];
+  if (args.activeCaseId) {
+    params.push(['case_id', args.activeCaseId]);
+  }
+  params.push(['focus', 'notes'], ['context', 'patient_detail']);
+  return `/conferences?${new URLSearchParams(params).toString()}`;
+}
+
 function compactMetricText(value: string | null | undefined, maxLength = 32) {
   if (!value) return '未入力';
   const normalized = value.replace(/\s+/g, ' ').trim();
@@ -1149,10 +1166,10 @@ function buildBillingItem(args: {
       : paymentProfile
         ? `${paymentProfile.payer_name ?? BILLING_PAYER_TYPE_LABELS[paymentProfile.payer_type ?? ''] ?? '支払者未記録'} / ${BILLING_PAYMENT_METHOD_LABELS[paymentProfile.payment_method ?? ''] ?? '支払方法未記録'}`
         : '支払者、支払方法、請求候補、未収・集金予定、領収証の確認導線です。',
-    href: `/billing/candidates?${new URLSearchParams({
-      patient_id: args.patientId,
-      ...(focusCandidate ? { billing_month: formatUtcDateKey(focusCandidate.billing_month) } : {}),
-    }).toString()}`,
+    href: buildPatientBillingCandidatesHref(
+      args.patientId,
+      focusCandidate ? formatUtcDateKey(focusCandidate.billing_month) : undefined,
+    ),
     action_label: '請求候補を確認',
     tone: alerts.length > 0 ? 'attention' : args.billingSupportFlag ? 'ok' : 'neutral',
     updated_at: toIso(latest?.updated_at),
@@ -1355,12 +1372,10 @@ function buildConferenceItem(args: {
     description: note
       ? `${note.title} / ${formatDate(note.conference_date)}`
       : '退院前カンファ、担当者会議、デスカンファの予定・議事録・報告書を管理します。',
-    href: `/conferences?${new URLSearchParams({
-      patient_id: args.patientId,
-      ...(args.activeCaseId ? { case_id: args.activeCaseId } : {}),
-      focus: 'notes',
-      context: 'patient_detail',
-    }).toString()}`,
+    href: buildPatientConferencesHref({
+      patientId: args.patientId,
+      activeCaseId: args.activeCaseId,
+    }),
     action_label: note ? '会議要点へ' : '会議を登録',
     tone: alerts.length > 0 ? 'attention' : 'ok',
     updated_at: toIso(args.conferences[0]?.updated_at ?? note?.updated_at ?? note?.conference_date),
