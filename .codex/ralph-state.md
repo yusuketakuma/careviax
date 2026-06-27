@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1037 JST
+
+- current task: backend-first PHI/cache hardening for root `GET /api/communication-requests` while prioritizing Claude agmsg consultation and preserving Claude-owned reports analytics WIP.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, Next route handler docs at `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`, `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, nearby no-store patterns in communication/detail and set-batches routes, and gbrain code graph probes for `src/app/api/communication-requests/route::GET` (fresh blast returned no graph nodes; caller index was not built for this symbol).
+- files changed: `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned dirty `/reports/analytics` files were preserved and not staged by Codex.
+- bugs found: the root communication request list GET returned patient/case linkage, recipient fields, related entity references, context snapshots, subject/content, requester IDs, due dates, and latest response metadata without the sensitive no-store exported-route envelope; validation/stale cursor errors and ordinary unexpected list lookup failures lacked route-level no-store coverage/fixed `INTERNAL_ERROR` fallback; and the protected GET matrix did not assert no-store for the root communication request list route.
+- security risks found: reduced communication request PHI/workflow cacheability and error-leakage risk by wrapping the exported GET with `withSensitiveNoStore`, adding a sanitized fixed `internalError()` fallback, preserving Next control-flow via `unstable_rethrow(err)`, and proving raw patient/communication-request/context-snapshot-like thrown text is omitted.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering changes were introduced.
+- validation commands: `pnpm vitest run src/app/api/communication-requests/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- src/app/api/communication-requests/route.ts src/app/api/communication-requests/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused communication-requests/protected GET Vitest passed `2` files / `283` tests; full TypeScript passed with Claude's reports analytics WIP present; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed.
+- remaining work: commit this progress-ledger update, send `agmsg` FYI for implementation commit `3994e104` plus the ledger commit, then continue with the next backend/API PHI no-store candidate unless Claude needs another review. The all-pages UI/UX objective remains incomplete.
+- next action: ledger commit and agmsg FYI.
+
 ### 20260627-1028 JST
 
 - current task: backend-first PHI/cache hardening for root `GET /api/set-batches` while prioritizing Claude agmsg consultation and preserving Claude-owned residual-adjustment dirty work.

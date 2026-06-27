@@ -21,6 +21,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Communication Requests List GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new Claude consultation was pending before implementation and validation.
+  - Preserved Claude-owned `/reports/analytics` dirty WIP under `src/app/(dashboard)/reports/report-delivery-dashboard.tsx` and `.test.tsx`; Codex edits stayed scoped to backend API files.
+  - Continued the read-only mapper-ranked backend PHI/cache queue after set-batches; root `GET /api/communication-requests` was the next non-overlapping candidate.
+- Hardened root `GET /api/communication-requests` so success, auth rejection, forbidden rejection, validation errors, stale cursor errors, and ordinary unexpected list lookup failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store stale cursor validation, no-store invalid status validation, and sanitized no-store 500 responses that omit raw patient/communication-request/context-snapshot-like thrown text.
+- Added `communication-requests GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canReport` auth, care-report/tracing-report special scoping, assignment filtering, cursor pagination, response body shape, POST behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: communication request lists include patient/case linkage, recipient fields, related entity references, context snapshots, subject/content, requester IDs, due dates, and latest response metadata; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run src/app/api/communication-requests/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `283` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed with Claude's reports WIP present.
+  - Scoped ESLint passed for the communication-requests route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation landed as `3994e104`; this entry is the separate progress-ledger update.
+- Next action: commit progress ledgers, send `agmsg` FYI, then continue with the next backend/API PHI no-store candidate unless Claude needs another review. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Set Batch List GET No-Store Hardening
 
 - Coordination:
