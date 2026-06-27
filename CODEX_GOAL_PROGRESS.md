@@ -101,6 +101,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
 - Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Communication Request API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `communication-request-api-path` lock notice, and continued after the inbox stayed clear.
+  - Kept this to communication request detail/resolve-followup API path construction; no DB mutation, migration, push, deploy, auth/billing change, external send, visual/layout change, or destructive operation.
+- Hardened/converged communication request route construction:
+  - Added `src/lib/communications/api-paths.ts` with `buildCommunicationRequestApiPath(requestId, suffix)` and `buildCommunicationRequestResolveFollowupApiPath(requestId)` on top of `encodePathSegment`.
+  - Replaced the local reply-detail fetch builder in the interprofessional share page.
+  - Replaced the inline resolve-followup POST URL in the communication requests workspace.
+  - Added helper coverage for hostile slash/query/hash ids, suffix placement outside the encoded segment, resolve-followup paths, and exact `.` / `..` fail-closed behavior.
+  - Preserved communication request list query params, mutation method/body/OCC token, response/follow-up payloads, org headers, auth, permissions, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: communication request API callers now share one path-segment contract for `:id` routes instead of carrying separate local builders.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/communications/api-paths.ts src/lib/communications/api-paths.test.ts 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx' 'src/app/(dashboard)/communications/requests/requests-content.tsx'` passed unchanged.
+  - `pnpm exec vitest run src/lib/communications/api-paths.test.ts 'src/app/(dashboard)/communications/requests/requests-content.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' --reporter=dot --testTimeout=30000` passed `3` files / `38` tests.
+  - Scoped ESLint passed for the helper/test and two consumer/test files.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/API-path slice.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
+- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Partner Visit Record API Path Helper Hardening
 
 - Coordination:

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0425 JST
+
+- current task: communication request API path helper convergence for reply-detail fetches and resolve-followup mutations.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` / `code_callers` / `code_refs` for `buildCommunicationRequestApiPath` (not resolved / graph not built), `src/app/(dashboard)/communications/requests/requests-content.tsx`, `src/app/(dashboard)/communications/requests/requests-content.test.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`, and existing `src/lib/communications/navigation.ts` / `navigation.test.ts`.
+- files changed: `src/lib/communications/api-paths.ts`, `src/lib/communications/api-paths.test.ts`, `src/app/(dashboard)/communications/requests/requests-content.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: communication request detail and resolve-followup API paths were built locally in two dashboard surfaces. Existing code already used the hardened segment encoder, but the duplicate local path construction could drift from the shared fail-closed contract as more communication request actions are added.
+- security risks found: reduced path-normalization and route-confusion drift by adding `buildCommunicationRequestApiPath` and `buildCommunicationRequestResolveFollowupApiPath` on top of `encodePathSegment`, then routing reply detail fetches and resolve-followup POSTs through them. Existing list query params, mutation method/body/OCC token, response creation payload, org headers, auth, permissions, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing user-triggered fetch/mutation behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write src/lib/communications/api-paths.ts src/lib/communications/api-paths.test.ts 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx' 'src/app/(dashboard)/communications/requests/requests-content.tsx'`; `pnpm exec vitest run src/lib/communications/api-paths.test.ts 'src/app/(dashboard)/communications/requests/requests-content.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' --reporter=dot --testTimeout=30000`; scoped ESLint for the helper/test and two consumers/tests; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused communication request API path + requests/share tests passed `3` files / `38` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the four implementation files for the implementation commit, then stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0420 JST
 
 - current task: care report API path helper convergence for report detail, share, print audit, and edit-save paths.
