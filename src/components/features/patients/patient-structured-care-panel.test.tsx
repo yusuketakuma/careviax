@@ -5,11 +5,17 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientStructuredCarePanel } from './patient-structured-care-panel';
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 setupDomTestEnv();
 
@@ -91,6 +97,33 @@ describe('PatientStructuredCarePanel', () => {
       expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
     });
     expect(screen.queryByTestId('patient-structured-care-panel')).toBeNull();
+  });
+
+  it('shared patient API path helper 経由で構造化ケアを取得する', async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ data: { procedures: [], narcotics: [] } })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce(
+      '/api/patients/__helper_pt__/structured-care',
+    );
+
+    render(<PatientStructuredCarePanel patientId="pt/1?tab=x#frag" />, {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+
+    expect(buildPatientApiPath).toHaveBeenCalledWith('pt/1?tab=x#frag', '/structured-care');
+    expect(fetchMock).toHaveBeenCalledWith('/api/patients/__helper_pt__/structured-care', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/patients/pt/1?tab=x#frag/structured-care',
+      expect.anything(),
+    );
   });
 
   it('取得失敗時は空カードではなく再読み込み可能なエラー状態を表示する', async () => {

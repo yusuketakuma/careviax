@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
 import { narcoticUseCategoryLabels, specialProcedureLabels } from '@/lib/patient/home-visit-intake';
 import type {
@@ -65,7 +66,7 @@ export function PatientStructuredCarePanel({ patientId }: { patientId: string })
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['patient-structured-care', patientId, orgId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/structured-care`, {
+      const response = await fetch(buildPatientApiPath(patientId, '/structured-care'), {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) {
