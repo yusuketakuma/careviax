@@ -234,6 +234,108 @@ describe('SavedViewsContent', () => {
     });
   });
 
+  it('single-encodes saved-view mutation paths and preserves bodies/headers', async () => {
+    const hostileId = 'view/1?x=y#frag';
+    const encodedId = encodeURIComponent(hostileId);
+    mockPreferences({ work_mode: 'pharmacist' }, [
+      {
+        id: hostileId,
+        name: '患者確認待ち',
+        scope: 'schedules',
+        filters: {
+          conditions: [{ field: 'schedule', value: 'include_patient_confirmation' }],
+        },
+        sort: null,
+        isShared: false,
+        sortOrder: 0,
+        isOwner: true,
+        createdAt: '2026-06-13T09:30:00+09:00',
+        updatedAt: '2026-06-13T09:30:00+09:00',
+      },
+    ]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '患者確認待ちの名前を変更' }));
+    fireEvent.change(screen.getByTestId('named-view-rename-input'), {
+      target: { value: '新しい名前' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    fireEvent.click(await screen.findByTestId('named-view-share-toggle'));
+    fireEvent.click(screen.getByRole('button', { name: '患者確認待ちを削除' }));
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([url]) => String(url) === `/api/saved-views/${encodedId}`),
+      ).toHaveLength(3);
+    });
+
+    const mutationCalls = fetchMock.mock.calls.filter(
+      ([url]) => String(url) === `/api/saved-views/${encodedId}`,
+    ) as Array<[string, RequestInit]>;
+    expect(mutationCalls.map(([, init]) => init.method)).toEqual(['PATCH', 'PATCH', 'DELETE']);
+    expect(mutationCalls[0][1].headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(JSON.parse(String(mutationCalls[0][1].body))).toEqual({ name: '新しい名前' });
+    expect(mutationCalls[1][1].headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(JSON.parse(String(mutationCalls[1][1].body))).toEqual({ is_shared: true });
+    expect(mutationCalls[2][1].headers).toEqual({ 'x-org-id': 'org_1' });
+
+    for (const [url, init] of mutationCalls) {
+      expect(url).not.toContain('%25');
+      expect(String(init.body ?? '')).not.toContain(hostileId);
+    }
+  });
+
+  it.each(['.', '..'])(
+    'fails closed before saved-view mutation fetch for exact dot id %p',
+    async (dotId) => {
+      mockPreferences({ work_mode: 'pharmacist' }, [
+        {
+          id: dotId,
+          name: '患者確認待ち',
+          scope: 'schedules',
+          filters: {
+            conditions: [{ field: 'schedule', value: 'include_patient_confirmation' }],
+          },
+          sort: null,
+          isShared: false,
+          sortOrder: 0,
+          isOwner: true,
+          createdAt: '2026-06-13T09:30:00+09:00',
+          updatedAt: '2026-06-13T09:30:00+09:00',
+        },
+      ]);
+      renderPage();
+
+      fireEvent.click(await screen.findByRole('button', { name: '患者確認待ちの名前を変更' }));
+      fireEvent.change(screen.getByTestId('named-view-rename-input'), {
+        target: { value: '新しい名前' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+      await waitFor(() => {
+        expect(
+          fetchMock.mock.calls.some(
+            ([url, init]) => String(url).startsWith('/api/saved-views?') && init?.method == null,
+          ),
+        ).toBe(true);
+      });
+      expect(
+        fetchMock.mock.calls.some(([url, init]) => {
+          const target = String(url);
+          return target.includes(`/api/saved-views/${dotId}`) && init?.method !== undefined;
+        }),
+      ).toBe(false);
+    },
+  );
+
   it('renders the shared workflow page header instead of a raw heading', async () => {
     renderPage();
 

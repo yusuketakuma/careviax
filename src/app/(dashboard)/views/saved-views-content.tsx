@@ -24,6 +24,7 @@ import {
   type SavedViewCondition,
   type SavedViewRecord,
 } from '@/lib/views/saved-filter-views';
+import { buildSavedViewApiPath } from '@/lib/views/api-paths';
 
 /** /views の名前付き保存ビューが対象とする一覧画面(スケジュール絞り込み)。 */
 const VIEWS_PAGE_SCOPE = 'schedules' as const;
@@ -264,7 +265,7 @@ function NamedSavedViewsCard({
 
   const renameMutation = useMutation({
     mutationFn: async ({ id, name }: { id: string; name: string }) => {
-      const res = await fetch(`/api/saved-views/${id}`, {
+      const res = await fetch(buildSavedViewApiPath(id), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ name }),
@@ -284,7 +285,7 @@ function NamedSavedViewsCard({
 
   const shareMutation = useMutation({
     mutationFn: async ({ id, isShared }: { id: string; isShared: boolean }) => {
-      const res = await fetch(`/api/saved-views/${id}`, {
+      const res = await fetch(buildSavedViewApiPath(id), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ is_shared: isShared }),
@@ -301,7 +302,7 @@ function NamedSavedViewsCard({
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/saved-views/${id}`, {
+      const res = await fetch(buildSavedViewApiPath(id), {
         method: 'DELETE',
         headers: { 'x-org-id': orgId },
       });
