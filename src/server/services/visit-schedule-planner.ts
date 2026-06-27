@@ -1,5 +1,7 @@
 import { addDays, differenceInCalendarDays, format, getDay, startOfWeek } from 'date-fns';
 import type { VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
+import { buildOperatingCalendarLegacy, isOperatingDay } from '@/lib/calendar/operating-day';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
@@ -900,12 +902,17 @@ export async function generateVisitScheduleProposalDrafts(
       max_stops: true,
     },
   });
-  const holidayByDate = new Map<string, typeof holidays>();
-  for (const holiday of holidays) {
-    const key = toDateKey(holiday.date);
-    const list = holidayByDate.get(key);
-    if (list) list.push(holiday);
-    else holidayByDate.set(key, [holiday]);
+  const operatingCalendarBySite = new Map<
+    string,
+    ReturnType<typeof buildOperatingCalendarLegacy>
+  >();
+  function operatingCalendarForSite(siteId: string | null) {
+    const key = siteId ?? '';
+    const existing = operatingCalendarBySite.get(key);
+    if (existing) return existing;
+    const calendar = buildOperatingCalendarLegacy(key, holidays);
+    operatingCalendarBySite.set(key, calendar);
+    return calendar;
   }
 
   const confirmedSchedules = await prisma.visitSchedule.findMany({
@@ -1044,10 +1051,7 @@ export async function generateVisitScheduleProposalDrafts(
           }),
         };
       }
-      const dayHolidays = holidayByDate.get(toDateKey(shift.date)) ?? [];
-      if (
-        dayHolidays.some((holiday) => holiday.site_id == null || holiday.site_id === shift.site_id)
-      ) {
+      if (!isOperatingDay(operatingCalendarForSite(shift.site_id), formatUtcDateKey(shift.date))) {
         return {
           kind: 'rejected' as const,
           diagnostic: buildRejectedDiagnostic({
