@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { ReferralForm } from './referral-form';
 
 setupDomTestEnv();
@@ -46,6 +47,11 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/hooks/use-unsaved-changes-guard', () => ({
   useUnsavedChangesGuard: useUnsavedChangesGuardMock,
 }));
+
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
 
 // Higher-fidelity ConfirmDialog mock: renders an `alertdialog` with an
 // accessible name (title) + description, a confirm button (calling onConfirm)
@@ -354,6 +360,7 @@ beforeEach(() => {
   toastMock.error.mockClear();
   allowNavigationMock.mockClear();
   useUnsavedChangesGuardMock.mockClear();
+  vi.mocked(buildPatientHref).mockClear();
   useOrgIdMock.mockReturnValue('org_test');
   capturedSelectItems.length = 0;
   capturedTriggers.length = 0;
@@ -755,6 +762,28 @@ describe('ReferralForm atomic single POST', () => {
     // The removed two-step endpoints were NEVER hit.
     expect(calledUrls).not.toContain('/api/patients');
     expect(calledUrls).not.toContain('/api/cases');
+  });
+
+  it('uses the shared buildPatientHref return value for successful navigation', async () => {
+    const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockImplementation((id: string) => `/patients/__sentinel_${id}__`);
+    try {
+      render(<ReferralForm />);
+      fillValidReferralForm();
+      await submitForm();
+
+      await waitFor(() => {
+        expect(pushMock).toHaveBeenCalledWith('/patients/__sentinel_patient_123__');
+      });
+      expect(vi.mocked(buildPatientHref).mock.calls).toEqual([['patient_123']]);
+      expect(allowNavigationMock.mock.invocationCallOrder[0]).toBeLessThan(
+        pushMock.mock.invocationCallOrder[0],
+      );
+    } finally {
+      if (realImpl) {
+        vi.mocked(buildPatientHref).mockImplementation(realImpl);
+      }
+    }
   });
 });
 

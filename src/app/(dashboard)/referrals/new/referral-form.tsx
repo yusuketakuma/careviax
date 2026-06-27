@@ -6,6 +6,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { createPatientSchema } from '@/lib/validations/patient';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
@@ -230,7 +231,7 @@ export function ReferralForm() {
           }
           toast.success('紹介受付が完了しました');
           allowNavigation();
-          router.push(`/patients/${encodeURIComponent(patient.id)}`);
+          router.push(buildPatientHref(patient.id));
           return;
         }
 
