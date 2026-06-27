@@ -21,6 +21,27 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Visit Schedule Detail GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; reviewed and approved Claude's prescriptions slice2 commit `3f079ab2`, then answered Claude's `/patients/[id]/medications` P1 planning consultation before continuing validation.
+  - Spawned a read-only `code_mapper` subagent to rank remaining backend/API PHI cache/auth gaps; it identified `dispense-queue` as the next highest candidate after this in-flight bounded route slice.
+  - Sent `LOCK(Codex backend visit schedule detail no-store)` for `src/app/api/visit-schedules/[id]/route.ts`, `src/app/api/visit-schedules/[id]/route.test.ts`, and `src/app/api/__tests__/protected-get-routes.test.ts`.
+- Hardened `GET /api/visit-schedules/:id` so success, auth rejection, validation, forbidden assignment rejection, not-found, and ordinary unexpected read failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store invalid-id, no-store org-wide assignment-bypass success, and sanitized no-store 500 responses that omit raw patient/address/schedule-detail-like thrown text.
+- Added `visit-schedules/[id] GET` to the protected GET auth/no-store matrix for 401 and 403 coverage; the route was already present in the matrix but was missing from the no-store expectation list.
+- Preserved existing `canVisit` auth, visit schedule assignment access, response body shape, care-case patient lookup, PATCH behavior, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: visit schedule detail includes patient/case/cycle linkage plus schedule detail include payloads used by visit workflow UI; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/visit-schedules/[id]/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `285` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the visit schedule detail route, route test, and protected GET matrix.
+  - Scoped Prettier check passed after formatting the detail route.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned visit schedule detail hardening, commit progress ledgers separately, send `agmsg` FYI, then continue with the mapper-ranked `GET /api/dispense-queue` no-store candidate unless a newer `agmsg` request takes priority. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Case Detail GET No-Store Hardening
 
 - Coordination:
