@@ -140,6 +140,19 @@ describe('/api/medication-profiles', () => {
     expect(medicationProfileCreateMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when medication profile listing fails unexpectedly', async () => {
+    medicationProfileFindManyMock.mockRejectedValueOnce(new Error('raw medication profile secret'));
+
+    const response = (await GET(createGetRequest(), emptyRouteContext))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw medication profile secret');
+  });
+
   it.each([
     ['patient_id=', 'patient_id', '患者IDを指定してください'],
     ['patient_id=%20patient_1', 'patient_id', '患者IDの形式が不正です'],
