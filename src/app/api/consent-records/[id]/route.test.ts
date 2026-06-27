@@ -62,6 +62,11 @@ vi.mock('@/server/services/consent-record-audit', () => ({
 
 import { GET, PATCH } from './route';
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createRequest(method: 'GET' | 'PATCH', body?: unknown) {
   return new NextRequest('http://localhost/api/consent-records/consent_1', {
     method,
@@ -138,6 +143,7 @@ describe('/api/consent-records/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       id: 'consent_1',
     });
@@ -174,14 +180,40 @@ describe('/api/consent-records/[id]', () => {
     );
   });
 
-  it('fails closed when consent detail view audit cannot be recorded', async () => {
-    recordConsentRecordViewedAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+  it('returns a sanitized no-store 500 when consent detail audit cannot be recorded', async () => {
+    recordConsentRecordViewedAuditMock.mockRejectedValueOnce(
+      new Error('raw consent detail document secret'),
+    );
 
-    await expect(
-      GET(createRequest('GET'), {
-        params: Promise.resolve({ id: 'consent_1' }),
-      }),
-    ).rejects.toThrow('audit unavailable');
+    const response = (await GET(createRequest('GET'), {
+      params: Promise.resolve({ id: 'consent_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('document secret');
+  });
+
+  it('returns a sanitized no-store 500 when consent detail lookup fails unexpectedly', async () => {
+    consentRecordFindFirstMock.mockRejectedValueOnce(
+      new Error('raw consent detail patient document secret'),
+    );
+
+    const response = (await GET(createRequest('GET'), {
+      params: Promise.resolve({ id: 'consent_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('patient document secret');
   });
 
   it('rejects blank consent record ids before loading the record on GET', async () => {
@@ -190,6 +222,7 @@ describe('/api/consent-records/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '同意記録IDが不正です',
     });
@@ -207,6 +240,7 @@ describe('/api/consent-records/[id]', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '同意記録が見つかりません',
     });

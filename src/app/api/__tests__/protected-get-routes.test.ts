@@ -177,6 +177,7 @@ import { GET as communicationRequestsExportGet } from '../communication-requests
 import { GET as conferenceNotesGet } from '../conference-notes/route';
 import { GET as conferenceNoteGet } from '../conference-notes/[id]/route';
 import { GET as consentRecordsGet } from '../consent-records/route';
+import { GET as consentRecordGet } from '../consent-records/[id]/route';
 import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
 import { GET as dashboardCockpitGet } from '../dashboard/cockpit/route';
 import { GET as dashboardDispensingStatsGet } from '../dashboard/dispensing-stats/route';
@@ -496,6 +497,38 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           'x-org-id': 'org_1',
         }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'consent-records/[id] GET',
+    setupSuccess: () => {
+      const record = {
+        id: 'consent_1',
+        patient_id: 'patient_1',
+        case_id: null,
+        consent_type: 'external_sharing',
+        method: 'paper_scan',
+        is_active: true,
+        expiry_date: new Date('2026-12-31T00:00:00.000Z'),
+        document_url: '/api/files/file_1/presigned-download?download=1',
+        document_file_id: null,
+        template_id: 'template_1',
+        template_version: 2,
+        updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      };
+      prismaMock.consentRecord.findFirst.mockResolvedValueOnce({
+        id: record.id,
+        patient_id: record.patient_id,
+        case_id: record.case_id,
+      });
+      prismaMock.consentRecord.findFirst.mockResolvedValueOnce(record);
+    },
+    handler: () =>
+      consentRecordGet(
+        createRequest('http://localhost/api/consent-records/consent_1', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'consent_1' }) },
       ),
   },
   {
@@ -1415,6 +1448,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
+        route.name === 'consent-records/[id] GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
@@ -1495,6 +1529,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
+        route.name === 'consent-records/[id] GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
@@ -1561,6 +1596,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes GET' ||
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
+        route.name === 'consent-records/[id] GET' ||
         route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||
         route.name === 'dispense-results/[id] GET' ||

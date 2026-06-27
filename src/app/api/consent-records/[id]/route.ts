@@ -1,8 +1,17 @@
 import { z } from 'zod';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, forbidden, conflict } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  forbidden,
+  conflict,
+  internalError,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
@@ -99,7 +108,7 @@ function resolveConsentDocumentUrlInput(args: {
   return { ok: true as const, documentUrl: normalizedUrl };
 }
 
-export const GET = withAuthContext<{ id: string }>(
+const authenticatedGET = withAuthContext<{ id: string }>(
   async (_req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
     if (!hasPermission(ctx.role, 'canVisit')) {
       return forbidden('同意記録の閲覧には訪問権限が必要です');
@@ -135,6 +144,15 @@ export const GET = withAuthContext<{ id: string }>(
   },
   { permission: 'canVisit' },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const PATCH = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
