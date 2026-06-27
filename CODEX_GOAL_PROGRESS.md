@@ -11985,6 +11985,26 @@ Next loop:
 - Remaining:
   - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST` with full validation results.
 
+### ESLint Local Artifact Ignore — Lint Gate Recovery
+
+- Coordination:
+  - Prioritized Claude consultations: rejected stale broad `referrals/new` reimplementation after inspecting current main, confirmed the task was already landed, then accepted Claude's narrowly scoped `/admin/users` FE lock and avoided those files.
+  - Confirmed `.agent-loop/FEATURE_QUEUE.md` is the work SSOT. `gbrain search "eslint ignore stale harness worktrees lint careviax"` returned no prior memory hits.
+- Bugs found:
+  - `pnpm lint` failed because ESLint traversed git-ignored local artifact directories.
+  - Baseline failure paths were `.claude/worktrees/agent-a58dd49cc8fa6a242/src/app/(dashboard)/patients/[id]/card-workspace.tsx` and `tools/tests/.artifacts/flagship-fullpage.mts`.
+  - `.gitignore` already ignored `.claude/` and `tools/tests/.artifacts/`, but `eslint.config.mjs` did not.
+- Implemented by Codex:
+  - Added `.claude/**` and `tools/tests/.artifacts/**` to ESLint `globalIgnores`.
+  - Left production source, tests, and application config lint coverage intact.
+- Validation:
+  - Baseline `pnpm lint`: failed with `1` error and `4` warnings, all in git-ignored local artifact paths.
+  - `pnpm exec prettier --check eslint.config.mjs`: passed.
+  - `git diff --check -- eslint.config.mjs`: passed.
+  - Final `pnpm lint`: passed.
+- Remaining:
+  - Commit `eslint.config.mjs` and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`.
+
 ### Medication Profiles GET — Sensitive List No-Store
 
 - Coordination:
