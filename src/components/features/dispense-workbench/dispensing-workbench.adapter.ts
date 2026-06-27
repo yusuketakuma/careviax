@@ -38,6 +38,11 @@ import type {
   DispenseWorkbenchPatientsResponse,
   DispenseWorkbenchPhase,
 } from '@/lib/dispensing/dispense-workbench-shared';
+import {
+  buildDispenseTaskApiPath,
+  buildPrescriptionLineApiPath,
+  buildSetPlanApiPath,
+} from '@/lib/dispensing/api-paths';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import {
   WorkbenchConflictError,
@@ -241,7 +246,7 @@ export async function loadWorkbenchAsync(
   const taskId = await resolveTaskId(row.cycle_id, phase, options);
   if (!taskId) return null;
   const data = await fetchJson<DispenseWorkbenchData>(
-    `/api/dispense-tasks/${encodeURIComponent(taskId)}/workbench`,
+    buildDispenseTaskApiPath(taskId, '/workbench'),
     options,
   );
   if (!data) return null;
@@ -270,7 +275,7 @@ export async function loadCalendarAsync(
 ): Promise<CalendarMatrixResponse | null> {
   if (USE_MOCK) return null;
   const body = await fetchJson<{ data: CalendarMatrixResponse }>(
-    `/api/set-plans/${encodeURIComponent(planId)}/calendar`,
+    buildSetPlanApiPath(planId, '/calendar'),
     scope,
   );
   return body?.data ?? null;
@@ -419,7 +424,7 @@ export async function createGroup(
   body: { group_key: string; label: string; method: string; slot?: string; sort_order?: number },
 ): Promise<{ data: { id: string; version?: number } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(`/api/dispense-tasks/${encodeURIComponent(taskId)}/groups`, 'POST', body);
+  return mutateJson(buildDispenseTaskApiPath(taskId, '/groups'), 'POST', body);
 }
 
 /** グループ属性の一括更新（PATCH /api/dispense-tasks/[taskId]/groups, groups[]）。 */
@@ -435,7 +440,7 @@ export async function updateGroups(
   }>,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(`/api/dispense-tasks/${encodeURIComponent(taskId)}/groups`, 'PATCH', {
+  return mutateJson(buildDispenseTaskApiPath(taskId, '/groups'), 'PATCH', {
     groups,
   });
 }
@@ -450,7 +455,7 @@ export async function assignLinesToGroup(
   }>,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(`/api/dispense-tasks/${encodeURIComponent(taskId)}/groups`, 'PATCH', {
+  return mutateJson(buildDispenseTaskApiPath(taskId, '/groups'), 'PATCH', {
     assignments,
   });
 }
@@ -470,7 +475,7 @@ export async function updatePrescriptionLine(
   },
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(`/api/prescription-lines/${encodeURIComponent(lineId)}`, 'PATCH', body);
+  return mutateJson(buildPrescriptionLineApiPath(lineId), 'PATCH', body);
 }
 
 /** 処方明細の一括期間編集（PATCH /api/dispense-tasks/[taskId]/lines）。 */
@@ -478,7 +483,7 @@ export async function updatePrescriptionLines(
   input: UpdatePrescriptionLinesInput,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(`/api/dispense-tasks/${encodeURIComponent(input.taskId)}/lines`, 'PATCH', {
+  return mutateJson(buildDispenseTaskApiPath(input.taskId, '/lines'), 'PATCH', {
     client_action_id: input.client_action_id,
     packaging_group_id: input.packaging_group_id,
     lines: input.lines,
@@ -510,7 +515,7 @@ export async function mutateCell(
   input: CellMutationInput,
 ): Promise<{ data: SetBatchDto | { batches: SetBatchDto[] } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(`/api/set-plans/${encodeURIComponent(planId)}/batches/cell`, 'PATCH', input);
+  return mutateJson(buildSetPlanApiPath(planId, '/batches/cell'), 'PATCH', input);
 }
 
 /** 一括セット（POST /api/set-plans/[planId]/batches/bulk-set）。 */
@@ -519,7 +524,7 @@ export async function bulkSetCells(
   cells: Array<{ batch_id: string; expected_version?: number }>,
 ): Promise<{ data: { count: number; batches: SetBatchDto[] } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
-  return mutateJson(`/api/set-plans/${encodeURIComponent(planId)}/batches/bulk-set`, 'POST', {
+  return mutateJson(buildSetPlanApiPath(planId, '/batches/bulk-set'), 'POST', {
     cells,
   });
 }
