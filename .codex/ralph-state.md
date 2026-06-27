@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-2026 JST
+
+- current task: operational-task patient foundation href helper convergence: route patient foundation review actions through the shared patient href helper while preserving task identity inputs and fallback behavior.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, `src/lib/tasks/operational-task-presentation.ts`, `src/server/services/operational-tasks.test.ts`, `src/lib/patient/navigation.ts`, live `rg` caller scan for `describeOperationalTask`, Claude P1-c commit `cd13da74`, `src/app/(dashboard)/prescriptions/intake/intake-triage.shared.ts`, `src/app/api/prescription-intakes/triage/route.ts`, `docs/ui-ux-design-guidelines.md`, `docs/color-token-remediation-plan.md`, and `src/components/features/workspace/safety-board.tsx` read-only for Claude P1-d design consultation.
+- files changed: `src/lib/tasks/operational-task-presentation.ts`, `src/server/services/operational-tasks.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: no production behavior bug was changed. The maintainability/safety gap was that `patient_foundation_review` action href construction still used inline `/patients/${encodeURIComponent(id)}#patient-foundation` instead of the shared patient href helper used by the rest of the patient route surface.
+- security risks found: reduced route-construction regression risk by delegating patient-foundation path building to `buildPatientHref`, adding regression coverage for hostile path/query/fragment-like patient IDs, and failing closed for exact dot-segment patient IDs. Raw task identity input remains unchanged; auth, authorization, DB queries, PHI projection, schema/data, migrations, UI rendering, dependencies, external sends, push/deploy, and destructive operations were not changed.
+- performance issues found: none. This is a pure string-construction refactor with no additional reads, network calls, loops, polling, cache behavior, or dependencies.
+- validation commands: baseline `pnpm exec vitest run src/server/services/operational-tasks.test.ts --reporter=dot --testTimeout=30000`; baseline scoped ESLint for `src/lib/tasks/operational-task-presentation.ts` and `src/server/services/operational-tasks.test.ts`; `pnpm exec prettier --write src/lib/tasks/operational-task-presentation.ts src/server/services/operational-tasks.test.ts`; final focused operational-tasks Vitest; scoped ESLint for the two changed files; scoped Prettier check for the two changed files; scoped diff whitespace check for the two changed files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; interrupt review gates for Claude P1-c `cd13da74` with intake-triage focused Vitest, scoped ESLint, scoped Prettier, and commit diff whitespace check.
+- validation results: baseline operational-tasks Vitest passed `1` file / `11` tests; baseline scoped ESLint passed. Final operational-tasks Vitest passed `1` file / `14` tests; scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed. Claude P1-c review passed `2` intake-triage test files / `20` tests plus scoped static checks, and Codex sent `PATCH_REVIEW_RESULT APPROVED`. Codex also answered Claude's P1-d safety-board design questions and agreed with the P1-e Phase 2 reclassification.
+- remaining work: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `fa123f5e` plus the state commit, then continue after inbox is clear.
+- next action: state commit and Claude review request for the operational-task patient foundation href helper convergence slice.
+
 ### 20260627-1955 JST
 
 - current task: patient-detail timeline href hardening: separate timeline path-segment helpers from query-string helpers while preserving timeline semantics.

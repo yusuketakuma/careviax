@@ -23,6 +23,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Operational Task Patient Foundation Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, sent a lock request for `src/lib/tasks/operational-task-presentation.ts` and `src/server/services/operational-tasks.test.ts`, then received Claude's non-overlap ACK while preserving Claude's UI color-token lane.
+  - Prioritized Claude interrupts before finishing the slice: reviewed and approved P1-c `cd13da74`, answered P1-d safety-board design questions, and agreed that P1-e has no Phase 1 state-color target and should move to Phase 2 decorative/identifier policy.
+  - gbrain structural call graph for `describeOperationalTask` was unavailable/not indexed, so live `rg` was used to identify the caller surface before editing.
+- Refactored operational task patient-foundation href construction in `fa123f5e`:
+  - `patient_foundation_review` now delegates patient detail anchor href construction to `buildPatientHref(task.related_entity_id, '#patient-foundation')`.
+  - Preserved raw task identity inputs, the non-patient `/patients?foundation_gap=1` fallback, action/queue labels, response shape, UI callers, API routes, DB schema/data, migrations, dependencies, external sends, push/deploy, and destructive-operation boundaries.
+  - Added regression coverage for hostile patient IDs that contain path traversal, query, and fragment-like text, and for exact dot-segment patient IDs failing closed through the shared helper.
+- Security/correctness risk reduced: patient foundation links now share the app-wide patient href helper contract instead of carrying an inline path-template copy.
+- Performance issue improved: none. This is a pure href construction refactor with no extra DB reads, network calls, loops, polling, cache behavior, or dependencies.
+- Validation passed:
+  - Baseline `pnpm exec vitest run src/server/services/operational-tasks.test.ts --reporter=dot --testTimeout=30000` passed `1` file / `11` tests.
+  - Baseline scoped ESLint passed for `src/lib/tasks/operational-task-presentation.ts` and `src/server/services/operational-tasks.test.ts`.
+  - `pnpm exec prettier --write src/lib/tasks/operational-task-presentation.ts src/server/services/operational-tasks.test.ts` passed.
+  - Final focused operational-tasks Vitest passed `1` file / `14` tests.
+  - Scoped ESLint passed for the two changed files.
+  - Scoped Prettier check passed for the two changed files.
+  - Scoped diff whitespace check passed for the two changed files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Interrupt review validation for Claude P1-c `cd13da74`:
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/intake/intake-triage-content.test.tsx' 'src/app/(dashboard)/prescriptions/intake/intake-triage.shared.test.ts' --reporter=dot --testTimeout=30000` passed `2` files / `20` tests.
+  - Scoped ESLint, scoped Prettier check, and commit diff whitespace check passed for the intake-triage files.
+  - Review result sent as `PATCH_REVIEW_RESULT APPROVED`; Codex confirmed `unblock_related=state-done`, `inquiry_waiting=state-confirm`, and lane badges as Phase 2/3 identifier work.
+- Commit status: implementation landed as `fa123f5e`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `fa123f5e` plus the state commit, then continue after inbox is clear.
+
 ### 2026-06-27 JST - Visit Workflow Patient Href Helper Convergence
 
 - Coordination:
