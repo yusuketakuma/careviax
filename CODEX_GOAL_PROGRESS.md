@@ -11923,3 +11923,28 @@ Next loop:
   - `pnpm typecheck:no-unused`: passed.
 - Remaining:
   - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`. The broader API sensitive-list no-store sweep remains incomplete.
+
+### Medication Profiles GET — Sensitive List No-Store
+
+- Coordination:
+  - Drained `phos/codex` agmsg repeatedly during the slice.
+  - Prioritized Claude interrupts: approved `44f5f46d` `/admin/incidents` after independent focused gates, then answered the `/statistics` implementation consult and accepted its lock.
+- Bugs found:
+  - `GET /api/medication-profiles` returned sensitive patient medication profile data through an exported `withAuthContext` handler without a route-local wrapper covering auth-boundary and unexpected-error responses.
+  - The protected GET matrix did not assert no-store for `medication-profiles GET`.
+- Implemented by Codex:
+  - Split the existing authenticated GET handler into `authenticatedGET` and exported a wrapper that applies `withSensitiveNoStore()` to all normal responses.
+  - Added `unstable_rethrow()` plus `withSensitiveNoStore(internalError())` for sanitized unexpected failures while preserving Next.js control-flow exceptions.
+  - Added a sanitized 500 regression that confirms a thrown raw medication-profile secret is not reflected in the response body.
+  - Added `medication-profiles GET` to the protected GET no-store matrix.
+- Validation:
+  - Baseline `pnpm vitest run src/app/api/medication-profiles/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `14` tests.
+  - `pnpm exec prettier --write src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed, formatting applied to the route test.
+  - `pnpm vitest run src/app/api/medication-profiles/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `333` tests.
+  - `pnpm exec eslint src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `git diff --check -- src/app/api/medication-profiles/route.ts src/app/api/medication-profiles/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`. The broader API sensitive-list no-store sweep remains incomplete.
