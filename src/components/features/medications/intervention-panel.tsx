@@ -6,12 +6,7 @@ import { ja } from 'date-fns/locale';
 import { Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -43,14 +38,22 @@ const INTERVENTION_TYPE_LABELS: Record<InterventionType, string> = {
   other: 'その他',
 };
 
+// 介入種別の識別色(カテゴリ区別であり status ではない)。--intervention-* トークン。
+// 小バッジ限定: border + 最小 fill(/10) + text(§L311-317)。other は中立(neutral)。
 const INTERVENTION_TYPE_COLORS: Record<InterventionType, string> = {
-  dose_adjustment: 'border-blue-200 bg-blue-50 text-blue-700',
-  drug_change: 'border-purple-200 bg-purple-50 text-purple-700',
-  side_effect_management: 'border-red-200 bg-red-50 text-red-700',
-  adherence_support: 'border-green-200 bg-green-50 text-green-700',
-  prescriber_consultation: 'border-orange-200 bg-orange-50 text-orange-700',
-  patient_education: 'border-teal-200 bg-teal-50 text-teal-700',
-  other: 'border-slate-200 bg-slate-50 text-slate-600',
+  dose_adjustment:
+    'border-intervention-dose-adjustment/30 bg-intervention-dose-adjustment/10 text-intervention-dose-adjustment',
+  drug_change:
+    'border-intervention-drug-change/30 bg-intervention-drug-change/10 text-intervention-drug-change',
+  side_effect_management:
+    'border-intervention-side-effect-management/30 bg-intervention-side-effect-management/10 text-intervention-side-effect-management',
+  adherence_support:
+    'border-intervention-adherence-support/30 bg-intervention-adherence-support/10 text-intervention-adherence-support',
+  prescriber_consultation:
+    'border-intervention-prescriber-consultation/30 bg-intervention-prescriber-consultation/10 text-intervention-prescriber-consultation',
+  patient_education:
+    'border-intervention-patient-education/30 bg-intervention-patient-education/10 text-intervention-patient-education',
+  other: 'border-border bg-muted text-muted-foreground',
 };
 
 export type Intervention = {
@@ -138,9 +141,7 @@ function InterventionRow({ intervention, onOutcomeUpdate }: InterventionRowProps
                   className="text-sm"
                   placeholder="介入の結果・効果を記録..."
                 />
-                {saveError && (
-                  <p className="text-xs text-destructive">{saveError}</p>
-                )}
+                {saveError && <p className="text-xs text-destructive">{saveError}</p>}
                 <div className="flex gap-2">
                   <Button size="sm" onClick={saveOutcome} disabled={saving}>
                     {saving ? '保存中...' : '保存'}
@@ -182,9 +183,7 @@ function NewInterventionForm({ patientId, issueId, onCreated }: NewInterventionF
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<InterventionType>('other');
   const [description, setDescription] = useState('');
-  const [performedAt, setPerformedAt] = useState(
-    new Date().toISOString().slice(0, 16)
-  );
+  const [performedAt, setPerformedAt] = useState(new Date().toISOString().slice(0, 16));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -221,66 +220,71 @@ function NewInterventionForm({ patientId, issueId, onCreated }: NewInterventionF
 
   return (
     <>
-      <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setOpen(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 gap-1 text-xs"
+        onClick={() => setOpen(true)}
+      >
         <Plus className="size-3" />
         介入記録
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>介入記録の追加</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          <div className="space-y-1.5">
-            <Label>介入種別</Label>
-            <Select value={type} onValueChange={(v) => setType(v as InterventionType)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(INTERVENTION_TYPE_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>介入記録の追加</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label>介入種別</Label>
+              <Select value={type} onValueChange={(v) => setType(v as InterventionType)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(INTERVENTION_TYPE_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="space-y-1.5">
-            <Label>実施日時</Label>
-            <Input
-              type="datetime-local"
-              value={performedAt}
-              onChange={(e) => setPerformedAt(e.target.value)}
-              required
-            />
-          </div>
+            <div className="space-y-1.5">
+              <Label>実施日時</Label>
+              <Input
+                type="datetime-local"
+                value={performedAt}
+                onChange={(e) => setPerformedAt(e.target.value)}
+                required
+              />
+            </div>
 
-          <div className="space-y-1.5">
-            <Label>介入内容</Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="実施した介入の内容を記録..."
-              rows={3}
-              required
-            />
-          </div>
+            <div className="space-y-1.5">
+              <Label>介入内容</Label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="実施した介入の内容を記録..."
+                rows={3}
+                required
+              />
+            </div>
 
-          {error && <p className="text-xs text-destructive">{error}</p>}
+            {error && <p className="text-xs text-destructive">{error}</p>}
 
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-              キャンセル
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? '保存中...' : '追加'}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+                キャンセル
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? '保存中...' : '追加'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -322,7 +326,9 @@ export function InterventionPanel({
       }
     }
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [patientId, issueId, initialInterventions.length]);
 
   function handleCreated(intervention: Intervention) {
@@ -330,9 +336,7 @@ export function InterventionPanel({
   }
 
   function handleOutcomeUpdate(id: string, outcome: string) {
-    setInterventions((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, outcome } : i))
-    );
+    setInterventions((prev) => prev.map((i) => (i.id === id ? { ...i, outcome } : i)));
   }
 
   return (
@@ -346,11 +350,7 @@ export function InterventionPanel({
             </span>
           )}
         </h3>
-        <NewInterventionForm
-          patientId={patientId}
-          issueId={issueId}
-          onCreated={handleCreated}
-        />
+        <NewInterventionForm patientId={patientId} issueId={issueId} onCreated={handleCreated} />
       </div>
 
       {loading ? (
