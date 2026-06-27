@@ -71,6 +71,7 @@ model Organization {
   pca_pump_maintenance_events  PcaPumpMaintenanceEvent[]
   service_areas                ServiceArea[]
   visit_vehicle_resources      VisitVehicleResource[]
+  operating_hours              PharmacyOperatingHours[]
   webhook_registrations        WebhookRegistration[]
   webhook_deliveries           WebhookDelivery[]
   drug_alert_rules             DrugAlertRule[]
@@ -125,6 +126,7 @@ model PharmacySite {
   visit_schedules            VisitSchedule[]
   visit_schedule_proposals   VisitScheduleProposal[]
   business_holidays          BusinessHoliday[]
+  operating_hours            PharmacyOperatingHours[]
   insurance_configs          PharmacySiteInsuranceConfig[]
   service_areas              ServiceArea[]
   visit_vehicle_resources    VisitVehicleResource[]
@@ -332,11 +334,33 @@ model BusinessHoliday {
   name         String
   holiday_type HolidayType
   is_closed    Boolean       @default(true)
+  open_time    DateTime?     @db.Time()
+  close_time   DateTime?     @db.Time()
   created_at   DateTime      @default(now())
   updated_at   DateTime      @updatedAt
 
   @@index([org_id, date])
   @@index([site_id, date])
+}
+
+model PharmacyOperatingHours {
+  id         String    @id @default(cuid())
+  org_id     String
+  site_id    String
+  weekday    Int
+  is_open    Boolean   @default(true)
+  open_time  DateTime? @db.Time()
+  close_time DateTime? @db.Time()
+  note       String?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  org  Organization @relation(fields: [org_id], references: [id])
+  site PharmacySite @relation(fields: [site_id, org_id], references: [id, org_id])
+
+  @@unique([site_id, weekday])
+  @@index([org_id])
+  @@index([org_id, site_id])
 }
 
 // PharmacyDrugStock は drug.prisma で定義予定（未実装時はコメントアウト）

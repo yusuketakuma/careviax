@@ -1,5 +1,5 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { seedBulkDemoPatients, seedDesignFidelityDemo } from './seed-design-demo';
 
 const connectionString = process.env.DATABASE_URL;
@@ -128,6 +128,23 @@ async function main() {
       lat: 35.6812,
       lng: 139.7671,
     },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw(Prisma.sql`SELECT set_config('app.current_org_id', ${org.id}, true)`);
+    await tx.$executeRaw(Prisma.sql`SELECT set_config('app.rls_context_applied', 'true', true)`);
+
+    await tx.pharmacyOperatingHours.createMany({
+      data: Array.from({ length: 7 }, (_, weekday) => ({
+        org_id: org.id,
+        site_id: site.id,
+        weekday,
+        is_open: true,
+        open_time: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        close_time: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+      })),
+      skipDuplicates: true,
+    });
   });
 
   const vehicleResource = await prisma.visitVehicleResource.upsert({

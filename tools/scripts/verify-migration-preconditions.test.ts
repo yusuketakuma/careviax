@@ -38,6 +38,8 @@ describe('verifyMigrationPreconditions', () => {
     expect(result.checked).toContain('set-plan-duplicate-period');
     expect(result.checked).toContain('visit-schedule-duplicate-active-route-order');
     expect(result.checked).toContain('visit-schedule-proposal-duplicate-open-route-order');
+    expect(result.checked).toContain('business-holiday-duplicate-org-wide');
+    expect(result.checked).toContain('business-holiday-duplicate-site');
   });
 
   it('warns but does not fail when btree_gist is not installed', async () => {
@@ -211,6 +213,26 @@ describe('verifyMigrationPreconditions', () => {
         }),
         expect.objectContaining({
           name: 'visit-schedule-proposal-duplicate-open-route-order',
+          severity: 'error',
+        }),
+      ]),
+    );
+  });
+
+  it('fails on duplicate business holidays that would block operating-day partial unique indexes', async () => {
+    const result = await verifyMigrationPreconditions(
+      makeClient([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3]),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'business-holiday-duplicate-org-wide',
+          severity: 'error',
+        }),
+        expect.objectContaining({
+          name: 'business-holiday-duplicate-site',
           severity: 'error',
         }),
       ]),

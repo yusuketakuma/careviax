@@ -306,6 +306,12 @@ CREATE POLICY tenant_isolation ON "PharmacySite"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "PharmacyOperatingHours" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyOperatingHours";
+CREATE POLICY tenant_isolation ON "PharmacyOperatingHours"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+
 ALTER TABLE "Membership" ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON "Membership"
   USING (org_id = current_setting('app.current_org_id', true))
@@ -550,6 +556,7 @@ ALTER TABLE "Intervention" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Task" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "FirstVisitDocument" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PharmacySite" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PharmacyOperatingHours" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "Membership" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "FacilityStandardRegistration" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PharmacistCredential" FORCE ROW LEVEL SECURITY;

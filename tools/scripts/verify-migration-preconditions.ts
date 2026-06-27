@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { inspect } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { Client } from 'pg';
@@ -607,6 +608,48 @@ export async function verifyMigrationPreconditions(client: MigrationPrecondition
     });
   }
 
+  const duplicateOrgWideBusinessHolidayGroups = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, date, holiday_type
+        FROM "BusinessHoliday"
+        WHERE site_id IS NULL
+        GROUP BY org_id, date, holiday_type
+        HAVING COUNT(*) > 1
+      ) AS duplicate_org_wide_business_holidays
+    `,
+  );
+  if (duplicateOrgWideBusinessHolidayGroups > 0) {
+    issues.push({
+      name: 'business-holiday-duplicate-org-wide',
+      severity: 'error',
+      detail: `${duplicateOrgWideBusinessHolidayGroups} org-wide BusinessHoliday group(s) would violate BusinessHoliday_org_date_type_org_wide_key`,
+    });
+  }
+
+  const duplicateSiteBusinessHolidayGroups = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, date, site_id, holiday_type
+        FROM "BusinessHoliday"
+        WHERE site_id IS NOT NULL
+        GROUP BY org_id, date, site_id, holiday_type
+        HAVING COUNT(*) > 1
+      ) AS duplicate_site_business_holidays
+    `,
+  );
+  if (duplicateSiteBusinessHolidayGroups > 0) {
+    issues.push({
+      name: 'business-holiday-duplicate-site',
+      severity: 'error',
+      detail: `${duplicateSiteBusinessHolidayGroups} site-specific BusinessHoliday group(s) would violate BusinessHoliday_org_date_site_type_site_key`,
+    });
+  }
+
   return {
     ok: issues.every((issue) => issue.severity !== 'error'),
     issues,
@@ -636,6 +679,8 @@ export async function verifyMigrationPreconditions(client: MigrationPrecondition
       'set-plan-duplicate-period',
       'visit-schedule-duplicate-active-route-order',
       'visit-schedule-proposal-duplicate-open-route-order',
+      'business-holiday-duplicate-org-wide',
+      'business-holiday-duplicate-site',
     ],
   };
 }
