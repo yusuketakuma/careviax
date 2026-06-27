@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import type { CreatePatientInput } from '@/lib/validations/patient';
 import { allergyEntrySchema, type AllergyEntry } from '@/lib/validations/patient-allergy';
 import type { PatientOverview } from '../patient-detail.types';
@@ -192,7 +193,7 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
     <div className="mx-auto max-w-7xl">
       <PatientForm
         patientId={patientId}
-        redirectTo={`/patients/${patientId}`}
+        redirectTo={buildPatientHref(patientId)}
         defaultValues={buildDefaultValues(patientQuery.data)}
       />
     </div>

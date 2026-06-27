@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { getPatientEditShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { PatientEditContent } from './patient-edit-content';
 
 export const metadata: Metadata = {
@@ -14,7 +15,7 @@ export default async function PatientEditPage({ params }: { params: Promise<{ id
   return (
     <PageScaffold>
       <WorkflowPageIntro
-        backHref={`/patients/${id}`}
+        backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
         eyebrow="Patient Edit"
         title="患者情報編集"

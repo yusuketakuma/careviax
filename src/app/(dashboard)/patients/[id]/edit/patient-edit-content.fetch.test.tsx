@@ -4,9 +4,11 @@ import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
+const patientFormMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -17,12 +19,20 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 
 vi.mock('@/components/features/patients/patient-form', () => ({
-  PatientForm: () => <div>patient form</div>,
+  PatientForm: (props: unknown) => {
+    patientFormMock(props);
+    return <div>patient form</div>;
+  },
 }));
 
 vi.mock('@/lib/patient/api-paths', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
   return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
+
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
 });
 
 import { PatientEditContent } from './patient-edit-content';
@@ -68,6 +78,50 @@ describe('PatientEditContent patient overview fetch', () => {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
     }
+  });
+
+  it('routes the successful edit redirect through the shared patient href helper', () => {
+    const patientId = 'patient_1';
+    vi.mocked(buildPatientHref).mockReturnValueOnce('/patients/__helper_patient_1__');
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({
+      data: {
+        name: '患者',
+        name_kana: 'カンジャ',
+        birth_date: '1980-01-01T00:00:00.000Z',
+        gender: 'male',
+        phone: null,
+        medical_insurance_number: null,
+        care_insurance_number: null,
+        billing_support_flag: false,
+        allergy_info: null,
+        notes: null,
+        primary_pharmacist_id: null,
+        backup_pharmacist_id: null,
+        primary_staff_id: null,
+        backup_staff_id: null,
+        residences: [],
+        cases: [],
+        scheduling_preference: null,
+      },
+      isLoading: false,
+      error: null,
+    });
+
+    render(<PatientEditContent patientId={patientId} />);
+
+    expect(buildPatientHref).toHaveBeenCalledWith(patientId);
+    expect(patientFormMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patientId,
+        redirectTo: '/patients/__helper_patient_1__',
+      }),
+    );
+    expect(patientFormMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirectTo: `/patients/${patientId}`,
+      }),
+    );
   });
 
   it('keeps hostile patient ids encoded in the URL path segment only', async () => {
