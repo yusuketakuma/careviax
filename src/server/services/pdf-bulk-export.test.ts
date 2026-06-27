@@ -325,12 +325,30 @@ describe('pdf-bulk-export', () => {
 
   it('renders PDFs, stores an attachment ZIP, and notifies the requester', async () => {
     integrationJobFindFirstMock.mockResolvedValue(null);
+    const storedFileId = 'file/../1?x=1#frag';
+    storeGeneratedFileMock.mockResolvedValueOnce({
+      version: 1,
+      id: storedFileId,
+      orgId: 'org_1',
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_1/file-hostile-medication-history.zip',
+      originalName: 'medication-history.zip',
+      mimeType: 'application/zip',
+      sizeBytes: 32,
+      status: 'uploaded',
+      uploadedBy: 'user_1',
+      jobId: 'job_1',
+      createdAt: '2026-05-21T00:00:00.000Z',
+      updatedAt: '2026-05-21T00:00:00.000Z',
+      completedAt: '2026-05-21T00:00:00.000Z',
+      downloadDisposition: 'attachment',
+    });
 
     const result = await runMedicationHistoryBulkExportJob('job_1');
 
     expect(result).toMatchObject({
       jobId: 'job_1',
-      fileId: 'file_1',
+      fileId: storedFileId,
       patientCount: 2,
     });
     expect(buildMedicationHistoryPdfMock).toHaveBeenNthCalledWith(1, 'org_1', 'patient_1');
@@ -355,7 +373,10 @@ describe('pdf-bulk-export', () => {
       expect.objectContaining({
         create: expect.objectContaining({
           user_id: 'user_1',
-          link: '/api/files/file_1/download',
+          link: `/api/files/${encodeURIComponent(storedFileId)}/download`,
+          metadata: expect.objectContaining({
+            file_id: storedFileId,
+          }),
         }),
       }),
     );
@@ -371,7 +392,7 @@ describe('pdf-bulk-export', () => {
           record_count: 2,
           metadata: {
             job_id: 'job_1',
-            file_id: 'file_1',
+            file_id: storedFileId,
             requested_count: 2,
             success_count: 2,
             failed_count: 0,

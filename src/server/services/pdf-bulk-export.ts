@@ -3,6 +3,7 @@ import { zipSync } from 'fflate';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/client';
 import { hasPermission } from '@/lib/auth/permissions';
+import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { mapWithConcurrency } from '@/lib/utils/concurrency';
 import {
   buildVisitScheduleAssignmentWhere,
@@ -336,6 +337,7 @@ async function notifyBulkExportReady(args: {
     args.failedCount > 0
       ? `${args.patientCount}件の薬歴PDFを ZIP にまとめました。${args.failedCount}件は生成できませんでした。`
       : `${args.patientCount}件の薬歴PDFを ZIP で出力しました。`;
+  const downloadHref = buildFileDownloadHref(args.fileId);
 
   await prisma.notification.upsert({
     where: {
@@ -352,7 +354,7 @@ async function notifyBulkExportReady(args: {
       type: 'business',
       title: '薬歴 PDF 一括出力の準備が完了しました',
       message,
-      link: `/api/files/${args.fileId}/download`,
+      link: downloadHref,
       metadata: {
         job_id: args.jobId,
         file_id: args.fileId,
@@ -365,7 +367,7 @@ async function notifyBulkExportReady(args: {
       is_read: false,
       read_at: null,
       message,
-      link: `/api/files/${args.fileId}/download`,
+      link: downloadHref,
       metadata: {
         job_id: args.jobId,
         file_id: args.fileId,

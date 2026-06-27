@@ -15,6 +15,7 @@ import {
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
+import { buildFileDownloadHref } from '@/lib/files/navigation';
 import { readJsonObject } from '@/lib/db/json';
 import { logger } from '@/lib/utils/logger';
 
@@ -797,7 +798,7 @@ function throwFileMetadataNotFound(message = 'ファイルに紐づく参照先�
 }
 
 function buildStoredFileDownloadUrl(record: StoredFileRecord) {
-  return `/api/files/${record.id}/download`;
+  return buildFileDownloadHref(record.id);
 }
 
 async function syncReportPdfUrl(record: StoredFileRecord) {
