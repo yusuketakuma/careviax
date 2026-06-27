@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Comments GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long gates, and before ledger work.
+  - Claude approved `b3a5d61f` / `d7358c8c` with no findings after independent focused validation.
+  - Claude consulted on and then locked `/admin/capacity` FE files; Codex answered the consult, acknowledged the lock, and preserved Claude-owned dirty files.
+- Hardened root `GET /api/comments` so missing entity validation, inaccessible entity not-found, success, and ordinary unexpected comment listing failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store inaccessible-entity 404, no-store success, no-store missing-entity 400, and sanitized no-store 500 responses that omit raw patient/comment-like thrown text.
+- Added `comments GET` to the protected GET auth/no-store matrix with a `dispense_task` entity query so the shared 401/403/200 matrix covers the route's `canViewDashboard` and per-entity collaboration access path.
+- Preserved existing `canViewDashboard` auth, collaboration entity validation, per-entity access check, author-name hydration, ascending response ordering, POST comment creation/mentions/realtime behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: comments reads include collaboration comment bodies, entity references, author IDs/names, mentions, and timestamps; these are now no-store at the HTTP boundary and unexpected list failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/comments/route.ts src/app/api/comments/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no formatting changes.
+  - `pnpm vitest run src/app/api/comments/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `327` tests.
+  - Scoped ESLint passed for the comments route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed with Claude's capacity WIP present.
+  - `pnpm format:check` passed for changed files.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations and preserving the active `/admin/capacity` lock. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Notifications GET No-Store Hardening
 
 - Coordination:
