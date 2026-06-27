@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0812 JST
+
+- current task: patient MCS page backHref helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `PatientMcsPage`, raw patient href/API scans, `src/app/(dashboard)/patients/[id]/mcs/page.tsx`, `src/app/(dashboard)/patients/[id]/mcs/page.test.tsx`, `src/components/features/workflow/page-shortcut-presets.ts`, `src/lib/patient/navigation.ts`, and `src/lib/patient/navigation.test.ts`.
+- files changed: `src/app/(dashboard)/patients/[id]/mcs/page.tsx`, `src/app/(dashboard)/patients/[id]/mcs/page.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: MCS page `WorkflowPageIntro.backHref` still used local manual path construction with `encodeURIComponent(id)`. The normal hostile-id encoding was already correct, but it duplicated the shared patient navigation contract and did not inherit the helper's exact dot-segment fail-closed behavior.
+- security risks found: reduced patient navigation route-construction drift by routing MCS page back navigation through shared `buildPatientHref`. Added a sentinel test proving the back link consumes the helper return value while MCS shortcuts continue delegating through the same helper. Existing MCS page hierarchy, labels, shortcut generation, raw `PatientMcsContent patientId={id}` context, route params, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure href-construction helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/mcs/page.tsx' 'src/app/(dashboard)/patients/[id]/mcs/page.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/mcs/page.test.tsx' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
+- validation results: Prettier write passed. Focused MCS page + patient navigation Vitest passed `2` files / `7` tests. Full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
+- remaining work: state commit is pending for implementation commit `7779d2d1`, then send Claude a `PATCH_REVIEW_REQUEST`. Claude's conditions helper convergence review remains pending. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0806 JST
 
 - current task: patient external sharing, consent, residual adjustment, and medication calendar subpage backHref helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure href-construction helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/share/page.tsx' 'src/app/(dashboard)/patients/[id]/share/page.test.tsx' 'src/app/(dashboard)/patients/[id]/consent/page.tsx' 'src/app/(dashboard)/patients/[id]/consent/page.test.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/page.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/page.test.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/page.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/page.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/share/page.test.tsx' 'src/app/(dashboard)/patients/[id]/consent/page.test.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/page.test.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/page.test.tsx' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped diff whitespace check for changed implementation/test files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
 - validation results: Prettier write passed. Focused subpage backHref + patient navigation Vitest passed `5` files / `9` tests. Scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
-- remaining work: state commit is pending for implementation commit `99e89212`, then send Claude a `PATCH_REVIEW_REQUEST`. Claude's conditions helper convergence review remains pending. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+- remaining work: implementation commit `99e89212` and state commit `2093010c` are complete; Claude approved the slice. Claude's conditions helper convergence review remains pending. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: monitor agmsg for Claude's conditions review result while continuing non-overlapping backend/API hardening.
 
 ### 20260628-0754 JST
 
