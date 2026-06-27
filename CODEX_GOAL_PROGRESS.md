@@ -15,12 +15,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 ### Coordination and Locks
 
 - 2026-06-27 JST latest user override: Claude/Codex maker-checker coordination is re-enabled through `agmsg`. When Codex completes an implementation slice, send Claude a `PATCH_REVIEW_REQUEST` or `REVIEW_REQUEST` with commit scope and validation instead of treating FYI as sufficient. If Claude sends a consultation, finding, or review request, handle it as the highest-priority interrupt before continuing or committing the next slice. This supersedes conflicting parts of the 2026-06-26 Codex-only note below.
+- 2026-06-27 JST auth-change ratified: Claude's checker approved the backend hardening batch and flagged `dispense-results/[id]` commit `1d9236f2` as a behavior-changing permission narrowing; Claude then reported user approval to keep it. Keep the hardening locally; push/deploy remain separately approval-gated.
 - 2026-06-26 JST operational override update: the user switched this worktree to current Codex-only operation. Do not route new work to Claude, require Claude review/ACK, or wait on Claude gates. Use Codex subagents/independent review plus real validation for high-risk work, and preserve any pre-existing dirty Claude/user files until Codex explicitly claims them.
 - Historical coordination notes below may mention Claude approvals, Claude locks, or implementation-only parallel work. Treat those as past-state context, not active gates, unless the user explicitly re-enables multi-agent operation.
 - The worktree is intentionally dirty from prior concurrent Claude/Codex slices. Preserve unrelated changes and do not revert user/Claude edits.
 - 2026-06-26 JST scope override: defer broad frontend/UI/UX updates until the GPT-5.6 frontend-capability release. Current autonomous loop should prioritize backend, DB, API, code correctness, security hardening, performance, validation, and progress ledgers; only touch frontend callers when needed to verify backend/API compatibility.
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
+
+### 2026-06-27 JST - Patient Share Correction Requests GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation and before validation/ledger work.
+  - Claude approved the new `partner-visit-records` implementation commit `d11a3d74` and state commit `f067b62c` with no findings after independently rerunning the focused partner/protected GET tests.
+  - Claude also approved the prior batched backend hardening commits with no blocking findings after independent route-local and protected matrix gates. Non-blocking follow-up: add three previous routes to the protected matrix 200-success no-store block for consistency. This was handled in the current matrix touch.
+  - Claude flagged `dispense-results/[id]` commit `1d9236f2` as a behavior-changing permission narrowing, then reported user approval to keep it after confirming no current client/UI calls the detail GET and driver/external_viewer have no relevant capability. Codex reviewed the diff and agreed it is safety hardening; push/deploy remain separately approval-gated.
+- Hardened `GET /api/patient-share-cases/[id]/correction-requests` so success, auth rejection, forbidden rejection, validation errors, not-found responses, and ordinary unexpected correction-request list failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(error)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store blank filter validation, no-store missing share-case not-found, and sanitized no-store 500 responses that omit raw patient/correction-request/proposed-value-like thrown text.
+- Added `patient-share-cases/[id]/correction-requests GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Added test-only protected matrix 200-success no-store assertions for previously route-local-covered `cases/[id] GET`, `dispense-results/[id] GET`, and `visit-schedules/[id] GET`.
+- Preserved existing `canVisit` auth, share-case ownership lookup, correction-request metadata projection, audit entry behavior, PHI-minimizing `toPatientShareCorrectionRequestRow` response shape, POST behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: correction request lists sit on patient sharing workflows and can imply disputed shared clinical/workflow content. They are now no-store at the HTTP boundary, unexpected read failures no longer serialize raw details to clients, and existing tests continue to prove `reason`, `proposed_value`, and `response_note` are not selected or returned in list output.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/correction-requests/route.ts' 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts` completed with no changes.
+  - `pnpm vitest run 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `275` tests before and after the matrix 200-success cleanup.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed after final diff.
+  - Scoped ESLint passed for the correction-requests route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm format:check` passed for changed files.
+  - `git diff --check` passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
 
 ### 2026-06-27 JST - Partner Visit Records GET No-Store Hardening
 
