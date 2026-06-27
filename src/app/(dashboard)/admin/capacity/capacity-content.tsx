@@ -6,8 +6,29 @@ import { getAdminCapacityShortcutLinks } from '@/components/features/admin/admin
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { StatusDot } from '@/components/ui/status-dot';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import type { CapacityProcessKey } from '@/lib/analytics/capacity';
+
+/**
+ * KPI が閾値を超えたときだけ付ける状態(点表示)。未超過は null=中立にして、
+ * KPI 値そのものは色で状態を誤伝しないようにする(plan「KPIが状態を誤伝しない」)。
+ */
+export type CapacityKpiState = { role: 'confirm' | 'blocked'; label: string } | null;
+
+/** スタッフ稼働率: 100%以上=過負荷(blocked) / 85%以上=逼迫(confirm) / 未満=中立。 */
+export function staffUtilizationState(percent: number): CapacityKpiState {
+  if (percent >= 100) return { role: 'blocked', label: '過負荷' };
+  if (percent >= 85) return { role: 'confirm', label: '逼迫' };
+  return null;
+}
+
+/** 緊急余力(件): 0以下=余力なし(blocked) / 2未満=余力僅少(confirm) / 以上=中立。 */
+export function emergencyCapacityState(count: number): CapacityKpiState {
+  if (count <= 0) return { role: 'blocked', label: '余力なし' };
+  if (count < 2) return { role: 'confirm', label: '余力僅少' };
+  return null;
+}
 
 /**
  * p0_45「キャパシティ・詰まり確認」: 今日あとどれだけ対応できるかを
@@ -63,26 +84,30 @@ function KpiCard({
   label,
   value,
   percent,
-  textClass,
-  barClass,
+  state = null,
 }: {
   label: string;
   value: string;
   percent: number;
-  textClass: string;
-  barClass: string;
+  /** 閾値超過時のみ点表示する状態。null は中立(状態色なし)。 */
+  state?: CapacityKpiState;
 }) {
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-3 sm:p-4"
       aria-label={`${label} ${value}`}
     >
-      <h2 className="text-sm font-medium text-muted-foreground">{label}</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium text-muted-foreground">{label}</h2>
+        {state ? <StatusDot role={state.role} label={state.label} showLabel /> : null}
+      </div>
       <div className="mt-2 flex items-center gap-3">
-        <p className={`whitespace-nowrap text-xl font-bold tabular-nums sm:text-2xl ${textClass}`}>
+        {/* 値テキストは中立(text-foreground)。状態は閾値超過時の点表示のみが担う。 */}
+        <p className="whitespace-nowrap text-xl font-bold tabular-nums text-foreground sm:text-2xl">
           {value}
         </p>
-        <ProgressBar percent={percent} colorClass={barClass} />
+        {/* 進捗バーは KPI ごとの分類色を避け単一中立にし、状態色と誤認させない。 */}
+        <ProgressBar percent={percent} colorClass="bg-muted-foreground/45" />
       </div>
     </section>
   );
@@ -91,9 +116,12 @@ function KpiCard({
 function BarChart({
   items,
   ariaLabel,
+  formatTitle,
 }: {
   items: Array<{ label: string; value: number; colorClass: string }>;
   ariaLabel: string;
+  /** 各バーのホバー title(単位つき)。値ラベルに加えてポインタでも値を確認できるようにする。 */
+  formatTitle: (item: { label: string; value: number }) => string;
 }) {
   const max = Math.max(...items.map((item) => item.value), 1);
   return (
@@ -101,6 +129,7 @@ function BarChart({
       {items.map((item) => (
         <div
           key={item.label}
+          title={formatTitle(item)}
           className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1"
         >
           <span className="text-xs font-semibold text-foreground">{item.value}</span>
@@ -188,33 +217,28 @@ export function CapacityContent() {
 
       {/* KPI 4 枚: 訪問枠 / 調剤・セット / スタッフ稼働 / 緊急余力 */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" data-testid="capacity-kpis">
+        {/* 訪問枠・調剤セットは進捗(完了/全体)で、時刻文脈なしの閾値警告は誤シグナルになるため中立。 */}
         <KpiCard
           label="訪問枠"
           value={`${kpis.visit_slots.completed} / ${kpis.visit_slots.total}件`}
           percent={ratioPercent(kpis.visit_slots.completed, kpis.visit_slots.total)}
-          textClass="text-chart-1"
-          barClass="bg-chart-1"
         />
         <KpiCard
           label="調剤・セット"
           value={`${kpis.dispense_set.completed} / ${kpis.dispense_set.total}件`}
           percent={ratioPercent(kpis.dispense_set.completed, kpis.dispense_set.total)}
-          textClass="text-chart-2"
-          barClass="bg-chart-2"
         />
         <KpiCard
           label="スタッフ稼働"
           value={`${kpis.staff_utilization_percent}%`}
           percent={kpis.staff_utilization_percent}
-          textClass="text-chart-1"
-          barClass="bg-chart-1"
+          state={staffUtilizationState(kpis.staff_utilization_percent)}
         />
         <KpiCard
           label="緊急余力"
           value={`${kpis.emergency_capacity_count.toFixed(1)}件`}
           percent={(kpis.emergency_capacity_count / EMERGENCY_BAR_FULL_SCALE) * 100}
-          textClass="text-chart-3"
-          barClass="bg-chart-3"
+          state={emergencyCapacityState(kpis.emergency_capacity_count)}
         />
       </div>
 
@@ -242,6 +266,7 @@ export function CapacityContent() {
           <div className="mt-4">
             <BarChart
               ariaLabel="行程ごとの残り件数"
+              formatTitle={(item) => `${item.label}: 残り${item.value}件`}
               items={process_remaining.map((process) => ({
                 label: process.label,
                 value: process.count,
@@ -259,6 +284,7 @@ export function CapacityContent() {
             <div className="mt-4">
               <BarChart
                 ariaLabel="スタッフ別の負荷(%)"
+                formatTitle={(item) => `${item.label}: ${item.value}%`}
                 items={staff_load.map((staff, index) => ({
                   label: staff.label,
                   value: staff.load_percent,

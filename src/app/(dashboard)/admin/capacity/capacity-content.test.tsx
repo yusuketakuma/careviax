@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import { CapacityContent } from './capacity-content';
+import { CapacityContent, emergencyCapacityState, staffUtilizationState } from './capacity-content';
 
 setupDomTestEnv();
 
@@ -138,5 +138,82 @@ describe('CapacityContent', () => {
     const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
     expect(kpis.compareDocumentPosition(attention) & FOLLOWING).toBeTruthy();
     expect(attention.compareDocumentPosition(charts) & FOLLOWING).toBeTruthy();
+  });
+
+  it('classifies staff utilization thresholds (>=85 confirm, >=100 blocked, below neutral)', () => {
+    expect(staffUtilizationState(84)).toBeNull();
+    expect(staffUtilizationState(85)).toEqual({ role: 'confirm', label: '逼迫' });
+    expect(staffUtilizationState(100)).toEqual({ role: 'blocked', label: '過負荷' });
+  });
+
+  it('classifies emergency capacity thresholds (<2 confirm, <=0 blocked, otherwise neutral)', () => {
+    expect(emergencyCapacityState(2)).toBeNull();
+    expect(emergencyCapacityState(1.9)).toEqual({ role: 'confirm', label: '余力僅少' });
+    expect(emergencyCapacityState(0)).toEqual({ role: 'blocked', label: '余力なし' });
+  });
+
+  it('neutralizes KPI value/bar colors so the number itself does not imply state', async () => {
+    renderContent();
+    const grid = await screen.findByTestId('capacity-kpis');
+    // KPI グリッド内に分類色(chart-*)は残らない。
+    expect(grid.querySelectorAll('[class*="text-chart-"]').length).toBe(0);
+    expect(grid.querySelectorAll('[class*="bg-chart-"]').length).toBe(0);
+    // 進捗バーは単一中立色。
+    expect(grid.querySelectorAll('[class*="bg-muted-foreground"]').length).toBeGreaterThan(0);
+    // 値テキストは中立 text-foreground。
+    expect(screen.getByText('72%').className).toContain('text-foreground');
+  });
+
+  it('flags an over-capacity staff utilization with a blocked status dot', async () => {
+    stubCapacityFetch({
+      ...BASE_PAYLOAD,
+      kpis: { ...BASE_PAYLOAD.kpis, staff_utilization_percent: 100 },
+    });
+    renderContent();
+
+    const dot = await screen.findByText('過負荷');
+    expect(dot.closest('[data-role]')?.getAttribute('data-role')).toBe('blocked');
+  });
+
+  it('flags a strained staff utilization with a confirm status dot', async () => {
+    stubCapacityFetch({
+      ...BASE_PAYLOAD,
+      kpis: { ...BASE_PAYLOAD.kpis, staff_utilization_percent: 85 },
+    });
+    renderContent();
+
+    const dot = await screen.findByText('逼迫');
+    expect(dot.closest('[data-role]')?.getAttribute('data-role')).toBe('confirm');
+  });
+
+  it('flags low emergency capacity with a confirm dot while progress KPIs stay neutral', async () => {
+    stubCapacityFetch({
+      ...BASE_PAYLOAD,
+      kpis: { ...BASE_PAYLOAD.kpis, emergency_capacity_count: 1.5, staff_utilization_percent: 72 },
+    });
+    renderContent();
+
+    const dot = await screen.findByText('余力僅少');
+    expect(dot.closest('[data-role]')?.getAttribute('data-role')).toBe('confirm');
+    // 進捗 KPI(訪問枠/調剤・セット)と稼働72%は状態 dot を出さない。
+    expect(screen.queryByText('逼迫')).toBeNull();
+    expect(screen.queryByText('過負荷')).toBeNull();
+  });
+
+  it('keeps every KPI neutral when nothing crosses a threshold', async () => {
+    renderContent();
+    await screen.findByTestId('capacity-kpis');
+
+    for (const label of ['逼迫', '過負荷', '余力なし', '余力僅少']) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
+  });
+
+  it('adds unit-bearing hover titles to each process and staff bar', async () => {
+    renderContent();
+
+    expect(await screen.findByTitle('訪問: 残り4件')).toBeTruthy();
+    expect(screen.getByTitle('調剤: 残り3件')).toBeTruthy();
+    expect(screen.getByTitle('田中: 80%')).toBeTruthy();
   });
 });
