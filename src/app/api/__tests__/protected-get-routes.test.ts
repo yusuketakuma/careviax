@@ -1703,6 +1703,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
+        route.name === 'patients/[id]/visit-brief GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'patient-self-reports GET' ||
         route.name === 'patient-self-reports/[id] GET' ||
@@ -1809,6 +1810,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
+        route.name === 'patients/[id]/visit-brief GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'patient-self-reports GET' ||
         route.name === 'patient-self-reports/[id] GET' ||
@@ -1908,6 +1910,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'patient-self-reports GET' ||
         route.name === 'patient-self-reports/[id] GET' ||
+        route.name === 'patients/[id]/visit-brief GET' ||
         route.name === 'facilities/[id]/contacts GET' ||
         route.name === 'facilities/[id]/patients GET' ||
         route.name === 'partner-visit-records GET' ||
