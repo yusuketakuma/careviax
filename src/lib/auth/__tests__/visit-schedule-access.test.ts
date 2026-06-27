@@ -4,6 +4,7 @@ import {
   buildCareCaseAssignmentWhere,
   buildPatientAssignmentWhere,
   buildPersonalCareCaseAssignmentWhere,
+  buildPersonalPatientAssignmentWhere,
   buildVisitRecordScheduleAssignmentWhere,
   buildVisitScheduleProposalAssignmentWhere,
   buildVisitScheduleProposalCaseAccessWhere,
@@ -146,7 +147,7 @@ describe('visit schedule assignment access', () => {
     });
   });
 
-  it('builds patient and care-case filters from the same assignment policy (scoped roles)', () => {
+  it('builds care-case filters from the existing case assignment policy (scoped roles)', () => {
     expect(
       buildCareCaseAssignmentWhere({
         userId: 'user_1',
@@ -159,21 +160,22 @@ describe('visit schedule assignment access', () => {
         { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
       ],
     });
+  });
+
+  it('builds patient filters from Patient-root pharmacist/staff assignment columns (scoped roles)', () => {
     expect(
       buildPatientAssignmentWhere({
         userId: 'user_1',
         role: 'driver',
       }),
     ).toEqual({
-      cases: {
-        some: {
-          OR: [
-            { primary_pharmacist_id: 'user_1' },
-            { backup_pharmacist_id: 'user_1' },
-            { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-          ],
-        },
-      },
+      OR: [
+        { primary_pharmacist_id: 'user_1' },
+        { backup_pharmacist_id: 'user_1' },
+        { primary_staff_id: 'user_1' },
+        { backup_staff_id: 'user_1' },
+        { cases: { some: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } } },
+      ],
     });
   });
 
@@ -194,7 +196,25 @@ describe('visit schedule assignment access', () => {
     );
   });
 
-  it('appends patient assignment filters without replacing existing predicates (scoped roles)', () => {
+  it('buildPersonalPatientAssignmentWhere always returns the Patient-root assignment filter, even for org-wide roles', () => {
+    const expected = {
+      OR: [
+        { primary_pharmacist_id: 'user_1' },
+        { backup_pharmacist_id: 'user_1' },
+        { primary_staff_id: 'user_1' },
+        { backup_staff_id: 'user_1' },
+        { cases: { some: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } } },
+      ],
+    };
+    expect(buildPersonalPatientAssignmentWhere({ userId: 'user_1', role: 'pharmacist' })).toEqual(
+      expected,
+    );
+    expect(buildPersonalPatientAssignmentWhere({ userId: 'user_1', role: 'owner' })).toEqual(
+      expected,
+    );
+  });
+
+  it('appends patient assignment filters without replacing existing cases.some predicates', () => {
     expect(
       applyPatientAssignmentWhere(
         {
@@ -208,20 +228,48 @@ describe('visit schedule assignment access', () => {
       ),
     ).toEqual({
       org_id: 'org_1',
-      cases: {
-        some: {
-          AND: [
-            { status: 'active' },
-            {
-              OR: [
-                { primary_pharmacist_id: 'user_1' },
-                { backup_pharmacist_id: 'user_1' },
-                { visit_schedules: { some: { pharmacist_id: 'user_1' } } },
-              ],
-            },
+      cases: { some: { status: 'active' } },
+      AND: [
+        {
+          OR: [
+            { primary_pharmacist_id: 'user_1' },
+            { backup_pharmacist_id: 'user_1' },
+            { primary_staff_id: 'user_1' },
+            { backup_staff_id: 'user_1' },
+            { cases: { some: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } } },
           ],
         },
-      },
+      ],
+    });
+  });
+
+  it('preserves existing Patient AND predicates when applying assignment filters', () => {
+    expect(
+      applyPatientAssignmentWhere(
+        {
+          org_id: 'org_1',
+          AND: [{ archived_at: null }, { name: { contains: '山田' } }],
+        },
+        {
+          userId: 'user_1',
+          role: 'driver',
+        },
+      ),
+    ).toEqual({
+      org_id: 'org_1',
+      AND: [
+        { archived_at: null },
+        { name: { contains: '山田' } },
+        {
+          OR: [
+            { primary_pharmacist_id: 'user_1' },
+            { backup_pharmacist_id: 'user_1' },
+            { primary_staff_id: 'user_1' },
+            { backup_staff_id: 'user_1' },
+            { cases: { some: { visit_schedules: { some: { pharmacist_id: 'user_1' } } } } },
+          ],
+        },
+      ],
     });
   });
 

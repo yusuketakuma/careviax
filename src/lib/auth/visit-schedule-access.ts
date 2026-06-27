@@ -93,6 +93,20 @@ export function buildCareCaseAssignmentWhere(
   return buildPersonalCareCaseAssignmentWhere(ctx);
 }
 
+export function buildPersonalPatientAssignmentWhere(
+  ctx: VisitScheduleAccessContext,
+): Prisma.PatientWhereInput {
+  return {
+    OR: [
+      { primary_pharmacist_id: ctx.userId },
+      { backup_pharmacist_id: ctx.userId },
+      { primary_staff_id: ctx.userId },
+      { backup_staff_id: ctx.userId },
+      { cases: { some: { visit_schedules: { some: { pharmacist_id: ctx.userId } } } } },
+    ],
+  };
+}
+
 export function buildVisitScheduleProposalAssignmentWhere(
   ctx: VisitScheduleAccessContext,
 ): Prisma.VisitScheduleProposalWhereInput | null {
@@ -121,43 +135,23 @@ export function buildVisitScheduleProposalCaseAccessWhere(
 export function buildPatientAssignmentWhere(
   ctx: VisitScheduleAccessContext,
 ): Prisma.PatientWhereInput | null {
-  const caseWhere = buildCareCaseAssignmentWhere(ctx);
-  return caseWhere ? { cases: { some: caseWhere } } : null;
+  if (canBypassVisitScheduleAssignmentAccess(ctx)) return null;
+
+  return buildPersonalPatientAssignmentWhere(ctx);
 }
 
 export function applyPatientAssignmentWhere(
   where: Prisma.PatientWhereInput,
   ctx: VisitScheduleAccessContext,
 ): Prisma.PatientWhereInput {
-  const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
-  if (!caseAssignmentWhere) return where;
-
-  const existingCases = where.cases;
-  const existingCaseSome =
-    existingCases &&
-    typeof existingCases === 'object' &&
-    'some' in existingCases &&
-    existingCases.some
-      ? (existingCases.some as Prisma.CareCaseWhereInput)
-      : null;
-
-  if (existingCaseSome) {
-    return {
-      ...where,
-      cases: {
-        ...(existingCases as Prisma.CareCaseListRelationFilter),
-        some: {
-          AND: [existingCaseSome, caseAssignmentWhere],
-        },
-      },
-    };
-  }
+  const patientAssignmentWhere = buildPatientAssignmentWhere(ctx);
+  if (!patientAssignmentWhere) return where;
 
   const existingAnd = where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : [];
 
   return {
     ...where,
-    AND: [...existingAnd, { cases: { some: caseAssignmentWhere } }],
+    AND: [...existingAnd, patientAssignmentWhere],
   };
 }
 
