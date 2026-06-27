@@ -205,6 +205,7 @@ import { GET as patientGet } from '../patients/[id]/route';
 import { GET as patientHeaderSummaryGet } from '../patients/[id]/header-summary/route';
 import { GET as patientOverviewGet } from '../patients/[id]/overview/route';
 import { GET as patientPrescriptionsGet } from '../patients/[id]/prescriptions/route';
+import { GET as patientShareCaseCorrectionRequestsGet } from '../patient-share-cases/[id]/correction-requests/route';
 import { GET as patientSelfReportsGet } from '../patient-self-reports/route';
 import { GET as patientSelfReportGet } from '../patient-self-reports/[id]/route';
 import { GET as patientVisitBriefGet } from '../patients/[id]/visit-brief/route';
@@ -790,6 +791,23 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'patient-share-cases/[id]/correction-requests GET',
+    setupSuccess: () => {
+      txMock.patientShareCase.findFirst.mockResolvedValueOnce({
+        id: 'share_case_1',
+        base_patient_id: 'patient_1',
+      });
+      txMock.patientShareCorrectionRequest.findMany.mockResolvedValueOnce([]);
+    },
+    handler: () =>
+      patientShareCaseCorrectionRequestsGet(
+        createRequest('http://localhost/api/patient-share-cases/share_case_1/correction-requests', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'share_case_1' }) },
+      ),
+  },
+  {
     name: 'patient-self-reports GET',
     handler: () =>
       patientSelfReportsGet(
@@ -1341,6 +1359,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
+        route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'first-visit-documents GET' ||
@@ -1416,6 +1435,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
+        route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'first-visit-documents GET' ||
@@ -1475,10 +1495,14 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
+        route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||
+        route.name === 'dispense-results/[id] GET' ||
+        route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'visit-schedules GET' ||
+        route.name === 'visit-schedules/[id] GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||

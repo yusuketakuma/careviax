@@ -75,7 +75,7 @@ function createRequest(body: unknown) {
   );
 }
 
-describe('/api/patient-share-cases/[id]/correction-requests POST', () => {
+describe('/api/patient-share-cases/[id]/correction-requests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     patientShareCaseFindFirstMock.mockResolvedValue({
@@ -158,6 +158,8 @@ describe('/api/patient-share-cases/[id]/correction-requests POST', () => {
     const response = await rawGET(createGetRequest(), routeContext);
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(correctionRequestFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         select: expect.not.objectContaining({
@@ -210,6 +212,8 @@ describe('/api/patient-share-cases/[id]/correction-requests POST', () => {
     const response = await rawGET(createGetRequest(query), routeContext);
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: { status: ['ステータスを指定してください'] },
@@ -240,6 +244,42 @@ describe('/api/patient-share-cases/[id]/correction-requests POST', () => {
         }),
       }),
     );
+  });
+
+  it('returns a no-store not-found response when the share case is missing', async () => {
+    patientShareCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await rawGET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_NOT_FOUND',
+      message: '患者共有ケースが見つかりません',
+    });
+    expect(correctionRequestFindManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when correction request listing fails unexpectedly', async () => {
+    correctionRequestFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 raw correction request proposed value'),
+    );
+
+    const response = await rawGET(createGetRequest('?limit=8'), routeContext);
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('raw correction request');
+    expect(JSON.stringify(body)).not.toContain('proposed value');
   });
 
   it('creates a correction request only for a target that belongs to the share case', async () => {
