@@ -135,15 +135,25 @@ type BlockedCategoryTone = {
   container: string;
 };
 
-/** カテゴリ→色チップ/淡背景(デザイン 01/06: 患者=紫、事務=黄)。未知カテゴリは中立トーン。 */
+/**
+ * カテゴリ→ロール識別色(患者/事務/医療機関)。--role-* 識別トークン(status ではない)。
+ * chip は小チップ(最小 fill + text)、container は色パネルを使わず左ボーダー帯で示す
+ * (role は text/border/dot/小チップのみ・大面積塗り禁止、§L311-317)。未知は中立トーン。
+ */
 const BLOCKED_CATEGORY_TONES: Record<string, BlockedCategoryTone> = {
-  患者: { chip: 'bg-violet-100 text-violet-800', container: 'border-violet-200 bg-violet-50/70' },
-  事務: { chip: 'bg-amber-100 text-amber-800', container: 'border-amber-200 bg-amber-50/70' },
-  医療機関: { chip: 'bg-blue-100 text-blue-800', container: 'border-blue-200 bg-blue-50/70' },
+  患者: {
+    chip: 'bg-role-patient/10 text-role-patient',
+    container: 'border-l-4 border-l-role-patient',
+  },
+  事務: { chip: 'bg-role-clerk/10 text-role-clerk', container: 'border-l-4 border-l-role-clerk' },
+  医療機関: {
+    chip: 'bg-role-institution/10 text-role-institution',
+    container: 'border-l-4 border-l-role-institution',
+  },
 };
 
 const BLOCKED_CATEGORY_DEFAULT_TONE: BlockedCategoryTone = {
-  chip: 'bg-slate-100 text-slate-700',
+  chip: 'bg-muted text-muted-foreground',
   container: 'border-border bg-muted/40',
 };
 
