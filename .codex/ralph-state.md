@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1908 JST
+
+- current task: R4 visit availability responsibility-boundary helper: encode the `docs/operating-day-calendar-plan.md` §12.4 rule that visit eligibility is pharmacy operating calendar AND selected pharmacist shift/site/time window, while keeping existing routes unchanged.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send, `docs/operating-day-calendar-plan.md`, `docs/shared-month-grid-plan.md`, `docs/ui-ux-design-guidelines.md`, `src/lib/calendar/operating-day.ts`, `src/lib/calendar/operating-day.test.ts`, `src/lib/calendar/operating-day-adapter.ts`, `src/server/services/visit-schedule-shift.ts`, `src/server/services/visit-schedule-shift.test.ts`, `src/app/api/pharmacist-shifts/available/route.ts`, `src/app/api/visit-schedules/generate/route.ts`, Claude R3b commit `cb09f466`, `src/components/ui/month-grid.tsx`, `src/components/ui/month-grid.test.tsx`, `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`, and medication-calendar read-only files for R3c consultation.
+- files changed: `src/lib/calendar/visit-availability.ts`, `src/lib/calendar/visit-availability.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. `src/lib/calendar/operating-day.ts` stayed read-only.
+- bugs found: no existing production behavior was changed. The maintainability/safety gap was that the §12.4 model boundary existed in the plan but not in code, leaving future scheduling consumers prone to checking only pharmacy operating state or only pharmacist shift state.
+- security risks found: reduced scheduling/medical-safety drift risk by adding a typed pure helper that fails closed for pharmacy holiday, regular closure, malformed/outside pharmacy operating windows, missing/mismatched/unavailable pharmacist shifts, malformed/outside shift windows, and malformed visit windows. No auth, PHI projection, DB, RLS, audit, external send, UI, or route behavior changed.
+- performance issues found: none. The slice adds pure in-memory composition logic and unit tests only.
+- validation commands: `pnpm exec prettier --write src/lib/calendar/visit-availability.ts src/lib/calendar/visit-availability.test.ts`; `pnpm exec vitest run src/lib/calendar/visit-availability.test.ts src/lib/calendar/operating-day.test.ts src/lib/calendar/operating-day-adapter.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint/Prettier/diff check for the two R4 files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; R3b review gates `pnpm exec vitest run src/components/ui/month-grid.test.tsx 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' --reporter=dot --testTimeout=30000` plus scoped ESLint/Prettier/diff check for R3b files.
+- validation results: Prettier write/check passed; final R4 focused Vitest passed `3` files / `48` tests after correcting expectations for pharmacy-window precedence; scoped ESLint passed; scoped diff whitespace check passed; full TypeScript passed; `typecheck:no-unused` passed. R3b review focused Vitest passed `2` files / `22` tests and scoped checks passed; Codex approved R3b. Claude approved S6 and Codex ACKed. Codex agreed to skip R3c after read-only medication-calendar inspection.
+- remaining work: run ledger-aware checks, stage only R4 implementation files for the implementation commit, stage only ledgers for the state commit, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- next action: ledger checks, grouped commits, and Claude review request for R4.
+
 ### 20260627-1850 JST
 
 - current task: S6 visit-schedules/generate operating-day enforcement: block direct recurring schedule generation on pharmacy holidays or regular closed days unless a required override reason is supplied, and audit the override.

@@ -23,6 +23,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - R4 Visit Availability Boundary Helper
+
+- Coordination:
+  - Drained `phos/codex` before implementation and during validation.
+  - Sent Claude an R4 lock request for the non-overlapping backend helper paths. Claude granted the lock and confirmed no conflict with R3b/R3c UI paths.
+  - Prioritized Claude interrupts: ACKed S6 approval, reviewed and approved Claude R3b commit `cb09f466`, and answered the R3c consultation by agreeing to skip medication-calendar forced MonthGrid adoption and close R3 after R3a/R3b with doc evidence.
+- Added `src/lib/calendar/visit-availability.ts` as a pure, Date-free R4 composition layer for the model boundary in `docs/operating-day-calendar-plan.md` §12.4.
+- The helper documents the responsibility split:
+  - `PharmacyOperatingHours` = weekly site-level operating default.
+  - `BusinessHoliday` = one-date site/org pharmacy calendar override.
+  - `PharmacistShift` = one pharmacist's availability on one date.
+  - `PharmacistShiftTemplate` = source material for shift rows, not direct visit eligibility.
+- Added `canVisitOn` so visit eligibility is explicitly the AND of pharmacy operating state and selected pharmacist shift/site/time window.
+- The decision result is a discriminated union with stable block reasons for pharmacy holiday, regular closure, invalid/outside pharmacy operating window, missing/mismatched/unavailable pharmacist shift, invalid shift window, invalid visit window, and outside pharmacist shift window.
+- Preserved existing route behavior. No API route, DB query, Prisma schema/migration/data, UI, dependency, external send, push/deploy, or destructive operation changed.
+- Security/medical-safety risk reduced: future consumers have a single typed place to compose operating-day and pharmacist-shift eligibility instead of checking only one side. The helper fails closed for malformed pharmacy/shift/visit windows and preserves site matching as an explicit prerequisite.
+- Performance issue improved: none. This is a pure in-memory helper and focused tests only.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/calendar/visit-availability.ts src/lib/calendar/visit-availability.test.ts` passed.
+  - `pnpm exec vitest run src/lib/calendar/visit-availability.test.ts src/lib/calendar/operating-day.test.ts src/lib/calendar/operating-day-adapter.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `48` tests after correcting test expectations for pharmacy-window precedence.
+  - Scoped ESLint passed for the two new R4 files.
+  - Scoped Prettier check passed for the two new R4 files.
+  - Scoped diff whitespace check passed for the two new R4 files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Interrupt validation for Claude R3b:
+  - Inspected `docs/ui-ux-design-guidelines.md`, `docs/shared-month-grid-plan.md`, commit `cb09f466`, current `MonthGrid`, and business-holidays usage.
+  - `pnpm exec vitest run src/components/ui/month-grid.test.tsx 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' --reporter=dot --testTimeout=30000` passed `2` files / `22` tests.
+  - Scoped ESLint/Prettier/diff check passed for the R3b files, and current HEAD full `tsc` / `typecheck:no-unused` were green.
+- Commit status: implementation ready for a grouped R4 helper commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware checks, commit the R4 helper and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-27 JST - S6 Visit Schedule Generate Operating-Day Block and Override Audit
 
 - Coordination:
