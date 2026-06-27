@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
@@ -20,6 +21,11 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 import { PatientContactsPanel } from './patient-contacts-panel';
 import { toast } from 'sonner';
@@ -281,6 +287,52 @@ describe('PatientContactsPanel', () => {
       for (const call of invalidateQueries.mock.calls) {
         expect(JSON.stringify(call[0])).not.toContain(encodeURIComponent(hostileId));
       }
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('routes contact saves through the shared patient API path helper', async () => {
+    const patientId = 'patient_1';
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce(
+      '/api/patients/__helper_patient_1__/contacts',
+    );
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+
+    let savedConfig: CapturedConfig | undefined;
+    useMutationMock.mockImplementation((config: CapturedConfig) => {
+      savedConfig = config;
+      return { mutate: vi.fn(), isPending: false };
+    });
+
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(
+        <PatientContactsPanel
+          patientId={patientId}
+          orgId="org_1"
+          initialContacts={sampleContacts}
+        />,
+      );
+
+      await savedConfig?.mutationFn?.();
+
+      expect(buildPatientApiPath).toHaveBeenCalledWith(patientId, '/contacts');
+      expect(fetchMock).toHaveBeenCalledWith('/api/patients/__helper_patient_1__/contacts', {
+        method: 'PUT',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: expect.any(String),
+      });
+      expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}/contacts`, {
+        method: 'PUT',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: expect.any(String),
+      });
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
