@@ -12005,6 +12005,29 @@ Next loop:
 - Remaining:
   - Commit `eslint.config.mjs` and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`.
 
+### Patient Self Report Detail GET — Sensitive Detail No-Store
+
+- Coordination:
+  - Prioritized Claude's `69de987b` `/admin/users` PATCH_REVIEW_REQUEST mid-slice, ran independent focused gates, and approved it before returning to this API WIP.
+  - Ran gbrain caller/blast checks for `src/app/api/patient-self-reports/[id]/route::GET`; no direct callers were found and code graph freshness was `fresh`.
+- Bugs found:
+  - `GET /api/patient-self-reports/[id]` already no-stored normal/auth/validation/not-found/detail responses, but unexpected thrown detail lookup failures were not converted by a route-local sanitized no-store 500 wrapper.
+  - The protected GET matrix did not assert no-store for `patient-self-reports/[id] GET`.
+- Implemented by Codex:
+  - Moved the existing GET body into `authenticatedGET` and exported a wrapper that catches unexpected failures with `unstable_rethrow()` plus `withSensitiveNoStore(internalError())`.
+  - Added a sanitized 500 regression that confirms a thrown raw self-report detail secret is not reflected in the response body.
+  - Added `patient-self-reports/[id] GET` to the protected GET no-store matrix for 401, 403, and 200 cases.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/patient-self-reports/[id]/route.ts src/app/api/patient-self-reports/[id]/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/patient-self-reports/[id]/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `335` tests.
+  - `pnpm exec eslint src/app/api/patient-self-reports/[id]/route.ts src/app/api/patient-self-reports/[id]/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/patient-self-reports/[id]/route.ts src/app/api/patient-self-reports/[id]/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `git diff --check -- src/app/api/patient-self-reports/[id]/route.ts src/app/api/patient-self-reports/[id]/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`. The broader API no-store sweep remains incomplete.
+
 ### Medication Profiles GET — Sensitive List No-Store
 
 - Coordination:
