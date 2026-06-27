@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -14,6 +15,11 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 import { MedicationCalendarContent } from './medication-calendar-content';
 
@@ -62,5 +68,47 @@ describe('MedicationCalendarContent states', () => {
 
     expect(screen.queryByTestId('medication-calendar-error')).toBeNull();
     expect(screen.getByText(/現在の服薬情報が登録されていません/)).toBeTruthy();
+  });
+
+  it('encodes the medication profile query and calendar PDF href at URL boundaries', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce(
+      '/api/patients/__helper_patient_1__/medication-calendar/pdf',
+    );
+    let capturedQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation((options) => {
+      capturedQueryFn = options.queryFn;
+      return { isLoading: false, error: null, data: { data: [] } };
+    });
+
+    render(<MedicationCalendarContent patientId="patient_1?x=1#frag" />);
+    await capturedQueryFn?.();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/medication-profiles?patient_id=patient_1%3Fx%3D1%23frag&is_current=true&limit=200',
+      { headers: { 'x-org-id': 'org_1' } },
+    );
+    expect(buildPatientApiPath).toHaveBeenCalledWith(
+      'patient_1?x=1#frag',
+      '/medication-calendar/pdf',
+    );
+    const pdfHref = screen
+      .getByRole('link', { name: /服薬カレンダーPDFを開く/ })
+      .getAttribute('href');
+    expect(pdfHref).toMatch(
+      /^\/api\/patients\/__helper_patient_1__\/medication-calendar\/pdf\?month=\d{4}-\d{2}$/,
+    );
+    expect(pdfHref).not.toContain('patient_1?x=1#frag');
+    expect(document.body.textContent).not.toContain('patient_1?x=1#frag');
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/medication-profiles?patient_id=patient_1?x=1#frag&is_current=true&limit=200',
+      expect.anything(),
+    );
+
+    vi.unstubAllGlobals();
   });
 });

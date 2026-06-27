@@ -17,6 +17,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, FileText, Printer } from 'luc
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
 // --- Types ---
 
@@ -163,6 +164,22 @@ export function hasAnyMedicationSlot(day: { slots: Partial<Record<TimeSlot, stri
   return SLOTS.some((slot) => (day.slots[slot]?.length ?? 0) > 0);
 }
 
+function buildCurrentMedicationProfilesPath(patientId: string) {
+  const params = new URLSearchParams({
+    patient_id: patientId,
+    is_current: 'true',
+    limit: '200',
+  });
+  return `/api/medication-profiles?${params.toString()}`;
+}
+
+function buildMedicationCalendarPdfHref(patientId: string, month: Date) {
+  const params = new URLSearchParams({
+    month: format(month, 'yyyy-MM'),
+  });
+  return `${buildPatientApiPath(patientId, '/medication-calendar/pdf')}?${params.toString()}`;
+}
+
 /**
  * 1 日分の服薬スロット（朝/昼/夕/眠前）の共有レンダラ。
  * desktop の月グリッドセルと mobile の日次リストカードの双方から使い、
@@ -202,12 +219,9 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
   const medicationQuery = useQuery({
     queryKey: ['medication-calendar', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(
-        `/api/medication-profiles?patient_id=${patientId}&is_current=true&limit=200`,
-        {
-          headers: { 'x-org-id': orgId },
-        },
-      );
+      const response = await fetch(buildCurrentMedicationProfilesPath(patientId), {
+        headers: { 'x-org-id': orgId },
+      });
 
       if (!response.ok) {
         throw new Error('服薬中薬剤の取得に失敗しました');
@@ -273,7 +287,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href={`/api/patients/${patientId}/medication-calendar/pdf?month=${format(currentMonth, 'yyyy-MM')}`}
+            href={buildMedicationCalendarPdfHref(patientId, currentMonth)}
             target="_blank"
             rel="noreferrer"
             aria-label={`${monthLabel}の服薬カレンダーPDFを開く`}
@@ -297,7 +311,6 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
       {/* Print header */}
       <div className="hidden print:block mb-4">
         <h1 className="text-lg font-bold">服薬カレンダー — {monthLabel}</h1>
-        <p className="text-xs text-muted-foreground">患者ID: {patientId}</p>
       </div>
 
       {/* Legend */}
