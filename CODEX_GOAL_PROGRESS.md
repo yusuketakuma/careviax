@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Dispense Emergency Task Notification Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, prioritized Claude's build-blocker review and build-gate consultation, then accepted Claude's non-overlapping `P3-soap` lock for `src/components/features/visits/soap-step-wizard.tsx`.
+  - Confirmed pid `24189` was no longer running and only `next dev --port 3012` remained active, so Claude can safely rerun its Phase 3 build gate after clearing any stale Next build lock.
+  - Reviewed and approved Claude `4776d257`, which made `buttonVariants` server-safe by moving the variant helper into `src/components/ui/button-variants.ts` while keeping the client `Button` component as a re-exporting consumer.
+- Refactored emergency dispense task notification links in `123cdc45`:
+  - Added `buildDispenseTaskNotificationHref` to centralize `/dispense?taskId=...` construction for emergency task notifications.
+  - Kept `encodeURIComponent` rather than `URLSearchParams`, preserving `%20` space escaping and existing query-link style.
+  - Preserved raw task ids for notification metadata and dedupe keys, task creation behavior, auth, patient/org access surfaces, DB schema/data, migrations, external sends, push/deploy, and destructive-operation boundaries.
+  - Added hostile task-id coverage for slash, space, query, and fragment characters, confirming the href cannot inject a path, extra query, or hash fragment.
+- Security/correctness risk reduced: future emergency dispense notification link changes now pass through one named route/query construction boundary while raw identity remains available where required.
+- Performance issue improved: none. This is a pure href string-construction refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/dispense-tasks/route.ts src/app/api/dispense-tasks/route.test.ts` passed.
+  - `pnpm exec vitest run src/app/api/dispense-tasks/route.test.ts src/lib/api/route-catalog.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `20` tests.
+  - Scoped ESLint passed for the dispense route/test and route-catalog test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the route/test and route-catalog test.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Claude `4776d257` review validation passed: medications page Vitest `1` file / `2` tests, scoped ESLint/Prettier/diff-check, and full `pnpm build` with static pages `291/291`.
+- Commit status: implementation landed as `123cdc45`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `123cdc45` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-27 JST - Consent Audited Document URL Path-Segment Hardening
 
 - Coordination:
