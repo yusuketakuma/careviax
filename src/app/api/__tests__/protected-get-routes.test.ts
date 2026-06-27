@@ -17,6 +17,7 @@ const {
   buildVisitRecordPdfMock,
   buildPharmacyInvoiceDocumentPdfMock,
   buildVisitScheduleBillingPreviewMock,
+  getPatientDocumentsDataMock,
   getPatientHeaderSummaryMock,
   getPatientOverviewMock,
   listBillingEvidenceBlockersMock,
@@ -105,6 +106,7 @@ const {
     buildVisitRecordPdfMock: vi.fn(),
     buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
     buildVisitScheduleBillingPreviewMock: vi.fn(),
+    getPatientDocumentsDataMock: vi.fn(),
     getPatientHeaderSummaryMock: vi.fn(),
     getPatientOverviewMock: vi.fn(),
     listBillingEvidenceBlockersMock: vi.fn(),
@@ -175,6 +177,7 @@ vi.mock('@/server/services/patient-detail', async (importOriginal) => {
 
   return {
     ...actual,
+    getPatientDocumentsData: getPatientDocumentsDataMock,
     getPatientHeaderSummary: getPatientHeaderSummaryMock,
     getPatientOverview: getPatientOverviewMock,
   };
@@ -244,6 +247,9 @@ import { GET as patientsGet } from '../patients/route';
 import { GET as patientsBoardGet } from '../patients/board/route';
 import { GET as patientCheckDuplicateGet } from '../patients/check-duplicate/route';
 import { GET as patientGet } from '../patients/[id]/route';
+import { GET as patientCareTeamGet } from '../patients/[id]/care-team/route';
+import { GET as patientContactsGet } from '../patients/[id]/contacts/route';
+import { GET as patientDocumentsGet } from '../patients/[id]/documents/route';
 import { GET as patientHeaderSummaryGet } from '../patients/[id]/header-summary/route';
 import { GET as patientMedicationCalendarPdfGet } from '../patients/[id]/medication-calendar/pdf/route';
 import { GET as patientMedicationsPdfGet } from '../patients/[id]/medications/pdf/route';
@@ -1164,6 +1170,39 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'patients/[id]/care-team GET',
+    handler: () =>
+      patientCareTeamGet(
+        createRequest('http://localhost/api/patients/patient_1/care-team', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
+    name: 'patients/[id]/contacts GET',
+    handler: () =>
+      patientContactsGet(
+        createRequest('http://localhost/api/patients/patient_1/contacts', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
+    name: 'patients/[id]/documents GET',
+    setupSuccess: () => {
+      getPatientDocumentsDataMock.mockResolvedValueOnce({ patient: { id: 'patient_1' } });
+    },
+    handler: () =>
+      patientDocumentsGet(
+        createRequest('http://localhost/api/patients/patient_1/documents', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
     name: 'patients/[id]/medication-calendar/pdf GET',
     handler: () =>
       patientMedicationCalendarPdfGet(
@@ -1872,6 +1911,9 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/board GET' ||
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id] GET' ||
+        route.name === 'patients/[id]/care-team GET' ||
+        route.name === 'patients/[id]/contacts GET' ||
+        route.name === 'patients/[id]/documents GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'patients/[id]/medication-calendar/pdf GET' ||
         route.name === 'patients/[id]/medications/pdf GET' ||
@@ -1994,6 +2036,9 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/board GET' ||
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id] GET' ||
+        route.name === 'patients/[id]/care-team GET' ||
+        route.name === 'patients/[id]/contacts GET' ||
+        route.name === 'patients/[id]/documents GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'patients/[id]/medication-calendar/pdf GET' ||
         route.name === 'patients/[id]/medications/pdf GET' ||
@@ -2100,6 +2145,9 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'prescription-intakes/triage GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||
+        route.name === 'patients/[id]/care-team GET' ||
+        route.name === 'patients/[id]/contacts GET' ||
+        route.name === 'patients/[id]/documents GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'patients/[id]/medication-calendar/pdf GET' ||
         route.name === 'patients/[id]/medications/pdf GET' ||
