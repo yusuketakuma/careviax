@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Visits API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger/commit phase.
+  - ACKed Claude's approval of patient labs API path helper convergence before continuing this non-overlapping patient visits slice.
+  - Used medical safety and privacy read-only reviewers because the surface reads patient visits and builds visit-record PDF export links.
+- Hardened/converged patient visits route construction:
+  - Routed visits snapshot GET through shared `buildPatientApiPath(patientId, '/visits')`.
+  - Routed visit-record PDF export href through shared `buildPatientApiPath(patientId, '/visit-records/pdf')`, with existing `date_from` / `date_to` query construction appended outside the encoded patient-id segment.
+  - Added a sentinel component test proving visits GET and PDF export href consume the shared patient API helper return value.
+  - Extended patient API helper suffix coverage for `/visits` and `/visit-records/pdf`.
+  - Preserved raw patient id in React Query keys, `buildOrgHeaders`, date filters, print link behavior, visit-record navigation links, route handlers, auth, no-store PDF behavior, audit, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient visits/PDF export URLs now share the central patient API path contract instead of duplicating patient route templates in the component.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing visits fetch/export behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - Initial focused Vitest failed due to test-only mock ordering, then failed once more because the helper mock leaked into a later hostile-id test; fixed the sentinel test to use suffix-based mocking and restore the actual-backed mock implementation.
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-visits-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx' src/lib/patient/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `22` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `a89b4f0b` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Labs API Path Helper Convergence
 
 - Coordination:
@@ -47,8 +75,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `c1a80b01` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `c1a80b01` and state commit `aa0400f6` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient Contacts Save API Path Helper Convergence
 

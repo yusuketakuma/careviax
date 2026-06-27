@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0627 JST
+
+- current task: patient visits snapshot GET and visit-record PDF export API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, Next client component and fetching docs under `node_modules/next/dist/docs/01-app/01-getting-started/`, raw patient visits/PDF API path scans, gbrain `code_blast` / `code_callers` / `code_refs` for `PatientVisitsPanel`, `src/app/(dashboard)/patients/[id]/patient-visits-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx`, `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, `src/lib/http/path-segment.ts`, `src/lib/http/path-segment.test.ts`, `src/app/api/patients/[id]/visits/route.ts`, and `src/app/api/patients/[id]/visit-records/pdf/route.ts`.
+- files changed: `src/app/(dashboard)/patients/[id]/patient-visits-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx`, `src/lib/patient/api-paths.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `PatientVisitsPanel` still built visits GET and visit-record PDF export URLs with local `/api/patients/${encodePathSegment(patientId)}` templates. The paths already encoded hostile IDs, but duplicated the shared patient API path contract and could drift from adjacent patient API callers.
+- security risks found: reduced route-construction drift by routing visits GET through `buildPatientApiPath(patientId, '/visits')` and visit-record PDF export through `buildPatientApiPath(patientId, '/visit-records/pdf')`, with date filters appended outside the encoded patient-id segment. Added a sentinel test proving the component consumes helper return values while preserving raw patient id query keys, org headers, date filters, print link behavior, visit-record navigation links, route handlers, auth, no-store PDF behavior, audit, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing visits fetch/export behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-visits-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx' src/lib/patient/api-paths.test.ts`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-visits-panel.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped diff whitespace check for changed implementation/test files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
+- validation results: Initial focused Vitest failed due to test-only mock ordering, then failed once more because the helper mock leaked into a later hostile-id test; fixed the sentinel test to use suffix-based mocking and restore the actual-backed mock implementation. Final focused patient visits + patient API path + path-segment Vitest passed `3` files / `22` tests. Scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
+- remaining work: state commit is pending for implementation commit `a89b4f0b`, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0618 JST
 
 - current task: patient labs GET/POST/PATCH API path helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing labs fetch/mutation behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-labs-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx' src/lib/patient/api-paths.test.ts`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped diff whitespace check for changed implementation/test files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
 - validation results: Prettier write passed. Focused patient labs + patient API path + path-segment Vitest passed `3` files / `25` tests. Scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
-- remaining work: state commit is pending for implementation commit `c1a80b01`, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+- remaining work: implementation commit `c1a80b01` and state commit `aa0400f6` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: monitor agmsg for new Claude review/consult requests, then continue non-overlapping backend/API hardening.
 
 ### 20260628-0610 JST
 
