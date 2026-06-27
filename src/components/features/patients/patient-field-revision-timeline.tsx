@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
 import type { PatientFieldRevisionListItem } from '@/server/services/patient-field-revision-list';
 import {
@@ -50,7 +51,7 @@ export function PatientFieldRevisionTimeline({ patientId }: { patientId: string 
       const params = new URLSearchParams();
       if (category) params.set('category', category);
       const response = await fetch(
-        `/api/patients/${patientId}/field-revisions?${params.toString()}`,
+        `${buildPatientApiPath(patientId, '/field-revisions')}?${params.toString()}`,
         {
           headers: { 'x-org-id': orgId },
         },
