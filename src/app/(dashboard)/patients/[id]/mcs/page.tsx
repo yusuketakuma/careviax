@@ -3,6 +3,7 @@ import { getPatientMcsShortcutLinks } from '@/components/features/workflow/page-
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { PatientMcsContent } from './mcs-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 export const metadata: Metadata = {
   title: 'MCS連携 — PH-OS',
@@ -10,12 +11,11 @@ export const metadata: Metadata = {
 
 export default async function PatientMcsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const patientPathId = encodeURIComponent(id);
 
   return (
     <PageScaffold>
       <WorkflowPageIntro
-        backHref={`/patients/${patientPathId}`}
+        backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
         eyebrow="MCS Integration"
         title="MCS連携"

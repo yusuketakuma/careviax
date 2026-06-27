@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import PatientMcsPage from './page';
 
 setupDomTestEnv();
@@ -42,6 +43,11 @@ vi.mock('./mcs-content', () => ({
   },
 }));
 
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+
 describe('PatientMcsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,5 +77,25 @@ describe('PatientMcsPage', () => {
     expect(screen.getByRole('link', { name: '外部共有' }).getAttribute('href')).toBe(
       `/patients/${encodedPatientId}/share`,
     );
+  });
+
+  it('routes the patient back link through the shared patient href helper', async () => {
+    const patientId = 'patient_1';
+    const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockImplementation(
+      (id: string, suffix = '') => `/patients/__helper_${id}__${suffix}`,
+    );
+
+    render(await PatientMcsPage({ params: Promise.resolve({ id: patientId }) }));
+
+    expect(screen.getByTestId('workflow-page-intro').dataset.backHref).toBe(
+      '/patients/__helper_patient_1__',
+    );
+    expect(vi.mocked(buildPatientHref).mock.calls).toContainEqual([patientId]);
+    expect(vi.mocked(buildPatientHref).mock.calls).toContainEqual([patientId, '/medications']);
+    expect(vi.mocked(buildPatientHref).mock.calls).toContainEqual([patientId, '/prescriptions']);
+    expect(vi.mocked(buildPatientHref).mock.calls).toContainEqual([patientId, '/share']);
+
+    if (realImpl) vi.mocked(buildPatientHref).mockImplementation(realImpl);
   });
 });
