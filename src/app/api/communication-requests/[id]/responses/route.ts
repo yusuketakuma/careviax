@@ -1,8 +1,17 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
+import {
+  success,
+  validationError,
+  notFound,
+  conflict,
+  forbidden,
+  internalError,
+} from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -31,7 +40,7 @@ const createResponseSchema = z.object({
   responded_at: z.preprocess(trimStringOrUndefined, z.string().datetime('日付形式が不正です')),
 });
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
@@ -78,6 +87,15 @@ export const GET = withAuthContext(
     message: '連携依頼の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext(
   async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {

@@ -172,6 +172,7 @@ import { GET as caseGet } from '../cases/[id]/route';
 import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
 import { GET as communicationRequestGet } from '../communication-requests/[id]/route';
+import { GET as communicationRequestResponsesGet } from '../communication-requests/[id]/responses/route';
 import { GET as communicationRequestsExportGet } from '../communication-requests/export/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
 import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
@@ -405,6 +406,25 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       communicationRequestGet(
         createRequest('http://localhost/api/communication-requests/request_1', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'request_1' }) },
+      ),
+  },
+  {
+    name: 'communication-requests/[id]/responses GET',
+    setupSuccess: () => {
+      prismaMock.communicationRequest.findFirst.mockResolvedValueOnce({
+        id: 'request_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: null,
+        updated_at: new Date('2026-06-12T00:00:00.000Z'),
+      });
+    },
+    handler: () =>
+      communicationRequestResponsesGet(
+        createRequest('http://localhost/api/communication-requests/request_1/responses', {
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'request_1' }) },
@@ -1300,6 +1320,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
+        route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
@@ -1372,6 +1393,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
+        route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'first-visit-documents GET' ||
@@ -1430,6 +1452,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
+        route.name === 'communication-requests/[id]/responses GET' ||
         route.name === 'dispense-queue GET' ||
         route.name === 'visit-schedules GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||

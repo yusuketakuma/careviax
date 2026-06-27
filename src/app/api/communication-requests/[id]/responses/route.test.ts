@@ -153,6 +153,8 @@ describe('/api/communication-requests/[id]/responses', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'response_1' }],
       request_updated_at: REQUEST_UPDATED_AT_ISO,
@@ -178,6 +180,8 @@ describe('/api/communication-requests/[id]/responses', () => {
     }))!;
 
     expect(response.status).toBe(403);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(communicationResponseFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -187,6 +191,8 @@ describe('/api/communication-requests/[id]/responses', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '連携依頼IDが不正です',
@@ -195,6 +201,28 @@ describe('/api/communication-requests/[id]/responses', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(communicationResponseFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when response listing fails unexpectedly', async () => {
+    communicationResponseFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw communication response content facility memo'),
+    );
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'request_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw communication response');
+    expect(JSON.stringify(body)).not.toContain('facility memo');
   });
 
   it('creates a response and updates the request status', async () => {
