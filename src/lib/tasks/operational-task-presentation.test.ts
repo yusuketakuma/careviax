@@ -12,6 +12,21 @@ describe('describeOperationalTask', () => {
     ).toBe('/schedules?focus=schedule&schedule_id=visit_1');
   });
 
+  it.each(['staff_work_request_visit', 'unknown_task_type'])(
+    'encodes visit schedule id %s links while keeping raw identity out of the href',
+    (taskType) => {
+      const scheduleId = '../schedule with space?x=1#frag';
+
+      expect(
+        describeOperationalTask({
+          task_type: taskType,
+          related_entity_type: 'visit_schedule',
+          related_entity_id: scheduleId,
+        }).actionHref,
+      ).toBe(`/schedules?focus=schedule&schedule_id=${encodeURIComponent(scheduleId)}`);
+    },
+  );
+
   it('links audit work requests back to the related audit task', () => {
     expect(
       describeOperationalTask({

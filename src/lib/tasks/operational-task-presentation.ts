@@ -1,4 +1,5 @@
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 
 export type OperationalTaskPresentation = {
   actionHref: string;
@@ -20,7 +21,7 @@ export function describeOperationalTask(
       return {
         actionHref:
           task.related_entity_type === 'visit_schedule' && task.related_entity_id
-            ? `/schedules?focus=schedule&schedule_id=${encodeURIComponent(task.related_entity_id)}`
+            ? buildScheduleFocusHref(task.related_entity_id)
             : '/schedules',
         actionLabel: '訪問依頼を確認',
         queueLabel: '訪問依頼',
@@ -224,7 +225,7 @@ export function describeOperationalTask(
       if (task.related_entity_type === 'visit_schedule') {
         return {
           actionHref: task.related_entity_id
-            ? `/schedules?focus=schedule&schedule_id=${encodeURIComponent(task.related_entity_id)}`
+            ? buildScheduleFocusHref(task.related_entity_id)
             : '/schedules',
           actionLabel: '予定を確認',
           queueLabel: '訪問',

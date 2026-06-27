@@ -3,6 +3,7 @@ import { internalError, success } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
+import { buildScheduleProposalDetailHref } from '@/lib/schedules/navigation';
 import type { ClerkSupportResponse, ClerkSupportTask } from '@/types/clerk-support';
 
 /**
@@ -107,7 +108,7 @@ const authenticatedGET = withAuthContext(
           patient_name: proposal.case_.patient.name,
           next_action: '候補日時を電話で確認',
           due_label: formatNullableDateKey(proposal.proposed_date),
-          href: `/schedules/proposals?detail=${encodeURIComponent(proposal.id)}`,
+          href: buildScheduleProposalDetailHref(proposal.id),
         }),
       ),
     ].slice(0, CLERK_TASK_LIMIT);
