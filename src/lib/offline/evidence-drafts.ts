@@ -1,6 +1,7 @@
 'use client';
 
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import { offlineDb, type OfflineEvidenceDraft } from '@/lib/stores/offline-db';
 import { createFetchTimeout } from '@/lib/utils/abort-timeout';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
@@ -185,7 +186,7 @@ async function resolveVisitRecordIdForDraft(
   scheduleId: string,
   headers: Record<string, string>,
 ): Promise<string | null> {
-  const schedulePathId = encodeURIComponent(scheduleId);
+  const schedulePathId = encodePathSegment(scheduleId);
   const scheduleRes = await fetchEvidenceSync(`/api/visit-schedules/${schedulePathId}`, {
     headers,
   });
@@ -203,7 +204,7 @@ async function uploadEvidenceDraft(
   orgId: string,
 ): Promise<void> {
   const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
-  const visitRecordPathId = encodeURIComponent(visitRecordId);
+  const visitRecordPathId = encodePathSegment(visitRecordId);
   let fileAssetId =
     draft.uploadedVisitRecordId === visitRecordId ? (draft.uploadedFileAssetId ?? null) : null;
 

@@ -402,6 +402,27 @@ describe('offline evidence draft sync', () => {
     expect(evidenceDraftsMock.delete).toHaveBeenCalledWith(1);
   });
 
+  it('fails closed before fetching exact dot-segment schedule IDs', async () => {
+    evidenceDraftsMock.toArray.mockResolvedValue([createDraft({ scheduleId: '.' })]);
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('unexpected fetch'));
+
+    await expect(syncEvidenceDrafts({ orgId: 'org_1' })).resolves.toEqual({
+      synced: 0,
+      skipped: 0,
+      failed: 1,
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(decryptOfflinePayloadMock).not.toHaveBeenCalled();
+    expect(evidenceDraftsMock.update).toHaveBeenCalledWith(1, {
+      retryCount: 1,
+      lastError: '証跡写真の同期に失敗しました',
+    });
+    expect(evidenceDraftsMock.delete).not.toHaveBeenCalled();
+  });
+
   it('persists completed file metadata before retrying a failed attachment patch', async () => {
     evidenceDraftsMock.toArray.mockResolvedValue([createDraft()]);
     decryptOfflinePayloadMock.mockResolvedValue('data:image/png;base64,AAAA');
