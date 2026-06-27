@@ -340,4 +340,30 @@ describe('BusinessHolidaysContent', () => {
     );
     expect(deleteCalls).toHaveLength(0);
   });
+
+  it('shows the holiday-type label, not the raw enum, in the create and bulk type selects', async () => {
+    // bare <SelectValue /> は非空 enum default(site_closure)の生値を漏らす。
+    // 明示 children で日本語ラベル(薬局休業日)を表示することを固定する(SSR enum 漏れ封止)。
+    // Radix SelectTrigger は getByLabelText で拾いづらいため id 指定で trigger を取得する。
+    stubFetchWithHoliday();
+
+    const individual = renderContent();
+    await individual.findByLabelText('店舗フィルタ');
+    fireEvent.click(await individual.findByLabelText('1日'));
+    await individual.findByLabelText('休日名'); // 個別作成フォームが開くのを待つ
+    const formType = document.getElementById('holiday-form-type');
+    expect(formType?.textContent).toContain('薬局休業日');
+    expect(formType?.textContent).not.toContain('site_closure');
+    individual.unmount();
+
+    const bulk = renderContent();
+    await bulk.findByLabelText('店舗フィルタ');
+    fireEvent.click(bulk.getByRole('button', { name: '一括登録' }));
+    fireEvent.click(await bulk.findByLabelText('1日')); // 一括フォームは日付選択後に種別欄が出る
+    await bulk.findByLabelText('休日名');
+    const bulkType = document.getElementById('bulk-holiday-type');
+    expect(bulkType?.textContent).toContain('薬局休業日');
+    expect(bulkType?.textContent).not.toContain('site_closure');
+    bulk.unmount();
+  });
 });

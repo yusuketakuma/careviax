@@ -463,7 +463,8 @@ export function BusinessHolidaysContent() {
               <Field label="種別" htmlFor="bulk-holiday-type">
                 <Select value={bulkType} onValueChange={(v) => setBulkType(v ?? '')}>
                   <SelectTrigger id="bulk-holiday-type">
-                    <SelectValue />
+                    {/* default は非空 enum(site_closure)。bare SelectValue の生 enum 漏れ防止に明示ラベル。 */}
+                    <SelectValue>{HOLIDAY_TYPE_LABELS[bulkType] ?? bulkType}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {HOLIDAY_TYPE_OPTIONS.map(([value, label]) => (
@@ -608,7 +609,9 @@ export function BusinessHolidaysContent() {
                 onValueChange={(v) => setForm((f) => ({ ...f, holiday_type: v ?? '' }))}
               >
                 <SelectTrigger id="holiday-form-type">
-                  <SelectValue />
+                  <SelectValue>
+                    {HOLIDAY_TYPE_LABELS[form.holiday_type] ?? form.holiday_type}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {HOLIDAY_TYPE_OPTIONS.map(([value, label]) => (
