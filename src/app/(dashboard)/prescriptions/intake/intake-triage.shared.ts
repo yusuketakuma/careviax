@@ -39,9 +39,16 @@ export const INTAKE_LANE_BADGE_CLASSES: Record<IntakeTriageLane, string> = {
 
 export type IntakeTriageStatusPresentation = {
   label: string;
-  /** 状態バッジの配色(緑=待ち解除/進行、紫=受入判断、橙=注意、灰=完了系) */
+  /**
+   * 状態バッジの配色。6 軸セマンティックトークン(state / tag 系)で表現する。
+   * done=完了/進行確定、waiting=受入判断待ち、confirm=要確認、info=情報系。
+   * 生 Tailwind 状態色は使わない(docs/ui-ux-design-guidelines.md §L297-307)。
+   */
   badgeClassName: string;
-  /** 行全体の背景ハイライト(待ち解除=薄緑 / 重複=薄橙) */
+  /**
+   * 行全体の背景ハイライト。原則は使わない(面塗り禁止・§L311-317)。
+   * 行の強調は zebra stripe / 罫線 / 左ボーダー帯で表現する。
+   */
   rowClassName?: string;
 };
 
@@ -51,37 +58,35 @@ export const INTAKE_STATUS_PRESENTATIONS: Record<
 > = {
   unblock_related: {
     label: '待ち解除に関連',
-    badgeClassName: 'bg-emerald-100 text-emerald-700',
-    rowClassName: 'bg-emerald-50/60 hover:bg-emerald-50',
+    badgeClassName: 'bg-state-done/10 text-state-done',
   },
   acceptance_pending: {
     label: '受入判断待ち',
-    badgeClassName: 'bg-violet-100 text-violet-700',
+    badgeClassName: 'bg-state-waiting/10 text-state-waiting',
   },
   duplicate_suspected: {
     label: '重複の疑い',
-    badgeClassName: 'bg-amber-100 text-amber-800',
-    rowClassName: 'bg-amber-50/60 hover:bg-amber-50',
+    badgeClassName: 'bg-state-confirm/10 text-state-confirm',
   },
   entry_pending: {
     label: '入力待ち',
-    badgeClassName: 'bg-blue-100 text-blue-700',
+    badgeClassName: 'bg-tag-info/10 text-tag-info',
   },
   inquiry_waiting: {
     label: '照会回答待ち',
-    badgeClassName: 'bg-amber-100 text-amber-800',
+    badgeClassName: 'bg-state-confirm/10 text-state-confirm',
   },
   entered_in_progress: {
     label: '入力済',
-    badgeClassName: 'bg-emerald-100 text-emerald-700',
+    badgeClassName: 'bg-state-done/10 text-state-done',
   },
   imported: {
     label: '取込済',
-    badgeClassName: 'bg-emerald-100 text-emerald-700',
+    badgeClassName: 'bg-state-done/10 text-state-done',
   },
   on_hold: {
     label: '保留中',
-    badgeClassName: 'bg-amber-100 text-amber-800',
+    badgeClassName: 'bg-state-confirm/10 text-state-confirm',
   },
 };
 
