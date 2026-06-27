@@ -4,6 +4,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
@@ -69,13 +70,13 @@ async function buildCommentMentionLink(
       where: { id: args.entityId, org_id: args.orgId },
       select: { patient_id: true },
     });
-    return cycle ? `/patients/${encodeURIComponent(cycle.patient_id)}` : null;
+    return cycle ? buildPatientHref(cycle.patient_id) : null;
   }
 
   const entityId = encodeURIComponent(args.entityId);
   switch (args.entityType) {
     case 'patient':
-      return `/patients/${entityId}`;
+      return buildPatientHref(args.entityId);
     case 'dispense_task':
       return `/dispense?taskId=${entityId}`;
     case 'set_plan':
