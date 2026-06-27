@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import {
@@ -60,12 +61,18 @@ export function ClerkSupportContent() {
 
   return (
     <div className="space-y-5" data-testid="clerk-support-page">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">事務でできること</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          薬剤師の判断が必要なものは、迷わず相談へ回します。
-        </p>
-      </div>
+      {/* ハブ系トップ階層ヘッダは WorkflowPageHeader で統一(戻り導線なし)。 */}
+      {/* 事務向けの『迷ったら相談へ』ガイダンスは運用上の指示なので、help-popover に */}
+      {/* 隠さず supportingContent で常時可視に保つ(description は help 用に同文を渡す)。 */}
+      <WorkflowPageHeader
+        title="事務でできること"
+        description="薬剤師の判断が必要なものは、迷わず相談へ回します。"
+        supportingContent={
+          <p className="text-sm leading-6 text-muted-foreground">
+            薬剤師の判断が必要なものは、迷わず相談へ回します。
+          </p>
+        }
+      />
 
       {!orgId || query.isLoading ? (
         <div className="space-y-4" role="status" aria-label="事務サポート読み込み中">
