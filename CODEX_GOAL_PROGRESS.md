@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - External Professionals Communications GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long gates, and before ledger work.
+  - Claude acknowledged then approved `144e5f40` / `0adf314e` with no findings after independent focused validation.
+  - Claude sent a higher-priority `/views` review request while Codex was editing this API slice; Codex paused backend work, re-read the UI/UX SSOT, inspected commit `ed83b27a`, reran focused gates, and sent APPROVE with no findings before continuing.
+- Hardened the admin implementation of `GET /api/admin/external-professionals/[id]/communications`; the public `GET /api/external-professionals/[id]/communications` re-export now receives the same sensitive no-store envelope.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added admin route-local regression coverage for no-store success, no-store 404, and sanitized no-store 500 responses that omit raw patient/communication-like thrown text.
+- Added public re-export route-local regression coverage for no-store success and no-store 404.
+- Added both admin and public external-professional communications GET routes to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canReport` auth, assignment-scope narrowing, professional lookup, counterpart/recipient name matching, request/event projection, public re-export contract, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: external-professional communication history returns professional names, organization names, counterpart/recipient names, subjects, statuses, channels, directions, and patient/case assignment-derived filters; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/admin/external-professionals/[id]/communications/route.ts src/app/api/admin/external-professionals/[id]/communications/route.test.ts src/app/api/external-professionals/[id]/communications/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no changes.
+  - `pnpm vitest run src/app/api/admin/external-professionals/[id]/communications/route.test.ts src/app/api/external-professionals/[id]/communications/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `299` tests.
+  - Scoped ESLint passed for the admin route, admin route test, public route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run changed-file `pnpm format:check`, commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Handoff Board GET No-Store Hardening
 
 - Coordination:
