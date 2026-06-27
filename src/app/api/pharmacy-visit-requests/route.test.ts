@@ -171,6 +171,8 @@ describe('/api/pharmacy-visit-requests', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     const where = pharmacyVisitRequestFindManyMock.mock.calls[0]?.[0]?.where;
     expect(where).toEqual(
       expect.objectContaining({
@@ -248,6 +250,8 @@ describe('/api/pharmacy-visit-requests', () => {
       const response = await GET(createGetRequest(query));
 
       expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+      expect(response.headers.get('Pragma')).toBe('no-cache');
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '検索条件が不正です',
@@ -262,6 +266,8 @@ describe('/api/pharmacy-visit-requests', () => {
     const response = await GET(createGetRequest('?status=deleted'));
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -269,6 +275,26 @@ describe('/api/pharmacy-visit-requests', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(pharmacyVisitRequestFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when visit request listing fails unexpectedly', async () => {
+    pharmacyVisitRequestFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 raw pharmacy visit request home notes'),
+    );
+
+    const response = await GET(createGetRequest('?limit=8'));
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('raw pharmacy visit request');
+    expect(JSON.stringify(body)).not.toContain('home notes');
   });
 
   it('creates a requested visit request with an active contract estimate and compact audit', async () => {
