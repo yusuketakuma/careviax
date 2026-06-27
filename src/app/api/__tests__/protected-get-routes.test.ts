@@ -218,6 +218,7 @@ import { GET as prescriptionIntakeGet } from '../prescription-intakes/[id]/route
 import { GET as qrScanDraftsGet } from '../qr-scan-drafts/route';
 import { GET as qrScanDraftGet } from '../qr-scan-drafts/[id]/route';
 import { GET as residualMedicationsGet } from '../residual-medications/route';
+import { GET as setBatchGet } from '../set-batches/[id]/route';
 import { GET as setPlansGet } from '../set-plans/route';
 import { GET as setPlanGet } from '../set-plans/[id]/route';
 import { GET as setPlanCalendarGet } from '../set-plans/[id]/calendar/route';
@@ -887,6 +888,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'set-batches/[id] GET',
+    handler: () =>
+      setBatchGet(
+        createRequest('http://localhost/api/set-batches/batch_1', { 'x-org-id': 'org_1' }),
+        {
+          params: Promise.resolve({ id: 'batch_1' }),
+        },
+      ),
+  },
+  {
     name: 'set-plans/[id] GET',
     handler: () =>
       setPlanGet(createRequest('http://localhost/api/set-plans/plan_1', { 'x-org-id': 'org_1' }), {
@@ -1289,6 +1300,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-plans GET' ||
+        route.name === 'set-batches/[id] GET' ||
         route.name === 'set-plans/[id] GET' ||
         route.name === 'set-plans/[id]/calendar GET' ||
         route.name === 'staff-workload GET' ||
@@ -1356,6 +1368,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-schedule-proposals GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-plans GET' ||
+        route.name === 'set-batches/[id] GET' ||
         route.name === 'set-plans/[id] GET' ||
         route.name === 'set-plans/[id]/calendar GET' ||
         route.name === 'staff-workload GET' ||
@@ -1394,6 +1407,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals/[id] GET' ||
+        route.name === 'set-batches/[id] GET' ||
         route.name === 'set-plans/[id] GET' ||
         route.name === 'set-plans/[id]/calendar GET'
       ) {

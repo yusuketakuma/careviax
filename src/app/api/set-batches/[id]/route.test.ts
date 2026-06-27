@@ -110,6 +110,8 @@ describe('/api/set-batches/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
   });
 
   it('returns 404 for unassigned pharmacist set-batch detail', async () => {
@@ -121,6 +123,8 @@ describe('/api/set-batches/[id]', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(setBatchFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'batch_1',
@@ -128,6 +132,29 @@ describe('/api/set-batches/[id]', () => {
       },
       include: expect.any(Object),
     });
+  });
+
+  it('returns a sanitized no-store 500 when set-batch detail lookup fails unexpectedly', async () => {
+    setBatchFindFirstMock.mockReset();
+    setBatchFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw set batch drug line detail'),
+    );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'batch_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw set batch');
+    expect(JSON.stringify(body)).not.toContain('drug line detail');
   });
 
   it('updates a set batch with optimistic locking', async () => {
