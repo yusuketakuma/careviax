@@ -21,6 +21,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Pharmacy Visit Requests GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before selecting the next backend slice and before validation/commit steps.
+  - Preserved Claude-owned `/clerk-support` work; read-only reviewed and approved Claude's commit2 `d0b7b99e` after confirming the `WorkflowPageHeader` + visible `supportingContent` option C implementation and rerunning focused validation.
+  - Continued backend PHI/cache hardening after communication-request responses; root `GET /api/pharmacy-visit-requests` was the next non-overlapping candidate with existing route tests.
+- Hardened root `GET /api/pharmacy-visit-requests` so success, auth rejection, forbidden rejection, filter validation errors, and ordinary unexpected visit-request list failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store blank/unsupported filter validation, and sanitized no-store 500 responses that omit raw patient/pharmacy-visit-request/home-note-like thrown text.
+- Added `pharmacy-visit-requests GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canManagePatientSharing` auth, active share-case/consent/partnership filtering, cursor pagination, PHI-minimizing `toSafeVisitRequest` response shape, POST behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: visit request lists include share-case linkage, partner pharmacy/site hints, urgency, desired visit windows, status/progress timestamps, contract estimate metadata, and patient-sharing workflow context; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run src/app/api/pharmacy-visit-requests/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `266` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed after Claude's `/clerk-support` commit2.
+  - Scoped ESLint passed for the pharmacy-visit-requests route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+  - Claude clerk-support commit2 `d0b7b99e` review validation passed: focused clerk-support Vitest `1` file / `4` tests, scoped ESLint, scoped Prettier, commit diff-check, and full TypeScript.
+- Commit status: implementation landed as `86561b0d`; this entry is the separate progress-ledger update.
+- Next action: commit progress ledgers, send `agmsg` FYI, then continue with the next backend/API PHI no-store candidate unless Claude needs another review. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Communication Request Responses GET No-Store Hardening
 
 - Coordination:
