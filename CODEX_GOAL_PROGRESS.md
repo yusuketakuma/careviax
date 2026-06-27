@@ -23,6 +23,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Patient Detail Workspace GET Matrix No-Store Coverage
+
+- Coordination:
+  - Drained `phos/codex` before selecting the slice and during long gates.
+  - Claude approved the previous patient-detail matrix slice `b667c7af` / `9e9c93e1`; Codex ACKed and continued a non-overlapping backend/test matrix slice.
+  - A code_mapper subagent identified patient workspace card GET routes as the highest-value remaining backend/test support gap while Claude owns the S4 operating-hours UI files.
+  - First full TypeScript run exposed a Claude S4 WIP TS2322 in `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx:315`; Codex sent Claude the exact error and preserved the file. Claude applied the null guard fix, after which the full gate passed.
+- Added `patients/[id]/home-operations GET`, `patients/[id]/readiness GET`, `patients/[id]/visits GET`, and `patients/[id]/workflow-preview GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Added matrix-local service mocks for `getPatientHomeOperationsData`, `getPatientReadinessData`, `getPatientVisitsData`, and `getPatientWorkflowPreviewData` so success paths remain focused and do not depend on the full patient-detail service graph.
+- Preserved existing route implementations, UI files, DB behavior, schema/migrations/data, and external behavior.
+- Security risk reduced: patient workspace cards are PHI/workflow-heavy UI dependencies. Their route-local no-store handling is now also pinned by the shared protected GET regression matrix.
+- Performance issue improved: none. This is a test-only coverage slice.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/__tests__/protected-get-routes.test.ts` passed with no changes.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `419` tests.
+  - Scoped ESLint passed for `src/app/api/__tests__/protected-get-routes.test.ts`.
+  - Scoped Prettier check passed for the protected matrix.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed on rerun after Claude fixed the unrelated S4 WIP TS2322.
+- Commit status: implementation ready for a grouped test-only commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit the protected matrix and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then remain available for S4 API/UI contract consultations.
+
 ### 2026-06-27 JST - Patient Detail GET Matrix No-Store Coverage
 
 - Coordination:

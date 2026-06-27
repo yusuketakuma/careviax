@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1809 JST
+
+- current task: backend/test support slice for UI reliability: add patient-detail workspace card GET routes (`home-operations`, `readiness`, `visits`, and `workflow-preview`) to the protected GET auth/no-store matrix while preserving Claude's S4 operating-hours UI WIP.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox/send via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, gbrain search for protected GET/no-store matrix context, code_mapper subagent report, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/app/api/patients/[id]/home-operations/route.ts`, `src/app/api/patients/[id]/readiness/route.ts`, `src/app/api/patients/[id]/visits/route.ts`, `src/app/api/patients/[id]/workflow-preview/route.ts`, and `src/app/api/patients/[id]/detail-slices.test.ts`.
+- files changed: `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned S4 WIP files `src/components/features/admin/admin-page-shortcut-presets.ts` and `src/app/(dashboard)/admin/operating-hours/**` were preserved untouched by Codex.
+- bugs found: `patients/[id]/home-operations GET`, `patients/[id]/readiness GET`, `patients/[id]/visits GET`, and `patients/[id]/workflow-preview GET` already used route-local sensitive no-store/fixed-error handling, but were absent from the shared protected GET auth/no-store matrix, leaving patient workspace card cache regressions less visible in the cross-route gate.
+- security risks found: reduced PHI/workflow cacheability regression risk by adding the four patient-detail workspace card reads to the matrix for 401, 403, and success no-store assertions. No production code, DB schema/data, migrations, external sends, frontend UI, or destructive operations were changed.
+- performance issues found: none. This is a test-only matrix update plus patient-detail service mocks for matrix success setup.
+- validation commands: `pnpm exec prettier --write src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec vitest run 'src/app/api/patients/[id]/detail-slices.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the protected matrix; scoped Prettier check for the protected matrix; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write was unchanged; focused patient-detail/protected GET Vitest passed `2` files / `419` tests; scoped ESLint passed; scoped Prettier check passed; first full TypeScript run failed on unowned Claude S4 WIP `src/app/(dashboard)/admin/operating-hours/operating-hours-content.tsx:315` TS2322 and Codex notified Claude instead of editing it; Claude applied the null guard fix; `pnpm typecheck:no-unused` passed; rerun full TypeScript passed.
+- remaining work: run ledger-aware scoped Prettier/diff checks after this update, stage only Codex-owned protected matrix and ledgers, commit the test-only slice and state separately, and send Claude a `PATCH_REVIEW_REQUEST`.
+- next action: ledger checks, grouped commits, and Claude review request while preserving Claude S4 files.
+
 ### 20260627-1757 JST
 
 - current task: backend/test support slice for UI reliability: add patient-detail documents, contacts, and care-team GET routes to the protected GET auth/no-store matrix while preserving Claude's S4 operating-hours UI WIP.
