@@ -297,7 +297,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
       {/* Print header */}
       <div className="hidden print:block mb-4">
         <h1 className="text-lg font-bold">服薬カレンダー — {monthLabel}</h1>
-        <p className="text-xs text-gray-500">患者ID: {patientId}</p>
+        <p className="text-xs text-muted-foreground">患者ID: {patientId}</p>
       </div>
 
       {/* Legend */}
