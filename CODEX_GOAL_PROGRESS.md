@@ -74,6 +74,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation landed as `cffc1851`; this entry plus Ralph updates are the separate progress-ledger update.
 - Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `cffc1851` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Care Report API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `care-report-api-path` lock notice, and continued after the inbox stayed clear.
+  - Read the Next app client component/fetch docs and PH-OS UI/UX SSOT because this touches dashboard client components, but kept the slice URL-construction-only with no visual/layout changes.
+  - Kept this to report detail/share/print/edit API path construction; no DB mutation, migration, push, deploy, billing/auth change, external send, or destructive operation.
+- Hardened/converged care-report route construction:
+  - Added `src/lib/reports/api-paths.ts` with `buildCareReportApiPath(reportId, suffix)` and `buildCareReportPrintAuditApiPath(reportId)` on top of `encodePathSegment`.
+  - Replaced local report API path builders in report detail, interprofessional share, and print audit pages.
+  - Routed `ReportEditForm` PATCH saves through the same helper instead of raw `reportId` interpolation.
+  - Added helper coverage for hostile slash/query/hash ids, suffix placement outside the encoded segment, print-audit paths, and exact `.` / `..` fail-closed behavior.
+  - Added edit-form coverage proving hostile report ids are encoded in the PATCH URL while the existing request body/version payload is preserved.
+  - Preserved report send/print audit methods, idempotency headers, org headers, auth, permissions, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: care report API callers now share the same path-segment contract, and edit-save no longer interpolates raw report ids into `/api/care-reports/:id`.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/reports/api-paths.ts src/lib/reports/api-paths.test.ts 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx' 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/print/page.tsx' src/components/features/reports/report-edit-form.tsx src/components/features/reports/report-edit-form.test.tsx` passed unchanged.
+  - `pnpm exec vitest run src/lib/reports/api-paths.test.ts 'src/app/(dashboard)/reports/[id]/page.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' src/components/features/reports/report-edit-form.test.tsx --reporter=dot --testTimeout=30000` passed `5` files / `74` tests.
+  - Scoped ESLint passed for the helper/test and four consumer/test files.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/API-path slice.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
+- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Partner Visit Record API Path Helper Hardening
 
 - Coordination:
