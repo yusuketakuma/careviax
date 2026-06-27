@@ -48,6 +48,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation landed as `e0f4a79f`; this entry plus Ralph updates are the separate progress-ledger update.
 - Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `e0f4a79f` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Patient Form Duplicate Existing Patient Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `patient-form-duplicate-patient-href` lock notice, and continued after the inbox stayed clear.
+  - Kept this to patient duplicate-alert navigation only; no visual/layout/API/DB change.
+- Refactored duplicate-alert existing-patient navigation in `a2cb5567`:
+  - Imported and reused `buildPatientHref` in `src/components/features/patients/patient-form.tsx`.
+  - Replaced the duplicate alert's inline `router.push('/patients/:id')` construction.
+  - Added an actual-backed spy test proving the existing-patient button uses the shared helper return value.
+  - Preserved the existing duplicate warning, `それでも登録する` flow, and `allowNavigation()` before `router.push` contract.
+  - Preserved patient form API behavior, layout, visual styles, auth, DB schema/data, migrations, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: duplicate-alert existing-patient navigation now shares the canonical patient route helper and path-segment dot-segment contract instead of carrying a local inline route builder.
+- Performance issue improved: none. This is a pure navigation helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx` passed unchanged.
+  - `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx --reporter=dot --testTimeout=30000` passed `1` file / `11` tests.
+  - Scoped ESLint passed for patient form/test plus patient navigation/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/navigation slice.
+- Commit status: implementation landed as `a2cb5567`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `a2cb5567` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Referral Success Patient Href Helper Convergence
 
 - Coordination:

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0359 JST
+
+- current task: patient form duplicate-alert existing-patient navigation helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, `src/components/features/patients/patient-form.tsx`, `src/components/features/patients/patient-form.test.tsx`, `src/lib/patient/navigation.ts`, and `src/lib/patient/navigation.test.ts`.
+- files changed: `src/components/features/patients/patient-form.tsx`, `src/components/features/patients/patient-form.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: no user-visible behavior bug was changed. The maintainability/safety gap was that the duplicate-patient alert still hand-built `/patients/:id` inline for the existing-patient button while the canonical `buildPatientHref` helper already carries the patient route path-segment contract.
+- security risks found: reduced route-construction drift by routing duplicate-alert existing-patient navigation through `buildPatientHref` and adding test coverage that the helper return value is used while preserving the existing duplicate warning and `allowNavigation()` before `router.push` contract. No layout, visual style, API shape, duplicate acknowledgement flow, auth, permission, DB schema/data, migration, external send, PHI logging, push/deploy, or destructive behavior changed.
+- performance issues found: none. This is a pure navigation helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy work.
+- validation commands: `pnpm exec prettier --write src/components/features/patients/patient-form.tsx src/components/features/patients/patient-form.test.tsx`; `pnpm exec vitest run src/components/features/patients/patient-form.test.tsx --reporter=dot --testTimeout=30000`; scoped ESLint for patient form/test plus patient navigation/test; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused patient form Vitest passed `1` file / `11` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `a2cb5567` plus the state commit. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit, then send Claude the review request and continue after inbox is clear.
+
 ### 20260628-0353 JST
 
 - current task: referral success patient navigation helper convergence.
