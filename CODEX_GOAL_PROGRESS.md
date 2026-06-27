@@ -47,6 +47,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
 - Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
 
+### 2026-06-27 JST - PCA Pump Rentals GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation and before ledger work.
+  - Claude approved `audit-logs` implementation commit `3d610bad` and state commit `9f7bc8fe` with no findings after independent focused route/protected GET validation.
+  - Preserved Claude-owned dirty `/admin/contact-profiles` files while continuing a non-overlapping backend/API slice.
+- Hardened root `GET /api/pca-pump-rentals` so success, auth rejection, forbidden rejection, invalid rental-status validation, invalid return-inspection-status validation, invalid institution filter validation, and ordinary unexpected PCA pump rental list failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store invalid rental status, no-store invalid return inspection status, no-store invalid institution filters, and sanitized no-store 500 responses that omit raw contact/serial-like thrown text.
+- Added `pca-pump-rentals GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canReport` auth, rental-status/open-status filtering, return-inspection-status filtering, institution filter trimming, response serialization, POST behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: PCA pump rental lists include pump asset/serial/model state, lending institution name/code/phone/fax, contact name/phone, fee, rental dates, inspection state, accessories, and notes; these are now no-store at the HTTP boundary and unexpected list failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/pca-pump-rentals/route.ts src/app/api/pca-pump-rentals/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no changes.
+  - `pnpm vitest run src/app/api/pca-pump-rentals/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `294` tests.
+  - Scoped ESLint passed for the pca-pump-rentals route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm format:check` passed for changed files.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Incident Reports GET No-Store Hardening
 
 - Coordination:
