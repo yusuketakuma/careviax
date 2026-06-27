@@ -67,7 +67,8 @@ describe('SavedViewsContent', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'よく使う絞り込み' })).toBeTruthy();
-    expect(screen.getByText('朝の確認・施設別・自分の担当などをすぐ呼び出します。')).toBeTruthy();
+    // 説明文は WorkflowPageHeader の HelpPopover に集約され、見出しは h1 のまま維持される。
+    expect(document.querySelector('[data-page-header="true"]')).toBeTruthy();
 
     expect(screen.getByText('朝の確認')).toBeTruthy();
     expect(screen.getByText('セット担当')).toBeTruthy();
@@ -231,5 +232,53 @@ describe('SavedViewsContent', () => {
         expect.objectContaining({ method: 'DELETE' }),
       );
     });
+  });
+
+  it('renders the shared workflow page header instead of a raw heading', async () => {
+    renderPage();
+
+    expect(screen.getByRole('heading', { name: 'よく使う絞り込み', level: 1 })).toBeTruthy();
+    expect(document.querySelector('[data-page-header="true"]')).toBeTruthy();
+  });
+
+  it('drops decorative card shadows from the preset, current-filter, and named-views surfaces', async () => {
+    renderPage();
+    await screen.findByTestId('current-filter-card');
+
+    for (const card of screen.getAllByTestId('saved-view-preset-card')) {
+      expect(card.className).not.toContain('shadow-sm');
+    }
+    expect(screen.getByTestId('current-filter-card').className).not.toContain('shadow-sm');
+    expect(screen.getByTestId('named-views-card').className).not.toContain('shadow-sm');
+  });
+
+  it('explains why a shared (non-owned) view is visible and hides its owner-only actions', async () => {
+    mockPreferences({ work_mode: 'pharmacist' }, [
+      {
+        id: 'view_shared',
+        name: '施設別まとめ',
+        scope: 'schedules',
+        filters: { conditions: [{ field: 'schedule', value: 'include_patient_confirmation' }] },
+        sort: null,
+        isShared: true,
+        sortOrder: 0,
+        isOwner: false,
+        createdAt: '2026-06-13T09:30:00+09:00',
+        updatedAt: '2026-06-13T09:30:00+09:00',
+      },
+    ]);
+    renderPage();
+
+    expect(await screen.findByTestId('named-view-shared-reason')).toBeTruthy();
+    expect(
+      screen.getByText('同じ薬局で共有されたビューです。編集・削除はできません。'),
+    ).toBeTruthy();
+    expect(screen.getByTestId('named-view-shared-tag')).toBeTruthy();
+    // 非オーナーは改名・削除・共有トグルを持たない。
+    expect(screen.queryByRole('button', { name: '施設別まとめの名前を変更' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '施設別まとめを削除' })).toBeNull();
+    expect(screen.queryByTestId('named-view-share-toggle')).toBeNull();
+    // ビュー名(呼び出し)ボタンは維持。
+    expect(screen.getByRole('button', { name: '施設別まとめ' })).toBeTruthy();
   });
 });

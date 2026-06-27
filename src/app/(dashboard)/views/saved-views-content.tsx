@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -56,7 +57,7 @@ function PresetCard({
 }) {
   return (
     <article
-      className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card p-5 shadow-sm"
+      className="flex flex-col gap-2 rounded-lg border border-border/70 bg-card p-5"
       data-testid="saved-view-preset-card"
     >
       <h2 className="text-base font-bold text-foreground">{title}</h2>
@@ -126,7 +127,7 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
   return (
     <section
       aria-labelledby="current-filter-heading"
-      className="rounded-lg border border-border/70 bg-card p-5 shadow-sm"
+      className="rounded-lg border border-border/70 bg-card p-5"
       data-testid="current-filter-card"
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -330,7 +331,7 @@ function NamedSavedViewsCard({
   return (
     <section
       aria-labelledby="named-views-heading"
-      className="rounded-lg border border-border/70 bg-card p-5 shadow-sm"
+      className="rounded-lg border border-border/70 bg-card p-5"
       data-testid="named-views-card"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -444,14 +445,24 @@ function NamedSavedViewsCard({
                 </form>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    className="flex-1 truncate text-left text-sm font-medium text-primary hover:underline"
-                    onClick={() => recallView(view)}
-                    data-testid="named-view-recall"
-                  >
-                    {view.name}
-                  </button>
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      className="block w-full truncate text-left text-sm font-medium text-primary hover:underline"
+                      onClick={() => recallView(view)}
+                      data-testid="named-view-recall"
+                    >
+                      {view.name}
+                    </button>
+                    {!view.isOwner ? (
+                      <p
+                        className="mt-0.5 text-xs text-muted-foreground"
+                        data-testid="named-view-shared-reason"
+                      >
+                        同じ薬局で共有されたビューです。編集・削除はできません。
+                      </p>
+                    ) : null}
+                  </div>
                   {!view.isOwner ? (
                     <span
                       className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
@@ -542,12 +553,10 @@ export function SavedViewsContent() {
 
   return (
     <div className="max-w-5xl space-y-6" data-testid="saved-views-page">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">よく使う絞り込み</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          朝の確認・施設別・自分の担当などをすぐ呼び出します。
-        </p>
-      </div>
+      <WorkflowPageHeader
+        title="よく使う絞り込み"
+        description="朝の確認・施設別・自分の担当などをすぐ呼び出します。"
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 sm:gap-6" data-testid="saved-view-preset-grid">
         {SAVED_VIEW_PRESETS.map((preset) => (
