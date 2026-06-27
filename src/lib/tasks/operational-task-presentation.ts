@@ -1,5 +1,6 @@
 import { buildAuditTaskHref } from '@/lib/audit/navigation';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { buildPrescriptionHref } from '@/lib/prescriptions/navigation';
 import { buildScheduleFocusHref } from '@/lib/schedules/navigation';
 
 export type OperationalTaskPresentation = {
@@ -151,7 +152,7 @@ export function describeOperationalTask(
       return {
         actionHref:
           task.related_entity_type === 'prescription_intake' && task.related_entity_id
-            ? `/prescriptions/${encodeURIComponent(task.related_entity_id)}`
+            ? buildPrescriptionHref(task.related_entity_id)
             : '/patients',
         actionLabel: '原本回収を記録',
         queueLabel: 'FAX原本',

@@ -79,4 +79,17 @@ describe('describeOperationalTask', () => {
       });
     },
   );
+
+  it.each(['.', '..'])(
+    'rejects exact dot-segment prescription intake id %s for fax original follow-up tasks',
+    (intakeId) => {
+      expect(() =>
+        describeOperationalTask({
+          task_type: 'fax_original_followup',
+          related_entity_type: 'prescription_intake',
+          related_entity_id: intakeId,
+        }),
+      ).toThrow(RangeError);
+    },
+  );
 });
