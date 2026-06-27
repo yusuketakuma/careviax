@@ -168,6 +168,7 @@ import { GET as careReportGet } from '../care-reports/[id]/route';
 import { GET as careReportsAnalyticsGet } from '../care-reports/analytics/route';
 import { GET as careReportsTodayWorkspaceGet } from '../care-reports/today-workspace/route';
 import { GET as casesGet } from '../cases/route';
+import { GET as caseGet } from '../cases/[id]/route';
 import { GET as communicationEventsGet } from '../communication-events/route';
 import { GET as communicationRequestsGet } from '../communication-requests/route';
 import { GET as communicationRequestGet } from '../communication-requests/[id]/route';
@@ -366,6 +367,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
         createRequest('http://localhost/api/cases', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
       ),
+  },
+  {
+    name: 'cases/[id] GET',
+    setupSuccess: () => {
+      prismaMock.firstVisitDocument.findFirst.mockResolvedValueOnce(null);
+    },
+    handler: () =>
+      caseGet(createRequest('http://localhost/api/cases/case_1', { 'x-org-id': 'org_1' }), {
+        params: Promise.resolve({ id: 'case_1' }),
+      }),
   },
   {
     name: 'communication-events GET',
@@ -1223,6 +1234,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'care-reports/analytics GET' ||
         route.name === 'care-reports/today-workspace GET' ||
         route.name === 'cases GET' ||
+        route.name === 'cases/[id] GET' ||
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||
@@ -1284,6 +1296,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'care-reports/analytics GET' ||
         route.name === 'care-reports/today-workspace GET' ||
         route.name === 'cases GET' ||
+        route.name === 'cases/[id] GET' ||
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||

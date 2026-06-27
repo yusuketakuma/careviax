@@ -1,10 +1,12 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { normalizeJsonInput } from '@/lib/db/json';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateCaseSchema } from '@/lib/validations/case';
 import { prisma } from '@/lib/db/client';
@@ -35,7 +37,7 @@ function normalizeOptionalDate(value: string | undefined) {
   return value ? new Date(value) : null;
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: 'ケース参照の権限がありません',
@@ -90,6 +92,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       first_visit_doc_delivered: firstVisitDoc?.delivered_at != null,
     },
   });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

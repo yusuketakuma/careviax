@@ -104,6 +104,8 @@ describe('/api/cases/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_1',
@@ -131,12 +133,45 @@ describe('/api/cases/[id]', () => {
     });
   });
 
+  it('serializes first visit document delivery state with no-store headers', async () => {
+    firstVisitDocumentFindFirstMock.mockResolvedValueOnce({
+      id: 'doc_1',
+      delivered_at: new Date('2026-06-12T10:00:00.000Z'),
+      delivered_to: '家族A',
+      document_url: 'https://example.test/first-visit-doc.pdf',
+      created_at: new Date('2026-06-10T09:00:00.000Z'),
+    });
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'case_1',
+        first_visit_doc: {
+          id: 'doc_1',
+          delivered_at: '2026-06-12T10:00:00.000Z',
+          delivered_to: '家族A',
+          document_url: 'https://example.test/first-visit-doc.pdf',
+          created_at: '2026-06-10T09:00:00.000Z',
+        },
+        first_visit_doc_delivered: true,
+      },
+    });
+  });
+
   it('rejects blank case ids before loading case details', async () => {
     const response = (await GET(createGetRequest(), {
       params: Promise.resolve({ id: '   ' }),
     }))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'ケースIDが不正です',
@@ -153,6 +188,32 @@ describe('/api/cases/[id]', () => {
     }))!;
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when case detail lookup fails unexpectedly', async () => {
+    careCaseFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 東京都千代田区1-1-1 アムロジピン raw case detail'),
+    );
+
+    const response = (await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'case_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('東京都千代田区1-1-1');
+    expect(JSON.stringify(body)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body)).not.toContain('raw case detail');
     expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
   });
 
