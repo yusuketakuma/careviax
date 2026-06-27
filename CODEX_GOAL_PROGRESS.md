@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Contact Profiles GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long gates, and before ledger work.
+  - Claude approved `fe381f08` / `4a36c512` with no findings after independent focused validation.
+  - Claude sent a higher-priority `/admin/institutions` FE consult while Codex validation was finishing; Codex paused backend work, inspected the current institutions page/test, clipboard patterns, and UI/UX SSOT, then replied with detailed FE-only implementation/test guidance before continuing.
+- Hardened root `GET /api/contact-profiles` so success, minimal search success, auth rejection, forbidden rejection, and ordinary unexpected contact profile listing failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store list success, no-store minimal search success, and sanitized no-store 500 responses that omit raw contact/patient/communication-like thrown text.
+- Added `contact-profiles GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canViewMasterData` auth, contact kind validation, query trimming/search behavior, limit behavior, external-professional projection, response contract, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: contact profile reads include professional/person names, phone/FAX/email/contact fields, specialties, institution metadata, active status, notes-derived search, and pagination; these are now no-store at the HTTP boundary and unexpected list failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/contact-profiles/route.ts src/app/api/contact-profiles/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with route/test formatting.
+  - `pnpm vitest run src/app/api/contact-profiles/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `300` tests.
+  - Scoped ESLint passed for the contact-profiles route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm format:check` passed for changed files.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - External Professionals Communications GET No-Store Hardening
 
 - Coordination:
