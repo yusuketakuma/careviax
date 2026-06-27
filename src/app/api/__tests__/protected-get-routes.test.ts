@@ -19,7 +19,11 @@ const {
   buildVisitScheduleBillingPreviewMock,
   getPatientDocumentsDataMock,
   getPatientHeaderSummaryMock,
+  getPatientHomeOperationsDataMock,
   getPatientOverviewMock,
+  getPatientReadinessDataMock,
+  getPatientVisitsDataMock,
+  getPatientWorkflowPreviewDataMock,
   listBillingEvidenceBlockersMock,
   patientHomeCareFeatureSummaryMock,
   scheduleFeatureHighlightsMock,
@@ -108,7 +112,11 @@ const {
     buildVisitScheduleBillingPreviewMock: vi.fn(),
     getPatientDocumentsDataMock: vi.fn(),
     getPatientHeaderSummaryMock: vi.fn(),
+    getPatientHomeOperationsDataMock: vi.fn(),
     getPatientOverviewMock: vi.fn(),
+    getPatientReadinessDataMock: vi.fn(),
+    getPatientVisitsDataMock: vi.fn(),
+    getPatientWorkflowPreviewDataMock: vi.fn(),
     listBillingEvidenceBlockersMock: vi.fn(),
     patientHomeCareFeatureSummaryMock: vi.fn(),
     scheduleFeatureHighlightsMock: vi.fn(),
@@ -179,7 +187,11 @@ vi.mock('@/server/services/patient-detail', async (importOriginal) => {
     ...actual,
     getPatientDocumentsData: getPatientDocumentsDataMock,
     getPatientHeaderSummary: getPatientHeaderSummaryMock,
+    getPatientHomeOperationsData: getPatientHomeOperationsDataMock,
     getPatientOverview: getPatientOverviewMock,
+    getPatientReadinessData: getPatientReadinessDataMock,
+    getPatientVisitsData: getPatientVisitsDataMock,
+    getPatientWorkflowPreviewData: getPatientWorkflowPreviewDataMock,
   };
 });
 
@@ -251,15 +263,19 @@ import { GET as patientCareTeamGet } from '../patients/[id]/care-team/route';
 import { GET as patientContactsGet } from '../patients/[id]/contacts/route';
 import { GET as patientDocumentsGet } from '../patients/[id]/documents/route';
 import { GET as patientHeaderSummaryGet } from '../patients/[id]/header-summary/route';
+import { GET as patientHomeOperationsGet } from '../patients/[id]/home-operations/route';
 import { GET as patientMedicationCalendarPdfGet } from '../patients/[id]/medication-calendar/pdf/route';
 import { GET as patientMedicationsPdfGet } from '../patients/[id]/medications/pdf/route';
 import { GET as patientOverviewGet } from '../patients/[id]/overview/route';
 import { GET as patientPrescriptionsGet } from '../patients/[id]/prescriptions/route';
+import { GET as patientReadinessGet } from '../patients/[id]/readiness/route';
 import { GET as patientShareCaseCorrectionRequestsGet } from '../patient-share-cases/[id]/correction-requests/route';
 import { GET as patientSelfReportsGet } from '../patient-self-reports/route';
 import { GET as patientSelfReportGet } from '../patient-self-reports/[id]/route';
 import { GET as patientVisitBriefGet } from '../patients/[id]/visit-brief/route';
 import { GET as patientVisitRecordsPdfGet } from '../patients/[id]/visit-records/pdf/route';
+import { GET as patientVisitsGet } from '../patients/[id]/visits/route';
+import { GET as patientWorkflowPreviewGet } from '../patients/[id]/workflow-preview/route';
 import { GET as pharmacistsGet } from '../pharmacists/route';
 import { GET as pharmacistShiftsGet } from '../pharmacist-shifts/route';
 import { GET as pharmacistShiftsAvailableGet } from '../pharmacist-shifts/available/route';
@@ -1203,6 +1219,23 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'patients/[id]/home-operations GET',
+    setupSuccess: () => {
+      getPatientHomeOperationsDataMock.mockResolvedValueOnce({
+        attention_count: 0,
+        top_alerts: [],
+        items: [],
+      });
+    },
+    handler: () =>
+      patientHomeOperationsGet(
+        createRequest('http://localhost/api/patients/patient_1/home-operations', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
     name: 'patients/[id]/medication-calendar/pdf GET',
     handler: () =>
       patientMedicationCalendarPdfGet(
@@ -1231,6 +1264,53 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       patientOverviewGet(
         createRequest('http://localhost/api/patients/patient_1/overview', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
+    name: 'patients/[id]/readiness GET',
+    setupSuccess: () => {
+      getPatientReadinessDataMock.mockResolvedValueOnce({
+        readiness_score: 100,
+        blockers: [],
+      });
+    },
+    handler: () =>
+      patientReadinessGet(
+        createRequest('http://localhost/api/patients/patient_1/readiness', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
+    name: 'patients/[id]/visits GET',
+    setupSuccess: () => {
+      getPatientVisitsDataMock.mockResolvedValueOnce({
+        monthly_visit_count: 2,
+      });
+    },
+    handler: () =>
+      patientVisitsGet(
+        createRequest('http://localhost/api/patients/patient_1/visits', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'patient_1' }) },
+      ),
+  },
+  {
+    name: 'patients/[id]/workflow-preview GET',
+    setupSuccess: () => {
+      getPatientWorkflowPreviewDataMock.mockResolvedValueOnce({
+        tasks: [],
+        highlights: [],
+      });
+    },
+    handler: () =>
+      patientWorkflowPreviewGet(
+        createRequest('http://localhost/api/patients/patient_1/workflow-preview', {
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'patient_1' }) },
@@ -1915,8 +1995,12 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/contacts GET' ||
         route.name === 'patients/[id]/documents GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'patients/[id]/home-operations GET' ||
         route.name === 'patients/[id]/medication-calendar/pdf GET' ||
         route.name === 'patients/[id]/medications/pdf GET' ||
+        route.name === 'patients/[id]/readiness GET' ||
+        route.name === 'patients/[id]/visits GET' ||
+        route.name === 'patients/[id]/workflow-preview GET' ||
         route.name === 'communication-events GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
@@ -2040,8 +2124,12 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/contacts GET' ||
         route.name === 'patients/[id]/documents GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'patients/[id]/home-operations GET' ||
         route.name === 'patients/[id]/medication-calendar/pdf GET' ||
         route.name === 'patients/[id]/medications/pdf GET' ||
+        route.name === 'patients/[id]/readiness GET' ||
+        route.name === 'patients/[id]/visits GET' ||
+        route.name === 'patients/[id]/workflow-preview GET' ||
         route.name === 'communication-events GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
@@ -2149,8 +2237,12 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/contacts GET' ||
         route.name === 'patients/[id]/documents GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'patients/[id]/home-operations GET' ||
         route.name === 'patients/[id]/medication-calendar/pdf GET' ||
         route.name === 'patients/[id]/medications/pdf GET' ||
+        route.name === 'patients/[id]/readiness GET' ||
+        route.name === 'patients/[id]/visits GET' ||
+        route.name === 'patients/[id]/workflow-preview GET' ||
         route.name === 'communication-events GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
