@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0610 JST
+
+- current task: patient contacts PUT API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, Next client component and fetching docs under `node_modules/next/dist/docs/01-app/01-getting-started/`, `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`, `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, `src/lib/http/path-segment.ts`, `src/lib/http/path-segment.test.ts`, `src/lib/api/org-headers.ts`, `src/lib/visits/query-invalidations.ts`, `src/app/api/patients/[id]/contacts/route.ts`, and contacts route tests referenced by read-only reviewers.
+- files changed: `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `PatientContactsPanel` still built the contacts save PUT URL with a local `/api/patients/${encodePathSegment(patientId)}/contacts` template. The path already encoded hostile IDs, but duplicated the shared patient API path contract and could drift from adjacent patient API callers.
+- security risks found: reduced route-construction drift by routing contacts PUT through shared `buildPatientApiPath(patientId, '/contacts')`. Added a sentinel test proving the save mutation consumes the helper return value while preserving method `PUT`, `buildOrgJsonHeaders`, JSON contact body semantics, raw patient id query invalidation, warning/error toast behavior, minimum-contact UI, route handlers, auth, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond the existing save mutation, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped diff whitespace check for changed implementation/test files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
+- validation results: Prettier write passed. Focused patient contacts + patient API path + path-segment Vitest passed `3` files / `22` tests. Scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
+- remaining work: state commit is pending for implementation commit `6f38e79a`, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0602 JST
 
 - current task: patient communications contacts and communications API path helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing read-only patient communications fetches, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-communications-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-communications-panel.test.tsx' src/lib/patient/api-paths.test.ts`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-communications-panel.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped diff whitespace check for changed implementation/test files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
 - validation results: Prettier write passed. Focused patient communications + patient API path + path-segment Vitest passed `3` files / `24` tests. Scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
-- remaining work: state commit is pending for implementation commit `157a8a1b`, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+- remaining work: implementation commit `157a8a1b` and state commit `bfdff95b` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: monitor agmsg for new Claude review/consult requests, then continue non-overlapping backend/API hardening.
 
 ### 20260628-0556 JST
 

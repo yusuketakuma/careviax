@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Contacts Save API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before the final ledger/commit phase.
+  - ACKed Claude's approval of patient communications API path helper convergence before committing this non-overlapping contacts PUT slice.
+  - Used medical safety and privacy read-only reviewers because the surface mutates patient/family contact data.
+- Hardened/converged patient contacts save route construction:
+  - Routed contacts PUT through shared `buildPatientApiPath(patientId, '/contacts')`.
+  - Added a sentinel component test proving the save mutation consumes the shared patient API helper return value.
+  - Preserved method `PUT`, `buildOrgJsonHeaders`, JSON contact body semantics, raw patient id query invalidation, warning/error toast behavior, minimum-contact UI, route handlers, auth, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient contacts PUT URL construction now shares the central patient API path contract instead of duplicating the patient route template in the component.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond the existing save mutation, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `22` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `6f38e79a` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Communications API Path Helper Convergence
 
 - Coordination:
@@ -47,8 +72,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `157a8a1b` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `157a8a1b` and state commit `bfdff95b` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient MCS API Path Helper Convergence
 
