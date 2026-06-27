@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Communication Events GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long gates, and before ledger work.
+  - Claude approved `audit-logs` and `pca-pump-rentals` implementation/state commits with no findings after independent route/protected GET validation.
+  - Claude requested read-only review for `/admin/contact-profiles` commit `b6849f84`; Codex paused backend work, re-read the UI/UX SSOT, inspected the diff, reran focused gates, and sent APPROVE with no findings.
+  - Claude requested implementation consult for `/admin/pca-pumps`; Codex paused backend work, inspected the current PCA page/test, `PageSection`, and audit evidence, then replied approving debounce/default PageSection/count badge direction, recommending `overdue=confirm` remain unchanged, and excluding destructive cancel confirmation from the slice.
+  - A read-only code-mapper subagent ranked the next unwrapped sensitive GET candidates; `prescription-intakes/triage GET` is the recommended next backend target.
+- Hardened root `GET /api/communication-events` so success, auth rejection, forbidden rejection, strict filter validation, and ordinary unexpected communication event list failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for sanitized no-store 500 responses that omit raw patient/counterpart-like thrown text, and reused existing no-store assertions for success and strict validation paths through a shared `expectNoStore`.
+- Added `communication-events GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canReport` auth, assignment-scope narrowing, strict `patient_id`/`event_type` filter validation, cursor pagination, response projection, POST behavior, attachment validation, contact-profile learning, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: communication event lists include patient/case-linked event rows, counterpart name/contact, subject, content, attachments, channel/direction, and timestamps; these are now no-store at the HTTP boundary and unexpected list failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/communication-events/route.ts src/app/api/communication-events/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no changes.
+  - `pnpm vitest run src/app/api/communication-events/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `302` tests.
+  - Scoped ESLint passed for the communication-events route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm format:check` passed for changed files.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Audit Logs GET No-Store Hardening
 
 - Coordination:
