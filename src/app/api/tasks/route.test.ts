@@ -423,6 +423,59 @@ describe('/api/tasks', () => {
     });
   });
 
+  it('returns a no-store fixed error without leaking assignment scope failures', async () => {
+    careCaseFindManyMock.mockRejectedValueOnce(
+      new Error('raw patient assignment scope failure for task list'),
+    );
+
+    const response = await GET(createRequest('http://localhost/api/tasks?status=open'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw patient assignment scope failure');
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking task list failures', async () => {
+    taskFindManyMock.mockRejectedValueOnce(new Error('raw patient task list failure'));
+
+    const response = await GET(createRequest('http://localhost/api/tasks?status=open'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw patient task list failure');
+    expect(userFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking assignee hydration failures', async () => {
+    taskFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'task_1',
+        task_type: 'patient_self_report_followup',
+        title: '患者A: 服薬の困りごと',
+        assigned_to: 'user_2',
+        priority: 'high',
+      },
+    ]);
+    userFindManyMock.mockRejectedValueOnce(new Error('raw patient task assignee failure'));
+
+    const response = await GET(createRequest('http://localhost/api/tasks?status=open'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw patient task assignee failure');
+  });
+
   it('marks tasks that require dedicated workflows as not inline-completable', async () => {
     taskFindManyMock.mockResolvedValueOnce([
       {

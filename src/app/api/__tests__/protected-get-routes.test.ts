@@ -2069,6 +2069,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'set-audits GET' ||
         route.name === 'set-batches GET' ||
         route.name === 'set-batches/[id] GET' ||
+        route.name === 'tasks GET' ||
         route.name === 'set-plans/[id] GET' ||
         route.name === 'set-plans/[id]/calendar GET'
       ) {

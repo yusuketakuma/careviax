@@ -1,3 +1,4 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { type Prisma, type TaskStatus } from '@prisma/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -7,7 +8,7 @@ import { isPrismaErrorCode, isPrismaUniqueConstraintError } from '@/lib/db/prism
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { canCompleteTaskInline } from '@/lib/tasks/inline-completion';
 import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
@@ -404,7 +405,12 @@ async function authenticatedGET(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  return withSensitiveNoStore(await authenticatedGET(req));
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function POST(req: NextRequest) {
