@@ -28,6 +28,7 @@ describe('buildPatientApiPath', () => {
       '/mcs',
       '/mcs-sync',
       '/mcs/logs',
+      '/overview',
       '/timeline',
       '/visit-constraints',
       '/visits',

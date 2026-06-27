@@ -7,6 +7,7 @@ import { Loading } from '@/components/ui/loading';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { CreatePatientInput } from '@/lib/validations/patient';
 import { allergyEntrySchema, type AllergyEntry } from '@/lib/validations/patient-allergy';
 import type { PatientOverview } from '../patient-detail.types';
@@ -160,7 +161,7 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
   const patientQuery = useQuery<PatientOverview>({
     queryKey: ['patient-overview', patientId, orgId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/overview`, {
+      const response = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: { 'x-org-id': orgId ?? '' },
       });
       if (!response.ok) throw new Error('患者情報の取得に失敗しました');
