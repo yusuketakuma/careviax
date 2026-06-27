@@ -166,6 +166,28 @@ function dateKeyFromDateString(dateStr: string): string {
   return dateStr.slice(0, 10);
 }
 
+function buildSearchQueryHref(path: string, entries: Array<[string, string]>): string {
+  const queryString = entries
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
+  return `${path}?${queryString}`;
+}
+
+function buildAdminSearchHref(path: string, query: string): string {
+  return buildSearchQueryHref(path, [['q', query]]);
+}
+
+function buildScheduleProposalSearchHref(proposalId: string): string {
+  return buildSearchQueryHref('/schedules/proposals', [
+    ['workspace', 'dashboard'],
+    ['detail', proposalId],
+  ]);
+}
+
+function buildScheduleDateHref(dateKey: string): string {
+  return buildSearchQueryHref('/schedules', [['date', dateKey]]);
+}
+
 // ---------------------------------------------------------------------------
 // build*Result 関数群
 // ---------------------------------------------------------------------------
@@ -229,7 +251,7 @@ export function buildDrugResult(item: DrugSearchItem): SearchResultRow {
     badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.drug,
     title: item.drug_name,
     subtitle: subtitleParts.length > 0 ? subtitleParts.join(' / ') : null,
-    href: `/admin/drug-masters?q=${encodeURIComponent(item.yj_code ?? item.drug_name)}`,
+    href: buildAdminSearchHref('/admin/drug-masters', item.yj_code ?? item.drug_name),
   };
 }
 
@@ -240,7 +262,7 @@ export function buildFacilityResult(item: FacilitySearchItem): SearchResultRow {
     badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.facility,
     title: item.name,
     subtitle: item.facility_type ?? null,
-    href: `/admin/facilities?q=${encodeURIComponent(item.name)}`,
+    href: buildAdminSearchHref('/admin/facilities', item.name),
   };
 }
 
@@ -272,7 +294,7 @@ export function buildContactResult(item: ContactSearchItem): SearchResultRow {
     badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.contact,
     title: item.name,
     subtitle: item.subtitle ?? null,
-    href: `/admin/contact-profiles?q=${encodeURIComponent(item.name)}`,
+    href: buildAdminSearchHref('/admin/contact-profiles', item.name),
   };
 }
 
@@ -302,7 +324,7 @@ export function buildScheduleProposalResult(item: ScheduleProposalSearchItem): S
     badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.proposal,
     title: `${patientName} 様の訪問候補`,
     subtitle: subtitleParts.join(' / '),
-    href: `/schedules/proposals?workspace=dashboard&detail=${encodeURIComponent(item.id)}`,
+    href: buildScheduleProposalSearchHref(item.id),
   };
 }
 
@@ -317,6 +339,6 @@ export function buildMedicationDeadlineResult(item: MedicationDeadlineSearchItem
     badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.medicationDeadline,
     title: `${patientName} 様の薬切れ予定`,
     subtitle: `薬切れ ${endDateText} / 訪問予定 ${scheduledDateText}`,
-    href: `/schedules?date=${encodeURIComponent(dateKeyFromDateString(item.scheduled_date))}`,
+    href: buildScheduleDateHref(dateKeyFromDateString(item.scheduled_date)),
   };
 }

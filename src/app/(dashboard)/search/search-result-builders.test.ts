@@ -313,6 +313,30 @@ describe('buildMedicationDeadlineResult', () => {
   });
 });
 
+describe('search result query destination hrefs', () => {
+  it('keeps query order and encodeURIComponent-compatible escaping for non-path destinations', () => {
+    const query = 'a b/服薬?';
+    const encoded = 'a%20b%2F%E6%9C%8D%E8%96%AC%3F';
+
+    expect(buildDrugResult({ id: 'd1', drug_name: 'ロキソニン', yj_code: query }).href).toBe(
+      `/admin/drug-masters?q=${encoded}`,
+    );
+    expect(buildFacilityResult({ id: 'f1', name: query }).href).toBe(
+      `/admin/facilities?q=${encoded}`,
+    );
+    expect(buildContactResult({ id: 'c1', name: query }).href).toBe(
+      `/admin/contact-profiles?q=${encoded}`,
+    );
+    expect(
+      buildScheduleProposalResult({
+        id: query,
+        proposal_status: 'patient_contact_pending',
+        proposed_date: '2026-06-18',
+      }).href,
+    ).toBe(`/schedules/proposals?workspace=dashboard&detail=${encoded}`);
+  });
+});
+
 describe('search result href helper convergence (F-037)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
