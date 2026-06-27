@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - RLS List-Read Session Context Unification
+
+- Coordination:
+  - Drained `phos/codex` before and during the slice, and sent Claude a lock request for `src/app/api/management-plans/route.ts`, `src/app/api/management-plans/route.test.ts`, `src/app/api/staff-workload/route.ts`, `src/app/api/staff-workload/route.test.ts`, and ledgers. Claude ACKed the non-overlapping backend lock while keeping the inventory-forecast FE files.
+  - Preserved Claude-owned dirty files `src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx` and `src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx`; Codex did not edit or stage them.
+  - Ran read-only DB steward and privacy reviewer checks. DB steward reported no blocker and reran focused route tests. Privacy reviewer reported no blocker and one non-blocking P3 follow-up for future management-plan list payload minimization.
+- Hardened list reads in `ed71df9c`:
+  - `GET /api/management-plans` now runs its management-plan list query under `withOrgContext(ctx.orgId, ..., { requestContext: ctx })` while preserving the explicit `org_id`, optional `case_id`, assignment-scope filter, sort order, and response shape.
+  - `GET /api/staff-workload` now runs active-staff membership, open-task group, recent-open-task raw SQL, visit schedule, and dispense-task group reads under the same org RLS session context while retaining explicit `org_id` predicates and parameterized Prisma tagged-template SQL.
+  - Both exported `GET` catch blocks now call `unstable_rethrow(err)` before returning the existing fixed no-store `INTERNAL_ERROR` fallback.
+- Preserved existing auth, role/assignment behavior, validation failures before DB access, no-store response contract, response shapes, DB schema/data, migrations, UI files, dependencies, external sends, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: app-layer tenant filters now have matching request-scoped RLS session variables for these list reads, and unexpected route failures keep sanitized private no-store fallbacks without swallowing Next.js control-flow errors.
+- Performance issue improved: none material. Staff workload still performs the same bounded read set for the requested date; the change scopes those reads to the existing org-context transaction.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/management-plans/route.ts src/app/api/management-plans/route.test.ts src/app/api/staff-workload/route.ts src/app/api/staff-workload/route.test.ts` passed.
+  - `pnpm exec vitest run src/app/api/management-plans/route.test.ts src/app/api/staff-workload/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `387` tests.
+  - DB steward reran `pnpm vitest run src/app/api/management-plans/route.test.ts src/app/api/staff-workload/route.test.ts` and passed `2` files / `21` tests; `git diff --check` also passed.
+  - Scoped ESLint passed for the two routes, their tests, and the protected GET matrix.
+  - Scoped Prettier check passed for the same five files.
+  - Scoped diff whitespace check passed for the same five files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation landed as `ed71df9c`; this entry plus FEATURE_QUEUE/Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `ed71df9c` plus the state commit, then continue after inbox is clear.
+
 ### 2026-06-27 JST - Inventory Forecast Patient Run-Out Backend Contract
 
 - Coordination:
