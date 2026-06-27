@@ -44,6 +44,11 @@ function createRequest(url: string) {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function mockBoardTx(board: unknown, monthItemCount = 0) {
   withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
     fn({
@@ -113,6 +118,7 @@ describe('/api/handoff-board', () => {
     const req = createRequest('http://localhost/api/handoff-board?date=2026-04-01');
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(200);
+    expectNoStore(res!);
     const json = await res!.json();
     expect(json.data.id).toBe('board_1');
     expect(json.data.items[0].created_by_name).toBe('Taro');
@@ -219,6 +225,7 @@ describe('/api/handoff-board', () => {
     const res = await GET(req, { params: Promise.resolve({}) });
 
     expect(res!.status).toBe(200);
+    expectNoStore(res!);
     await expect(res!.json()).resolves.toEqual({ data: { count: 2 } });
     expect(countHandoffBadgeMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -299,12 +306,29 @@ describe('/api/handoff-board', () => {
     const req = createRequest('http://localhost/api/handoff-board?date=2026-6-1');
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(400);
+    expectNoStore(res!);
   });
 
   it('returns 400 on non-existent calendar dates', async () => {
     const req = createRequest('http://localhost/api/handoff-board?date=2026-02-31');
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(400);
+    expectNoStore(res!);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when board lookup fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(new Error('raw handoff patient content secret'));
+
+    const req = createRequest('http://localhost/api/handoff-board?date=2026-04-01');
+    const res = await GET(req, { params: Promise.resolve({}) });
+
+    expect(res!.status).toBe(500);
+    expectNoStore(res!);
+    const body = await res!.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('patient content secret');
   });
 });

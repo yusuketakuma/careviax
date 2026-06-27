@@ -193,6 +193,7 @@ import { GET as dispenseTasksGet } from '../dispense-tasks/route';
 import { GET as dispenseTaskGet } from '../dispense-tasks/[id]/route';
 import { GET as dispenseTaskWorkbenchGet } from '../dispense-tasks/[id]/workbench/route';
 import { GET as firstVisitDocumentsGet } from '../first-visit-documents/route';
+import { GET as handoffBoardGet } from '../handoff-board/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
 import { GET as incidentReportsGet } from '../incident-reports/route';
 import { GET as interventionsGet } from '../interventions/route';
@@ -729,6 +730,27 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       firstVisitDocumentsGet(
         createRequest('http://localhost/api/first-visit-documents', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'handoff-board GET',
+    setupSuccess: () => {
+      txMock.handoffBoard.findUnique.mockResolvedValueOnce({
+        id: 'board_1',
+        org_id: 'org_1',
+        shift_date: new Date('2026-06-12T00:00:00.000Z'),
+        items: [],
+      });
+      txMock.handoffItem.count.mockResolvedValueOnce(0);
+      prismaMock.user.findMany.mockResolvedValueOnce([]);
+      prismaMock.membership.findMany.mockResolvedValueOnce([]);
+    },
+    handler: () =>
+      handoffBoardGet(
+        createRequest('http://localhost/api/handoff-board?date=2026-06-12', {
+          'x-org-id': 'org_1',
+        }),
         emptyRouteContext,
       ),
   },
@@ -1492,6 +1514,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
+        route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
@@ -1579,6 +1602,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
+        route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
@@ -1652,6 +1676,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'conference-notes/[id] GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
+        route.name === 'handoff-board GET' ||
         route.name === 'incident-reports GET' ||
         route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||

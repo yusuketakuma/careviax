@@ -1,5 +1,7 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
@@ -44,9 +46,7 @@ function isCurrentHandoffItem(item: {
   // 責任移転(lifecycle) / 相談(consult) / フリー連絡(宛先あり=message) を現行アイテムとして扱う。
   // legacy のシフトメモ(全 null・宛先なし)だけは除外する。
   return (
-    item.lifecycle_status != null ||
-    item.consult_status != null ||
-    item.recipient_user_id != null
+    item.lifecycle_status != null || item.consult_status != null || item.recipient_user_id != null
   );
 }
 
@@ -78,7 +78,7 @@ function resolveHandoffDirection(
   return 'outgoing';
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const parsed = dateQuerySchema.safeParse({
@@ -217,3 +217,12 @@ export const GET = withAuthContext(
     message: '申し送りボードの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
