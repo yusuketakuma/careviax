@@ -1673,6 +1673,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'qr-scan-drafts GET' ||
         route.name === 'qr-scan-drafts/[id] GET' ||
         route.name === 'medication-cycles GET' ||
+        route.name === 'medication-issues GET' ||
         route.name === 'medication-sets/workspace GET' ||
         route.name === 'medication-profiles GET' ||
         route.name === 'billing-candidates GET' ||
@@ -1774,6 +1775,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'qr-scan-drafts GET' ||
         route.name === 'qr-scan-drafts/[id] GET' ||
         route.name === 'medication-cycles GET' ||
+        route.name === 'medication-issues GET' ||
         route.name === 'medication-sets/workspace GET' ||
         route.name === 'medication-profiles GET' ||
         route.name === 'billing-candidates GET' ||
@@ -1887,6 +1889,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'contact-profiles GET' ||
         route.name === 'notifications GET' ||
         route.name === 'handoff-board GET' ||
+        route.name === 'medication-issues GET' ||
         route.name === 'medication-profiles GET' ||
         route.name === 'incident-reports GET' ||
         route.name === 'cases/[id] GET' ||
