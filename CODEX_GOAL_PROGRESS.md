@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Shared File Download Href Builder
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `file-download-href` lock notice, and continued after the inbox stayed clear.
+  - Kept the slice backend/helper-only and did not touch Claude-owned UI/color-token files.
+- Refactored generated file download href construction in `1105feb9`:
+  - Added `src/lib/files/navigation.ts` with `buildFileDownloadHref(fileId)`.
+  - Added helper tests for normal file ids, hostile slash/space/query/fragment ids, and exact `.` / `..` fail-closed behavior.
+  - Reused the helper from `file-storage`'s report PDF URL sync path.
+  - Reused the helper from medication-history bulk-export ready notifications.
+  - Strengthened the bulk-export test so hostile stored file ids are encoded in notification links while raw file ids remain in notification/audit metadata.
+  - Preserved file access authorization, download signing, audit behavior, DB schema/data, migrations, storage writes, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: generated file download links now share the same path-segment hardening boundary instead of duplicating `/api/files/:id/download` construction.
+- Performance issue improved: none. This is a pure string-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/files/navigation.ts src/lib/files/navigation.test.ts src/server/services/file-storage.ts src/server/services/pdf-bulk-export.ts src/server/services/pdf-bulk-export.test.ts` passed.
+  - Initial scoped command attempt failed from unquoted zsh `[id]` glob expansion; the same gate was rerun with the path quoted.
+  - `pnpm exec vitest run src/lib/files/navigation.test.ts src/server/services/pdf-bulk-export.test.ts src/server/services/file-storage.test.ts 'src/app/api/files/[id]/download/route.test.ts' --reporter=dot --testTimeout=30000` passed `4` files / `103` tests.
+  - Scoped ESLint passed for the helper/test, file-storage, pdf-bulk-export/test, file-storage test, and files download route test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this backend helper slice.
+- Commit status: implementation landed as `1105feb9`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `1105feb9` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Daily Visit Record Href Helper Convergence
 
 - Coordination:
