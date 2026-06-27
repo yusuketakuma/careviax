@@ -105,10 +105,12 @@ function useMonthGrid(params: {
 
 ## 5. ベストプラクティス（インターネット取得方針）
 
-- 月グリッド a11y は ARIA `grid`/`row`/`gridcell` ロール + 日セルの `aria-label`（"6月3日 休業" 等）を付与。WAI-ARIA Grid pattern 準拠。
-- 週開始曜日は `weekStartsOn` で外部設定可能に（i18n/運用差吸収）。日本の保険薬局運用では日曜始まりが既定。
-- `<time dateTime>` で日付セルをマークアップ（スクリーンリーダ/機械可読）。視覚不変で追加。
-- 上記は実装前に Context7/公式 ARIA APG で裏取りしてから確定。
+> **注意（C2 と整合）:** ARIA `grid`/`row`/`gridcell` ロールは **キーボード操作・focus 管理を実装し、対応テストを伴う場合のみ** 付与する。静的表示のグリッド（R3a 稼働日カレンダー等）には付けない。
+
+- **静的グリッド（既定）:** container `aria-label` + 日番号の `<time dateTime>` マークアップに留める（視覚不変・非破壊で機械可読性を付加）。R3a はこの方針。
+- **interactive グリッド（R3b 等、日セルが clickable/selectable）:** 既存実装の `role="button"` + `tabIndex` + `aria-pressed` + `onKeyDown`(Enter/Space) を `getDayCellProps` 経由でそのまま保持する。新たに `role=grid/row/gridcell` へ作り替えることはしない（挙動・テスト面の regression を避ける）。
+- 週開始曜日は `weekStartsOn` で外部設定可能に（i18n/運用差吸収）。日本の保険薬局運用では日曜始まりが既定。`weekdayLabels` 省略時は `weekStartsOn` 起点に既定ラベルを回転（ヘッダとセルの曜日ずれ防止）。
+- ARIA grid pattern を将来導入する場合は実装前に Context7/公式 ARIA APG で裏取りしてから確定。
 
 ## 6. R3 スコープ外（将来 R3'）
 

@@ -117,6 +117,31 @@ describe('MonthGrid', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  it('rotates default weekday headers and aligns cells for weekStartsOn=1', () => {
+    // 2026-06-01 is Monday → with Monday start the 1st sits in the first column (no leading null).
+    const { container } = render(
+      <MonthGrid
+        year={2026}
+        month={5}
+        weekStartsOn={1}
+        renderDay={(cell) => <span>{cell.day}</span>}
+      />,
+    );
+    const headerCells = Array.from(container.firstElementChild!.children).slice(0, 7);
+    expect(headerCells.map((el) => el.textContent)).toEqual([
+      '月',
+      '火',
+      '水',
+      '木',
+      '金',
+      '土',
+      '日',
+    ]);
+    // 8th child (index 7) is the first body cell; for a Monday-start month starting Monday it is day 1.
+    const firstBodyCell = container.firstElementChild!.children[7];
+    expect(firstBodyCell.textContent).toBe('1');
+  });
+
   it('applies the container aria-label', () => {
     const { container } = render(
       <MonthGrid

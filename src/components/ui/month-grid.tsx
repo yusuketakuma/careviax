@@ -17,6 +17,11 @@ export type MonthGridCell = { day: number; dateKey: string };
 
 const WEEKDAY_LABELS_SUN = ['日', '月', '火', '水', '木', '金', '土'];
 
+/** 既定の曜日見出しを weekStartsOn 起点に回転する（日始まり→月始まり等）。 */
+function defaultWeekdayLabels(weekStartsOn: 0 | 1): string[] {
+  return [...WEEKDAY_LABELS_SUN.slice(weekStartsOn), ...WEEKDAY_LABELS_SUN.slice(0, weekStartsOn)];
+}
+
 function pad2(value: number) {
   return String(value).padStart(2, '0');
 }
@@ -94,6 +99,7 @@ export type MonthGridProps = {
   year: number;
   month: number; // 0-11
   weekStartsOn?: 0 | 1;
+  /** 省略時は weekStartsOn を起点に既定ラベル（日..土）を回転して使う。 */
   weekdayLabels?: string[];
   /** 日=text-state-blocked / 土=text-tag-info で曜日見出しを着色（実曜日基準）。 */
   weekendHeaderColors?: boolean;
@@ -125,7 +131,7 @@ export function MonthGrid({
   year,
   month,
   weekStartsOn = 0,
-  weekdayLabels = WEEKDAY_LABELS_SUN,
+  weekdayLabels,
   weekendHeaderColors = true,
   ariaLabel,
   className,
@@ -138,10 +144,12 @@ export function MonthGrid({
   const { cells } = useMonthGrid({ year, month, weekStartsOn });
   const cellClass = cellClassName ?? DEFAULT_CELL_CLASS;
   const emptyClass = emptyCellClassName ?? DEFAULT_EMPTY_CLASS;
+  // weekdayLabels 省略時は weekStartsOn と整合する回転済み既定ラベルを使う（cells との曜日ずれ防止）。
+  const effectiveLabels = weekdayLabels ?? defaultWeekdayLabels(weekStartsOn);
 
   return (
     <div className={className ?? DEFAULT_GRID_CLASS} aria-label={ariaLabel}>
-      {weekdayLabels.map((label, index) => {
+      {effectiveLabels.map((label, index) => {
         // 見出しセル index → 実曜日（0=日）。weekStartsOn 起点でずらす。
         const weekday = (weekStartsOn + index) % 7;
         const weekendClass = weekendHeaderColors
