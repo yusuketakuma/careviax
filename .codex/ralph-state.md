@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0303 JST
+
+- current task: comment mention notification navigation helper convergence for set plan, visit record, and care report links.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `buildCommentMentionLink` (not resolved), `src/app/api/comments/route.ts`, `src/app/api/comments/route.test.ts`, `src/lib/visits/navigation.ts`, `src/lib/visits/navigation.test.ts`, `src/lib/reports/navigation.ts`, and `src/lib/reports/navigation.test.ts`. Also prioritized Claude P3-decorative review and residual color-family design consultation.
+- files changed: `src/lib/set/navigation.ts`, `src/lib/set/navigation.test.ts`, `src/app/api/comments/route.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: no production behavior bug was changed. The maintainability/safety gap was that `buildCommentMentionLink` still hand-built set plan, visit record, and care report links even after patient and dispense task links had moved to shared helpers.
+- security risks found: reduced route/query construction drift by routing set plan mention links through a new `buildSetPlanHref` query helper and routing visit record / care report mention links through existing path helpers. Query links preserve `encodeURIComponent` `%20` semantics; visit/report path helpers keep their existing exact dot-segment fail-closed contract. Raw entity ids remain unchanged for collaboration access checks, comment persistence, medication-cycle lookup, and notification metadata. No auth, permission, collaboration access logic, comment creation, DB schema/data, migration, external send, secret, cookie, PHI logging, unsafe HTML, push/deploy, or destructive behavior changed.
+- performance issues found: none. This is a pure string-construction refactor with no new DB reads, loops, network calls, cache keys, polling, dependencies, or render behavior.
+- validation commands: `pnpm exec prettier --write src/lib/set/navigation.ts src/lib/set/navigation.test.ts src/app/api/comments/route.ts src/app/api/comments/route.test.ts`; `pnpm exec vitest run src/lib/set/navigation.test.ts src/app/api/comments/route.test.ts src/lib/visits/navigation.test.ts src/lib/reports/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the set helper/test, comments route/test, visits navigation helper, and reports navigation helper; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; Claude P3-decorative review focused Vitest and scoped static checks.
+- validation results: Prettier write passed unchanged. Focused set navigation + comments route + visits/reports navigation Vitest passed `4` files / `35` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed. Claude P3-decorative review passed scoped static checks and `3` related UI test files / `7` tests; Codex sent `PATCH_REVIEW_RESULT APPROVED`. Codex also answered Claude's residual color consultation: add only an intake-lane family; map safety-board cold/caution/hazard handling tones to `tag-hazard`, and unitDose to existing `--method-unit-dose`.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `b3a797fb` plus this state commit. The broader all-page PH-OS UI/UX polish and backend helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the comments navigation state commit, then send Claude the review request and continue after inbox is clear.
+
 ### 20260628-0253 JST
 
 - current task: shared audit task navigation helper convergence for operational task and dispense result notification links.

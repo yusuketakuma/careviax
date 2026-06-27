@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Comment Mention Navigation Helper Convergence
+
+- Coordination:
+  - Requested and received Claude's non-overlapping `comment-mention-navigation-helper` lock.
+  - Prioritized Claude P3-decorative review for `9d3ee3c0`, `492b0de0`, and `e6225e86`; Codex approved after scoped checks, raw hue negative grep, and related tests.
+  - Answered Claude's residual color-family design consultation: add only an intake-lane family; map safety-board cold/caution/hazard handling tones to `tag-hazard`; map unitDose to existing `--method-unit-dose`; do not create `--storage-cold`.
+- Refactored comment mention notification links in `b3a797fb`:
+  - Added `src/lib/set/navigation.ts` with `buildSetPlanHref`.
+  - Replaced set plan mention links with the shared query helper.
+  - Replaced visit record and care report mention links with existing `buildVisitHref` and `buildReportHref` helpers.
+  - Preserved raw entity ids for collaboration access checks, comment persistence, medication-cycle lookup, notification metadata, auth/access behavior, schema/data, migrations, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: comment mention notification links now use the same route/query helper boundaries as the rest of the route surface, including existing dot-segment fail-closed behavior for visit/report path links.
+- Performance issue improved: none. This is a pure string-construction refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/set/navigation.ts src/lib/set/navigation.test.ts src/app/api/comments/route.ts src/app/api/comments/route.test.ts` passed unchanged.
+  - `pnpm exec vitest run src/lib/set/navigation.test.ts src/app/api/comments/route.test.ts src/lib/visits/navigation.test.ts src/lib/reports/navigation.test.ts --reporter=dot --testTimeout=30000` passed `4` files / `35` tests.
+  - Scoped ESLint passed for the set helper/test, comments route/test, visits navigation helper, and reports navigation helper.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Claude P3-decorative review validation passed: scoped ESLint/Prettier/diff-check, raw hue negative grep, and related Vitest `3` files / `7` tests.
+- Commit status: implementation landed as `b3a797fb`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `b3a797fb` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Shared Audit Task Navigation Helper
 
 - Coordination:
