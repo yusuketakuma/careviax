@@ -1677,6 +1677,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'medication-sets/workspace GET' ||
         route.name === 'medication-profiles GET' ||
         route.name === 'billing-candidates GET' ||
+        route.name === 'billing-candidates/[id]/documents/pdf GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-results/[id] GET' ||
         route.name === 'dispense-tasks GET' ||
@@ -1786,6 +1787,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'medication-sets/workspace GET' ||
         route.name === 'medication-profiles GET' ||
         route.name === 'billing-candidates GET' ||
+        route.name === 'billing-candidates/[id]/documents/pdf GET' ||
         route.name === 'billing-candidates/export GET' ||
         route.name === 'dispense-results/[id] GET' ||
         route.name === 'dispense-tasks GET' ||
@@ -1886,6 +1888,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
         route.name === 'admin/facilities/[id]/patients GET' ||
+        route.name === 'billing-candidates/[id]/documents/pdf GET' ||
         route.name === 'prescription-intakes/triage GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||

@@ -138,6 +138,7 @@ describe('PDF routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
     expect(response.headers.get('content-disposition')).toContain('billing-receipt.pdf');
+    expectSensitiveNoStore(response);
   });
 
   it('returns a pharmacy invoice pdf response', async () => {

@@ -43,6 +43,11 @@ function createRequest(kind = 'receipt') {
   );
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/billing-candidates/[id]/documents/pdf GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,6 +75,7 @@ describe('/api/billing-candidates/[id]/documents/pdf GET', () => {
     });
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(Object), {
       permission: 'canManageBilling',
       message: '請求書類 PDF の閲覧権限がありません',
@@ -92,6 +98,7 @@ describe('/api/billing-candidates/[id]/documents/pdf GET', () => {
     });
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'kind は receipt または invoice を指定してください',
     });
@@ -107,6 +114,7 @@ describe('/api/billing-candidates/[id]/documents/pdf GET', () => {
     });
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
@@ -119,9 +127,60 @@ describe('/api/billing-candidates/[id]/documents/pdf GET', () => {
     });
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '発行済みの領収証または請求書のみPDF出力できます',
     });
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('adds no-store headers to auth rejection responses', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 }),
+    });
+
+    const response = await GET(createRequest('receipt'), {
+      params: Promise.resolve({ id: 'candidate_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(buildBillingDocumentPdfMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank billing candidate ids before rendering or auditing', async () => {
+    const response = await GET(createRequest('receipt'), {
+      params: Promise.resolve({ id: '   ' }),
+    });
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '請求候補IDが不正です',
+    });
+    expect(buildBillingDocumentPdfMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking raw render failures', async () => {
+    buildBillingDocumentPdfMock.mockRejectedValue(
+      new Error('candidate_1 raw billing patient render failure'),
+    );
+
+    const response = await GET(createRequest('receipt'), {
+      params: Promise.resolve({ id: 'candidate_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('EXTERNAL_PDF_RENDER_FAILED');
+    expect(body).toContain('請求書類 PDF を生成できませんでした');
+    expect(body).not.toContain('candidate_1 raw billing patient render failure');
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
