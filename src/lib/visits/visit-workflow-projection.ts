@@ -1,3 +1,4 @@
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { buildVisitRecordHref } from '@/lib/visits/navigation';
 
@@ -107,7 +108,11 @@ function buildVisitBillingCandidatesHref(args: {
 }
 
 function buildPatientCollaborationHref(patientId: string) {
-  return `/patients/${encodeURIComponent(patientId)}/collaboration`;
+  return buildPatientHref(patientId, '/collaboration');
+}
+
+function buildVisitConferenceHref(patientId: string) {
+  return `/conferences?${new URLSearchParams({ patient_id: patientId }).toString()}`;
 }
 
 export function getConferenceTypeLabel(type: string | null | undefined) {
@@ -187,6 +192,7 @@ export function buildPostVisitWorkflowActions(args: {
     recordId: args.recordId,
     scheduleId: args.scheduleId,
   });
+  const visitConferenceHref = buildVisitConferenceHref(args.patientId);
 
   return [
     {
@@ -387,9 +393,9 @@ export function buildPostVisitWorkflowActions(args: {
       primary_action: {
         operation: 'open_conference',
         label: '会議を確認',
-        href: `/conferences?${new URLSearchParams({ patient_id: args.patientId }).toString()}`,
+        href: visitConferenceHref,
       },
-      href: `/conferences?${new URLSearchParams({ patient_id: args.patientId }).toString()}`,
+      href: visitConferenceHref,
       action_label: '会議を確認',
       evidence:
         conferenceActionCount > 0
