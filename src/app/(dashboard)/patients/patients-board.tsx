@@ -86,7 +86,14 @@ const SORT_OPTIONS: Array<{ value: BoardSort; label: string }> = [
 ];
 
 /** フィルタチップ。「今すぐ対応」=既定(優先順で全件表示)、他は絞り込み。 */
-type BoardChipValue = 'priority' | 'external' | 'visit_today' | 'foundation_gap' | 'paused';
+// wait_release は summaryTile「再開できる」専用の絞り込み(tile-only)。下段 chipOptions には出さない。
+type BoardChipValue =
+  | 'priority'
+  | 'wait_release'
+  | 'external'
+  | 'visit_today'
+  | 'foundation_gap'
+  | 'paused';
 
 type AttentionPresentation = {
   label: string;
@@ -325,7 +332,7 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
       label: '再開できる',
       value: `${waitReleaseCount}名`,
       description: waitReleaseCount > 0 ? '照会回答などで工程を戻せます' : '待ち解除はありません',
-      chip: 'priority',
+      chip: 'wait_release',
       icon: MessageSquareWarning,
       className: 'border-l-4 border-l-state-done',
       labelClassName: 'text-state-done',
@@ -603,6 +610,8 @@ export function PatientsBoard() {
             if (chip === 'external') {
               return card.attention === 'external_wait' || card.attention === 'reply_wait';
             }
+            // 再開できる(待ち解除): 照会回答などで工程を戻せる患者のみ。
+            if (chip === 'wait_release') return card.attention === 'wait_release';
             // 本日訪問: 対応カテゴリに関わらず「今日訪問がある患者」
             if (chip === 'visit_today') return card.next_visit_date === todayKey;
             if (chip === 'foundation_gap') {
@@ -759,9 +768,7 @@ export function PatientsBoard() {
               <SummaryTileButton
                 key={tile.key}
                 tile={tile}
-                selected={
-                  chip === tile.chip && !(tile.key === 'release' && tile.chip === 'priority')
-                }
+                selected={chip === tile.chip}
                 onSelect={setChip}
               />
             ))}

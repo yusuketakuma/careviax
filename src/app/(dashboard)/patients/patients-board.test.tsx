@@ -464,6 +464,29 @@ describe('PatientsBoard', () => {
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(2);
     expect(screen.getByRole('link', { name: '田中 一郎' })).toBeTruthy();
     expect(screen.getByRole('link', { name: '伊藤 キヨ' })).toBeTruthy();
+
+    // 「再開できる」(tile-only wait_release)は wait_release 患者のみに実フィルタする。
+    // (旧実装は chip=priority へ写像され全件表示=タイル意味と不一致だった)
+    fireEvent.click(screen.getByRole('button', { name: /再開できる/ }));
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: '佐々木 ハル' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: '田中 一郎' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '伊藤 キヨ' })).toBeNull();
+
+    // 特例除去の回帰: 「再開できる」tile が pressed、下段「今すぐ対応」chip は非選択。
+    expect(screen.getByRole('button', { name: /再開できる/ }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    const chipBarAfterRelease = screen.getByRole('group', { name: '対応カテゴリの絞り込み' });
+    expect(
+      within(chipBarAfterRelease)
+        .getByRole('button', { name: /今すぐ対応/ })
+        .getAttribute('aria-pressed'),
+    ).toBe('false');
+    // wait_release は tile-only。下段 chipOptions(対応カテゴリ)には重複導線を出さない。
+    expect(
+      within(chipBarAfterRelease).queryByRole('button', { name: /待ち解除|再開できる/ }),
+    ).toBeNull();
   });
 
   it('renders the action rail with the single primary action, blocked reasons and evidence', () => {
