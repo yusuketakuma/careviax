@@ -7,8 +7,8 @@ import { ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
-import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -23,6 +23,7 @@ import {
   buildIncidentMemoCompletion,
   buildIncidentMemoPatchPayload,
   incidentCardSubtext,
+  isIncidentMemoFieldFilled,
   toIncidentMemoForm,
   type IncidentMemoForm,
   type IncidentReportListItem,
@@ -42,6 +43,16 @@ const MEMO_TEXT_FIELDS = [
 ] as const;
 const INCIDENT_MEMO_DISABLED_REASON_ID = 'incident-memo-disabled-reason';
 const INCIDENT_MEMO_DISABLED_REASON = '記録一覧に記録がないため入力できません。';
+
+/** 未入力(未完了)を示す控えめな confirm チップ。保存はできる=要対応であってブロックではない。 */
+function MissingFieldChip() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-state-confirm/30 bg-state-confirm/10 px-2 py-0.5 text-xs font-medium text-state-confirm">
+      <span aria-hidden className="size-1.5 rounded-full bg-state-confirm" />
+      未入力
+    </span>
+  );
+}
 
 function formatIncidentDate(value: string | null): string {
   if (!value) return '日時未設定';
@@ -138,7 +149,7 @@ export function IncidentsContent() {
       {/* 記録一覧 */}
       <section
         aria-label="記録一覧"
-        className="rounded-xl border border-border/70 bg-card p-5 shadow-sm lg:min-h-[640px]"
+        className="rounded-xl border border-border/70 bg-card p-5 shadow-sm"
       >
         <h2 className="text-base font-bold text-foreground">記録一覧</h2>
         {reports.length === 0 ? (
@@ -184,7 +195,7 @@ export function IncidentsContent() {
       {/* 再発防止メモ */}
       <section
         aria-label="再発防止メモ"
-        className="rounded-xl border border-border/70 bg-card p-5 shadow-sm lg:min-h-[640px]"
+        className="rounded-xl border border-border/70 bg-card p-5 shadow-sm"
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -230,29 +241,40 @@ export function IncidentsContent() {
           {MEMO_TEXT_FIELDS.map((field) => (
             <div
               key={field.key}
-              className="grid gap-2 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center"
+              className="grid gap-2 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-start"
             >
-              <label htmlFor={`incident-${field.key}`} className="text-sm font-medium">
-                {field.label}
-              </label>
-              <Input
+              <div className="flex items-center gap-2 sm:pt-2">
+                <label htmlFor={`incident-${field.key}`} className="text-sm font-medium">
+                  {field.label}
+                </label>
+                {selected && !isIncidentMemoFieldFilled(form, field.key) ? (
+                  <MissingFieldChip />
+                ) : null}
+              </div>
+              <Textarea
                 id={`incident-${field.key}`}
                 value={form[field.key]}
-                placeholder={`${field.label}を1行で記録`}
+                rows={3}
+                placeholder={`${field.label}を記録`}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, [field.key]: event.target.value }))
                 }
                 aria-describedby={!selected ? INCIDENT_MEMO_DISABLED_REASON_ID : undefined}
                 disabled={!selected}
-                className="sm:h-10"
+                className="min-h-[96px] resize-y"
               />
             </div>
           ))}
 
           <div className="grid gap-2 sm:grid-cols-[150px_minmax(0,1fr)] sm:items-center">
-            <label id="incident-related-process-label" className="text-sm font-medium">
-              関係する工程
-            </label>
+            <div className="flex items-center gap-2">
+              <label id="incident-related-process-label" className="text-sm font-medium">
+                関係する工程
+              </label>
+              {selected && !isIncidentMemoFieldFilled(form, 'relatedProcess') ? (
+                <MissingFieldChip />
+              ) : null}
+            </div>
             <Select
               value={form.relatedProcess}
               onValueChange={(value) =>

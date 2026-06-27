@@ -110,15 +110,20 @@ export function buildIncidentMemoPatchPayload(form: IncidentMemoForm): IncidentM
   };
 }
 
+/** 当該メモ項目が記入済みか(trim 済み空でない / relatedProcess は既知工程)。未入力強調と完了集計で共用。 */
+export function isIncidentMemoFieldFilled(
+  form: IncidentMemoForm,
+  key: IncidentMemoFieldKey,
+): boolean {
+  const value = form[key];
+  if (key === 'relatedProcess') return isKnownProcess(value);
+  return value.trim().length > 0;
+}
+
 export function buildIncidentMemoCompletion(form: IncidentMemoForm): IncidentMemoCompletion {
-  const completed = (key: IncidentMemoFieldKey): boolean => {
-    const value = form[key];
-    if (key === 'relatedProcess') return isKnownProcess(value);
-    return value.trim().length > 0;
-  };
   const keys = Object.keys(INCIDENT_MEMO_FIELD_LABELS) as IncidentMemoFieldKey[];
   const missingLabels = keys
-    .filter((key) => !completed(key))
+    .filter((key) => !isIncidentMemoFieldFilled(form, key))
     .map((key) => INCIDENT_MEMO_FIELD_LABELS[key]);
   return {
     completedCount: keys.length - missingLabels.length,

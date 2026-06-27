@@ -6,6 +6,7 @@ import {
   buildIncidentMemoPatchPayload,
   hasPreventionMemo,
   incidentCardSubtext,
+  isIncidentMemoFieldFilled,
   toIncidentMemoForm,
   type IncidentReportListItem,
 } from './incidents-form';
@@ -171,5 +172,30 @@ describe('incidentCardSubtext / hasPreventionMemo', () => {
     const report = makeReport({ prevention_plan: 'セット後に日付を二人で確認' });
     expect(hasPreventionMemo(report)).toBe(true);
     expect(incidentCardSubtext(report)).toBe('再発防止メモあり');
+  });
+});
+
+describe('isIncidentMemoFieldFilled', () => {
+  it('ナラティブ項目は trim 済みで空なら未入力、文字があれば入力済み', () => {
+    const empty = { ...EMPTY_INCIDENT_MEMO_FORM, whatHappened: '   ' };
+    expect(isIncidentMemoFieldFilled(empty, 'whatHappened')).toBe(false);
+    const filled = { ...EMPTY_INCIDENT_MEMO_FORM, whatHappened: '別患者の薬' };
+    expect(isIncidentMemoFieldFilled(filled, 'whatHappened')).toBe(true);
+  });
+
+  it('relatedProcess は既知工程のみ入力済み扱い', () => {
+    expect(isIncidentMemoFieldFilled(EMPTY_INCIDENT_MEMO_FORM, 'relatedProcess')).toBe(false);
+    expect(
+      isIncidentMemoFieldFilled(
+        { ...EMPTY_INCIDENT_MEMO_FORM, relatedProcess: 'unknown_process' },
+        'relatedProcess',
+      ),
+    ).toBe(false);
+    expect(
+      isIncidentMemoFieldFilled(
+        { ...EMPTY_INCIDENT_MEMO_FORM, relatedProcess: 'dispensing' },
+        'relatedProcess',
+      ),
+    ).toBe(true);
   });
 });

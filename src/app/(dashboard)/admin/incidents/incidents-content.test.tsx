@@ -6,6 +6,32 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { IncidentsContent } from './incidents-content';
+import type { IncidentReportListItem } from './incidents-form';
+
+function makeReport(overrides: Partial<IncidentReportListItem> = {}): IncidentReportListItem {
+  return {
+    id: 'incident_1',
+    title: '取り違えヒヤリ',
+    what_happened: '別患者の薬を渡しかけた',
+    cause: null,
+    immediate_action: null,
+    prevention_plan: null,
+    related_process: null,
+    severity: 'low',
+    status: 'open',
+    occurred_at: '2026-06-20T01:00:00.000Z',
+    created_at: '2026-06-20T01:00:00.000Z',
+    updated_at: '2026-06-20T01:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function stubReports(reports: IncidentReportListItem[]) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response(JSON.stringify({ data: reports }), { status: 200 })),
+  );
+}
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
@@ -72,5 +98,62 @@ describe('IncidentsContent', () => {
           ),
       ).toBe(false);
     });
+  });
+
+  it('renders the narrative memo fields as textareas while keeping the related-process select', async () => {
+    stubReports([
+      makeReport({
+        what_happened: '記録あり',
+        cause: '原因あり',
+        immediate_action: '対応',
+        prevention_plan: '対策',
+        related_process: 'dispensing',
+      }),
+    ]);
+    render(<IncidentsContent />, { wrapper: createWrapper() });
+
+    const whatHappened = await screen.findByLabelText('起きたこと');
+    expect(whatHappened.tagName).toBe('TEXTAREA');
+    expect(whatHappened.getAttribute('placeholder')).toBe('起きたことを記録');
+    for (const label of ['原因', 'すぐ行った対応', '次から変えること']) {
+      expect(screen.getByLabelText(label).tagName).toBe('TEXTAREA');
+    }
+    // 関係する工程 は分類値なので Select(非 textarea)のまま。
+    expect(screen.getByTestId('incident-related-process').tagName).not.toBe('TEXTAREA');
+  });
+
+  it('marks empty memo fields with a 未入力 chip that clears once the field is filled', async () => {
+    // what_happened のみ記入済み → cause / immediate / prevention / related_process が未入力(4件)。
+    stubReports([makeReport()]);
+    render(<IncidentsContent />, { wrapper: createWrapper() });
+
+    await screen.findByLabelText('起きたこと');
+    expect(screen.getAllByText('未入力')).toHaveLength(4);
+
+    fireEvent.change(screen.getByLabelText('原因'), { target: { value: '取り違え' } });
+    expect(screen.getAllByText('未入力')).toHaveLength(3);
+  });
+
+  it('does not show per-field 未入力 chips when no record is selected', async () => {
+    stubReports([]);
+    render(<IncidentsContent />, { wrapper: createWrapper() });
+
+    expect(await screen.findByText('ヒヤリハット記録はまだありません')).toBeTruthy();
+    // 上部サマリー(『未入力: …』)とは別物の per-field チップは未選択時には出さない。
+    expect(screen.queryByText('未入力')).toBeNull();
+    expect(screen.getByText('記録一覧に記録がないため入力できません。')).toBeTruthy();
+  });
+
+  it('drops the fixed 640px min-height from both panels', async () => {
+    stubReports([makeReport()]);
+    render(<IncidentsContent />, { wrapper: createWrapper() });
+
+    await screen.findByLabelText('起きたこと');
+    expect(screen.getByRole('region', { name: '記録一覧' }).className).not.toContain(
+      'min-h-[640px]',
+    );
+    expect(screen.getByRole('region', { name: '再発防止メモ' }).className).not.toContain(
+      'min-h-[640px]',
+    );
   });
 });
