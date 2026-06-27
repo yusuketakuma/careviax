@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1911 JST
+
+- current task: defensive day-board no-store catch alignment: close the remaining `harden-day-board-explicit-500` follow-up by preserving Next.js control-flow errors in the existing sanitized no-store fallback path.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send, `.agent-loop/FEATURE_QUEUE.md`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/unstable_rethrow.md`, `src/app/api/visit-schedules/day-board/route.ts`, `src/app/api/visit-schedules/day-board/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, comparable `unstable_rethrow(err)` route wrappers, `docs/schedules-calendar-design.md`, `docs/shared-month-grid-plan.md`, `src/app/(dashboard)/schedules/calendar-view.tsx`, and `src/components/ui/month-grid.tsx`.
+- files changed: `src/app/api/visit-schedules/day-board/route.ts`, `.agent-loop/FEATURE_QUEUE.md`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the old queue item was partly stale because day-board already had an explicit exported `GET` try/catch, sanitized no-store 500 test, and protected GET matrix coverage. The remaining gap was that the catch swallowed framework control-flow errors instead of calling `unstable_rethrow(err)` before the ordinary internal-error fallback.
+- security risks found: reduced PHI/workflow cacheability and framework-control-flow risk by preserving Next.js control-flow errors while retaining the existing fixed private no-store 500 response for ordinary unexpected day-board read failures. No auth, authorization, PHI projection, DB, schema, RLS, route catalog, UI, dependency, external send, push/deploy, or destructive operation changed.
+- performance issues found: none. The slice adds one import and one catch-path function call only.
+- validation commands: `pnpm exec prettier --write src/app/api/visit-schedules/day-board/route.ts`; `pnpm exec vitest run src/app/api/visit-schedules/day-board/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint/Prettier/diff check for day-board route/test and protected GET matrix; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write/check passed; focused day-board/protected GET Vitest passed `2` files / `380` tests; scoped ESLint passed; scoped diff whitespace check passed; full TypeScript passed; `typecheck:no-unused` passed. Claude's schedules #4 PLAN review was handled first and approved with Opt C/no MonthGrid adoption; Claude approved R4 and Codex ACKed.
+- remaining work: run ledger-aware scoped checks, stage only `.agent-loop/FEATURE_QUEUE.md`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md` for the state commit, send Claude a `PATCH_REVIEW_REQUEST` for `52eda9a4` plus the state commit, then continue after inbox is clear.
+- next action: ledger checks, state commit, and Claude review request for day-board.
+
 ### 20260627-1908 JST
 
 - current task: R4 visit availability responsibility-boundary helper: encode the `docs/operating-day-calendar-plan.md` §12.4 rule that visit eligibility is pharmacy operating calendar AND selected pharmacist shift/site/time window, while keeping existing routes unchanged.

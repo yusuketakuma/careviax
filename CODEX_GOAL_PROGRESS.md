@@ -23,6 +23,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Day Board Control-Flow Safe No-Store Fallback
+
+- Coordination:
+  - Sent Claude a lock request for `src/app/api/visit-schedules/day-board/route.ts`, its tests/matrix if needed, and ledgers. Claude ACKed the non-overlapping backend lock while keeping schedules #4 as read-only FE PLAN work.
+  - Prioritized Claude interrupts: reviewed `docs/schedules-calendar-design.md` and approved Opt C, agreeing that `schedules/calendar-view.tsx` should not adopt MonthGrid because it uses a distinct adjacent-real-date, button-cell, billing-overlay interaction model.
+  - ACKed Claude's R4 approval before continuing the day-board state update.
+- Hardened `GET /api/visit-schedules/day-board` by adding `unstable_rethrow(err)` at the top of its existing exported `GET` catch.
+- Existing explicit try/catch, sanitized `INTERNAL_ERROR` fallback, route-local fixed 500 no-store test, and protected GET matrix coverage were already present; this slice closed the remaining framework-control-flow gap without changing normal responses.
+- Preserved existing `canVisit` auth, query validation, day-board reads, response shape, DB schema/data, route catalog, protected matrix entries, UI, dependencies, external sends, push/deploy, and destructive operations.
+- Security/availability risk reduced: Next.js control-flow errors are no longer swallowed by the sanitized fallback, while ordinary unexpected read failures still return the existing private no-store fixed 500 envelope.
+- Performance issue improved: none. This is a single catch-path import/call change only.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/visit-schedules/day-board/route.ts` passed with no changes.
+  - `pnpm exec vitest run src/app/api/visit-schedules/day-board/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `380` tests.
+  - Scoped ESLint passed for day-board route/test and the protected GET matrix.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation landed as `52eda9a4`; this entry plus FEATURE_QUEUE/Ralph updates are the separate progress-ledger update.
+- Next action: run ledger-aware checks, commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-27 JST - R4 Visit Availability Boundary Helper
 
 - Coordination:
