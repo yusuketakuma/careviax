@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Offline Evidence Sync Path-Segment Hardening
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `offline evidence path-segment` lock notice, and continued after the inbox stayed clear.
+  - Kept the slice client/offline helper-only; no DB mutation, migration, push, deploy, or destructive operation.
+- Hardened offline evidence draft sync URLs in `e0f4a79f`:
+  - Imported and reused `encodePathSegment` in `src/lib/offline/evidence-drafts.ts`.
+  - Replaced raw `encodeURIComponent` construction for `/api/visit-schedules/:id` and `/api/visit-records/:id` sync URLs.
+  - Preserved existing encoded output for hostile slash/space/query/fragment ids under existing tests.
+  - Added regression coverage that exact `.` schedule ids fail before any fetch and are recorded as sanitized draft sync failures.
+  - Preserved raw schedule/visit-record ids in request bodies, offline metadata, uploaded-file metadata, DB-facing identities, schema/data, external sends, and destructive-operation boundaries.
+- Security/correctness risk reduced: malformed local offline draft ids can no longer hit normalized dot-segment API paths during evidence sync.
+- Performance issue improved: none. This is a pure path-segment validation refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/offline/evidence-drafts.ts src/lib/offline/evidence-drafts.test.ts` passed unchanged.
+  - `pnpm exec vitest run src/lib/offline/evidence-drafts.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `25` tests.
+  - Scoped ESLint passed for offline evidence drafts/test and path-segment helper/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this offline helper slice.
+- Commit status: implementation landed as `e0f4a79f`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `e0f4a79f` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Shared File Download Href Builder
 
 - Coordination:

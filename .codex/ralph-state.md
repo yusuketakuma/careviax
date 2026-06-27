@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0332 JST
+
+- current task: offline evidence draft sync path-segment hardening for visit schedule and visit record API URLs.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` / `code_callers` for `resolveVisitRecordIdForDraft` and `uploadEvidenceDraft` (not resolved / graph not built), `src/lib/offline/evidence-drafts.ts`, `src/lib/offline/evidence-drafts.test.ts`, and `src/lib/http/path-segment.ts`.
+- files changed: `src/lib/offline/evidence-drafts.ts`, `src/lib/offline/evidence-drafts.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: exact dot-segment offline schedule/visit-record ids could flow into `encodeURIComponent` path-segment construction unchanged before fetch. Normal DB ids should never be dot segments, but the offline sync boundary now fails closed before network access if a malformed local draft contains `.` or `..`.
+- security risks found: reduced path-normalization and route-confusion risk by replacing raw `encodeURIComponent` path-segment construction with `encodePathSegment` for `/api/visit-schedules/:id` and `/api/visit-records/:id` sync URLs. Existing hostile slash/space/query/fragment ids keep encoded output, while exact dot-segment schedule ids fail before fetch and are recorded as sanitized draft sync failures. Raw schedule/visit-record ids remain unchanged in request bodies and offline metadata. No DB schema/data, migration, external send behavior, auth, storage, PHI logging, push/deploy, or destructive behavior changed.
+- performance issues found: none. This is a pure path-segment validation refactor with no new DB reads, network calls beyond existing sync, loops, cache keys, polling, dependencies, or render behavior.
+- validation commands: `pnpm exec prettier --write src/lib/offline/evidence-drafts.ts src/lib/offline/evidence-drafts.test.ts`; `pnpm exec vitest run src/lib/offline/evidence-drafts.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for offline evidence drafts/test and path-segment helper/test; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused offline evidence + path-segment Vitest passed `2` files / `25` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `e0f4a79f` plus the state commit. The broader all-page PH-OS UI/UX polish and backend helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit, then send Claude the review request and continue after inbox is clear.
+
 ### 20260628-0326 JST
 
 - current task: shared file download href builder for generated ZIP/report download links.
