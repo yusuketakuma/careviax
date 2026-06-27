@@ -108,6 +108,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
 - Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. Mapper ranked document-template/delivery-rule API path helper convergence as a possible next non-DB/non-billing candidate. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Document Template API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before selecting and validating this slice.
+  - Picked Mapper's third-ranked next non-DB/non-billing candidate after the comments slice.
+  - Kept this to admin document-template/delivery-rule API path construction; no DB mutation beyond existing user-triggered mutations, migration, push, deploy, auth/billing change, visual/layout change, route handler change, or destructive operation.
+- Hardened/converged document-template route construction:
+  - Added `src/lib/document-templates/api-paths.ts` with `buildDocumentTemplateApiPath(templateId)` and `buildDocumentDeliveryRuleApiPath(ruleId)` on top of `encodePathSegment`.
+  - Replaced local `/api/templates/:id` URL construction in template update/delete and template-body save flows.
+  - Replaced local `/api/document-delivery-rules/:id` URL construction in delivery-rule update/delete flows.
+  - Added helper coverage for normal ids, hostile slash/query/hash ids, and exact `.` / `..` fail-closed behavior.
+  - Added UI coverage proving hostile template ids are single-encoded for update/body-save and hostile delivery-rule ids are single-encoded for update/delete with existing methods, org headers, and bodies preserved.
+  - Preserved list/create endpoints, admin auth/permissions, route validation, RLS/audit behavior, DB schema/data, migrations, PHI logging, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: admin template/delivery-rule detail mutations now share one path-segment contract instead of interpolating raw ids into API paths.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - Initial focused test failed because a combined hostile update/delete test tried to open delete confirmation immediately after update; narrowed that test to update-only while existing delete confirmation coverage and helper tests cover deletion path contract.
+  - `pnpm exec prettier --write ...` passed for the new helper/test and three admin components/tests.
+  - `pnpm exec vitest run src/lib/document-templates/api-paths.test.ts 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' 'src/app/(dashboard)/admin/document-templates/template-body-editor.render.test.tsx' 'src/app/(dashboard)/admin/document-templates/template-body-editor.test.ts' 'src/app/api/templates/[id]/route.test.ts' 'src/app/api/document-delivery-rules/[id]/route.test.ts' src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000` passed `8` files / `43` tests.
+  - Scoped ESLint passed for the helper/test, three admin components/tests, API route tests, and path-segment test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for changed files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/API-path slice.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
+- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Offline Evidence Sync Path-Segment Hardening
 
 - Coordination:
