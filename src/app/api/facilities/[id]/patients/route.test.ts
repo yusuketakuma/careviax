@@ -28,6 +28,11 @@ import { GET } from './route';
 
 const createRequest = () => new NextRequest('http://localhost/api/facilities/facility_1/patients');
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/facilities/[id]/patients GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,6 +68,7 @@ describe('/api/facilities/[id]/patients GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(residenceFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -85,5 +91,32 @@ describe('/api/facilities/[id]/patients GET', () => {
         ],
       },
     });
+  });
+
+  it('returns a no-store 404 when the facility does not exist', async () => {
+    facilityFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+  });
+
+  it('returns a sanitized no-store 500 when facility patients fail to load', async () => {
+    residenceFindManyMock.mockRejectedValueOnce(new Error('raw patient facility secret'));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw patient facility secret');
   });
 });

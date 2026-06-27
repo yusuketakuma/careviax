@@ -160,6 +160,7 @@ vi.mock('@/server/services/patient-detail', async (importOriginal) => {
 import { GET as auditLogsGet } from '../audit-logs/route';
 import { GET as auditLogsExportGet } from '../audit-logs/export/route';
 import { GET as adminExternalProfessionalCommunicationsGet } from '../admin/external-professionals/[id]/communications/route';
+import { GET as adminFacilityPatientsGet } from '../admin/facilities/[id]/patients/route';
 import { GET as billingCandidatesGet } from '../billing-candidates/route';
 import { GET as billingDocumentPdfGet } from '../billing-candidates/[id]/documents/pdf/route';
 import { GET as billingCandidatesExportGet } from '../billing-candidates/export/route';
@@ -197,6 +198,7 @@ import { GET as dispenseTasksGet } from '../dispense-tasks/route';
 import { GET as dispenseTaskGet } from '../dispense-tasks/[id]/route';
 import { GET as dispenseTaskWorkbenchGet } from '../dispense-tasks/[id]/workbench/route';
 import { GET as externalProfessionalCommunicationsGet } from '../external-professionals/[id]/communications/route';
+import { GET as facilityPatientsGet } from '../facilities/[id]/patients/route';
 import { GET as firstVisitDocumentsGet } from '../first-visit-documents/route';
 import { GET as handoffBoardGet } from '../handoff-board/route';
 import { GET as inquiryRecordsGet } from '../inquiry-records/route';
@@ -323,6 +325,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           { 'x-org-id': 'org_1' },
         ),
         { params: Promise.resolve({ id: 'external_1' }) },
+      ),
+  },
+  {
+    name: 'admin/facilities/[id]/patients GET',
+    handler: () =>
+      adminFacilityPatientsGet(
+        createRequest('http://localhost/api/admin/facilities/facility_1/patients', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'facility_1' }) },
       ),
   },
   {
@@ -840,6 +852,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'external_1' }) },
+      ),
+  },
+  {
+    name: 'facilities/[id]/patients GET',
+    handler: () =>
+      facilityPatientsGet(
+        createRequest('http://localhost/api/facilities/facility_1/patients', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'facility_1' }) },
       ),
   },
   {
@@ -1616,6 +1638,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'audit-logs GET' ||
         route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
+        route.name === 'admin/facilities/[id]/patients GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'prescription-intakes/triage GET' ||
@@ -1692,7 +1715,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dispense-audits GET' ||
         route.name === 'dispense-queue GET' ||
         route.name === 'dispense-workbench/patients GET' ||
-        route.name === 'external-professionals/[id]/communications GET'
+        route.name === 'external-professionals/[id]/communications GET' ||
+        route.name === 'facilities/[id]/patients GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -1712,6 +1736,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'audit-logs GET' ||
         route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
+        route.name === 'admin/facilities/[id]/patients GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'prescription-intakes/triage GET' ||
@@ -1788,7 +1813,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dispense-audits GET' ||
         route.name === 'dispense-queue GET' ||
         route.name === 'dispense-workbench/patients GET' ||
-        route.name === 'external-professionals/[id]/communications GET'
+        route.name === 'external-professionals/[id]/communications GET' ||
+        route.name === 'facilities/[id]/patients GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -1809,6 +1835,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'audit-logs GET' ||
         route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
+        route.name === 'admin/facilities/[id]/patients GET' ||
         route.name === 'prescription-intakes/triage GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||
@@ -1833,6 +1860,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'external-professionals/[id]/communications GET' ||
         route.name === 'dispense-results/[id] GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
+        route.name === 'facilities/[id]/patients GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacy-partnerships GET' ||
         route.name === 'pharmacy-visit-requests GET' ||

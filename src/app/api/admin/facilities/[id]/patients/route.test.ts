@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  facilityFindFirstMock,
-  residenceFindManyMock,
-} = vi.hoisted(() => ({
+const { facilityFindFirstMock, residenceFindManyMock } = vi.hoisted(() => ({
   facilityFindFirstMock: vi.fn(),
   residenceFindManyMock: vi.fn(),
 }));
@@ -31,6 +28,11 @@ import { GET } from './route';
 
 const createRequest = () =>
   new NextRequest('http://localhost/api/admin/facilities/facility_1/patients');
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
 
 describe('/api/admin/facilities/[id]/patients', () => {
   beforeEach(() => {
@@ -59,6 +61,7 @@ describe('/api/admin/facilities/[id]/patients', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(residenceFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -98,5 +101,32 @@ describe('/api/admin/facilities/[id]/patients', () => {
         },
       ],
     });
+  });
+
+  it('returns a no-store 404 when the facility does not exist', async () => {
+    facilityFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+  });
+
+  it('returns a sanitized no-store 500 when admin facility patients fail to load', async () => {
+    residenceFindManyMock.mockRejectedValueOnce(new Error('raw admin facility patient secret'));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw admin facility patient secret');
   });
 });
