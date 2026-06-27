@@ -1,6 +1,8 @@
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { listDispenseWorkbenchPatients } from '@/server/services/dispense-workbench-patients';
@@ -22,7 +24,7 @@ const querySchema = z.object({
   phase: z.enum(['dispense', 'audit', 'set', 'set-audit']).optional(),
 });
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const parsed = parseSearchParams(querySchema, searchParams);
@@ -49,3 +51,12 @@ export const GET = withAuthContext(
     message: '調剤ワークベンチの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

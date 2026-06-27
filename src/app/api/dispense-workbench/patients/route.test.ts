@@ -66,6 +66,11 @@ function createRequest(query = '') {
   return new NextRequest(`http://localhost/api/dispense-workbench/patients${query}`);
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function cycle(overrides: {
   id: string;
   patient_id: string;
@@ -124,6 +129,7 @@ describe('GET /api/dispense-workbench/patients', () => {
     const response = await GET(createRequest(), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toEqual({
       data: [
         {
@@ -311,6 +317,7 @@ describe('GET /api/dispense-workbench/patients', () => {
     const response = await GET(createRequest('?phase=bogus'), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -456,6 +463,23 @@ describe('GET /api/dispense-workbench/patients', () => {
     authCtx.role = 'clerk';
     const response = await GET(createRequest(), { params: Promise.resolve({}) });
     expect(response.status).toBe(403);
+    expectNoStore(response);
     expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when patient listing fails unexpectedly', async () => {
+    medicationCycleFindManyMock.mockRejectedValueOnce(
+      new Error('raw dispense workbench patient medication secret'),
+    );
+
+    const response = await GET(createRequest(), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('patient medication secret');
   });
 });

@@ -187,6 +187,7 @@ import { GET as dashboardMonthlyStatsGet } from '../dashboard/monthly-stats/rout
 import { GET as dashboardOverdueGet } from '../dashboard/overdue/route';
 import { GET as dispenseAuditsGet } from '../dispense-audits/route';
 import { GET as dispenseQueueGet } from '../dispense-queue/route';
+import { GET as dispenseWorkbenchPatientsGet } from '../dispense-workbench/patients/route';
 import { GET as dispenseResultGet } from '../dispense-results/[id]/route';
 import { GET as dispenseTasksGet } from '../dispense-tasks/route';
 import { GET as dispenseTaskGet } from '../dispense-tasks/[id]/route';
@@ -607,6 +608,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       dispenseQueueGet(
         createRequest('http://localhost/api/dispense-queue', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'dispense-workbench/patients GET',
+    handler: () =>
+      dispenseWorkbenchPatientsGet(
+        createRequest('http://localhost/api/dispense-workbench/patients', {
+          'x-org-id': 'org_1',
+        }),
         emptyRouteContext,
       ),
   },
@@ -1522,7 +1533,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dashboard/medication-deadlines GET' ||
         route.name === 'dashboard/monthly-stats GET' ||
         route.name === 'dispense-audits GET' ||
-        route.name === 'dispense-queue GET'
+        route.name === 'dispense-queue GET' ||
+        route.name === 'dispense-workbench/patients GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -1608,7 +1620,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dashboard/medication-deadlines GET' ||
         route.name === 'dashboard/monthly-stats GET' ||
         route.name === 'dispense-audits GET' ||
-        route.name === 'dispense-queue GET'
+        route.name === 'dispense-queue GET' ||
+        route.name === 'dispense-workbench/patients GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -1642,6 +1655,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'incident-reports GET' ||
         route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||
+        route.name === 'dispense-workbench/patients GET' ||
         route.name === 'dispense-results/[id] GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'partner-visit-records GET' ||
