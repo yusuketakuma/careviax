@@ -188,13 +188,28 @@ describe('PatientForm', () => {
     expect(backupStaff.value).toBe('');
   });
 
-  it('does not render the care team selects in create mode', () => {
+  it('renders the care team selects in create mode so a team can be assigned at registration', () => {
     useOrgIdMock.mockReturnValue('org_1');
-    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
+      const key = options.queryKey[1];
+      if (key === 'care-team-pharmacists') {
+        return { data: [{ id: 'ph1', name: '薬剤 太郎' }], isLoading: false };
+      }
+      if (key === 'care-team-staff') {
+        return { data: [{ id: 'st1', name: '事務 花子' }], isLoading: false };
+      }
+      return { data: [], isLoading: false };
+    });
 
     render(<PatientForm />);
 
-    expect(screen.queryByTestId('patient-care-team')).toBeNull();
+    const careTeam = screen.getByTestId('patient-care-team');
+    expect(careTeam).toBeTruthy();
+    // 候補は新規登録時も org メンバーから供給される（任意・未設定可）。
+    expect(within(careTeam).getByLabelText('主担当薬剤師')).toBeTruthy();
+    expect(within(careTeam).getByLabelText('主担当スタッフ')).toBeTruthy();
+    expect(within(careTeam).getAllByText('薬剤 太郎').length).toBe(2);
+    expect(within(careTeam).getAllByText('事務 花子').length).toBe(2);
   });
 
   it('shows server-side duplicate candidates and resubmits with duplicate acknowledgement', async () => {

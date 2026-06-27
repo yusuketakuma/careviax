@@ -461,7 +461,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
     enabled: !!orgId,
   });
 
-  // 担当チーム（患者単位）の候補。編集時のみ取得する（新規登録は別フェーズで対応）。
+  // 担当チーム（患者単位）の候補。新規登録・編集の双方で取得する（POST/PATCH とも 4id を永続化）。
   const careTeamPharmacistsQuery = useQuery({
     queryKey: ['patient-form', 'care-team-pharmacists', orgId],
     queryFn: async () => {
@@ -470,7 +470,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
       const payload = (await res.json()) as { data?: Array<{ id: string; name: string }> };
       return payload.data ?? [];
     },
-    enabled: !!orgId && !!patientId,
+    enabled: !!orgId,
   });
 
   const careTeamStaffQuery = useQuery({
@@ -483,7 +483,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
       const payload = (await res.json()) as { data?: Array<{ id: string; name: string }> };
       return payload.data ?? [];
     },
-    enabled: !!orgId && !!patientId,
+    enabled: !!orgId,
   });
 
   const careTeamPharmacists = careTeamPharmacistsQuery.data ?? [];
@@ -735,31 +735,33 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 </div>
               </div>
 
-              {/* 担当チーム（患者単位）。編集時のみ。主/副 薬剤師・スタッフを org メンバーから割当。 */}
-              {patientId ? (
-                <div className="space-y-3 border-t pt-4" data-testid="patient-care-team">
-                  <p className="text-sm font-medium text-foreground">担当チーム</p>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {careTeamFields.map((field) => (
-                      <div key={field.name} className="space-y-1.5">
-                        <Label htmlFor={field.name}>{field.label}</Label>
-                        <select
-                          id={field.name}
-                          {...register(field.name)}
-                          className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 sm:h-8 sm:min-h-0"
-                        >
-                          <option value="">未設定</option>
-                          {field.options.map((member) => (
-                            <option key={member.id} value={member.id}>
-                              {member.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
+              {/* 担当チーム（患者単位）。新規登録・編集の双方で主/副 薬剤師・スタッフを
+                  org メンバーから割当（任意）。POST/PATCH とも 4id を validate+永続化する。 */}
+              <div className="space-y-3 border-t pt-4" data-testid="patient-care-team">
+                <p className="text-sm font-medium text-foreground">担当チーム</p>
+                <p className="text-xs text-muted-foreground">
+                  任意。未設定のままでも登録できます。
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {careTeamFields.map((field) => (
+                    <div key={field.name} className="space-y-1.5">
+                      <Label htmlFor={field.name}>{field.label}</Label>
+                      <select
+                        id={field.name}
+                        {...register(field.name)}
+                        className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 sm:h-8 sm:min-h-0"
+                      >
+                        <option value="">未設定</option>
+                        {field.options.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
                 </div>
-              ) : null}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
