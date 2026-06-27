@@ -1,6 +1,6 @@
 # 配色トークン是正 段階計画（生 Tailwind 状態色の撲滅）
 
-**Status:** Phase 1 **完了**（P1-a〜P1-d land 済 + P1-e は「状態対象なし」でクローズ）。次は Phase 2（識別トークン族の globals.css 実装、§8 設計合意済）。
+**Status:** Phase 1 **完了** + Phase 2 **globals.css 実装完了**（23 識別トークン land、AA 全件合格・Codex 値合意済）。次は Phase 3（各ファイルの生 Tailwind を family 単位で識別トークンへ置換）。
 
 **Phase 1 実装記録（2026-06-27）:**
 
@@ -82,6 +82,25 @@
 - **コード現実との矛盾**: SOAP は既に `text-chart-1/2/5/3` 使用中（§8 の「専用 --soap-_ 新設・chart流用禁止」と矛盾）。新設 vs 据置を確認（推奨: §8 通り --soap-_ 新設）。
 - **識別でない/装飾（トークン化しない案）**: `select-mode` の work-mode 見出し色（薬剤師/事務/管理 3）は専用 `--work-mode-*` 小族 or 中立化、care-team panel emerald・shared-viewer section アイコン（emerald/sky/indigo/rose）は純装飾 → 中立化（新トークン不要）。
 - **既に移行済（対象外）**: prescription-history の CHANGE_BADGES は state トークン(tag-info/state-blocked/state-confirm)化済。
+
+#### Phase 2 確定値 + AA 証明（2026-06-27・Codex DESIGN_CONSULT 合意済）
+
+Codex 合意で **23 識別トークン**を確定（除外: drug-classification=麻薬等は tag-hazard 流用 / work-mode=中立化 / 装飾アイコン=中立化）。値が同一の family も将来の個別調整のため別トークンで定義。実装は `src/app/globals.css`（`:root` light / `.dark` dark / `@theme inline` で `--color-*` 公開）。
+
+**識別トークンであり status ではない**（緊急/警告/状態は `--state-*`/`--tag-*` を使う）。全て低彩度（C≤0.12）で state（高彩度・アラート）と弁別し、使用は text/border/dot/小チップのみ・大面積塗り禁止（§L311-317）。赤系は state-blocked と競合しないよう side_effect_management=rose(H12) / method-crushed=rust(H55) に退避。
+
+AA は oklch→linear sRGB→相対輝度で計算（weekend と同手法）。12px=normal text 扱い ≥4.5:1。**全 23 トークン合格**（binding=最小値、light の on muted=oklch(0.95) が最厳）:
+
+| family       | tokens (oklch L C H, light/dark)                                                                                                                                                                                                | AA 最小（light on muted / dark on muted） |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| route        | internal 0.51/0.105/256·0.74/0.11/256, external 0.52/0.09/162·0.77/0.10/162, injection 0.50/0.12/308·0.76/0.13/308                                                                                                              | 4.55 / 7.49                               |
+| intervention | dose-adjustment=blue256, drug-change=purple308, side-effect-management 0.51/0.10/12·0.76/0.12/12, adherence-support=green162, prescriber-consultation 0.53/0.115/48·0.78/0.12/48, patient-education 0.52/0.08/195·0.76/0.08/195 | 4.55 / 7.49                               |
+| role         | patient 0.50/0.12/285·0.75/0.13/285, clerk 0.52/0.10/88·0.80/0.11/88, institution=blue256                                                                                                                                       | 4.79 / 7.49                               |
+| time-slot    | morning 0.52/0.105/92·0.83/0.11/92, noon=blue256, evening=orange48, bedtime=purple308                                                                                                                                           | 4.77 / 7.49                               |
+| method       | standard 0.52/0.015/250·0.72/0.02/250, unit-dose=amber88, crushed 0.50/0.055/55·0.74/0.07/55                                                                                                                                    | 4.76 / 6.98                               |
+| soap         | s=blue256, o 0.51/0.085/182·0.76/0.09/182, a=violet285, p=orange48                                                                                                                                                              | 4.75 / 7.49                               |
+
+最小 AA = 4.55（route-external / adherence-support の light on muted）。全 surface（white/muted, card/muted）で ≥4.5。hue 共有（blue256 が route/intervention/role/time-slot/soap、orange48 が intervention/time-slot/soap 等）は Codex 合意済（低彩度・非 status 文脈・別トークン名なので将来分岐可）。視覚 QA は Phase 3 展開後に /browse で実施し、混同が出た family のみ個別調整。
 
 ### Phase 3 — 識別トークンの展開（挙動不変置換）
 

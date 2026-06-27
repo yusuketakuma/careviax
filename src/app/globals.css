@@ -38,6 +38,30 @@
   --color-tag-info: var(--tag-info);
   --color-weekend-sun: var(--weekend-sun);
   --color-weekend-sat: var(--weekend-sat);
+  /* 識別トークン(カテゴリ区別。status ではない — 緊急/警告は state / tag 系を使う) */
+  --color-route-internal: var(--route-internal);
+  --color-route-external: var(--route-external);
+  --color-route-injection: var(--route-injection);
+  --color-intervention-dose-adjustment: var(--intervention-dose-adjustment);
+  --color-intervention-drug-change: var(--intervention-drug-change);
+  --color-intervention-side-effect-management: var(--intervention-side-effect-management);
+  --color-intervention-adherence-support: var(--intervention-adherence-support);
+  --color-intervention-prescriber-consultation: var(--intervention-prescriber-consultation);
+  --color-intervention-patient-education: var(--intervention-patient-education);
+  --color-role-patient: var(--role-patient);
+  --color-role-clerk: var(--role-clerk);
+  --color-role-institution: var(--role-institution);
+  --color-time-slot-morning: var(--time-slot-morning);
+  --color-time-slot-noon: var(--time-slot-noon);
+  --color-time-slot-evening: var(--time-slot-evening);
+  --color-time-slot-bedtime: var(--time-slot-bedtime);
+  --color-method-standard: var(--method-standard);
+  --color-method-unit-dose: var(--method-unit-dose);
+  --color-method-crushed: var(--method-crushed);
+  --color-soap-s: var(--soap-s);
+  --color-soap-o: var(--soap-o);
+  --color-soap-a: var(--soap-a);
+  --color-soap-p: var(--soap-p);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -118,6 +142,35 @@
     0.52 0.07 245
   ); /* 土曜 — 低彩度の青（AA: on muted 4.72:1 / on card 5.46:1） */
 
+  /* 識別トークン (light) — カテゴリの区別を表す識別色。workflow 状態ではない
+     (status・緊急・警告は state / tag 系を使う)。全て低彩度・text/border/dot/小チップ
+     のみ・大面積塗り禁止(§L374, §L311-317)。値が同一の family も将来の個別調整のため
+     別トークンで定義する。AA(on white / on muted=oklch0.95、12px=normal text ≥4.5:1)の
+     証明は docs/color-token-remediation-plan.md §Phase2 AA に記載。 */
+  --route-internal: oklch(0.51 0.105 256);
+  --route-external: oklch(0.52 0.09 162);
+  --route-injection: oklch(0.5 0.12 308);
+  --intervention-dose-adjustment: oklch(0.51 0.105 256);
+  --intervention-drug-change: oklch(0.5 0.12 308);
+  --intervention-side-effect-management: oklch(0.51 0.1 12);
+  --intervention-adherence-support: oklch(0.52 0.09 162);
+  --intervention-prescriber-consultation: oklch(0.53 0.115 48);
+  --intervention-patient-education: oklch(0.52 0.08 195);
+  --role-patient: oklch(0.5 0.12 285);
+  --role-clerk: oklch(0.52 0.1 88);
+  --role-institution: oklch(0.51 0.105 256);
+  --time-slot-morning: oklch(0.52 0.105 92);
+  --time-slot-noon: oklch(0.51 0.105 256);
+  --time-slot-evening: oklch(0.53 0.115 48);
+  --time-slot-bedtime: oklch(0.5 0.12 308);
+  --method-standard: oklch(0.52 0.015 250);
+  --method-unit-dose: oklch(0.52 0.1 88);
+  --method-crushed: oklch(0.5 0.055 55);
+  --soap-s: oklch(0.51 0.105 256);
+  --soap-o: oklch(0.51 0.085 182);
+  --soap-a: oklch(0.5 0.12 285);
+  --soap-p: oklch(0.53 0.115 48);
+
   /* Border radius: subtle, professional (0.375rem) */
   --radius: 0.375rem;
 
@@ -166,6 +219,31 @@
   --tag-info: oklch(0.72 0.13 245);
   --weekend-sun: oklch(0.78 0.1 25); /* 日曜 — dark: 低彩度の赤 */
   --weekend-sat: oklch(0.76 0.08 245); /* 土曜 — dark: 低彩度の青 */
+  /* 識別トークン (dark) — light と同じ意味分担(status ではない・大面積塗り禁止)。
+     dark は明インク。AA(on card=0.18 / on muted=0.22、≥4.5:1)は docs に証明。 */
+  --route-internal: oklch(0.74 0.11 256);
+  --route-external: oklch(0.77 0.1 162);
+  --route-injection: oklch(0.76 0.13 308);
+  --intervention-dose-adjustment: oklch(0.74 0.11 256);
+  --intervention-drug-change: oklch(0.76 0.13 308);
+  --intervention-side-effect-management: oklch(0.76 0.12 12);
+  --intervention-adherence-support: oklch(0.77 0.1 162);
+  --intervention-prescriber-consultation: oklch(0.78 0.12 48);
+  --intervention-patient-education: oklch(0.76 0.08 195);
+  --role-patient: oklch(0.75 0.13 285);
+  --role-clerk: oklch(0.8 0.11 88);
+  --role-institution: oklch(0.74 0.11 256);
+  --time-slot-morning: oklch(0.83 0.11 92);
+  --time-slot-noon: oklch(0.74 0.11 256);
+  --time-slot-evening: oklch(0.78 0.12 48);
+  --time-slot-bedtime: oklch(0.76 0.13 308);
+  --method-standard: oklch(0.72 0.02 250);
+  --method-unit-dose: oklch(0.8 0.11 88);
+  --method-crushed: oklch(0.74 0.07 55);
+  --soap-s: oklch(0.74 0.11 256);
+  --soap-o: oklch(0.76 0.09 182);
+  --soap-a: oklch(0.75 0.13 285);
+  --soap-p: oklch(0.78 0.12 48);
   --sidebar: oklch(0.2 0.04 262);
   --sidebar-foreground: oklch(0.93 0.008 250);
   --sidebar-primary: oklch(0.55 0.15 255);
