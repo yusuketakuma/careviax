@@ -23,6 +23,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Patient/Clinical PDF GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before resuming, before long type gates, and before ledger work.
+  - Codex prioritized Claude's `PLAN_REVIEW_REQUEST` for operating-day calendar rev2, reviewed the full plan plus current referenced code, returned `APPROVED_WITH_NON_BLOCKING_NOTES`, and acknowledged Claude's rev3 `b574e978` as SSOT.
+  - Claude requested and received a lock for `src/lib/calendar/operating-day.ts` and `src/lib/calendar/operating-day.test.ts`; Codex is preserving that S1 lock and continued only the non-overlapping PDF sweep.
+- Hardened `GET /api/patients/[id]/medications/pdf`, `GET /api/patients/[id]/medication-calendar/pdf`, `GET /api/conference-notes/[id]/pdf`, and `GET /api/care-reports/[id]/pdf` so PDF success, auth rejection, invalid route params, scoped not-found, care-report workflow conflict, ordinary render failures, and care-report export-audit failures are wrapped with sensitive no-store headers.
+- Added `unstable_rethrow(cause)` at the top of the PDF render catch blocks so Next.js framework control-flow errors are not swallowed.
+- Preserved existing PDF response bodies, filenames, `Content-Type`, `Content-Disposition`, export audit recording, `canVisit`/`canReport`/`canSendCareReport` auth, route/query validation, scoped PDF builders, not-found mapping, care-report conflict behavior, and fixed render-error codes/messages for ordinary failures.
+- Added route-local regression coverage for no-store success, no-store validation/not-found/auth/error responses, sanitized fixed 500 responses that omit raw render failure text, and care-report audit-failure no-store coverage.
+- Added the four PDF routes to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Security risk reduced: medication history PDFs, medication calendar PDFs, conference-note PDFs, and care-report PDFs can contain PHI and clinical content; their HTTP boundary now consistently sends `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache` across success/error paths.
+- Performance issue improved: none materially changed. This slice adds route-boundary response wrapping and tests only; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/medications/pdf/route.ts' 'src/app/api/patients/[id]/medications/pdf/route.test.ts' 'src/app/api/patients/[id]/medication-calendar/pdf/route.ts' 'src/app/api/patients/[id]/medication-calendar/pdf/route.test.ts' 'src/app/api/conference-notes/[id]/pdf/route.ts' 'src/app/api/conference-notes/[id]/pdf/route.test.ts' 'src/app/api/care-reports/[id]/pdf/route.ts' 'src/app/api/care-reports/[id]/pdf/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts` passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/medications/pdf/route.test.ts' 'src/app/api/patients/[id]/medication-calendar/pdf/route.test.ts' 'src/app/api/conference-notes/[id]/pdf/route.test.ts' 'src/app/api/care-reports/[id]/pdf/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `5` files / `352` tests.
+  - Scoped ESLint passed for the four PDF routes, their route tests, and the protected GET matrix.
+  - Scoped Prettier check passed for the same nine files.
+  - Scoped diff whitespace check passed for the same nine files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then prioritize any Claude S1 patch review. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Pharmacy Sites and Business Holidays GET No-Store Hardening
 
 - Coordination:
