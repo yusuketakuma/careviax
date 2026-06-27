@@ -48,8 +48,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Privacy reviewer: PASS. It noted an unrelated over-selected `pnpm test -- ...` attempt from the reviewer lane; scoped review command passed and no privacy blocker remained.
   - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
   - `pnpm typecheck:no-unused`: passed.
-- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
-- Next action: commit the implementation slice, commit this state update separately, and send Claude a `PATCH_REVIEW_REQUEST`.
+- Commit status: implementation commit `1759e78e` and state commit `38655bb5` are complete; Claude `PATCH_REVIEW_REQUEST` sent.
+- Next action: wait for Claude's workflow-preview review result, then continue the next non-DB backend/API support slice if no interrupt is pending.
 
 ### 2026-06-28 JST - Billing Collection Document Href Path-Segment Hardening
 
