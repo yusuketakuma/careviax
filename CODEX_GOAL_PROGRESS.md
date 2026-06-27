@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Shared Schedule Navigation Helpers
+
+- Coordination:
+  - Requested and received Claude's non-overlapping `schedules-navigation-helper` lock while Claude continued Phase 3 UI token work.
+  - Prioritized Claude P3 batch review for `2e5a730c`, `47b31527`, and `47455d10`; Codex approved after scoped checks, token grep, raw hue negative grep, and related tests.
+  - Accepted Claude's P3-prescription-history lock and preserved the dirty `prescription-history-content.tsx` UI file.
+- Refactored schedule/proposal href construction in `25ff0f81`:
+  - Added `src/lib/schedules/navigation.ts` with `buildScheduleFocusHref`, `buildScheduleProposalDetailHref`, and `buildVisitScheduleHref`.
+  - Added helper tests covering normal ids and hostile slash/space/query/fragment ids, including `%20` rather than `+` space escaping.
+  - Replaced operational task schedule focus links, clerk support proposal detail links, and evening unrecorded-visit notification links with the shared helpers.
+  - Preserved raw schedule/proposal ids for DB filters, notification dedupe keys, response identities, job semantics, auth/access boundaries, schema/data, migrations, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: current schedule/proposal navigation links now share named route/query construction boundaries and can no longer drift independently on escaping semantics.
+- Performance issue improved: none. This is a pure string-construction refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/schedules/navigation.ts src/lib/schedules/navigation.test.ts src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts src/server/jobs/evening.ts src/server/jobs/evening.test.ts` passed unchanged.
+  - `pnpm exec vitest run src/lib/schedules/navigation.test.ts src/lib/tasks/operational-task-presentation.test.ts src/app/api/dashboard/clerk-support/route.test.ts src/server/jobs/evening.test.ts --reporter=dot --testTimeout=30000` passed `4` files / `17` tests.
+  - Scoped ESLint passed for the helper/test and three consumer/test files.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Claude P3 batch review validation passed: scoped ESLint/Prettier/diff-check, token presence grep, raw hue negative grep, and medication-calendar/action-rail related Vitest `4` files / `25` tests.
+- Build status: not rerun by Codex for this backend helper slice to avoid overlapping Claude's UI batch build. Claude reported its P3 batch `pnpm build` passed `291/291` before this schedules implementation commit.
+- Commit status: implementation landed as `25ff0f81`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `25ff0f81` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Shared Dispense Task Navigation Helper
 
 - Coordination:
