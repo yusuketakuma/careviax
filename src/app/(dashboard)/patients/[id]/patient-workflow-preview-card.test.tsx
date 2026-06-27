@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientWorkflowPreviewApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { PatientWorkflowPreviewCard } from './patient-workflow-preview-card';
@@ -43,6 +44,14 @@ vi.mock('@/lib/patient/navigation', async (importActual) => {
 vi.mock('@/lib/api/org-headers', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/api/org-headers')>();
   return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return {
+    ...actual,
+    buildPatientWorkflowPreviewApiPath: vi.fn(actual.buildPatientWorkflowPreviewApiPath),
+  };
 });
 
 describe('PatientWorkflowPreviewCard', () => {
@@ -322,6 +331,47 @@ describe('PatientWorkflowPreviewCard', () => {
     } finally {
       vi.unstubAllGlobals();
       vi.mocked(buildOrgHeaders).mockReset();
+    }
+  });
+
+  it('routes the workflow-preview fetch through buildPatientWorkflowPreviewApiPath', async () => {
+    const sentinelHeaders = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };
+    vi.mocked(buildOrgHeaders).mockReturnValue(sentinelHeaders);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => buildPreviewData() });
+    vi.stubGlobal('fetch', fetchMock);
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let captured: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        captured = config;
+        return { data: undefined, isLoading: true, error: null };
+      },
+    );
+
+    const realImpl = vi.mocked(buildPatientWorkflowPreviewApiPath).getMockImplementation();
+    vi.mocked(buildPatientWorkflowPreviewApiPath).mockImplementation(
+      (id: string) => `/api/patients/__workflow_${id}__/workflow-preview`,
+    );
+    vi.mocked(buildPatientWorkflowPreviewApiPath).mockClear();
+    try {
+      render(<PatientWorkflowPreviewCard patientId="patient_1" />);
+
+      if (!captured) throw new Error('query config was not captured');
+      expect(captured.queryKey).toEqual(['patient-workflow-preview', 'patient_1', 'org_1']);
+      await captured.queryFn();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [fetchedUrl, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(fetchedUrl).toBe('/api/patients/__workflow_patient_1__/workflow-preview');
+      expect(init.headers).toBe(sentinelHeaders);
+      expect(vi.mocked(buildPatientWorkflowPreviewApiPath)).toHaveBeenCalledWith('patient_1');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.mocked(buildOrgHeaders).mockReset();
+      if (realImpl) {
+        vi.mocked(buildPatientWorkflowPreviewApiPath).mockImplementation(realImpl);
+      }
     }
   });
 

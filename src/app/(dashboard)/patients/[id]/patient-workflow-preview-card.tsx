@@ -10,7 +10,7 @@ import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientWorkflowPreviewApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import type { PatientWorkflowPreviewSnapshot } from './patient-detail.types';
 
@@ -22,13 +22,6 @@ function labelList(values: string[]) {
 
 function timeValue(value: string | null) {
   return value ? value.slice(11, 16) : '—';
-}
-
-// API path helper for this card. encodePathSegment fail-closes on exact '.'/'..'
-// (encodeURIComponent is a no-op there) before any fetch. Not buildPatientHref
-// because this is an API URL, not a UI href.
-function buildWorkflowPreviewApiHref(patientId: string) {
-  return `/api/patients/${encodePathSegment(patientId)}/workflow-preview`;
 }
 
 const reportTargetSourceLabels: Record<
@@ -48,7 +41,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
     queryKey: ['patient-workflow-preview', patientId, orgId],
     enabled: Boolean(orgId),
     queryFn: async () => {
-      const response = await fetch(buildWorkflowPreviewApiHref(patientId), {
+      const response = await fetch(buildPatientWorkflowPreviewApiPath(patientId), {
         headers: buildOrgHeaders(orgId ?? ''),
       });
       if (!response.ok) {
