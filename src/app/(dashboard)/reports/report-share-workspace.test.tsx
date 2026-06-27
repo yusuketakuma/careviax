@@ -7,6 +7,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { ReportShareWorkspace } from './report-share-workspace';
 import {
@@ -46,6 +47,11 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/reports/navigation', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/reports/navigation')>();
   return { ...actual, buildReportHref: vi.fn(actual.buildReportHref) };
+});
+
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
 });
 
 const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
@@ -485,6 +491,28 @@ describe('ReportShareWorkspace', () => {
     expect(linkedPatient.getAttribute('href')).not.toContain('#y');
 
     expect(screen.getByText('患者未設定').closest('a')).toBeNull();
+  });
+
+  it('uses the shared buildPatientHref return value for created-report patient links', async () => {
+    const realImpl = vi.mocked(buildPatientHref).getMockImplementation();
+    vi.mocked(buildPatientHref).mockImplementation((id: string) => `/patients/__sentinel_${id}__`);
+    vi.mocked(buildPatientHref).mockClear();
+    try {
+      stubFetch();
+      renderWorkspace();
+
+      const linkedPatient = await screen.findByRole('link', { name: '田中 一郎 様' });
+      expect(linkedPatient.getAttribute('href')).toBe('/patients/__sentinel_patient_1__');
+      expect(vi.mocked(buildPatientHref).mock.calls).toEqual([
+        ['patient_1'],
+        ['patient_2'],
+        ['patient_3'],
+      ]);
+    } finally {
+      if (realImpl) {
+        vi.mocked(buildPatientHref).mockImplementation(realImpl);
+      }
+    }
   });
 
   it('creates a report draft from a selected not-created row and opens the draft', async () => {

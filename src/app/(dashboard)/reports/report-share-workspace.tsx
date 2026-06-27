@@ -19,6 +19,7 @@ import { WorkspaceActionRail } from '@/components/features/workspace/action-rail
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-visit-contract';
 import { displayDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
@@ -473,7 +474,7 @@ function CreatedReportsSection({ reports }: { reports: ReportCreatedRow[] }) {
                 <TableCell>
                   {report.patient_id ? (
                     <Link
-                      href={`/patients/${encodeURIComponent(report.patient_id)}`}
+                      href={buildPatientHref(report.patient_id)}
                       className="inline-flex min-h-8 items-center rounded-sm font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
                       {report.patient_label}
