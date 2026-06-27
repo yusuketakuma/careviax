@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -22,6 +23,11 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 import { PatientCareTeamPanel } from './patient-care-team-panel';
 import { toast } from 'sonner';
@@ -271,6 +277,37 @@ describe('PatientCareTeamPanel', () => {
       // patient id lives only in the URL path; the body is preserved exactly (raw case_id, empty links).
       expect(body).not.toContain(hostileId);
       expect(JSON.parse(body)).toEqual({ case_id: 'case_active_123456', links: [] });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('routes care-team saves through the shared patient API path helper', async () => {
+    const patientId = 'patient_1';
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce(
+      '/api/patients/__helper_patient_1__/care-team',
+    );
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientCareTeamPanel patientId={patientId} orgId="org_1" cases={buildCases()} />);
+
+      await mutationConfigs[1]?.mutationFn?.();
+
+      expect(buildPatientApiPath).toHaveBeenCalledWith(patientId, '/care-team');
+      expect(fetchMock).toHaveBeenCalledWith('/api/patients/__helper_patient_1__/care-team', {
+        method: 'PUT',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: expect.any(String),
+      });
+      expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}/care-team`, {
+        method: 'PUT',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: expect.any(String),
+      });
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

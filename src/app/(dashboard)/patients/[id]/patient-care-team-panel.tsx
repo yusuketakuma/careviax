@@ -28,7 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { careTeamContactBadges, type CareTeamContactBadge } from '@/lib/patient/care-team-contact';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { cn } from '@/lib/utils';
 
@@ -202,7 +202,7 @@ export function PatientCareTeamPanel({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/care-team`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/care-team'), {
         method: 'PUT',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({
