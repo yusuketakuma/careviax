@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Facility Patients GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before candidate selection, before long gates, and before ledger work.
+  - Claude approved `4a78a563` / `c1157d12` with no findings after independent focused validation.
+  - Claude consulted on and then locked `/admin/audit-logs` FE files; Codex answered the consult with FE-only guidance, acknowledged the lock, and preserved Claude-owned dirty files.
+- Hardened public `GET /api/facilities/[id]/patients` and admin `GET /api/admin/facilities/[id]/patients` so success, not-found, auth rejection, forbidden rejection, and ordinary unexpected patient-list loading failures are wrapped with sensitive no-store headers.
+- Added fixed no-store `INTERNAL_ERROR` fallbacks with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store facility 404, and sanitized no-store 500 responses that omit raw patient/facility-like thrown text for both routes.
+- Added `facilities/[id]/patients GET` and `admin/facilities/[id]/patients GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canVisit` auth, public care-case assignment narrowing, facility org scoping, primary-residence filtering, ordering/sorting, patient projection, case status projection, response shapes, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: facility patient reads include patient IDs, names, kana, phone numbers, residence/unit data, addresses or facility unit IDs, case IDs, and case statuses; these are now no-store at the HTTP boundary and unexpected list failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/facilities/[id]/patients/route.test.ts' 'src/app/api/admin/facilities/[id]/patients/route.test.ts' --reporter=dot --testTimeout=30000` passed the baseline facility-patients suites, `2` files / `2` tests.
+  - `pnpm exec prettier --write 'src/app/api/facilities/[id]/patients/route.ts' 'src/app/api/admin/facilities/[id]/patients/route.ts' 'src/app/api/facilities/[id]/patients/route.test.ts' 'src/app/api/admin/facilities/[id]/patients/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts` completed with route/test formatting.
+  - `pnpm vitest run 'src/app/api/facilities/[id]/patients/route.test.ts' 'src/app/api/admin/facilities/[id]/patients/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `321` tests. The new sanitized 500 tests emitted the existing PHI-safe `route_handler_unhandled_error` logger lines on stderr.
+  - Scoped ESLint passed for both facility-patient routes, route tests, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Ledger-aware scoped Prettier check passed for both facility-patient implementation/test files, the protected GET matrix, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Ledger-aware scoped diff whitespace check passed for the same Codex-owned files.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations and preserving the active `/admin/audit-logs` lock. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Comments Recent GET No-Store Hardening
 
 - Coordination:
