@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
+import { differenceInDays } from 'date-fns';
+import { Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { StateBadge } from '@/components/ui/state-badge';
 import {
   Sheet,
   SheetContent,
@@ -19,11 +22,71 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
-type Institution = {
+/** 最終処方日が「古い(要確認)」とみなす日数。これを超えると鮮度バッジを confirm 表示する。 */
+const STALE_PRESCRIPTION_DAYS = 180;
+
+/**
+ * 医療機関の最終処方日が古い(要確認)かを判定する。null/不正日付は「古い」ではなく
+ * 実績なし扱いにして偽の要対応シグナルを避ける。テスト安定のため now を注入可能にする。
+ */
+export function isInstitutionPrescriptionStale(
+  lastPrescribedAt: string | null,
+  now: Date = new Date(),
+): boolean {
+  if (!lastPrescribedAt) return false;
+  const last = new Date(lastPrescribedAt);
+  if (Number.isNaN(last.getTime())) return false;
+  return differenceInDays(now, last) > STALE_PRESCRIPTION_DAYS;
+}
+
+/** 連絡先(電話/FAX)をクリップボードへコピーする。未対応/失敗時は無音にせず toast で知らせる。 */
+async function copyContactValue(value: string, label: string) {
+  try {
+    if (!navigator.clipboard?.writeText) {
+      throw new Error('clipboard unavailable');
+    }
+    await navigator.clipboard.writeText(value);
+    toast.success(`${label}をコピーしました`);
+  } catch {
+    toast.error('コピーできませんでした');
+  }
+}
+
+/** 連絡先一行。値があれば弱色テキスト + コピー操作、無ければ未設定の muted ラベルのみ。 */
+function ContactLine({
+  value,
+  emptyLabel,
+  copyLabel,
+}: {
+  value: string | null;
+  emptyLabel: string;
+  copyLabel: string;
+}) {
+  if (!value) {
+    return <p className="text-xs text-muted-foreground">{emptyLabel}</p>;
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-sm text-muted-foreground">{value}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        className="!h-11 !min-h-[44px] !w-11 shrink-0 px-0"
+        aria-label={`${copyLabel}をコピー`}
+        onClick={() => void copyContactValue(value, copyLabel)}
+      >
+        <Copy aria-hidden className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
+export type Institution = {
   id: string;
   name: string;
   institution_code: string | null;
@@ -57,16 +120,17 @@ export function InstitutionsContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
+  const debouncedQuery = useDebouncedValue(query, 300);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Institution | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['prescriber-institutions', orgId, query],
+    queryKey: ['prescriber-institutions', orgId, debouncedQuery],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (query.trim()) params.set('q', query.trim());
+      if (debouncedQuery.trim()) params.set('q', debouncedQuery.trim());
       const response = await fetch(`/api/prescriber-institutions?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
@@ -167,9 +231,9 @@ export function InstitutionsContent() {
       accessorKey: 'phone',
       header: '連絡先',
       cell: ({ row }) => (
-        <div className="text-sm">
-          <p>{row.original.phone || 'TEL未設定'}</p>
-          <p className="text-xs text-muted-foreground">{row.original.fax || 'FAX未設定'}</p>
+        <div className="space-y-1">
+          <ContactLine value={row.original.phone} emptyLabel="TEL未設定" copyLabel="電話番号" />
+          <ContactLine value={row.original.fax} emptyLabel="FAX未設定" copyLabel="FAX" />
         </div>
       ),
     },
@@ -180,7 +244,22 @@ export function InstitutionsContent() {
     {
       accessorKey: 'last_prescribed_at',
       header: '最終処方日',
-      cell: ({ row }) => formatDateLabel(row.original.last_prescribed_at, { pattern: 'yyyy/M/d' }),
+      cell: ({ row }) => {
+        const { last_prescribed_at, prescription_count } = row.original;
+        // null または実績ゼロは「古い」ではなく実績なし。中立表示で偽の要対応シグナルを避ける。
+        if (last_prescribed_at == null || prescription_count === 0) {
+          return <span className="text-sm text-muted-foreground">処方なし</span>;
+        }
+        const stale = isInstitutionPrescriptionStale(last_prescribed_at);
+        return (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm tabular-nums">
+              {formatDateLabel(last_prescribed_at, { pattern: 'yyyy/M/d' })}
+            </span>
+            {stale ? <StateBadge role="confirm">6ヶ月以上前</StateBadge> : null}
+          </div>
+        );
+      },
     },
     {
       id: 'actions',

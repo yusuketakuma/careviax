@@ -82,7 +82,11 @@ vi.mock('@/components/ui/data-table', () => ({
   ),
 }));
 
-import { InstitutionsContent } from './institutions-content';
+import {
+  InstitutionsContent,
+  isInstitutionPrescriptionStale,
+  type Institution,
+} from './institutions-content';
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -101,7 +105,7 @@ function renderContent() {
   return render(<InstitutionsContent />, { wrapper: createWrapper() });
 }
 
-function institutionFixture(id = 'institution_1') {
+function institutionFixture(id = 'institution_1'): Institution {
   return {
     id,
     name: '在宅内科クリニック',
@@ -119,7 +123,7 @@ function stubFetchWithInstitution(institution = institutionFixture()) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
 
-    if (url === '/api/prescriber-institutions?' && !init?.method) {
+    if (url.startsWith('/api/prescriber-institutions?') && !init?.method) {
       return new Response(JSON.stringify({ data: [institution] }), { status: 200 });
     }
 
@@ -314,5 +318,90 @@ describe('InstitutionsContent', () => {
       '医療機関一覧を取得できませんでした',
     );
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
+
+  it('debounces the search so it requests only after the user pauses typing', async () => {
+    const fetchMock = stubFetchWithInstitution();
+    renderContent();
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/prescriber-institutions?', expect.anything()),
+    );
+
+    fireEvent.change(screen.getByLabelText('検索'), { target: { value: '在宅' } });
+    // 入力値は即時反映する。
+    expect((screen.getByLabelText('検索') as HTMLInputElement).value).toBe('在宅');
+    // 打鍵直後には q= 付き fetch は走らない(debounce)。
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('q='))).toBe(false);
+
+    // 300ms 経過後に q= 付きで fetch される。
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes('q='))).toBe(true),
+    );
+  });
+
+  it('treats prescriptions older than 180 days as stale and null/invalid dates as fresh', () => {
+    const now = new Date('2026-06-27T00:00:00+09:00');
+    expect(isInstitutionPrescriptionStale('2025-01-01', now)).toBe(true);
+    expect(isInstitutionPrescriptionStale('2026-06-01', now)).toBe(false);
+    expect(isInstitutionPrescriptionStale(null, now)).toBe(false);
+    expect(isInstitutionPrescriptionStale('not-a-date', now)).toBe(false);
+  });
+
+  it('shows a confirm freshness badge for a stale institution row', async () => {
+    stubFetchWithInstitution({ ...institutionFixture(), last_prescribed_at: '2025-01-01' });
+    renderContent();
+
+    const badge = await screen.findByText('6ヶ月以上前');
+    expect(badge.closest('[data-role]')?.getAttribute('data-role')).toBe('confirm');
+  });
+
+  it('shows a neutral 処方なし label when an institution has no prescriptions', async () => {
+    stubFetchWithInstitution({
+      ...institutionFixture(),
+      last_prescribed_at: null,
+      prescription_count: 0,
+    });
+    renderContent();
+
+    expect(await screen.findByText('処方なし')).toBeTruthy();
+    expect(screen.queryByText('6ヶ月以上前')).toBeNull();
+  });
+
+  it('does not flag a recently prescribing institution', async () => {
+    const recent = new Date();
+    recent.setDate(recent.getDate() - 10);
+    const recentDate = recent.toISOString().slice(0, 10);
+    stubFetchWithInstitution({ ...institutionFixture(), last_prescribed_at: recentDate });
+    renderContent();
+
+    await screen.findByRole('button', { name: '在宅内科クリニック を編集' });
+    expect(screen.queryByText('6ヶ月以上前')).toBeNull();
+    expect(screen.queryByText('処方なし')).toBeNull();
+  });
+
+  it('copies the phone number to the clipboard and toasts success', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    stubFetchWithInstitution();
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '電話番号をコピー' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('03-1111-2222'));
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('電話番号をコピーしました');
+  });
+
+  it('omits the copy button when a contact value is missing', async () => {
+    stubFetchWithInstitution({ ...institutionFixture(), phone: null });
+    renderContent();
+
+    await screen.findByRole('button', { name: '在宅内科クリニック を編集' });
+    expect(screen.getByText('TEL未設定')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '電話番号をコピー' })).toBeNull();
+    // FAX は値ありなのでコピーボタンは残る。
+    expect(screen.getByRole('button', { name: 'FAXをコピー' })).toBeTruthy();
   });
 });
