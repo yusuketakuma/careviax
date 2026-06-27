@@ -29,11 +29,13 @@ import { SoapVoiceFieldToggle } from '@/components/features/visits/soap-voice-fi
 import { formatDateKey } from '@/lib/date-key';
 import type { SoapVoiceField } from '@/lib/voice-recognition';
 
+// SOAP セクション識別色は専用 --soap-* トークン(識別色・status ではない)。
+// chart-* はデータ系列専用で再配色され得るため SOAP からは剥がす(色トークン是正 Phase 3)。
 const STEPS = [
-  { key: 'S', label: '主観', icon: MessageSquare, color: 'text-chart-1' },
-  { key: 'O', label: '客観', icon: Eye, color: 'text-chart-2' },
-  { key: 'A', label: '評価', icon: Brain, color: 'text-chart-5' },
-  { key: 'P', label: '計画', icon: ClipboardList, color: 'text-chart-3' },
+  { key: 'S', label: '主観', icon: MessageSquare, color: 'text-soap-s' },
+  { key: 'O', label: '客観', icon: Eye, color: 'text-soap-o' },
+  { key: 'A', label: '評価', icon: Brain, color: 'text-soap-a' },
+  { key: 'P', label: '計画', icon: ClipboardList, color: 'text-soap-p' },
 ] as const;
 
 const relationOptions = [
