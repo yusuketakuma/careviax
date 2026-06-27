@@ -58,6 +58,11 @@ function createRequest(url: string, body?: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/pharmacist-shifts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -81,6 +86,7 @@ describe('/api/pharmacist-shifts', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -110,6 +116,7 @@ describe('/api/pharmacist-shifts', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 401,
@@ -132,6 +139,7 @@ describe('/api/pharmacist-shifts', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(pharmacistShiftFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         take: expectedTake,
@@ -151,6 +159,7 @@ describe('/api/pharmacist-shifts', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -167,6 +176,7 @@ describe('/api/pharmacist-shifts', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -185,6 +195,7 @@ describe('/api/pharmacist-shifts', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '検索条件が不正です',
@@ -193,6 +204,22 @@ describe('/api/pharmacist-shifts', () => {
       },
     });
     expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking raw shift lookup failures', async () => {
+    pharmacistShiftFindManyMock.mockRejectedValueOnce(
+      new Error('raw pharmacist shift failure for user_2'),
+    );
+
+    const response = (await GET(
+      createRequest('http://localhost/api/pharmacist-shifts?month=2026-04-01'),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw pharmacist shift failure for user_2');
   });
 
   it('rejects non-object shift payloads before reference checks or upsert', async () => {

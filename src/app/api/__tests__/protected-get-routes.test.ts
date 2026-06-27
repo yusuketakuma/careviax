@@ -1711,6 +1711,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patient-self-reports/[id] GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacists GET' ||
+        route.name === 'pharmacist-shifts GET' ||
+        route.name === 'pharmacist-shifts/available GET' ||
         route.name === 'pharmacy-partnerships GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
@@ -1821,6 +1823,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patient-self-reports/[id] GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacists GET' ||
+        route.name === 'pharmacist-shifts GET' ||
+        route.name === 'pharmacist-shifts/available GET' ||
         route.name === 'pharmacy-partnerships GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
@@ -1923,6 +1927,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'facilities/[id]/patients GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacists GET' ||
+        route.name === 'pharmacist-shifts GET' ||
+        route.name === 'pharmacist-shifts/available GET' ||
         route.name === 'pharmacy-partnerships GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
