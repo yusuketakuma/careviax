@@ -42,6 +42,11 @@ function createRequest(query = '') {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 type IntakeFixtureArgs = {
   id: string;
   sourceType?: string;
@@ -118,6 +123,7 @@ describe('/api/prescription-intakes/triage', () => {
 
     const res = await GET(createRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
+    expectNoStore(res);
     const body = await res.json();
     const data = body.data;
 
@@ -222,5 +228,22 @@ describe('/api/prescription-intakes/triage', () => {
   it('不正な limit はバリデーションエラー', async () => {
     const res = await GET(createRequest('?limit=999'), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);
+    expectNoStore(res);
+  });
+
+  it('returns a sanitized no-store 500 when prescription intake triage fails unexpectedly', async () => {
+    intakeFindManyMock.mockRejectedValueOnce(
+      new Error('raw prescription intake patient medication secret'),
+    );
+
+    const res = await GET(createRequest(), { params: Promise.resolve({}) });
+
+    expect(res.status).toBe(500);
+    expectNoStore(res);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('patient medication secret');
   });
 });

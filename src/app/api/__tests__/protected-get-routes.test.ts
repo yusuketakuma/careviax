@@ -225,6 +225,7 @@ import { GET as pharmacySitesGet } from '../pharmacy-sites/route';
 import { GET as pcaPumpRentalsGet } from '../pca-pump-rentals/route';
 import { GET as prescriptionIntakesGet } from '../prescription-intakes/route';
 import { GET as prescriptionIntakeGet } from '../prescription-intakes/[id]/route';
+import { GET as prescriptionIntakeTriageGet } from '../prescription-intakes/triage/route';
 import { GET as qrScanDraftsGet } from '../qr-scan-drafts/route';
 import { GET as qrScanDraftGet } from '../qr-scan-drafts/[id]/route';
 import { GET as residualMedicationsGet } from '../residual-medications/route';
@@ -1020,6 +1021,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'prescription-intakes/triage GET',
+    handler: () =>
+      prescriptionIntakeTriageGet(
+        createRequest('http://localhost/api/prescription-intakes/triage', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
+      ),
+  },
+  {
     name: 'qr-scan-drafts GET',
     handler: () =>
       qrScanDraftsGet(
@@ -1445,6 +1456,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'audit-logs GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
+        route.name === 'prescription-intakes/triage GET' ||
         route.name === 'qr-scan-drafts GET' ||
         route.name === 'qr-scan-drafts/[id] GET' ||
         route.name === 'medication-cycles GET' ||
@@ -1530,6 +1542,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'audit-logs GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
+        route.name === 'prescription-intakes/triage GET' ||
         route.name === 'qr-scan-drafts GET' ||
         route.name === 'qr-scan-drafts/[id] GET' ||
         route.name === 'medication-cycles GET' ||
@@ -1614,6 +1627,7 @@ describe('protected GET routes auth matrix', () => {
       expect(response.status).toBe(200);
       if (
         route.name === 'audit-logs GET' ||
+        route.name === 'prescription-intakes/triage GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||

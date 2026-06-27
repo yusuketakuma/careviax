@@ -1,6 +1,8 @@
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import type {
@@ -125,7 +127,7 @@ function deriveQrConfidence(draft: QrConfidenceSource): number {
   return Math.min(99, Math.max(50, 100 - errorCount * 5 - autoCompletedCount));
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const url = new URL(req.url);
     const parsedQuery = querySchema.safeParse({
@@ -317,3 +319,12 @@ export const GET = withAuthContext(
     message: '処方取込キューの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
