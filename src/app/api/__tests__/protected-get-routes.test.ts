@@ -1377,6 +1377,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
+        route.name === 'conference-notes GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1455,6 +1456,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
+        route.name === 'conference-notes GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1519,6 +1521,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
+        route.name === 'conference-notes GET' ||
         route.name === 'consent-records GET' ||
         route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||

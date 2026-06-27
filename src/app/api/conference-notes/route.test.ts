@@ -105,6 +105,11 @@ const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createRequest({
   method = 'GET',
   url = 'http://localhost/api/conference-notes',
@@ -347,6 +352,7 @@ describe('/api/conference-notes', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -366,6 +372,45 @@ describe('/api/conference-notes', () => {
         }),
       ],
     });
+  });
+
+  it('returns no-store validation errors for invalid conference filters', async () => {
+    const response = await GET(
+      createRequest({
+        url: 'http://localhost/api/conference-notes?conference_type=unsupported',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'クエリパラメータが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when conference note listing fails unexpectedly', async () => {
+    conferenceNoteFindManyMock.mockRejectedValueOnce(
+      new Error('raw conference-note participant patient secret'),
+    );
+
+    const response = await GET(
+      createRequest({
+        url: 'http://localhost/api/conference-notes?limit=20',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('participant patient secret');
   });
 
   it('omits free-text detail fields from summary conference note lists', async () => {
