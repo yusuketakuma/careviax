@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - R1 Operating-Day Planner Refactor
+
+- Coordination:
+  - Drained `phos/codex`, sent a LOCK for R1, and received Claude's `LOCK_GRANTED` for planner/generate-related paths.
+  - Claude and a spec_guardian subagent agreed R1 scope is planner behavior-preserving refactor only; direct `visit-schedules/generate` holiday blocking/override stays in S6.
+  - Added characterization tests before the production refactor, verified the current planner behavior, then replaced the planner-local holiday map/check.
+- Replaced the planner's hand-built `businessHoliday` date map and direct `site_id == null || site_id === shift.site_id` predicate with `buildOperatingCalendarLegacy(siteId, holidays)` plus `isOperatingDay(calendar, dateKey)`.
+- Kept planner DB query behavior unchanged: `org_id`, `is_closed: true`, and `planningStart..planningEnd` are still used for `businessHoliday.findMany`.
+- Preserved existing `business_holiday` rejection code, reason label/detail, org-wide closure hard block, site-specific closure matching by shift site, planner response/diagnostic shapes, generate route behavior, schema/migrations/data, DB writes, and frontend behavior.
+- Added characterization coverage for org-wide business holidays rejecting all candidates and site-specific business holidays rejecting only same-site candidates.
+- Used `formatUtcDateKey(shift.date)` for the `isOperatingDay` date key so the planner call matches `buildOperatingCalendarLegacy`'s UTC date-key adapter contract.
+- Security/patient-safety risk reduced: operating-day holiday logic is now routed through the S1 SSOT while R1 locks existing planner behavior with tests, reducing future drift before S6 adds direct-generate holiday handling.
+- Performance issue improved: no material normal-path change. A tiny per-site in-memory calendar cache avoids rebuilding the legacy adapter for every shift; no new DB queries or external work were added.
+- Validation passed:
+  - Pre-refactor characterization check: `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=30000` passed after fixing an over-specific test assertion.
+  - Post-refactor planner check: same command passed `1` file / `14` tests.
+  - R1 targeted regression: `pnpm exec vitest run src/lib/calendar/operating-day.test.ts src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedules/generate/route.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `73` tests.
+  - Scoped ESLint passed for operating-day, planner, and generate route files/tests.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for planner implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - spec_guardian subagent confirmed planner-only R1 scope and listed acceptance criteria.
+  - medical_safety_reviewer reported no重大/高/中 findings and high confidence after checking missed/over-broad holiday rejection, legacy-adapter semantics, UTC date-key usage, and diagnostic stability.
+  - Note: the medical reviewer accidentally ran `pnpm test -- src/server/services/visit-schedule-planner.test.ts`, which invoked broader Vitest and failed one unrelated existing test in `src/lib/patient/duplicate-detection.test.ts`; this is not attributed to the R1 diff.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, and send Claude a `PATCH_REVIEW_REQUEST`.
+
 ### 2026-06-27 JST - Tasks GET No-Store Fixed Error Hardening
 
 - Coordination:
