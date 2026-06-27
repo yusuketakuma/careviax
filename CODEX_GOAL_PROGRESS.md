@@ -21,6 +21,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Communication Request Responses GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before selecting the next backend slice and before validation/commit steps.
+  - Preserved Claude-owned `/clerk-support` work; after Claude landed commit `967676e8`, read-only reviewed and approved it, and answered the follow-up header consult recommending `WorkflowPageHeader` plus visible `supportingContent` to preserve the clerk guidance sentence.
+  - Continued the read-only mapper-ranked backend PHI/cache queue after root visit-schedules; nested `GET /api/communication-requests/[id]/responses` was the next non-overlapping candidate.
+- Hardened nested `GET /api/communication-requests/[id]/responses` so success, auth rejection, forbidden rejection, validation errors, not-found responses, and ordinary unexpected response-list failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store care-report 403, no-store blank-id validation, and sanitized no-store 500 responses that omit raw patient/communication-response/facility-memo-like thrown text.
+- Added `communication-requests/[id]/responses GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canReport` auth, per-request patient/case access checks, care-report read restrictions, response ordering, response body shape, POST behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: communication response lists include responder names, response content, response timestamps, request version hints, and request/patient/case linkage; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run 'src/app/api/communication-requests/[id]/responses/route.test.ts' src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `275` tests after formatting.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed after formatting.
+  - Scoped ESLint passed for the communication-request responses route, route test, and protected GET matrix.
+  - Scoped Prettier check passed after applying Prettier to the route import block.
+  - Scoped diff whitespace check passed.
+  - Claude clerk-support commit `967676e8` review validation passed: focused clerk-support Vitest `1` file / `4` tests, scoped ESLint, scoped Prettier, commit diff-check, and full TypeScript already passing on the current worktree.
+- Commit status: implementation landed as `772e5886`; this entry is the separate progress-ledger update.
+- Next action: commit progress ledgers, send `agmsg` FYI, then continue with the next backend/API PHI no-store candidate unless Claude needs another review. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Visit Schedules List GET No-Store Hardening
 
 - Coordination:
