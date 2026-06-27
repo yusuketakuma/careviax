@@ -14,6 +14,7 @@ import {
   getAdminMetricsShortcutLinks,
   getAdminPackagingMethodsShortcutLinks,
   getAdminNotificationSettingsShortcutLinks,
+  getAdminOperatingHoursShortcutLinks,
   getAdminPerformanceShortcutLinks,
   getAdminPharmacySitesShortcutLinks,
   getAdminRealtimeShortcutLinks,
@@ -62,12 +63,20 @@ describe('admin page shortcut presets', () => {
     ]);
 
     expect(getAdminBusinessHolidaysShortcutLinks()).toEqual([
+      { href: '/admin/operating-hours', label: '稼働日設定' },
       { href: '/admin/pharmacy-sites', label: '薬局情報' },
       { href: '/admin/shifts', label: 'シフト' },
       { href: '/schedules', label: 'スケジュール' },
     ]);
 
+    expect(getAdminOperatingHoursShortcutLinks()).toEqual([
+      { href: '/admin/business-holidays', label: '休日カレンダー' },
+      { href: '/admin/pharmacy-sites', label: '薬局情報' },
+      { href: '/admin/shifts', label: 'シフト' },
+    ]);
+
     expect(getAdminPharmacySitesShortcutLinks()).toEqual([
+      { href: '/admin/operating-hours', label: '稼働日設定' },
       { href: '/admin/business-holidays', label: '休日カレンダー' },
       { href: '/admin/service-areas', label: '訪問エリア' },
       { href: '/admin/billing-rules', label: '請求ルール' },

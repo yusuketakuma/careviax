@@ -99,7 +99,11 @@ function toEditableRow(row: WeeklyRow): EditableRow {
 
 function rowHasError(row: EditableRow): string | null {
   if (!row.is_open) return null;
-  if (!row.open_time || !row.close_time) return '営業時間を入力してください';
+  const hasOpen = row.open_time !== '';
+  const hasClose = row.close_time !== '';
+  // 終日営業（時刻なし）は許可。API も is_open=true + null/null を受理する（both-or-neither）。
+  if (!hasOpen && !hasClose) return null;
+  if (hasOpen !== hasClose) return '開始時刻と終了時刻は両方入力してください';
   if (!isValidOperatingWindow(row.open_time, row.close_time)) {
     return '終了時刻は開始時刻より後にしてください';
   }
@@ -200,8 +204,8 @@ export function OperatingHoursContent() {
           rows: rows.map((row) => ({
             weekday: row.weekday,
             is_open: row.is_open,
-            open_time: row.is_open ? row.open_time : null,
-            close_time: row.is_open ? row.close_time : null,
+            open_time: row.is_open && row.open_time ? row.open_time : null,
+            close_time: row.is_open && row.close_time ? row.close_time : null,
             note: row.note ? row.note : null,
           })),
         }),

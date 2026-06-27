@@ -194,6 +194,38 @@ describe('OperatingHoursContent', () => {
     expect(sunday).toMatchObject({ is_open: false, open_time: null, close_time: null });
   });
 
+  it('treats an all-day open row (null times) as valid and clean, not an error', async () => {
+    // Monday open with null/null (e.g. unconfigured default-open) — API accepts this.
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-sites') {
+        return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+          status: 200,
+        });
+      }
+      if (url.startsWith('/api/pharmacy-operating-hours?')) {
+        const weekly = weeklyFixture().map((row) =>
+          row.weekday === 1 ? { ...row, open_time: null, close_time: null } : row,
+        );
+        return new Response(
+          JSON.stringify({ data: { site_id: 'site_1', weekly, resolved_days: [] } }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderContent();
+
+    const mondayOpen = (await screen.findByLabelText('月曜日の開始時刻')) as HTMLInputElement;
+    expect(mondayOpen.value).toBe('');
+    expect(screen.queryByText('開始時刻と終了時刻は両方入力してください')).toBeNull();
+    // clean state (no edits) → save stays disabled
+    const saveButton = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement;
+    await waitFor(() => expect(saveButton.disabled).toBe(true));
+  });
+
   it('blocks save and shows an error when the window end is not after the start', async () => {
     renderContent();
 
