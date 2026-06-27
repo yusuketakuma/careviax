@@ -23,6 +23,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Pharmacist Shifts GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long type gates, and before ledger work.
+  - Claude approved `d20c8921` / `3e1ff3a1` with no findings after independent billing PDF validation.
+- Hardened `GET /api/pharmacist-shifts` and `GET /api/pharmacist-shifts/available` so shift success, validation errors, org-closure empty availability responses, auth rejection via the protected route wrapper, and ordinary shift/holiday lookup failures are wrapped with sensitive no-store headers.
+- Added fixed no-store `INTERNAL_ERROR` fallbacks with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Preserved existing `canVisit` auth, month/date/time/limit parsing, query filters, user/site projections, holiday closure filtering, pagination metadata, POST shift upsert behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Added route-local regression coverage for no-store shift-list success, bounded-list success, validation errors, availability success, org-closed empty success, availability validation errors, and sanitized fixed 500 responses that omit raw shift/availability failure text.
+- Added `pharmacist-shifts GET` and `pharmacist-shifts/available GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Security risk reduced: pharmacist shift reads include staff names/kana, site assignments, availability windows, closure-filtered availability, and scheduling metadata; these are now no-store at the HTTP boundary and unexpected lookup failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds route-boundary response wrapping and tests only; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/pharmacist-shifts/route.ts src/app/api/pharmacist-shifts/route.test.ts src/app/api/pharmacist-shifts/available/route.ts src/app/api/pharmacist-shifts/available/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no formatting changes.
+  - `pnpm vitest run src/app/api/pharmacist-shifts/route.test.ts src/app/api/pharmacist-shifts/available/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `344` tests.
+  - Scoped ESLint passed for both pharmacist shift routes, their route tests, and the protected GET matrix.
+  - Scoped Prettier check passed for the same five files.
+  - Scoped diff whitespace check passed for the same five files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after checking for Claude findings/consultations. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Billing Document PDF GET No-Store Hardening
 
 - Coordination:
