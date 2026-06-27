@@ -73,8 +73,27 @@ export type TimelineHrefBundle = {
   patientConferencesHref: string;
 };
 
+function buildTimelineQueryHref(path: string, params: Array<[string, string]>) {
+  return `${path}?${new URLSearchParams(params).toString()}`;
+}
+
+export function buildPatientBillingCandidatesHref(
+  patientId: string,
+  options: { billingMonth?: string } = {},
+) {
+  const params: Array<[string, string]> = [];
+  if (options.billingMonth) {
+    params.push(['billing_month', options.billingMonth]);
+  }
+  params.push(['patient_id', patientId]);
+  return buildTimelineQueryHref('/billing/candidates', params);
+}
+
+export function buildPatientConferencesHref(patientId: string) {
+  return buildTimelineQueryHref('/conferences', [['patient_id', patientId]]);
+}
+
 export function buildTimelineHrefBundle(patientId: string): TimelineHrefBundle {
-  const patientQuery = new URLSearchParams({ patient_id: patientId }).toString();
   return {
     patientDetailHref: buildPatientHref(patientId),
     patientDocumentsHref: buildPatientHref(patientId, '#patient-documents'),
@@ -82,8 +101,8 @@ export function buildTimelineHrefBundle(patientId: string): TimelineHrefBundle {
     patientMcsHref: buildPatientHref(patientId, '/mcs'),
     patientCollaborationHref: buildPatientHref(patientId, '/collaboration'),
     patientShareHref: buildPatientHref(patientId, '/share'),
-    patientBillingCandidatesHref: `/billing/candidates?${patientQuery}`,
-    patientConferencesHref: `/conferences?${patientQuery}`,
+    patientBillingCandidatesHref: buildPatientBillingCandidatesHref(patientId),
+    patientConferencesHref: buildPatientConferencesHref(patientId),
   };
 }
 

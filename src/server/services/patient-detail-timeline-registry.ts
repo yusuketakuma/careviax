@@ -45,6 +45,7 @@ import {
   type TimelineHrefBundle,
   type VisitRecordTimelineSource,
   type VisitScheduleTimelineSource,
+  buildPatientBillingCandidatesHref,
   compactTimelineValues,
   formatTimelineDate,
   formatTokyoMonthStart,
@@ -921,10 +922,9 @@ export const billingCandidatesSource = defineTimelineSource<
           item.points != null ? `${item.points}点` : null,
           item.exclusion_reason,
         ]).join(' / ') || null,
-      href: `/billing/candidates?${new URLSearchParams({
-        billing_month: formatTokyoMonthStart(item.billing_month),
-        patient_id: patientId,
-      }).toString()}`,
+      href: buildPatientBillingCandidatesHref(patientId, {
+        billingMonth: formatTokyoMonthStart(item.billing_month),
+      }),
       action_label: '算定候補を開く',
       status: item.status,
       status_label:
