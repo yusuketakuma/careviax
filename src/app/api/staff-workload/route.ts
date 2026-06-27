@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { memberRoleLabel } from '@/lib/auth/member-roles';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dateKeySchema } from '@/lib/validations/date-key';
 
@@ -76,86 +77,108 @@ async function authenticatedGET(req: NextRequest) {
   const dayStart = utcDateFromLocalKey(dateKey);
   const dayEnd = addUtcDays(dayStart, 1);
 
-  const memberships = await prisma.membership.findMany({
-    where: {
-      org_id: ctx.orgId,
-      is_active: true,
-      role: { in: [...STAFF_ROLES] },
-      user: { is_active: true },
-    },
-    orderBy: [{ user: { name_kana: 'asc' } }, { user: { name: 'asc' } }],
-    select: {
-      role: true,
-      user: { select: { id: true, name: true } },
-    },
-  });
+  const workloadReads = await withOrgContext(
+    ctx.orgId,
+    async (tx) => {
+      const memberships = await tx.membership.findMany({
+        where: {
+          org_id: ctx.orgId,
+          is_active: true,
+          role: { in: [...STAFF_ROLES] },
+          user: { is_active: true },
+        },
+        orderBy: [{ user: { name_kana: 'asc' } }, { user: { name: 'asc' } }],
+        select: {
+          role: true,
+          user: { select: { id: true, name: true } },
+        },
+      });
 
-  const staffIds = Array.from(new Set(memberships.map((membership) => membership.user.id)));
+      const staffIds = Array.from(new Set(memberships.map((membership) => membership.user.id)));
+      if (staffIds.length === 0) {
+        return {
+          memberships,
+          staffIds,
+          openTaskGroups: [],
+          openTasks: [],
+          visits: [],
+          dispenseTaskGroups: [],
+        };
+      }
+
+      const [openTaskGroups, openTasks, visits, dispenseTaskGroups] = await Promise.all([
+        tx.task.groupBy({
+          by: ['assigned_to'],
+          where: {
+            org_id: ctx.orgId,
+            assigned_to: { in: staffIds },
+            status: { in: ['pending', 'in_progress'] },
+          },
+          _count: { id: true },
+        }),
+        tx.$queryRaw<RecentOpenTaskRow[]>`
+          SELECT id, assigned_to, title
+          FROM (
+            SELECT
+              id,
+              assigned_to,
+              title,
+              due_date,
+              sla_due_at,
+              priority,
+              created_at,
+              ROW_NUMBER() OVER (
+                PARTITION BY assigned_to
+                ORDER BY
+                  sla_due_at ASC NULLS LAST,
+                  due_date ASC NULLS LAST,
+                  priority ASC,
+                  created_at DESC
+              ) AS rn
+            FROM "Task"
+            WHERE org_id = ${ctx.orgId}
+              AND assigned_to = ANY(${staffIds}::text[])
+              AND status IN ('pending', 'in_progress')
+          ) ranked
+          WHERE rn <= ${RECENT_TASK_PREVIEW_LIMIT_PER_STAFF}
+          ORDER BY assigned_to ASC, rn ASC
+        `,
+        tx.visitSchedule.findMany({
+          where: {
+            org_id: ctx.orgId,
+            pharmacist_id: { in: staffIds },
+            scheduled_date: { gte: dayStart, lt: dayEnd },
+            schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+          },
+          select: {
+            id: true,
+            pharmacist_id: true,
+            case_: { select: { patient: { select: { name: true } } } },
+          },
+          orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+        }),
+        tx.dispenseTask.groupBy({
+          by: ['assigned_to'],
+          where: {
+            org_id: ctx.orgId,
+            assigned_to: { in: staffIds },
+            status: { in: ['pending', 'in_progress'] },
+          },
+          _count: { id: true },
+        }),
+      ]);
+
+      return { memberships, staffIds, openTaskGroups, openTasks, visits, dispenseTaskGroups };
+    },
+    { requestContext: ctx },
+  );
+
+  const { memberships, staffIds, openTaskGroups, openTasks, visits, dispenseTaskGroups } =
+    workloadReads;
+
   if (staffIds.length === 0) {
     return success({ data: [], date: dateKey });
   }
-
-  const [openTaskGroups, openTasks, visits, dispenseTaskGroups] = await Promise.all([
-    prisma.task.groupBy({
-      by: ['assigned_to'],
-      where: {
-        org_id: ctx.orgId,
-        assigned_to: { in: staffIds },
-        status: { in: ['pending', 'in_progress'] },
-      },
-      _count: { id: true },
-    }),
-    prisma.$queryRaw<RecentOpenTaskRow[]>`
-      SELECT id, assigned_to, title
-      FROM (
-        SELECT
-          id,
-          assigned_to,
-          title,
-          due_date,
-          sla_due_at,
-          priority,
-          created_at,
-          ROW_NUMBER() OVER (
-            PARTITION BY assigned_to
-            ORDER BY
-              sla_due_at ASC NULLS LAST,
-              due_date ASC NULLS LAST,
-              priority ASC,
-              created_at DESC
-          ) AS rn
-        FROM "Task"
-        WHERE org_id = ${ctx.orgId}
-          AND assigned_to = ANY(${staffIds}::text[])
-          AND status IN ('pending', 'in_progress')
-      ) ranked
-      WHERE rn <= ${RECENT_TASK_PREVIEW_LIMIT_PER_STAFF}
-      ORDER BY assigned_to ASC, rn ASC
-    `,
-    prisma.visitSchedule.findMany({
-      where: {
-        org_id: ctx.orgId,
-        pharmacist_id: { in: staffIds },
-        scheduled_date: { gte: dayStart, lt: dayEnd },
-        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-      },
-      select: {
-        id: true,
-        pharmacist_id: true,
-        case_: { select: { patient: { select: { name: true } } } },
-      },
-      orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
-    }),
-    prisma.dispenseTask.groupBy({
-      by: ['assigned_to'],
-      where: {
-        org_id: ctx.orgId,
-        assigned_to: { in: staffIds },
-        status: { in: ['pending', 'in_progress'] },
-      },
-      _count: { id: true },
-    }),
-  ]);
 
   const openTaskCountByUser = new Map(
     openTaskGroups
@@ -225,7 +248,8 @@ async function authenticatedGET(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 }

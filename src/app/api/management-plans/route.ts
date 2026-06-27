@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
@@ -43,14 +44,19 @@ async function authenticatedGET(req: NextRequest) {
   const caseId = caseIdResult.value;
   const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
 
-  const plans = await prisma.managementPlan.findMany({
-    where: {
-      org_id: ctx.orgId,
-      ...(caseId ? { case_id: caseId } : {}),
-      ...(assignmentWhere ? { case_: assignmentWhere } : {}),
-    },
-    orderBy: [{ updated_at: 'desc' }],
-  });
+  const plans = await withOrgContext(
+    ctx.orgId,
+    (tx) =>
+      tx.managementPlan.findMany({
+        where: {
+          org_id: ctx.orgId,
+          ...(caseId ? { case_id: caseId } : {}),
+          ...(assignmentWhere ? { case_: assignmentWhere } : {}),
+        },
+        orderBy: [{ updated_at: 'desc' }],
+      }),
+    { requestContext: ctx },
+  );
 
   return success({ data: plans });
 }
@@ -58,7 +64,8 @@ async function authenticatedGET(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 }

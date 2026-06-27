@@ -9,6 +9,7 @@ const {
   taskQueryRawMock,
   visitScheduleFindManyMock,
   dispenseTaskGroupByMock,
+  withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
@@ -17,6 +18,7 @@ const {
   taskQueryRawMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   dispenseTaskGroupByMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -40,6 +42,10 @@ vi.mock('@/lib/db/client', () => ({
     },
     $queryRaw: taskQueryRawMock,
   },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
 }));
 
 import { GET } from './route';
@@ -152,6 +158,18 @@ describe('/api/staff-workload', () => {
       },
     ]);
     dispenseTaskGroupByMock.mockResolvedValue([{ assigned_to: 'user_a', _count: { id: 3 } }]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        membership: { findMany: membershipFindManyMock },
+        task: {
+          groupBy: taskGroupByMock,
+          findMany: taskFindManyMock,
+        },
+        $queryRaw: taskQueryRawMock,
+        visitSchedule: { findMany: visitScheduleFindManyMock },
+        dispenseTask: { groupBy: dispenseTaskGroupByMock },
+      }),
+    );
   });
 
   it('returns staff workload grouped by active staff', async () => {
@@ -162,6 +180,13 @@ describe('/api/staff-workload', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(membershipFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -242,6 +267,7 @@ describe('/api/staff-workload', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(membershipFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -253,6 +279,7 @@ describe('/api/staff-workload', () => {
 
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(membershipFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -277,6 +304,7 @@ describe('/api/staff-workload', () => {
       message: '入力値が不正です',
       details,
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(membershipFindManyMock).not.toHaveBeenCalled();
   });
 

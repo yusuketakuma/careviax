@@ -92,6 +92,7 @@ describe('/api/management-plans', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         managementPlan: {
+          findMany: managementPlanFindManyMock,
           findFirst: managementPlanFindFirstMock,
           create: managementPlanCreateMock,
         },
@@ -106,6 +107,13 @@ describe('/api/management-plans', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
     expect(managementPlanFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -126,6 +134,7 @@ describe('/api/management-plans', () => {
       code: 'VALIDATION_ERROR',
       message: 'case_id は空にできません',
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(managementPlanFindManyMock).not.toHaveBeenCalled();
   });
 
@@ -143,6 +152,7 @@ describe('/api/management-plans', () => {
         case_id: ['case_id は1つだけ指定してください'],
       },
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(managementPlanFindManyMock).not.toHaveBeenCalled();
   });
 
