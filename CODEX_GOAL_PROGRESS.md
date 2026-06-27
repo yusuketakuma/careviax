@@ -23,6 +23,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Patient Home Operations Query Href Builder Convergence
+
+- Coordination:
+  - Drained `phos/codex`, honored Claude's `patient-home-operations-query-href-hardening` lock grant, and preserved non-overlapping Claude FE/design work.
+  - Prioritized Claude's `DESIGN_CONSULT` for `docs/color-token-remediation-plan.md` before the final state commit. Codex approved the Phase 1/2/3 split, required AA/light-dark token proof for new identity colors, and clarified that powdering/intervention/category colors must not be blindly mapped to state tokens.
+  - A verifier subagent reviewed the home-operations diff read-only and reported no blocking findings.
+- Refactored patient home-operations query href construction in `75aa7972`:
+  - Added `buildPatientBillingCandidatesHref` and `buildPatientConferencesHref` to centralize billing-candidate and conference query construction.
+  - Kept existing patient path hrefs on `buildPatientHref`, and kept query values on `URLSearchParams`.
+  - Preserved existing billing query order (`patient_id` before optional `billing_month`), conference query order (`patient_id`, optional `case_id`, `focus`, `context`), raw patient/case identity use in DB filters and metadata, response shape, UI files, API routes, DB schema/data, migrations, dependencies, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: future home-operation adapters now have named route/query helper boundaries, reducing the chance of mixing raw path segments with encoded query values.
+- Performance issue improved: none. This is a pure string-construction refactor with no query, polling, cache, or network behavior change.
+- Validation passed:
+  - `pnpm exec prettier --write src/server/services/patient-home-operations.ts` passed.
+  - `pnpm exec vitest run src/server/services/patient-home-operations.test.ts --reporter=dot --testTimeout=30000` passed `1` file / `25` tests.
+  - Scoped ESLint passed for `src/server/services/patient-home-operations.ts` and its test.
+  - Scoped Prettier check passed for the same two files.
+  - Scoped diff whitespace check passed for `src/server/services/patient-home-operations.ts`.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Verifier reran focused home-operations Vitest, scoped ESLint, `pnpm typecheck`, and diff-check with no findings.
+- Commit status: implementation landed as `75aa7972`; this entry plus FEATURE_QUEUE/Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `75aa7972` plus the state commit, then continue after inbox is clear.
+
 ### 2026-06-27 JST - Patient Detail Timeline Href Builder Convergence
 
 - Coordination:
