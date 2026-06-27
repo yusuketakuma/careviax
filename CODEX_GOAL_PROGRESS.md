@@ -23,6 +23,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Consent Audited Document URL Path-Segment Hardening
+
+- Coordination:
+  - Drained `phos/codex`, requested a non-overlapping backend/service lock for `src/server/services/consent-record-documents.ts` and its test, and preserved Claude's Phase 2 globals/token lane.
+  - Claude ACKed the lock and later landed `3e629b36 feat(ui): add Phase 2 identifier color tokens`. That Claude-owned commit is excluded from this Codex consent slice unless a separate review request arrives.
+- Hardened audited consent document URL construction in `201e990c`:
+  - `buildAuditedConsentDocumentUrl` now uses shared `encodePathSegment` instead of raw `encodeURIComponent`, matching the repository path-segment contract that exact `.` / `..` fail closed.
+  - `normalizeAuditedConsentDocumentUrl` now returns `null` for malformed or encoded dot-segment audited-looking URLs instead of propagating sanitizer exceptions.
+  - Preserved canonical `/api/files/:id/presigned-download?download=1` output for normal file IDs, legacy URL redaction behavior, file-download audit fallback lookup, consent route response contracts, auth, org scoping, audit recording, DB schema/data, migrations, UI, dependencies, external sends, push/deploy, and destructive-operation boundaries.
+  - Added tests for hostile slash/query/hash file IDs remaining one path segment, exact dot-segment rejection, and encoded dot-segment audited-looking URL redaction.
+- Security/correctness risk reduced: audited consent document URLs can no longer be built with exact dot path segments that browsers/URL parsers may normalize into a different route shape.
+- Performance issue improved: none. This is a pure helper hardening.
+- Validation passed:
+  - `pnpm exec prettier --write src/server/services/consent-record-documents.ts src/server/services/consent-record-documents.test.ts` passed unchanged.
+  - `pnpm exec vitest run src/server/services/consent-record-documents.test.ts src/server/services/file-download-audit.test.ts src/app/api/consent-records/route.test.ts 'src/app/api/consent-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000` passed `4` files / `47` tests with expected fail-closed route stderr.
+  - Scoped ESLint passed for the consent document service/test, file-download audit test, and consent route tests.
+  - Scoped Prettier check passed for the same five files.
+  - Scoped diff whitespace check passed for the two changed files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation landed as `201e990c`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `201e990c` plus the state commit, excluding Claude-owned `3e629b36`, then continue after inbox is clear.
+
 ### 2026-06-27 JST - Search Result Query Href Helper Convergence
 
 - Coordination:

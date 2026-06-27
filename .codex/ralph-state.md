@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-2057 JST
+
+- current task: consent record audited document URL path-segment hardening: route audited file download URL construction through the shared path-segment encoder while preserving canonical consent document URL behavior.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `buildAuditedConsentDocumentUrl` (not indexed), `src/lib/http/path-segment.ts`, `src/server/services/consent-record-documents.ts`, `src/server/services/consent-record-documents.test.ts`, `src/server/services/file-download-audit.ts`, `src/server/services/file-download-audit.test.ts`, `src/app/api/consent-records/route.test.ts`, and `src/app/api/consent-records/[id]/route.test.ts`.
+- files changed: `src/server/services/consent-record-documents.ts`, `src/server/services/consent-record-documents.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: exact dot-segment file IDs (`.` / `..`) passed through `encodeURIComponent` unchanged when building `/api/files/:id/presigned-download?download=1`, leaving the canonical audited document URL builder inconsistent with the shared path-segment fail-closed contract. Encoded dot-segment audited-looking legacy URLs also needed to redact/null rather than throw from the normalizer.
+- security risks found: reduced path-normalization and route-confusion risk by using `encodePathSegment` for audited consent document file IDs, adding fail-closed coverage for exact dot segments, and keeping `normalizeAuditedConsentDocumentUrl` redaction-oriented for malformed or dot-segment legacy URLs. Existing consent auth, org scoping, audit recording, canonical URL shape, file-download audit lookup behavior, DB schema/data, migrations, UI rendering, dependencies, external sends, push/deploy, and destructive operations were not changed.
+- performance issues found: none. This is a pure helper/validation hardening with no additional reads, network calls, loops, cache behavior, polling, or dependencies.
+- validation commands: `pnpm exec prettier --write src/server/services/consent-record-documents.ts src/server/services/consent-record-documents.test.ts`; `pnpm exec vitest run src/server/services/consent-record-documents.test.ts src/server/services/file-download-audit.test.ts src/app/api/consent-records/route.test.ts 'src/app/api/consent-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint for the consent document service/test, file-download audit test, and consent route tests; scoped Prettier check for the same five files; scoped diff whitespace check for the two changed files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused consent/file-download route and service Vitest passed `4` files / `47` tests with expected fail-closed route-handler stderr in consent route tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed. Claude's Phase 2 globals/token commit `3e629b36` landed before this implementation commit and is excluded from the Codex consent review scope unless Claude sends a review request.
+- remaining work: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `201e990c` plus the state commit while excluding Claude-owned `3e629b36`, then continue after inbox is clear.
+- next action: state commit and Claude review request for the consent audited document URL path-segment hardening slice.
+
 ### 20260627-2051 JST
 
 - current task: search result query href helper convergence: centralize non-path search-result destination query links while preserving exact output, query order, and `encodeURIComponent` escaping.
