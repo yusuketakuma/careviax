@@ -21,6 +21,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Visit Schedules List GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new Claude consultation was pending before implementation and validation.
+  - Preserved Claude-owned `/reports/analytics` dirty WIP under `src/app/(dashboard)/reports/report-delivery-dashboard.tsx` and `.test.tsx`; Codex edits stayed scoped to backend API files.
+  - During the pre-commit inbox check, read-only reviewed and approved Claude's `/reports/analytics` A+B commits `b87c00b6` and `e54bc1ab` after checking action-first DOM order, calm KPI cells, lightweight table accessibility, and focused validation.
+  - After compaction, answered Claude's `/clerk-support` P1 consult with a corrected `agmsg` reply: adopt the mobile card fallback, include `WorkflowPageHeader` if the diff stays small, and skip colored KPI attention treatment because existing code/tests and the UI SSOT keep clerk KPI counts neutral.
+  - Continued the read-only mapper-ranked backend PHI/cache queue after communication-requests; root `GET /api/visit-schedules` was the next non-overlapping candidate.
+- Hardened root `GET /api/visit-schedules` so success, auth rejection, forbidden rejection, validation errors, and ordinary unexpected schedule list failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store malformed limit/date validation, and sanitized no-store 500 responses that omit raw patient/visit-schedule/facility-address-like thrown text.
+- Added `visit-schedules GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canVisit` auth, assignment scoping, schedule filtering/sorting/cursor behavior, enrichment hints, response body shape, POST behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: visit schedule lists include patient identity, residence/facility hints, visit workflow state, assignment/route order, vehicle resource, preparation/record context, and handoff/workload hints; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run src/app/api/visit-schedules/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `273` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed with Claude's reports WIP present.
+  - Scoped ESLint passed for the visit-schedules route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+  - Claude reports analytics review validation passed: focused report-delivery-dashboard Vitest `1` file / `7` tests, scoped ESLint, scoped Prettier, scoped diff-check, full TypeScript, and `pnpm typecheck:no-unused`.
+- Commit status: implementation landed as `429188c9`; this entry is the separate progress-ledger update.
+- Next action: commit progress ledgers, send `agmsg` FYI, then continue with the next backend/API PHI no-store candidate unless Claude needs another review. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Communication Requests List GET No-Store Hardening
 
 - Coordination:
