@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Tasks GET No-Store Fixed Error Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, after billing-preview review, before ledger work, and after long validation.
+  - Claude approved billing-preview commits `98052534` / `0ef45033`; Codex ACKed and continued this already-started `tasks GET` slice.
+  - A verifier subagent independently reviewed the current tasks diff, reran focused Vitest/diff check, and reported no findings.
+- Hardened `GET /api/tasks` so task-list success, auth/validation responses, stale cursor validation, and ordinary assignment-scope/task-list/assignee-hydration failures are wrapped with sensitive no-store headers at the exported boundary.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Preserved existing `canVisit` auth, role/default assignment-scope filtering, task filters and validation, stale cursor `P2025` validation behavior, assignee name hydration, response shape, POST task creation, DB writes, schema/migrations/data, and frontend behavior.
+- Added route-local regression coverage for no-store fixed 500 responses that omit raw assignment-scope, task-list, and assignee-hydration failure text.
+- Extended the protected GET matrix so `tasks GET` success responses are asserted as private no-store, matching its existing 401/403 no-store coverage.
+- Security risk reduced: task list reads include operational task titles/descriptions, related patient/case references, assignee IDs/names, due/SLA status, and workflow metadata; unexpected failures no longer bypass the sensitive no-store/fixed-error envelope.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no formatting changes.
+  - `pnpm exec vitest run src/app/api/tasks/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `362` tests.
+  - Scoped ESLint passed for the tasks route, its route test, and the protected GET matrix.
+  - Scoped Prettier check passed for the same three files.
+  - Scoped diff whitespace check passed for the same three files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Verifier subagent reported no blocking/major/minor findings after read-only diff review, focused Vitest, and diff check.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after checking for Claude findings/consultations. R1 operating-day planner/generate work is unblocked but requires an explicit LOCK before touching planner/generate files.
+
 ### 2026-06-27 JST - Visit Schedule Billing Preview GET No-Store Hardening
 
 - Coordination:

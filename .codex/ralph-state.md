@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-1620 JST
+
+- current task: backend-first no-store hardening for `GET /api/tasks`, selected from the mapper's highest-ranked remaining backend/API candidate after billing-preview was committed and approved by Claude.
+- files inspected: `git status --short --untracked-files=all`, `git diff`, `agmsg` inbox/send via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, `src/app/api/tasks/route.ts`, `src/app/api/tasks/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `src/server/services/dashboard-assignment-scope.ts`, `src/lib/api/response.ts`, `src/lib/api/sensitive-response.ts`, `node_modules/next/dist/esm/client/components/unstable-rethrow.server.js` via verifier, and gbrain probes for `src/app/api/tasks/route::GET` (caller index not built; blast returned no graph nodes).
+- files changed: `src/app/api/tasks/route.ts`, `src/app/api/tasks/route.test.ts`, `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the tasks GET route returned task titles/descriptions, related patient/case references, assignee IDs/names, due/SLA status, and pagination under a no-store success wrapper, but ordinary assignment-scope, task-list, and assignee-hydration failures escaped the exported boundary as raw 500s; the protected GET matrix covered 401/403 no-store but not success no-store for `tasks GET`.
+- security risks found: reduced task-list PHI/workflow cacheability and error-leakage risk by wrapping the exported GET in a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation and proving raw assignment/task/assignee failure strings are not serialized to clients.
+- performance issues found: none materially changed. The slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- validation commands: `pnpm exec prettier --write src/app/api/tasks/route.ts src/app/api/tasks/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec vitest run src/app/api/tasks/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the same three files; scoped Prettier check for the same three files; `git diff --check --` the same three files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; verifier subagent read-only review plus focused Vitest/diff check.
+- validation results: scoped Prettier write was unchanged; focused tasks/protected GET Vitest passed `2` files / `362` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff whitespace check passed; full TypeScript passed; `typecheck:no-unused` passed; verifier reported no blocking/major/minor findings and high confidence.
+- remaining work: run ledger-aware scoped Prettier/diff checks after this update, commit the Codex-owned tasks implementation/test/matrix files, commit the progress-ledger update separately, and send Claude a `PATCH_REVIEW_REQUEST`. R1 operating-day planner/generate work remains unblocked but should start only after sending this review request and taking an explicit LOCK.
+- next action: ledger checks, grouped commits, and Claude review request.
+
 ### 20260627-1612 JST
 
 - current task: backend-first no-store hardening for `GET /api/visit-schedule-proposals/billing-preview`, interrupted to prioritize Claude's S1 operating-day calendar re-review and then resumed.
