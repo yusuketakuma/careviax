@@ -53,9 +53,12 @@ const HANDLING_TAG_TONE_MAP: Record<string, HandlingTagTone> = {
 const HANDLING_TAG_TONE_CLASSES: Record<HandlingTagTone, string> = {
   // 麻薬 = hazard トークン(危険タグ)。font-semibold で他タグより強調する。
   narcotic: 'border-tag-hazard/30 bg-tag-hazard/10 font-semibold text-tag-hazard',
-  cold: 'border-teal-400 bg-teal-50 text-teal-700',
-  unitDose: 'border-blue-300 bg-blue-50 text-blue-700',
-  caution: 'border-amber-400 bg-amber-50 text-amber-700',
+  // 冷所 = 取扱危険タグ(ガイドラインの hazard 定義に含まれる) → tag-hazard。
+  cold: 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard',
+  // 一包化 = 調剤方法の識別 → --method-unit-dose トークン流用。
+  unitDose: 'border-method-unit-dose/30 bg-method-unit-dose/10 text-method-unit-dose',
+  // 半錠・分割 / 粉砕禁止 = 取扱警告 → tag-hazard。
+  caution: 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard',
   hazardToken: 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard',
   neutral: 'border-border bg-background text-muted-foreground',
 };

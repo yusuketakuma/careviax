@@ -37,20 +37,20 @@ describe('SafetyBoard', () => {
     expect(screen.getByText('ふらつき(6/5〜経過観察)')).toBeTruthy();
   });
 
-  it('maps PackagingInstructionTag keys to design labels and tones (麻薬=hazard / 冷所=ティール / 一包化=青)', () => {
+  it('maps PackagingInstructionTag keys to design labels and tones (麻薬/冷所=hazard / 一包化=method-unit-dose)', () => {
     render(<SafetyBoard handlingTags={['narcotic', 'cold_storage', 'unit_dose']} />);
 
     const narcotic = screen.getByText('麻薬');
     expect(narcotic.className).toContain('text-tag-hazard');
     expect(narcotic.className).toContain('font-semibold');
 
+    // 冷所 = 取扱危険タグ → tag-hazard トークン(生 Tailwind 色は使わない)
     const cold = screen.getByText('冷所');
-    expect(cold.className).toContain('border-teal-400');
-    expect(cold.className).toContain('text-teal-700');
+    expect(cold.className).toContain('text-tag-hazard');
 
+    // 一包化 = 調剤方法の識別 → --method-unit-dose トークン流用
     const unitDose = screen.getByText('一包化');
-    expect(unitDose.className).toContain('border-blue-300');
-    expect(unitDose.className).toContain('text-blue-700');
+    expect(unitDose.className).toContain('text-method-unit-dose');
   });
 
   it('maps categorical home-visit safety tags without exposing unknown procedure tokens', () => {

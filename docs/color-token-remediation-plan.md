@@ -1,6 +1,6 @@
 # 配色トークン是正 段階計画（生 Tailwind 状態色の撲滅）
 
-**Status:** Phase 1 **完了** + Phase 2 **完了**（23 識別トークン globals.css land）+ Phase 3 **完了**（6 family 展開 + drug-class=tag-hazard 流用 + 装飾中立化、全 commit land・全 Codex APPROVED）。残課題: ①横断 visual QA（/browse）②合意6 family 外の残留識別色 2 群（safety-board handling tones / intake lane）の family 判断（Codex 相談中）。
+**Status:** Phase 1 **完了** + Phase 2 **完了**（23 識別トークン globals.css land）+ Phase 3 **完了**（6 family 展開 + drug-class=tag-hazard 流用 + 装飾中立化、全 commit land・全 Codex APPROVED）+ Phase 3b **実装中**（残留識別色 2 群: intake-lane 新 family + safety-board handling tones の hazard/method 寄せ）。残課題: ①横断 visual QA（/browse）。
 
 **Phase 3 実装記録（2026-06-28）:**
 
@@ -12,6 +12,19 @@
 - P3-decorative `9d3ee3c0`/`492b0de0`/`e6225e86` care-team / shared-viewer / select-mode の装飾色中立化（APPROVED）
 - 関連: build-blocker（buttonVariants server-call）を `4776d257` で修正（buttonVariants を非 client の button-variants.ts へ抽出、HEAD build green 回復、APPROVED）
 - **残留識別色（合意6 family 外・要 family 判断）**: safety-board の cold/unitDose/caution handling tones（teal/blue/amber）と intake-triage の lane バッジ（fax/online/walk_in）。いずれも P1 で「Phase2/3 識別へ」と deferred したが 6 family scoping に含めていなかった分。Codex と family 方針を確定後に Phase 3b として展開予定。medication-calendar の print patient-id は純中立だったので `text-muted-foreground` へ即修正（別 commit）。
+
+**Phase 3b 実装記録（2026-06-28）— 残留識別色 2 群（Codex DESIGN_REPLY 2026-06-27T18:02:28Z 合意）:**
+
+Phase 3 最終 sweep で surfaced した「合意6 family 外」の残留識別色を、Codex の family 判断に従って解消する。新 family は **intake-lane のみ**（storage-cold 等は作らない）。
+
+- **intake-lane 新 family（globals.css）**: `--intake-lane-fax`(blue H256) / `--intake-lane-online`(violet H285) / `--intake-lane-walk-in`(grey H250)。経路（FAX/オンライン/持込）の識別であり status ではない。light/dark + `@theme --color-*` 公開。hue は Phase 2 で AA 実証済の系統（fax=route-internal 系 blue256、online=intervention 系 violet285、walk-in=低彩度 grey）を流用し、新規コントラスト計算は不要（同一 hue/明度帯）。小バッジ `bg-…/10 text-…`（面塗り最小）。
+  - 適用: `intake-triage.shared.ts` `INTAKE_LANE_BADGE_CLASSES`（旧 teal/sky/slate 等の生 Tailwind → intake-lane トークン）。
+- **safety-board handling tones（family 新設せず既存へ寄せ）**: Codex 判断 B+修正。
+  - `cold`（冷所）/`caution`（半錠・分割 / 粉砕禁止）= 取扱**警告** → **tag-hazard**（ガイドラインの hazard 定義に含まれる取扱注意）。旧 teal/amber 生 Tailwind を撤去。
+  - `unitDose`（一包化）= 調剤**方法**の識別 → 既存 **--method-unit-dose** 流用（新 family を作らない）。旧 blue 生 Tailwind を撤去。
+  - `narcotic` / `hazardToken`（感染隔離・procedure:\*）/ `neutral` は P1-d のまま不変。
+  - test `safety-board.test.tsx`: cold→`text-tag-hazard` / unitDose→`text-method-unit-dose` に更新（旧 teal/blue 生 Tailwind アサーション撤去）。
+- **方針根拠**: 「識別 vs 状態」§8 — 一包化は調剤方法カテゴリ（識別）、冷所/分割/粉砕は安全・取扱警告（hazard）。一律 hazard 化はしない（一包化は method 識別に留める）。
 
 **Phase 1 実装記録（2026-06-27）:**
 

@@ -30,11 +30,14 @@ export const INTAKE_LANE_LABELS: Record<IntakeTriageLane, string> = {
   walk_in: '持込',
 };
 
-/** 経路バッジの配色(FAX=青系 / オンライン=紫系 / 持込=グレー系) */
+/**
+ * 経路バッジの配色。取込経路(FAX/オンライン/持込)の識別色であり status ではない。
+ * --intake-lane-* トークン(小バッジ・最小 fill /10 + text、面塗り禁止)。
+ */
 export const INTAKE_LANE_BADGE_CLASSES: Record<IntakeTriageLane, string> = {
-  fax: 'bg-blue-100 text-blue-700',
-  online: 'bg-violet-100 text-violet-700',
-  walk_in: 'bg-slate-200 text-slate-700',
+  fax: 'bg-intake-lane-fax/10 text-intake-lane-fax',
+  online: 'bg-intake-lane-online/10 text-intake-lane-online',
+  walk_in: 'bg-intake-lane-walk-in/10 text-intake-lane-walk-in',
 };
 
 export type IntakeTriageStatusPresentation = {

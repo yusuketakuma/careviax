@@ -62,6 +62,9 @@
   --color-soap-o: var(--soap-o);
   --color-soap-a: var(--soap-a);
   --color-soap-p: var(--soap-p);
+  --color-intake-lane-fax: var(--intake-lane-fax);
+  --color-intake-lane-online: var(--intake-lane-online);
+  --color-intake-lane-walk-in: var(--intake-lane-walk-in);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -170,6 +173,11 @@
   --soap-o: oklch(0.51 0.085 182);
   --soap-a: oklch(0.5 0.12 285);
   --soap-p: oklch(0.53 0.115 48);
+  /* 取込経路 lane 識別(FAX/オンライン/持込)。status ではない。値は検証済 hue を流用
+     (fax=blue256 / online=violet285 / walk-in=grey250、AA は Phase2 マトリクス参照)。 */
+  --intake-lane-fax: oklch(0.51 0.105 256);
+  --intake-lane-online: oklch(0.5 0.12 285);
+  --intake-lane-walk-in: oklch(0.52 0.015 250);
 
   /* Border radius: subtle, professional (0.375rem) */
   --radius: 0.375rem;
@@ -244,6 +252,9 @@
   --soap-o: oklch(0.76 0.09 182);
   --soap-a: oklch(0.75 0.13 285);
   --soap-p: oklch(0.78 0.12 48);
+  --intake-lane-fax: oklch(0.74 0.11 256);
+  --intake-lane-online: oklch(0.75 0.13 285);
+  --intake-lane-walk-in: oklch(0.72 0.02 250);
   --sidebar: oklch(0.2 0.04 262);
   --sidebar-foreground: oklch(0.93 0.008 250);
   --sidebar-primary: oklch(0.55 0.15 255);
