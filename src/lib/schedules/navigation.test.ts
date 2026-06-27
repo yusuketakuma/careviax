@@ -36,4 +36,8 @@ describe('schedule navigation helpers', () => {
     expect(buildScheduleProposalDetailHref(id)).toContain('%20');
     expect(buildVisitScheduleHref(id)).toContain('%20');
   });
+
+  it.each(['.', '..'])('rejects exact dot-segment visit schedule id %s', (scheduleId) => {
+    expect(() => buildVisitScheduleHref(scheduleId)).toThrow(RangeError);
+  });
 });

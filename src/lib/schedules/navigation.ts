@@ -1,3 +1,5 @@
+import { encodePathSegment } from '@/lib/http/path-segment';
+
 export function buildScheduleFocusHref(scheduleId: string) {
   return `/schedules?focus=schedule&schedule_id=${encodeURIComponent(scheduleId)}`;
 }
@@ -7,5 +9,5 @@ export function buildScheduleProposalDetailHref(proposalId: string) {
 }
 
 export function buildVisitScheduleHref(scheduleId: string) {
-  return `/visit-schedules/${encodeURIComponent(scheduleId)}`;
+  return `/visit-schedules/${encodePathSegment(scheduleId)}`;
 }
