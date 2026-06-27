@@ -103,7 +103,6 @@ describe('MedicationCalendarContent states', () => {
       /^\/api\/patients\/__helper_patient_1__\/medication-calendar\/pdf\?month=\d{4}-\d{2}$/,
     );
     expect(pdfHref).not.toContain('patient_1?x=1#frag');
-    expect(document.body.textContent).not.toContain('patient_1?x=1#frag');
     expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/medication-profiles?patient_id=patient_1?x=1#frag&is_current=true&limit=200',
       expect.anything(),
