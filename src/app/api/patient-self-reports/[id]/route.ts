@@ -1,5 +1,6 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext, requireAuthContext } from '@/lib/auth/context';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -33,7 +34,7 @@ class PatientSelfReportConflictError extends Error {}
 
 const sensitiveResponse = withSensitiveNoStore;
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canReport',
     message: '患者自己申告の閲覧権限がありません',
@@ -75,6 +76,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       data: serializePatientSelfReport(report, privacy),
     }),
   );
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return sensitiveResponse(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return sensitiveResponse(internalError());
+  }
 }
 
 export const PATCH = withAuthContext<{ id: string }>(

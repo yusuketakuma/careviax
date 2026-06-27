@@ -402,6 +402,22 @@ describe('/api/patient-self-reports/[id] PATCH', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when self report detail lookup fails unexpectedly', async () => {
+    patientSelfReportFindFirstMock.mockRejectedValueOnce(
+      new Error('raw self report detail secret'),
+    );
+
+    const response = await GET(createGetRequest('report_1'), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw self report detail secret');
+  });
+
   it('rejects blank self report ids before parsing or updating', async () => {
     const response = (await PATCH(createMalformedJsonPatchRequest('report_1'), {
       params: Promise.resolve({ id: '   ' }),

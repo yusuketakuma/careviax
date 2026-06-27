@@ -1705,6 +1705,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'patient-self-reports GET' ||
+        route.name === 'patient-self-reports/[id] GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacists GET' ||
         route.name === 'pharmacy-partnerships GET' ||
@@ -1808,6 +1809,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'patient-self-reports GET' ||
+        route.name === 'patient-self-reports/[id] GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacists GET' ||
         route.name === 'pharmacy-partnerships GET' ||
@@ -1901,6 +1903,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dispense-results/[id] GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
         route.name === 'patient-self-reports GET' ||
+        route.name === 'patient-self-reports/[id] GET' ||
         route.name === 'facilities/[id]/contacts GET' ||
         route.name === 'facilities/[id]/patients GET' ||
         route.name === 'partner-visit-records GET' ||
