@@ -37,12 +37,12 @@ describe('SafetyBoard', () => {
     expect(screen.getByText('ふらつき(6/5〜経過観察)')).toBeTruthy();
   });
 
-  it('maps PackagingInstructionTag keys to design labels and tones (麻薬=赤 / 冷所=ティール / 一包化=青)', () => {
+  it('maps PackagingInstructionTag keys to design labels and tones (麻薬=hazard / 冷所=ティール / 一包化=青)', () => {
     render(<SafetyBoard handlingTags={['narcotic', 'cold_storage', 'unit_dose']} />);
 
     const narcotic = screen.getByText('麻薬');
-    expect(narcotic.className).toContain('border-red-500');
-    expect(narcotic.className).toContain('text-red-700');
+    expect(narcotic.className).toContain('text-tag-hazard');
+    expect(narcotic.className).toContain('font-semibold');
 
     const cold = screen.getByText('冷所');
     expect(cold.className).toContain('border-teal-400');
@@ -76,7 +76,7 @@ describe('SafetyBoard', () => {
   it('accepts Japanese tag labels directly and falls back to neutral tone for unknown tags', () => {
     render(<SafetyBoard handlingTags={['麻薬', '自費']} />);
 
-    expect(screen.getByText('麻薬').className).toContain('border-red-500');
+    expect(screen.getByText('麻薬').className).toContain('text-tag-hazard');
     expect(screen.getByText('自費').className).toContain('text-muted-foreground');
   });
 
@@ -109,7 +109,7 @@ describe('handling tag helpers', () => {
     expect(getHandlingTagLabel('procedure:home_oxygen')).toBe('在宅酸素');
     expect(getHandlingTagLabel('procedure:unknown free text')).toBe('医療処置');
     expect(getHandlingTagLabel('未知タグ')).toBe('未知タグ');
-    expect(getHandlingTagBadgeClass('narcotic')).toContain('border-red-500');
+    expect(getHandlingTagBadgeClass('narcotic')).toContain('text-tag-hazard');
     expect(getHandlingTagBadgeClass('infection_isolation')).toContain('text-tag-hazard');
     expect(getHandlingTagBadgeClass('procedure:home_oxygen')).toContain('text-tag-hazard');
     expect(getHandlingTagBadgeClass('未知タグ')).toContain('text-muted-foreground');

@@ -6,9 +6,10 @@ import { specialProcedureLabels } from '@/lib/patient/home-visit-intake';
 import { cn } from '@/lib/utils';
 
 /**
- * design/images/new 共通のセーフティボード(06_card 最上部の赤枠カード)。
+ * design/images/new 共通のセーフティボード(06_card 最上部の危険情報カード)。
  * アレルギー / 腎機能 / 取扱タグ / 嚥下 / 注意を、どの工程でも常時表示する。
- * 危険タグ(麻薬=赤・冷所=ティール・一包化=青 等)は絶対に隠さない。
+ * 危険タグ(麻薬・感染隔離=hazard トークン、冷所=ティール・一包化=青 等)は絶対に隠さない。
+ * 面塗りはせず、左ボーダー帯(tag-hazard)と見出し色で安全領域を示す(§L311-317)。
  * データ未提供の行は出さない(全行未提供なら何も描画しない)。
  */
 
@@ -21,7 +22,7 @@ type HandlingTagTone = 'narcotic' | 'cold' | 'unitDose' | 'caution' | 'hazardTok
  * 機械キーと、日本語表記(API が表示名で返す場合)の両方を受け付ける。
  */
 const HANDLING_TAG_TONE_MAP: Record<string, HandlingTagTone> = {
-  // 麻薬 = 赤枠赤字
+  // 麻薬 = hazard トークン(危険タグ)
   narcotic: 'narcotic',
   麻薬: 'narcotic',
   // 冷所 = ティール系
@@ -50,7 +51,8 @@ const HANDLING_TAG_TONE_MAP: Record<string, HandlingTagTone> = {
 };
 
 const HANDLING_TAG_TONE_CLASSES: Record<HandlingTagTone, string> = {
-  narcotic: 'border-red-500 bg-red-50 font-semibold text-red-700',
+  // 麻薬 = hazard トークン(危険タグ)。font-semibold で他タグより強調する。
+  narcotic: 'border-tag-hazard/30 bg-tag-hazard/10 font-semibold text-tag-hazard',
   cold: 'border-teal-400 bg-teal-50 text-teal-700',
   unitDose: 'border-blue-300 bg-blue-50 text-blue-700',
   caution: 'border-amber-400 bg-amber-50 text-amber-700',
@@ -125,16 +127,16 @@ export function SafetyBoard({
   return (
     <section
       aria-label="セーフティボード"
-      className={cn('rounded-lg border-2 border-red-300 bg-red-50/50 p-4', className)}
+      className={cn('rounded-lg border border-l-4 border-l-tag-hazard bg-card p-4', className)}
       data-testid="safety-board"
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <h3 className="text-sm font-bold text-red-700">セーフティボード</h3>
-        <span className="text-xs text-red-700/80">どの工程でも常時表示</span>
+        <h3 className="text-sm font-bold text-tag-hazard">セーフティボード</h3>
+        <span className="text-xs text-muted-foreground">どの工程でも常時表示</span>
         {safetyCheckHref ? (
           <Link
             href={safetyCheckHref}
-            className="ml-auto inline-flex min-h-11 items-center gap-1 self-center rounded-md px-2.5 py-2 text-xs font-medium text-red-700 underline-offset-2 hover:bg-red-100/70 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            className="ml-auto inline-flex min-h-11 items-center gap-1 self-center rounded-md px-2.5 py-2 text-xs font-medium text-tag-hazard underline-offset-2 hover:bg-tag-hazard/10 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tag-hazard"
             data-testid="safety-board-safety-check-link"
           >
             薬の安全チェック
@@ -145,19 +147,19 @@ export function SafetyBoard({
       <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
         {allergy ? (
           <div data-testid="safety-board-allergy">
-            <dt className="text-xs font-medium text-red-800/70">アレルギー</dt>
+            <dt className="text-xs font-medium text-muted-foreground">アレルギー</dt>
             <dd className="mt-0.5 text-sm font-bold leading-6 text-foreground">{allergy}</dd>
           </div>
         ) : null}
         {renal ? (
           <div data-testid="safety-board-renal">
-            <dt className="text-xs font-medium text-red-800/70">腎機能</dt>
+            <dt className="text-xs font-medium text-muted-foreground">腎機能</dt>
             <dd className="mt-0.5 text-sm font-bold leading-6 text-foreground">{renal}</dd>
           </div>
         ) : null}
         {tags.length > 0 ? (
           <div data-testid="safety-board-handling">
-            <dt className="text-xs font-medium text-red-800/70">取扱</dt>
+            <dt className="text-xs font-medium text-muted-foreground">取扱</dt>
             <dd className="mt-1 flex flex-wrap gap-1">
               {tags.map((tag) => (
                 <span
@@ -175,13 +177,13 @@ export function SafetyBoard({
         ) : null}
         {swallowing ? (
           <div data-testid="safety-board-swallowing">
-            <dt className="text-xs font-medium text-red-800/70">嚥下</dt>
+            <dt className="text-xs font-medium text-muted-foreground">嚥下</dt>
             <dd className="mt-0.5 text-sm font-bold leading-6 text-foreground">{swallowing}</dd>
           </div>
         ) : null}
         {cautionItems.length > 0 ? (
           <div className="sm:col-span-2 lg:col-span-4" data-testid="safety-board-cautions">
-            <dt className="text-xs font-medium text-red-800/70">注意</dt>
+            <dt className="text-xs font-medium text-muted-foreground">注意</dt>
             <dd className="mt-0.5 text-sm font-bold leading-6 text-foreground">
               {cautionItems.map((caution) => (
                 <span key={caution} className="block">
