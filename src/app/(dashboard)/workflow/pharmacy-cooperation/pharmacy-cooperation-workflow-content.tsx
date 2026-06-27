@@ -33,6 +33,7 @@ import {
   partnerPharmacySummarySchema,
   pharmacyCooperationNamedEntitySchema as namedEntitySchema,
 } from '@/lib/pharmacy-cooperation/api-contracts';
+import { buildPartnerVisitRecordApiPath } from '@/lib/pharmacy-cooperation/navigation';
 import {
   patientShareCorrectionRequestPageSchema,
   patientShareCorrectionRequestRowSchema,
@@ -2957,7 +2958,7 @@ export function PharmacyCooperationWorkflowContent() {
 
   const submitRecordMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/partner-visit-records/${id}/submit`, {
+      const response = await fetch(buildPartnerVisitRecordApiPath(id, '/submit'), {
         method: 'POST',
         headers: { 'x-org-id': orgId },
       });
@@ -2984,7 +2985,7 @@ export function PharmacyCooperationWorkflowContent() {
       returnReason?: string;
       doctorReportRequired?: boolean;
     }) => {
-      const response = await fetch(`/api/partner-visit-records/${id}/review`, {
+      const response = await fetch(buildPartnerVisitRecordApiPath(id, '/review'), {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -3009,7 +3010,7 @@ export function PharmacyCooperationWorkflowContent() {
 
   const createReportDraftMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/partner-visit-records/${id}/physician-report-draft`, {
+      const response = await fetch(buildPartnerVisitRecordApiPath(id, '/physician-report-draft'), {
         method: 'POST',
         headers: { 'x-org-id': orgId },
       });

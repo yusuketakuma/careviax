@@ -1,7 +1,9 @@
-export function buildPartnerVisitRecordHref(recordId: string) {
-  if (recordId === '.' || recordId === '..') {
-    throw new RangeError('Partner visit record id cannot be a dot segment');
-  }
+import { encodePathSegment } from '@/lib/http/path-segment';
 
-  return `/partner-visit-records/${encodeURIComponent(recordId)}`;
+export function buildPartnerVisitRecordHref(recordId: string) {
+  return `/partner-visit-records/${encodePathSegment(recordId)}`;
+}
+
+export function buildPartnerVisitRecordApiPath(recordId: string, suffix = '') {
+  return `/api/partner-visit-records/${encodePathSegment(recordId)}${suffix}`;
 }
