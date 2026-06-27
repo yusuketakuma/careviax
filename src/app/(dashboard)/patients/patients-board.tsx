@@ -7,15 +7,18 @@ import { ja } from 'date-fns/locale';
 import {
   AlertTriangle,
   CalendarDays,
+  GitCompare,
   MessageSquareWarning,
   PauseCircle,
   Search,
+  UserPlus,
   type LucideIcon,
 } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
+import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import {
   WorkspaceActionRail,
   type BlockedReason,
@@ -696,27 +699,49 @@ export function PatientsBoard() {
       aria-label="患者カード一覧"
       aria-busy={isBootstrappingOrg || boardQuery.isLoading || isRefreshing || isSearchSettling}
       data-testid="patients-board"
+      className="space-y-4"
     >
-      <div className="rounded-lg border border-border/70 bg-card p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h1 className="text-xl font-bold text-foreground">患者一覧</h1>
+      {/* ハブ系トップ階層ヘッダは WorkflowPageHeader で統一(戻り導線なし)。 */}
+      {/* 新規登録/比較の入口を主操作として 44px 常設し、日時凡例とデータ鮮度は */}
+      {/* help-popover に隠さず supportingContent で常時可視に保つ。 */}
+      <WorkflowPageHeader
+        title="患者一覧"
+        description="患者カードの色と優先度の見方を確認できます。"
+        actions={[
+          {
+            href: '/patients/new',
+            label: '新規登録',
+            icon: <UserPlus className="size-4" aria-hidden="true" />,
+          },
+          {
+            href: '/patients/compare',
+            label: '比較',
+            icon: <GitCompare className="size-4" aria-hidden="true" />,
+          },
+        ]}
+        supportingContent={
+          <div className="flex flex-wrap items-center gap-2">
             {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm text-muted-foreground" suppressHydrationWarning>
-                {dateLabel}
-              </p>
-              {isRefreshing ? (
-                <span
-                  className="inline-flex items-center rounded-full border border-tag-info/30 bg-tag-info/10 px-2 py-0.5 text-xs font-medium text-tag-info"
-                  role="status"
-                  aria-live="polite"
-                >
-                  最新の患者状態を確認中
-                </span>
-              ) : null}
-            </div>
+            <p className="text-sm text-muted-foreground" suppressHydrationWarning>
+              {dateLabel}
+            </p>
+            {isRefreshing ? (
+              <span
+                className="inline-flex items-center rounded-full border border-tag-info/30 bg-tag-info/10 px-2 py-0.5 text-xs font-medium text-tag-info"
+                role="status"
+                aria-live="polite"
+              >
+                最新の患者状態を確認中
+              </span>
+            ) : null}
           </div>
+        }
+      />
+
+      <div className="rounded-lg border border-border/70 bg-card p-4">
+        {/* 担当範囲は board 全体の集合切替(詳細フィルタより上位)。summaryTiles の直上に置く。 */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground">担当範囲</p>
           <FilterChipBar
             options={SCOPE_OPTIONS}
             value={scope}
@@ -802,7 +827,7 @@ export function PatientsBoard() {
         </div>
       </div>
 
-      <div className="mt-6">
+      <div>
         {isBootstrappingOrg || boardQuery.isLoading ? (
           <PatientBoardLoadingShell />
         ) : boardQuery.isError || !data ? (

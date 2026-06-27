@@ -201,7 +201,19 @@ describe('PatientsBoard', () => {
     expect(within(scopeBar).getByRole('button', { name: '私の担当' })).toBeTruthy();
     expect(within(scopeBar).getByRole('button', { name: '全員' })).toBeTruthy();
 
+    // 新規登録(Primary)/比較(Secondary)を 44px CTA として常設(一覧からの登録/比較入口)。
+    const newLink = screen.getByRole('link', { name: '新規登録' });
+    expect(newLink.getAttribute('href')).toBe('/patients/new');
+    expect(newLink.className).toContain('min-h-[44px]');
+    const compareLink = screen.getByRole('link', { name: '比較' });
+    expect(compareLink.getAttribute('href')).toBe('/patients/compare');
+    expect(compareLink.className).toContain('min-h-[44px]');
+
     const summary = screen.getByLabelText('今日の患者判断サマリー');
+    // 担当範囲(上位の集合切替)はサマリータイルより DOM 上で前に置く。
+    expect(
+      scopeBar.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(summary.className).toContain('grid-cols-2');
     const summaryButtons = within(summary).getAllByRole('button');
     expect(summaryButtons[0].className).toContain('bg-card');
