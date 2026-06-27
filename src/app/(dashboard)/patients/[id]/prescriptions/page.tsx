@@ -4,6 +4,7 @@ import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-s
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { PatientVisitBriefSection } from '@/components/visit-brief/patient-visit-brief-section';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { PrescriptionHistoryContent } from './prescription-history-content';
 
 export const metadata: Metadata = {
@@ -21,7 +22,7 @@ export default async function PatientPrescriptionsPage({
     <PageScaffold>
       <div className="space-y-6">
         <WorkflowPageIntro
-          backHref={`/patients/${id}`}
+          backHref={buildPatientHref(id)}
           backLabel="患者詳細へ戻る"
           eyebrow="Prescription History"
           title="処方内容一覧"

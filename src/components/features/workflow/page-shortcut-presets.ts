@@ -46,12 +46,17 @@ export function getPatientMedicationShortcutLinks(patientId: string): PageShortc
   ];
 }
 
+function buildNewPrescriptionForPatientHref(patientId: string) {
+  const params = new URLSearchParams({ patient_id: patientId });
+  return `/prescriptions/new?${params.toString()}`;
+}
+
 export function getPatientPrescriptionShortcutLinks(patientId: string): PageShortcutLink[] {
   return [
     { href: buildPatientHref(patientId), label: '患者詳細' },
     { href: buildPatientHref(patientId, '/medications'), label: '服薬管理' },
     {
-      href: `/prescriptions/new?patient_id=${patientId}`,
+      href: buildNewPrescriptionForPatientHref(patientId),
       label: '処方受付',
     },
   ];

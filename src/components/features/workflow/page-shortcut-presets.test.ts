@@ -345,6 +345,19 @@ describe('page shortcut presets', () => {
       }
     });
 
+    it('encodes patient ids in the prescription intake query shortcut', () => {
+      const hostilePatientId = 'patient/1?tab=x#frag';
+      const links = getPatientPrescriptionShortcutLinks(hostilePatientId);
+      const intakeHref = links.find((link) => link.label === '処方受付')?.href;
+
+      expect(intakeHref).toBe(
+        `/prescriptions/new?${new URLSearchParams({ patient_id: hostilePatientId }).toString()}`,
+      );
+      expect(intakeHref).toBe('/prescriptions/new?patient_id=patient%2F1%3Ftab%3Dx%23frag');
+      expect(intakeHref).not.toContain('?tab=x');
+      expect(intakeHref).not.toContain('#frag');
+    });
+
     // preset helpers are consumed by UI; dot-segment ids fail fast via the shared
     // guard (RangeError) rather than degrading - the throw must come THROUGH the helper.
     it.each(['.', '..'])(

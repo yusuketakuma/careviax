@@ -11,6 +11,8 @@ import { InterventionPanel } from '@/components/features/medications/interventio
 import { PatientVisitBriefSection } from '@/components/visit-brief/patient-visit-brief-section';
 import { MedicationsContent } from './medications-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 // 手組みの outline 風 class を共通 buttonVariants に寄せる。44px タッチターゲットと
 // アイコン/テキスト間隔は className で維持する（共通化しても退化させない）。
@@ -68,7 +70,7 @@ export default async function MedicationsPage({ params }: { params: Promise<{ id
   return (
     <PageScaffold>
       <WorkflowPageIntro
-        backHref={`/patients/${id}`}
+        backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
         eyebrow="服薬管理"
         title="服薬管理"
@@ -86,7 +88,7 @@ export default async function MedicationsPage({ params }: { params: Promise<{ id
         actions={
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             <Link
-              href={`/api/patients/${id}/medications/pdf`}
+              href={buildPatientApiPath(id, '/medications/pdf')}
               target="_blank"
               rel="noreferrer"
               className={introActionLinkClassName}
@@ -94,7 +96,10 @@ export default async function MedicationsPage({ params }: { params: Promise<{ id
               <FileText className="mr-1.5 size-4" aria-hidden="true" />
               PDFを開く
             </Link>
-            <Link href={`/patients/${id}/medications/print`} className={introActionLinkClassName}>
+            <Link
+              href={buildPatientHref(id, '/medications/print')}
+              className={introActionLinkClassName}
+            >
               <Printer className="mr-1.5 size-4" aria-hidden="true" />
               印刷ビュー
             </Link>
