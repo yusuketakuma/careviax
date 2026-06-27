@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Visit Constraints API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger/commit phase.
+  - ACKed Claude's approval of patient timeline API path helper convergence before continuing this non-overlapping visit-constraints GET/PUT slice.
+  - Used medical safety and privacy read-only reviewers because the surface reads and mutates patient visit scheduling/contact/geocode constraints.
+- Hardened/converged patient visit-constraints route construction:
+  - Routed visit-constraints GET and PUT through shared `buildPatientApiPath(patientId, '/visit-constraints')`.
+  - Added a sentinel component test proving both the query function and save mutation consume the shared patient API helper return value.
+  - Extended patient API helper suffix coverage for `/visit-constraints`.
+  - Preserved raw patient id in React Query keys and invalidation, `buildOrgHeaders` / `buildOrgJsonHeaders`, PUT body semantics for preferred weekdays/times, phone/facility windows, family presence, buffer minutes, preferred contact fields, notes, residence lat/lng, and geocode fields, route handlers, `canVisit` auth, write guard/scoping, sensitive no-store response behavior, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient visit-constraints GET/PUT URL construction now shares the central patient API path contract instead of duplicating the patient route template in the component.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing visit-constraints fetch/save behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/visit-constraints-card.tsx' 'src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx' src/lib/patient/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `22` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `e3409e8d` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Timeline API Path Helper Convergence
 
 - Coordination:
@@ -46,8 +72,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `84dac1bc` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `84dac1bc` and state commit `eb900ddd` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient Packaging API Path Helper Convergence
 
