@@ -88,7 +88,8 @@ describe('MedicationsPage', () => {
         '服薬中薬剤と未解決課題を先に確認し、共有事項や残薬推移は後段で補足します。',
       ),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'PDFを開く' }).className).toContain('min-h-[44px]');
-    expect(screen.getByRole('link', { name: '印刷ビュー' }).className).toContain('min-h-[44px]');
+    // buttonVariants 共通化後も 44px タッチターゲット(min-h-11)を維持する。
+    expect(screen.getByRole('link', { name: 'PDFを開く' }).className).toContain('min-h-11');
+    expect(screen.getByRole('link', { name: '印刷ビュー' }).className).toContain('min-h-11');
   });
 });

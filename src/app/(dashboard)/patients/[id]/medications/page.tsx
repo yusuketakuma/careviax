@@ -2,7 +2,8 @@ import { Metadata } from 'next';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { FileText, Printer } from 'lucide-react';
-import { Loading } from '@/components/ui/loading';
+import { Skeleton, SkeletonRows } from '@/components/ui/loading';
+import { buttonVariants } from '@/components/ui/button';
 import { getPatientMedicationShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { PatientMcsSummarySection } from '@/components/patient-mcs/patient-mcs-summary-section';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
@@ -11,8 +12,51 @@ import { PatientVisitBriefSection } from '@/components/visit-brief/patient-visit
 import { MedicationsContent } from './medications-content';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
-const introActionLinkClassName =
-  'inline-flex min-h-[44px] items-center justify-center gap-1 rounded-[min(var(--radius-md),12px)] border border-border bg-background px-3 text-sm font-medium whitespace-nowrap transition-all outline-none hover:bg-muted hover:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50';
+// 手組みの outline 風 class を共通 buttonVariants に寄せる。44px タッチターゲットと
+// アイコン/テキスト間隔は className で維持する（共通化しても退化させない）。
+const introActionLinkClassName = buttonVariants({
+  variant: 'outline',
+  size: 'sm',
+  className: 'min-h-11 gap-1 whitespace-nowrap',
+});
+
+// Suspense fallback は「同形状の軽量スケルトン外枠」に限定し、子の内部 loading
+// （client query 待ち）とは責務を分ける。空文言は置かず CLS と false-empty を防ぐ。
+function MedicationsContentSkeleton() {
+  return (
+    <div className="space-y-4" aria-hidden="true">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-20 w-full rounded-lg" />
+        ))}
+      </div>
+      <div className="rounded-lg border bg-card p-4">
+        <SkeletonRows rows={5} cols={4} />
+      </div>
+    </div>
+  );
+}
+
+function SummaryCardSkeleton() {
+  return (
+    <div className="rounded-lg border bg-card p-4" aria-hidden="true">
+      <Skeleton className="h-5 w-40" />
+      <Skeleton className="mt-3 h-4 w-full" />
+      <Skeleton className="mt-2 h-4 w-2/3" />
+      <Skeleton className="mt-4 h-16 w-full rounded-md" />
+    </div>
+  );
+}
+
+function InterventionSkeleton() {
+  return (
+    <section className="rounded-lg border bg-card p-4" aria-hidden="true">
+      <Skeleton className="h-5 w-32" />
+      <Skeleton className="mt-3 h-4 w-full" />
+      <Skeleton className="mt-2 h-16 w-full rounded-md" />
+    </section>
+  );
+}
 
 export const metadata: Metadata = {
   title: '服薬管理 — PH-OS',
@@ -59,12 +103,12 @@ export default async function MedicationsPage({ params }: { params: Promise<{ id
       />
 
       <div className="space-y-6">
-        <Suspense fallback={<Loading />}>
+        <Suspense fallback={<MedicationsContentSkeleton />}>
           <MedicationsContent patientId={id} />
         </Suspense>
 
         <div className="grid gap-6 xl:grid-cols-2">
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<SummaryCardSkeleton />}>
             <PatientMcsSummarySection
               patientId={id}
               title="MCS共有要点"
@@ -73,7 +117,7 @@ export default async function MedicationsPage({ params }: { params: Promise<{ id
             />
           </Suspense>
 
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<SummaryCardSkeleton />}>
             <PatientVisitBriefSection
               patientId={id}
               title="服薬管理サマリー"
@@ -82,7 +126,7 @@ export default async function MedicationsPage({ params }: { params: Promise<{ id
           </Suspense>
         </div>
 
-        <Suspense fallback={<Loading />}>
+        <Suspense fallback={<InterventionSkeleton />}>
           <section className="rounded-lg border bg-card p-4">
             <InterventionPanel patientId={id} />
           </section>
