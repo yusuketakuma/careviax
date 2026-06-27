@@ -6834,3 +6834,16 @@ Backup directory:
 - validation results: baseline medication-issues route test passed `1` file / `17` tests. Focused medication-issues + protected GET matrix passed `2` files / `336` tests; the sanitized 500 case emitted the expected redacted route-handler log without leaking `raw medication issue secret`. Scoped ESLint, Prettier check, and diff whitespace check passed. Full `tsc --noEmit` and `typecheck:no-unused` were intentionally deferred because Claude holds an active `/statistics` lock with dirty WIP files; a `STATUS_REQUEST` was sent to Claude for a stable long-gate window.
 - remaining work: commit the medication-issues implementation group, then commit this progress ledger update separately with the full-gate defer reason. Send Claude a `PATCH_REVIEW_REQUEST` that clearly notes full gates are pending until the `/statistics` lock stabilizes. The broader API sensitive-list no-store sweep remains incomplete.
 - next action: stage only the three medication-issues/protected-route files for `fix(api): no-store medication issue lists`, then stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
+### 20260627-1418 JST
+
+- current task: post-lock full-gate reconciliation after Claude `/statistics` STABLE.
+- files inspected: agmsg inbox for `phos/codex`, Claude `CONFIRM STABLE` for `/statistics`, `git status --short --untracked-files=all`, and recent commits through `git log --oneline`.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry.
+- bugs found: none in this reconciliation step.
+- security risks found: no code, auth, permission, API, DB, schema, PHI projection, external send, or destructive operation changed. This step resolved the previously recorded validation gap.
+- performance issues found: no code changed.
+- validation commands: `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: after Claude committed `/statistics` as `2e0486b3` and sent `CONFIRM STABLE`, full `tsc --noEmit` passed and full `typecheck:no-unused` passed. The previous medication-issues full-gate defer is resolved.
+- remaining work: commit this reconciliation ledger update, notify Claude that deferred full gates are now green, then continue the API sensitive-list no-store sweep or handle incoming Claude review/consult requests.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for `chore(state): record post-lock full gates`.
