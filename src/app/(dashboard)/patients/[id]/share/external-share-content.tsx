@@ -44,6 +44,8 @@ import {
   shareAudienceLabel,
   type ShareAudienceKey,
 } from '@/lib/communications/share-audience';
+import { buildCommunicationRequestApiPath } from '@/lib/communications/api-paths';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientShareSections, type PatientShareSnapshot } from './patient-share.helpers';
 
 /**
@@ -153,7 +155,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     queryKey: ['external-share-overview', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}`, {
+      const response = await fetch(buildPatientApiPath(patientId), {
         headers: { 'x-org-id': orgId },
         cache: 'no-store',
       });
@@ -179,7 +181,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     queryKey: ['patient-care-team', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/care-team`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/care-team'), {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('ケアチームの取得に失敗しました');
@@ -191,7 +193,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     queryKey: ['patient-contacts', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/contacts`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/contacts'), {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('連絡先の取得に失敗しました');
@@ -308,7 +310,9 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
     queryKey: ['communication-request', replyRequest?.id, orgId],
     enabled: Boolean(orgId && replyRequest?.id),
     queryFn: async () => {
-      const res = await fetch(`/api/communication-requests/${replyRequest?.id}`, {
+      const requestId = replyRequest?.id;
+      if (!requestId) throw new Error('返信依頼IDがありません');
+      const res = await fetch(buildCommunicationRequestApiPath(requestId), {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('返信内容の取得に失敗しました');
