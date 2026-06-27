@@ -23,18 +23,42 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Visit Brief API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; handled Claude's MedicationCalendarContent `CHANGES_REQUESTED` interrupt first by restoring the print patient identifier in follow-up commit `b7f4a9f6` and sending Claude a `PATCH_UPDATE`.
+  - Used medical safety and privacy read-only reviewers because the surface reads visit brief PHI into patient medication/prescription pages.
+- Hardened/converged patient visit brief API URL:
+  - Routed `PatientVisitBriefSection` fetch through shared `buildPatientApiPath(patientId, '/visit-brief')`.
+  - Added a component test proving raw patient id remains in the React Query key/component data flow while the network URL consumes the shared helper return value.
+  - Preserved `x-org-id` header behavior, `enabled: !!orgId`, loading/error/null rendering, `VisitBriefCard` props, route handlers, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: visit brief GET no longer interpolates raw patient ids into the patient API path; hostile `?` / `#` ids now flow through the shared encoded/fail-closed patient API path helper.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing visit brief fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write src/components/visit-brief/patient-visit-brief-section.tsx src/components/visit-brief/patient-visit-brief-section.test.tsx`: passed.
+  - `pnpm exec vitest run src/components/visit-brief/patient-visit-brief-section.test.tsx src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `15` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `a4cbc619` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Medication Calendar URL Boundary Hardening
 
 - Coordination:
   - Drained `phos/codex`; ACKed Claude's approval of patient MCS page backHref helper convergence before continuing this non-overlapping medication calendar content slice.
+  - Claude requested changes after the initial implementation/state commits because the print header patient identifier had been removed as part of this URL-boundary slice. Follow-up commit `b7f4a9f6` restored the print patient identifier and removed only the overbroad DOM non-exposure assertion.
   - Used medical safety and privacy read-only reviewers because the surface reads current medication profiles and exposes a patient-specific medication calendar PDF link.
 - Hardened/converged medication calendar URL boundaries:
   - Built the current medication profile query with `URLSearchParams` so `patient_id` cannot leak `?` / `#` as URL boundaries.
   - Routed medication calendar PDF path through shared `buildPatientApiPath(patientId, '/medication-calendar/pdf')` and kept the `month` query isolated with `URLSearchParams`.
-  - Removed raw route `patientId` from the print header after privacy review flagged it as a medium raw identifier exposure.
-  - Added render coverage proving hostile patient ids are encoded in the fetch URL, not present in the PDF href, and not rendered in DOM text.
-  - Preserved raw patient id in the React Query key and component context, org header behavior, month navigation, print action, PDF action, empty/error/loading states, schedule calculation, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
-- Security/privacy risk reduced: route-derived patient ids no longer shape the medication profile query/PDF path as raw URL syntax and no longer appear in the client print header.
+  - Kept the print header patient identifier after Claude review determined it was the page's only printed patient identifier; replacing it with a more meaningful display identifier is a separate design/data slice.
+  - Added render coverage proving hostile patient ids are encoded in the fetch URL and not present in the PDF href.
+  - Preserved raw patient id in the React Query key and component context, org header behavior, month navigation, print patient identifier, print action, PDF action, empty/error/loading states, schedule calculation, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: route-derived patient ids no longer shape the medication profile query/PDF path as raw URL syntax. The pre-existing print patient identifier remains intentionally present for printed medication calendar patient identification.
 - Performance issue improved: none. This is a pure URL/query construction and print-header privacy refactor with no new DB reads, network calls beyond existing fetch/PDF behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - Validation passed:
   - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.render.test.tsx'`: passed.
@@ -44,9 +68,9 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm format:check`: passed.
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
-  - Privacy reviewer: initial FAIL on raw `patientId` print-header exposure; fixed by removing the raw id and adding hostile-id DOM non-exposure coverage; re-review PASS.
-- Commit status: implementation commit `516e5702` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+  - Privacy reviewer: initial FAIL on raw `patientId` print-header exposure; a temporary removal plus hostile-id DOM non-exposure coverage passed privacy re-review. Claude then requested the print patient identifier be restored to avoid printed-calendar patient-identification regression. Follow-up focused Vitest and diff whitespace check passed after restoration.
+- Commit status: implementation commit `516e5702`, state commit `cec4a479`, and Claude-requested follow-up commit `b7f4a9f6` are complete; Claude re-review is pending after `PATCH_UPDATE`.
+- Next action: monitor agmsg for Claude's re-review result while continuing non-overlapping API path helper convergence.
 
 ### 2026-06-28 JST - Patient MCS Page Back Href Helper Convergence
 
