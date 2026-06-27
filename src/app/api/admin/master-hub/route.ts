@@ -7,7 +7,7 @@ import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
 /**
  * 13_master(マスター鮮度ハブ)用 BFF。
- * 10 マスター(医薬品/医療機関/他職種/施設/スタッフ/備品/社用車/薬局拠点/配薬・帳票/請求)の件数・最終更新・鮮度ステータス・
+ * 11 マスター(医薬品/医療機関/他職種/施設/スタッフ/備品/社用車/薬局拠点/稼働日設定/配薬・帳票/請求)の件数・最終更新・鮮度ステータス・
  * 現場語ナラティブと、右レール(次にやること / 止まっている理由)・変更履歴件数を
  * 1 リクエストで返す読み取り専用集計(docs/design-gap-analysis-new.md 13_master)。
  */
@@ -35,6 +35,8 @@ const MASTER_AUDIT_TARGET_TYPES = [
   'Membership',
   'User',
   'PharmacySite',
+  'PharmacyOperatingHours',
+  'BusinessHoliday',
   'PharmacistShift',
   'PharmacistCredential',
 ];
@@ -444,6 +446,26 @@ export const GET = withAuthContext(
         action_href: '/admin/pharmacy-sites',
       };
 
+      // ── 稼働日設定 ────────────────────────────────────────────────
+      const operatingHoursCard: MasterHubCard = {
+        key: 'operating_hours',
+        title: '稼働日設定',
+        count: pharmacySiteCount,
+        count_unit: '拠点',
+        last_updated_at: pharmacySiteLatest?.updated_at?.toISOString() ?? null,
+        status: pharmacySiteCount > 0 ? 'healthy' : 'checking',
+        status_count: pharmacySiteCount > 0 ? null : 1,
+        note:
+          pharmacySiteCount > 0
+            ? '週次営業時間・定休・休日カレンダーを訪問可能日の判定に反映します'
+            : '薬局拠点が未登録です — 稼働日設定を開始できません',
+        issue_count: pharmacySiteCount > 0 ? 0 : 1,
+        next_action_hint:
+          pharmacySiteCount > 0 ? '拠点ごとの営業時間と稼働日を確認する' : '薬局拠点を登録する',
+        action_label: '→ 稼働日設定へ',
+        action_href: '/admin/operating-hours',
+      };
+
       // ── 配薬・帳票マスター ──────────────────────────────────────────
       const dispensingCount = packagingMethodCount + templateCount;
       const dispensingCard: MasterHubCard = {
@@ -506,6 +528,7 @@ export const GET = withAuthContext(
           equipmentCard,
           vehiclesCard,
           pharmacySitesCard,
+          operatingHoursCard,
           dispensingCard,
           billingCard,
         ],

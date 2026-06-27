@@ -143,6 +143,20 @@ function buildFixture(): MasterHubResponse {
         action_href: '/admin/pharmacy-sites',
       },
       {
+        key: 'operating_hours',
+        title: '稼働日設定',
+        count: 2,
+        count_unit: '拠点',
+        last_updated_at: localIso(6, 8),
+        status: 'healthy',
+        status_count: null,
+        note: '週次営業時間・定休・休日カレンダーを訪問可能日の判定に反映します',
+        issue_count: 0,
+        next_action_hint: '拠点ごとの営業時間と稼働日を確認する',
+        action_label: '→ 稼働日設定へ',
+        action_href: '/admin/operating-hours',
+      },
+      {
         key: 'dispensing',
         title: '配薬・帳票マスター',
         count: 7,
@@ -227,7 +241,7 @@ describe('MasterHubContent', () => {
     render(<MasterHubContent />);
 
     expect(screen.getByRole('heading', { name: 'マスター' })).toBeTruthy();
-    expect(screen.getByText('· 10マスター — 鮮度がすべて')).toBeTruthy();
+    expect(screen.getByText('· 11マスター — 鮮度がすべて')).toBeTruthy();
 
     const searchLink = screen.getByRole('link', { name: 'マスター横断検索' });
     expect(searchLink.getAttribute('href')).toBe('/admin/data-explorer');
@@ -263,7 +277,7 @@ describe('MasterHubContent', () => {
     render(<MasterHubContent />);
 
     const cards = screen.getAllByTestId('master-hub-card');
-    expect(cards).toHaveLength(10);
+    expect(cards).toHaveLength(11);
 
     // 医薬品マスター(健全)
     expect(within(cards[0]).getByText('医薬品マスター')).toBeTruthy();
@@ -288,15 +302,19 @@ describe('MasterHubContent', () => {
     expect(within(cards[1]).getByText('未処理 1件')).toBeTruthy();
     expect(within(cards[1]).getByRole('link', { name: '→ 医療機関へ' })).toBeTruthy();
 
-    // 他職種・備品・薬局拠点・配薬帳票・請求ルールをハブに含める
+    // 他職種・備品・薬局拠点・稼働日設定・配薬帳票・請求ルールをハブに含める
     expect(within(cards[2]).getByText('他職種マスター')).toBeTruthy();
     expect(within(cards[5]).getByText('備品マスター')).toBeTruthy();
     expect(within(cards[7]).getByText('薬局拠点マスター')).toBeTruthy();
-    expect(within(cards[8]).getByText('配薬・帳票マスター')).toBeTruthy();
-    expect(within(cards[9]).getByText('請求ルールマスター')).toBeTruthy();
+    expect(within(cards[8]).getByText('稼働日設定')).toBeTruthy();
+    expect(within(cards[9]).getByText('配薬・帳票マスター')).toBeTruthy();
+    expect(within(cards[10]).getByText('請求ルールマスター')).toBeTruthy();
     expect(within(cards[5]).getByRole('link', { name: '→ 備品へ' }).getAttribute('href')).toBe(
       '/admin/pca-pumps',
     );
+    expect(
+      within(cards[8]).getByRole('link', { name: '→ 稼働日設定へ' }).getAttribute('href'),
+    ).toBe('/admin/operating-hours');
 
     // 車両マスター(期限接近)
     expect(within(cards[6]).getByText('期限接近')).toBeTruthy();

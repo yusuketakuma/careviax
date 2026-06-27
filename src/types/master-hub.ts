@@ -19,6 +19,7 @@ export type MasterHubCard = {
     | 'equipment'
     | 'vehicles'
     | 'pharmacy_sites'
+    | 'operating_hours'
     | 'dispensing'
     | 'billing';
   title: string;

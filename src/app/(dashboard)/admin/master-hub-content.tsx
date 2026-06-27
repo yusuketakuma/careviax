@@ -128,7 +128,7 @@ function MasterHubSkeleton() {
     <div className="space-y-4" role="status" aria-label="マスター読み込み中">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          {Array.from({ length: 10 }).map((_, index) => (
+          {Array.from({ length: 11 }).map((_, index) => (
             <Skeleton key={index} className="h-36 w-full rounded-lg" />
           ))}
         </div>
@@ -181,7 +181,7 @@ export function MasterHubContent() {
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-foreground">マスター</h1>
           <p className="text-sm text-muted-foreground">
-            · {data ? data.masters.length : 10}マスター — 鮮度がすべて
+            · {data ? data.masters.length : 11}マスター — 鮮度がすべて
           </p>
         </div>
         <Button
