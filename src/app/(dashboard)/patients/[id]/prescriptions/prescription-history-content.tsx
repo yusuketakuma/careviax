@@ -168,18 +168,20 @@ type DispensingOverviewItem = {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
+// 剤型(内服/外用/注射)は識別色(カテゴリ区別であり status ではない)。--route-* トークン。
 const ROUTE_CONFIG: Record<string, { label: string; icon: typeof Pill; color: string }> = {
-  internal: { label: '内服', icon: Pill, color: 'bg-blue-100 text-blue-800' },
-  external: { label: '外用', icon: Droplets, color: 'bg-green-100 text-green-800' },
-  injection: { label: '注射', icon: Syringe, color: 'bg-purple-100 text-purple-800' },
-  other: { label: 'その他', icon: Pill, color: 'bg-gray-100 text-gray-600' },
+  internal: { label: '内服', icon: Pill, color: 'bg-route-internal/10 text-route-internal' },
+  external: { label: '外用', icon: Droplets, color: 'bg-route-external/10 text-route-external' },
+  injection: { label: '注射', icon: Syringe, color: 'bg-route-injection/10 text-route-injection' },
+  other: { label: 'その他', icon: Pill, color: 'bg-muted text-muted-foreground' },
 };
 
+// 調剤方法(通常/一包化/粉砕)は識別色。--method-* トークン(粉砕=識別であり hazard ではない)。
 const METHOD_CONFIG: Record<string, { label: string; color: string }> = {
-  standard: { label: '通常', color: 'bg-gray-100 text-gray-700' },
-  unit_dose: { label: '一包化', color: 'bg-amber-100 text-amber-800' },
-  crushed: { label: '粉砕', color: 'bg-red-100 text-red-800' },
-  other: { label: 'その他', color: 'bg-gray-100 text-gray-600' },
+  standard: { label: '通常', color: 'bg-method-standard/10 text-method-standard' },
+  unit_dose: { label: '一包化', color: 'bg-method-unit-dose/10 text-method-unit-dose' },
+  crushed: { label: '粉砕', color: 'bg-method-crushed/10 text-method-crushed' },
+  other: { label: 'その他', color: 'bg-muted text-muted-foreground' },
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -545,7 +547,7 @@ function DrugLineRow({
           {hasTallManName && (
             <Badge
               variant="outline"
-              className="h-4 border-amber-300 px-1 text-[10px] font-normal text-amber-800"
+              className="h-4 border-tag-hazard/40 px-1 text-[10px] font-normal text-tag-hazard"
             >
               Tall Man
             </Badge>
@@ -563,25 +565,25 @@ function DrugLineRow({
             <span className="text-xs text-muted-foreground">[{line.dosage_form}]</span>
           )}
           {masterInfo?.is_narcotic && (
-            <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 py-0.5 text-[10px] font-bold text-red-700">
+            <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-bold text-tag-hazard">
               <AlertTriangle className="size-2.5" aria-hidden="true" />
               麻薬
             </span>
           )}
           {masterInfo?.is_psychotropic && (
-            <span className="inline-flex items-center gap-0.5 rounded bg-orange-100 px-1 py-0.5 text-[10px] font-bold text-orange-700">
+            <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-bold text-tag-hazard">
               <Shield className="size-2.5" aria-hidden="true" />
               向精神
             </span>
           )}
           {masterInfo?.is_high_risk && (
-            <span className="inline-flex items-center gap-0.5 rounded border border-red-300 bg-red-50 px-1 py-0.5 text-[10px] font-bold text-red-700">
+            <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-bold text-tag-hazard">
               <AlertTriangle className="size-2.5" aria-hidden="true" />
               ハイリスク
             </span>
           )}
           {masterInfo?.is_lasa_risk && (
-            <span className="inline-flex items-center gap-0.5 rounded border border-amber-300 bg-amber-50 px-1 py-0.5 text-[10px] font-bold text-amber-800">
+            <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-bold text-tag-hazard">
               LASA
             </span>
           )}
@@ -603,7 +605,7 @@ function DrugLineRow({
           <p className="text-xs text-muted-foreground">通常表記: {line.drug_name}</p>
         )}
         {masterInfo?.lasa_group_key && (
-          <p className="text-xs font-medium text-amber-800">
+          <p className="text-xs font-medium text-tag-hazard">
             類似薬剤名グループ: {masterInfo.lasa_group_key}
           </p>
         )}
@@ -742,11 +744,12 @@ function RouteSection({
 }) {
   const cfg = ROUTE_CONFIG[routeKey] ?? ROUTE_CONFIG.other;
   const totalDrugs = groups.reduce((sum, g) => sum + g.lines.length, 0);
+  // 剤型セクション見出し帯の識別色(--route-* トークン、status ではない)。
   const sectionColors: Record<string, string> = {
-    internal: 'bg-blue-50/50 text-blue-700',
-    external: 'bg-green-50/50 text-green-700',
-    injection: 'bg-purple-50/50 text-purple-700',
-    other: 'bg-gray-50/50 text-gray-700',
+    internal: 'bg-route-internal/10 text-route-internal',
+    external: 'bg-route-external/10 text-route-external',
+    injection: 'bg-route-injection/10 text-route-injection',
+    other: 'bg-muted text-muted-foreground',
   };
 
   return (
@@ -1379,20 +1382,22 @@ export function PrescriptionHistoryContent() {
           <Badge variant="outline">{stats.total}回の処方</Badge>
           <Badge variant="outline">{stats.totalLines}剤</Badge>
           {stats.unitDose > 0 && (
-            <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+            <Badge className="bg-method-unit-dose/10 text-method-unit-dose hover:bg-method-unit-dose/10">
               一包化 {stats.unitDose}
             </Badge>
           )}
           {stats.crushed > 0 && (
-            <Badge className="bg-red-100 text-red-800 hover:bg-red-100">粉砕 {stats.crushed}</Badge>
+            <Badge className="bg-method-crushed/10 text-method-crushed hover:bg-method-crushed/10">
+              粉砕 {stats.crushed}
+            </Badge>
           )}
           {stats.external > 0 && (
-            <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+            <Badge className="bg-route-external/10 text-route-external hover:bg-route-external/10">
               外用 {stats.external}
             </Badge>
           )}
           {stats.injection > 0 && (
-            <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
+            <Badge className="bg-route-injection/10 text-route-injection hover:bg-route-injection/10">
               注射 {stats.injection}
             </Badge>
           )}
