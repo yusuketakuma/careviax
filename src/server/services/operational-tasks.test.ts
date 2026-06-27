@@ -202,4 +202,33 @@ describe('describeOperationalTask', () => {
       queueLabel: '正本確認',
     });
   });
+
+  it('encodes patient foundation review patient ids while keeping raw task identity input', () => {
+    const patientId = '../patients/patient_1?x=1#frag';
+
+    const result = describeOperationalTask({
+      task_type: 'patient_foundation_review',
+      related_entity_type: 'patient',
+      related_entity_id: patientId,
+    });
+
+    expect(result).toEqual({
+      actionHref: `/patients/${encodeURIComponent(patientId)}#patient-foundation`,
+      actionLabel: '患者基盤を整備',
+      queueLabel: '正本確認',
+    });
+    expect(result.actionHref).not.toContain(patientId);
+    expect(result.actionHref).not.toContain('../');
+    expect(result.actionHref).not.toContain('?x=');
+  });
+
+  it.each(['.', '..'])('rejects exact dot-segment patient foundation task id %s', (patientId) => {
+    expect(() =>
+      describeOperationalTask({
+        task_type: 'patient_foundation_review',
+        related_entity_type: 'patient',
+        related_entity_id: patientId,
+      }),
+    ).toThrow(RangeError);
+  });
 });

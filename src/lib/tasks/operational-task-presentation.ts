@@ -1,3 +1,5 @@
+import { buildPatientHref } from '@/lib/patient/navigation';
+
 export type OperationalTaskPresentation = {
   actionHref: string;
   actionLabel: string;
@@ -102,7 +104,7 @@ export function describeOperationalTask(
       return {
         actionHref:
           task.related_entity_type === 'patient' && task.related_entity_id
-            ? `/patients/${encodeURIComponent(task.related_entity_id)}#patient-foundation`
+            ? buildPatientHref(task.related_entity_id, '#patient-foundation')
             : '/patients?foundation_gap=1',
         actionLabel: '患者基盤を整備',
         queueLabel: '正本確認',
