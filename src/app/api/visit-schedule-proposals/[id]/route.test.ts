@@ -478,6 +478,8 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(computeOptimizedVisitRouteMock).toHaveBeenCalledWith(
       expect.objectContaining({
         waypoints: expect.arrayContaining([
@@ -619,6 +621,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '訪問候補IDが不正です',
@@ -640,6 +643,37 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(scheduleFindManyMock).not.toHaveBeenCalled();
+    expect(auditLogFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when proposal detail lookup fails unexpectedly', async () => {
+    proposalFindFirstMock.mockRejectedValueOnce(
+      new Error('患者A 東京都千代田区1-1-1 090-0000-0000 アムロジピン workflow detail'),
+    );
+
+    const response = await GET(createRequest(undefined, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('東京都千代田区1-1-1');
+    expect(JSON.stringify(body)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(body)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body)).not.toContain('workflow detail');
     expect(proposalFindManyMock).not.toHaveBeenCalled();
     expect(scheduleFindManyMock).not.toHaveBeenCalled();
     expect(auditLogFindFirstMock).not.toHaveBeenCalled();

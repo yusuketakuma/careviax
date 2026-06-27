@@ -226,6 +226,7 @@ import { GET as visitRecordHandoffGet } from '../visit-records/[id]/handoff/rout
 import { GET as visitRecordPdfGet } from '../visit-records/[id]/pdf/route';
 import { GET as visitRecordReflectedFieldsGet } from '../visit-records/[id]/reflected-fields/route';
 import { GET as visitScheduleProposalsGet } from '../visit-schedule-proposals/route';
+import { GET as visitScheduleProposalGet } from '../visit-schedule-proposals/[id]/route';
 import { GET as visitSchedulesGet } from '../visit-schedules/route';
 import { GET as visitScheduleGet } from '../visit-schedules/[id]/route';
 import { GET as visitSchedulesDayBoardGet } from '../visit-schedules/day-board/route';
@@ -937,6 +938,73 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'visit-schedule-proposals/[id] GET',
+    setupSuccess: () => {
+      prismaMock.visitScheduleProposal.findFirst.mockResolvedValueOnce({
+        id: 'proposal_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+        proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        assignment_mode: 'primary',
+        route_order: 1,
+        vehicle_resource_id: null,
+        vehicle_resource: null,
+        created_at: new Date('2026-06-11T00:00:00.000Z'),
+        medication_end_date: null,
+        visit_deadline_date: null,
+        escalation_reason: null,
+        suggested_recurrence_rule: null,
+        finalized_schedule_id: null,
+        reschedule_source_schedule_id: null,
+        finalized_schedule: null,
+        reschedule_source_schedule: null,
+        contact_logs: [],
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            residences: [
+              {
+                address: '東京都千代田区1-1-1',
+                building_id: null,
+                unit_name: null,
+                lat: 35.2,
+                lng: 139.2,
+              },
+            ],
+          },
+        },
+        site: {
+          id: 'site_1',
+          name: '拠点A',
+          address: '東京都千代田区2-2-2',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      });
+      prismaMock.visitScheduleProposal.findMany.mockResolvedValueOnce([]);
+      prismaMock.visitSchedule.findMany.mockResolvedValueOnce([]);
+      prismaMock.auditLog.findFirst.mockResolvedValueOnce(null);
+      prismaMock.user.findMany.mockResolvedValueOnce([{ id: 'user_1', name: '薬剤師A' }]);
+    },
+    handler: () =>
+      visitScheduleProposalGet(
+        createRequest('http://localhost/api/visit-schedule-proposals/proposal_1', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'proposal_1' }) },
+      ),
+  },
+  {
     name: 'visit-schedules GET',
     handler: () =>
       visitSchedulesGet(
@@ -1163,6 +1231,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals GET' ||
+        route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-plans GET' ||
         route.name === 'staff-workload GET' ||
         route.name === 'tracing-reports GET' ||
@@ -1223,6 +1292,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals GET' ||
+        route.name === 'visit-schedule-proposals/[id] GET' ||
         route.name === 'set-plans GET' ||
         route.name === 'staff-workload GET' ||
         route.name === 'tracing-reports GET' ||
@@ -1256,7 +1326,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||
-        route.name === 'visit-preparations/[scheduleId]/brief GET'
+        route.name === 'visit-preparations/[scheduleId]/brief GET' ||
+        route.name === 'visit-schedule-proposals/[id] GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
