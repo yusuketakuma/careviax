@@ -11,6 +11,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import {
   careReportPrintAuditResponseSchema,
   type CareReportPrintAuditResponse,
@@ -139,12 +140,9 @@ function usePrintHubData(
     queryKey: ['print-hub-prescriptions', orgId, patientId],
     queryFn: async () => {
       if (!patientId) throw new Error('患者IDがないため処方明細を取得できません');
-      const res = await fetch(
-        `/api/patients/${encodePathSegment(patientId)}/prescriptions?limit=20`,
-        {
-          headers: buildOrgHeaders(orgId),
-        },
-      );
+      const res = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=20`, {
+        headers: buildOrgHeaders(orgId),
+      });
       if (!res.ok) throw new Error('処方明細の取得に失敗しました');
       return res.json() as Promise<PatientPrescriptionsResponse>;
     },
@@ -169,7 +167,7 @@ function usePrintHubData(
     queryKey: ['print-hub-patient-documents', orgId, explicitPatientId],
     queryFn: async () => {
       if (!explicitPatientId) throw new Error('患者IDがないため患者文書を取得できません');
-      const res = await fetch(`/api/patients/${encodePathSegment(explicitPatientId)}/documents`, {
+      const res = await fetch(buildPatientApiPath(explicitPatientId, '/documents'), {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者文書の取得に失敗しました');

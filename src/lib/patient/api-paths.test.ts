@@ -15,12 +15,11 @@ describe('buildPatientApiPath', () => {
   it('keeps trusted suffixes outside the encoded patient id segment', () => {
     const patientId = 'patient/1?tab=x#frag';
 
-    expect(buildPatientApiPath(patientId, '/care-team')).toBe(
-      `/api/patients/${encodeURIComponent(patientId)}/care-team`,
-    );
-    expect(buildPatientApiPath(patientId, '/contacts')).toBe(
-      `/api/patients/${encodeURIComponent(patientId)}/contacts`,
-    );
+    for (const suffix of ['/care-team', '/contacts', '/documents', '/prescriptions']) {
+      expect(buildPatientApiPath(patientId, suffix)).toBe(
+        `/api/patients/${encodeURIComponent(patientId)}${suffix}`,
+      );
+    }
   });
 
   it.each(['.', '..'])('rejects exact dot-segment patient id %s', (patientId) => {

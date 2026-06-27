@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PrintHubContent } from './print-hub-content';
 
@@ -20,6 +21,14 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/patient/api-paths')>();
+  return {
+    ...actual,
+    buildPatientApiPath: vi.fn(actual.buildPatientApiPath),
+  };
+});
 
 setupDomTestEnv();
 
@@ -355,6 +364,36 @@ describe('PrintHubContent', () => {
     );
   });
 
+  it('loads first-visit documents through the shared patient API path helper', async () => {
+    setPrintSearchParams({ type: 'first_visit_documents', patient_id: 'patient_1' });
+    vi.mocked(buildPatientApiPath).mockImplementationOnce(
+      (patientId, suffix = '') => `/api/patients/__helper_${patientId}__${suffix}`,
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patients/__helper_patient_1__/documents') {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(firstVisitDocumentsResponse('patient_1')), {
+          status: 200,
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPrintHubContent();
+
+    await screen.findByTestId('print-target-first_visit_documents');
+
+    expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1', '/documents');
+    expect(fetchMock).toHaveBeenCalledWith('/api/patients/__helper_patient_1__/documents', {
+      headers: buildOrgHeaders('org_1'),
+    });
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/patients/patient_1/documents', {
+      headers: buildOrgHeaders('org_1'),
+    });
+  });
+
   it('encodes the set-instruction prescriptions patient path while keeping the raw query key', async () => {
     const patientId = 'patient/1?x=y#z';
     const encodedPatientId = encodeURIComponent(patientId);
@@ -394,6 +433,41 @@ describe('PrintHubContent', () => {
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input)).join('\n');
     expect(calledUrls).not.toContain(`/api/patients/${patientId}/prescriptions`);
     expect(calledUrls).not.toContain('%25');
+  });
+
+  it('loads prescriptions through the shared patient API path helper', async () => {
+    setPrintSearchParams({ type: 'set_instruction' });
+    vi.mocked(buildPatientApiPath).mockImplementationOnce(
+      (patientId, suffix = '') => `/api/patients/__helper_${patientId}__${suffix}`,
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/set-plans') {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(setPlansResponse('patient_1')), { status: 200 });
+      }
+      if (url === '/api/patients/__helper_patient_1__/prescriptions?limit=20') {
+        expect(init?.headers).toEqual(buildOrgHeaders('org_1'));
+        return new Response(JSON.stringify(prescriptionsResponse('patient_1')), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderPrintHubContent();
+
+    await screen.findByTestId('print-target-set_instruction');
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/patients/__helper_patient_1__/prescriptions?limit=20',
+        { headers: buildOrgHeaders('org_1') },
+      ),
+    );
+
+    expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1', '/prescriptions');
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/patients/patient_1/prescriptions?limit=20', {
+      headers: buildOrgHeaders('org_1'),
+    });
   });
 
   it('encodes visit-report print-audit paths for preview and print-requested writes', async () => {
