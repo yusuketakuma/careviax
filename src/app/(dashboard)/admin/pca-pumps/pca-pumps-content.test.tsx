@@ -12,14 +12,23 @@ import {
   getPcaReturnInspectionUncheckedLabels,
   PcaPumpsContent,
   PCA_RETURN_INSPECTION_ITEMS,
+  statusRole,
 } from './pca-pumps-content';
 
 setupDomTestEnv();
 
-const { queryErrorKeysMock, queryRefetchMock, useOrgIdMock } = vi.hoisted(() => ({
+const {
+  queryErrorKeysMock,
+  queryRefetchMock,
+  useOrgIdMock,
+  pcaPumpQueryKeysMock,
+  returnInspectionEmptyMock,
+} = vi.hoisted(() => ({
   queryErrorKeysMock: new Set<string>(),
   queryRefetchMock: vi.fn(),
   useOrgIdMock: vi.fn(),
+  pcaPumpQueryKeysMock: [] as Array<readonly unknown[]>,
+  returnInspectionEmptyMock: { value: false },
 }));
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
@@ -46,6 +55,7 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
     const key = queryKey[0];
     if (key === 'pca-pumps') {
+      pcaPumpQueryKeysMock.push(queryKey);
       return {
         data: {
           data: [
@@ -102,6 +112,13 @@ vi.mock('@tanstack/react-query', () => ({
     }
     if (key === 'pca-pump-rentals') {
       if (queryKey[2] === 'return-inspection-pending') {
+        if (returnInspectionEmptyMock.value) {
+          return {
+            data: { data: [] },
+            isLoading: false,
+            ...queryState('pca-pump-rentals:return-inspection-pending'),
+          };
+        }
         return {
           data: {
             data: [
@@ -305,6 +322,8 @@ describe('PcaPumpsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryErrorKeysMock.clear();
+    pcaPumpQueryKeysMock.length = 0;
+    returnInspectionEmptyMock.value = false;
     useOrgIdMock.mockReturnValue('org_1');
   });
 
@@ -342,6 +361,47 @@ describe('PcaPumpsContent', () => {
     expect(screen.getByRole('button', { name: '貸出登録' }).className).toContain('h-11');
     expect(screen.getByRole('button', { name: 'ポンプ登録' }).className).toContain('h-11');
     expect(screen.getByLabelText('検索').className).toContain('h-11');
+  });
+
+  it('debounces the inventory search so a keystroke does not immediately change the query key', () => {
+    render(<PcaPumpsContent />);
+    // 初期 pca-pumps クエリキーの検索語は空。
+    expect(pcaPumpQueryKeysMock.at(-1)?.[2]).toBe('');
+
+    fireEvent.change(screen.getByLabelText('検索'), { target: { value: '東' } });
+    // 入力値は即時反映する。
+    expect((screen.getByLabelText('検索') as HTMLInputElement).value).toBe('東');
+    // debounce 未経過のため pca-pumps クエリキーの検索語はまだ更新されない
+    // (検索語が queryKey 直結だった旧実装ならここで '東' になる)。
+    expect(pcaPumpQueryKeysMock.at(-1)?.[2]).toBe('');
+  });
+
+  it('shows the return-inspection backlog count as a confirm badge when work is pending', () => {
+    render(<PcaPumpsContent />);
+    const badge = screen.getByText('検品待ち 1件');
+    expect(badge.closest('[data-role]')?.getAttribute('data-role')).toBe('confirm');
+  });
+
+  it('keeps the return-inspection count neutral (no state color) when the backlog is empty', () => {
+    returnInspectionEmptyMock.value = true;
+    render(<PcaPumpsContent />);
+
+    const badge = screen.getByText('検品待ち 0件');
+    // 0件は偽シグナル回避のため状態色を付けない(StateBadge=data-role でないこと)。
+    expect(badge.closest('[data-role]')).toBeNull();
+    expect(badge.className).not.toContain('state-confirm');
+    expect(screen.getByText('返却検品待ちはありません。')).toBeTruthy();
+  });
+
+  it('maps rental/pump status to the shared state-color roles (overdue=confirm, cancelled=blocked)', () => {
+    expect(statusRole('overdue')).toBe('confirm');
+    expect(statusRole('cancelled')).toBe('blocked');
+    expect(statusRole('maintenance')).toBe('confirm');
+    expect(statusRole('returned')).toBe('done');
+    expect(statusRole('available')).toBe('done');
+    expect(statusRole('active')).toBe('info');
+    expect(statusRole('scheduled')).toBe('info');
+    expect(statusRole('retired')).toBe('readonly');
   });
 
   it('passes pump inventory failures to DataTable instead of showing a false empty table', () => {
