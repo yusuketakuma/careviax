@@ -67,9 +67,33 @@ describe('InventoryForecastContent', () => {
               patients: [
                 {
                   key: 'patient_1',
+                  patientId: 'p1',
                   label: '患者A',
                   firstVisitDateKey: '2026-06-23',
                   isFacilityBatch: false,
+                  facilityPatientCount: null,
+                  shortagePatientCount: 1,
+                  dataBackedPatientCount: 1,
+                  shortageDrugKeys: ['アムロジピン'],
+                  runOutDateKey: '2026-06-23',
+                  runOutBasis: 'line_end_date',
+                  urgency: 'critical',
+                  shortageDetails: [],
+                },
+                {
+                  key: 'facility-batch:f1',
+                  patientId: null,
+                  label: '施設A 5名',
+                  firstVisitDateKey: '2026-06-24',
+                  isFacilityBatch: true,
+                  facilityPatientCount: 5,
+                  shortagePatientCount: 2,
+                  dataBackedPatientCount: 2,
+                  shortageDrugKeys: ['酸化Mg'],
+                  runOutDateKey: '2026-06-30',
+                  runOutBasis: 'line_start_date_plus_days',
+                  urgency: 'warning',
+                  shortageDetails: [],
                 },
               ],
             },
@@ -110,13 +134,69 @@ describe('InventoryForecastContent', () => {
     expect(screen.getAllByText(/充足率/).length).toBeGreaterThanOrEqual(1);
   });
 
-  it('labels the affected-patient chip as 訪問予定 and invents no run-out/urgency from patient-only data', async () => {
+  it('renders truthful run-out date, urgency, and facility coverage from the DTO', async () => {
     renderContent();
 
     expect(await screen.findByText('患者A 様')).toBeTruthy();
     // 来週初回訪問日を「訪問予定 M/D」と明示する(データに忠実)。
     expect(screen.getByText(/訪問予定\s*06\/23/)).toBeTruthy();
-    // AffectedPatientCard は患者×薬の run-out/緊急度を持たないため、緊急度系の語は出さない。
-    expect(screen.queryByText(/切れ予定|緊急度/)).toBeNull();
+    // 個人カード: critical=至急バッジ + 処方終了日由来の薬切れ見込み(推定注記なし)。
+    expect(screen.getByText('至急')).toBeTruthy();
+    expect(screen.getByText('薬切れ見込み 06/23')).toBeTruthy();
+    expect(screen.getByText('不足薬: アムロジピン')).toBeTruthy();
+    // 施設バッチ: warning=要注意 + 開始日+日数の推定注記 + 「5名中 2名に不足見込み」の被覆明示。
+    expect(screen.getByText('要注意')).toBeTruthy();
+    expect(screen.getByText('薬切れ見込み 06/30（処方日数から推定）')).toBeTruthy();
+    expect(screen.getByText(/5名中\s*2名に不足見込み/)).toBeTruthy();
+  });
+
+  it('does not fabricate a run-out date when basis is unknown', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) !== '/api/admin/inventory-forecast') {
+          return new Response('{}', { status: 404 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              week: { start_date: '2026-06-22', end_date: '2026-06-28' },
+              drugs: [
+                {
+                  drugKey: 'アムロジピン',
+                  requiredQty: 14,
+                  stockQty: 4,
+                  unit: '錠',
+                  status: 'order_required',
+                },
+              ],
+              patients: [
+                {
+                  key: 'patient_2',
+                  patientId: 'p2',
+                  label: '患者B',
+                  firstVisitDateKey: '2026-06-25',
+                  isFacilityBatch: false,
+                  facilityPatientCount: null,
+                  shortagePatientCount: 1,
+                  dataBackedPatientCount: 1,
+                  shortageDrugKeys: ['アムロジピン'],
+                  runOutDateKey: null,
+                  runOutBasis: 'unknown',
+                  urgency: 'unknown',
+                  shortageDetails: [],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    renderContent();
+
+    expect(await screen.findByText('患者B 様')).toBeTruthy();
+    expect(screen.getByText('薬切れ見込み日: 算出不可（処方期間情報なし）')).toBeTruthy();
+    expect(screen.getByText('予定日不明')).toBeTruthy();
   });
 });

@@ -19,6 +19,8 @@ import {
   type AffectedPatientCard,
   type DrugForecastRow,
   type DrugForecastStatus,
+  type InventoryForecastRunOutBasis,
+  type InventoryForecastUrgency,
 } from '@/lib/analytics/inventory-forecast';
 
 /**
@@ -39,6 +41,42 @@ const STATUS_ROLE: Record<DrugForecastStatus, StatusRole | 'neutral'> = {
   sufficient: 'neutral',
 };
 
+// 緊急度 → 6 軸トークン: 至急=blocked(赤) / 要注意=confirm(橙) / 通常=neutral / 不明=readonly。
+// critical/warning のみアクションが要るので左ボーダー帯 + ラベルで示し、normal/unknown は色を付けない。
+const URGENCY_ROLE: Record<InventoryForecastUrgency, StatusRole | 'neutral'> = {
+  critical: 'blocked',
+  warning: 'confirm',
+  normal: 'neutral',
+  unknown: 'readonly',
+};
+
+const URGENCY_LABEL: Record<InventoryForecastUrgency, string> = {
+  critical: '至急',
+  warning: '要注意',
+  normal: '通常',
+  unknown: '予定日不明',
+};
+
+const URGENCY_BORDER: Record<InventoryForecastUrgency, string> = {
+  critical: 'border-l-4 border-l-state-blocked',
+  warning: 'border-l-4 border-l-state-confirm',
+  normal: '',
+  unknown: '',
+};
+
+function formatMonthDay(dateKey: string): string {
+  return dateKey.slice(5).replace('-', '/');
+}
+
+/** 薬切れ見込み日を basis に応じて忠実に表記する（推定は明示、根拠なしは捏造しない）。 */
+function formatRunOut(runOutDateKey: string | null, basis: InventoryForecastRunOutBasis): string {
+  if (runOutDateKey == null) return '薬切れ見込み日: 算出不可（処方期間情報なし）';
+  if (basis === 'line_start_date_plus_days') {
+    return `薬切れ見込み ${formatMonthDay(runOutDateKey)}（処方日数から推定）`;
+  }
+  return `薬切れ見込み ${formatMonthDay(runOutDateKey)}`;
+}
+
 function formatWeekLabel(week: InventoryForecast['week']): string {
   const format = (key: string) => {
     const [, month, day] = key.split('-');
@@ -57,6 +95,19 @@ function StatusBadge({ status }: { status: DrugForecastStatus }) {
     );
   }
   return <StateBadge role={role}>{DRUG_FORECAST_STATUS_LABELS[status]}</StateBadge>;
+}
+
+function UrgencyBadge({ urgency }: { urgency: InventoryForecastUrgency }) {
+  const role = URGENCY_ROLE[urgency];
+  if (role === 'neutral') return null; // 通常はバッジを出さない（状態色の塗り過ぎを避ける）
+  if (urgency === 'unknown') {
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        {URGENCY_LABEL[urgency]}
+      </Badge>
+    );
+  }
+  return <StateBadge role={role}>{URGENCY_LABEL[urgency]}</StateBadge>;
 }
 
 const drugForecastColumns: ColumnDef<DrugForecastRow>[] = [
@@ -260,19 +311,46 @@ export function InventoryForecastContent() {
               {forecast.patients.map((patient) => (
                 <li
                   key={patient.key}
-                  className="rounded-lg border border-border/70 bg-background px-4 py-3"
+                  className={`rounded-lg border border-border/70 bg-background px-4 py-3 ${URGENCY_BORDER[patient.urgency]}`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="text-sm font-semibold text-foreground">{patient.label} 様</p>
-                      <p className="mt-1 text-xs text-muted-foreground">次回処方予定あり</p>
+                      {/* 施設バッチは「ラベル人数のうち実際に不足見込みと判定できた人数」を明示し、
+                          全員を評価済みと誤認させない。個人カードは処方予定の有無のみ。 */}
+                      {patient.isFacilityBatch && patient.facilityPatientCount != null ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {patient.facilityPatientCount}名中 {patient.shortagePatientCount}
+                          名に不足見込み
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-muted-foreground">次回処方予定あり</p>
+                      )}
                     </div>
-                    {/* AffectedPatientCard は来週初回訪問日のみ保持。薬切れ予定日/緊急度の真値は
-                        持たないため、捏造せず「訪問予定 M/D」と明示する(緊急度バッジは出さない)。 */}
-                    <span className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
-                      訪問予定 {patient.firstVisitDateKey.slice(5).replace('-', '/')}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <UrgencyBadge urgency={patient.urgency} />
+                      <span className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
+                        訪問予定 {formatMonthDay(patient.firstVisitDateKey)}
+                      </span>
+                    </div>
                   </div>
+                  {/* 薬切れ見込み日は basis(処方終了日 / 開始日+日数推定 / 不明)に忠実。捏造しない。 */}
+                  <p
+                    className={`mt-2 text-xs ${
+                      patient.urgency === 'critical'
+                        ? 'text-state-blocked'
+                        : patient.urgency === 'warning'
+                          ? 'text-state-confirm'
+                          : 'text-muted-foreground'
+                    }`}
+                  >
+                    {formatRunOut(patient.runOutDateKey, patient.runOutBasis)}
+                  </p>
+                  {patient.shortageDrugKeys.length > 0 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      不足薬: {patient.shortageDrugKeys.join('・')}
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ul>
