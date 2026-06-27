@@ -1,3 +1,5 @@
+import { encodePathSegment } from '@/lib/http/path-segment';
+
 const AUDITED_CONSENT_DOCUMENT_PATH_PATTERN = /^\/api\/files\/([^/?#]+)\/presigned-download$/;
 
 export const CONSENT_DOCUMENT_MIME_TYPES = [
@@ -8,7 +10,7 @@ export const CONSENT_DOCUMENT_MIME_TYPES = [
 ];
 
 export function buildAuditedConsentDocumentUrl(fileId: string) {
-  return `/api/files/${encodeURIComponent(fileId)}/presigned-download?download=1`;
+  return `/api/files/${encodePathSegment(fileId)}/presigned-download?download=1`;
 }
 
 export function normalizeAuditedConsentDocumentUrl(value: string | null | undefined) {
@@ -26,7 +28,12 @@ export function normalizeAuditedConsentDocumentUrl(value: string | null | undefi
   const match = parsed.pathname.match(AUDITED_CONSENT_DOCUMENT_PATH_PATTERN);
   if (!match || parsed.searchParams.get('download') !== '1') return null;
 
-  return buildAuditedConsentDocumentUrl(decodeURIComponent(match[1]));
+  try {
+    return buildAuditedConsentDocumentUrl(decodeURIComponent(match[1]));
+  } catch (err) {
+    if (err instanceof URIError || err instanceof RangeError) return null;
+    throw err;
+  }
 }
 
 export function serializeConsentRecordDocumentUrl<

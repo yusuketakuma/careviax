@@ -12,10 +12,31 @@ describe('consent-record-documents', () => {
     );
   });
 
+  it('encodes hostile file ids as one audited download path segment', () => {
+    const url = buildAuditedConsentDocumentUrl('../file?x=1#secret');
+
+    expect(url).toBe('/api/files/..%2Ffile%3Fx%3D1%23secret/presigned-download?download=1');
+    expect(url).not.toContain('/file?');
+    expect(url).not.toContain('#secret');
+  });
+
+  it.each(['.', '..'])('rejects exact dot-segment file ids (%s)', (fileId) => {
+    expect(() => buildAuditedConsentDocumentUrl(fileId)).toThrow(RangeError);
+  });
+
   it('normalizes relative audited consent document urls only', () => {
     expect(
       normalizeAuditedConsentDocumentUrl(' /api/files/file_1/presigned-download?download=1 '),
     ).toBe('/api/files/file_1/presigned-download?download=1');
+  });
+
+  it('redacts audited-looking urls with encoded dot-segment file ids', () => {
+    expect(
+      normalizeAuditedConsentDocumentUrl('/api/files/%2E/presigned-download?download=1'),
+    ).toBeNull();
+    expect(
+      normalizeAuditedConsentDocumentUrl('/api/files/%2E%2E/presigned-download?download=1'),
+    ).toBeNull();
   });
 
   it('rejects external and absolute audited-looking urls', () => {
