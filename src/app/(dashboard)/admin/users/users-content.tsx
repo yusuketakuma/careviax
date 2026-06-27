@@ -782,7 +782,9 @@ export function UsersContent() {
                 }
               >
                 <SelectTrigger id="invite-user-role">
-                  <SelectValue />
+                  {/* role は非空 enum default(EMPTY_INVITE='pharmacist')。bare SelectValue は
+                      生 enum 値を漏らすため、明示 children でラベルを描く(roleFilter :635 と同方式)。 */}
+                  <SelectValue>{roleLabel(inviteForm.role)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {ROLE_OPTIONS.map(([value, label]) => (
@@ -916,7 +918,8 @@ export function UsersContent() {
                     }
                   >
                     <SelectTrigger id="detail-user-role">
-                      <SelectValue />
+                      {/* detailForm.role も非空 enum。bare SelectValue の生 enum 漏れ防止に明示 children。 */}
+                      <SelectValue>{roleLabel(detailForm.role)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {ROLE_OPTIONS.map(([value, label]) => (

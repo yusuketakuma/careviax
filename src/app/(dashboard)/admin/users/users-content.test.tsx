@@ -212,6 +212,25 @@ describe('UsersContent', () => {
     expect(screen.getByLabelText('所属店舗', { selector: '#invite-user-site' })).toBeTruthy();
   });
 
+  it('shows the role label, not the raw enum, in the invite and detail role selects', () => {
+    // bare <SelectValue /> は非空 enum default(EMPTY_INVITE/ユーザー role='pharmacist')の生値を漏らす。
+    // 明示 children で常にラベル(薬剤師)を表示することを固定する(SSR enum 漏れ封止)。
+    // dialog の重なりを避けるため invite/detail は別 render で検証する。
+    const invite = render(<UsersContent />);
+    fireEvent.click(invite.getByRole('button', { name: 'ユーザーを招待' }));
+    const inviteRole = invite.getByLabelText('ロール', { selector: '#invite-user-role' });
+    expect(inviteRole.textContent).toContain('薬剤師');
+    expect(inviteRole.textContent).not.toContain('pharmacist');
+    invite.unmount();
+
+    const detail = render(<UsersContent />);
+    fireEvent.click(detail.getByRole('button', { name: '山田 太郎の詳細を開く' }));
+    const detailRole = detail.getByLabelText('ロール', { selector: '#detail-user-role' });
+    expect(detailRole.textContent).toContain('薬剤師');
+    expect(detailRole.textContent).not.toContain('pharmacist');
+    detail.unmount();
+  });
+
   it('associates detail and action dialog fields with visible labels', () => {
     render(<UsersContent />);
 
