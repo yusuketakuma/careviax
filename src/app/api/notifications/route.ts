@@ -1,10 +1,13 @@
+import { unstable_rethrow } from 'next/navigation';
+
 import { isAdmin, withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, forbidden } from '@/lib/api/response';
+import { success, validationError, forbidden, internalError } from '@/lib/api/response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
-export const GET = withAuthContext(async (req, ctx) => {
+const authenticatedGET = withAuthContext(async (req, ctx) => {
   const { searchParams } = new URL(req.url);
   const { cursor, limit } = parsePaginationParams(searchParams);
   const summaryOnly = searchParams.get('summary') === '1';
@@ -53,6 +56,15 @@ export const GET = withAuthContext(async (req, ctx) => {
 
   return success(buildCursorPage(notifications, limit, (notification) => notification.id));
 });
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const PATCH = withAuthContext(async (req, ctx) => {
   const payload = await readJsonObjectRequestBody(req);

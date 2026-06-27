@@ -206,6 +206,7 @@ import { GET as medicationCyclesGet } from '../medication-cycles/route';
 import { GET as medicationIssuesGet } from '../medication-issues/route';
 import { GET as medicationSetsWorkspaceGet } from '../medication-sets/workspace/route';
 import { GET as medicationProfilesGet } from '../medication-profiles/route';
+import { GET as notificationsGet } from '../notifications/route';
 import { GET as orgMembersGet } from '../org/members/route';
 import { GET as patientsGet } from '../patients/route';
 import { GET as patientsBoardGet } from '../patients/board/route';
@@ -587,6 +588,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       contactProfilesGet(
         createRequest('http://localhost/api/contact-profiles?kind=external_professional&limit=8', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'notifications GET',
+    handler: () =>
+      notificationsGet(
+        createRequest('http://localhost/api/notifications?user_id=user_2', {
           'x-org-id': 'org_1',
         }),
         emptyRouteContext,
@@ -1601,6 +1612,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
+        route.name === 'notifications GET' ||
         route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1692,6 +1704,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
+        route.name === 'notifications GET' ||
         route.name === 'handoff-board GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
@@ -1769,6 +1782,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'consent-records GET' ||
         route.name === 'consent-records/[id] GET' ||
         route.name === 'contact-profiles GET' ||
+        route.name === 'notifications GET' ||
         route.name === 'handoff-board GET' ||
         route.name === 'incident-reports GET' ||
         route.name === 'cases/[id] GET' ||
