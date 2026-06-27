@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import type { AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import {
   buildSetBatchHistorySnapshot,
@@ -89,7 +91,7 @@ async function withSerializableSetBatchCreateTransaction<T>(
   throw new SetBatchCreateRetryLimitError();
 }
 
-export const GET = withAuthContext<Record<string, string>>(
+const authenticatedGET = withAuthContext<Record<string, string>>(
   async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const planId = searchParams.get('plan_id');
@@ -129,6 +131,15 @@ export const GET = withAuthContext<Record<string, string>>(
   },
   { permission: 'canSet' },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext<Record<string, string>>(
   async (req: NextRequest, ctx: AuthContext): Promise<NextResponse> => {

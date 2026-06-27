@@ -114,6 +114,8 @@ describe('set-batches POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({ data: [] });
     expect(prismaMock.setBatch.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -123,6 +125,48 @@ describe('set-batches POST', () => {
         },
       }),
     );
+  });
+
+  it('returns a no-store validation error when plan_id is missing', async () => {
+    const response = await GET(createGetRequest('http://localhost/api/set-batches'), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'plan_id は必須パラメータです',
+    });
+    expect(prismaMock.setBatch.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when set-batch list lookup fails unexpectedly', async () => {
+    prismaMock.setBatch.findMany.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw set batch list drug packaging instruction'),
+    );
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/set-batches?plan_id=plan_1'),
+      {
+        params: Promise.resolve({}),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw set batch list');
+    expect(JSON.stringify(body)).not.toContain('drug packaging instruction');
   });
 
   it('rejects lines that do not belong to the plan cycle', async () => {
