@@ -90,6 +90,15 @@ describe('palette category registry (F-009 MVP)', () => {
     expect(byId('contact').endpoint('x')).not.toContain('view=palette');
   });
 
+  it('keeps palette endpoint query order and encodeURIComponent-compatible escaping', () => {
+    expect(byId('patient').endpoint('a b/服薬?')).toBe(
+      '/api/patients?view=palette&q=a%20b%2F%E6%9C%8D%E8%96%AC%3F&limit=8',
+    );
+    expect(byId('contact').endpoint('a b/服薬?')).toBe(
+      '/api/contact-profiles?q=a%20b%2F%E6%9C%8D%E8%96%AC%3F&limit=8',
+    );
+  });
+
   // --- raw wire-shape schemas: success() = NextResponse.json(data) (no { data } auto-envelope) ---
 
   const validRaw: Record<PaletteCategoryId, unknown> = {

@@ -68,7 +68,15 @@ export type PaletteCategory = {
  */
 export const PALETTE_RESULT_LIMIT = 8;
 
-const q8 = (query: string) => `q=${encodeURIComponent(query)}&limit=${PALETTE_RESULT_LIMIT}`;
+function buildPaletteEndpoint(path: string, query: string, options: { view?: 'palette' } = {}) {
+  const entries: Array<[string, string]> = [];
+  if (options.view) entries.push(['view', options.view]);
+  entries.push(['q', query], ['limit', String(PALETTE_RESULT_LIMIT)]);
+  const queryString = entries
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&');
+  return `${path}?${queryString}`;
+}
 
 // ---------------------------------------------------------------------------
 // 生レスポンススキーマ(data 配列必須・必須フィールド欠落は reject)
@@ -191,7 +199,7 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
     // view=palette で F-012 の最小投影({id,name,name_kana})を消費する。
     // これを付けないと full list 分岐に当たり phone/住所/保険等の over-wide payload が
     // ブラウザへ届く(UI zod の strip は fetch 後＝転送は発生済)。bounded/minimal 契約を守る。
-    endpoint: (query) => `/api/patients?view=palette&${q8(query)}`,
+    endpoint: (query) => buildPaletteEndpoint('/api/patients', query, { view: 'palette' }),
     schema: patientSchema,
     normalize: dataItems,
     build: (item) => buildPatientResult(item as Parameters<typeof buildPatientResult>[0]),
@@ -203,7 +211,8 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
     orgScoped: true,
     // view=palette で F-012 の最小投影(patient{id,name}+pharmacist{name}のみ。
     // 住所/geo/site/vehicle/contact_logs は返さない)を消費する。
-    endpoint: (query) => `/api/visit-schedule-proposals?view=palette&${q8(query)}`,
+    endpoint: (query) =>
+      buildPaletteEndpoint('/api/visit-schedule-proposals', query, { view: 'palette' }),
     schema: proposalSchema,
     normalize: dataItems,
     build: (item) =>
@@ -216,7 +225,7 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
     orgScoped: true,
     // API は q を server 側で無視する(limit=8 で payload は bounded)。
     // 取得 <=8 件を client 側で patient 名/施設名 前方一致 filter → 決定的 cap する。
-    endpoint: (query) => `/api/prescription-intakes?${q8(query)}`,
+    endpoint: (query) => buildPaletteEndpoint('/api/prescription-intakes', query),
     schema: prescriptionSchema,
     normalize: dataItems,
     build: (item) => buildPrescriptionResult(item as Parameters<typeof buildPrescriptionResult>[0]),
@@ -228,7 +237,7 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
     label: SEARCH_CATEGORY_LABELS.drug,
     requiredPermission: null,
     orgScoped: false,
-    endpoint: (query) => `/api/drug-masters?${q8(query)}`,
+    endpoint: (query) => buildPaletteEndpoint('/api/drug-masters', query),
     schema: drugSchema,
     normalize: dataItems,
     build: (item) => buildDrugResult(item as Parameters<typeof buildDrugResult>[0]),
@@ -240,7 +249,7 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
     orgScoped: true,
     // view=palette で F-012 の最小投影({id,patient_id,report_type,status,created_at,patient:{name}})を
     // 消費する。content/pdf_url/delivery_records(送付先名等)は返さない。
-    endpoint: (query) => `/api/care-reports?view=palette&${q8(query)}`,
+    endpoint: (query) => buildPaletteEndpoint('/api/care-reports', query, { view: 'palette' }),
     schema: reportSchema,
     normalize: dataItems,
     build: (item) => {
@@ -256,8 +265,7 @@ export const PALETTE_CATEGORIES: PaletteCategory[] = [
     requiredPermission: 'canReport',
     orgScoped: true,
     // F-010A(721ce32d)の最小サマリ投影 endpoint(q + limit)を消費する。
-    endpoint: (query) =>
-      `/api/contact-profiles?q=${encodeURIComponent(query)}&limit=${PALETTE_RESULT_LIMIT}`,
+    endpoint: (query) => buildPaletteEndpoint('/api/contact-profiles', query),
     schema: contactSchema,
     normalize: dataItems,
     build: (item) => buildContactResult(item as Parameters<typeof buildContactResult>[0]),
