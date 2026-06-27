@@ -17,6 +17,8 @@ const eslintConfig = defineConfig([
     'artifacts/**',
     'agmsg/**',
     '.harness-worktrees/**',
+    '.claude/**',
+    'tools/tests/.artifacts/**',
     '.ds-sync/**',
     '.design-sync/.cache/**',
     '.design-sync/learnings/**',
