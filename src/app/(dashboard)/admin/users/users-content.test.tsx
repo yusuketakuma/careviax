@@ -149,6 +149,31 @@ describe('UsersContent', () => {
     expect(screen.getByRole('button', { name: '山田 太郎を停止' })).toBeTruthy();
   });
 
+  it('renders account status via state-color tokens with red limited to blocked', () => {
+    // active=done(緑), suspended=blocked(赤), invited=waiting, retired=readonly。
+    // 赤(blocked)は停止/連携失敗のみ=「赤=ブロック限定」を満たす。
+    Object.assign(user, { account_status: 'active' });
+    const active = render(<UsersContent />);
+    expect(active.container.querySelector('[data-role="done"]')).toBeTruthy();
+    active.unmount();
+
+    Object.assign(user, { account_status: 'suspended' });
+    const suspended = render(<UsersContent />);
+    expect(suspended.container.querySelector('[data-role="blocked"]')).toBeTruthy();
+    suspended.unmount();
+
+    Object.assign(user, { account_status: 'invited' });
+    const invited = render(<UsersContent />);
+    expect(invited.container.querySelector('[data-role="waiting"]')).toBeTruthy();
+    invited.unmount();
+
+    Object.assign(user, { account_status: 'retired' });
+    const retired = render(<UsersContent />);
+    expect(retired.container.querySelector('[data-role="readonly"]')).toBeTruthy();
+    // retired は赤(blocked)に落ちない。
+    expect(retired.container.querySelector('[data-role="blocked"]')).toBeNull();
+  });
+
   it('keeps the user list workflow before supplemental filters', () => {
     render(<UsersContent />);
 

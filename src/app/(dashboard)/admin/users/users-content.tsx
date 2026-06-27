@@ -32,8 +32,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { USER_ACCOUNT_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
 import {
   isOperationalMemberRole,
@@ -135,14 +137,15 @@ const DETAIL_SAVE_BLOCKER_ID = 'detail-user-save-blocker';
 
 type VisitLimitKey = keyof typeof VISIT_LIMITS;
 
-const STATUS_MAP: Record<
-  string,
-  { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }
-> = {
-  invited: { label: '招待済', variant: 'outline' },
-  active: { label: '稼働中', variant: 'default' },
-  suspended: { label: '停止中', variant: 'destructive' },
-  retired: { label: '退職', variant: 'secondary' },
+// アカウント状態の表示ラベル(下段フィルタ Select と statusBadge で共用)。
+// 色は variant 直書きをやめ USER_ACCOUNT_STATUS_ROLE(6軸トークン SSOT)へ寄せる。
+const STATUS_MAP: Record<string, { label: string }> = {
+  pending_cognito: { label: 'Cognito連携待ち' },
+  invited: { label: '招待済' },
+  active: { label: '稼働中' },
+  suspended: { label: '停止中' },
+  retired: { label: '退職' },
+  cognito_failed: { label: '連携失敗' },
 };
 
 function roleLabel(role: string) {
@@ -150,11 +153,14 @@ function roleLabel(role: string) {
 }
 
 function statusBadge(status: string) {
-  const config = STATUS_MAP[status] ?? {
-    label: status,
-    variant: 'outline' as const,
-  };
-  return <Badge variant={config.variant}>{config.label}</Badge>;
+  const label = STATUS_MAP[status]?.label ?? status;
+  const role = USER_ACCOUNT_STATUS_ROLE[status];
+  // 赤(blocked)は suspended/cognito_failed のみ。waiting/done/readonly は各トークンへ。
+  // role 未定義/neutral は状態色を付けず中立 outline Badge に逃がす(偽シグナル回避)。
+  if (role && role !== 'neutral') {
+    return <StateBadge role={role}>{label}</StateBadge>;
+  }
+  return <Badge variant="outline">{label}</Badge>;
 }
 
 function formatListInput(values: string[] | null | undefined) {
