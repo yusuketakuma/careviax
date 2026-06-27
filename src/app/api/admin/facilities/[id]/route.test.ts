@@ -64,6 +64,11 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/admin/facilities/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -278,6 +283,7 @@ describe('/api/admin/facilities/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(residenceCountMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -294,6 +300,33 @@ describe('/api/admin/facilities/[id]', () => {
         regular_visit_weekdays: [1, 3, 5],
       },
     });
+  });
+
+  it('returns a no-store 404 when the facility does not exist', async () => {
+    facilityFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest('GET'), {
+      params: Promise.resolve({ id: 'missing_facility' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+  });
+
+  it('returns a sanitized no-store 500 when facility detail fails to load', async () => {
+    facilityFindFirstMock.mockRejectedValueOnce(new Error('raw facility detail secret'));
+
+    const response = await GET(createRequest('GET'), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw facility detail secret');
   });
 
   it('deletes a facility', async () => {

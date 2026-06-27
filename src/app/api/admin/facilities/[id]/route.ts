@@ -1,13 +1,15 @@
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { unstable_rethrow } from 'next/navigation';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { serializeFacilityResponse, toFacilityTimeValue } from '@/lib/facilities/facility-api';
 import { updateFacilitySchema } from '@/lib/validations/facility';
 
-export const GET = withAuthContext<{ id: string }>(
+const authenticatedGET = withAuthContext<{ id: string }>(
   async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
 
@@ -41,6 +43,15 @@ export const GET = withAuthContext<{ id: string }>(
     message: '施設マスターの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const PATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {

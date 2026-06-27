@@ -77,6 +77,11 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/admin/facilities GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -113,6 +118,7 @@ describe('/api/admin/facilities GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectNoStore(response);
   });
 
   it('returns facilities for pharmacists who can reference facility masters', async () => {
@@ -161,6 +167,7 @@ describe('/api/admin/facilities GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -237,6 +244,7 @@ describe('/api/admin/facilities GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(facilityFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -287,6 +295,21 @@ describe('/api/admin/facilities GET', () => {
     expect(body.data[0]).not.toHaveProperty('phone');
     expect(body.data[0]).not.toHaveProperty('fax');
     expect(body.data[0]).not.toHaveProperty('notes');
+  });
+
+  it('returns a sanitized no-store 500 when facilities fail to load', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    facilityFindManyMock.mockRejectedValueOnce(new Error('raw facility roster secret'));
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw facility roster secret');
   });
 
   it('creates a facility with regular visit weekdays', async () => {

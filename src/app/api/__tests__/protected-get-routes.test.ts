@@ -183,6 +183,8 @@ vi.mock('@/server/services/patient-detail', async (importOriginal) => {
 import { GET as auditLogsGet } from '../audit-logs/route';
 import { GET as auditLogsExportGet } from '../audit-logs/export/route';
 import { GET as adminExternalProfessionalCommunicationsGet } from '../admin/external-professionals/[id]/communications/route';
+import { GET as adminFacilitiesGet } from '../admin/facilities/route';
+import { GET as adminFacilityGet } from '../admin/facilities/[id]/route';
 import { GET as adminFacilityPatientsGet } from '../admin/facilities/[id]/patients/route';
 import { GET as billingCandidatesGet } from '../billing-candidates/route';
 import { GET as billingDocumentPdfGet } from '../billing-candidates/[id]/documents/pdf/route';
@@ -354,6 +356,70 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           { 'x-org-id': 'org_1' },
         ),
         { params: Promise.resolve({ id: 'external_1' }) },
+      ),
+  },
+  {
+    name: 'admin/facilities GET',
+    setupSuccess: () => {
+      prismaMock.facility.findMany.mockResolvedValueOnce([
+        {
+          id: 'facility_1',
+          name: 'あおば苑',
+          facility_type: 'nursing_home',
+          address: '東京都千代田区1-1-1',
+          phone: '03-1111-2222',
+          fax: null,
+          acceptance_time_from: null,
+          acceptance_time_to: null,
+          regular_visit_weekdays: [],
+          notes: null,
+          contacts: [],
+          created_at: new Date('2026-03-01T00:00:00.000Z'),
+          updated_at: new Date('2026-03-01T00:00:00.000Z'),
+        },
+      ]);
+      prismaMock.residence.groupBy.mockResolvedValueOnce([
+        {
+          facility_id: 'facility_1',
+          _count: {
+            _all: 2,
+          },
+        },
+      ]);
+    },
+    handler: () =>
+      adminFacilitiesGet(
+        createRequest('http://localhost/api/admin/facilities', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'admin/facilities/[id] GET',
+    setupSuccess: () => {
+      prismaMock.facility.findFirst.mockResolvedValueOnce({
+        id: 'facility_1',
+        name: 'あおば苑',
+        facility_type: 'nursing_home',
+        address: '東京都千代田区1-1-1',
+        phone: '03-1111-2222',
+        fax: null,
+        acceptance_time_from: null,
+        acceptance_time_to: null,
+        regular_visit_weekdays: [],
+        notes: null,
+        contacts: [],
+        _count: {
+          residences: 2,
+        },
+      });
+      prismaMock.residence.count.mockResolvedValueOnce(2);
+    },
+    handler: () =>
+      adminFacilityGet(
+        createRequest('http://localhost/api/admin/facilities/facility_1', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'facility_1' }) },
       ),
   },
   {
@@ -1770,6 +1836,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'audit-logs GET' ||
         route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
+        route.name === 'admin/facilities GET' ||
+        route.name === 'admin/facilities/[id] GET' ||
         route.name === 'admin/facilities/[id]/patients GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
@@ -1889,6 +1957,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'audit-logs GET' ||
         route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
+        route.name === 'admin/facilities GET' ||
+        route.name === 'admin/facilities/[id] GET' ||
         route.name === 'admin/facilities/[id]/patients GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
@@ -2009,6 +2079,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'audit-logs GET' ||
         route.name === 'audit-logs/export GET' ||
         route.name === 'admin/external-professionals/[id]/communications GET' ||
+        route.name === 'admin/facilities GET' ||
+        route.name === 'admin/facilities/[id] GET' ||
         route.name === 'admin/facilities/[id]/patients GET' ||
         route.name === 'billing-candidates/[id]/documents/pdf GET' ||
         route.name === 'business-holidays GET' ||
