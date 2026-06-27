@@ -142,6 +142,21 @@ describe('MonthGrid', () => {
     expect(firstBodyCell.textContent).toBe('1');
   });
 
+  it('renders custom weekday headers via renderWeekdayHeader', () => {
+    render(
+      <MonthGrid
+        year={2026}
+        month={5}
+        renderWeekdayHeader={({ label, weekday }) => (
+          <div data-testid={`wh-${weekday}`}>{label}!</div>
+        )}
+        renderDay={(cell) => <span>{cell.day}</span>}
+      />,
+    );
+    expect(screen.getByTestId('wh-0').textContent).toBe('日!');
+    expect(screen.getByTestId('wh-6').textContent).toBe('土!');
+  });
+
   it('applies the container aria-label', () => {
     const { container } = render(
       <MonthGrid

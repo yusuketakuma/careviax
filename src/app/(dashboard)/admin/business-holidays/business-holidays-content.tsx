@@ -25,6 +25,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { MonthGrid } from '@/components/ui/month-grid';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -73,18 +74,8 @@ const HOLIDAY_TYPE_OPTIONS = [
 
 const HOLIDAY_TYPE_LABELS: Record<string, string> = Object.fromEntries(HOLIDAY_TYPE_OPTIONS);
 
-const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
-
 function formatYearMonth(year: number, month: number) {
   return `${year}年${month + 1}月`;
-}
-
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function getFirstDayOfWeek(year: number, month: number) {
-  return new Date(year, month, 1).getDay();
 }
 
 function dateKey(d: Date | string) {
@@ -292,16 +283,6 @@ export function BusinessHolidaysContent() {
     setShowForm(true);
   }
 
-  const daysInMonth = getDaysInMonth(viewYear, viewMonth);
-  const firstDow = getFirstDayOfWeek(viewYear, viewMonth);
-
-  const calendarCells: Array<{ day: number | null; dateStr: string }> = [];
-  for (let i = 0; i < firstDow; i++) calendarCells.push({ day: null, dateStr: '' });
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    calendarCells.push({ day: d, dateStr });
-  }
-
   return (
     <div className="space-y-6">
       <Card>
@@ -363,43 +344,49 @@ export function BusinessHolidaysContent() {
           {isLoading ? (
             <div className="text-sm text-muted-foreground">読み込み中...</div>
           ) : (
-            <div className="grid grid-cols-7 gap-px rounded-lg border border-border bg-border">
-              {WEEKDAY_LABELS.map((label, i) => (
+            <MonthGrid
+              year={viewYear}
+              month={viewMonth}
+              ariaLabel="休日カレンダー"
+              className="grid grid-cols-7 gap-px rounded-lg border border-border bg-border"
+              cellClassName="min-h-[80px] cursor-pointer bg-background p-1 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+              emptyCellClassName="min-h-[80px] bg-background"
+              renderWeekdayHeader={({ label, weekday }) => (
                 <div
-                  key={label}
                   className={`bg-muted px-2 py-1.5 text-center text-xs font-medium ${
-                    i === 0 ? 'text-red-500' : i === 6 ? 'text-blue-500' : 'text-muted-foreground'
+                    weekday === 0
+                      ? 'text-red-500'
+                      : weekday === 6
+                        ? 'text-blue-500'
+                        : 'text-muted-foreground'
                   }`}
                 >
                   {label}
                 </div>
-              ))}
-              {calendarCells.map((cell, i) => {
-                if (cell.day === null) {
-                  return <div key={`empty-${i}`} className="min-h-[80px] bg-background" />;
-                }
-                const dayHolidays = holidayMap.get(cell.dateStr) ?? [];
-                const isSelected = bulkMode && bulkDates.has(cell.dateStr);
-                const dow = new Date(cell.dateStr).getDay();
+              )}
+              getDayCellProps={(cell) => {
+                const isSelected = bulkMode && bulkDates.has(cell.dateKey);
+                return {
+                  role: 'button',
+                  tabIndex: 0,
+                  'aria-label': `${cell.day}日`,
+                  'aria-pressed': bulkMode ? isSelected : undefined,
+                  className: isSelected ? 'ring-2 ring-primary ring-inset' : undefined,
+                  onClick: () => handleDateClick(cell.dateKey),
+                  onKeyDown: (event) => {
+                    // 日セルをキーボードでも選択可能にする(Enter/Space)
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleDateClick(cell.dateKey);
+                    }
+                  },
+                };
+              }}
+              renderDay={(cell) => {
+                const dayHolidays = holidayMap.get(cell.dateKey) ?? [];
+                const dow = new Date(cell.dateKey).getDay();
                 return (
-                  <div
-                    key={cell.dateStr}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${cell.day}日`}
-                    aria-pressed={bulkMode ? isSelected : undefined}
-                    className={`min-h-[80px] cursor-pointer bg-background p-1 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${
-                      isSelected ? 'ring-2 ring-primary ring-inset' : ''
-                    }`}
-                    onClick={() => handleDateClick(cell.dateStr)}
-                    onKeyDown={(event) => {
-                      // 日セルをキーボードでも選択可能にする(Enter/Space)
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        handleDateClick(cell.dateStr);
-                      }
-                    }}
-                  >
+                  <>
                     <div
                       className={`text-xs font-medium ${
                         dow === 0 ? 'text-red-500' : dow === 6 ? 'text-blue-500' : ''
@@ -427,10 +414,10 @@ export function BusinessHolidaysContent() {
                         </button>
                       ))}
                     </div>
-                  </div>
+                  </>
                 );
-              })}
-            </div>
+              }}
+            />
           )}
         </CardContent>
       </Card>

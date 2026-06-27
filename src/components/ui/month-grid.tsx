@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from 'react';
+import { Fragment, type HTMLAttributes, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -103,6 +103,8 @@ export type MonthGridProps = {
   weekdayLabels?: string[];
   /** 日=text-state-blocked / 土=text-tag-info で曜日見出しを着色（実曜日基準）。 */
   weekendHeaderColors?: boolean;
+  /** 曜日見出しセルを丸ごと差し替える（省略時は既定の見出しを描画）。 */
+  renderWeekdayHeader?: (args: { label: string; weekday: number; index: number }) => ReactNode;
   /** グリッド全体に付与する aria-label。 */
   ariaLabel?: string;
   /** グリッドコンテナの class（既定の枠線レイアウトを上書き）。 */
@@ -133,6 +135,7 @@ export function MonthGrid({
   weekStartsOn = 0,
   weekdayLabels,
   weekendHeaderColors = true,
+  renderWeekdayHeader,
   ariaLabel,
   className,
   cellClassName,
@@ -152,6 +155,9 @@ export function MonthGrid({
       {effectiveLabels.map((label, index) => {
         // 見出しセル index → 実曜日（0=日）。weekStartsOn 起点でずらす。
         const weekday = (weekStartsOn + index) % 7;
+        if (renderWeekdayHeader) {
+          return <Fragment key={label}>{renderWeekdayHeader({ label, weekday, index })}</Fragment>;
+        }
         const weekendClass = weekendHeaderColors
           ? weekday === 0
             ? 'text-state-blocked'
