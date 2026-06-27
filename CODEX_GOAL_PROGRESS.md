@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Notifications GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long gates, and before ledger work.
+  - Claude approved `7aced075` / `f3d47448` with no findings after independent focused validation.
+  - Claude locked `/admin/institutions` FE files; Codex preserved those dirty files and did not edit or stage them. A first `typecheck:no-unused` attempt caught Claude WIP (`isInstitutionPrescriptionStale` unused); Codex reported it, Claude updated the WIP, and subsequent no-unused reruns passed.
+- Hardened root `GET /api/notifications` so auth rejection, another-user forbidden rejection, list success, summary success, and ordinary unexpected notification listing failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store 401, no-store 403, no-store list success, no-store summary success, and sanitized no-store 500 responses that omit raw patient/notification-like thrown text.
+- Added `notifications GET` to the protected GET auth/no-store matrix using an admin-only `user_id=user_2` request so the shared 401/403/200 matrix matches the route's self-vs-other-user authorization contract.
+- Preserved existing self-notification access, admin other-user access, `summary=1` unread-count fast path, `is_read` filter behavior, pagination/order, PATCH read-state mutation behavior, response contract, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: notification reads include user-specific notification rows, unread counts, link targets, metadata, read status, and pagination; these are now no-store at the HTTP boundary and unexpected list failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/notifications/route.ts src/app/api/notifications/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no formatting changes.
+  - `pnpm vitest run src/app/api/notifications/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `308` tests. The new sanitized 500 test emitted the existing PHI-safe `route_handler_unhandled_error` logger line on stderr.
+  - Scoped ESLint passed for the notifications route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed after Claude's WIP update; the earlier failure was isolated to Claude-owned `/admin/institutions` WIP and was not in Codex-owned files.
+  - `pnpm format:check` passed for changed files.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations and preserving the active `/admin/institutions` lock. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Contact Profiles GET No-Store Hardening
 
 - Coordination:
