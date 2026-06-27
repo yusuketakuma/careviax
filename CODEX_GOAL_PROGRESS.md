@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Subpage Back Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger/commit phase.
+  - ACKed Claude's approval of patient legacy redirect href helper convergence before continuing this non-overlapping subpage backHref slice.
+  - Used medical safety and privacy read-only reviewers because the surface controls patient subpage navigation across external sharing, consent, residual adjustment, and medication calendar workflows.
+- Hardened/converged patient subpage back links:
+  - Routed external sharing `WorkflowPageIntro.backHref` through shared `buildPatientHref(id)`.
+  - Routed consent records `WorkflowPageIntro.backHref` through shared `buildPatientHref(id)`.
+  - Routed residual adjustment `WorkflowPageIntro.backHref` through shared `buildPatientHref(id)`.
+  - Routed medication calendar `WorkflowPageIntro.backHref` through shared `buildPatientHref(id)`.
+  - Added page tests proving each page consumes the shared helper return value instead of raw `/patients/${id}` interpolation while preserving raw patient id where child content needs patient context.
+  - Preserved page hierarchy, visible labels, supporting content, shortcut generation, child content props/param usage, route params, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient subpage back links no longer interpolate raw patient ids into patient detail hrefs; hostile ids now flow through the encoded/fail-closed patient navigation helper.
+- Performance issue improved: none. This is a pure href-construction helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/share/page.tsx' 'src/app/(dashboard)/patients/[id]/share/page.test.tsx' 'src/app/(dashboard)/patients/[id]/consent/page.tsx' 'src/app/(dashboard)/patients/[id]/consent/page.test.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/page.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/page.test.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/page.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/page.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/share/page.test.tsx' 'src/app/(dashboard)/patients/[id]/consent/page.test.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/page.test.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/page.test.tsx' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`: passed, `5` files / `9` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `99e89212` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Legacy Redirect Href Helper Convergence
 
 - Coordination:
@@ -46,8 +74,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `1dc64a74` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `1dc64a74` and state commit `1006d24f` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient Medication/Prescription Page Link Helper Convergence
 
