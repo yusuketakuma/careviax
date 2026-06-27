@@ -206,12 +206,36 @@ describe('workflow-dashboard-sections', () => {
         4,
       ),
     ).toMatchObject([
-      expect.objectContaining({ id: 'missing_visit_consent', count: 2 }),
-      expect.objectContaining({ id: 'missing_management_plan', count: 1 }),
-      expect.objectContaining({ id: 'management_plan_review_overdue', count: 3 }),
-      expect.objectContaining({ id: 'missing_first_visit_doc', count: 5 }),
-      expect.objectContaining({ id: 'missing_emergency_contact', count: 6 }),
-      expect.objectContaining({ id: 'missing_primary_physician', count: 2 }),
+      expect.objectContaining({
+        id: 'missing_visit_consent',
+        count: 2,
+        action_href: '/patients?readiness_issue=missing_visit_consent',
+      }),
+      expect.objectContaining({
+        id: 'missing_management_plan',
+        count: 1,
+        action_href: '/patients?readiness_issue=missing_management_plan',
+      }),
+      expect.objectContaining({
+        id: 'management_plan_review_overdue',
+        count: 3,
+        action_href: '/patients?readiness_issue=management_plan_review_overdue',
+      }),
+      expect.objectContaining({
+        id: 'missing_first_visit_doc',
+        count: 5,
+        action_href: '/patients?readiness_issue=missing_first_visit_doc',
+      }),
+      expect.objectContaining({
+        id: 'missing_emergency_contact',
+        count: 6,
+        action_href: '/patients?readiness_issue=missing_emergency_contact',
+      }),
+      expect.objectContaining({
+        id: 'missing_primary_physician',
+        count: 2,
+        action_href: '/patients',
+      }),
       expect.objectContaining({ id: 'visit_intake_linkage', count: 1 }),
       expect.objectContaining({ id: 'self_report_triage', count: 4 }),
     ]);

@@ -18,6 +18,16 @@ import type {
 } from '@/types/api/workflow-dashboard';
 import type { WorkflowCoreData, WorkflowDependentData } from './workflow-dashboard-queries';
 
+type PatientReadinessIssueHref =
+  | VisitWorkflowGateIssue
+  | 'missing_first_visit_doc'
+  | 'missing_emergency_contact';
+
+function buildPatientsReadinessIssueHref(issue: PatientReadinessIssueHref) {
+  const params = new URLSearchParams([['readiness_issue', issue]]);
+  return `/patients?${params.toString()}`;
+}
+
 function priorityRank(priority: QueuePriority) {
   switch (priority) {
     case 'urgent':
@@ -122,7 +132,7 @@ export function buildRemediationGuidance(
           description: guidance.description,
           severity: guidance.severity,
           count,
-          action_href: `/patients?readiness_issue=${issue}`,
+          action_href: buildPatientsReadinessIssueHref(issue),
           action_label: '患者一覧で確認',
         } satisfies RemediationGuidanceItem;
       }),
@@ -135,7 +145,7 @@ export function buildRemediationGuidance(
               '初回訪問文書が未交付のケースがあります。交付日時と文書控えを確認してください。',
             severity: 'high' as const,
             count: missingFirstVisitDocCount,
-            action_href: '/patients?readiness_issue=missing_first_visit_doc',
+            action_href: buildPatientsReadinessIssueHref('missing_first_visit_doc'),
             action_label: '患者一覧で確認',
           } satisfies RemediationGuidanceItem,
         ]
@@ -148,7 +158,7 @@ export function buildRemediationGuidance(
             description: '緊急連絡先が不足しているため、初回訪問文書や緊急連携の運用が不完全です。',
             severity: 'high' as const,
             count: missingEmergencyContactCount,
-            action_href: '/patients?readiness_issue=missing_emergency_contact',
+            action_href: buildPatientsReadinessIssueHref('missing_emergency_contact'),
             action_label: '患者一覧で確認',
           } satisfies RemediationGuidanceItem,
         ]
