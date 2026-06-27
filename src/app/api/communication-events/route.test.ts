@@ -101,6 +101,11 @@ function createMalformedJsonPostRequest() {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/communication-events', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -145,8 +150,7 @@ describe('/api/communication-events', () => {
     const response = (await GET(createGetRequest()))!;
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectNoStore(response);
     expect(communicationEventFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -178,8 +182,7 @@ describe('/api/communication-events', () => {
       const response = (await GET(createGetRequest(query)))!;
 
       expect(response.status).toBe(400);
-      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-      expect(response.headers.get('Pragma')).toBe('no-cache');
+      expectNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '検索条件が不正です',
@@ -202,8 +205,7 @@ describe('/api/communication-events', () => {
       const response = (await GET(createGetRequest(query)))!;
 
       expect(response.status).toBe(400);
-      expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-      expect(response.headers.get('Pragma')).toBe('no-cache');
+      expectNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '検索条件が不正です',
@@ -216,6 +218,22 @@ describe('/api/communication-events', () => {
       expect(communicationEventFindManyMock).not.toHaveBeenCalled();
     },
   );
+
+  it('returns a sanitized no-store 500 when communication event listing fails unexpectedly', async () => {
+    communicationEventFindManyMock.mockRejectedValueOnce(
+      new Error('raw communication event patient counterpart secret'),
+    );
+
+    const response = (await GET(createGetRequest()))!;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
+    expect(JSON.stringify(body)).not.toContain('patient counterpart secret');
+  });
 
   it('lets an org-wide role create an event for any in-org case without assignment scoping', async () => {
     careCaseFindFirstMock.mockResolvedValue(null);

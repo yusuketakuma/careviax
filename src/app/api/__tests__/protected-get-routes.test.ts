@@ -1461,6 +1461,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'communication-events GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
@@ -1545,6 +1546,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/check-duplicate GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'communication-events GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
@@ -1615,6 +1617,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'visits/today-preparation GET' ||
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
+        route.name === 'communication-events GET' ||
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
