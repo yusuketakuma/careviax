@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Visit Record PDF GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long type gates, and before ledger work.
+  - Claude approved `a5900d0e` / `e4bfcaa6` with no findings after independent protected GET validation.
+  - Claude requested review of `business-holidays` commit `6ea71734`; Codex paused PDF work, inspected the commit diff and current source/test, reran focused business-holidays Vitest/scoped ESLint/scoped Prettier, and approved with no findings.
+  - Claude then locked `/admin/pca-pumps` FE files; Codex acknowledged the lock and preserved the dirty WIP file.
+- Hardened `GET /api/patients/[id]/visit-records/pdf` and `GET /api/visit-records/[id]/pdf` so PDF success, auth rejection, invalid ID/query validation, scoped not-found, and ordinary render failures are wrapped with sensitive no-store headers.
+- Added `unstable_rethrow(cause)` at the top of the PDF render catch blocks so Next.js framework control-flow errors are not swallowed.
+- Preserved existing PDF response bodies, filenames, `Content-Type`, `Content-Disposition`, export audit recording, `canVisit` auth, route/query validation, scoped PDF builders, not-found mapping, and existing fixed `EXTERNAL_PDF_RENDER_FAILED` error code/message for ordinary render failures.
+- Added route-local regression coverage for no-store success, auth rejection, validation errors, not-found responses, and sanitized fixed 500 responses that omit raw patient/visit render error text.
+- Added PDF success no-store checks to `src/app/api/__tests__/pdf-routes.test.ts` for both affected routes.
+- Added `patients/[id]/visit-records/pdf GET` and `visit-records/[id]/pdf GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Security risk reduced: patient visit-record list PDFs and individual visit-record PDFs can contain PHI and clinical content; their HTTP boundary now consistently sends `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache` across success/error paths.
+- Performance issue improved: none materially changed. This slice adds route-boundary response wrapping and tests only; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/visit-records/pdf/route.ts' 'src/app/api/patients/[id]/visit-records/pdf/route.test.ts' 'src/app/api/visit-records/[id]/pdf/route.ts' 'src/app/api/visit-records/[id]/pdf/route.test.ts' src/app/api/__tests__/pdf-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no formatting changes.
+  - `pnpm vitest run 'src/app/api/patients/[id]/visit-records/pdf/route.test.ts' 'src/app/api/visit-records/[id]/pdf/route.test.ts' src/app/api/__tests__/pdf-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `4` files / `342` tests.
+  - Scoped ESLint passed for the two PDF routes, their route tests, `pdf-routes.test.ts`, and the protected GET matrix.
+  - Scoped Prettier check passed for the same six files.
+  - Scoped diff whitespace check passed for the same six files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed before Claude began the new `/admin/pca-pumps` WIP.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped Prettier/diff checks, commit implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after checking for Claude findings/consultations. The broader repo-wide objective remains active and incomplete.
+
 ### 2026-06-27 JST - Facility Contacts GET No-Store Hardening
 
 - Coordination:
