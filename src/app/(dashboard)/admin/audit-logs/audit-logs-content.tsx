@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Download, Search, Filter } from 'lucide-react';
+import { Download, Search, Filter, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
@@ -72,6 +72,9 @@ function actionLabel(action: string): string {
   return (AUDIT_LOG_ACTION_LABEL_MAP as Record<string, string>)[action] ?? action;
 }
 
+// 一覧の表示上限(新しい順)。これに到達したら全件誤認を避ける注記を出す。
+const RESULT_LIMIT = 100;
+
 // --- Main ---
 
 export function AuditLogsContent() {
@@ -83,7 +86,7 @@ export function AuditLogsContent() {
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   const queryParams = new URLSearchParams({
-    limit: '100',
+    limit: String(RESULT_LIMIT),
     ...(actorFilter ? { actor: actorFilter } : {}),
     ...(targetTypeFilter ? { target_type: targetTypeFilter } : {}),
     ...(actionFilter ? { action: actionFilter } : {}),
@@ -104,6 +107,8 @@ export function AuditLogsContent() {
   });
 
   const logs = data?.data ?? [];
+  // 表示上限に到達 = さらに古いログが存在しうる(API は total/has_more を返さない)。
+  const isCapped = logs.length >= RESULT_LIMIT;
 
   const columns = useMemo<ColumnDef<AuditLog>[]>(
     () => [
@@ -233,7 +238,10 @@ export function AuditLogsContent() {
         <div className="space-y-4">
           <FilterSummaryBar
             items={[
-              { label: '表示件数', value: `${logs.length}件` },
+              {
+                label: '表示件数',
+                value: isCapped ? `直近${RESULT_LIMIT}件（表示上限）` : `${logs.length}件`,
+              },
               { label: '期間', value: `${dateFrom || '未指定'} - ${dateTo || '未指定'}` },
               {
                 label: '対象種別',
@@ -250,6 +258,20 @@ export function AuditLogsContent() {
               ...(actorFilter ? [{ label: '操作者', value: actorFilter }] : []),
             ]}
           />
+          {isCapped && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-start gap-2 rounded-md border border-border/70 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+              data-testid="audit-logs-cap-notice"
+            >
+              <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <p>
+                一覧は新しい順に直近{RESULT_LIMIT}件まで表示しています。同じ条件の詳細確認は CSV /
+                JSON 出力を利用してください。
+              </p>
+            </div>
+          )}
           <details className="rounded-md border border-border bg-surface-subtle/60 [&:not([open])>div]:hidden">
             <summary className="flex min-h-[44px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-2 text-sm font-medium text-foreground marker:hidden [&::-webkit-details-marker]:hidden">
               表示条件を変更

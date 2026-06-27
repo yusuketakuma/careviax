@@ -98,6 +98,43 @@ function stubFetch() {
   return fetchMock;
 }
 
+function makeAuditLog(index: number) {
+  return {
+    id: `log_${index}`,
+    actor_id: `user_${index}`,
+    actor_name: `操作者${index}`,
+    action: 'create',
+    target_type: 'patient',
+    target_id: `target_${index}`,
+    ip_address: null,
+    created_at: '2026-06-20T01:00:00.000Z',
+  };
+}
+
+function stubFetchWithLogs(count: number) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith('/api/audit-logs/export?')) {
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'content-disposition': 'attachment; filename="audit-logs.json"',
+        },
+      });
+    }
+    if (url.startsWith('/api/audit-logs?')) {
+      return new Response(
+        JSON.stringify({ data: Array.from({ length: count }, (_, i) => makeAuditLog(i)) }),
+        { status: 200 },
+      );
+    }
+    return new Response('not found', { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 function searchParamsFromUrl(url: string) {
   return new URL(url, 'http://localhost').searchParams;
 }
@@ -222,5 +259,38 @@ describe('AuditLogsContent', () => {
       expect(params.get('action')).toBe('consent_record_viewed');
       expect(params.get('format')).toBe('json');
     });
+  });
+
+  it('requests the audit log list with the 100-row display limit', async () => {
+    const fetchMock = stubFetchWithLogs(3);
+    renderContent();
+
+    await waitFor(() => {
+      const listCall = fetchMock.mock.calls.find(([input]) =>
+        String(input).startsWith('/api/audit-logs?'),
+      );
+      expect(listCall).toBeTruthy();
+      expect(searchParamsFromUrl(String(listCall?.[0])).get('limit')).toBe('100');
+    });
+  });
+
+  it('shows the actual count and no cap notice when under the display limit', async () => {
+    stubFetchWithLogs(3);
+    renderContent();
+
+    expect(await screen.findByText(/表示件数\s*3件/)).toBeTruthy();
+    expect(screen.queryByTestId('audit-logs-cap-notice')).toBeNull();
+  });
+
+  it('flags the list as capped (直近100件) with a non-asserting notice when the limit is reached', async () => {
+    stubFetchWithLogs(100);
+    renderContent();
+
+    const notice = await screen.findByTestId('audit-logs-cap-notice');
+    expect(screen.getByText(/直近100件（表示上限）/)).toBeTruthy();
+    // 切り捨ては仕様明示であって「全件」を断定しない(export にも上限がある)。
+    expect(notice.textContent).toContain('直近100件まで');
+    expect(notice.textContent).toContain('CSV');
+    expect(notice.textContent).not.toContain('全件');
   });
 });
