@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260627-0735 JST
+
+- current task: implement P4b backend support for Patient-level care-team assignment persistence on new patient creation while coordinating with Claude through agmsg maker/checker review.
+- files inspected: `git status --short --untracked-files=all`, `agmsg` inbox/send via `/Users/yusuke/.agents/skills/agmsg/scripts/inbox.sh` and `send.sh`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `src/app/api/patients/route.ts`, `src/server/services/patient-service.ts`, `src/app/api/patients/route.test.ts`, `src/lib/api/org-reference.ts`, `src/lib/validations/patient.ts`, and read-only Claude `f96f686c` report-share-workspace diff.
+- files changed: `src/app/api/patients/route.ts`, `src/server/services/patient-service.ts`, `src/app/api/patients/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned report-share-workspace UI files were preserved and not staged by Codex.
+- bugs found: after the patient-level care-team UI work, new patient creation accepted four assignment fields in the schema but did not validate same-org/eligible membership or persist those Patient root assignments, leaving create-mode care-team Selects unable to save safely.
+- security risks found: reduced cross-org/ineligible assignment persistence risk by validating pharmacist IDs through `pharmacist_ids` and staff IDs through `staff_ids` with `validateOrgReferences(ctx.orgId, ...)` before duplicate lookup and before any create transaction.
+- performance issues found: none materially changed. The slice adds a bounded membership validation only when assignment IDs are provided; no schema, migration, DB data mutation, external send, frontend rendering, or new dependency was introduced.
+- validation commands: `pnpm vitest run src/app/api/patients/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm exec eslint src/app/api/patients/route.ts src/app/api/patients/route.test.ts src/server/services/patient-service.ts`; `pnpm exec prettier --check src/app/api/patients/route.ts src/app/api/patients/route.test.ts src/server/services/patient-service.ts`; `git diff --check -- src/app/api/patients/route.ts src/app/api/patients/route.test.ts src/server/services/patient-service.ts`; read-only Claude review validation `pnpm vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`.
+- validation results: patient route focused Vitest passed `1` file / `40` tests with existing `webhook.org_dispatch_failed` stderr on success-create cases; full TypeScript passed; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed. Claude independently re-ran patient route tests and full typecheck and approved. Backend reviewer subagent approved after re-running patient route test, full TypeScript, and diff-check. Read-only review of Claude `f96f686c` report-share-workspace passed focused Vitest `1` file / `13` tests but returned one medium finding about mobile CSS visual order diverging from DOM/focus/screen-reader order.
+- remaining work: commit Codex-owned P4b backend files, commit progress ledgers separately, send `agmsg` FYI, then let Claude proceed with FE create-mode care-team Select display. The all-pages UI/UX objective remains incomplete.
+- next action: grouped commits and agmsg FYI.
+
 ### 20260627-0720 JST
 
 - current task: backend-first PHI/cache hardening for `GET /api/visit-schedule-proposals/:id` while preserving Claude-owned patient edit/form/validation dirty work.

@@ -21,6 +21,27 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Patient Create Care-Team Assignment Persistence
+
+- Coordination:
+  - Drained `phos/codex`, ACKed Claude's maker/checker review mode, and took `LOCK(Codex P4b patient create care-team persistence)` for non-overlapping backend files.
+  - Reviewed Claude's `f96f686c` report-share-workspace P1 read-only and returned one medium finding about CSS visual order diverging from DOM/focus/screen-reader order on mobile.
+  - Preserved Claude-owned report-share-workspace dirty/commit work; Codex did not edit or stage report UI files.
+  - Received `APPROVE` from Claude for this P4b backend slice and `APPROVE` from a read-only backend reviewer subagent.
+- Added `POST /api/patients` validation for Patient-level `primary_pharmacist_id`, `backup_pharmacist_id`, `primary_staff_id`, and `backup_staff_id` before duplicate lookup and before any patient creation transaction.
+- Reused `validateOrgReferences` so pharmacist IDs must be same-org active pharmacist-assignable members and staff IDs must be same-org active staff-assignable members.
+- Persisted the four normalized Patient-level assignment IDs in `createPatientWithIntake`; blank strings and missing values become `null` for new patients.
+- Added regression coverage proving valid assignments are validated and persisted, and out-of-org staff assignment is rejected before duplicate lookup, transaction, or create.
+- Security risk reduced: patient creation now fail-closes cross-org or ineligible care-team assignment IDs instead of persisting unchecked Patient-level assignment references.
+- Performance issue improved: none materially changed. The slice adds a bounded membership validation only when assignment IDs are provided; no schema, migration, DB data mutation, external send, frontend rendering, or new dependency was introduced.
+- Validation passed:
+  - `pnpm vitest run src/app/api/patients/route.test.ts --reporter=dot --testTimeout=30000` passed `1` file / `40` tests; existing `webhook.org_dispatch_failed` stderr appeared on success-create cases but did not fail tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for `src/app/api/patients/route.ts`, `src/app/api/patients/route.test.ts`, and `src/server/services/patient-service.ts`.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned P4b backend files, commit progress ledgers separately, send `agmsg` FYI so Claude can proceed with FE create-mode Select display, then continue non-overlapping backend/P3 work after inbox check. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Visit Schedule Proposal Detail GET No-Store Hardening
 
 - Coordination:
