@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Inventory Forecast Patient Run-Out Backend Contract
+
+- Coordination:
+  - Drained `phos/codex` before and during the slice, and prioritized Claude's weekend-token `PATCH_REVIEW_REQUEST` before committing this work. Codex approved Claude commits `e574af3e` and noted follow-up docs commit `2c420903`.
+  - Locked the non-overlapping backend/API lane with Claude: `src/lib/analytics/inventory-forecast.ts`, its tests, `src/app/api/admin/inventory-forecast/route.ts`, its tests, and the protected GET matrix. Frontend rendering remains Claude/FE follow-up.
+  - Ran read-only medical-safety and privacy reviews. Privacy reported no blocking findings. Medical safety found one High issue and one Medium ambiguity; both were fixed before commit.
+- Added an inventory-forecast patient-card backend contract in `ed4a11f4`:
+  - `AffectedPatientCard` now carries `patientId`, `shortageDrugKeys`, `runOutDateKey`, `runOutBasis`, `urgency`, `shortageDetails[]`, and facility coverage fields.
+  - `PatientDrugShortageDetail` carries per-drug required/stock quantities, status, affected patient count, run-out basis/date, and urgency.
+  - Facility batch cards preserve `patientId: null`, aggregate earliest run-out/highest urgency, and expose `facilityPatientCount`, `shortagePatientCount`, and `dataBackedPatientCount` so FE does not imply that all labeled residents were fully evaluated.
+- Fixed patient-safety bug found in review: run-out fallback no longer uses `PrescriptionIntake.prescribed_date + days`. The route selects `PrescriptionLine.start_date`, and analytics now resolves run-out as explicit `end_date` first, then `start_date + days - 1`, otherwise `unknown`.
+- Hardened `GET /api/admin/inventory-forecast` with the sensitive no-store exported wrapper and fixed `INTERNAL_ERROR` fallback while preserving the existing `canAdmin`, `org_id`, next-week visit, stock, prescription-intake, facility-name, response-shape, DB schema/data, route catalog, UI, external send, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: patient/medication forecast responses are private no-store for success/auth/error paths, raw unexpected errors are not serialized to clients, and the protected GET matrix now covers this route.
+- Performance issue improved: none material. The added analytics is in-memory over existing bounded forecast rows and adds only `start_date`/`end_date` fields to the existing prescription line projection.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/analytics/inventory-forecast.ts src/lib/analytics/inventory-forecast.test.ts src/app/api/admin/inventory-forecast/route.ts src/app/api/admin/inventory-forecast/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` passed.
+  - `pnpm exec vitest run src/lib/analytics/inventory-forecast.test.ts src/app/api/admin/inventory-forecast/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `393` tests after adding start-date and facility-coverage regressions.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx' --reporter=dot --testTimeout=30000` passed `1` file / `3` tests.
+  - Scoped ESLint passed for the five implementation/test files.
+  - Scoped Prettier check passed for the five implementation/test files.
+  - Scoped diff whitespace check passed for the five implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Claude weekend-token interrupt review check passed `3` files / `29` tests.
+- Commit status: implementation landed as `ed4a11f4`; this entry plus FEATURE_QUEUE/Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `ed4a11f4` plus the state commit, then continue after inbox is clear.
+
 ### 2026-06-27 JST - Day Board Control-Flow Safe No-Store Fallback
 
 - Coordination:
