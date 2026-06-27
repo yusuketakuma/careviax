@@ -12076,6 +12076,24 @@ Next loop:
 - Remaining:
   - Commit this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST` for `3abf592d`. The broader API no-store sweep remains incomplete.
 
+### Patient Visit Brief GET — Protected Matrix No-Store Coverage
+
+- Coordination:
+  - Confirmed `GET /api/patients/[id]/visit-brief` already has a route-local `withSensitiveNoStore()` wrapper and sanitized `internalError()` fallback, so no route implementation change was needed.
+- Bugs found:
+  - The protected GET matrix did not assert no-store for `patients/[id]/visit-brief GET`, despite the route serving patient visit brief data.
+- Implemented by Codex:
+  - Added `patients/[id]/visit-brief GET` to the protected GET no-store matrix for 401, 403, and 200 cases.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/__tests__/protected-get-routes.test.ts`: passed, unchanged.
+  - `pnpm exec vitest run src/app/api/patients/[id]/visit-brief/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `321` tests.
+  - `pnpm exec eslint src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `git diff --check -- src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - Full type gates were not rerun for this matrix-only test coverage change; full `tsc` and `typecheck:no-unused` had passed in the immediately preceding handoff slice.
+- Remaining:
+  - Commit the matrix coverage change and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`. The broader API no-store sweep remains incomplete.
+
 ### Medication Profiles GET — Sensitive List No-Store
 
 - Coordination:

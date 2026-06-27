@@ -6912,3 +6912,16 @@ Backup directory:
 - validation results: focused handoff + protected GET matrix passed `2` files / `333` tests. Scoped ESLint, Prettier check, and diff whitespace check passed. Full `tsc --noEmit` passed. Full `typecheck:no-unused` passed.
 - remaining work: commit this progress ledger update separately. Send Claude a `PATCH_REVIEW_REQUEST` for `3abf592d` and request that future shared-worktree commits stage only owned paths. The broader API sensitive-list/detail no-store sweep remains incomplete.
 - next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit, then send the handoff API patch review request referencing `3abf592d`.
+
+### 20260627-1504 JST
+
+- current task: add protected GET no-store matrix coverage for existing `GET /api/patients/[id]/visit-brief` no-store wrapper.
+- files inspected: agmsg inbox for `phos/codex`, `git status --short --untracked-files=all`, `src/app/api/patients/[id]/visit-brief/route.ts`, `src/app/api/patients/[id]/visit-brief/route.test.ts`, and `src/app/api/__tests__/protected-get-routes.test.ts`.
+- files changed: `src/app/api/__tests__/protected-get-routes.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `GET /api/patients/[id]/visit-brief` already had a route-local `withSensitiveNoStore()` wrapper and sanitized `internalError()` fallback, but the protected GET auth matrix did not assert no-store for its 401, 403, and 200 responses.
+- security risks found: reduced regression risk for patient visit brief cache headers by adding matrix coverage. No route implementation, auth, permission, patient assignment filtering, service query, DB mutation, schema, migration, external send, or destructive operation changed.
+- performance issues found: no runtime behavior changed.
+- validation commands: `pnpm exec prettier --write src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec vitest run src/app/api/patients/[id]/visit-brief/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/__tests__/protected-get-routes.test.ts`; `pnpm exec prettier --check src/app/api/__tests__/protected-get-routes.test.ts`; `git diff --check -- src/app/api/__tests__/protected-get-routes.test.ts`.
+- validation results: focused patient visit brief + protected GET matrix passed `2` files / `321` tests. Scoped ESLint, Prettier check, and diff whitespace check passed. Full type gates were not rerun for this matrix-only test coverage change; full `tsc` and `typecheck:no-unused` had passed in the immediately preceding handoff slice.
+- remaining work: commit the matrix coverage change, then commit this progress ledger update separately. Send Claude a `PATCH_REVIEW_REQUEST` with validation results. The broader API sensitive-list/detail no-store sweep remains incomplete.
+- next action: stage only `src/app/api/__tests__/protected-get-routes.test.ts` for `test(api): assert no-store patient visit brief`, then stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
