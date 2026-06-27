@@ -1,7 +1,9 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { forbiddenResponse, success, validationError } from '@/lib/api/response';
+import { forbiddenResponse, internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import {
@@ -30,7 +32,7 @@ function dedupePharmacistsByUserId<T extends { id: string }>(items: T[]) {
   return Array.from(uniqueItems.values());
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const rawSiteId = searchParams.get('site_id');
@@ -183,6 +185,15 @@ export const GET = withAuthContext(
     message: '薬剤師一覧の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext(
   async (req, ctx) => {

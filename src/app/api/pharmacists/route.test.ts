@@ -96,6 +96,11 @@ function createGetRequest(query = '') {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/pharmacists GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -148,6 +153,7 @@ describe('/api/pharmacists GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'AUTH_FORBIDDEN',
     });
@@ -178,6 +184,7 @@ describe('/api/pharmacists GET', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(400);
+      expectNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: 'クエリパラメータが不正です',
@@ -209,6 +216,7 @@ describe('/api/pharmacists GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(membershipFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -243,6 +251,7 @@ describe('/api/pharmacists GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(visitScheduleGroupByMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -340,11 +349,26 @@ describe('/api/pharmacists GET', () => {
     const response = await GET(createGetRequest('?include_collaborators=true'));
 
     if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectNoStore(response);
     const payload = await response.json();
     expect(payload).toMatchObject({
       data: [expect.objectContaining({ id: 'user_1', name: '重複 ユーザー' })],
     });
     expect(payload.data).toHaveLength(1);
+  });
+
+  it('returns a sanitized no-store 500 when pharmacist listing fails unexpectedly', async () => {
+    membershipFindManyMock.mockRejectedValueOnce(new Error('raw pharmacist staff secret'));
+
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw pharmacist staff secret');
   });
 });
 
