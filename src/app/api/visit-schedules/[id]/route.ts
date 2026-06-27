@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import {
@@ -26,7 +27,9 @@ import {
   notFound,
   forbiddenResponse,
   conflict,
+  internalError,
 } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { updateVisitScheduleSchema, type ScheduleStatus } from '@/lib/validations/visit-schedule';
 import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts';
@@ -87,7 +90,7 @@ async function withSerializableVisitSchedulePatchTransaction<T>(
   throw new VisitSchedulePatchRetryLimitError();
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問予定の閲覧権限がありません',
@@ -125,6 +128,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     patient_id: careCase.patient_id,
     cycle_id: schedule.cycle_id,
   });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

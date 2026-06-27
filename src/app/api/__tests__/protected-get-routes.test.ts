@@ -1248,6 +1248,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||
+        route.name === 'visit-schedules/[id] GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||
@@ -1311,6 +1312,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'management-plans GET' ||
         route.name === 'management-plans/[id] GET' ||
         route.name === 'visit-records/[id] GET' ||
+        route.name === 'visit-schedules/[id] GET' ||
         route.name === 'visit-schedules/day-board GET' ||
         route.name === 'visits/today-preparation GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||

@@ -248,6 +248,8 @@ describe('/api/visit-schedules/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       id: 'schedule_1',
       case_id: 'case_1',
@@ -263,6 +265,8 @@ describe('/api/visit-schedules/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '訪問予定IDが不正です',
@@ -294,7 +298,33 @@ describe('/api/visit-schedules/[id] GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(careCaseFindFirstMock).toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when schedule detail lookup fails unexpectedly', async () => {
+    visitScheduleFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 東京都千代田区1-1-1 訪問予定 raw schedule detail'),
+    );
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('東京都千代田区1-1-1');
+    expect(JSON.stringify(body)).not.toContain('raw schedule detail');
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
   });
 
   it('allows an org-wide pharmacist to patch a schedule regardless of assignment', async () => {
