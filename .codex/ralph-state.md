@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0347 JST
+
+- current task: report share workspace created-report patient link helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, `docs/ui-ux-design-guidelines.md`, gbrain `code_blast` / `code_callers` for `CreatedReportsSection` and `buildPatientHref` (not resolved / graph not built), `src/lib/patient/navigation.ts`, `src/lib/patient/navigation.test.ts`, `src/app/(dashboard)/reports/report-share-workspace.tsx`, and `src/app/(dashboard)/reports/report-share-workspace.test.tsx`.
+- files changed: `src/app/(dashboard)/reports/report-share-workspace.tsx`, `src/app/(dashboard)/reports/report-share-workspace.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: no user-visible behavior bug was changed. The maintainability/safety gap was that the created-report patient link still hand-built `/patients/:id` inline while the canonical `buildPatientHref` helper already carries the patient route path-segment contract.
+- security risks found: reduced route-construction drift by routing created-report patient links through `buildPatientHref` and adding test coverage that the component delegates to the helper return value while preserving hostile-id encoding and unassigned-patient text rendering. No layout, visual style, API shape, auth, permission, DB schema/data, migration, external send, PHI logging, push/deploy, or destructive behavior changed.
+- performance issues found: none. This is a pure link-construction refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy work.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`; scoped ESLint for report share workspace/test plus patient navigation/test; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused report share workspace Vitest passed `1` file / `14` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `715d3fe4` plus the state commit. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit, then send Claude the review request and continue after inbox is clear.
+
 ### 20260628-0340 JST
 
 - current task: visit record PDF href path-segment hardening for first-visit document URLs and the visit-record detail PDF link.

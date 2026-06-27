@@ -48,6 +48,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation landed as `e0f4a79f`; this entry plus Ralph updates are the separate progress-ledger update.
 - Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `e0f4a79f` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Report Share Created Patient Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `report-share-created-patient-href` lock notice, and continued after the inbox stayed clear.
+  - Read `docs/ui-ux-design-guidelines.md` because the changed file is a dashboard UI component, but kept this to link-construction only with no visual/layout change.
+- Refactored created-report patient links in `715d3fe4`:
+  - Imported and reused `buildPatientHref` in `src/app/(dashboard)/reports/report-share-workspace.tsx`.
+  - Replaced the remaining inline `/patients/${encodeURIComponent(patient_id)}` created-report link.
+  - Added an actual-backed spy test proving the component uses the shared helper return value.
+  - Preserved existing hostile patient id encoding coverage and unassigned-patient text rendering.
+  - Preserved report workspace API shape, layout, visual styles, auth, DB schema/data, migrations, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: created-report patient links now share the canonical patient route helper and path-segment dot-segment contract instead of carrying a local inline route builder.
+- Performance issue improved: none. This is a pure link-construction refactor.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/report-share-workspace.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'` passed unchanged.
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000` passed `1` file / `14` tests.
+  - Scoped ESLint passed for report share workspace/test plus patient navigation/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/link slice.
+- Commit status: implementation landed as `715d3fe4`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `715d3fe4` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Visit Record PDF Href Path-Segment Hardening
 
 - Coordination:
