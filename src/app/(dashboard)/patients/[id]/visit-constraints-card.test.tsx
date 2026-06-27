@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -21,6 +22,11 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 import { VisitConstraintsCard } from './visit-constraints-card';
 
@@ -192,6 +198,44 @@ describe('VisitConstraintsCard', () => {
       geocode_status: 'verified',
       geocode_source: 'manual',
       geocode_accuracy: 'rooftop',
+    });
+  });
+
+  it('routes visit constraint reads and writes through the shared patient API path helper', async () => {
+    const patientId = 'patient_1';
+    vi.mocked(buildPatientApiPath)
+      .mockReturnValueOnce('/api/patients/__helper_patient_1__/visit-constraints')
+      .mockReturnValueOnce('/api/patients/__helper_patient_1__/visit-constraints');
+    const { mutationConfigs, queryConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<VisitConstraintsCard patientId={patientId} orgId="org_1" />);
+
+    expect(queryConfigs[0]?.queryKey).toEqual(['visit-constraints', 'org_1', patientId]);
+    await queryConfigs[0]?.queryFn?.();
+    await mutationConfigs[0]?.mutationFn?.();
+
+    expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/visit-constraints');
+    expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId, '/visit-constraints');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/patients/__helper_patient_1__/visit-constraints',
+      {
+        headers: buildOrgHeaders('org_1'),
+      },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/patients/__helper_patient_1__/visit-constraints',
+      {
+        method: 'PUT',
+        headers: buildOrgJsonHeaders('org_1'),
+        body: expect.any(String),
+      },
+    );
+    expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}/visit-constraints`, {
+      headers: buildOrgHeaders('org_1'),
     });
   });
 
