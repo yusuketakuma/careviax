@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0820 JST
+
+- current task: patient medication calendar URL boundary hardening and print-header privacy fix.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx`, `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.render.test.tsx`, `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts`, `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, and `src/lib/http/path-segment.test.ts`.
+- files changed: `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx`, `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.render.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `MedicationCalendarContent` still interpolated raw `patientId` into the current medication profile query and the patient-specific PDF path. Privacy review also found the raw route `patientId` was rendered in the print header, exposing a route-derived identifier in printed PHI context.
+- security risks found: reduced patient URL/query confusion risk by using `URLSearchParams` for the medication profile `patient_id` query and `buildPatientApiPath(patientId, '/medication-calendar/pdf')` for the PDF path. Removed raw `patientId` from the print header and added hostile-id coverage proving it is not rendered in DOM text. Existing raw patient id query-key/component context, org header behavior, month navigation, print/PDF actions, empty/error/loading states, schedule calculation, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL/query construction and print-header privacy refactor with no new DB reads, network calls beyond existing fetch/PDF behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.render.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.render.test.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review and re-review.
+- validation results: Prettier write passed. Focused medication calendar content + patient API/path-segment Vitest passed `4` files / `21` tests. Full TypeScript, `typecheck:no-unused`, format check, lint, and medical safety review passed. Privacy review initially failed on raw `patientId` print-header exposure; after removing it and adding hostile-id DOM non-exposure coverage, privacy re-review passed.
+- remaining work: state commit is pending for implementation commit `516e5702`, then send Claude a `PATCH_REVIEW_REQUEST`. Claude's conditions helper convergence review remains pending. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0812 JST
 
 - current task: patient MCS page backHref helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure href-construction helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/mcs/page.tsx' 'src/app/(dashboard)/patients/[id]/mcs/page.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/mcs/page.test.tsx' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
 - validation results: Prettier write passed. Focused MCS page + patient navigation Vitest passed `2` files / `7` tests. Full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
-- remaining work: state commit is pending for implementation commit `7779d2d1`, then send Claude a `PATCH_REVIEW_REQUEST`. Claude's conditions helper convergence review remains pending. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+- remaining work: implementation commit `7779d2d1` and state commit `83f922e5` are complete; Claude approved the slice. Claude's conditions helper convergence review remains pending. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: monitor agmsg for Claude's conditions review result while continuing non-overlapping backend/API hardening.
 
 ### 20260628-0806 JST
 
