@@ -201,6 +201,7 @@ import { GET as adminExternalProfessionalCommunicationsGet } from '../admin/exte
 import { GET as adminFacilitiesGet } from '../admin/facilities/route';
 import { GET as adminFacilityGet } from '../admin/facilities/[id]/route';
 import { GET as adminFacilityPatientsGet } from '../admin/facilities/[id]/patients/route';
+import { GET as adminInventoryForecastGet } from '../admin/inventory-forecast/route';
 import { GET as billingCandidatesGet } from '../billing-candidates/route';
 import { GET as billingDocumentPdfGet } from '../billing-candidates/[id]/documents/pdf/route';
 import { GET as billingCandidatesExportGet } from '../billing-candidates/export/route';
@@ -453,6 +454,14 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'facility_1' }) },
+      ),
+  },
+  {
+    name: 'admin/inventory-forecast GET',
+    handler: () =>
+      adminInventoryForecastGet(
+        createRequest('http://localhost/api/admin/inventory-forecast', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
       ),
   },
   {
@@ -1969,6 +1978,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'admin/facilities GET' ||
         route.name === 'admin/facilities/[id] GET' ||
         route.name === 'admin/facilities/[id]/patients GET' ||
+        route.name === 'admin/inventory-forecast GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'prescription-intakes/triage GET' ||
@@ -2098,6 +2108,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'admin/facilities GET' ||
         route.name === 'admin/facilities/[id] GET' ||
         route.name === 'admin/facilities/[id]/patients GET' ||
+        route.name === 'admin/inventory-forecast GET' ||
         route.name === 'prescription-intakes GET' ||
         route.name === 'prescription-intakes/[id] GET' ||
         route.name === 'prescription-intakes/triage GET' ||
@@ -2228,6 +2239,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'admin/facilities GET' ||
         route.name === 'admin/facilities/[id] GET' ||
         route.name === 'admin/facilities/[id]/patients GET' ||
+        route.name === 'admin/inventory-forecast GET' ||
         route.name === 'billing-candidates/[id]/documents/pdf GET' ||
         route.name === 'business-holidays GET' ||
         route.name === 'prescription-intakes/triage GET' ||

@@ -1,5 +1,7 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { success } from '@/lib/api/response';
+import { internalError, success } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import {
   buildInventoryForecast,
@@ -15,7 +17,7 @@ import {
  * 「来週必要になりそうな薬」と「影響する患者さん」を返す BFF。
  */
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (_req, ctx) => {
     const week = nextWeekUtcRange(new Date());
 
@@ -95,6 +97,8 @@ export const GET = withAuthContext(
                   days: true,
                   quantity: true,
                   unit: true,
+                  start_date: true,
+                  end_date: true,
                 },
               },
             },
@@ -125,6 +129,8 @@ export const GET = withAuthContext(
         days: line.days,
         quantity: line.quantity,
         unit: line.unit,
+        startDate: line.start_date,
+        endDate: line.end_date,
       })),
     }));
 
@@ -152,3 +158,12 @@ export const GET = withAuthContext(
     message: '在庫予測の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

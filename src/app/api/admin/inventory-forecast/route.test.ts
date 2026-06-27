@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { visitScheduleFindManyMock, drugStockFindManyMock, intakeFindManyMock, facilityFindManyMock } =
-  vi.hoisted(() => ({
-    visitScheduleFindManyMock: vi.fn(),
-    drugStockFindManyMock: vi.fn(),
-    intakeFindManyMock: vi.fn(),
-    facilityFindManyMock: vi.fn(),
-  }));
+const {
+  visitScheduleFindManyMock,
+  drugStockFindManyMock,
+  intakeFindManyMock,
+  facilityFindManyMock,
+} = vi.hoisted(() => ({
+  visitScheduleFindManyMock: vi.fn(),
+  drugStockFindManyMock: vi.fn(),
+  intakeFindManyMock: vi.fn(),
+  facilityFindManyMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (
@@ -44,6 +48,11 @@ function visitRow(overrides: Record<string, unknown> = {}) {
     facility_batch: null,
     ...overrides,
   };
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/admin/inventory-forecast', () => {
@@ -86,6 +95,8 @@ describe('/api/admin/inventory-forecast', () => {
             days: 28,
             quantity: 28,
             unit: '錠',
+            start_date: new Date('2026-06-08T00:00:00.000Z'),
+            end_date: new Date('2026-06-16T00:00:00.000Z'),
           },
         ],
       },
@@ -101,6 +112,8 @@ describe('/api/admin/inventory-forecast', () => {
             days: 28,
             quantity: 28,
             unit: '錠',
+            start_date: new Date('2026-06-10T00:00:00.000Z'),
+            end_date: null,
           },
         ],
       },
@@ -121,6 +134,7 @@ describe('/api/admin/inventory-forecast', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toEqual({
       data: {
         week: { start_date: '2026-06-15', end_date: '2026-06-21' },
@@ -145,15 +159,57 @@ describe('/api/admin/inventory-forecast', () => {
         patients: [
           {
             key: 'patient:pt_tanaka',
+            patientId: 'pt_tanaka',
             label: '田中 一郎',
             firstVisitDateKey: '2026-06-15',
             isFacilityBatch: false,
+            facilityPatientCount: null,
+            shortagePatientCount: 1,
+            dataBackedPatientCount: 1,
+            shortageDrugKeys: ['アムロジピン'],
+            runOutDateKey: '2026-06-16',
+            runOutBasis: 'line_end_date',
+            urgency: 'warning',
+            shortageDetails: [
+              {
+                drugKey: 'アムロジピン',
+                requiredQty: 7,
+                stockQty: 4,
+                unit: '錠',
+                status: 'order_candidate',
+                affectedPatientCount: 1,
+                runOutDateKey: '2026-06-16',
+                runOutBasis: 'line_end_date',
+                urgency: 'warning',
+              },
+            ],
           },
           {
             key: 'facility-batch:batch_a',
+            patientId: null,
             label: '施設A 5名',
             firstVisitDateKey: '2026-06-18',
             isFacilityBatch: true,
+            facilityPatientCount: 5,
+            shortagePatientCount: 1,
+            dataBackedPatientCount: 1,
+            shortageDrugKeys: ['トラセミド'],
+            runOutDateKey: '2026-07-07',
+            runOutBasis: 'line_start_date_plus_days',
+            urgency: 'normal',
+            shortageDetails: [
+              {
+                drugKey: 'トラセミド',
+                requiredQty: 7,
+                stockQty: 3,
+                unit: '錠',
+                status: 'order_required',
+                affectedPatientCount: 1,
+                runOutDateKey: '2026-07-07',
+                runOutBasis: 'line_start_date_plus_days',
+                urgency: 'normal',
+              },
+            ],
           },
         ],
       },
@@ -179,6 +235,14 @@ describe('/api/admin/inventory-forecast', () => {
           org_id: 'org_1',
           cycle: { case_id: { in: ['case_tanaka', 'case_res1'] } },
         }),
+        select: expect.objectContaining({
+          lines: {
+            select: expect.objectContaining({
+              start_date: true,
+              end_date: true,
+            }),
+          },
+        }),
       }),
     );
     // 施設名はバッチの facility_id から org スコープで解決していること
@@ -198,6 +262,7 @@ describe('/api/admin/inventory-forecast', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toEqual({
       data: {
         week: { start_date: '2026-06-15', end_date: '2026-06-21' },
@@ -207,5 +272,25 @@ describe('/api/admin/inventory-forecast', () => {
     });
     expect(intakeFindManyMock).not.toHaveBeenCalled();
     expect(facilityFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 envelope without leaking raw forecast errors', async () => {
+    visitScheduleFindManyMock.mockRejectedValueOnce(
+      new Error('raw patient inventory forecast secret'),
+    );
+    drugStockFindManyMock.mockResolvedValue([]);
+
+    const response = (await routeGET(
+      new NextRequest('http://localhost/api/admin/inventory-forecast'),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const payload = await response.json();
+    expect(JSON.stringify(payload)).not.toContain('raw patient inventory forecast secret');
+    expect(payload).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
   });
 });

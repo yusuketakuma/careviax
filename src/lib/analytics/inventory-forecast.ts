@@ -29,6 +29,8 @@ export type ForecastLineInput = {
   days: number;
   quantity: number | null;
   unit: string | null;
+  startDate: Date | null;
+  endDate: Date | null;
 };
 
 export type ForecastIntakeInput = {
@@ -69,14 +71,49 @@ export type DrugForecastRow = {
   status: DrugForecastStatus;
 };
 
+export type InventoryForecastRunOutBasis =
+  | 'line_end_date'
+  | 'line_start_date_plus_days'
+  | 'unknown';
+
+export type InventoryForecastUrgency = 'critical' | 'warning' | 'normal' | 'unknown';
+
+export type PatientDrugShortageDetail = {
+  drugKey: string;
+  requiredQty: number;
+  stockQty: number;
+  unit: string;
+  status: Exclude<DrugForecastStatus, 'sufficient'>;
+  affectedPatientCount: number;
+  runOutDateKey: string | null;
+  runOutBasis: InventoryForecastRunOutBasis;
+  urgency: InventoryForecastUrgency;
+};
+
 export type AffectedPatientCard = {
   /** patient:<id> または facility-batch:<id> */
   key: string;
+  /** 施設バッチ集約の場合は null */
+  patientId: string | null;
   /** 「田中 一郎」「施設A 5名」など(敬称はクライアント側で付与) */
   label: string;
   /** 最初の来週訪問日(YYYY-MM-DD) */
   firstVisitDateKey: string;
   isFacilityBatch: boolean;
+  /** 施設バッチ全体の人数。個人カードは null。 */
+  facilityPatientCount: number | null;
+  /** このカードで不足薬根拠がある患者数。施設バッチでは全体人数と異なることがある。 */
+  shortagePatientCount: number;
+  /** 直近処方明細を取得でき、このカードの不足判定に使った患者数。 */
+  dataBackedPatientCount: number;
+  /** 不足側の薬剤ベース名。施設バッチでは対象患者の不足薬を集約する。 */
+  shortageDrugKeys: string[];
+  /** 対象不足薬のうち最も早い服用終了見込み日。施設バッチでは最短値。 */
+  runOutDateKey: string | null;
+  runOutBasis: InventoryForecastRunOutBasis;
+  /** 最短服用終了見込み日と初回訪問日から導く表示用緊急度。 */
+  urgency: InventoryForecastUrgency;
+  shortageDetails: PatientDrugShortageDetail[];
 };
 
 export type InventoryForecastSummary = {
@@ -96,6 +133,51 @@ export type InventoryForecastDecisionSummary = {
 export function coveragePercent(row: DrugForecastRow): number {
   if (row.requiredQty <= 0) return 100;
   return Math.round((row.stockQty / row.requiredQty) * 100);
+}
+
+function isValidDate(value: Date | null | undefined): value is Date {
+  return value instanceof Date && !Number.isNaN(value.getTime());
+}
+
+function compareNullableDateKeys(left: string | null, right: string | null): number {
+  if (left == null && right == null) return 0;
+  if (left == null) return 1;
+  if (right == null) return -1;
+  return left.localeCompare(right);
+}
+
+export function resolveLineRunOut(input: {
+  line: Pick<ForecastLineInput, 'days' | 'startDate' | 'endDate'>;
+}): {
+  runOutDateKey: string | null;
+  basis: InventoryForecastRunOutBasis;
+} {
+  if (isValidDate(input.line.endDate)) {
+    return { runOutDateKey: formatUtcDateKey(input.line.endDate), basis: 'line_end_date' };
+  }
+
+  if (input.line.days > 0 && isValidDate(input.line.startDate)) {
+    const startDateKey = formatUtcDateKey(input.line.startDate);
+    const runOutDate = addUtcDays(utcDateFromLocalKey(startDateKey), input.line.days - 1);
+    return {
+      runOutDateKey: formatUtcDateKey(runOutDate),
+      basis: 'line_start_date_plus_days',
+    };
+  }
+
+  return { runOutDateKey: null, basis: 'unknown' };
+}
+
+export function resolveInventoryForecastUrgency(input: {
+  runOutDateKey: string | null;
+  firstVisitDateKey: string;
+}): InventoryForecastUrgency {
+  if (input.runOutDateKey == null) return 'unknown';
+  if (input.runOutDateKey <= input.firstVisitDateKey) return 'critical';
+  const warningUntil = formatUtcDateKey(
+    addUtcDays(utcDateFromLocalKey(input.firstVisitDateKey), FORECAST_DAYS),
+  );
+  return input.runOutDateKey <= warningUntil ? 'warning' : 'normal';
 }
 
 export function summarizeInventoryForecast(args: {
@@ -194,10 +276,10 @@ export function estimateDailyDose(line: ForecastLineInput): number {
   return (doseValue > 0 ? doseValue : 1) * frequencyPerDay(line.frequency);
 }
 
-/** 患者ごとに最新(処方日 → 取込日時の降順)の処方取込 1 件の明細を選ぶ。 */
-export function selectLatestLinesByPatient(
+/** 患者ごとに最新(処方日 → 取込日時の降順)の処方取込 1 件を選ぶ。 */
+export function selectLatestIntakeByPatient(
   intakes: ForecastIntakeInput[],
-): Map<string, ForecastLineInput[]> {
+): Map<string, ForecastIntakeInput> {
   const latestByPatient = new Map<string, ForecastIntakeInput>();
   for (const intake of intakes) {
     const current = latestByPatient.get(intake.patientId);
@@ -210,6 +292,14 @@ export function selectLatestLinesByPatient(
       latestByPatient.set(intake.patientId, intake);
     }
   }
+  return latestByPatient;
+}
+
+/** 患者ごとに最新(処方日 → 取込日時の降順)の処方取込 1 件の明細を選ぶ。 */
+export function selectLatestLinesByPatient(
+  intakes: ForecastIntakeInput[],
+): Map<string, ForecastLineInput[]> {
+  const latestByPatient = selectLatestIntakeByPatient(intakes);
   return new Map(
     [...latestByPatient.entries()].map(([patientId, intake]) => [patientId, intake.lines]),
   );
@@ -227,6 +317,93 @@ export function classifyStockStatus(requiredQty: number, stockQty: number): Drug
   return 'sufficient';
 }
 
+function shortageStatusPriority(status: Exclude<DrugForecastStatus, 'sufficient'>): number {
+  return status === 'order_required' ? 0 : 1;
+}
+
+function urgencyPriority(urgency: InventoryForecastUrgency): number {
+  switch (urgency) {
+    case 'critical':
+      return 0;
+    case 'warning':
+      return 1;
+    case 'normal':
+      return 2;
+    case 'unknown':
+      return 3;
+  }
+}
+
+function sortShortageDetails(details: PatientDrugShortageDetail[]): PatientDrugShortageDetail[] {
+  return [...details].sort(
+    (left, right) =>
+      shortageStatusPriority(left.status) - shortageStatusPriority(right.status) ||
+      urgencyPriority(left.urgency) - urgencyPriority(right.urgency) ||
+      compareNullableDateKeys(left.runOutDateKey, right.runOutDateKey) ||
+      left.drugKey.localeCompare(right.drugKey, 'ja'),
+  );
+}
+
+function summarizeShortageDetails(
+  details: PatientDrugShortageDetail[],
+): Pick<
+  AffectedPatientCard,
+  'shortageDrugKeys' | 'runOutDateKey' | 'runOutBasis' | 'urgency' | 'shortageDetails'
+> {
+  const sortedDetails = sortShortageDetails(details);
+  const earliestRunOut =
+    [...sortedDetails]
+      .filter((detail) => detail.runOutDateKey != null)
+      .sort((left, right) => compareNullableDateKeys(left.runOutDateKey, right.runOutDateKey))[0] ??
+    null;
+  const highestUrgency = [...sortedDetails].sort(
+    (left, right) => urgencyPriority(left.urgency) - urgencyPriority(right.urgency),
+  )[0];
+
+  return {
+    shortageDrugKeys: sortedDetails.map((detail) => detail.drugKey),
+    runOutDateKey: earliestRunOut?.runOutDateKey ?? null,
+    runOutBasis: earliestRunOut?.runOutBasis ?? 'unknown',
+    urgency: highestUrgency?.urgency ?? 'unknown',
+    shortageDetails: sortedDetails,
+  };
+}
+
+function mergeShortageDetails(
+  existing: PatientDrugShortageDetail[],
+  incoming: PatientDrugShortageDetail[],
+): PatientDrugShortageDetail[] {
+  const detailsByDrug = new Map<string, PatientDrugShortageDetail>();
+
+  for (const detail of [...existing, ...incoming]) {
+    const current = detailsByDrug.get(detail.drugKey);
+    if (!current) {
+      detailsByDrug.set(detail.drugKey, { ...detail });
+      continue;
+    }
+
+    const useIncomingRunOut =
+      compareNullableDateKeys(detail.runOutDateKey, current.runOutDateKey) < 0;
+    detailsByDrug.set(detail.drugKey, {
+      ...current,
+      requiredQty: current.requiredQty + detail.requiredQty,
+      affectedPatientCount: current.affectedPatientCount + detail.affectedPatientCount,
+      status:
+        shortageStatusPriority(detail.status) < shortageStatusPriority(current.status)
+          ? detail.status
+          : current.status,
+      runOutDateKey: useIncomingRunOut ? detail.runOutDateKey : current.runOutDateKey,
+      runOutBasis: useIncomingRunOut ? detail.runOutBasis : current.runOutBasis,
+      urgency:
+        urgencyPriority(detail.urgency) < urgencyPriority(current.urgency)
+          ? detail.urgency
+          : current.urgency,
+    });
+  }
+
+  return sortShortageDetails([...detailsByDrug.values()]);
+}
+
 /**
  * 来週の訪問予定・直近処方・在庫から、薬剤別見込みと影響患者カードを作る。
  * - 左表: 在庫登録(is_stocked)がある薬剤のうち、来週の必要見込み > 0 のもの
@@ -238,7 +415,10 @@ export function buildInventoryForecast(input: {
   intakes: ForecastIntakeInput[];
   stocks: ForecastStockInput[];
 }): InventoryForecastSummary {
-  const linesByPatient = selectLatestLinesByPatient(input.intakes);
+  const latestIntakeByPatient = selectLatestIntakeByPatient(input.intakes);
+  const linesByPatient = new Map(
+    [...latestIntakeByPatient.entries()].map(([patientId, intake]) => [patientId, intake.lines]),
+  );
 
   // 来週訪問のある患者(重複訪問は最初の日付のみ保持)
   const visitingPatients = new Map<string, ForecastVisitInput>();
@@ -300,24 +480,109 @@ export function buildInventoryForecast(input: {
   const shortageDrugKeys = new Set(
     drugs.filter((drug) => drug.status !== 'sufficient').map((drug) => drug.drugKey),
   );
+  const shortageRowsByDrug = new Map(
+    drugs
+      .filter(
+        (drug): drug is DrugForecastRow & { status: Exclude<DrugForecastStatus, 'sufficient'> } =>
+          drug.status !== 'sufficient',
+      )
+      .map((drug) => [drug.drugKey, drug]),
+  );
 
   const usesShortageDrug = (patientId: string): boolean =>
     (linesByPatient.get(patientId) ?? []).some((line) =>
       shortageDrugKeys.has(drugBaseName(line.drugName)),
     );
 
+  const shortageDetailsForPatient = (
+    patientId: string,
+    firstVisitDateKey: string,
+  ): PatientDrugShortageDetail[] => {
+    const intake = latestIntakeByPatient.get(patientId);
+    if (!intake) return [];
+
+    const detailAccumulators = new Map<
+      string,
+      Omit<PatientDrugShortageDetail, 'requiredQty'> & { requiredQty: number }
+    >();
+
+    for (const line of intake.lines) {
+      const key = drugBaseName(line.drugName);
+      const shortageRow = shortageRowsByDrug.get(key);
+      if (!shortageRow) continue;
+
+      const dailyQty = estimateDailyDose(line);
+      const runOut = resolveLineRunOut({ line });
+      const current = detailAccumulators.get(key);
+      const useIncomingRunOut =
+        current == null || compareNullableDateKeys(runOut.runOutDateKey, current.runOutDateKey) < 0;
+      const baseDetail = current ?? {
+        drugKey: key,
+        requiredQty: 0,
+        stockQty: shortageRow.stockQty,
+        unit: line.unit ?? shortageRow.unit,
+        status: shortageRow.status,
+        affectedPatientCount: 1,
+        runOutDateKey: runOut.runOutDateKey,
+        runOutBasis: runOut.basis,
+        urgency: resolveInventoryForecastUrgency({
+          runOutDateKey: runOut.runOutDateKey,
+          firstVisitDateKey,
+        }),
+      };
+
+      detailAccumulators.set(key, {
+        ...baseDetail,
+        requiredQty: baseDetail.requiredQty + dailyQty * FORECAST_DAYS,
+        runOutDateKey: useIncomingRunOut ? runOut.runOutDateKey : baseDetail.runOutDateKey,
+        runOutBasis: useIncomingRunOut ? runOut.basis : baseDetail.runOutBasis,
+        urgency: useIncomingRunOut
+          ? resolveInventoryForecastUrgency({
+              runOutDateKey: runOut.runOutDateKey,
+              firstVisitDateKey,
+            })
+          : baseDetail.urgency,
+      });
+    }
+
+    return sortShortageDetails(
+      [...detailAccumulators.values()].map((detail) => ({
+        ...detail,
+        requiredQty: Math.ceil(detail.requiredQty),
+      })),
+    );
+  };
+
   // 影響する患者さん: 個人はそのまま、施設バッチは 1 カードに集約
   const cardsByKey = new Map<string, AffectedPatientCard>();
   for (const visit of visitingPatients.values()) {
     if (!usesShortageDrug(visit.patientId)) continue;
+    const firstVisitDateKey = formatUtcDateKey(visit.scheduledDate);
+    const shortageDetails = shortageDetailsForPatient(visit.patientId, firstVisitDateKey);
+    const shortageSummary = summarizeShortageDetails(shortageDetails);
     if (visit.facilityBatch) {
       const key = `facility-batch:${visit.facilityBatch.id}`;
-      if (!cardsByKey.has(key)) {
+      const current = cardsByKey.get(key);
+      if (!current) {
         cardsByKey.set(key, {
           key,
+          patientId: null,
           label: `${visit.facilityBatch.facilityName} ${visit.facilityBatch.patientCount}名`,
-          firstVisitDateKey: formatUtcDateKey(visit.scheduledDate),
+          firstVisitDateKey,
           isFacilityBatch: true,
+          facilityPatientCount: visit.facilityBatch.patientCount,
+          shortagePatientCount: shortageDetails.length > 0 ? 1 : 0,
+          dataBackedPatientCount: shortageDetails.length > 0 ? 1 : 0,
+          ...shortageSummary,
+        });
+      } else {
+        const mergedDetails = mergeShortageDetails(current.shortageDetails, shortageDetails);
+        cardsByKey.set(key, {
+          ...current,
+          shortagePatientCount: current.shortagePatientCount + (shortageDetails.length > 0 ? 1 : 0),
+          dataBackedPatientCount:
+            current.dataBackedPatientCount + (shortageDetails.length > 0 ? 1 : 0),
+          ...summarizeShortageDetails(mergedDetails),
         });
       }
       continue;
@@ -326,9 +591,14 @@ export function buildInventoryForecast(input: {
     if (!cardsByKey.has(key)) {
       cardsByKey.set(key, {
         key,
+        patientId: visit.patientId,
         label: visit.patientName,
-        firstVisitDateKey: formatUtcDateKey(visit.scheduledDate),
+        firstVisitDateKey,
         isFacilityBatch: false,
+        facilityPatientCount: null,
+        shortagePatientCount: shortageDetails.length > 0 ? 1 : 0,
+        dataBackedPatientCount: shortageDetails.length > 0 ? 1 : 0,
+        ...shortageSummary,
       });
     }
   }

@@ -7,6 +7,8 @@ import {
   drugBaseName,
   estimateDailyDose,
   nextWeekUtcRange,
+  resolveInventoryForecastUrgency,
+  resolveLineRunOut,
   selectLatestLinesByPatient,
   summarizeInventoryForecast,
   type ForecastIntakeInput,
@@ -21,6 +23,8 @@ function line(overrides: Partial<ForecastLineInput> = {}): ForecastLineInput {
     days: 28,
     quantity: 28,
     unit: '錠',
+    startDate: null,
+    endDate: null,
     ...overrides,
   };
 }
@@ -123,6 +127,57 @@ describe('selectLatestLinesByPatient', () => {
   });
 });
 
+describe('resolveLineRunOut / resolveInventoryForecastUrgency', () => {
+  it('uses the line end date before falling back to line start date plus days', () => {
+    expect(
+      resolveLineRunOut({
+        line: line({ endDate: new Date('2026-06-20T00:00:00.000Z'), days: 28 }),
+      }),
+    ).toEqual({ runOutDateKey: '2026-06-20', basis: 'line_end_date' });
+
+    expect(
+      resolveLineRunOut({
+        line: line({ startDate: new Date('2026-06-10T00:00:00.000Z'), endDate: null, days: 7 }),
+      }),
+    ).toEqual({ runOutDateKey: '2026-06-16', basis: 'line_start_date_plus_days' });
+  });
+
+  it('does not invent a run-out date from prescribed date when line dates are missing', () => {
+    expect(
+      resolveLineRunOut({
+        line: line({ startDate: null, endDate: null, days: 7 }),
+      }),
+    ).toEqual({ runOutDateKey: null, basis: 'unknown' });
+  });
+
+  it('classifies run-out urgency against the first visit date', () => {
+    expect(
+      resolveInventoryForecastUrgency({
+        runOutDateKey: '2026-06-14',
+        firstVisitDateKey: '2026-06-15',
+      }),
+    ).toBe('critical');
+    expect(
+      resolveInventoryForecastUrgency({
+        runOutDateKey: '2026-06-18',
+        firstVisitDateKey: '2026-06-15',
+      }),
+    ).toBe('warning');
+    expect(
+      resolveInventoryForecastUrgency({
+        runOutDateKey: '2026-06-30',
+        firstVisitDateKey: '2026-06-15',
+      }),
+    ).toBe('normal');
+    expect(
+      resolveInventoryForecastUrgency({
+        runOutDateKey: null,
+        firstVisitDateKey: '2026-06-15',
+      }),
+    ).toBe('unknown');
+  });
+});
+
 describe('countFacilityPatients', () => {
   it('counts array payloads and rejects non-arrays', () => {
     expect(countFacilityPatients(['a', 'b', 'c'])).toBe(3);
@@ -174,9 +229,30 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
       patients: [
         {
           key: 'patient:p1',
+          patientId: 'p1',
           label: '田中 一郎',
           firstVisitDateKey: '2026-06-22',
           isFacilityBatch: false,
+          facilityPatientCount: null,
+          shortagePatientCount: 1,
+          dataBackedPatientCount: 1,
+          shortageDrugKeys: ['トラセミド'],
+          runOutDateKey: '2026-06-28',
+          runOutBasis: 'line_start_date_plus_days',
+          urgency: 'critical',
+          shortageDetails: [
+            {
+              drugKey: 'トラセミド',
+              requiredQty: 7,
+              stockQty: 3,
+              unit: '錠',
+              status: 'order_required',
+              affectedPatientCount: 1,
+              runOutDateKey: '2026-06-28',
+              runOutBasis: 'line_start_date_plus_days',
+              urgency: 'critical',
+            },
+          ],
         },
       ],
     });
@@ -245,35 +321,73 @@ describe('buildInventoryForecast', () => {
         patientId: 'p-tanaka',
         prescribedDate: new Date('2026-06-10T00:00:00.000Z'),
         createdAt: new Date('2026-06-10T10:00:00.000Z'),
-        lines: [line({ drugName: 'アムロジピン 5mg', quantity: 28, days: 28 })],
+        lines: [
+          line({
+            drugName: 'アムロジピン 5mg',
+            quantity: 28,
+            days: 28,
+            startDate: new Date('2026-06-10T00:00:00.000Z'),
+          }),
+        ],
       },
       {
         patientId: 'p-sato',
         prescribedDate: new Date('2026-06-08T00:00:00.000Z'),
         createdAt: new Date('2026-06-08T10:00:00.000Z'),
         lines: [
-          line({ drugName: 'トラセミド 4mg', quantity: 28, days: 28 }),
-          line({ drugName: '酸化Mg 330mg', quantity: 84, days: 28 }),
+          line({
+            drugName: 'トラセミド 4mg',
+            quantity: 28,
+            days: 28,
+            startDate: new Date('2026-06-08T00:00:00.000Z'),
+          }),
+          line({
+            drugName: '酸化Mg 330mg',
+            quantity: 84,
+            days: 28,
+            startDate: new Date('2026-06-08T00:00:00.000Z'),
+          }),
         ],
       },
       {
         patientId: 'p-res1',
         prescribedDate: new Date('2026-06-08T00:00:00.000Z'),
         createdAt: new Date('2026-06-08T10:00:00.000Z'),
-        lines: [line({ drugName: 'アムロジピン 5mg', quantity: 28, days: 28 })],
+        lines: [
+          line({
+            drugName: 'アムロジピン 5mg',
+            quantity: 28,
+            days: 28,
+            startDate: new Date('2026-06-08T00:00:00.000Z'),
+          }),
+        ],
       },
       {
         patientId: 'p-res2',
         prescribedDate: new Date('2026-06-08T00:00:00.000Z'),
         createdAt: new Date('2026-06-08T10:00:00.000Z'),
-        lines: [line({ drugName: 'トラセミド 4mg', quantity: 28, days: 28 })],
+        lines: [
+          line({
+            drugName: 'トラセミド 4mg',
+            quantity: 28,
+            days: 28,
+            startDate: new Date('2026-06-08T00:00:00.000Z'),
+          }),
+        ],
       },
       // 来週訪問のない患者の処方は集計対象外
       {
         patientId: 'p-offweek',
         prescribedDate: new Date('2026-06-08T00:00:00.000Z'),
         createdAt: new Date('2026-06-08T10:00:00.000Z'),
-        lines: [line({ drugName: 'アムロジピン 5mg', quantity: 280, days: 28 })],
+        lines: [
+          line({
+            drugName: 'アムロジピン 5mg',
+            quantity: 280,
+            days: 28,
+            startDate: new Date('2026-06-08T00:00:00.000Z'),
+          }),
+        ],
       },
     ],
     stocks: [
@@ -323,23 +437,140 @@ describe('buildInventoryForecast', () => {
     expect(summary.patients).toEqual([
       {
         key: 'patient:p-tanaka',
+        patientId: 'p-tanaka',
         label: '田中 一郎',
         firstVisitDateKey: '2026-06-15',
         isFacilityBatch: false,
+        facilityPatientCount: null,
+        shortagePatientCount: 1,
+        dataBackedPatientCount: 1,
+        shortageDrugKeys: ['アムロジピン'],
+        runOutDateKey: '2026-07-07',
+        runOutBasis: 'line_start_date_plus_days',
+        urgency: 'normal',
+        shortageDetails: [
+          {
+            drugKey: 'アムロジピン',
+            requiredQty: 7,
+            stockQty: 10,
+            unit: '錠',
+            status: 'order_candidate',
+            affectedPatientCount: 1,
+            runOutDateKey: '2026-07-07',
+            runOutBasis: 'line_start_date_plus_days',
+            urgency: 'normal',
+          },
+        ],
       },
       {
         key: 'patient:p-sato',
+        patientId: 'p-sato',
         label: '佐藤 花子',
         firstVisitDateKey: '2026-06-16',
         isFacilityBatch: false,
+        facilityPatientCount: null,
+        shortagePatientCount: 1,
+        dataBackedPatientCount: 1,
+        shortageDrugKeys: ['トラセミド'],
+        runOutDateKey: '2026-07-05',
+        runOutBasis: 'line_start_date_plus_days',
+        urgency: 'normal',
+        shortageDetails: [
+          {
+            drugKey: 'トラセミド',
+            requiredQty: 7,
+            stockQty: 3,
+            unit: '錠',
+            status: 'order_required',
+            affectedPatientCount: 1,
+            runOutDateKey: '2026-07-05',
+            runOutBasis: 'line_start_date_plus_days',
+            urgency: 'normal',
+          },
+        ],
       },
       {
         key: 'facility-batch:batch-a',
+        patientId: null,
         label: '施設A 5名',
         firstVisitDateKey: '2026-06-18',
         isFacilityBatch: true,
+        facilityPatientCount: 5,
+        shortagePatientCount: 2,
+        dataBackedPatientCount: 2,
+        shortageDrugKeys: ['トラセミド', 'アムロジピン'],
+        runOutDateKey: '2026-07-05',
+        runOutBasis: 'line_start_date_plus_days',
+        urgency: 'normal',
+        shortageDetails: [
+          {
+            drugKey: 'トラセミド',
+            requiredQty: 7,
+            stockQty: 3,
+            unit: '錠',
+            status: 'order_required',
+            affectedPatientCount: 1,
+            runOutDateKey: '2026-07-05',
+            runOutBasis: 'line_start_date_plus_days',
+            urgency: 'normal',
+          },
+          {
+            drugKey: 'アムロジピン',
+            requiredQty: 7,
+            stockQty: 10,
+            unit: '錠',
+            status: 'order_candidate',
+            affectedPatientCount: 1,
+            runOutDateKey: '2026-07-05',
+            runOutBasis: 'line_start_date_plus_days',
+            urgency: 'normal',
+          },
+        ],
       },
     ]);
+  });
+
+  it('aggregates facility-batch same-drug details with the earliest run-out and highest urgency', () => {
+    const input = baseInput();
+    input.intakes[2] = {
+      ...input.intakes[2],
+      lines: [
+        line({
+          drugName: 'トラセミド 4mg',
+          quantity: 28,
+          days: 28,
+          endDate: new Date('2026-06-17T00:00:00.000Z'),
+        }),
+      ],
+    };
+
+    const facilityCard = buildInventoryForecast(input).patients.find(
+      (card) => card.key === 'facility-batch:batch-a',
+    );
+
+    expect(facilityCard).toMatchObject({
+      patientId: null,
+      facilityPatientCount: 5,
+      shortagePatientCount: 2,
+      dataBackedPatientCount: 2,
+      shortageDrugKeys: ['トラセミド'],
+      runOutDateKey: '2026-06-17',
+      runOutBasis: 'line_end_date',
+      urgency: 'critical',
+      shortageDetails: [
+        {
+          drugKey: 'トラセミド',
+          requiredQty: 14,
+          stockQty: 3,
+          unit: '錠',
+          status: 'order_required',
+          affectedPatientCount: 2,
+          runOutDateKey: '2026-06-17',
+          runOutBasis: 'line_end_date',
+          urgency: 'critical',
+        },
+      ],
+    });
   });
 
   it('excludes patients who only take sufficient drugs', () => {
