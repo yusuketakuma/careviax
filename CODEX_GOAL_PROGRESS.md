@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Labs API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger/commit phase.
+  - ACKed Claude's approval of patient contacts save API path helper convergence before continuing this non-overlapping patient labs slice.
+  - Used medical safety and privacy read-only reviewers because the surface reads and mutates patient lab observations.
+- Hardened/converged patient labs route construction:
+  - Routed labs GET and POST through shared `buildPatientApiPath(patientId, '/labs')`.
+  - Routed lab PATCH through shared `buildPatientApiPath(patientId, `/labs/${encodePathSegment(labId)}`)` so patient id and lab id are each path-segment encoded at their correct boundary.
+  - Added a sentinel component test proving labs GET/POST/PATCH consume the shared patient API helper return value.
+  - Extended patient API helper suffix coverage for `/labs`.
+  - Preserved raw patient id in React Query keys and invalidation, `buildOrgHeaders` / `buildOrgJsonHeaders`, create/update payload semantics, manual source creation semantics, visit-record source links, route handlers, auth/write guards, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient labs GET/POST/PATCH URLs now share the central patient API path contract instead of duplicating patient route templates in the component.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing labs fetch/mutation behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-labs-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx' src/lib/patient/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-labs-card.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `25` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `c1a80b01` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Contacts Save API Path Helper Convergence
 
 - Coordination:
@@ -45,8 +72,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `6f38e79a` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `6f38e79a` and state commit `a8fec532` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient Communications API Path Helper Convergence
 
