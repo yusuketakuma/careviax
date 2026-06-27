@@ -111,6 +111,18 @@ describe('/api/visit-records/[id]/reflected-fields', () => {
     expect(listFieldRevisionsBySourceVisitRecordMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when reflected field lookup fails unexpectedly', async () => {
+    visitRecordFindFirstMock.mockRejectedValueOnce(new Error('raw reflected field secret'));
+
+    const response = await GET(createRequest(), { params: Promise.resolve({ id: 'vr_1' }) });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw reflected field secret');
+  });
+
   it('returns 403 before reading reflected fields when assignment access is denied', async () => {
     canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
     visitRecordFindFirstMock.mockResolvedValue({
