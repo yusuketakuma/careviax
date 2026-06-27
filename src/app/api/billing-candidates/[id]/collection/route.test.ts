@@ -37,10 +37,7 @@ const LOCAL_AUTH_SECRET = 'ph-os-local-auth-secret';
 
 function createRequest(body: unknown, headers: Record<string, string> = {}) {
   const requestBody =
-    body &&
-    typeof body === 'object' &&
-    !Array.isArray(body) &&
-    !('expected_updated_at' in body)
+    body && typeof body === 'object' && !Array.isArray(body) && !('expected_updated_at' in body)
       ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
       : body;
   return new NextRequest('http://localhost/api/billing-candidates/candidate_1/collection', {
@@ -226,6 +223,85 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
       data: { id: 'candidate_1' },
     });
   });
+
+  it('encodes billing document copy URLs while keeping the raw candidate id for billing writes and audit', async () => {
+    const hostileCandidateId = 'candidate/1?tab=x#frag';
+
+    const response = await PATCH(
+      createRequest({
+        status: 'partial',
+        billed_amount: 3240,
+        collected_amount: 2160,
+        payment_method: 'cash',
+        collected_at: '2026-06-16T00:00:00.000Z',
+        receipt_number: 'R20260616-001',
+        receipt_issue_status: 'issued',
+        invoice_issue_status: 'issued',
+        save_receipt_copy: true,
+        save_invoice_copy: true,
+      }),
+      { params: Promise.resolve({ id: hostileCandidateId }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(findFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: hostileCandidateId,
+          org_id: 'org_1',
+        }),
+      }),
+    );
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: hostileCandidateId,
+        org_id: 'org_1',
+        updated_at: updatedAt,
+      },
+      data: {
+        calculation_breakdown: expect.objectContaining({
+          collection: expect.objectContaining({
+            receipt_copy_url: `/api/billing-candidates/${encodeURIComponent(
+              hostileCandidateId,
+            )}/documents/pdf?kind=receipt`,
+            invoice_copy_url: `/api/billing-candidates/${encodeURIComponent(
+              hostileCandidateId,
+            )}/documents/pdf?kind=invoice`,
+          }),
+        }),
+      },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          target_id: hostileCandidateId,
+        }),
+      }),
+    );
+  });
+
+  it.each(['.', '..'])(
+    'rejects exact dot-segment candidate ids before loading billing data: %s',
+    async (candidateId) => {
+      const response = await PATCH(
+        createRequest({
+          status: 'billed',
+          billed_amount: 3240,
+          collected_amount: 0,
+          invoice_issue_status: 'issued',
+        }),
+        { params: Promise.resolve({ id: candidateId }) },
+      );
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '請求候補IDが不正です',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(updateManyMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('stores hashed idempotency metadata for keyed collection updates without exposing it in audit changes', async () => {
     const requestBody = {

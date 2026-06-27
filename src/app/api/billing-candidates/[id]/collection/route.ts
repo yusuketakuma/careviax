@@ -10,6 +10,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { getAuthSecret } from '@/lib/auth/secret';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { encodePathSegment } from '@/lib/http/path-segment';
 import {
   updateBillingCollectionSchema,
   type UpdateBillingCollectionInput,
@@ -22,7 +23,7 @@ const BILLING_PAYMENT_PROFILE_TASK_TYPE = 'patient_billing_payment_profile';
 const receiptNumberPlaceholders = new Set(['未記録', '未発行/未記録', '未発行', '不要']);
 
 function buildBillingDocumentPdfUrl(candidateId: string, kind: 'receipt' | 'invoice') {
-  return `/api/billing-candidates/${encodeURIComponent(candidateId)}/documents/pdf?kind=${kind}`;
+  return `/api/billing-candidates/${encodePathSegment(candidateId)}/documents/pdf?kind=${kind}`;
 }
 
 function normalizeNullableText(value: string | null | undefined) {
@@ -179,6 +180,12 @@ export async function PATCH(
   const { id: rawId } = await params;
   const candidateId = normalizeRequiredRouteParam(rawId);
   if (!candidateId) return validationError('請求候補IDが不正です');
+  try {
+    encodePathSegment(candidateId);
+  } catch (error) {
+    if (error instanceof RangeError) return validationError('請求候補IDが不正です');
+    throw error;
+  }
 
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
