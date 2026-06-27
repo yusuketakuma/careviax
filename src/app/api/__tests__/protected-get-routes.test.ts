@@ -198,6 +198,7 @@ import { GET as dispenseTasksGet } from '../dispense-tasks/route';
 import { GET as dispenseTaskGet } from '../dispense-tasks/[id]/route';
 import { GET as dispenseTaskWorkbenchGet } from '../dispense-tasks/[id]/workbench/route';
 import { GET as externalProfessionalCommunicationsGet } from '../external-professionals/[id]/communications/route';
+import { GET as facilityContactsGet } from '../facilities/[id]/contacts/route';
 import { GET as facilityPatientsGet } from '../facilities/[id]/patients/route';
 import { GET as firstVisitDocumentsGet } from '../first-visit-documents/route';
 import { GET as handoffBoardGet } from '../handoff-board/route';
@@ -859,6 +860,33 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       facilityPatientsGet(
         createRequest('http://localhost/api/facilities/facility_1/patients', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'facility_1' }) },
+      ),
+  },
+  {
+    name: 'facilities/[id]/contacts GET',
+    setupSuccess: () => {
+      prismaMock.facility.findFirst.mockResolvedValueOnce({
+        id: 'facility_1',
+        contacts: [
+          {
+            id: 'contact_1',
+            name: '相談員A',
+            role: '相談員',
+            phone: '03-1111-2222',
+            email: null,
+            fax: null,
+            is_primary: true,
+            notes: null,
+          },
+        ],
+      });
+    },
+    handler: () =>
+      facilityContactsGet(
+        createRequest('http://localhost/api/facilities/facility_1/contacts', {
           'x-org-id': 'org_1',
         }),
         { params: Promise.resolve({ id: 'facility_1' }) },
@@ -1716,6 +1744,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dispense-queue GET' ||
         route.name === 'dispense-workbench/patients GET' ||
         route.name === 'external-professionals/[id]/communications GET' ||
+        route.name === 'facilities/[id]/contacts GET' ||
         route.name === 'facilities/[id]/patients GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -1814,6 +1843,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dispense-queue GET' ||
         route.name === 'dispense-workbench/patients GET' ||
         route.name === 'external-professionals/[id]/communications GET' ||
+        route.name === 'facilities/[id]/contacts GET' ||
         route.name === 'facilities/[id]/patients GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
@@ -1860,6 +1890,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'external-professionals/[id]/communications GET' ||
         route.name === 'dispense-results/[id] GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
+        route.name === 'facilities/[id]/contacts GET' ||
         route.name === 'facilities/[id]/patients GET' ||
         route.name === 'partner-visit-records GET' ||
         route.name === 'pharmacy-partnerships GET' ||

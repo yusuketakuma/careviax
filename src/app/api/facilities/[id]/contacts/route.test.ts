@@ -57,6 +57,11 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/facilities/[id]/contacts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -105,9 +110,37 @@ describe('/api/facilities/[id]/contacts', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: [expect.objectContaining({ name: '相談員A' })],
     });
+  });
+
+  it('returns a no-store 404 when the facility does not exist', async () => {
+    facilityFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+  });
+
+  it('returns a sanitized no-store 500 when facility contacts fail to load', async () => {
+    facilityFindFirstMock.mockRejectedValueOnce(new Error('raw facility contact secret'));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'facility_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw facility contact secret');
   });
 
   it('replaces facility contacts', async () => {

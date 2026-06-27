@@ -1,6 +1,8 @@
 import { z } from 'zod';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { unstable_rethrow } from 'next/navigation';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
@@ -34,7 +36,7 @@ function toResponse(
   }));
 }
 
-export const GET = withAuthContext<{ id: string }>(
+const authenticatedGET = withAuthContext<{ id: string }>(
   async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
 
@@ -56,6 +58,15 @@ export const GET = withAuthContext<{ id: string }>(
     message: '施設担当者の閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const PUT = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
