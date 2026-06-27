@@ -1265,7 +1265,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dashboard/overdue GET' ||
         route.name === 'dashboard/medication-deadlines GET' ||
         route.name === 'dashboard/monthly-stats GET' ||
-        route.name === 'dispense-audits GET'
+        route.name === 'dispense-audits GET' ||
+        route.name === 'dispense-queue GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -1329,7 +1330,8 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'dashboard/overdue GET' ||
         route.name === 'dashboard/medication-deadlines GET' ||
         route.name === 'dashboard/monthly-stats GET' ||
-        route.name === 'dispense-audits GET'
+        route.name === 'dispense-audits GET' ||
+        route.name === 'dispense-queue GET'
       ) {
         expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
         expect(response.headers.get('Pragma')).toBe('no-cache');
@@ -1351,6 +1353,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'patients/[id] GET' ||
         route.name === 'patients/[id]/header-summary GET' ||
         route.name === 'communication-requests/[id] GET' ||
+        route.name === 'dispense-queue GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||
         route.name === 'visit-preparations/[scheduleId]/brief GET' ||
         route.name === 'visit-schedule-proposals/[id] GET'

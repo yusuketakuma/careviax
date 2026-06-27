@@ -98,6 +98,8 @@ describe('/api/dispense-queue', () => {
     const response = (await GET(createRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: [
         expect.objectContaining({
@@ -121,5 +123,25 @@ describe('/api/dispense-queue', () => {
         },
       }),
     );
+  });
+
+  it('returns a sanitized no-store 500 when queue lookup fails unexpectedly', async () => {
+    dispenseTaskFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田花子 東京都千代田区1-1-1 raw dispense queue drug inquiry'),
+    );
+
+    const response = (await GET(createRequest(), emptyRouteContext))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田花子');
+    expect(JSON.stringify(body)).not.toContain('東京都千代田区1-1-1');
+    expect(JSON.stringify(body)).not.toContain('raw dispense queue drug inquiry');
   });
 });
