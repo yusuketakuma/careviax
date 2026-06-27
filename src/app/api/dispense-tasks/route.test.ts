@@ -273,8 +273,9 @@ describe('/api/dispense-tasks POST', () => {
   });
 
   it('dispatches an urgent in-app notification when an emergency dispense task is created', async () => {
+    const taskId = '../task with space?x=1#secret';
     const createMock = vi.fn().mockResolvedValue({
-      id: 'task_1',
+      id: taskId,
       cycle_id: 'cycle_1',
       priority: 'emergency',
       cycle: {
@@ -337,7 +338,7 @@ describe('/api/dispense-tasks POST', () => {
         orgId: 'org_1',
         eventType: 'dispense_task_emergency_created',
         type: 'urgent',
-        link: '/dispense?taskId=task_1',
+        link: '/dispense?taskId=..%2Ftask%20with%20space%3Fx%3D1%23secret',
         explicitUserIds: expect.arrayContaining([
           'pharmacist_1',
           'backup_1',
@@ -345,15 +346,18 @@ describe('/api/dispense-tasks POST', () => {
           'admin_1',
           'owner_1',
         ]),
-        dedupeKey: 'dispense-task-emergency:task_1',
+        dedupeKey: `dispense-task-emergency:${taskId}`,
       }),
     );
     const notificationInput = dispatchNotificationEventMock.mock.calls[0][1];
+    expect(notificationInput.link).not.toContain('/task?');
+    expect(notificationInput.link).not.toContain('+');
+    expect(notificationInput.link).not.toContain('#secret');
     expect(notificationInput.explicitUserIds).not.toContain('user_urgent');
     expect(notificationInput.explicitUserIds).not.toContain('unrelated_pharmacist_1');
     expect(notificationInput.metadata).toMatchObject({
       patient_id: 'patient_1',
-      task_id: 'task_1',
+      task_id: taskId,
     });
   });
 

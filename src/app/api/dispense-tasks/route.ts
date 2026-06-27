@@ -29,6 +29,10 @@ const createDispenseTaskSchema = z.object({
 const dispenseTaskStatusSchema = z.enum(['pending', 'in_progress', 'completed']);
 type DispenseTaskQueryName = 'status' | 'cycle_id' | 'assigned_to';
 
+function buildDispenseTaskNotificationHref(taskId: string) {
+  return `/dispense?taskId=${encodeURIComponent(taskId)}`;
+}
+
 function readStrictOptionalDispenseTaskFilter(
   searchParams: URLSearchParams,
   name: DispenseTaskQueryName,
@@ -286,7 +290,7 @@ export const POST = withAuthContext(
           type: 'urgent',
           title: '緊急の調剤対応が追加されました',
           message: `${task.cycle.case_.patient.name} の緊急調剤タスクを確認してください${due_date ? `（期限 ${due_date.slice(0, 10)}）` : ''}`,
-          link: `/dispense?taskId=${encodeURIComponent(task.id)}`,
+          link: buildDispenseTaskNotificationHref(task.id),
           metadata: {
             task_id: task.id,
             cycle_id,
