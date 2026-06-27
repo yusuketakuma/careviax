@@ -21,6 +21,7 @@ import {
   contactMethodLabel,
   type ContactProfileKind,
 } from '@/lib/contact-profiles';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 
@@ -87,16 +88,18 @@ export function ContactProfilesContent() {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<'all' | ContactProfile['kind']>('all');
   const [query, setQuery] = useState('');
+  // 検索は debounce(300ms)してからサーバ fetch に渡す(打鍵ごとの fetch を抑制)。入力は即時反映。
+  const debouncedQuery = useDebouncedValue(query, 300);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // フォーム編集状態。選択した連絡先 id を保持し、選択が変わったら描画中に再初期化する
   const [editState, setEditState] = useState<{ id: string; form: ContactForm } | null>(null);
 
   const profilesQuery = useQuery({
-    queryKey: ['contact-profiles', orgId, kind, query],
+    queryKey: ['contact-profiles', orgId, kind, debouncedQuery],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (kind !== 'all') params.set('kind', kind);
-      if (query.trim()) params.set('q', query.trim());
+      if (debouncedQuery.trim()) params.set('q', debouncedQuery.trim());
       const response = await fetch(`/api/contact-profiles?${params.toString()}`, {
         headers: { 'x-org-id': orgId },
       });
@@ -170,6 +173,8 @@ export function ContactProfilesContent() {
   const showContactPerson = selected?.kind !== 'prescriber_institution';
   const showEmail = selected?.kind !== 'prescriber_institution';
   const pendingRowsCount = rows.filter((row) => row.pending_response_count > 0).length;
+  // 未完了 KPI は全面塗りを引き算し左ボーダー+文字で示す。0件は中立(偽シグナル回避)。
+  const hasPendingRows = pendingRowsCount > 0;
   const missingMethodRowsCount = rows.filter((row) => !row.preferred_contact_method).length;
   const selectedRecommendedChannels = selected?.recommended_channels.length
     ? selected.recommended_channels.map((channel) => labelOf(channel)).join(' → ')
@@ -249,9 +254,26 @@ export function ContactProfilesContent() {
                   <p className="font-medium text-muted-foreground">表示中</p>
                   <p className="mt-1 text-base font-semibold text-foreground">{rows.length}件</p>
                 </div>
-                <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-2">
-                  <p className="font-medium text-state-confirm">未完了</p>
-                  <p className="mt-1 text-base font-semibold text-state-confirm">
+                <div
+                  className={cn(
+                    'rounded-lg border border-border/70 border-l-2 bg-muted/20 px-3 py-2',
+                    hasPendingRows && 'border-l-state-confirm',
+                  )}
+                >
+                  <p
+                    className={cn(
+                      'font-medium',
+                      hasPendingRows ? 'text-state-confirm' : 'text-muted-foreground',
+                    )}
+                  >
+                    未完了
+                  </p>
+                  <p
+                    className={cn(
+                      'mt-1 text-base font-semibold',
+                      hasPendingRows ? 'text-state-confirm' : 'text-foreground',
+                    )}
+                  >
                     {pendingRowsCount}件
                   </p>
                 </div>

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { ContactProfilesContent } from './contact-profiles-content';
@@ -131,5 +131,57 @@ describe('ContactProfilesContent', () => {
     expect(screen.getByText('FAXで送付できます')).toBeTruthy();
     expect(screen.getByText('推奨 FAX → 電話')).toBeTruthy();
     expect(screen.getByRole('button', { name: '送付先を保存する' })).toBeTruthy();
+  });
+
+  it('renders the 未完了 KPI as a left-border accent without full state-color fill', async () => {
+    renderContent();
+    await screen.findByTestId('contact-delivery-target-edit');
+    await waitFor(() => expect(screen.getByText('未完了')).toBeTruthy());
+
+    // 未完了あり(fixture contact_1=1件)→左ボーダー+文字色で示し、全面塗りは使わない。
+    const pendingTile = screen.getByText('未完了').closest('div');
+    expect(pendingTile?.className).toContain('border-l-state-confirm');
+    expect(pendingTile?.className).not.toContain('bg-state-confirm');
+    expect(screen.getByText('未完了').className).toContain('text-state-confirm');
+  });
+
+  it('keeps the 未完了 KPI neutral (no state color) when there is no pending work', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: profiles.map((p) => ({ ...p, pending_response_count: 0 })) }),
+    } as Response);
+
+    renderContent();
+    await screen.findByTestId('contact-delivery-target-edit');
+    await waitFor(() => expect(screen.getByText('未完了')).toBeTruthy());
+
+    // 0件は偽シグナル回避のため中立(状態色なし)。
+    const pendingTile = screen.getByText('未完了').closest('div');
+    expect(pendingTile?.className).not.toContain('border-l-state-confirm');
+    expect(screen.getByText('未完了').className).not.toContain('text-state-confirm');
+  });
+
+  it('debounces search so a keystroke does not immediately issue a filtered fetch', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: profiles }),
+    } as Response);
+
+    renderContent();
+    await screen.findByTestId('contact-delivery-target-edit');
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText('検索'), { target: { value: '東' } });
+    // 入力値は即時反映する。
+    expect((screen.getByLabelText('検索') as HTMLInputElement).value).toBe('東');
+
+    // マイクロタスクを流しても debounce 未経過のため q= 付き fetch は発火しない
+    // (検索語が queryKey に直結していた旧実装ならここで q= fetch が走る)。
+    // 300ms 経過後の発火自体は useDebouncedValue の単体テストで担保。
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchSpy.mock.calls.map((call) => String(call[0])).some((u) => u.includes('q='))).toBe(
+      false,
+    );
   });
 });
