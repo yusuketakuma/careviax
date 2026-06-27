@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0513 JST
+
+- current task: report share patient-support API path helper convergence for interprofessional share care-team and contacts GETs.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, Next app client component and fetch docs under `node_modules/next/dist/docs/01-app/`, gbrain `code_def` / `code_blast` / `code_refs` for `buildPatientApiPath` (not indexed), mapper subagent report, raw `/api/patients/...` scans, `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, `src/lib/http/path-segment.ts`, `src/lib/http/path-segment.test.ts`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`, and `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`.
+- files changed: `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the interprofessional report-share page carried a local `buildPatientApiPath` duplicate for patient care-team and contacts GETs. It already encoded patient ids, but the duplicate could drift from the shared patient API path helper and its exact dot-segment fail-closed contract.
+- security risks found: reduced route-construction drift by deleting the local patient API helper and routing care-team / contacts GET URLs through shared `buildPatientApiPath`, which delegates to `encodePathSegment`. Added a sentinel regression proving the component consumes the shared helper return value, while existing hostile patient-id and exact dot-segment tests keep path-segment route-confusion protection intact. Existing query construction via `URLSearchParams`, org headers, task creation, reply detail handling, report permissions, auth, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing read-only patient-support GETs, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the report-share component/test, patient API helper/test, and path-segment helper/test; scoped Prettier check for the same files; scoped diff whitespace check for the changed files; verifier read-only focused review; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed. Focused report-share + patient API path + path-segment Vitest passed `3` files / `31` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, verifier focused review, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue to Claude-approved `billing-collection-document-href` path-segment hardening. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the two implementation files for the implementation commit, then stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0503 JST
 
 - current task: document template and delivery-rule API path helper convergence for admin template configuration mutations.

@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Report Share Patient Support API Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before selecting this slice.
+  - Sent Claude an FYI before implementation, then immediately ACKed Claude's `HUMAN APPROVAL GRANTED` notice for the next `billing-collection-document-href` hardening slice while current no-unused was already running.
+  - Used a read-only mapper to rank next backend/API helper candidates and a read-only verifier for this patch.
+- Hardened/converged patient support route construction:
+  - Removed the local `buildPatientApiPath` duplicate from `InterprofessionalShareContent`.
+  - Routed care-team and contacts GET URL construction through shared `src/lib/patient/api-paths.ts`.
+  - Added a sentinel regression proving patient-support GETs consume the shared helper return value.
+  - Preserved existing report permissions, patient-support enablement, org headers, reply detail handling, task creation, query construction, route handlers, auth, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: report-share patient support GETs now share the central `encodePathSegment` contract for patient API paths, including hostile slash/query/hash ids and exact dot-segment fail-closed behavior covered by existing tests.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx'` passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000` passed `3` files / `31` tests.
+  - Scoped ESLint passed for the report-share component/test, patient API helper/test, and path-segment helper/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for changed files.
+  - Verifier subagent focused review passed with no blocking concern.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
+- Next action: commit the implementation slice, commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue to Claude-approved `billing-collection-document-href` path-segment hardening.
+
 ### 2026-06-28 JST - Prescription Intake API Path Helper Convergence
 
 - Coordination:
