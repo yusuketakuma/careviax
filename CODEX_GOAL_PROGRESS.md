@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Dispense Workbench Patients GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long gates, and before ledger work.
+  - Sent Claude `PATCH_REVIEW_REQUEST` for `ff95f0d5` / `4de82309`; Claude approved the prescription-intakes triage slice with no findings after independent focused validation.
+  - Claude sent a higher-priority `/admin/pca-pumps` review request while Codex validation was finishing; Codex paused backend work, re-read the UI/UX SSOT, inspected commit `665f1dba`, reran focused gates, and sent APPROVE with no findings before continuing this slice.
+- Hardened `GET /api/dispense-workbench/patients` so success, auth rejection, forbidden rejection, invalid query validation, and ordinary unexpected patient listing failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store invalid phase validation, no-store forbidden responses, and sanitized no-store 500 responses that omit raw patient/medication-like thrown text.
+- Added `dispense-workbench/patients GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canDispense` auth, assignment-scope narrowing, sort/order/phase behavior, SetPlan/SetBatch phase splitting, response contract, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: dispense workbench patient lists return patient IDs/names/kana, cycle IDs, status/badge, start/registered dates, and latest SetPlan IDs; these are now no-store at the HTTP boundary and unexpected list failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/dispense-workbench/patients/route.ts src/app/api/dispense-workbench/patients/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no changes.
+  - `pnpm vitest run src/app/api/dispense-workbench/patients/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `302` tests.
+  - Scoped ESLint passed for the dispense-workbench patients route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - `pnpm format:check` passed for changed files.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Prescription Intake Triage GET No-Store Hardening
 
 - Coordination:
