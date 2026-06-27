@@ -23,6 +23,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Handoff Board GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation, before long gates, and before ledger work.
+  - Claude acknowledged then approved `d6f8e446` / `62d3405e` with no findings after independent focused validation.
+  - Claude locked `/views` FE files for a non-overlapping saved-views UI slice; Codex acknowledged the lock, answered the consult, and preserved those dirty files.
+- Hardened `GET /api/handoff-board` so success, badge-only success, auth rejection, forbidden rejection, invalid date validation, and ordinary unexpected handoff board failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success, no-store badge count, no-store invalid date validation, no-store impossible calendar dates, and sanitized no-store 500 responses that omit raw patient/content-like thrown text.
+- Added `handoff-board GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage with explicit success mocks.
+- Preserved existing `canReport` auth, date parsing, badge-only fast path, RLS transaction, concurrent board-create race handling, user-name hydration, recipient option projection, summary counts, response contract, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: handoff board reads include board/item content, creator/recipient IDs and names, read/resolution status, role options, and month/badge counts; these are now no-store at the HTTP boundary and unexpected board failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, external sends, or frontend rendering work were introduced. The pre-existing missing-board creation behavior of this GET is unchanged.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/handoff-board/route.ts src/app/api/handoff-board/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with route formatting only.
+  - `pnpm vitest run src/app/api/handoff-board/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `296` tests. The new sanitized 500 test emitted the existing `route_handler_unhandled_error` logger line on stderr.
+  - Scoped ESLint passed for the handoff-board route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: run changed-file `pnpm format:check`, commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Dispense Workbench Patients GET No-Store Hardening
 
 - Coordination:
