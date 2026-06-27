@@ -175,6 +175,7 @@ import { GET as communicationRequestGet } from '../communication-requests/[id]/r
 import { GET as communicationRequestResponsesGet } from '../communication-requests/[id]/responses/route';
 import { GET as communicationRequestsExportGet } from '../communication-requests/export/route';
 import { GET as conferenceNotesGet } from '../conference-notes/route';
+import { GET as consentRecordsGet } from '../consent-records/route';
 import { GET as dashboardClerkSupportGet } from '../dashboard/clerk-support/route';
 import { GET as dashboardCockpitGet } from '../dashboard/cockpit/route';
 import { GET as dashboardDispensingStatsGet } from '../dashboard/dispensing-stats/route';
@@ -449,6 +450,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
     handler: () =>
       conferenceNotesGet(
         createRequest('http://localhost/api/conference-notes', { 'x-org-id': 'org_1' }),
+        emptyRouteContext,
+      ),
+  },
+  {
+    name: 'consent-records GET',
+    handler: () =>
+      consentRecordsGet(
+        createRequest('http://localhost/api/consent-records?patient_id=patient_1', {
+          'x-org-id': 'org_1',
+        }),
         emptyRouteContext,
       ),
   },
@@ -1366,6 +1377,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
+        route.name === 'consent-records GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
@@ -1443,6 +1455,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
+        route.name === 'consent-records GET' ||
         route.name === 'patients/[id]/overview GET' ||
         route.name === 'patients/[id]/prescriptions GET' ||
         route.name === 'patient-share-cases/[id]/correction-requests GET' ||
@@ -1506,6 +1519,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'communication-requests GET' ||
         route.name === 'communication-requests/[id] GET' ||
         route.name === 'communication-requests/[id]/responses GET' ||
+        route.name === 'consent-records GET' ||
         route.name === 'cases/[id] GET' ||
         route.name === 'dispense-queue GET' ||
         route.name === 'dispense-results/[id] GET' ||

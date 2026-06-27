@@ -81,6 +81,11 @@ const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createRequest(url: string, body?: unknown) {
   return new NextRequest(url, {
     method: body === undefined ? 'GET' : 'POST',
@@ -149,6 +154,7 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'patient_1', org_id: 'org_1' },
       select: { id: true },
@@ -206,7 +212,9 @@ describe('/api/consent-records', () => {
   });
 
   it('fails closed when consent list view audit cannot be recorded', async () => {
-    recordConsentRecordsViewedAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+    recordConsentRecordsViewedAuditMock.mockRejectedValueOnce(
+      new Error('audit unavailable for raw consent document https://files.example.test/leak.pdf'),
+    );
 
     // 監査記録に失敗したら成功扱いにせず fail closed。withAuthContext が想定外 throw を
     // 標準 500 エンベロープに変換するため、200 ではなく 500/INTERNAL_ERROR を返す。
@@ -215,10 +223,24 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(500);
+    expectNoStore(response);
     const body = (await response.json()) as { code?: string; data?: unknown };
     expect(body.code).toBe('INTERNAL_ERROR');
+    expect(JSON.stringify(body)).not.toContain('leak.pdf');
     // 監査未記録のまま同意レコードを漏らさない
     expect(body.data).toBeUndefined();
+  });
+
+  it('returns no-store validation errors for missing patient ids', async () => {
+    const response = (await GET(createRequest('http://localhost/api/consent-records')))!;
+
+    expect(response.status).toBe(400);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'patient_idは必須です',
+    });
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordsViewedAuditMock).not.toHaveBeenCalled();
   });
 
   it('does not list consent records outside the patient assignment scope', async () => {
@@ -229,6 +251,7 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expectNoStore(response);
     expect(consentRecordFindManyMock).not.toHaveBeenCalled();
     expect(consentRecordCountMock).not.toHaveBeenCalled();
     expect(recordConsentRecordsViewedAuditMock).not.toHaveBeenCalled();

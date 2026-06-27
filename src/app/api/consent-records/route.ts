@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -120,7 +122,7 @@ function resolveConsentDocumentUrlInput(args: {
   return { ok: true as const, documentUrl: normalizedUrl };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const searchParams = req.nextUrl.searchParams;
     const patientId = searchParams.get('patient_id');
@@ -204,6 +206,15 @@ export const GET = withAuthContext(
     message: '同意記録の閲覧には訪問権限が必要です',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext(
   async (req, ctx) => {
