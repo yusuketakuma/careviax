@@ -21,6 +21,27 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening in Codex-only mode without Claude review gates.
 
+### 2026-06-27 JST - Dispense Queue GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex`; Claude requested read-only review for `0063999a` and a `/patients/[id]/medication-calendar` P1 direction consultation while Codex was validating this backend slice.
+  - Reviewed and approved Claude's medications commit after rerunning focused page Vitest, `pnpm typecheck:no-unused`, scoped ESLint, and scoped Prettier; answered the calendar consultation with an A/mobile vertical day-list recommendation and a two-slice implementation split.
+  - Preserved Claude's patients-lane UI commits and did not edit or stage frontend files for this backend slice.
+- Hardened `GET /api/dispense-queue` so success, auth rejection, forbidden rejection, and ordinary unexpected queue lookup failures are wrapped with sensitive no-store headers.
+- Added a sanitized fixed `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store success and sanitized no-store 500 responses that omit raw patient/address/dispense-queue/drug-inquiry-like thrown text.
+- Added `dispense-queue GET` to the protected GET auth/no-store matrix for 401, 403, and success coverage.
+- Preserved existing `canDispense` auth, assignment scoping, queue sorting/annotation, response body shape, DB reads, schema/migrations/data, and frontend behavior.
+- Security risk reduced: dispense queue includes patient names/kana, primary residence addresses, actual drug/result fields, prescription lines, and inquiry content; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm vitest run src/app/api/dispense-queue/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `236` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the dispense queue route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - Scoped diff whitespace check passed.
+- Next action: commit Codex-owned dispense queue hardening, commit progress ledgers separately, send `agmsg` FYI, then continue with the next backend/API PHI no-store candidate unless a newer `agmsg` request takes priority. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Visit Schedule Detail GET No-Store Hardening
 
 - Coordination:
