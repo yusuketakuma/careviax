@@ -198,10 +198,15 @@ describe('ReportDeliveryDashboard', () => {
     expect(screen.getByText('67%')).toBeTruthy();
     expect(screen.getAllByText('2026-04').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('田中医師').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByLabelText('月別送達成功率内検索')).toBeTruthy();
-    expect(screen.getByLabelText('医師別送達内検索')).toBeTruthy();
-    expect(screen.getByLabelText('チャネル別送達内検索')).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: '列' }).length).toBeGreaterThanOrEqual(3);
+    // 小集計は意味的な軽量テーブル: 各集計が region として存在し列見出し・代表セルが見える。
+    expect(screen.getByRole('region', { name: '月別送達成功率' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: '医師別送達' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'チャネル別送達' })).toBeTruthy();
+    expect(screen.getAllByText('成功率').length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText('67% (2/3)').length).toBeGreaterThanOrEqual(1);
+    // DataTable の検索/列切替 toolbar は小集計に不要なので持たない。
+    expect(screen.queryByLabelText('月別送達成功率内検索')).toBeNull();
+    expect(screen.queryByRole('button', { name: '列' })).toBeNull();
     expect(screen.getByText('患者A')).toBeTruthy();
     expect(screen.getByText('8日経過')).toBeTruthy();
     expect(screen.getByLabelText('未確認報告の超過日数')).toBeTruthy();

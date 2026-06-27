@@ -1,14 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import type { ColumnDef } from '@tanstack/react-table';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -72,11 +70,6 @@ type DeliveryAnalyticsResponse = {
       days_waiting: number;
     }>;
   };
-};
-
-type AnalyticsTableRow = {
-  id: string;
-  values: string[];
 };
 
 const REPORT_DELIVERY_REMINDER_DISABLED_REASON_ID = 'report-delivery-reminder-disabled-reason';
@@ -370,16 +363,14 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
 }
 
 function SummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+  // KPI は意味グループ(strip)として calm に: 重い Card 感(影/大角丸/ring)を避け、
+  // border + 控えめ角丸 + 影なし。数値は tabular-nums で桁を揃える。
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-1">
-        <p className="text-2xl font-semibold tracking-tight">{value}</p>
-        <p className="text-xs text-muted-foreground">{detail}</p>
-      </CardContent>
-    </Card>
+    <div className="rounded-lg border border-border/70 bg-card px-4 py-3 shadow-none">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>
+    </div>
   );
 }
 
@@ -394,22 +385,8 @@ function AnalyticsTableCard({
   rows: string[][];
   emptyMessage: string;
 }) {
-  const tableRows = useMemo<AnalyticsTableRow[]>(
-    () => rows.map((row, index) => ({ id: `${title}-${index}`, values: row })),
-    [rows, title],
-  );
-  const columns = useMemo<ColumnDef<AnalyticsTableRow>[]>(
-    () =>
-      headers.map((header, index) => ({
-        id: `column_${index}`,
-        accessorFn: (row) => row.values[index] ?? '',
-        header,
-        cell: ({ row }) => row.original.values[index] ?? '',
-        meta: { label: header },
-      })),
-    [headers],
-  );
-
+  // 3〜5行の小集計に DataTable の検索/列切替 toolbar は過剰。意味的な軽量テーブルにする。
+  // a11y: caption + thead th(scope=col) + tbody を残し、横溢れは region+aria-label で保護。
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -417,18 +394,37 @@ function AnalyticsTableCard({
       </CardHeader>
       <CardContent>
         {rows.length ? (
-          <DataTable
-            columns={columns}
-            data={tableRows}
-            caption={title}
-            getRowId={(row) => row.id}
-            getRowA11yLabel={(row) => `${title} ${row.values.join(' ')}`}
-            toolbar={{
-              enableGlobalFilter: true,
-              globalFilterPlaceholder: `${title}内検索`,
-              enableColumnVisibility: true,
-            }}
-          />
+          <div className="overflow-x-auto" role="region" aria-label={title}>
+            <table className="w-full text-sm">
+              <caption className="sr-only">{title}</caption>
+              <thead className="bg-muted/50">
+                <tr className="text-left text-muted-foreground">
+                  {headers.map((header) => (
+                    <th key={header} scope="col" className="px-3 py-2 font-medium">
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {rows.map((row, rowIndex) => (
+                  <tr key={`${title}-${rowIndex}`}>
+                    {row.map((cell, cellIndex) => (
+                      <td
+                        key={`${title}-${rowIndex}-${cellIndex}`}
+                        className={cn(
+                          'px-3 py-2 text-foreground',
+                          cellIndex > 0 ? 'tabular-nums' : null,
+                        )}
+                      >
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         )}
