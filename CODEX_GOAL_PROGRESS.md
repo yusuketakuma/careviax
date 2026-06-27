@@ -48,6 +48,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation landed as `e0f4a79f`; this entry plus Ralph updates are the separate progress-ledger update.
 - Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `e0f4a79f` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Referral Success Patient Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `referral-success-patient-href` lock notice, and continued after the inbox stayed clear.
+  - Reused the earlier `docs/ui-ux-design-guidelines.md` read for this dashboard form file, but kept the change to navigation construction only with no visual/layout change.
+- Refactored successful referral patient navigation in `de7a7097`:
+  - Imported and reused `buildPatientHref` in `src/app/(dashboard)/referrals/new/referral-form.tsx`.
+  - Replaced successful referral creation's inline `router.push('/patients/:id')` construction.
+  - Added an actual-backed spy test proving successful navigation uses the shared helper return value.
+  - Preserved the existing `allowNavigation()` before `router.push` contract, the single `/api/referrals` POST behavior, duplicate acknowledgement flow, error handling, and success toast.
+  - Preserved referral API shape, layout, visual styles, auth, DB schema/data, migrations, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: referral success navigation now shares the canonical patient route helper and path-segment dot-segment contract instead of carrying a local inline route builder.
+- Performance issue improved: none. This is a pure navigation helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/referrals/new/referral-form.tsx' 'src/app/(dashboard)/referrals/new/referral-form.test.tsx'` passed unchanged.
+  - `pnpm exec vitest run 'src/app/(dashboard)/referrals/new/referral-form.test.tsx' --reporter=dot --testTimeout=30000` passed `1` file / `29` tests.
+  - Scoped ESLint passed for referral form/test plus patient navigation/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/navigation slice.
+- Commit status: implementation landed as `de7a7097`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `de7a7097` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Report Share Created Patient Href Helper Convergence
 
 - Coordination:
