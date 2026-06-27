@@ -73,6 +73,11 @@ function createMalformedJsonRequest(role = 'admin') {
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createInstitutionFixture(id: string, name = 'みなとクリニック') {
   return {
     id,
@@ -123,6 +128,7 @@ describe('/api/prescriber-institutions', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(prescriberInstitutionFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -173,6 +179,7 @@ describe('/api/prescriber-institutions', () => {
     const response = (await GET(createRequest('http://localhost/api/prescriber-institutions')))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     const query = prescriberInstitutionFindManyMock.mock.calls[0]?.[0];
     expect(query).toMatchObject({
       where: {
@@ -193,6 +200,7 @@ describe('/api/prescriber-institutions', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(prescriberInstitutionFindManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
     await expect(response.json()).resolves.not.toHaveProperty('meta');
   });
@@ -209,6 +217,7 @@ describe('/api/prescriber-institutions', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(prescriberInstitutionFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 3,
@@ -233,11 +242,28 @@ describe('/api/prescriber-institutions', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(prescriberInstitutionFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         take: expectedTake,
       }),
     );
+  });
+
+  it('returns a sanitized no-store 500 when institution listing fails unexpectedly', async () => {
+    prescriberInstitutionFindManyMock.mockRejectedValueOnce(
+      new Error('raw patient prescriber institution secret'),
+    );
+
+    const response = (await GET(
+      createRequest('http://localhost/api/prescriber-institutions?q=みなと'),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw patient prescriber institution secret');
   });
 
   it('creates an institution master row', async () => {

@@ -230,6 +230,7 @@ import { GET as pharmacyVisitRequestsGet } from '../pharmacy-visit-requests/rout
 import { GET as pharmacyInvoicePdfGet } from '../pharmacy-invoices/[id]/pdf/route';
 import { GET as pharmacySitesGet } from '../pharmacy-sites/route';
 import { GET as pcaPumpRentalsGet } from '../pca-pump-rentals/route';
+import { GET as prescriberInstitutionsGet } from '../prescriber-institutions/route';
 import { GET as prescriptionIntakesGet } from '../prescription-intakes/route';
 import { GET as prescriptionIntakeGet } from '../prescription-intakes/[id]/route';
 import { GET as prescriptionIntakeTriageGet } from '../prescription-intakes/triage/route';
@@ -1135,6 +1136,16 @@ const routes: Array<{ name: string; handler: Handler; setupSuccess?: () => void 
       ),
   },
   {
+    name: 'prescriber-institutions GET',
+    handler: () =>
+      prescriberInstitutionsGet(
+        createRequest('http://localhost/api/prescriber-institutions?q=clinic&limit=8', {
+          'x-org-id': 'org_1',
+        }),
+        emptyRouteContext,
+      ),
+  },
+  {
     name: 'pharmacy-sites GET',
     handler: () =>
       pharmacySitesGet(
@@ -1633,6 +1644,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'pharmacy-partnerships GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
+        route.name === 'prescriber-institutions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'incident-reports GET' ||
         route.name === 'care-reports/[id] GET' ||
@@ -1726,6 +1738,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'pharmacy-partnerships GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
+        route.name === 'prescriber-institutions GET' ||
         route.name === 'first-visit-documents GET' ||
         route.name === 'incident-reports GET' ||
         route.name === 'care-reports/[id] GET' ||
@@ -1809,6 +1822,7 @@ describe('protected GET routes auth matrix', () => {
         route.name === 'pharmacy-partnerships GET' ||
         route.name === 'pharmacy-visit-requests GET' ||
         route.name === 'pca-pump-rentals GET' ||
+        route.name === 'prescriber-institutions GET' ||
         route.name === 'visit-schedules GET' ||
         route.name === 'visit-schedules/[id] GET' ||
         route.name === 'visit-preparations/[scheduleId] GET' ||

@@ -1,10 +1,12 @@
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { createPrescriberInstitutionSchema } from '@/lib/validations/prescriber-institution';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 const DEFAULT_PRESCRIBER_INSTITUTION_SEARCH_LIMIT = 500;
 const MAX_PRESCRIBER_INSTITUTION_SEARCH_LIMIT = 500;
@@ -35,7 +37,7 @@ function toResponse(item: {
   };
 }
 
-export const GET = withAuthContext(
+const authenticatedGET = withAuthContext(
   async (req, ctx) => {
     const queryParam = req.nextUrl.searchParams.get('q')?.trim();
     const query = queryParam && queryParam.length > 0 ? queryParam : undefined;
@@ -91,6 +93,15 @@ export const GET = withAuthContext(
     message: '医療機関マスターの閲覧権限がありません',
   },
 );
+
+export const GET: typeof authenticatedGET = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
 
 export const POST = withAuthContext(
   async (req, ctx) => {
