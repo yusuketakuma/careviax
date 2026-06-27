@@ -11897,3 +11897,29 @@ Next loop:
   - Screenshot evidence: `artifacts/ui-performance-sweep/before/desktop.png`, `artifacts/ui-performance-sweep/before/mobile.png`, `artifacts/ui-performance-sweep/final/desktop.png`, `artifacts/ui-performance-sweep/final/mobile.png`, and metrics JSON under `artifacts/ui-performance-sweep/`.
 - Remaining:
   - Commit the `/admin/performance` implementation group, then commit this progress-ledger update separately. The broader all-pages UI/UX objective remains incomplete.
+
+### Pharmacists GET — Sensitive List No-Store
+
+- Coordination:
+  - Drained `phos/codex` agmsg before and during the slice; no new Claude consultation was waiting.
+  - Acknowledged Claude approval for `bb0c4734` facility contacts hardening and kept this slice isolated from Claude-owned `/admin/incidents` work while it was dirty.
+- Bugs found:
+  - `GET /api/pharmacists` returned pharmacist/staff listing responses without explicit sensitive no-store headers on success, validation, forbidden, and unexpected-error paths.
+  - The unexpected-error path did not have route-local sanitized 500 coverage for pharmacist-list failures.
+- Implemented by Codex:
+  - Split the existing authenticated GET handler into `authenticatedGET` and exported a wrapper that applies `withSensitiveNoStore()` to all normal responses.
+  - Added `unstable_rethrow()` plus `withSensitiveNoStore(internalError())` for sanitized unexpected failures while preserving Next.js control-flow exceptions.
+  - Added GET regressions for no-store headers on forbidden, validation, success, collaborator, and dedupe paths.
+  - Added a sanitized 500 regression that confirms a thrown raw staff secret is not reflected in the response body.
+  - Added `pharmacists GET` to the protected GET no-store matrix.
+- Validation:
+  - Baseline `pnpm vitest run src/app/api/pharmacists/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `19` tests.
+  - `pnpm exec prettier --write src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed, unchanged after formatting.
+  - `pnpm vitest run src/app/api/pharmacists/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `338` tests.
+  - `pnpm exec eslint src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `git diff --check -- src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`. The broader API sensitive-list no-store sweep remains incomplete.
