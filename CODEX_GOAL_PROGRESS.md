@@ -48,6 +48,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation landed as `e0f4a79f`; this entry plus Ralph updates are the separate progress-ledger update.
 - Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `e0f4a79f` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Partner Visit Record API Path Helper Hardening
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `partner-visit-record-api-path` lock notice, and continued after the inbox stayed clear.
+  - Kept this to URL construction for pharmacy-cooperation workflow actions; no DB mutation, migration, push, deploy, or destructive operation.
+- Hardened partner visit record route construction in `8def9290`:
+  - Added `buildPartnerVisitRecordApiPath(recordId, suffix)` in `src/lib/pharmacy-cooperation/navigation.ts` on top of `encodePathSegment`.
+  - Moved the existing public `buildPartnerVisitRecordHref` helper to the same `encodePathSegment` primitive.
+  - Replaced raw submit/review/physician-report-draft fetch URL interpolation in `pharmacy-cooperation-workflow-content`.
+  - Added helper coverage for hostile slash/query/hash ids, suffix placement outside the encoded segment, and exact `.` / `..` fail-closed behavior.
+  - Preserved confirmation dialogs, mutation methods/bodies, org headers, response handling, auth, permission, DB schema/data, migrations, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: partner visit record workflow actions no longer interpolate raw record ids as API path segments.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/pharmacy-cooperation/navigation.ts src/lib/pharmacy-cooperation/navigation.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx'` passed.
+  - `pnpm exec vitest run src/lib/pharmacy-cooperation/navigation.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000` passed `2` files / `26` tests.
+  - Scoped ESLint passed for pharmacy-cooperation navigation/test and workflow content/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted helper/API-path slice.
+- Commit status: implementation landed as `8def9290`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `8def9290` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Patient Form Duplicate Existing Patient Href Helper Convergence
 
 - Coordination:

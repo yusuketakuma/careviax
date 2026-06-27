@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0404 JST
+
+- current task: partner visit record API path helper hardening for pharmacy-cooperation workflow actions.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `submitMutation` and `buildPartnerVisitRecordHref` (not resolved), `src/lib/pharmacy-cooperation/navigation.ts`, `src/lib/pharmacy-cooperation/navigation.test.ts`, `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`, and `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`.
+- files changed: `src/lib/pharmacy-cooperation/navigation.ts`, `src/lib/pharmacy-cooperation/navigation.test.ts`, `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: partner visit record workflow actions built submit/review/physician-report-draft API paths with raw record ids in template strings. Normal IDs are safe, but malformed or hostile ids with slash/query/hash/dot segments could confuse API route construction before request dispatch.
+- security risks found: reduced path-normalization and route-confusion risk by adding `buildPartnerVisitRecordApiPath(recordId, suffix)` on top of `encodePathSegment`, reusing `encodePathSegment` for the existing public partner visit record href, and routing submit/review/report-draft fetch URLs through the shared helper. Existing confirmation dialogs, mutation methods/bodies, org headers, response handling, auth, permission, DB schema/data, migration, external send, PHI logging, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing user-triggered mutations, loops, cache keys, polling, dependencies, or render-heavy work.
+- validation commands: `pnpm exec prettier --write src/lib/pharmacy-cooperation/navigation.ts src/lib/pharmacy-cooperation/navigation.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx'`; `pnpm exec vitest run src/lib/pharmacy-cooperation/navigation.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`; scoped ESLint for pharmacy-cooperation navigation/test and workflow content/test; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed. Focused pharmacy-cooperation navigation + workflow content Vitest passed `2` files / `26` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `8def9290` plus the state commit. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit, then send Claude the review request and continue after inbox is clear.
+
 ### 20260628-0359 JST
 
 - current task: patient form duplicate-alert existing-patient navigation helper convergence.
