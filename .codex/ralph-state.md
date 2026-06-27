@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0320 JST
+
+- current task: daily visit-record-retention notification href helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, process checks for Claude's Phase 3b build lock, gbrain `code_blast` / `code_callers` / `code_callees` for `checkVisitRecordRetention` (not resolved / graph not built), `src/server/jobs/daily/visits.ts`, `src/server/jobs/daily.test.ts`, `src/lib/visits/navigation.ts`, and `src/lib/visits/navigation.test.ts`. Also prioritized Claude's `de5f0308` Phase 3b patch review before committing this slice.
+- files changed: `src/server/jobs/daily/visits.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: no production behavior bug was changed. The maintainability/safety gap was that visit-record-retention notification links still built `/visits/:id` inline while the canonical visit navigation helper already carried the path-segment dot-segment contract.
+- security risks found: reduced route-construction drift by routing retention notification links through `buildVisitHref`. Hostile slash/space/query/fragment record ids keep the existing encoded output through existing test coverage, while exact `.` / `..` now fail closed through the shared helper. Raw visit record ids remain unchanged for task metadata, dedupe keys, DB identities, and notification metadata. No auth, permission, job schedule semantics, DB schema/data, migration, external send behavior, secret/cookie handling, PHI logging, push/deploy, or destructive behavior changed.
+- performance issues found: none. This is a pure string-construction refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render behavior.
+- validation commands: `pnpm exec prettier --write src/server/jobs/daily/visits.ts`; `pnpm exec vitest run src/server/jobs/daily.test.ts src/lib/visits/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for daily visits/job test and visits navigation/test; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; Claude `de5f0308` Phase 3b review focused Vitest, scoped static checks, raw color grep, token grep, and full type gates on current tree.
+- validation results: Prettier write passed unchanged. Focused daily job + visits navigation Vitest passed `2` files / `37` tests with expected daily job info logs. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed. Claude Phase 3b review passed focused intake/safety-board Vitest `2` files / `24` tests, scoped static checks, raw source color grep, token grep, and full type gates; Codex sent `PATCH_REVIEW_RESULT APPROVED`. Codex did not rerun `pnpm build`; Claude reported `pnpm build` green `291/291` for `de5f0308` and released the build lock.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `4f6d91cc` plus the state commit. The broader all-page PH-OS UI/UX polish and backend helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit, then send Claude the review request and continue after inbox is clear.
+
 ### 20260628-0312 JST
 
 - current task: operational-task prescription intake href helper convergence for fax original follow-up tasks.
