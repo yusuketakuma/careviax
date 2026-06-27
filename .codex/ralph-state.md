@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0312 JST
+
+- current task: operational-task prescription intake href helper convergence for fax original follow-up tasks.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` / `code_callers` / `code_callees` for `describeOperationalTask` (not resolved / graph not built), `src/lib/tasks/operational-task-presentation.ts`, `src/lib/tasks/operational-task-presentation.test.ts`, `src/lib/prescriptions/navigation.ts`, and `src/lib/prescriptions/navigation.test.ts`. Also inspected Claude-owned Phase 3b dirty files read-only enough to confirm non-overlap and ACKed Claude's build lock.
+- files changed: `src/lib/tasks/operational-task-presentation.ts`, `src/lib/tasks/operational-task-presentation.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned dirty UI/docs files under Phase 3b (`src/app/globals.css`, `src/app/(dashboard)/prescriptions/intake/intake-triage.shared.ts`, `src/components/features/workspace/safety-board.tsx`, `src/components/features/workspace/safety-board.test.tsx`, and `docs/color-token-remediation-plan.md`) were preserved untouched.
+- bugs found: no production behavior bug was changed. The maintainability/safety gap was that `fax_original_followup` operational tasks still built `/prescriptions/:id` inline while the canonical prescription intake navigation helper already carried the path-segment dot-segment contract.
+- security risks found: reduced route-construction drift by routing fax original follow-up prescription links through `buildPrescriptionHref`. Hostile slash/space/query/fragment ids keep the existing encoded output, while exact `.` / `..` now fail closed through the shared helper. Raw task entity ids, task classification, auth/access behavior, DB reads/writes, notification behavior, schema/data, migrations, external sends, secret/cookie handling, PHI logging, push/deploy, and destructive operations were not changed.
+- performance issues found: none. This is a pure string-construction refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render behavior.
+- validation commands: `pnpm exec prettier --write src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts`; `pnpm exec vitest run src/lib/tasks/operational-task-presentation.test.ts src/lib/prescriptions/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for operational-task presentation/test and prescription navigation/test; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused operational-task + prescription navigation Vitest passed `2` files / `14` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed. `pnpm build` was intentionally not run because Claude announced the Phase 3b global build lock; Codex ACKed and avoided build overlap.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `09c57d94` plus the state commit. The broader all-page PH-OS UI/UX polish and backend helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit, then send Claude the review request and continue after inbox/build-lock status is clear.
+
 ### 20260628-0303 JST
 
 - current task: comment mention notification navigation helper convergence for set plan, visit record, and care report links.

@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Operational Task Prescription Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, sent Claude a non-overlapping `operational-task-prescription-href` lock notice, and preserved Claude's Phase 3b UI/docs dirty files.
+  - ACKed Claude's Phase 3b global build lock and did not run `pnpm build`.
+- Refactored fax original follow-up action links in `09c57d94`:
+  - Imported and reused `buildPrescriptionHref` in `src/lib/tasks/operational-task-presentation.ts`.
+  - Replaced the remaining inline `/prescriptions/${encodeURIComponent(...)}` construction for `fax_original_followup`.
+  - Preserved existing encoded output for normal and hostile slash/space/query/fragment prescription intake ids.
+  - Added regression coverage that exact `.` / `..` prescription intake ids fail closed through the shared helper.
+  - Preserved raw task entity ids, task classification, auth/access behavior, DB reads/writes, notification behavior, schema/data, migrations, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: operational task prescription links now share the canonical prescription intake route helper and path-segment dot-segment contract instead of carrying a local inline route builder.
+- Performance issue improved: none. This is a pure string-construction refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/tasks/operational-task-presentation.ts src/lib/tasks/operational-task-presentation.test.ts` passed unchanged.
+  - `pnpm exec vitest run src/lib/tasks/operational-task-presentation.test.ts src/lib/prescriptions/navigation.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `14` tests.
+  - Scoped ESLint passed for operational-task presentation/test and prescription navigation/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: intentionally skipped by Codex because Claude announced the Phase 3b global build lock.
+- Commit status: implementation landed as `09c57d94`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `09c57d94` plus the state commit, then continue after inbox/build-lock status is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Comment Mention Navigation Helper Convergence
 
 - Coordination:
