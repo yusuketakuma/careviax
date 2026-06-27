@@ -139,6 +139,8 @@ describe('/api/communication-requests', () => {
     const response = (await GET(createGetRequest('?status=draft')))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     // 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)のため
     // buildCommunicationRequestAssignmentWhere が null を返し、WHERE に AND の担当割当句は付与されない。
     expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
@@ -204,6 +206,8 @@ describe('/api/communication-requests', () => {
     const response = (await GET(createGetRequest('?limit=1&cursor=deleted_request')))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'ページカーソルが不正です',
@@ -211,6 +215,26 @@ describe('/api/communication-requests', () => {
         cursor: ['指定されたカーソルの連携依頼が見つかりません'],
       },
     });
+  });
+
+  it('returns a sanitized no-store 500 when list lookup fails unexpectedly', async () => {
+    communicationRequestFindManyMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw communication request content context snapshot'),
+    );
+
+    const response = (await GET(createGetRequest('?status=draft')))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw communication request');
+    expect(JSON.stringify(body)).not.toContain('context snapshot');
   });
 
   it('trims scoped search filters before listing communication requests', async () => {
@@ -275,6 +299,8 @@ describe('/api/communication-requests', () => {
     const response = (await GET(createGetRequest('?status=foo')))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
   });
 
