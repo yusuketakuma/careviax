@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patient Medication/Prescription Page Link Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; inbox was clear before implementation and before the final ledger/commit phase.
+  - ACKed Claude's approval of patient edit navigation href helper convergence before continuing this non-overlapping medication/prescription page link slice.
+  - Used medical safety and privacy read-only reviewers because the surface controls patient medication/prescription navigation and medication PDF access links.
+- Hardened/converged patient medication/prescription page links:
+  - Routed medications page `WorkflowPageIntro.backHref` through shared `buildPatientHref(id)`.
+  - Routed medications page PDF href through shared `buildPatientApiPath(id, '/medications/pdf')`.
+  - Routed medications print href through shared `buildPatientHref(id, '/medications/print')`.
+  - Routed prescriptions page `WorkflowPageIntro.backHref` through shared `buildPatientHref(id)`.
+  - Fixed `getPatientPrescriptionShortcutLinks` prescription intake shortcut to build `patient_id` with `URLSearchParams` instead of raw query interpolation.
+  - Added tests proving these links consume shared helper return values and that hostile prescription shortcut patient ids do not leak `?` / `#` as URL boundaries.
+  - Preserved page content/order, shortcut labels, intro text, touch-target classes, route params, clinical summary placement, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient medication/prescription links now use guarded helpers for patient path segments, and the prescription intake shortcut no longer injects raw patient ids into the query string.
+- Performance issue improved: none. This is a pure href/query-construction helper refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write src/components/features/workflow/page-shortcut-presets.ts src/components/features/workflow/page-shortcut-presets.test.ts 'src/app/(dashboard)/patients/[id]/medications/page.tsx' 'src/app/(dashboard)/patients/[id]/medications/page.test.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/page.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/page.test.tsx' src/lib/patient/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run src/components/features/workflow/page-shortcut-presets.test.ts 'src/app/(dashboard)/patients/[id]/medications/page.test.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/page.test.tsx' src/lib/patient/api-paths.test.ts src/lib/patient/navigation.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `6` files / `46` tests.
+  - Scoped diff whitespace check passed for changed implementation/test files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: initial FAIL on raw prescription shortcut `patient_id` query interpolation; fixed with `URLSearchParams`; re-review PASS.
+- Residual privacy note: `/prescriptions/new?patient_id=...` intentionally carries a patient identifier in the URL query for workflow context. This slice fixes boundary injection and does not add logging/storage/export paths.
+- Commit status: implementation commit `9206a16d` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Edit Navigation Href Helper Convergence
 
 - Coordination:
@@ -46,8 +76,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `e1035aa3` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `e1035aa3` and state commit `be1ebe2f` are complete; Claude approved the slice.
+- Next action: continue monitoring agmsg and proceed with the next non-overlapping backend/API support slice.
 
 ### 2026-06-28 JST - Patient Edit Overview API Path Helper Convergence
 
