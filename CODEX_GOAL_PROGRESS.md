@@ -23,6 +23,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Billing Collection Document Href Path-Segment Hardening
+
+- Coordination:
+  - Received Claude-reported human approval for `billing-collection-document-href` and ACKed before starting the slice.
+  - Kept the change to billing collection document-copy URL construction; no DB mutation was run, and no migration, push, deploy, payment-rule change, external send, auth weakening, or destructive operation was performed.
+  - Used backend and data-integrity read-only reviewers because this touches billing collection metadata.
+- Hardened billing document-copy URLs:
+  - Changed `buildBillingDocumentPdfUrl(candidateId, kind)` to encode the candidate id path segment with shared `encodePathSegment`.
+  - Added route-boundary validation so exact `.` / `..` candidate ids return `400` before payload parsing or `withOrgContext`.
+  - Added tests proving hostile candidate ids remain raw for billing lookup/update/audit while stored `receipt_copy_url` / `invoice_copy_url` contain encoded path segments.
+  - Added tests proving exact dot-segment candidate ids do not enter `withOrgContext`, `updateMany`, or audit writes even when no PDF copy URL is requested.
+  - Preserved existing billing validation, idempotency hash/fingerprint behavior, receipt/invoice issue rules, patient writability guard, RLS context, auth, DB schema/data, migrations, external sends, PHI logging, and destructive-operation boundaries.
+- Security/correctness risk reduced:
+  - Stored receipt/invoice PDF copy URLs now share the repository path-segment fail-closed contract and cannot persist exact dot segments into `/api/billing-candidates/:id/documents/pdf` hrefs.
+  - Raw billing candidate identity remains unchanged for DB and audit semantics.
+- Performance issue improved: none. This is URL construction and early validation only.
+- Validation passed:
+  - Initial focused test run failed because the new partial-payment fixture omitted the existing required `collected_at`; fixed the fixture.
+  - Data-integrity auditor initially failed the patch because dot-segment rejection only happened while building copy URLs. Fixed by validating `candidateId` immediately after route-param normalization and before DB work.
+  - `pnpm exec prettier --write 'src/app/api/billing-candidates/[id]/collection/route.ts' 'src/app/api/billing-candidates/[id]/collection/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/billing-candidates/[id]/collection/route.test.ts' 'src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts' src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `35` tests.
+  - Scoped ESLint passed for billing collection route/test, billing document PDF route test, and path-segment helper/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for changed files.
+  - Backend reviewer: PASS.
+  - Data-integrity auditor re-review: PASS.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Commit status: implementation commit pending; this entry plus Ralph updates should be committed separately after the implementation commit.
+- Next action: commit the implementation slice, commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST`.
+
 ### 2026-06-28 JST - Report Share Patient Support API Helper Convergence
 
 - Coordination:
