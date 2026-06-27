@@ -48,6 +48,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation landed as `e0f4a79f`; this entry plus Ralph updates are the separate progress-ledger update.
 - Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `e0f4a79f` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
 
+### 2026-06-28 JST - Dispense Workbench API Path Helper Hardening
+
+- Coordination:
+  - Drained `phos/codex`, kept this backend/adapter-only, and continued after the inbox stayed clear.
+  - Kept this to API path construction for the dispense workbench adapter; no DB mutation, migration, push, deploy, or destructive operation beyond existing user-triggered adapter behavior.
+- Hardened dispense workbench route construction in `cffc1851`:
+  - Added `src/lib/dispensing/api-paths.ts` with `buildDispenseTaskApiPath`, `buildSetPlanApiPath`, and `buildPrescriptionLineApiPath` on top of `encodePathSegment`.
+  - Replaced inline task/set-plan/prescription-line path construction in `dispensing-workbench.adapter.ts`.
+  - Covered workbench detail reads, set calendar reads, packaging group mutations, prescription-line mutations, and set batch mutations.
+  - Left query-value construction such as `cycle_id` on query encoding.
+  - Added helper coverage for hostile slash/query/hash ids, suffix placement outside the encoded segment, and exact `.` / `..` fail-closed behavior.
+  - Preserved mutation methods, bodies, OCC/version fields, safety checklist payloads, org/read headers, auth, permission, DB schema/data, billing, external sends, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: dispense workbench adapter no longer carries many independent API path builders for task, plan, and line IDs.
+- Performance issue improved: none. This is a pure URL-construction helper refactor.
+- Validation passed:
+  - `pnpm exec prettier --write src/lib/dispensing/api-paths.ts src/lib/dispensing/api-paths.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts` passed unchanged.
+  - `pnpm exec vitest run src/lib/dispensing/api-paths.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `20` tests.
+  - Scoped ESLint passed for dispensing API path helper/test and workbench adapter/test.
+  - Scoped Prettier check passed for the same files.
+  - Scoped diff whitespace check passed for the same files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Build status: not rerun by Codex for this targeted adapter/API-path slice.
+- Commit status: implementation landed as `cffc1851`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `cffc1851` plus the state commit, then continue after inbox is clear. The broader all-page PH-OS UI/UX polish loop remains incomplete.
+
 ### 2026-06-28 JST - Partner Visit Record API Path Helper Hardening
 
 - Coordination:

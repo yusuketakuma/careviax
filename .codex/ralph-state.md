@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0411 JST
+
+- current task: dispense workbench API path helper hardening for task, set-plan, and prescription-line path segments.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` / `code_callers` for `loadWorkbenchAsync` (not resolved / graph not built), `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`, `src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts`, and `src/lib/dispensing/*` path helper prior art.
+- files changed: `src/lib/dispensing/api-paths.ts`, `src/lib/dispensing/api-paths.test.ts`, `src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: dispense workbench adapter read/write calls built several API paths with inline `encodeURIComponent` templates for task ids, set-plan ids, and prescription-line ids. Existing code encoded hostile ids but did not share the fail-closed exact-dot-segment path helper contract used by newer route builders.
+- security risks found: reduced path-normalization and route-confusion risk by adding `buildDispenseTaskApiPath`, `buildSetPlanApiPath`, and `buildPrescriptionLineApiPath` on top of `encodePathSegment`, then routing workbench detail reads, set calendar reads, packaging group mutations, prescription-line mutations, and set batch mutations through those helpers. Query-value construction such as `cycle_id` remains on query encoding. Mutation methods, bodies, OCC/version fields, safety checklist payloads, org/read headers, DB schema/data, auth, permission, billing, external send, PHI logging, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing user-triggered reads/mutations, loops, cache keys, polling, dependencies, or render-heavy work.
+- validation commands: `pnpm exec prettier --write src/lib/dispensing/api-paths.ts src/lib/dispensing/api-paths.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.ts`; `pnpm exec vitest run src/lib/dispensing/api-paths.test.ts src/components/features/dispense-workbench/dispensing-workbench.adapter.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for dispensing API path helper/test and workbench adapter/test; scoped Prettier check for the same files; scoped diff whitespace check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`.
+- validation results: Prettier write passed unchanged. Focused dispensing API path + workbench adapter Vitest passed `2` files / `20` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, and `typecheck:no-unused` passed.
+- remaining work: commit this state update separately, then send Claude a `PATCH_REVIEW_REQUEST` for implementation commit `cffc1851` plus the state commit. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit, then send Claude the review request and continue after inbox is clear.
+
 ### 20260628-0404 JST
 
 - current task: partner visit record API path helper hardening for pharmacy-cooperation workflow actions.
