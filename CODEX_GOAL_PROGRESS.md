@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Comments Mention Patient Href Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`, requested and received Claude ACK for the non-overlapping `src/app/api/comments/route.ts` backend/API lock, and preserved Claude's medication-calendar P1-a UI lane.
+  - Prioritized Claude's P1-a `PATCH_REVIEW_REQUEST` before committing this API slice. Codex approved `53592f6f` after inspecting the diff, confirming `SLOT_COLORS` remained untouched, and rerunning focused medication-calendar unit/render tests plus scoped checks.
+  - Read the local Next.js route handler guide before editing the app route file.
+- Refactored comment mention patient href construction in `563a3ceb`:
+  - Imported and used `buildPatientHref` for direct `patient` mention links and `medication_cycle` resolved patient links.
+  - Kept raw `entity_id` / `patient_id` identity unchanged for `canAccessCollaborationEntity`, `taskComment.create`, medication-cycle lookup, notification metadata, and non-patient entity links.
+  - Preserved existing response shapes, auth, per-entity authorization, mention recipient validation, org RLS transaction, realtime broadcast, DB schema/data, migrations, UI files, dependencies, external sends beyond the existing notification dispatch, push/deploy, and destructive-operation boundaries.
+- Security/correctness risk reduced: patient notification links now share the same patient route helper contract as the rest of the app, reducing route-construction drift while existing hostile-id tests continue to lock path encoding.
+- Performance issue improved: none. This is a pure href construction refactor with no extra DB reads, loops, network calls, polling, cache changes, or dependencies.
+- Validation passed:
+  - Baseline `pnpm exec vitest run src/app/api/comments/route.test.ts --reporter=dot --testTimeout=30000` passed `1` file / `24` tests.
+  - `pnpm exec prettier --write src/app/api/comments/route.ts` passed.
+  - Final focused comments route Vitest passed `1` file / `24` tests.
+  - Scoped ESLint passed for `src/app/api/comments/route.ts` and `src/app/api/comments/route.test.ts`.
+  - Scoped Prettier check passed for the same two files.
+  - Scoped diff whitespace check passed for `src/app/api/comments/route.ts`.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - `pnpm typecheck:no-unused` passed.
+- Interrupt review validation for Claude P1-a `53592f6f`:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts' 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.render.test.tsx' --reporter=dot --testTimeout=30000` passed `2` files / `6` tests.
+  - Scoped ESLint, Prettier check, and diff whitespace check passed for the medication-calendar content/test files.
+  - Review result sent as `PATCH_REVIEW_RESULT APPROVED`; no findings.
+- Commit status: implementation landed as `563a3ceb`; this entry plus Ralph updates are the separate progress-ledger update.
+- Next action: commit the state update separately, send Claude a `PATCH_REVIEW_REQUEST` for `563a3ceb` plus the state commit, then continue after inbox is clear.
+
 ### 2026-06-27 JST - Patient Home Operations Query Href Builder Convergence
 
 - Coordination:
