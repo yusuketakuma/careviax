@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientMcsContent } from './mcs-content';
 
 setupDomTestEnv();
@@ -21,6 +22,11 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
     buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
     buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
   };
+});
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
 });
 
 type MutationOptions = {
@@ -178,6 +184,90 @@ describe('PatientMcsContent', () => {
         last_checked_at: null,
         note: null,
       });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('routes MCS query and mutation fetches through the shared patient API path helper', async () => {
+    const patientId = 'patient_1';
+    vi.mocked(buildPatientApiPath)
+      .mockImplementationOnce((id, suffix = '') => `/api/patients/__helper_${id}__${suffix}`)
+      .mockImplementationOnce((id, suffix = '') => `/api/patients/__helper_${id}__${suffix}`)
+      .mockImplementationOnce((id, suffix = '') => `/api/patients/__helper_${id}__${suffix}`)
+      .mockImplementationOnce((id, suffix = '') => `/api/patients/__helper_${id}__${suffix}`);
+    const mutationOptions: MutationOptions[] = [];
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({
+        data: {
+          patient: { id: patientId, name: '田中 一郎' },
+          importedCount: 0,
+          latestMessageAt: null,
+          link: null,
+          profile: null,
+          summary: null,
+          messages: [],
+          checkLogs: [],
+        },
+      }),
+    });
+    let queryFn: (() => unknown) | undefined;
+
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockImplementation((options: MutationOptions) => {
+      mutationOptions.push(options);
+      return { isPending: false, mutate: vi.fn() };
+    });
+    useQueryMock.mockImplementation(({ queryFn: nextQueryFn }: QueryOptions) => {
+      queryFn = nextQueryFn;
+      return {
+        data: {
+          link: null,
+          profile: null,
+          summary: null,
+          messages: [],
+          checkLogs: [],
+        },
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: vi.fn(),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<PatientMcsContent patientId={patientId} />);
+
+      await queryFn?.();
+      await mutationOptions[0].mutationFn?.('https://www.medical-care.net/patients/2463520');
+      await mutationOptions[1].mutationFn?.({
+        contentType: 'report',
+        summary: 'MCS投稿を確認',
+        nextAction: '次回訪問で確認',
+      });
+      await mutationOptions[2].mutationFn?.({
+        linkedStatus: 'linked',
+        participationStatus: 'joined',
+        pharmacyParticipants: ['薬剤師 佐藤'],
+        counterpartRoles: ['visiting_nurse'],
+        lastCheckedAt: null,
+        note: null,
+      });
+
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/mcs');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId, '/mcs-sync');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(3, patientId, '/mcs/logs');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(4, patientId, '/mcs');
+      expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+        '/api/patients/__helper_patient_1__/mcs?limit=30',
+        '/api/patients/__helper_patient_1__/mcs-sync',
+        '/api/patients/__helper_patient_1__/mcs/logs',
+        '/api/patients/__helper_patient_1__/mcs',
+      ]);
     } finally {
       vi.unstubAllGlobals();
     }

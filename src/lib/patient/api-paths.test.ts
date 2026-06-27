@@ -15,7 +15,15 @@ describe('buildPatientApiPath', () => {
   it('keeps trusted suffixes outside the encoded patient id segment', () => {
     const patientId = 'patient/1?tab=x#frag';
 
-    for (const suffix of ['/care-team', '/contacts', '/documents', '/prescriptions']) {
+    for (const suffix of [
+      '/care-team',
+      '/contacts',
+      '/documents',
+      '/prescriptions',
+      '/mcs',
+      '/mcs-sync',
+      '/mcs/logs',
+    ]) {
       expect(buildPatientApiPath(patientId, suffix)).toBe(
         `/api/patients/${encodeURIComponent(patientId)}${suffix}`,
       );

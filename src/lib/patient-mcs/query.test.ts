@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import {
   createPatientMcsQueryKeyPrefix,
   createPatientMcsQueryKey,
@@ -12,6 +13,11 @@ import {
 vi.mock('@/lib/api/org-headers', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/api/org-headers')>();
   return { ...actual, buildOrgHeaders: vi.fn(actual.buildOrgHeaders) };
+});
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
 });
 
 describe('patient-mcs query', () => {
@@ -83,6 +89,41 @@ describe('patient-mcs query', () => {
     expect(init.cache).toBe('no-store');
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(buildOrgHeaders)).toHaveBeenNthCalledWith(1, 'org_1');
+    expect(vi.mocked(buildPatientApiPath)).toHaveBeenCalledWith('pt/1?x=y#z', '/mcs');
+
+    global.fetch = originalFetch;
+  });
+
+  it('uses the shared patient API path helper return value for MCS overview fetches', async () => {
+    const originalFetch = global.fetch;
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient_1__/mcs');
+    const fetchMock = vi.fn().mockResolvedValue({
+      status: 200,
+      ok: true,
+      json: async () => ({
+        data: {
+          patient: { id: 'patient_1', name: '青葉 花子' },
+          link: null,
+          profile: null,
+          summary: null,
+          messages: [],
+          checkLogs: [],
+        },
+      }),
+    } as Response);
+    global.fetch = fetchMock;
+
+    await fetchPatientMcsOverview('patient_1', 'org_1', 30);
+
+    expect(vi.mocked(buildPatientApiPath)).toHaveBeenCalledWith('patient_1', '/mcs');
+    expect(fetchMock).toHaveBeenCalledWith('/api/patients/__helper_patient_1__/mcs?limit=30', {
+      headers: { 'x-org-id': 'org_1' },
+      cache: 'no-store',
+    });
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/patients/patient_1/mcs?limit=30', {
+      headers: { 'x-org-id': 'org_1' },
+      cache: 'no-store',
+    });
 
     global.fetch = originalFetch;
   });
