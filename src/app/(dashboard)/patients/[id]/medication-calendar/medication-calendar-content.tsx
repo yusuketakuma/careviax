@@ -13,8 +13,9 @@ import {
   addMonths,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, FileText, Printer } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, FileText, Printer } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 // --- Types ---
@@ -310,12 +311,31 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
       </div>
 
       {medicationQuery.isLoading ? (
-        <div className="rounded-lg border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
-          服薬カレンダーを読み込んでいます...
+        <div className="space-y-2" data-testid="medication-calendar-loading">
+          <span className="sr-only">服薬カレンダーを読み込み中</span>
+          <Skeleton className="h-8 w-full" aria-hidden="true" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={`week-${i}`} className="h-20 w-full rounded-lg" aria-hidden="true" />
+          ))}
         </div>
       ) : medicationQuery.error instanceof Error ? (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-6 text-sm text-destructive">
-          {medicationQuery.error.message}
+        // 取得失敗を raw error 文字列で出さず、固定コピー + role=alert + 再試行で復帰導線を提供。
+        <div
+          role="alert"
+          data-testid="medication-calendar-error"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-state-blocked/30 bg-state-blocked/10 px-4 py-4 text-sm text-state-blocked"
+        >
+          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            服薬カレンダーを取得できませんでした。時間をおいて再試行してください。
+          </span>
+          <button
+            type="button"
+            onClick={() => void medicationQuery.refetch()}
+            className="inline-flex min-h-11 items-center rounded-md border border-state-blocked/40 px-3 text-xs font-medium text-state-blocked hover:bg-state-blocked/10"
+          >
+            再試行
+          </button>
         </div>
       ) : profiles.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border bg-card px-4 py-6 text-sm text-muted-foreground">
