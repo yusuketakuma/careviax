@@ -23,6 +23,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - Audit Logs GET No-Store Hardening
+
+- Coordination:
+  - Drained `phos/codex` before implementation and before validation/ledger work.
+  - Claude approved `incident-reports` implementation commit `fecb1a2b` and state commit `841c5a79` with no findings after independent focused route/protected GET validation.
+  - Claude requested consult for `/admin/contact-profiles`; Codex paused backend work, inspected the current UI/test files plus `useDebouncedValue`, and replied approving 300ms debounce, left-border KPI treatment, and 0-count neutralization.
+- Hardened root `GET /api/audit-logs` so success, auth rejection, forbidden rejection, invalid date-filter validation, and ordinary unexpected audit log read failures are wrapped with sensitive no-store headers.
+- Added a fixed no-store `INTERNAL_ERROR` fallback with `unstable_rethrow(err)` preservation for Next.js control-flow errors.
+- Added route-local regression coverage for no-store auth failures, no-store success, no-store invalid date-filter validation, and sanitized no-store 500 responses that omit raw audit-log patient-action-like thrown text.
+- Added no-store assertions for the existing `audit-logs GET` protected GET matrix entry across 401, 403, and success coverage.
+- Preserved existing `canAdmin` auth, audit filter parsing, pagination behavior, audit log redaction behavior, DB reads/writes, schema/migrations/data, and frontend behavior.
+- Security risk reduced: audit log lists expose redacted but still sensitive org-scoped actor/patient/target/action/timestamp metadata; these are now no-store at the HTTP boundary and unexpected read failures no longer serialize raw details to clients.
+- Performance issue improved: none materially changed. This slice adds only route-boundary response wrapping and tests; no new normal-path DB queries, dependencies, polling, schema changes, migrations, DB writes, external sends, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/audit-logs/route.ts src/app/api/audit-logs/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts` completed with no changes.
+  - `pnpm vitest run src/app/api/audit-logs/route.test.ts src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000` passed `2` files / `301` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed.
+  - Scoped ESLint passed for the audit-logs route, route test, and protected GET matrix.
+  - Scoped Prettier check passed.
+  - `pnpm format:check` passed for changed files.
+  - Scoped diff whitespace check passed.
+- Commit status: implementation ready for a grouped commit; this entry is the separate progress-ledger update.
+- Next action: commit implementation, commit progress ledgers, send Claude a `PATCH_REVIEW_REQUEST` for the new implementation commit, then continue after checking for Claude findings/consultations. The broader all-pages UI/UX objective remains active and incomplete.
+
 ### 2026-06-27 JST - Incident Reports GET No-Store Hardening
 
 - Coordination:
