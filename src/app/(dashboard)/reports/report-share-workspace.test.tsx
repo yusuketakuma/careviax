@@ -390,6 +390,31 @@ describe('ReportShareWorkspace', () => {
     );
   });
 
+  it('promotes the action rail into the fold (mobile-first order, desktop sticky)', async () => {
+    stubFetch();
+    renderWorkspace();
+
+    const railSlot = await screen.findByTestId('report-action-rail-slot');
+    // モバイルでは next-action(レール)を本文より前に出す(order-1)。
+    expect(railSlot.className).toContain('order-1');
+    // デスクトップは sticky 右レールで fold 内に固定。
+    expect(railSlot.className).toContain('lg:sticky');
+    expect(railSlot.className).toContain('lg:order-2');
+  });
+
+  it('renders resolved-today rows as left-border accents, not full state-color fills', async () => {
+    stubFetch();
+    renderWorkspace();
+
+    const rows = await screen.findAllByTestId('report-resolved-row');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      // 状態色の塗り面積は左ボーダーに最小化(全面塗り bg-state-done/10 を撤去)。
+      expect(row.className).toContain('border-l-state-done');
+      expect(row.className).not.toContain('bg-state-done/10');
+    }
+  });
+
   it('renders billing candidate open issues using their own action href', async () => {
     stubFetch({
       ...TODAY_WORKSPACE,

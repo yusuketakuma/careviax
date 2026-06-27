@@ -303,7 +303,7 @@ function WaitingBoxesSection({ data }: { data: ReportsTodayWorkspaceResponse }) 
             {data.resolved_today.map((item) => (
               <li
                 key={item.id}
-                className="rounded-lg border border-state-done/30 bg-state-done/10 p-3"
+                className="rounded-lg border border-border/70 border-l-2 border-l-state-done bg-card p-3"
                 data-testid="report-resolved-row"
               >
                 <div className="flex flex-wrap items-center gap-2">
@@ -653,8 +653,8 @@ export function ReportShareWorkspace() {
             />
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="min-w-0 space-y-4">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
+            <div className="order-2 min-w-0 space-y-4 lg:order-1">
               <TodayDraftsCard
                 data={data}
                 onGenerateDraft={(visitRecordId, visitRecordUpdatedAt) =>
@@ -684,7 +684,13 @@ export function ReportShareWorkspace() {
                 実施したこと → 観察したこと → 提案。
               </p>
             </div>
-            <div>{actionRail}</div>
+            {/* p1: 次にやること/止まっている理由を fold 内へ。モバイルは先頭、デスクトップは sticky 右レール。 */}
+            <div
+              className="order-1 lg:order-2 lg:sticky lg:top-4"
+              data-testid="report-action-rail-slot"
+            >
+              {actionRail}
+            </div>
           </div>
         )}
       </div>
