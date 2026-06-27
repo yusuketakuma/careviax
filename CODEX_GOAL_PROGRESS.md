@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-27 JST - S6 Visit Schedule Generate Operating-Day Block and Override Audit
+
+- Coordination:
+  - Drained `phos/codex` before implementation and during long gates.
+  - Answered Claude's R3 common MonthGrid plan review before continuing S6, ACKed Claude's R3a path lock, and preserved Claude-owned R3a files.
+  - Reviewed Claude R3a commits `9876cd80` and `fe02817f`; initially returned `NEEDS_CHANGES`, then approved after the week-start header and ARIA-doc fixes landed.
+  - Full gates were serialized around Claude R3a WIP. A transient full `tsc` failure (`ChevronLeft` / `ChevronRight`) and transient `typecheck:no-unused` failure (`defaultWeekdayLabels`) were reported back to Claude and not edited by Codex.
+- Added `operating_day_override_reason` to `generateVisitSchedulesSchema` with trim, non-empty, and 500-character validation.
+- Updated `POST /api/visit-schedules/generate` so direct recurring schedule generation resolves each candidate date through the S2/S3 operating-day calendar after pharmacist shift validation.
+- Generation now loads weekly `PharmacyOperatingHours` rows and both site-specific and org-wide `BusinessHoliday` rows for the candidate dates, builds per-site operating calendars with `buildOperatingCalendarFromDbRows`, and blocks dates where `resolveOperatingState` returns `holiday` or `regular_closed`.
+- Reasons are required for holiday/regular-closed overrides. Without a reason, generation returns a date-specific validation error before schedule creation. With a reason, schedules are created and one audit entry is written per overridden generated schedule.
+- Override audit entries use `createAuditLogEntry` in the existing serializable generation transaction with action `visit_schedule_operating_day_override_applied`, target `VisitSchedule`, patient id, case/cycle/date/pharmacist/site, operating-day reason, override reason, and recurrence rule.
+- Preserved existing auth (`canVisit`), case/pharmacist authorization, workflow gates, medication-cycle requirement, patient/facility time intersection, pharmacist shift validation, vehicle validation, insurance visit-limit checks, duplicate schedule conflict handling, route ordering, transaction retry behavior, response shape, DB schema/migrations/data, frontend behavior, external sends, push/deploy, and destructive operations.
+- Security/medical-safety risk reduced: direct generation can no longer bypass the operating-day closure policy that planner candidates already respect, and emergency/exception generation leaves a structured audit trail with a required reason.
+- Performance issue improved: none materially changed. The added operating-day reads are bounded by the existing 100-candidate generation cap and unique shift sites; no new dependencies, polling, unbounded loops, migrations, or frontend rendering work were introduced.
+- Validation passed:
+  - `pnpm exec prettier --write src/app/api/visit-schedules/generate/route.ts src/app/api/visit-schedules/generate/route.test.ts src/lib/validations/visit-schedule.ts` passed with no changes.
+  - `pnpm exec vitest run src/app/api/visit-schedules/generate/route.test.ts --reporter=dot --testTimeout=30000` passed `1` file / `30` tests.
+  - `pnpm exec vitest run src/app/api/visit-schedules/generate/route.test.ts src/lib/calendar/operating-day.test.ts src/lib/calendar/operating-day-adapter.test.ts src/app/api/pharmacy-operating-hours/route.test.ts --reporter=dot --testTimeout=30000` passed `4` files / `77` tests.
+  - Scoped ESLint passed for `src/app/api/visit-schedules/generate/route.ts`, `src/app/api/visit-schedules/generate/route.test.ts`, and `src/lib/validations/visit-schedule.ts`.
+  - Scoped Prettier check passed for the same three files.
+  - Scoped diff whitespace check passed for the same three files.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json` passed on current HEAD after Claude R3a fixes.
+  - `pnpm typecheck:no-unused` passed on current HEAD after Claude R3a fixes.
+- Commit status: implementation ready for grouped commit; this entry is the separate progress-ledger update.
+- Next action: run ledger-aware scoped checks, commit the S6 implementation and ledgers separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue with the next non-overlapping slice after inbox is clear.
+
 ### 2026-06-27 JST - Master Hub Operating Hours Card
 
 - Coordination:
