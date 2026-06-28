@@ -4,6 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import type { PatientBoardCard, PatientBoardResponse } from '@/types/patient-board';
 
 setupDomTestEnv();
@@ -20,6 +21,11 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 vi.mock('@/lib/hooks/use-realtime-query', () => ({
   useRealtimeQuery: useRealtimeQueryMock,
 }));
+
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
 
 import { PatientsBoard, formatNextVisitLabel, selectVisibleSafetyTags } from './patients-board';
 import { PatientBoardLoadingShell } from './patient-board-loading';
@@ -338,6 +344,45 @@ describe('PatientsBoard', () => {
     expect(within(paused as HTMLElement).getByTestId('paused-progress-dots')).toBeTruthy();
     expect(within(paused as HTMLElement).getByText('退院連絡待ち')).toBeTruthy();
     expect(within(paused as HTMLElement).getByText(/80歳・入院中/)).toBeTruthy();
+  });
+
+  it('routes patient card links through the shared patient href helper', () => {
+    const data = buildFixture();
+    const hostilePatientId = 'pt/1?x=y#z';
+    data.cards[0] = {
+      ...data.cards[0],
+      patient_id: hostilePatientId,
+      foundation_href: undefined,
+    };
+    useRealtimeQueryMock.mockReturnValue({
+      data,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+    vi.mocked(buildPatientHref).mockImplementation(
+      (patientId, suffix = '') => `/patients/__helper_${patientId}__${suffix}`,
+    );
+    vi.mocked(buildPatientHref).mockClear();
+
+    render(<PatientsBoard />);
+
+    const urgent = screen
+      .getAllByTestId('patient-board-card')
+      .find((node) => node.getAttribute('data-attention') === 'urgent_now');
+    expect(urgent).toBeTruthy();
+    expect(
+      within(urgent as HTMLElement)
+        .getByRole('link', { name: '田中 一郎' })
+        .getAttribute('href'),
+    ).toBe(`/patients/__helper_${hostilePatientId}__`);
+    expect(
+      within(urgent as HTMLElement)
+        .getByRole('link', { name: '患者詳細' })
+        .getAttribute('href'),
+    ).toBe(`/patients/__helper_${hostilePatientId}__`);
+    expect(buildPatientHref).toHaveBeenCalledWith(hostilePatientId);
   });
 
   it('filters cards by chip selection and search query', () => {

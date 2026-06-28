@@ -35,6 +35,7 @@ import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { cn } from '@/lib/utils';
@@ -438,7 +439,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
       <div className="flex items-start justify-between gap-2">
         <p className="min-w-0 text-sm leading-6">
           <Link
-            href={`/patients/${card.patient_id}`}
+            href={buildPatientHref(card.patient_id)}
             className="inline-flex min-h-11 items-center font-bold text-foreground hover:underline"
             data-testid="patient-board-card-link"
           >
@@ -546,7 +547,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
           → {card.link_label}
         </Link>
         <Link
-          href={card.foundation_href ?? `/patients/${card.patient_id}`}
+          href={card.foundation_href ?? buildPatientHref(card.patient_id)}
           className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '!h-auto !min-h-[44px]')}
         >
           患者詳細
