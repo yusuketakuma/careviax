@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Admin Incident Reports API Path Helper Convergence
+
+- Coordination:
+  - Preserved unrelated dirty files, including `.codex/hooks.json`, report `[id]` files, report navigation files, `src/server/services/patient-service.ts`, and `.perf-a1-equiv.ts`.
+  - Read the local Next.js `use client` docs before editing the client component; the new helper imports only the shared client-safe `encodePathSegment` utility.
+  - No DB mutation, push, deploy, migration, or destructive operation was run.
+- Hardened incident-report admin API boundaries:
+  - Added `src/lib/incident-reports/api-paths.ts` with `INCIDENT_REPORTS_API_PATH` and `buildIncidentReportApiPath(reportId)`.
+  - Routed incident-report collection GET and memo PATCH in `IncidentsContent` through the shared collection/detail path contract.
+  - Preserved exact existing org headers, HTTP methods, JSON body shape, query keys, invalidations, rendered admin UI, and error messages.
+  - Added helper coverage for collection path, normal ids, hostile ids containing `/`, `?`, and `#`, and exact `.` / `..` dot-segment fail-closed behavior.
+  - Strengthened component coverage so real fetch calls assert the collection GET URL/header and hostile-id PATCH URL/header/body.
+- Security/privacy risk reduced: admin incident-report detail mutations no longer duplicate report-id API path construction, reducing route-boundary drift for hostile `/`, `?`, or `#` report ids and failing closed on exact dot segments before PATCH side effects.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads/writes, external sends, polling, dependencies, or render-heavy computation.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/incidents/incidents-content.tsx' 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx' src/lib/incident-reports/api-paths.ts src/lib/incident-reports/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx' src/lib/incident-reports/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `12` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/incidents/incidents-content.tsx' 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx' src/lib/incident-reports/api-paths.ts src/lib/incident-reports/api-paths.test.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/incidents/incidents-content.tsx' 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx' src/lib/incident-reports/api-paths.ts src/lib/incident-reports/api-paths.test.ts`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/incidents/incidents-content.tsx' 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx' src/lib/incident-reports/api-paths.ts src/lib/incident-reports/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/incident-reports/route.test.ts 'src/app/api/incident-reports/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `10` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed after `pgrep` found no concurrent tsc/build/typecheck long gate.
+- Commit status: incident-report implementation committed locally as `dac2a075`; progress-ledger commit pending.
+- Next action: commit the progress-ledger slice, then continue the next non-overlapping backend/API helper convergence slice.
+
 ### 2026-06-28 JST - Admin PCA Pump/Rental API Path Helper Convergence
 
 - Coordination:
