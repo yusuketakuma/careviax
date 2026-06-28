@@ -288,7 +288,7 @@ function TaskAndIssueCard({
             .map((evidence) => (
               <div
                 key={evidence.id}
-                className="rounded-lg border border-state-blocked/30 bg-state-blocked/10 p-3 text-sm"
+                className="rounded-lg border-l-4 border-border/70 border-l-state-blocked bg-card p-3 text-sm"
               >
                 <p className="font-medium text-state-blocked">算定を止めている理由</p>
                 <p className="mt-1 text-xs text-state-blocked">

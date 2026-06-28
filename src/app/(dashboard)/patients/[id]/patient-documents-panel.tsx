@@ -371,7 +371,7 @@ function MissingFirstVisitDocumentsCreatePanel({
   const labels = statuses.map((status) => status.label).join('、');
 
   return (
-    <div className="mb-4 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3">
+    <div className="mb-4 rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm font-semibold text-state-confirm">未作成書類を起票できます</p>
