@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0901 JST
+
+- current task: residual medication chart query URLSearchParams hardening.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `ResidualMedicationChart`, raw residual medication query scans, `src/components/features/patients/residual-medication-chart.tsx`, `src/components/features/patients/residual-medication-chart.test.tsx`, and `src/app/api/residual-medications/route.ts`.
+- files changed: `src/components/features/patients/residual-medication-chart.tsx`, `src/components/features/patients/residual-medication-chart.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `ResidualMedicationChart` still interpolated raw `patientId` into `/api/residual-medications?patient_id=${patientId}&limit=100`. Hostile ids containing `?`, `#`, `&`, or `=` could alter the query boundary before reaching the server route.
+- security risks found: reduced residual medication query injection/fragment risk by building the query with `URLSearchParams({ patient_id: patientId, limit: '100' })`. Added a test proving raw patient id remains in query key/component data flow while the network URL encodes URL-reserved characters inside the patient_id value. Existing `limit=100`, `x-org-id` header behavior, chart grouping and 7-day threshold semantics, empty/loading states, route handlers, API route contract, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure query-construction refactor with no new DB reads, network calls beyond existing residual medication fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`; `pnpm exec vitest run src/components/features/patients/residual-medication-chart.test.tsx --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`; `pnpm exec prettier --check src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`; `git diff --check -- src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
+- validation results: Prettier write passed. Focused residual medication chart Vitest passed `1` file / `1` test after strengthening the hostile patient id with `&` and `=` query-injection characters. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
+- remaining work: state commit is pending for implementation commit `94eb5f26`, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+
 ### 20260628-0854 JST
 
 - current task: patient structured care panel API path helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing structured care fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write src/components/features/patients/patient-structured-care-panel.tsx src/components/features/patients/patient-structured-care-panel.test.tsx`; `pnpm exec vitest run src/components/features/patients/patient-structured-care-panel.test.tsx src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/components/features/patients/patient-structured-care-panel.tsx src/components/features/patients/patient-structured-care-panel.test.tsx`; `pnpm exec prettier --check src/components/features/patients/patient-structured-care-panel.tsx src/components/features/patients/patient-structured-care-panel.test.tsx`; `git diff --check -- src/components/features/patients/patient-structured-care-panel.tsx src/components/features/patients/patient-structured-care-panel.test.tsx`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medical safety reviewer read-only review; privacy compliance reviewer read-only review.
 - validation results: Prettier write passed. Focused structured care panel + patient API/path-segment Vitest passed `3` files / `18` tests. Scoped ESLint, scoped Prettier check, scoped diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medical safety review, and privacy review passed.
-- remaining work: state commit is pending for implementation commit `de5d4796`, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+- remaining work: implementation commit `de5d4796` and state commit `a6f3231e` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: continue non-overlapping API/query hardening while monitoring agmsg for Claude interrupts.
 
 ### 20260628-0844 JST
 

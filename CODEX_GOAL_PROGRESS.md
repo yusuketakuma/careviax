@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Residual Medication Chart Query Boundary Hardening
+
+- Coordination:
+  - Drained `phos/codex`; ACKed Claude's approval of PatientStructuredCarePanel before continuing this non-overlapping residual medication chart slice.
+  - Used medical safety and privacy read-only reviewers because the surface displays patient residual medication records and excess-day counts.
+- Hardened residual medication chart query construction:
+  - Built `/api/residual-medications` query parameters with `URLSearchParams({ patient_id, limit: '100' })` instead of raw query interpolation.
+  - Added component coverage proving raw patient id remains in the React Query key/component flow while the network URL encodes `/`, `?`, `#`, `&`, and `=` reserved characters inside the `patient_id` value.
+  - Preserved `limit=100`, `x-org-id` header behavior, chart grouping and 7-day threshold semantics, empty/loading states, API route contract, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: residual medication chart GET can no longer let route-derived patient ids inject sibling query params or URL fragments through raw interpolation.
+- Performance issue improved: none. This is a pure query-construction refactor with no new DB reads, network calls beyond existing residual medication fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`: passed.
+  - `pnpm exec vitest run src/components/features/patients/residual-medication-chart.test.tsx --reporter=dot --testTimeout=30000`: passed, `1` file / `1` test.
+  - `pnpm exec eslint src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`: passed.
+  - `pnpm exec prettier --check src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`: passed.
+  - `git diff --check -- src/components/features/patients/residual-medication-chart.tsx src/components/features/patients/residual-medication-chart.test.tsx`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medical safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `94eb5f26` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Patient Structured Care API Path Helper Convergence
 
 - Coordination:
@@ -46,8 +72,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `de5d4796` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `de5d4796` and state commit `a6f3231e` are complete; Claude approved the slice.
+- Next action: continue after inbox is clear.
 
 ### 2026-06-28 JST - Patient Field Revision Timeline API Path Helper Convergence
 
