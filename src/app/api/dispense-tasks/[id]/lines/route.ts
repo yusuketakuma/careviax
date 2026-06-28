@@ -13,6 +13,12 @@ import { optionalUtcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import {
+  PACKAGING_INSTRUCTION_TAG_OPTIONS,
+  PACKAGING_METHOD_OPTIONS,
+  type PackagingInstructionTagValue,
+  type PackagingMethodValue,
+} from '@/lib/dispensing/packaging';
 
 class PrescriptionLineBatchConflict extends Error {
   constructor(
@@ -32,6 +38,17 @@ class PrescriptionLineBatchValidationError extends Error {
 }
 
 const optionalDateColumnSchema = dateKeySchema('日付はYYYY-MM-DD形式です').nullable().optional();
+const optionalNullableTextSchema = z.string().trim().min(1).max(1000).nullable().optional();
+const ROUTE_VALUES = ['internal', 'external', 'injection', 'other'] as const;
+const DISPENSING_METHOD_VALUES = ['standard', 'unit_dose', 'crushed', 'other'] as const;
+const PACKAGING_METHOD_VALUES = PACKAGING_METHOD_OPTIONS.map((option) => option.value) as [
+  PackagingMethodValue,
+  ...PackagingMethodValue[],
+];
+const PACKAGING_TAG_VALUES = PACKAGING_INSTRUCTION_TAG_OPTIONS.map((option) => option.value) as [
+  PackagingInstructionTagValue,
+  ...PackagingInstructionTagValue[],
+];
 
 const lineUpdateItemSchema = z
   .object({
@@ -40,11 +57,34 @@ const lineUpdateItemSchema = z
     start_date: optionalDateColumnSchema,
     end_date: optionalDateColumnSchema,
     days: z.number().int().min(1, '投与日数は1以上の整数です').optional(),
+    dosage_form: optionalNullableTextSchema,
+    route: z.enum(ROUTE_VALUES).nullable().optional(),
+    dispensing_method: z.enum(DISPENSING_METHOD_VALUES).nullable().optional(),
+    packaging_method: z.enum(PACKAGING_METHOD_VALUES).nullable().optional(),
+    packaging_instructions: optionalNullableTextSchema,
+    packaging_instruction_tags: z.array(z.enum(PACKAGING_TAG_VALUES)).optional(),
   })
   .refine(
     (value) =>
-      value.start_date !== undefined || value.end_date !== undefined || value.days !== undefined,
+      value.start_date !== undefined ||
+      value.end_date !== undefined ||
+      value.days !== undefined ||
+      value.dosage_form !== undefined ||
+      value.route !== undefined ||
+      value.dispensing_method !== undefined ||
+      value.packaging_method !== undefined ||
+      value.packaging_instructions !== undefined ||
+      value.packaging_instruction_tags !== undefined,
     { message: '更新する項目を指定してください' },
+  )
+  .refine(
+    (value) =>
+      value.packaging_instruction_tags === undefined ||
+      new Set(value.packaging_instruction_tags).size === value.packaging_instruction_tags.length,
+    {
+      message: '包装タグが重複しています',
+      path: ['packaging_instruction_tags'],
+    },
   );
 
 const patchSchema = z.object({
@@ -117,6 +157,12 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
       start_date: true,
       end_date: true,
       days: true,
+      dosage_form: true,
+      route: true,
+      dispensing_method: true,
+      packaging_method: true,
+      packaging_instructions: true,
+      packaging_instruction_tags: true,
       updated_at: true,
     },
   });
@@ -129,6 +175,12 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
     start_date: string | null;
     end_date: string | null;
     days: number;
+    dosage_form: string | null;
+    route: string | null;
+    dispensing_method: string | null;
+    packaging_method: PackagingMethodValue | null;
+    packaging_instructions: string | null;
+    packaging_instruction_tags: PackagingInstructionTagValue[];
     updated_at: string;
   }>;
 
@@ -165,10 +217,24 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
             start_date?: Date | null;
             end_date?: Date | null;
             days?: number;
+            dosage_form?: string | null;
+            route?: string | null;
+            dispensing_method?: string | null;
+            packaging_method?: PackagingMethodValue | null;
+            packaging_instructions?: string | null;
+            packaging_instruction_tags?: PackagingInstructionTagValue[];
           } = {};
           if ('start_date' in line) data.start_date = optionalUtcDateFromLocalKey(line.start_date);
           if ('end_date' in line) data.end_date = optionalUtcDateFromLocalKey(line.end_date);
           if (line.days !== undefined) data.days = line.days;
+          if ('dosage_form' in line) data.dosage_form = line.dosage_form;
+          if ('route' in line) data.route = line.route;
+          if ('dispensing_method' in line) data.dispensing_method = line.dispensing_method;
+          if ('packaging_method' in line) data.packaging_method = line.packaging_method;
+          if ('packaging_instructions' in line)
+            data.packaging_instructions = line.packaging_instructions;
+          if (line.packaging_instruction_tags !== undefined)
+            data.packaging_instruction_tags = line.packaging_instruction_tags;
 
           const claim = await tx.prescriptionLine.updateMany({
             where: {
@@ -197,6 +263,12 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
               start_date: true,
               end_date: true,
               days: true,
+              dosage_form: true,
+              route: true,
+              dispensing_method: true,
+              packaging_method: true,
+              packaging_instructions: true,
+              packaging_instruction_tags: true,
               updated_at: true,
             },
           });
@@ -218,12 +290,24 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
                 start_date: toDateKey(before.start_date),
                 end_date: toDateKey(before.end_date),
                 days: before.days,
+                dosage_form: before.dosage_form,
+                route: before.route,
+                dispensing_method: before.dispensing_method,
+                packaging_method: before.packaging_method,
+                packaging_instructions: before.packaging_instructions,
+                packaging_instruction_tags: before.packaging_instruction_tags,
                 updated_at: before.updated_at.toISOString(),
               },
               after: {
                 start_date: toDateKey(after.start_date),
                 end_date: toDateKey(after.end_date),
                 days: after.days,
+                dosage_form: after.dosage_form,
+                route: after.route,
+                dispensing_method: after.dispensing_method,
+                packaging_method: after.packaging_method,
+                packaging_instructions: after.packaging_instructions,
+                packaging_instruction_tags: after.packaging_instruction_tags,
                 updated_at: after.updated_at.toISOString(),
               },
             },
@@ -234,6 +318,12 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
             start_date: toDateKey(after.start_date),
             end_date: toDateKey(after.end_date),
             days: after.days,
+            dosage_form: after.dosage_form,
+            route: after.route,
+            dispensing_method: after.dispensing_method,
+            packaging_method: after.packaging_method,
+            packaging_instructions: after.packaging_instructions,
+            packaging_instruction_tags: after.packaging_instruction_tags,
             updated_at: after.updated_at.toISOString(),
           });
         }

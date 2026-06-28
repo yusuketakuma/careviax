@@ -228,6 +228,130 @@ describe('/api/dispense-tasks/[id]/lines PATCH', () => {
     });
   });
 
+  it('updates dispensing classification and packaging evidence with optimistic locking', async () => {
+    prescriptionLineRootFindManyMock.mockResolvedValue([
+      {
+        id: 'line_1',
+        intake_id: 'intake_1',
+        start_date: new Date('2026-06-17T00:00:00.000Z'),
+        end_date: new Date('2026-06-23T00:00:00.000Z'),
+        days: 7,
+        dosage_form: '錠剤',
+        route: 'internal',
+        dispensing_method: 'unit_dose',
+        packaging_method: 'unit_dose',
+        packaging_instructions: '一包化',
+        packaging_instruction_tags: ['unit_dose'],
+        updated_at: new Date('2026-06-18T00:00:00.000Z'),
+      },
+    ]);
+    prescriptionLineUpdateManyMock.mockResolvedValue({ count: 1 });
+    prescriptionLineFindFirstMock.mockResolvedValueOnce({
+      id: 'line_1',
+      start_date: new Date('2026-06-17T00:00:00.000Z'),
+      end_date: new Date('2026-06-23T00:00:00.000Z'),
+      days: 7,
+      dosage_form: '軟膏',
+      route: 'external',
+      dispensing_method: 'standard',
+      packaging_method: 'blister_pack',
+      packaging_instructions: 'PTPで別管理 / 粉砕不可',
+      packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+      updated_at: new Date('2026-06-18T01:00:00.000Z'),
+    });
+
+    const response = await PATCH(
+      createPatchRequest({
+        client_action_id: 'line-classification:test',
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            dosage_form: ' 軟膏 ',
+            route: 'external',
+            dispensing_method: 'standard',
+            packaging_method: 'blister_pack',
+            packaging_instructions: ' PTPで別管理 / 粉砕不可 ',
+            packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+          },
+        ],
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        updated: [
+          {
+            id: 'line_1',
+            dosage_form: '軟膏',
+            route: 'external',
+            dispensing_method: 'standard',
+            packaging_method: 'blister_pack',
+            packaging_instructions: 'PTPで別管理 / 粉砕不可',
+            packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+            updated_at: '2026-06-18T01:00:00.000Z',
+          },
+        ],
+      },
+    });
+    expect(prescriptionLineUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'line_1',
+          updated_at: new Date('2026-06-18T00:00:00.000Z'),
+        }),
+        data: expect.objectContaining({
+          dosage_form: '軟膏',
+          route: 'external',
+          dispensing_method: 'standard',
+          packaging_method: 'blister_pack',
+          packaging_instructions: 'PTPで別管理 / 粉砕不可',
+          packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+        }),
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        action: 'prescription_line.batch_update',
+        changes: expect.objectContaining({
+          before: expect.objectContaining({
+            route: 'internal',
+            packaging_method: 'unit_dose',
+            packaging_instruction_tags: ['unit_dose'],
+          }),
+          after: expect.objectContaining({
+            route: 'external',
+            packaging_method: 'blister_pack',
+            packaging_instruction_tags: ['separate_pack', 'crush_prohibited'],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('rejects duplicate packaging tags before writes', async () => {
+    const response = await PATCH(
+      createPatchRequest({
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            packaging_instruction_tags: ['unit_dose', 'unit_dose'],
+          },
+        ],
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expect(prescriptionLineRootFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('returns 409 before writes when any line has a stale expected_updated_at', async () => {
     prescriptionLineRootFindManyMock.mockResolvedValue([
       {
