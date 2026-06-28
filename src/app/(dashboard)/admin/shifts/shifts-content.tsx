@@ -981,11 +981,11 @@ export function ShiftsContent() {
                             ].join(' ')}
                           >
                             <div>{format(day, 'd')}</div>
-                            <div className="text-[10px] font-normal">
+                            <div className="text-xs font-normal">
                               {format(day, 'E', { locale: ja })}
                             </div>
                             {dayHolidays.length > 0 && (
-                              <div className="mt-1 text-[9px] text-rose-600">休</div>
+                              <div className="mt-1 text-xs text-rose-600">休</div>
                             )}
                           </th>
                         );
@@ -997,7 +997,7 @@ export function ShiftsContent() {
                       <tr key={pharmacist.id} className="border-b border-border hover:bg-muted/20">
                         <td className="sticky left-0 z-10 bg-background px-3 py-2">
                           <div className="font-medium text-foreground">{pharmacist.name}</div>
-                          <div className="text-[11px] text-muted-foreground">
+                          <div className="text-xs text-muted-foreground">
                             {pharmacist.site_name ?? '所属店舗未設定'}
                           </div>
                         </td>
@@ -1013,15 +1013,15 @@ export function ShiftsContent() {
                           const isSelected = selectedShiftKey === shift.key;
                           const cellContent = isHoliday ? (
                             <div className="space-y-0.5">
-                              <div className="text-[10px] font-medium text-rose-700">休</div>
-                              <div className="text-[9px] text-rose-600">
+                              <div className="text-xs font-medium text-rose-700">休</div>
+                              <div className="text-xs text-rose-600">
                                 {matchingHolidays[0]?.site?.name ?? '全体'}
                               </div>
                             </div>
                           ) : shift.available ? (
                             <div className="flex flex-col items-center gap-0.5">
                               <Check className="size-3.5 text-state-done" />
-                              <span className="text-[9px] text-muted-foreground">
+                              <span className="text-xs text-muted-foreground">
                                 {shift.available_from}
                               </span>
                             </div>
