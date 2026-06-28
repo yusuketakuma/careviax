@@ -57,6 +57,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation/state commit pending; stage only the owned docs/UI primitive files. Preserve unrelated dirty files and Claude-owned cockpit performance instrumentation.
 - Next action: commit this owned slice if explicit-path staging remains clean, send Claude a review/FYI message, then continue to the next non-conflicting backend/API helper hardening slice.
 
+### 2026-06-28 JST - Admin Pharmacist Credential API Path Helper Convergence
+
+- Coordination:
+  - Kept main Codex available for Claude/agmsg and delegated the bounded implementation to a Codex `maintainer` subagent.
+  - Drained `phos/codex`; no new Claude interrupt arrived during final review/validation.
+  - Preserved unrelated dirty files, including report navigation work, `.codex/hooks.json`, `.perf-*`, and Claude-owned cockpit/Prisma performance work.
+- Hardened pharmacist credential admin API boundaries:
+  - Added `src/lib/pharmacist-credentials/api-paths.ts` with `PHARMACIST_CREDENTIALS_API_PATH` and `buildPharmacistCredentialApiPath(credentialId)`.
+  - Routed list/create/update/delete calls in `PharmacistCredentialsContent` through the shared collection/detail path contract.
+  - Preserved org headers, HTTP methods, JSON body shape, query keys, invalidations, rendered admin UI, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+  - Added helper tests for collection path, hostile id encoding, and dot-segment rejection; extended component tests to prove collection/detail callsites delegate through the shared contract and exact dot-segment ids fail closed before PATCH/DELETE side effects.
+- Security/privacy risk reduced: admin pharmacist credential detail mutations no longer duplicate credential-id API path construction, reducing route-boundary drift for hostile `/`, `?`, or `#` credential ids.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing pharmacist credential calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' src/lib/pharmacist-credentials/api-paths.ts src/lib/pharmacist-credentials/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' src/lib/pharmacist-credentials/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `17` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' src/lib/pharmacist-credentials/api-paths.ts src/lib/pharmacist-credentials/api-paths.test.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' src/lib/pharmacist-credentials/api-paths.ts src/lib/pharmacist-credentials/api-paths.test.ts`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' src/lib/pharmacist-credentials/api-paths.ts src/lib/pharmacist-credentials/api-paths.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+- Commit status: implementation commit pending; state commit pending; request Claude review/FYI after commits.
+- Next action: commit this owned implementation slice and ledger update with explicit-path staging only.
+
 ### 2026-06-28 JST - Prescriber Institutions Admin API Path Helper Convergence
 
 - Coordination:
