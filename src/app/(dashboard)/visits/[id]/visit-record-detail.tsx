@@ -301,7 +301,7 @@ function PostVisitWorkflowPanel({
           <h3 className="text-sm font-semibold text-foreground">{action.title}</h3>
           <Badge
             variant="outline"
-            className={`shrink-0 text-[11px] ${postVisitStatusClassName[action.status]}`}
+            className={`shrink-0 text-xs ${postVisitStatusClassName[action.status]}`}
           >
             {postVisitStatusLabel[action.status]}
           </Badge>
@@ -316,7 +316,7 @@ function PostVisitWorkflowPanel({
               key={`${action.key}-${detail.label}`}
               className="rounded-md bg-background px-2 py-1"
             >
-              <dt className="text-[10px] text-muted-foreground">{detail.label}</dt>
+              <dt className="text-xs text-muted-foreground">{detail.label}</dt>
               <dd className="mt-0.5 truncate text-xs font-medium text-foreground">
                 {detail.value}
               </dd>
@@ -330,7 +330,7 @@ function PostVisitWorkflowPanel({
           {action.evidence.slice(0, 3).map((item) => (
             <span
               key={`${action.key}-${item}`}
-              className="rounded-full bg-background px-2 py-0.5 text-[11px] text-muted-foreground"
+              className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground"
             >
               {item}
             </span>

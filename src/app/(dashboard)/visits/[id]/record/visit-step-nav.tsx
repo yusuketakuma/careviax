@@ -111,7 +111,7 @@ export function VisitStepNav({ activeId }: { activeId: VisitRecordStepId | null 
                   {index + 1}. {step.label}
                 </span>
                 {state === 'done' ? (
-                  <span className="inline-flex shrink-0 items-center rounded-full border border-state-done/30 bg-state-done/10 px-1.5 py-0.5 text-[11px] font-medium text-state-done">
+                  <span className="inline-flex shrink-0 items-center rounded-full border border-state-done/30 bg-state-done/10 px-1.5 py-0.5 text-xs font-medium text-state-done">
                     済
                   </span>
                 ) : null}
@@ -253,7 +253,7 @@ export function VisitStepDots({
               <span
                 aria-hidden="true"
                 className={cn(
-                  'flex size-7 items-center justify-center rounded-full text-[11px] font-bold transition-colors',
+                  'flex size-7 items-center justify-center rounded-full text-xs font-bold transition-colors',
                   state === 'todo'
                     ? 'bg-muted text-muted-foreground'
                     : 'bg-primary text-primary-foreground',
@@ -332,7 +332,7 @@ export function VisitEvidenceRail({ items }: { items: VisitEvidenceRailItem[] })
                 </p>
                 <span
                   className={cn(
-                    'inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[11px] font-medium',
+                    'inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-xs font-medium',
                     item.statusTone === 'pending'
                       ? 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm'
                       : 'border-state-done/30 bg-state-done/10 text-state-done',
@@ -341,7 +341,7 @@ export function VisitEvidenceRail({ items }: { items: VisitEvidenceRailItem[] })
                   {item.statusLabel}
                 </span>
               </div>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">{item.kindLabel}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{item.kindLabel}</p>
             </li>
           ))}
         </ul>

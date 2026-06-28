@@ -133,19 +133,19 @@ export function EvidenceGalleryContent() {
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
             <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-              <p className="text-[11px] font-bold text-muted-foreground">合計</p>
+              <p className="text-xs font-bold text-muted-foreground">合計</p>
               <p className="mt-1 text-lg font-bold text-foreground">{summary.totalCount}枚</p>
             </div>
             <div className="rounded-lg border border-border/60 border-l-4 border-l-state-confirm bg-card px-3 py-2">
-              <p className="text-[11px] font-bold text-state-confirm">未同期</p>
+              <p className="text-xs font-bold text-state-confirm">未同期</p>
               <p className="mt-1 text-lg font-bold text-state-confirm">{summary.pendingCount}枚</p>
             </div>
             <div className="rounded-lg border border-border/60 border-l-4 border-l-state-done bg-card px-3 py-2">
-              <p className="text-[11px] font-bold text-state-done">同期済み</p>
+              <p className="text-xs font-bold text-state-done">同期済み</p>
               <p className="mt-1 text-lg font-bold text-state-done">{summary.syncedCount}枚</p>
             </div>
             <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-              <p className="text-[11px] font-bold text-muted-foreground">
+              <p className="text-xs font-bold text-muted-foreground">
                 {summary.selectedCategoryLabel}
               </p>
               <p className="mt-1 text-lg font-bold text-foreground">
@@ -249,7 +249,7 @@ export function EvidenceGalleryContent() {
                       <div className="flex items-center gap-2">
                         <span
                           className={cn(
-                            'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-bold',
+                            'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-bold',
                             SYNC_BADGE_CLASSES[item.syncState],
                           )}
                         >
