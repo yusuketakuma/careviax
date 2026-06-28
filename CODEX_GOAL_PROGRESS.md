@@ -15537,3 +15537,30 @@ Next loop:
 - Remaining:
   - Send Claude a `PATCH_REVIEW_REQUEST` for this backend slice and address findings before commit.
   - Broader scanner evidence persistence and FE wiring remain separate slices.
+
+### Dispense Barcode Evidence — Shared Verification And Safety Audit
+
+- Coordination:
+  - Continued backend-only work after Claude approved and Codex committed the line classification/packaging edit contract.
+  - Kept pre-existing dirty `.codex/hooks.json`, `docs/dispensing-workbench-replacement-plan.md`, and Claude roadmap untracked file out of the slice.
+  - Ran Codex-side read-only subagent review after the first Claude approval; medical-safety findings were treated as blocking and fixed before commit.
+- Bugs found:
+  - `/api/dispense-tasks/[id]/verify-barcode` performed server-side GS1/GTIN matching, but the logic lived only in the route and the dispense signoff path had no way to carry scanner evidence into the safety audit record.
+  - Without re-verifying barcode data during `POST /api/dispense-results`, a UI scan could be visually checked but not tied to the irreversible dispense result save.
+- Implemented by Codex:
+  - Extracted shared server-side barcode verification into `src/lib/dispensing/dispense-barcode-verification.ts`.
+  - Updated `verify-barcode` to call the shared helper while preserving the response shape.
+  - Added optional `barcode_scan.barcode` to dispense result lines; the server re-parses/re-checks it before side effects.
+  - Rejects barcode mismatch or expired barcode evidence before result mutations, CDS, workflow notifications, webhooks, task updates, or audit writes.
+  - Records only non-raw evidence in the safety audit changes: `line_id`, match, GTIN, expiry date, lot-number presence, expired flag, and warning codes. Raw barcode is not persisted.
+  - Tightened match semantics after review: null master YJ + null line drug code can no longer match, and DrugMaster-missing prefix fallback is no longer accepted for signoff evidence.
+  - Extended stale idempotent replay so barcode-bearing duplicate submits can return `200 idempotent:true` only when the persisted result matches and the barcode still re-verifies successfully.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts' src/app/api/dispense-results/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `42` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "dispense-results POST" --reporter=dot --testTimeout=30000`: passed, `3` tests / `97` skipped.
+  - Scoped ESLint, Prettier check, and `git diff --check` passed for the touched barcode/dispense files.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Send Claude an updated `PATCH_REVIEW_REQUEST` for the post-review safety tightening; commit only after updated approval.
+  - FE scanner UI and UX wiring remain Claude-owned.
