@@ -9,6 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -160,47 +161,55 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
         <>
           <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <SummaryCard
-                label="今月の送達成功率"
-                value={analytics ? `${analytics.summary.current_month_success_rate}%` : '—'}
-                detail={
-                  analytics
-                    ? `${analytics.summary.current_month} / ${analytics.summary.current_month_attempted_count}件`
-                    : '送達データを集計中'
-                }
-              />
-              <SummaryCard
-                label="今月の確認率"
-                value={analytics ? `${analytics.summary.current_month_confirmed_rate}%` : '—'}
-                detail={
-                  analytics
-                    ? `失敗 ${analytics.summary.current_month_failed_count}件`
-                    : '確認データを集計中'
-                }
-              />
-              <SummaryCard
-                label="返信待ち超過"
-                value={analytics ? `${analytics.summary.overdue_waiting_count}件` : '—'}
-                detail={
-                  analytics
-                    ? `${analytics.summary.overdue_threshold_days}日以上の response_waiting`
-                    : '閾値に応じて集計'
-                }
-              />
-              <SummaryCard
-                label="主要チャネル"
-                value={
-                  analytics?.channel_breakdown[0]
-                    ? (CHANNEL_LABELS[analytics.channel_breakdown[0].channel] ??
-                      analytics.channel_breakdown[0].channel)
-                    : '—'
-                }
-                detail={
-                  analytics?.channel_breakdown[0]
-                    ? `${analytics.channel_breakdown[0].success_rate}% / ${analytics.channel_breakdown[0].total_count}件`
-                    : 'チャネル別分析'
-                }
-              />
+              {isLoading && !analytics ? (
+                Array.from({ length: 4 }).map((_, index) => (
+                  <Skeleton key={index} className="h-[88px] rounded-lg" />
+                ))
+              ) : (
+                <>
+                  <SummaryCard
+                    label="今月の送達成功率"
+                    value={analytics ? `${analytics.summary.current_month_success_rate}%` : '—'}
+                    detail={
+                      analytics
+                        ? `${analytics.summary.current_month} / ${analytics.summary.current_month_attempted_count}件`
+                        : '送達データを集計中'
+                    }
+                  />
+                  <SummaryCard
+                    label="今月の確認率"
+                    value={analytics ? `${analytics.summary.current_month_confirmed_rate}%` : '—'}
+                    detail={
+                      analytics
+                        ? `失敗 ${analytics.summary.current_month_failed_count}件`
+                        : '確認データを集計中'
+                    }
+                  />
+                  <SummaryCard
+                    label="返信待ち超過"
+                    value={analytics ? `${analytics.summary.overdue_waiting_count}件` : '—'}
+                    detail={
+                      analytics
+                        ? `${analytics.summary.overdue_threshold_days}日以上の response_waiting`
+                        : '閾値に応じて集計'
+                    }
+                  />
+                  <SummaryCard
+                    label="主要チャネル"
+                    value={
+                      analytics?.channel_breakdown[0]
+                        ? (CHANNEL_LABELS[analytics.channel_breakdown[0].channel] ??
+                          analytics.channel_breakdown[0].channel)
+                        : '—'
+                    }
+                    detail={
+                      analytics?.channel_breakdown[0]
+                        ? `${analytics.channel_breakdown[0].success_rate}% / ${analytics.channel_breakdown[0].total_count}件`
+                        : 'チャネル別分析'
+                    }
+                  />
+                </>
+              )}
             </div>
 
             <Card>

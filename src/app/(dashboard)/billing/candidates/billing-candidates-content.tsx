@@ -1108,6 +1108,7 @@ export function BillingCandidatesContent({
         data={candidates}
         isLoading={isLoading}
         caption="月次請求候補一覧"
+        emptyMessage={`${billingMonthLabel} の請求候補はありません`}
         selectedRowIndex={targetCandidateIndex >= 0 ? targetCandidateIndex : undefined}
         enableRowSelection
         getRowA11yLabel={(candidate) => `${candidate.billing_name}（${candidate.billing_code}）`}
@@ -1277,14 +1278,6 @@ export function BillingCandidatesContent({
           );
         }}
       />
-
-      {!isLoading && candidates.length === 0 && (
-        <div className="flex min-h-[120px] items-center justify-center rounded-md border border-dashed border-border">
-          <p className="text-sm text-muted-foreground">
-            {billingMonthLabel} の請求候補はありません
-          </p>
-        </div>
-      )}
 
       {hasNextPage && (
         <div className="flex justify-center pt-2">
