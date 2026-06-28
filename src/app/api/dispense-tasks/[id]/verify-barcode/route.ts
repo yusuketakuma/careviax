@@ -10,8 +10,8 @@ import { prisma } from '@/lib/db/client';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
-import { parseGS1Barcode, isExpired } from '@/lib/pharmacy/barcode';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
+import { verifyDispenseBarcodeForLine } from '@/lib/dispensing/dispense-barcode-verification';
 
 const ROUTE = '/api/dispense-tasks/[id]/verify-barcode';
 const SAFE_ERROR_NAMES = new Set([
@@ -85,59 +85,17 @@ async function authenticatedPOST(req: NextRequest, routeContext: AuthRouteContex
     });
     if (!line) return notFound('処方明細が見つかりません');
 
-    const decoded = parseGS1Barcode(barcode);
-
-    // GTIN → YJコード照合
-    // DrugMaster の jan_code または yj_code で照合する
-    // GTIN (14桁) の先頭1桁はインジケーター桁なので、実質 JAN は後ろ13桁
-    let gtinMatchesDrugCode = false;
-
-    if (decoded.gtin) {
-      const gtin = decoded.gtin;
-      // Jan コード (13桁) は GTIN (14桁) の2〜14桁目
-      const janFromGtin = gtin.length === 14 ? gtin.substring(1) : gtin;
-
-      // 1) DrugMaster の jan_code または yj_code で完全一致照合
-      const drugByJan = await prisma.drugMaster.findFirst({
-        where: {
-          OR: [{ jan_code: janFromGtin }, { jan_code: gtin }],
-        },
-        select: { yj_code: true },
-      });
-
-      if (drugByJan) {
-        // DrugMaster で見つかった場合、処方明細の drug_code (YJコード) と比較
-        gtinMatchesDrugCode = drugByJan.yj_code === line.drug_code;
-      } else if (line.drug_code) {
-        // 2) DrugMaster に GTIN が登録されていない場合、GTIN 先頭桁の部分マッチを試みる
-        // YJコード (12桁) と GTIN の先頭12桁を比較
-        const gtinPrefix = gtin.substring(0, 12);
-        gtinMatchesDrugCode = line.drug_code.startsWith(gtinPrefix.substring(0, 7));
-      }
-    }
-
-    const warnings: string[] = [];
-
-    if (decoded.expiryDate && isExpired(decoded.expiryDate)) {
-      warnings.push('有効期限切れの薬剤です');
-    }
-
-    if (!gtinMatchesDrugCode) {
-      warnings.push('バーコードが処方薬と一致しません');
-    }
+    const verification = await verifyDispenseBarcodeForLine({
+      client: prisma,
+      line,
+      barcode,
+    });
 
     return success({
-      match: gtinMatchesDrugCode,
-      decoded: {
-        gtin: decoded.gtin,
-        expiryDate: decoded.expiryDate,
-        lotNumber: decoded.lotNumber,
-      },
-      expected: {
-        drug_code: line.drug_code,
-        drug_name: line.drug_name,
-      },
-      warnings,
+      match: verification.match,
+      decoded: verification.decoded,
+      expected: verification.expected,
+      warnings: verification.warnings,
     });
   });
 }

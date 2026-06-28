@@ -434,6 +434,111 @@ describe('/api/dispense-results POST', () => {
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
+  it('replays an already-persisted identical stale dispense result with valid barcode evidence', async () => {
+    const dispenseResultCreateMock = vi.fn();
+    const dispenseResultUpdateMock = vi.fn();
+    const dispenseTaskUpdateMock = vi.fn();
+    const auditLogCreateMock = vi.fn();
+    const drugMasterFindFirstMock = vi.fn().mockResolvedValue({ yj_code: '123' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            priority: 'normal',
+            results: [
+              {
+                id: 'result_1',
+                line_id: 'line_1',
+                actual_drug_name: 'アムロジピン',
+                actual_drug_code: '123',
+                actual_quantity: 14,
+                actual_unit: '錠',
+                discrepancy_reason: null,
+                carry_type: 'carry',
+                special_notes: null,
+              },
+            ],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'audit_pending',
+              version: 6,
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      quantity: 14,
+                      unit: '錠',
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: { patient: { name: '山田 太郎' } },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          update: dispenseResultUpdateMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        drugMaster: { findFirst: drugMasterFindFirstMock },
+        auditLog: { create: auditLogCreateMock },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        expected_version: 5,
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            ...prescriptionQuantityConfirmed,
+            carry_type: 'carry',
+            barcode_scan: {
+              barcode: '01012345678901231726123110LOT-1',
+            },
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      task_id: 'task_1',
+      partial: false,
+      idempotent: true,
+      results: [{ id: 'result_1', line_id: 'line_1' }],
+    });
+    expect(drugMasterFindFirstMock).toHaveBeenCalled();
+    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
   it('keeps stale dispense result conflicts when persisted content differs from the replay payload', async () => {
     const dispenseResultCreateMock = vi.fn();
     const dispenseTaskUpdateMock = vi.fn();
@@ -559,6 +664,7 @@ describe('/api/dispense-results POST', () => {
     const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const membershipFindManyMock = vi.fn().mockResolvedValue([{ user_id: 'auditor_1' }]);
     const auditLogCreateMock = vi.fn().mockResolvedValue({ id: 'audit_log_1' });
+    const drugMasterFindFirstMock = vi.fn().mockResolvedValue({ yj_code: '123' });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -611,6 +717,7 @@ describe('/api/dispense-results POST', () => {
           updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         },
         membership: { findMany: membershipFindManyMock },
+        drugMaster: { findFirst: drugMasterFindFirstMock },
         auditLog: { create: auditLogCreateMock },
       }),
     );
@@ -633,6 +740,9 @@ describe('/api/dispense-results POST', () => {
             carry_type: 'carry',
             discrepancy_reason: '残薬調整',
             dispensed_by: 'attacker',
+            barcode_scan: {
+              barcode: '01012345678901231726123110LOT-1',
+            },
           },
         ],
       }),
@@ -663,11 +773,397 @@ describe('/api/dispense-results POST', () => {
                 source: 'manual_entry',
               },
             ],
+            barcode_verifications: [
+              {
+                line_id: 'line_1',
+                match: true,
+                gtin: '01234567890123',
+                expiry_date: '2026-12-31',
+                lot_number_present: true,
+                expired: false,
+                warning_codes: [],
+              },
+            ],
           }),
         }),
       }),
     );
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain(
+      '01012345678901231726123110LOT-1',
+    );
+    expect(drugMasterFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        OR: [{ jan_code: '1234567890123' }, { jan_code: '01234567890123' }],
+      },
+      select: { yj_code: true },
+    });
     expect(checkDispenseAlertsMock).toHaveBeenCalledWith('org_1', 'cycle_1', 'patient_1');
+  });
+
+  it('rejects barcode mismatches before dispensing side effects', async () => {
+    const dispenseResultCreateMock = vi.fn();
+    const dispenseTaskUpdateMock = vi.fn();
+    const auditLogCreateMock = vi.fn();
+    const drugMasterFindFirstMock = vi.fn().mockResolvedValue({ yj_code: 'DIFFERENT' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'dispensing',
+              version: 1,
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      quantity: 14,
+                      unit: '錠',
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: { patient: { name: '山田 太郎' } },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        drugMaster: { findFirst: drugMasterFindFirstMock },
+        auditLog: { create: auditLogCreateMock },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            ...prescriptionQuantityConfirmed,
+            carry_type: 'carry',
+            barcode_scan: {
+              barcode: '01012345678901231726123110LOT-1',
+            },
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'バーコード照合に失敗した明細があります',
+      details: {
+        barcode_verification_lines: [
+          {
+            line_id: 'line_1',
+            match: false,
+            gtin: '01234567890123',
+            expiry_date: '2026-12-31',
+            lot_number_present: true,
+            expired: false,
+            warning_codes: ['drug_mismatch'],
+          },
+        ],
+      },
+    });
+    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects barcode evidence when both the master YJ code and line drug code are missing', async () => {
+    const dispenseResultCreateMock = vi.fn();
+    const dispenseTaskUpdateMock = vi.fn();
+    const auditLogCreateMock = vi.fn();
+    const drugMasterFindFirstMock = vi.fn().mockResolvedValue({ yj_code: null });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'dispensing',
+              version: 1,
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: null,
+                      quantity: 14,
+                      unit: '錠',
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: { patient: { name: '山田 太郎' } },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        drugMaster: { findFirst: drugMasterFindFirstMock },
+        auditLog: { create: auditLogCreateMock },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_quantity: 14,
+            ...prescriptionQuantityConfirmed,
+            carry_type: 'carry',
+            barcode_scan: {
+              barcode: '01012345678901231726123110LOT-1',
+            },
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        barcode_verification_lines: [
+          expect.objectContaining({
+            line_id: 'line_1',
+            match: false,
+            warning_codes: ['drug_mismatch'],
+          }),
+        ],
+      },
+    });
+    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects barcode evidence when DrugMaster has no JAN match instead of using prefix fallback', async () => {
+    const dispenseResultCreateMock = vi.fn();
+    const dispenseTaskUpdateMock = vi.fn();
+    const auditLogCreateMock = vi.fn();
+    const drugMasterFindFirstMock = vi.fn().mockResolvedValue(null);
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'dispensing',
+              version: 1,
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '0123456YJ',
+                      quantity: 14,
+                      unit: '錠',
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: { patient: { name: '山田 太郎' } },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        drugMaster: { findFirst: drugMasterFindFirstMock },
+        auditLog: { create: auditLogCreateMock },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '0123456YJ',
+            actual_quantity: 14,
+            ...prescriptionQuantityConfirmed,
+            carry_type: 'carry',
+            barcode_scan: {
+              barcode: '01012345678901231726123110LOT-1',
+            },
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        barcode_verification_lines: [
+          expect.objectContaining({
+            line_id: 'line_1',
+            match: false,
+            gtin: '01234567890123',
+            warning_codes: ['drug_mismatch'],
+          }),
+        ],
+      },
+    });
+    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects expired barcode evidence before dispensing side effects', async () => {
+    const dispenseResultCreateMock = vi.fn();
+    const dispenseTaskUpdateMock = vi.fn();
+    const auditLogCreateMock = vi.fn();
+    const drugMasterFindFirstMock = vi.fn().mockResolvedValue({ yj_code: '123' });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_1',
+            cycle_id: 'cycle_1',
+            results: [],
+            cycle: {
+              id: 'cycle_1',
+              patient_id: 'patient_1',
+              overall_status: 'dispensing',
+              version: 1,
+              inquiries: [],
+              prescription_intakes: [
+                {
+                  id: 'intake_1',
+                  source_type: 'paper',
+                  original_collected_at: null,
+                  lines: [
+                    {
+                      id: 'line_1',
+                      drug_name: 'アムロジピン',
+                      drug_code: '123',
+                      quantity: 14,
+                      unit: '錠',
+                    },
+                  ],
+                },
+              ],
+              visit_schedules: [],
+              case_: { patient: { name: '山田 太郎' } },
+            },
+          }),
+          update: dispenseTaskUpdateMock,
+        },
+        dispenseResult: {
+          create: dispenseResultCreateMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        drugMaster: { findFirst: drugMasterFindFirstMock },
+        auditLog: { create: auditLogCreateMock },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            ...prescriptionQuantityConfirmed,
+            carry_type: 'carry',
+            barcode_scan: {
+              barcode: '01012345678901231725010110LOT-1',
+            },
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        barcode_verification_lines: [
+          expect.objectContaining({
+            line_id: 'line_1',
+            match: true,
+            expiry_date: '2025-01-01',
+            expired: true,
+            warning_codes: ['expired'],
+          }),
+        ],
+      },
+    });
+    expect(dispenseResultCreateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
   });
 
   it('blocks dispense completion when the cycle has an unresolved cycle-level inquiry', async () => {

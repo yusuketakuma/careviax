@@ -24,6 +24,10 @@ import {
   buildUnresolvedPrescribedQuantityErrors,
   resolveCanonicalActualUnit,
 } from '@/lib/dispensing/dispense-result-validation';
+import {
+  verifyDispenseBarcodeForLine,
+  type DispenseBarcodeVerificationEvidence,
+} from '@/lib/dispensing/dispense-barcode-verification';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
@@ -56,6 +60,12 @@ const dispenseResultLineSchema = z.object({
     ])
     .optional(),
   packaging_group_id: z.string().optional(),
+  barcode_scan: z
+    .object({
+      barcode: z.string().trim().min(1, 'バーコードは必須です').max(512),
+    })
+    .strict()
+    .optional(),
 });
 
 const dispenseSafetyChecklistSchema = z.object({
@@ -92,6 +102,8 @@ type ReplayableDispenseResult = {
 
 type ReplayablePrescriptionLine = {
   id: string;
+  drug_name: string;
+  drug_code: string | null;
   unit: string | null;
 };
 
@@ -205,7 +217,8 @@ function dispenseResultMatchesSubmittedLine(args: {
   );
 }
 
-function buildIdempotentDispenseResultReplay(args: {
+async function buildIdempotentDispenseResultReplay(args: {
+  tx: Prisma.TransactionClient;
   taskId: string;
   submittedLines: Array<SubmittedDispenseResultLine>;
   prescribedLines: Array<ReplayablePrescriptionLine>;
@@ -238,6 +251,15 @@ function buildIdempotentDispenseResultReplay(args: {
       return null;
     }
 
+    if (submittedLine.barcode_scan) {
+      const verification = await verifyDispenseBarcodeForLine({
+        client: args.tx,
+        line: prescribedLine,
+        barcode: submittedLine.barcode_scan.barcode,
+      });
+      if (!verification.evidence.match || verification.evidence.expired) return null;
+    }
+
     replayResults.push(existingResult);
   }
 
@@ -252,6 +274,30 @@ function buildIdempotentDispenseResultReplay(args: {
     partial: !hasAllResults,
     idempotent: true as const,
   };
+}
+
+async function buildBarcodeVerificationEvidence(args: {
+  tx: Prisma.TransactionClient;
+  lines: Array<SubmittedDispenseResultLine>;
+  prescribedLineById: Map<string, ReplayablePrescriptionLine>;
+}) {
+  const evidence: DispenseBarcodeVerificationEvidence[] = [];
+
+  for (const line of args.lines) {
+    if (!line.barcode_scan) continue;
+
+    const prescribedLine = args.prescribedLineById.get(line.line_id);
+    if (!prescribedLine) continue;
+
+    const verification = await verifyDispenseBarcodeForLine({
+      client: args.tx,
+      line: prescribedLine,
+      barcode: line.barcode_scan.barcode,
+    });
+    evidence.push(verification.evidence);
+  }
+
+  return evidence;
 }
 
 async function promoteCycleToDispensingIfNeeded(args: {
@@ -382,7 +428,8 @@ export const POST = withAuthContext(
       // 送ってきた場合のみ、書込前に現在値と照合する。ズレていれば他者更新として 409。
       // ただし同じ payload がすでに永続化済みなら、F12/二重送信による副作用を増やさず再応答する。
       if (typeof task.cycle.version === 'number' && task.cycle.version !== expected_version) {
-        const idempotentReplay = buildIdempotentDispenseResultReplay({
+        const idempotentReplay = await buildIdempotentDispenseResultReplay({
+          tx,
           taskId: task_id,
           submittedLines: lines,
           prescribedLines: latestIntake?.lines ?? [],
@@ -528,6 +575,21 @@ export const POST = withAuthContext(
         return {
           error: 'actual_quantity_confirmation_required' as const,
           reasons: actualQuantityConfirmationErrors,
+        };
+      }
+
+      const barcodeVerificationEvidence = await buildBarcodeVerificationEvidence({
+        tx,
+        lines,
+        prescribedLineById: latestIntakeLineById,
+      });
+      const failedBarcodeVerifications = barcodeVerificationEvidence.filter(
+        (item) => !item.match || item.expired,
+      );
+      if (failedBarcodeVerifications.length > 0) {
+        return {
+          error: 'barcode_verification_failed' as const,
+          reasons: failedBarcodeVerifications,
         };
       }
 
@@ -678,6 +740,7 @@ export const POST = withAuthContext(
             confirmed: line.actual_quantity_confirmed === true,
             source: line.actual_quantity_source ?? 'legacy_unmarked',
           })),
+          barcode_verifications: barcodeVerificationEvidence,
           cds_alert_counts: cdsAlertCounts,
           line_count: results.length,
           partial: !canComplete,
@@ -907,6 +970,11 @@ export const POST = withAuthContext(
             actual_quantity_confirmation_lines: result.reasons,
           },
         );
+      }
+      if (result.error === 'barcode_verification_failed') {
+        return validationError('バーコード照合に失敗した明細があります', {
+          barcode_verification_lines: result.reasons,
+        });
       }
       if (result.error === 'actual_quantity_unit_step_invalid') {
         return validationError('実数量が単位に合う刻みではありません', {
