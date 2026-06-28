@@ -1,4 +1,7 @@
-import { withAuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { COCKPIT_CACHE_TTL_MS } from '@/lib/constants/workflow';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -18,6 +21,8 @@ import {
 } from '@/server/services/workflow-dashboard-cache';
 import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import type {
   CockpitAuditQueueItem,
   CockpitBlockedReason,
@@ -36,6 +41,21 @@ import { buildTeamCapacity } from './team-capacity';
 const AUDIT_QUEUE_FETCH_LIMIT = 30;
 const AUDIT_QUEUE_RESPONSE_LIMIT = 5;
 const BLOCKED_REASONS_LIMIT = 3;
+const ROUTE = '/api/dashboard/cockpit';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 type DashboardScopeQuery =
   | { ok: true; scope: DashboardCockpitScope | null }
@@ -120,8 +140,15 @@ function compareAuditQueueItems(left: CockpitAuditQueueItem, right: CockpitAudit
   return (left.waiting_since ?? '').localeCompare(right.waiting_since ?? '');
 }
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canViewDashboard',
+    message: 'ダッシュボードの閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const now = new Date();
     const scopeQuery = parseDashboardScope(req);
     if (!scopeQuery.ok) return scopeQuery.response;
@@ -373,17 +400,24 @@ const authenticatedGET = withAuthContext(
 
     serverCache.set(cacheKey, responseData, COCKPIT_CACHE_TTL_MS);
     return success({ data: responseData });
-  },
-  {
-    permission: 'canViewDashboard',
-    message: 'ダッシュボードの閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
-    return withSensitiveNoStore(internalError());
-  }
-};
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('dashboard_cockpit_unhandled_error', undefined, {
+        event: 'dashboard_cockpit_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

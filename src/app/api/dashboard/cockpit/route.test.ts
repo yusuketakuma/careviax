@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
   authContextMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  loggerErrorMock,
+  withRoutePerformanceMock,
   medicationCycleGroupByMock,
   dispenseTaskFindManyMock,
   visitScheduleFindManyMock,
@@ -15,6 +19,10 @@ const {
   serverCacheSetMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+  loggerErrorMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
   medicationCycleGroupByMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
@@ -28,10 +36,11 @@ const {
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => unknown) => {
-    return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
-      handler(req, authContextMock, routeContext);
-  },
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -45,6 +54,14 @@ vi.mock('@/lib/db/client', () => ({
     membership: { findMany: membershipFindManyMock },
     pharmacistShift: { findMany: pharmacistShiftFindManyMock },
   },
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 vi.mock('@/lib/utils/server-cache', () => ({
@@ -108,6 +125,9 @@ describe('/api/dashboard/cockpit', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 12, 9, 42));
     vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({ ctx: authContextMock });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
     serverCacheGetMock.mockReturnValue(undefined);
     authContextMock.role = 'admin';
     medicationCycleGroupByMock.mockResolvedValue([
@@ -181,6 +201,19 @@ describe('/api/dashboard/cockpit', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ダッシュボードの閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      authContextMock,
+      expect.any(Function),
+    );
     const json = await response.json();
 
     expect(json.data.cycle_status_counts).toEqual({
@@ -423,16 +456,69 @@ describe('/api/dashboard/cockpit', () => {
     expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('wraps auth failure responses in no-store headers before cache or DB reads', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ダッシュボードの閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(serverCacheGetMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
+    expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(workflowExceptionFindManyMock).not.toHaveBeenCalled();
+    expect(taskCountMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns a sanitized no-store 500 when cockpit aggregate reads fail', async () => {
-    const rawError = 'raw cockpit dashboard aggregate failure';
-    medicationCycleGroupByMock.mockRejectedValueOnce(new Error(rawError));
+    const unsafeError = new Error(
+      'raw_patient_secret raw_dashboard_secret SQL_SECRET stack_secret raw-error text',
+    );
+    unsafeError.name = 'crafted.raw_patient_secret.raw_dashboard_secret.SQL_SECRET.stack_secret';
+    medicationCycleGroupByMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
 
     expect(response.status).toBe(500);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
     expectSensitiveNoStore(response);
-    const body = await response.json();
-    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
-    expect(JSON.stringify(body)).not.toContain(rawError);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw_patient_secret');
+    expect(body).not.toContain('raw_dashboard_secret');
+    expect(body).not.toContain('SQL_SECRET');
+    expect(body).not.toContain('stack_secret');
+    expect(body).not.toContain('crafted.raw_patient_secret');
+    expect(body).not.toContain('raw-error text');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith('dashboard_cockpit_unhandled_error', undefined, {
+      event: 'dashboard_cockpit_unhandled_error',
+      route: '/api/dashboard/cockpit',
+      method: 'GET',
+      status: 500,
+      error_name: 'Error',
+    });
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('raw_patient_secret');
+    expect(logged).not.toContain('raw_dashboard_secret');
+    expect(logged).not.toContain('SQL_SECRET');
+    expect(logged).not.toContain('stack_secret');
+    expect(logged).not.toContain('raw-error text');
+    expect(logged).not.toContain(unsafeError.name);
   });
 });
