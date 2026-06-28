@@ -160,7 +160,7 @@ function BillingPrimaryStrip({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           次にやること
         </p>
-        <Button asChild className="w-full justify-start">
+        <Button asChild className="min-h-[44px] w-full justify-start sm:h-11 sm:min-h-[44px]">
           <a href={data.rail.next_action.href}>{data.rail.next_action.label}</a>
         </Button>
         <p className="text-sm leading-5 text-muted-foreground">

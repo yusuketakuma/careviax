@@ -225,7 +225,12 @@ function HandoffItemCard({
           </span>
         ) : null}
         {isConfirming ? (
-          <Button asChild variant="outline" size="sm" className="shrink-0">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="h-11 shrink-0 sm:h-11 sm:min-h-[44px]"
+          >
             <Link href="/communications">状況を聞く</Link>
           </Button>
         ) : null}
@@ -234,7 +239,7 @@ function HandoffItemCard({
             type="button"
             variant="outline"
             size="sm"
-            className="shrink-0"
+            className="h-11 shrink-0 sm:h-11 sm:min-h-[44px]"
             disabled={confirmPending}
             onClick={() => onConfirmReceipt(item.id)}
           >
@@ -944,7 +949,7 @@ function ConsultResolutionPanel({
             key={action}
             type="button"
             className={cn(
-              'min-w-[5.5rem] flex-1 px-2 text-xs sm:flex-none sm:px-4 sm:text-sm',
+              'min-h-[44px] min-w-[5.5rem] flex-1 px-2 text-xs sm:h-11 sm:min-h-[44px] sm:flex-none sm:px-4 sm:text-sm',
               buttonClassName,
             )}
             disabled={disabled}
@@ -1441,6 +1446,7 @@ export function HandoffWorkspace() {
         {/* 主操作(青)はこの 1 つだけ */}
         <Button
           type="button"
+          className="h-11 sm:h-11 sm:min-h-[44px]"
           onClick={() => setTransferDialogOpen(true)}
           data-testid="handoff-open-transfer"
         >
