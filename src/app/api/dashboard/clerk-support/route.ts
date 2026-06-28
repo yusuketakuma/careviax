@@ -1,9 +1,14 @@
-import { withAuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
 import { buildScheduleProposalDetailHref } from '@/lib/schedules/navigation';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import type { ClerkSupportResponse, ClerkSupportTask } from '@/types/clerk-support';
 
 /**
@@ -14,6 +19,16 @@ import type { ClerkSupportResponse, ClerkSupportTask } from '@/types/clerk-suppo
  */
 
 const CLERK_TASK_LIMIT = 6;
+const ROUTE = '/api/dashboard/clerk-support';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
 
 /** 文書送付の主対象(FAX・メール未登録を「送付先未設定」として数える役割) */
 const DOCUMENT_CHANNEL_ROLES = ['physician', 'nurse', 'care_manager'];
@@ -26,8 +41,20 @@ const PHARMACIST_CONSULT_ITEMS = [
   '算定できるかの判断',
 ];
 
-const authenticatedGET = withAuthContext(
-  async (_req, ctx) => {
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canViewDashboard',
+    message: 'ダッシュボードの閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const now = new Date();
 
     const [
@@ -128,17 +155,24 @@ const authenticatedGET = withAuthContext(
     };
 
     return success({ data: responseData });
-  },
-  {
-    permission: 'canViewDashboard',
-    message: 'ダッシュボードの閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
-    return withSensitiveNoStore(internalError());
-  }
-};
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('dashboard_clerk_support_unhandled_error', undefined, {
+        event: 'dashboard_clerk_support_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
