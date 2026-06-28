@@ -667,7 +667,11 @@ export async function listPatients(
   const where = accessContext ? applyPatientAssignmentWhere(baseWhere, accessContext) : baseWhere;
   const orderBy = buildPatientOrderBy(filters);
   const batchSize = Math.min(Math.max(limit * 3, 100), 250);
-  const filtered = await collectFilteredPatients({
+
+  // 先頭からの全件絞り込み集合を1回だけ列挙する。orderBy は id を末尾タイブレークに含み
+  // 全順序なので、cursor ページのデータは全件集合からの in-memory スライスで導出でき、
+  // summary 用の2回目の全件走査(と enrich fan-out)を省ける。
+  const allFiltered = await collectFilteredPatients({
     prisma,
     orgId,
     role,
@@ -676,11 +680,20 @@ export async function listPatients(
     orderBy,
     referenceDate,
     batchSize,
-    startCursor: filters.cursor,
     accessContext,
   });
-  const summarySource = filters.cursor
-    ? await collectFilteredPatients({
+  const summary = buildPatientListSummary(allFiltered);
+
+  let pageSource: MappedPatientListItem[];
+  if (filters.cursor) {
+    const cursorIndex = allFiltered.findIndex((patient) => patient.id === filters.cursor);
+    if (cursorIndex >= 0) {
+      // Prisma の cursor + skip:1(カーソル行を除外しそれ以降)と全順序下で等価。
+      pageSource = allFiltered.slice(cursorIndex + 1);
+    } else {
+      // カーソル該当患者が全件集合に不在(アーカイブ/フィルタ境界変化等)の端ケースのみ、
+      // 従来の cursor 起点パスへフォールバックして出力を完全保存する。
+      pageSource = await collectFilteredPatients({
         prisma,
         orgId,
         role,
@@ -689,13 +702,16 @@ export async function listPatients(
         orderBy,
         referenceDate,
         batchSize,
+        startCursor: filters.cursor,
         accessContext,
-      })
-    : filtered;
-  const summary = buildPatientListSummary(summarySource);
+      });
+    }
+  } else {
+    pageSource = allFiltered;
+  }
 
-  const hasMore = filtered.length > limit;
-  const data = hasMore ? filtered.slice(0, limit) : filtered;
+  const hasMore = pageSource.length > limit;
+  const data = hasMore ? pageSource.slice(0, limit) : pageSource;
   const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
   const privacy = getPatientPrivacyFlags(role);
 
