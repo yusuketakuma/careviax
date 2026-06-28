@@ -966,7 +966,6 @@ export function ShiftsContent() {
                       {days.map((day) => {
                         const dateKey = format(day, 'yyyy-MM-dd');
                         const dayHolidays = holidaysByDate.get(dateKey) ?? [];
-                        const isHoliday = dayHolidays.some((holiday) => holiday.site_id == null);
                         const dow = getDay(day);
 
                         return (
@@ -975,11 +974,10 @@ export function ShiftsContent() {
                             className={[
                               'min-w-[48px] px-1.5 py-2 text-center font-medium',
                               dow === 0
-                                ? 'text-rose-600'
+                                ? 'text-weekend-sun'
                                 : dow === 6
-                                  ? 'text-sky-600'
+                                  ? 'text-weekend-sat'
                                   : 'text-muted-foreground',
-                              isHoliday ? 'bg-rose-50/80' : '',
                             ].join(' ')}
                           >
                             <div>{format(day, 'd')}</div>
@@ -1038,7 +1036,6 @@ export function ShiftsContent() {
                                 editMode ? 'p-0' : 'px-1.5 py-2',
                                 'text-center',
                                 editMode ? 'cursor-pointer hover:bg-muted/50' : '',
-                                isHoliday ? 'bg-rose-50/70' : '',
                                 isSelected ? 'ring-2 ring-inset ring-primary' : '',
                               ].join(' ')}
                             >
