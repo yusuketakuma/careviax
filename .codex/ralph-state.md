@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-1018 JST
+
+- current task: patient master card patient API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex`, gbrain `code_blast` for `PatientMasterCard` returning `not_found`, `src/app/(dashboard)/patients/[id]/patient-master-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx`, and `src/lib/patient/api-paths.ts`.
+- files changed: `src/app/(dashboard)/patients/[id]/patient-master-card.tsx`, `src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `PatientMasterCard` still duplicated patient API path construction for qualification-check `POST` and patient master save `PATCH`. Hostile ids containing `/`, `?`, or `#` could drift from the shared encoded/fail-closed patient API path contract.
+- security risks found: reduced patient mutation route-confusion drift by routing qualification-check `POST` through `buildPatientApiPath(patient.id, '/qualification-check')` and patient save `PATCH` through `buildPatientApiPath(patient.id)`. Added regression tests proving hostile patient ids call the shared helper and both patient API mutations consume helper return values. Existing facility-unit path construction remains on `encodePathSegment(selectedFacilityId)`. Existing org headers, JSON body shape, mutation ordering, invalidation behavior, qualification-check `501` handling, UI grouping, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing mutations, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-master-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx' src/lib/patient/api-paths.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/api-paths.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
+- validation results: Prettier write passed. Focused patient master card + patient API path tests passed `2` files / `19` tests after correcting the helper mock to preserve dot-segment rejection. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
+- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the owned patient-master-card files for implementation commit after cached diff whitespace check.
+
 ### 20260628-1010 JST
 
 - current task: patients board patient link helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure href construction refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/patients-board.test.tsx' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/navigation.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
 - validation results: Prettier write passed. Focused patients board + patient navigation tests passed `2` files / `23` tests. Scoped ESLint, scoped Prettier check, full TypeScript after replacing `null` test fixture with `undefined`, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
-- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only the owned patients-board files for implementation commit after cached diff whitespace check.
+- remaining work: implementation commit `cb0fcf7c` and state commit `a0dcf742` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: continue non-overlapping API/path helper convergence while monitoring agmsg for Claude interrupts.
 
 ### 20260628-1001 JST
 
