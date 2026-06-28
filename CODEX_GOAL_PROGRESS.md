@@ -23,6 +23,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Dashboard Overdue GET No-Store And PHI-Safe Error Hardening
+
+- Coordination:
+  - Followed maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/dashboard/overdue/route.ts` and `route.test.ts`; Claude ACKed no conflict with its FE layout slice.
+  - Privacy, medical safety, and general Codex review subagents reported no findings before Claude checker review.
+  - Claude reviewed the BE diff, independently ran focused Vitest, scoped ESLint, and scoped Prettier check, and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, external sends, deploy, or destructive operations were touched by Codex.
+- Hardened dashboard overdue API responses:
+  - Replaced the common `withAuthContext` route wrapper with explicit `requireAuthContext({ permission: 'canViewDashboard' })`, preserving the exact auth message `ダッシュボードの閲覧権限がありません`.
+  - Preserved exported `GET(req, routeContext?)` direct-call compatibility; route context is deliberately voided.
+  - Wrapped the overdue aggregation body in `runWithRequestAuthContext(ctx, ...)`.
+  - Wrapped the exported route in `withRoutePerformance(req, ...)`.
+  - Wrapped success, auth failure, and handled 500 responses in `withSensitiveNoStore`.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging.
+  - Restricted logged `error_name` to an allowlist, falling back to `Error` for crafted names.
+  - Preserved assignment scope, count query bodies, task assignment where, and response shape `{ summary: { unrecorded_visits, unsent_reports, overdue_tasks, total } }`.
+  - Added tests for route-performance wrapper invocation, auth options, request auth-context wrapper invocation, auth failure no-store before dashboard-domain DB reads, protected-route direct-call compatibility, directly assigned task fallback when case/patient scope is empty, and absence of raw overdue/patient/dashboard/SQL/stack/crafted error-name/raw-error leakage from response/log surfaces.
+- Security/privacy risk reduced: overdue dashboard responses consistently carry sensitive no-store headers, auth failure short-circuits before dashboard-domain reads, unexpected failures return fixed PHI-safe bodies, and handler logs avoid raw patient/overdue/dashboard/error details.
+- Performance issue improved: route latency/error metrics are captured with `withRoutePerformance`; no additional data read, N+1 query, or response-shape change was introduced.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/dashboard/overdue/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/overdue GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - `pnpm exec eslint src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed after scoped formatting.
+  - `git diff --check -- src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
+  - Privacy compliance review: no findings.
+  - Medical safety review: no findings.
+  - General Codex review: no findings.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `5/5`, scoped ESLint, and scoped Prettier check, and verified query body preservation, wrapper-only hardening, no-store coverage, and PHI-safe fixed logging.
+- Commit status: implementation committed locally as `cf521303`; this section records the progress-ledger slice for separate commit.
+- Next action: commit this progress-ledger slice, notify Claude, push grouped Codex-owned commits, then request the next backend/API lock. Candidate queue includes `dashboard/dispensing-stats`.
+
 ### 2026-06-28 JST - Dashboard Workflow GET No-Store And PHI-Safe Error Hardening
 
 - Coordination:
