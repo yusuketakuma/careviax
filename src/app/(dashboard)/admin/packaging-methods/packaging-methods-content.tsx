@@ -11,8 +11,11 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  PACKAGING_METHODS_API_PATH,
+  buildPackagingMethodApiPath,
+} from '@/lib/packaging-methods/api-paths';
 
 type PackagingMethodRow = {
   id: string;
@@ -40,7 +43,7 @@ export function PackagingMethodsContent() {
   const methodsQuery = useQuery({
     queryKey: ['packaging-methods', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/packaging-methods', {
+      const res = await fetch(PACKAGING_METHODS_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('配薬方法マスターの取得に失敗しました');
@@ -58,16 +61,12 @@ export function PackagingMethodsContent() {
         sort_order: Number(form.sort_order || 0),
         is_active: form.is_active,
       };
-      // encodePathSegment runs during URL construction (before fetch), so a dot
-      // segment id (e.g. '.') fails closed BEFORE the mutating PATCH side effect.
-      const res = await fetch(
-        form.id ? `/api/packaging-methods/${encodePathSegment(form.id)}` : '/api/packaging-methods',
-        {
-          method: form.id ? 'PATCH' : 'POST',
-          headers: buildOrgJsonHeaders(orgId),
-          body: JSON.stringify(body),
-        },
-      );
+      const path = form.id ? buildPackagingMethodApiPath(form.id) : PACKAGING_METHODS_API_PATH;
+      const res = await fetch(path, {
+        method: form.id ? 'PATCH' : 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify(body),
+      });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message ?? '配薬方法マスターの保存に失敗しました');

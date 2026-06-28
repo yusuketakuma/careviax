@@ -4,6 +4,10 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  PACKAGING_METHODS_API_PATH,
+  buildPackagingMethodApiPath,
+} from '@/lib/packaging-methods/api-paths';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
@@ -31,9 +35,16 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgHeaders: buildOrgHeadersMock,
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
-// NOTE: '@/lib/http/path-segment' is intentionally NOT mocked — the real
-// encodePathSegment is exercised so the hostile-id encode and the dot-segment
-// fail-fast teeth are genuine rather than stubbed.
+// The packaging-method API path helper is mocked with its real implementation so
+// tests can assert callsite delegation while retaining hostile-encode and dot
+// fail-fast teeth.
+vi.mock('@/lib/packaging-methods/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/packaging-methods/api-paths')>();
+  return {
+    ...actual,
+    buildPackagingMethodApiPath: vi.fn(actual.buildPackagingMethodApiPath),
+  };
+});
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
   useMutation: useMutationMock,
@@ -110,7 +121,7 @@ describe('PackagingMethodsContent', () => {
 
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('/api/packaging-methods', {
+    expect(fetchMock).toHaveBeenCalledWith(PACKAGING_METHODS_API_PATH, {
       headers: buildOrgHeaders('org_1'),
     });
   });
@@ -124,7 +135,7 @@ describe('PackagingMethodsContent', () => {
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('/api/packaging-methods');
+    expect(url).toBe(PACKAGING_METHODS_API_PATH);
     expect(init.method).toBe('POST');
     expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
   });
@@ -144,6 +155,7 @@ describe('PackagingMethodsContent', () => {
     expect(url).toBe('/api/packaging-methods/a%2Fb%20c');
     expect(init.method).toBe('PATCH');
     expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
+    expect(buildPackagingMethodApiPath).toHaveBeenCalledWith('a/b c');
   });
 
   it('update (PATCH) with a dot-segment id fails closed BEFORE any fetch side effect', async () => {
@@ -154,6 +166,7 @@ describe('PackagingMethodsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: /一包化/ }));
 
     await expect(latestMutationFn()()).rejects.toThrow(/dot segment/);
+    expect(buildPackagingMethodApiPath).toHaveBeenCalledWith('.');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
