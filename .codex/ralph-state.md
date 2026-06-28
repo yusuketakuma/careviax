@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-1108 JST
+
+- current task: card workspace patient API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `CardWorkspace` returning `not_found`, `src/app/(dashboard)/patients/[id]/card-workspace.tsx`, `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`, and `src/lib/patient/api-paths.ts`.
+- files changed: `src/app/(dashboard)/patients/[id]/card-workspace.tsx`, `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `CardWorkspace` still duplicated patient-id API path construction for patient overview, home-operations, and header-summary GETs. Hostile patient ids containing `/`, `?`, or `#` could drift from the shared encoded/fail-closed patient API path contract.
+- security risks found: reduced core patient workspace route-confusion drift by routing overview, home-operations, and header-summary GETs through `buildPatientApiPath(patientId, suffix)`. Extended existing F-082 coverage to header-summary and added regression tests proving all three workspace patient GETs consume shared helper return values. Existing raw patient id semantics in presence heartbeat, query keys, SSR `initialData`, stale timing, enabled guards, invalidations, documents/billing/MCS paths, rendered card workspace UI, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing workspace GETs, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' src/lib/patient/api-paths.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/api-paths.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
+- validation results: Prettier write passed. Focused card workspace + patient API path tests passed `2` files / `62` tests. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
+- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the owned card-workspace files for implementation commit after cached diff whitespace check.
+
 ### 20260628-1100 JST
 
 - current task: prescription history API path helper convergence.

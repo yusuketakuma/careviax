@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Card Workspace Patient API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; no new Claude interrupt arrived while this slice was implemented and validated.
+  - gbrain `code_blast` for `CardWorkspace` returned `not_found`, so impact was bounded by direct source/test inspection.
+  - Subagent spawn remains unavailable due to thread limit; medical safety and privacy were manually reviewed for this bounded core patient workspace GET patch.
+- Hardened card workspace patient API boundaries:
+  - Routed patient overview `GET` through shared `buildPatientApiPath(patientId, '/overview')`.
+  - Routed patient home-operations `GET` through shared `buildPatientApiPath(patientId, '/home-operations')`.
+  - Routed patient header-summary `GET` through shared `buildPatientApiPath(patientId, '/header-summary')`.
+  - Preserved raw patient id semantics in presence heartbeat, query keys, SSR `initialData`, stale timing, enabled guards, invalidations, documents/billing/MCS paths, rendered card workspace UI, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+  - Extended existing F-082 coverage to header-summary and added regression coverage proving all three workspace patient GETs consume shared helper return values.
+- Security/privacy risk reduced: core card workspace patient overview/home-operations/header-summary fetches no longer duplicate patient-id API path construction, reducing route-boundary drift for hostile `/`, `?`, or `#` patient ids.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing workspace GETs, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' src/lib/patient/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `62` tests.
+  - `pnpm exec eslint` on the changed implementation/test files plus `src/lib/patient/api-paths.ts`: passed.
+  - `pnpm exec prettier --check` on the same three files: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Manual medical safety/privacy review: PASS.
+- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+
 ### 2026-06-28 JST - Prescription History API Path Helper Convergence
 
 - Coordination:
