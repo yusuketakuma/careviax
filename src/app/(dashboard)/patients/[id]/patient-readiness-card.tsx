@@ -125,9 +125,9 @@ export function PatientReadinessCard({ patientId }: { patientId: string }) {
             key={item.key}
             className={`rounded-xl border p-3 ${
               item.completed
-                ? 'border-state-done/30 bg-state-done/10'
+                ? 'border-l-4 border-border/70 border-l-state-done bg-card'
                 : item.severity === 'high'
-                  ? 'border-state-confirm/30 bg-state-confirm/10'
+                  ? 'border-l-4 border-border/70 border-l-state-confirm bg-card'
                   : 'border-border/70 bg-muted/10'
             }`}
           >

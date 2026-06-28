@@ -33,8 +33,8 @@ function StatusItem({
       className={cn(
         'rounded-xl border px-3 py-3',
         done
-          ? 'border-state-done/30 bg-state-done/10'
-          : 'border-state-confirm/30 bg-state-confirm/10',
+          ? 'border-l-4 border-border/70 border-l-state-done bg-card'
+          : 'border-l-4 border-border/70 border-l-state-confirm bg-card',
       )}
     >
       <div className="flex items-start gap-2">
