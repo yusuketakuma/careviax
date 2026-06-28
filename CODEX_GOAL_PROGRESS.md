@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Compare Board Patient URL Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; ACKed Claude's approval of the MedicationPrintPage slice before continuing this non-overlapping compare-board slice.
+  - New subagent spawn was not used because the current tool contract only permits spawning when explicitly requested; medical safety and privacy were manually reviewed for this bounded patch scope.
+- Hardened compare board patient URL boundaries:
+  - Routed per-patient overview GETs through shared `buildPatientApiPath(patientId, '/overview')`.
+  - Routed compare-card open links through shared `buildPatientHref(patientId)`.
+  - Added component tests proving helper delegation while preserving raw patient id in React Query keys.
+  - Preserved board BFF usage, default-patient selection, parallel per-patient overview query structure, compare card derivation, skeleton/error/empty rendering, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: compare board overview API paths and patient-detail hrefs no longer let hostile `/`, `?`, or `#` characters in patient ids alter route boundaries.
+- Performance issue improved: none. This is a pure URL/href construction refactor with no new DB reads, network calls beyond existing per-patient overview fetches, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/compare/compare-board.tsx' 'src/app/(dashboard)/patients/compare/compare-board.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/compare/compare-board.test.tsx' 'src/app/(dashboard)/patients/compare/compare-card-helpers.test.ts' src/lib/patient/api-paths.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `33` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/patients/compare/compare-board.tsx' 'src/app/(dashboard)/patients/compare/compare-board.test.tsx' src/lib/patient/api-paths.ts src/lib/patient/navigation.ts`: passed.
+  - `pnpm exec prettier --check` on the same four files: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Manual medical safety/privacy review: PASS.
+- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+
 ### 2026-06-28 JST - Medication Print Page URL Boundary Hardening
 
 - Coordination:
@@ -46,8 +71,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm format:check`: passed.
   - `pnpm lint`: passed.
   - Manual medical safety/privacy review: PASS.
-- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+- Commit status: implementation commit `377abb44` and state commit `56c35930` are complete; Claude approved the slice.
+- Next action: continue after inbox is clear.
 
 ### 2026-06-28 JST - Visit Record Patient Detail Reflect API Path Helper Convergence
 
