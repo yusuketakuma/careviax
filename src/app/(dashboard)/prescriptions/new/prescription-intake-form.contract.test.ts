@@ -66,7 +66,7 @@ describe('PrescriptionIntakeForm previous prescription safety contract', () => {
     expect(SOURCE).toContain(
       "queryKey: ['patient-prescriptions', orgId, selectedPatientId, selectedCaseId]",
     );
-    expect(SOURCE).toContain("new URLSearchParams({ limit: '5', case_id: selectedCaseId })");
+    expect(SOURCE).toContain('buildPreviousPrescriptionsApiUrl(selectedPatientId, selectedCaseId)');
     expect(SOURCE).toContain('enabled: !!orgId && !!selectedPatientId && !!selectedCaseId');
   });
 

@@ -47,6 +47,11 @@ import {
   SOURCE_LABELS,
 } from './prescription-form.shared';
 import {
+  buildActiveCasesForPatientApiUrl,
+  buildPreviousPrescriptionsApiUrl,
+  buildSelectedPatientApiUrl,
+} from './prescription-intake-urls';
+import {
   formatPrescriptionSubmitError,
   getPrescriptionSubmitBlockers,
   parsePrescriptionSubmitError,
@@ -641,7 +646,7 @@ export function PrescriptionIntakeForm() {
     queryKey: ['selected-patient', orgId, selectedPatientId],
     queryFn: async () => {
       const patient = await fetchOrgJson<SelectedPatientDetail>({
-        url: `/api/patients/${selectedPatientId}`,
+        url: buildSelectedPatientApiUrl(selectedPatientId),
         orgId,
         errorMessage: '患者情報の取得に失敗しました',
       });
@@ -664,7 +669,7 @@ export function PrescriptionIntakeForm() {
     queryKey: ['patient-cases', orgId, selectedPatientId],
     queryFn: async () => {
       return fetchOrgJson<{ data: CaseOption[] }>({
-        url: `/api/cases?patient_id=${selectedPatientId}&status=active&limit=20`,
+        url: buildActiveCasesForPatientApiUrl(selectedPatientId),
         orgId,
         errorMessage: 'ケース取得に失敗しました',
       });
@@ -675,9 +680,8 @@ export function PrescriptionIntakeForm() {
   const { data: previousPrescriptionsData } = useQuery({
     queryKey: ['patient-prescriptions', orgId, selectedPatientId, selectedCaseId],
     queryFn: async () => {
-      const params = new URLSearchParams({ limit: '5', case_id: selectedCaseId });
       return fetchOrgJson<{ data: PreviousPrescriptionIntake[] }>({
-        url: `/api/patients/${selectedPatientId}/prescriptions?${params.toString()}`,
+        url: buildPreviousPrescriptionsApiUrl(selectedPatientId, selectedCaseId),
         orgId,
         errorMessage: '過去処方の取得に失敗しました',
       });

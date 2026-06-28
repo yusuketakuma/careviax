@@ -28,6 +28,7 @@ import { StateBadge } from '@/components/ui/state-badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import type { PatientCard as PatientCardType, PatientStatusIcon } from '@/types/dashboard-home';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
 
 // ---------------------------------------------------------------------------
@@ -68,6 +69,11 @@ function formatShortDate(iso: string | null): string | null {
   return format(parseISO(iso), 'M/d(E)', { locale: ja });
 }
 
+function buildPrescriptionIntakeHref(patientId: string, caseId: string): string {
+  const params = new URLSearchParams({ patient_id: patientId, case_id: caseId });
+  return `/prescriptions/new?${params.toString()}`;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -92,7 +98,7 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline gap-2">
               <Link
-                href={`/patients/${patient.patient_id}`}
+                href={buildPatientHref(patient.patient_id)}
                 className="inline-flex min-h-[44px] items-center truncate text-sm font-semibold text-foreground hover:underline sm:min-h-0"
               >
                 {patient.patient_name}
@@ -208,7 +214,7 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
               patient.readiness_flags.missing_primary_physician ||
               patient.readiness_flags.missing_first_visit_doc) && (
               <Link
-                href={`/patients/${patient.patient_id}`}
+                href={buildPatientHref(patient.patient_id)}
                 className={buttonVariants({ variant: 'ghost', size: 'sm', className: 'flex-1' })}
               >
                 前提確認
@@ -216,7 +222,7 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
             )}
             {patient.case_id && (
               <Link
-                href={`/prescriptions/new?patient_id=${patient.patient_id}&case_id=${patient.case_id}`}
+                href={buildPrescriptionIntakeHref(patient.patient_id, patient.case_id)}
                 className={buttonVariants({ variant: 'outline', size: 'sm', className: 'flex-1' })}
               >
                 <ClipboardPlus className="size-3.5" aria-hidden="true" />
