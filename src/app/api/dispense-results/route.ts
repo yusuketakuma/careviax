@@ -76,6 +76,25 @@ const createDispenseResultSchema = z.object({
   expected_version: z.number().int().nonnegative(),
 });
 
+type SubmittedDispenseResultLine = z.infer<typeof dispenseResultLineSchema>;
+
+type ReplayableDispenseResult = {
+  id: string;
+  line_id: string;
+  actual_drug_name: string;
+  actual_drug_code: string | null;
+  actual_quantity: unknown;
+  actual_unit: string | null;
+  discrepancy_reason: string | null;
+  carry_type: string | null;
+  special_notes: string | null;
+};
+
+type ReplayablePrescriptionLine = {
+  id: string;
+  unit: string | null;
+};
+
 function resolveCarryItemsStatus(lines: Array<{ carry_type: string | null | undefined }>) {
   const hasDeferred = lines.some((line) => line.carry_type === 'deferred');
   const hasReadyItem = lines.some(
@@ -124,7 +143,7 @@ async function findInvalidPackagingGroupAssignments(args: {
   tx: Prisma.TransactionClient;
   orgId: string;
   cycleId: string;
-  lines: Array<z.infer<typeof dispenseResultLineSchema>>;
+  lines: Array<SubmittedDispenseResultLine>;
 }) {
   const requestedGroupIds = Array.from(
     new Set(
@@ -154,6 +173,85 @@ async function findInvalidPackagingGroupAssignments(args: {
 
 function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+function normalizeOptionalText(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
+function dispenseResultMatchesSubmittedLine(args: {
+  existingResult: ReplayableDispenseResult;
+  submittedLine: SubmittedDispenseResultLine;
+  prescribedUnit: string | null | undefined;
+}) {
+  const canonicalActualUnit = resolveCanonicalActualUnit({
+    prescribedUnit: args.prescribedUnit,
+    actualUnit: args.submittedLine.actual_unit,
+  });
+
+  return (
+    args.existingResult.actual_drug_name === args.submittedLine.actual_drug_name &&
+    normalizeOptionalText(args.existingResult.actual_drug_code) ===
+      normalizeOptionalText(args.submittedLine.actual_drug_code) &&
+    Number(args.existingResult.actual_quantity) === args.submittedLine.actual_quantity &&
+    normalizeOptionalText(args.existingResult.actual_unit) ===
+      normalizeOptionalText(canonicalActualUnit) &&
+    normalizeOptionalText(args.existingResult.discrepancy_reason) ===
+      normalizeOptionalText(args.submittedLine.discrepancy_reason) &&
+    args.existingResult.carry_type === args.submittedLine.carry_type &&
+    normalizeOptionalText(args.existingResult.special_notes) ===
+      normalizeOptionalText(args.submittedLine.special_notes)
+  );
+}
+
+function buildIdempotentDispenseResultReplay(args: {
+  taskId: string;
+  submittedLines: Array<SubmittedDispenseResultLine>;
+  prescribedLines: Array<ReplayablePrescriptionLine>;
+  existingResults: Array<ReplayableDispenseResult>;
+}) {
+  const prescribedLineById = new Map(args.prescribedLines.map((line) => [line.id, line]));
+  const existingResultByLineId = new Map(
+    args.existingResults.map((result) => [result.line_id, result]),
+  );
+  const seenSubmittedLineIds = new Set<string>();
+  const replayResults = [];
+
+  for (const submittedLine of args.submittedLines) {
+    if (seenSubmittedLineIds.has(submittedLine.line_id)) return null;
+    seenSubmittedLineIds.add(submittedLine.line_id);
+
+    const prescribedLine = prescribedLineById.get(submittedLine.line_id);
+    if (!prescribedLine) return null;
+
+    const existingResult = existingResultByLineId.get(submittedLine.line_id);
+    if (!existingResult) return null;
+
+    if (
+      !dispenseResultMatchesSubmittedLine({
+        existingResult,
+        submittedLine,
+        prescribedUnit: prescribedLine.unit,
+      })
+    ) {
+      return null;
+    }
+
+    replayResults.push(existingResult);
+  }
+
+  const persistedLineIds = new Set(args.existingResults.map((result) => result.line_id));
+  const hasAllResults =
+    args.prescribedLines.length > 0 &&
+    args.prescribedLines.every((line) => persistedLineIds.has(line.id));
+
+  return {
+    results: replayResults,
+    task_id: args.taskId,
+    partial: !hasAllResults,
+    idempotent: true as const,
+  };
 }
 
 async function promoteCycleToDispensingIfNeeded(args: {
@@ -214,6 +312,7 @@ export const POST = withAuthContext(
               actual_drug_code: true,
               actual_quantity: true,
               actual_unit: true,
+              discrepancy_reason: true,
               carry_type: true,
               special_notes: true,
             },
@@ -275,9 +374,22 @@ export const POST = withAuthContext(
 
       if (!task) return null;
 
+      const latestIntake = task.cycle.prescription_intakes?.[0] ?? null;
+      const existingResults = task.results ?? [];
+      const existingResultByLineId = new Map(existingResults.map((item) => [item.line_id, item]));
+
       // 楽観的ロック(§12-4): クライアントがワークベンチ表示時の cycle.version を
       // 送ってきた場合のみ、書込前に現在値と照合する。ズレていれば他者更新として 409。
+      // ただし同じ payload がすでに永続化済みなら、F12/二重送信による副作用を増やさず再応答する。
       if (typeof task.cycle.version === 'number' && task.cycle.version !== expected_version) {
+        const idempotentReplay = buildIdempotentDispenseResultReplay({
+          taskId: task_id,
+          submittedLines: lines,
+          prescribedLines: latestIntake?.lines ?? [],
+          existingResults,
+        });
+        if (idempotentReplay) return idempotentReplay;
+
         return {
           error: 'version_conflict' as const,
           message: new VersionConflictError().message,
@@ -322,8 +434,6 @@ export const POST = withAuthContext(
           reasons: blockedLines,
         };
       }
-
-      const latestIntake = task.cycle.prescription_intakes[0] ?? null;
 
       const discrepancyReasonErrors = buildDiscrepancyReasonErrors({
         submittedLines: lines,
@@ -382,13 +492,12 @@ export const POST = withAuthContext(
       }
 
       const now = new Date();
-      const existingResultByLineId = new Map(task.results.map((item) => [item.line_id, item]));
       const latestIntakeLineById = new Map(
         (latestIntake?.lines ?? []).map((line) => [line.id, line]),
       );
       const latestIntakeLineIds = latestIntake?.lines.map((line) => line.id) ?? [];
       const completedLineIds = new Set([
-        ...task.results.map((item) => item.line_id),
+        ...existingResults.map((item) => item.line_id),
         ...lines.map((item) => item.line_id),
       ]);
       const blockedLineIds = new Set(
@@ -413,7 +522,7 @@ export const POST = withAuthContext(
       const actualQuantityConfirmationErrors = buildActualQuantityConfirmationErrors({
         submittedLines: lines,
         prescribedLines: latestIntake?.lines ?? [],
-        existingResults: task.results,
+        existingResults,
       });
       if (actualQuantityConfirmationErrors.length > 0) {
         return {
@@ -833,20 +942,22 @@ export const POST = withAuthContext(
       }
     }
 
-    await notifyWorkflowMutation({
-      orgId: ctx.orgId,
-      eventType: 'cycle_transition',
-      payload: { source: 'dispense_results', task_id },
-    });
-
-    if (!result.partial) {
-      await notifyWebhookEventForOrg(ctx.orgId, 'prescription.dispensed', {
-        taskId: result.task_id,
-        resultCount: result.results.length,
+    if (!('idempotent' in result)) {
+      await notifyWorkflowMutation({
+        orgId: ctx.orgId,
+        eventType: 'cycle_transition',
+        payload: { source: 'dispense_results', task_id },
       });
+
+      if (!result.partial) {
+        await notifyWebhookEventForOrg(ctx.orgId, 'prescription.dispensed', {
+          taskId: result.task_id,
+          resultCount: result.results.length,
+        });
+      }
     }
 
-    return success(result, 201);
+    return success(result, 'idempotent' in result ? 200 : 201);
   },
   {
     permission: 'canDispense',
