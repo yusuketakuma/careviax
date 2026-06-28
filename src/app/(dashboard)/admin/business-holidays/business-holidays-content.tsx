@@ -27,9 +27,12 @@ import {
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  buildBusinessHolidayApiPath,
+  buildBusinessHolidaysApiPath,
+} from '@/lib/business-holidays/api-paths';
 import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { encodePathSegment } from '@/lib/http/path-segment';
 
 type Holiday = {
   id: string;
@@ -119,7 +122,7 @@ export function BusinessHolidaysContent() {
     queryFn: async () => {
       const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
       if (filterSiteId) params.set('site_id', filterSiteId);
-      const response = await fetch(`/api/business-holidays?${params}`, {
+      const response = await fetch(buildBusinessHolidaysApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('休日設定の取得に失敗しました');
@@ -157,8 +160,8 @@ export function BusinessHolidaysContent() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const url = editingId
-        ? `/api/business-holidays/${encodePathSegment(editingId)}`
-        : '/api/business-holidays';
+        ? buildBusinessHolidayApiPath(editingId)
+        : buildBusinessHolidaysApiPath();
       const method = editingId ? 'PATCH' : 'POST';
       const response = await fetch(url, {
         method,
@@ -189,7 +192,7 @@ export function BusinessHolidaysContent() {
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!deleteTarget) throw new Error('削除対象がありません');
-      const response = await fetch(`/api/business-holidays/${encodePathSegment(deleteTarget.id)}`, {
+      const response = await fetch(buildBusinessHolidayApiPath(deleteTarget.id), {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });
@@ -211,7 +214,7 @@ export function BusinessHolidaysContent() {
       const results = [];
       const headers = buildOrgJsonHeaders(orgId);
       for (const date of dates) {
-        const response = await fetch('/api/business-holidays', {
+        const response = await fetch(buildBusinessHolidaysApiPath(), {
           method: 'POST',
           headers,
           body: JSON.stringify({

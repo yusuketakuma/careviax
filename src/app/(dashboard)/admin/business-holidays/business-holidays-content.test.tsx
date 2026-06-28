@@ -7,6 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  BUSINESS_HOLIDAYS_API_PATH,
+  buildBusinessHolidayApiPath,
+  buildBusinessHolidaysApiPath,
+} from '@/lib/business-holidays/api-paths';
 
 setupDomTestEnv();
 
@@ -23,8 +28,9 @@ vi.mock('sonner', () => ({
 
 // org-header builders are mocked with SENTINEL returns ('x-test-helper') so the
 // tests prove the component DELEGATES to them. A raw inline `{ 'x-org-id': orgId }`
-// literal would not carry the sentinel. '@/lib/http/path-segment' is intentionally
-// NOT mocked, so hostile-id encode and dot fail-fast teeth exercise the real util.
+// literal would not carry the sentinel. The business-holiday API path helpers are
+// mocked with their real implementation so tests can assert callsite delegation
+// while retaining hostile-encode and dot fail-fast teeth.
 const buildOrgHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({ 'x-org-id': orgId, 'x-test-helper': 'orgHeaders' })),
 );
@@ -39,6 +45,15 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgHeaders: buildOrgHeadersMock,
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
+
+vi.mock('@/lib/business-holidays/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/business-holidays/api-paths')>();
+  return {
+    ...actual,
+    buildBusinessHolidayApiPath: vi.fn(actual.buildBusinessHolidayApiPath),
+    buildBusinessHolidaysApiPath: vi.fn(actual.buildBusinessHolidaysApiPath),
+  };
+});
 
 import { BusinessHolidaysContent } from './business-holidays-content';
 
@@ -82,19 +97,19 @@ function stubFetchWithHoliday(holiday = holidayFixture()) {
       });
     }
 
-    if (url.startsWith('/api/business-holidays?')) {
+    if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`)) {
       return new Response(JSON.stringify({ data: [holiday] }), { status: 200 });
     }
 
-    if (url === '/api/business-holidays' && init?.method === 'POST') {
+    if (url === BUSINESS_HOLIDAYS_API_PATH && init?.method === 'POST') {
       return new Response(JSON.stringify({ message: '休日を登録しました' }), { status: 200 });
     }
 
-    if (url.startsWith('/api/business-holidays/') && init?.method === 'PATCH') {
+    if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}/`) && init?.method === 'PATCH') {
       return new Response(JSON.stringify({ message: '休日を更新しました' }), { status: 200 });
     }
 
-    if (url.startsWith('/api/business-holidays/') && init?.method === 'DELETE') {
+    if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}/`) && init?.method === 'DELETE') {
       return new Response(JSON.stringify({ message: '休日を削除しました' }), { status: 200 });
     }
 
@@ -120,10 +135,16 @@ describe('BusinessHolidaysContent', () => {
 
     await screen.findByLabelText('店舗フィルタ');
     const holidaysGetCall = fetchMock.mock.calls.find(([input]) =>
-      String(input).startsWith('/api/business-holidays?'),
+      String(input).startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`),
     );
+    const holidaysPathCall = vi
+      .mocked(buildBusinessHolidaysApiPath)
+      .mock.calls.find(([params]) => params instanceof URLSearchParams);
 
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+    expect(holidaysPathCall).toBeTruthy();
+    expect((holidaysPathCall![0] as URLSearchParams).toString()).toContain('date_from=');
+    expect((holidaysPathCall![0] as URLSearchParams).toString()).toContain('date_to=');
     expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy-sites', {
       headers: buildOrgHeaders('org_1'),
     });
@@ -175,6 +196,7 @@ describe('BusinessHolidaysContent', () => {
       );
     });
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
+    expect(buildBusinessHolidayApiPath).toHaveBeenCalledWith('holiday_1');
   });
 
   it('places the calendar workspace before summary cards and keeps desktop controls at page-body target size', async () => {
@@ -202,7 +224,7 @@ describe('BusinessHolidaysContent', () => {
     ).toContain('sm:min-h-[44px]');
   });
 
-  it('create (POST) delegates to buildOrgJsonHeaders and posts to the static collection path', async () => {
+  it('create (POST) delegates to buildOrgJsonHeaders and the collection path helper', async () => {
     const fetchMock = stubFetchWithHoliday();
     renderContent();
 
@@ -214,15 +236,16 @@ describe('BusinessHolidaysContent', () => {
     await waitFor(() => {
       const postCall = fetchMock.mock.calls.find(
         ([input, init]) =>
-          String(input) === '/api/business-holidays' &&
+          String(input) === BUSINESS_HOLIDAYS_API_PATH &&
           (init as RequestInit | undefined)?.method === 'POST',
       );
       expect(postCall).toBeTruthy();
     });
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+    expect(buildBusinessHolidaysApiPath).toHaveBeenCalledWith();
     const postCall = fetchMock.mock.calls.find(
       ([input, init]) =>
-        String(input) === '/api/business-holidays' &&
+        String(input) === BUSINESS_HOLIDAYS_API_PATH &&
         (init as RequestInit | undefined)?.method === 'POST',
     );
     const init = postCall![1] as RequestInit;
@@ -247,15 +270,16 @@ describe('BusinessHolidaysContent', () => {
     await waitFor(() => {
       const postCall = fetchMock.mock.calls.find(
         ([input, init]) =>
-          String(input) === '/api/business-holidays' &&
+          String(input) === BUSINESS_HOLIDAYS_API_PATH &&
           (init as RequestInit | undefined)?.method === 'POST',
       );
       expect(postCall).toBeTruthy();
     });
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
+    expect(buildBusinessHolidaysApiPath).toHaveBeenCalledWith();
     const postCall = fetchMock.mock.calls.find(
       ([input, init]) =>
-        String(input) === '/api/business-holidays' &&
+        String(input) === BUSINESS_HOLIDAYS_API_PATH &&
         (init as RequestInit | undefined)?.method === 'POST',
     );
     const init = postCall![1] as RequestInit;
@@ -267,7 +291,7 @@ describe('BusinessHolidaysContent', () => {
     });
   });
 
-  it('update (PATCH) encodes a hostile holiday id via encodePathSegment and uses buildOrgJsonHeaders', async () => {
+  it('update (PATCH) encodes a hostile holiday id via the shared path helper and uses buildOrgJsonHeaders', async () => {
     const fetchMock = stubFetchWithHoliday(holidayFixture('a/b c'));
     renderContent();
 
@@ -284,6 +308,7 @@ describe('BusinessHolidaysContent', () => {
         expect.objectContaining({ method: 'PATCH', headers: buildOrgJsonHeaders('org_1') }),
       );
     });
+    expect(buildBusinessHolidayApiPath).toHaveBeenCalledWith('a/b c');
   });
 
   it('update (PATCH) with a dot-segment holiday id fails closed before any PATCH fetch', async () => {
@@ -298,13 +323,14 @@ describe('BusinessHolidaysContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '更新する' }));
 
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildBusinessHolidayApiPath).toHaveBeenCalledWith('.');
     const patchCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
     );
     expect(patchCalls).toHaveLength(0);
   });
 
-  it('DELETE encodes a hostile holiday id via encodePathSegment', async () => {
+  it('DELETE encodes a hostile holiday id via the shared path helper', async () => {
     const fetchMock = stubFetchWithHoliday(holidayFixture('a/b c'));
     renderContent();
 
@@ -321,6 +347,7 @@ describe('BusinessHolidaysContent', () => {
         expect.objectContaining({ method: 'DELETE', headers: buildOrgHeaders('org_1') }),
       );
     });
+    expect(buildBusinessHolidayApiPath).toHaveBeenCalledWith('a/b c');
   });
 
   it('DELETE with a dot-segment holiday id fails closed before any DELETE fetch', async () => {
@@ -335,6 +362,7 @@ describe('BusinessHolidaysContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildBusinessHolidayApiPath).toHaveBeenCalledWith('.');
     const deleteCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
     );
