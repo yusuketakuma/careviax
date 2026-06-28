@@ -47,6 +47,7 @@ import {
   type DispenseResultLineInput,
   type PendingPrimary,
   type PendingSetAuditReject,
+  type PendingForceRegen,
   type SubmitDispenseAuditInput,
   type SubmitSetAuditInput,
 } from './dispensing-workbench.write-types';
@@ -136,6 +137,16 @@ export interface WorkbenchWriteHandlers {
    * snap() で再取得し planId/meta/ngCode を再検証 + アンカー照合してから rejected で mutate する。
    */
   commitSetAuditReject: (descriptor: PendingSetAuditReject) => void;
+  /**
+   * force セットバッチ再生成の確認要求（real-data のみ）。snap() で現在の患者/計画/版を捕捉して
+   * descriptor を立て、onRequestRegenerateConfirm を呼ぶ（mutate しない）。
+   */
+  onRequestRegenerate: () => void;
+  /**
+   * force 再生成 ConfirmDialog 確定時の確定書込（real-data のみ）。snap() で再取得し
+   * descriptor の患者/計画/版と照合、ドリフト時は中止、一致時のみ force 再生成を mutate する。
+   */
+  commitForceRegen: (descriptor: PendingForceRegen) => void;
 
   // ── カレンダー（setp）──
   /** セルを選択。 */
@@ -147,11 +158,10 @@ export interface WorkbenchWriteHandlers {
   /** 訪問持出パケット トグル。 */
   onTogglePacket: (item: string) => void;
   /**
-   * セットバッチ生成。force=false は初回生成（即時）、force=true は既存削除＋再生成
-   * （破壊的・確認ダイアログ経由）。force 時は store.calendarGeneration の expected_updated_at を
-   * OCC アンカーに使う（無ければ実行しない）。
+   * セットバッチ初回生成（即時・非破壊）。既存セットがある場合の破壊的「再生成」は
+   * onRequestRegenerate→commitForceRegen（確認ダイアログ + ドリフト照合）に分離している。
    */
-  onGenerateBatches: (force: boolean) => void;
+  onGenerateBatches: () => void;
 
   // ── セット監査（seta）──
   /** 選択セル 監査OK。 */
@@ -588,8 +598,17 @@ export function useWorkbenchWriteHandlers(args: {
   onRequestConfirm?: (descriptor: PendingPrimary) => void;
   /** real-data のセット監査 reject（per-cell NG）で ConfirmDialog を要求する。 */
   onRequestRejectConfirm?: (descriptor: PendingSetAuditReject) => void;
+  /** real-data の force セットバッチ再生成（破壊的）で ConfirmDialog を要求する。 */
+  onRequestRegenerateConfirm?: (descriptor: PendingForceRegen) => void;
 }): WorkbenchWriteHandlers {
-  const { phase, mutations, onAdvance, onRequestConfirm, onRequestRejectConfirm } = args;
+  const {
+    phase,
+    mutations,
+    onAdvance,
+    onRequestConfirm,
+    onRequestRejectConfirm,
+    onRequestRegenerateConfirm,
+  } = args;
 
   // store アクション（楽観更新 / モック挙動の正本）。
   const toggleRow = useWorkbenchStore((s) => s.toggleRow);
@@ -845,6 +864,49 @@ export function useWorkbenchWriteHandlers(args: {
         onError: () => {
           restoreCell('seta', s.selId, target, previousAuditState);
         },
+      });
+    };
+
+    /**
+     * force 再生成（破壊的）の確認要求。現在の患者/計画/版を捕捉して descriptor を立てるだけで
+     * mutate しない。real-data 専用（トリガ自体 view.canForceRegenerate=real-data gate）。
+     */
+    const onRequestRegenerate = () => {
+      if (isRealDataEnabled() && isAnyPending) return; // 実データ時のみ二重送信ガード
+      const before = snap();
+      if (!requireRealPlanContext(before)) return;
+      const planId = before.writeContext.planId;
+      const expectedUpdatedAt = before.calendarGeneration?.expected_updated_at;
+      if (!planId || !expectedUpdatedAt) {
+        // OCC アンカー（セットプラン updated_at）が無ければ確認に進めない（破壊的上書き防止）。
+        toast.error(
+          'セットプランの版情報を取得できませんでした。患者を再選択してから実行してください。',
+        );
+        return;
+      }
+      onRequestRegenerateConfirm?.({ patientId: before.selId, planId, expectedUpdatedAt });
+    };
+
+    /**
+     * force 再生成 ConfirmDialog 確定時の確定書込。確認中に患者/計画/版がドリフトしたら
+     * 中止し（別計画の破壊を防ぐ）、一致時のみ確認した descriptor の OCC で再生成を mutate する。
+     */
+    const commitForceRegen = (descriptor: PendingForceRegen) => {
+      if (!isRealDataEnabled()) return;
+      if (isAnyPending) return;
+      const s = snap();
+      if (
+        descriptor.patientId !== s.selId ||
+        descriptor.planId !== s.writeContext.planId ||
+        descriptor.expectedUpdatedAt !== s.calendarGeneration?.expected_updated_at
+      ) {
+        toast.error(CONFIRM_TARGET_DRIFT_MESSAGE);
+        return;
+      }
+      // 確認した版（descriptor.expectedUpdatedAt）から submit（OCC で並行更新を踏み潰さない）。
+      mutations.generateBatches.mutate({
+        force: true,
+        expected_updated_at: descriptor.expectedUpdatedAt,
       });
     };
 
@@ -1294,6 +1356,8 @@ export function useWorkbenchWriteHandlers(args: {
       },
       commitPrimary,
       commitSetAuditReject,
+      onRequestRegenerate,
+      commitForceRegen,
 
       // ── カレンダー（setp）──
       onSelectCell: (di, tk) => selectCell(di, tk),
@@ -1327,23 +1391,11 @@ export function useWorkbenchWriteHandlers(args: {
       },
       onToggleOut: (name) => toggleOut(name),
       onTogglePacket: (item) => togglePacket(item),
-      onGenerateBatches: (force) => {
+      onGenerateBatches: () => {
         if (isRealDataEnabled() && isAnyPending) return; // 実データ時のみ二重送信ガード
         const before = snap();
         if (!requireRealPlanContext(before)) return;
-        if (force) {
-          // 再生成は既存セットを削除して作り直す破壊的操作。OCC アンカー（セットプランの
-          // updated_at）が無ければ実行しない（楽観的に上書きして他更新を踏み潰さない）。
-          const expectedUpdatedAt = before.calendarGeneration?.expected_updated_at;
-          if (!expectedUpdatedAt) {
-            toast.error(
-              'セットプランの版情報を取得できませんでした。患者を再選択してから実行してください。',
-            );
-            return;
-          }
-          mutations.generateBatches.mutate({ force: true, expected_updated_at: expectedUpdatedAt });
-          return;
-        }
+        // 初回生成（非破壊）のみ。破壊的な force 再生成は commitForceRegen に分離している。
         mutations.generateBatches.mutate({ force: false });
       },
 
@@ -1538,6 +1590,7 @@ export function useWorkbenchWriteHandlers(args: {
     onAdvance,
     onRequestConfirm,
     onRequestRejectConfirm,
+    onRequestRegenerateConfirm,
   ]);
 }
 

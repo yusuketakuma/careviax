@@ -428,7 +428,7 @@ export function MedicationCalendarGrid({
           <button
             type="button"
             onClick={() => {
-              if (view.canGenerateBatches) handlers?.onGenerateBatches(false);
+              if (view.canGenerateBatches) handlers?.onGenerateBatches();
               else if (view.canForceRegenerate) onRequestRegenerate?.();
             }}
             disabled={isPending || (!view.canGenerateBatches && !view.canForceRegenerate)}

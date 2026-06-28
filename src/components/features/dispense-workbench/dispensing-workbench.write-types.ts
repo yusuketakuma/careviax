@@ -382,6 +382,18 @@ export interface PendingSetAuditReject {
   meta: CellMeta;
 }
 
+/**
+ * force セットバッチ再生成（既存セット削除→作り直し）の確認待ち descriptor。real-data 専用。
+ * 確認ダイアログ表示中に F-key で患者/計画がドリフトしても、確認した計画以外を破壊しないための
+ * アンカー（patientId/planId）と OCC（expectedUpdatedAt）を request 時に捕捉する。
+ */
+export interface PendingForceRegen {
+  patientId: string;
+  planId: string;
+  /** セットプラン updated_at（OCC アンカー）。commit 時のドリフト照合と submit に使う。 */
+  expectedUpdatedAt: string;
+}
+
 export interface CreateCycleHoldInput {
   cycle_id: string;
   phase: Phase | string;

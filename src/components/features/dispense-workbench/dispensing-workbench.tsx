@@ -43,6 +43,7 @@ import type {
   AuditNarcoticLine,
   PendingPrimary,
   PendingSetAuditReject,
+  PendingForceRegen,
 } from './dispensing-workbench.write-types';
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -127,7 +128,7 @@ const SETA_SLOT_LABELS: Record<string, string> = {
   prn: '頓服',
 };
 
-function buildPrimaryConfirm(
+export function buildPrimaryConfirm(
   pending: PendingPrimary | null,
   patientName?: string,
   dob?: string,
@@ -173,7 +174,7 @@ function buildPrimaryConfirm(
  * 患者識別（氏名+生年月日）・対象セル（n日目・時点）・NG 理由を description に明示し、
  * 同名患者や隣接セルの取り違えによる誤った不可逆差戻しを抑止する（round-3 UX）。
  */
-function buildRejectConfirm(
+export function buildRejectConfirm(
   pending: PendingSetAuditReject | null,
   patientName?: string,
   dob?: string,
@@ -188,6 +189,27 @@ function buildRejectConfirm(
   return {
     title,
     description: `${who}${where} のセルを「${pending.ngLabel}」として差戻し、対象計画を保留に遷移します。確定後は取り消せません。`,
+  };
+}
+
+/**
+ * force セットバッチ再生成（破壊的）確認ダイアログの表示文言を組み立てる。
+ * 患者識別（氏名+生年月日）と対象セットプランの期間を明示し、確認中の文脈ドリフトによる
+ * 別計画の誤再生成を視覚的に抑止する（round-4 UX）。タイトル・requiredConfirmText は呼び出し側で固定。
+ */
+export function buildForceRegenConfirm(
+  pending: PendingForceRegen | null,
+  patientName?: string,
+  dob?: string,
+  period?: string,
+): { description: string } {
+  if (!pending) {
+    return { description: '' };
+  }
+  const who = describePatient(patientName, dob);
+  const when = period ? `（対象期間 ${period}）` : '';
+  return {
+    description: `${who}セットプラン${when}の既存セットを削除して作り直します。確定済みのセット状態・監査状態は失われ、この操作は取り消せません。`,
   };
 }
 
@@ -217,14 +239,15 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   const planId = useWorkbenchStore((s) => s.writeContext.planId);
   // 接続状態は HeaderSyncStatus と同一の useNetworkOnline（新規リアルタイム購読を増やさない）。
   const online = useNetworkOnline();
-  // セットバッチ force 再生成の確認ダイアログ開閉（破壊的操作のため二重確認）。
-  const [forceConfirmOpen, setForceConfirmOpen] = useState(false);
 
   // 不可逆 sign-off（調剤完了 / 監査承認 / セット監査承認）の確認待ち descriptor。
   // real-data のみ非 null になり ConfirmDialog を開く（zustand へは持たない＝揮発 UI 状態）。
   const [pendingPrimary, setPendingPrimary] = useState<PendingPrimary | null>(null);
   // セット監査 reject（per-cell NG）の確認待ち descriptor。承認と同じく不可逆ゲートを通す（#4）。
   const [pendingReject, setPendingReject] = useState<PendingSetAuditReject | null>(null);
+  // force セットバッチ再生成（破壊的）の確認待ち descriptor。boolean フラグではなく
+  // 患者/計画/版アンカーを捕捉し、確認中の文脈ドリフトで別計画を破壊しない（round-4 S1）。
+  const [pendingForceRegen, setPendingForceRegen] = useState<PendingForceRegen | null>(null);
   // 二重確定ラッチ。React state 更新前の double Enter/click で commit が二度発火するのを防ぐ（#5）。
   // 新たな confirm 要求（descriptor 設定）ごとに false へリセットする。
   const commitLatchRef = useRef(false);
@@ -239,6 +262,10 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     commitLatchRef.current = false;
     setPendingReject(descriptor);
   };
+  const requestForceRegenConfirm = (descriptor: PendingForceRegen) => {
+    commitLatchRef.current = false;
+    setPendingForceRegen(descriptor);
+  };
 
   // ---- 書込結線（計画 §12 / W3b）----
   // mutation 群（実データ時のみ発火・mock は no-op）とフェーズ別ハンドラを生成し、
@@ -251,6 +278,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     onAdvance: (nextPhase) => router.push(PHASE_ROUTE[nextPhase]),
     onRequestConfirm: requestPrimaryConfirm,
     onRequestRejectConfirm: requestRejectConfirm,
+    onRequestRegenerateConfirm: requestForceRegenConfirm,
   });
 
   // pendingPrimary（不可逆 sign-off）から ConfirmDialog の site 別表示 props を導出する。
@@ -258,6 +286,13 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   const primaryConfirm = buildPrimaryConfirm(pendingPrimary, view.cur.name, view.cur.dob);
   // pendingReject（セット監査 reject）の確認文言。患者識別+対象セル+NG 理由を明示する。
   const rejectConfirm = buildRejectConfirm(pendingReject, view.cur.name, view.cur.dob);
+  // pendingForceRegen（force 再生成）の確認文言。患者識別+セットプラン期間を明示する。
+  const forceRegenConfirm = buildForceRegenConfirm(
+    pendingForceRegen,
+    view.cur.name,
+    view.cur.dob,
+    view.cur.period,
+  );
 
   // ---- 実データ結線（計画 §14 / 段階1b 読取のみ）----
   // 既定（モック）では isRealDataEnabled()=false でこの effect は no-op。
@@ -391,19 +426,32 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // ---- F-key / キーボードアクションの写像 ----
   const runAction = useCallback(
     (action: FKeyAction) => {
-      // 不可逆 sign-off / reject の確認中は全 F-key を無効化し、患者文脈ドリフト
+      // 不可逆 sign-off / reject / force 再生成 の確認中は全 F-key を無効化し、患者文脈ドリフト
       // （prevPatient/nextPatient/bulk/hold 含む）と F12 churn を抑止する。一括停止と
       // ディスパッチは純粋関数 dispatchFKeyAction に委ね、確認中ガードの漏れを table-test で検出する。
-      dispatchFKeyAction(action, pendingPrimary !== null || pendingReject !== null, {
-        navBy,
-        onBulk: writeHandlers.onBulk,
-        openHold,
-        pushPhase: (nextPhase) => router.push(PHASE_ROUTE[nextPhase]),
-        onPrimary: writeHandlers.onPrimary,
-        target,
-      });
+      dispatchFKeyAction(
+        action,
+        pendingPrimary !== null || pendingReject !== null || pendingForceRegen !== null,
+        {
+          navBy,
+          onBulk: writeHandlers.onBulk,
+          openHold,
+          pushPhase: (nextPhase) => router.push(PHASE_ROUTE[nextPhase]),
+          onPrimary: writeHandlers.onPrimary,
+          target,
+        },
+      );
     },
-    [navBy, openHold, pendingPrimary, pendingReject, router, target, writeHandlers],
+    [
+      navBy,
+      openHold,
+      pendingPrimary,
+      pendingReject,
+      pendingForceRegen,
+      router,
+      target,
+      writeHandlers,
+    ],
   );
 
   // ---- 物理 F-key のバインド（レセコン風キーボード操作・デスクトップ専用）----
@@ -514,7 +562,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
               phase={phase}
               handlers={writeHandlers}
               isPending={mutations.isAnyPending}
-              onRequestRegenerate={() => setForceConfirmOpen(true)}
+              onRequestRegenerate={writeHandlers.onRequestRegenerate}
             />
           )}
         </div>
@@ -578,15 +626,27 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         />
       )}
       {view.compareOpen && <PrescriptionCompareDialog view={view} phase={phase} />}
+      {/* force セットバッチ再生成（破壊的）の確認ゲート。onRequestRegenerate が request 段で
+          pendingForceRegen（患者/計画/版アンカー）を立て、確認後に commitForceRegen が
+          ドリフト照合を経て初めて再生成を mutate する（別計画の誤再生成を防ぐ）。 */}
       <ConfirmDialog
-        open={forceConfirmOpen}
-        onOpenChange={setForceConfirmOpen}
+        open={pendingForceRegen !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingForceRegen(null);
+        }}
         variant="destructive"
         title="セットバッチを再生成"
-        description="既存のセットを削除して作り直します。確定済みのセット状態・監査状態は失われ、この操作は取り消せません。"
+        description={forceRegenConfirm.description}
         requiredConfirmText="再生成"
         confirmLabel="再生成する"
-        onConfirm={() => writeHandlers.onGenerateBatches(true)}
+        autoFocusConfirm
+        onConfirm={() => {
+          // 二重確定ラッチ（#5）。
+          if (commitLatchRef.current) return;
+          if (!pendingForceRegen) return;
+          commitLatchRef.current = true;
+          writeHandlers.commitForceRegen(pendingForceRegen);
+        }}
       />
 
       {/* 不可逆 sign-off（調剤完了 / 監査承認 / セット監査承認）の確認ゲート。

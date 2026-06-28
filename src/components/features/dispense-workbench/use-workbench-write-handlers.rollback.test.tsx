@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkbenchMutations } from './use-workbench-mutations';
 import type { Drug, SeedPatient } from './dispensing-workbench.types';
-import type { PendingPrimary, PendingSetAuditReject } from './dispensing-workbench.write-types';
+import type {
+  PendingPrimary,
+  PendingSetAuditReject,
+  PendingForceRegen,
+} from './dispensing-workbench.write-types';
 
 const { toastErrorMock } = vi.hoisted(() => ({
   toastErrorMock: vi.fn(),
@@ -3142,16 +3146,17 @@ describe('useWorkbenchWriteHandlers generate set batches', () => {
     );
 
     act(() => {
-      result.current.onGenerateBatches(false);
+      result.current.onGenerateBatches();
     });
 
     expect(generateBatches.mutate).toHaveBeenCalledWith({ force: false });
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
-  it('requests a force regeneration with the set plan OCC anchor', async () => {
+  it('requests a force regeneration confirm with the set plan OCC anchor without mutating', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const generateBatches = mutationStub();
+    const onRequestRegenerateConfirm = vi.fn();
     seedSetPlan(useWorkbenchStore, {
       batch_count: 14,
       needs_initial_generation: false,
@@ -3165,36 +3170,44 @@ describe('useWorkbenchWriteHandlers generate set batches', () => {
       useWorkbenchWriteHandlers({
         phase: 'setp',
         mutations: fakeMutations({ generateBatches }),
+        onRequestRegenerateConfirm,
       }),
     );
 
+    // 破壊的 force 再生成は request 段では mutate せず、OCC アンカー付き descriptor で確認を要求する。
     act(() => {
-      result.current.onGenerateBatches(true);
+      result.current.onRequestRegenerate();
     });
 
-    expect(generateBatches.mutate).toHaveBeenCalledWith({
-      force: true,
-      expected_updated_at: '2026-06-20T00:00:00.000Z',
+    expect(generateBatches.mutate).not.toHaveBeenCalled();
+    expect(onRequestRegenerateConfirm).toHaveBeenCalledTimes(1);
+    expect(onRequestRegenerateConfirm.mock.calls[0][0]).toEqual({
+      patientId: 'patient_1',
+      planId: 'plan_1',
+      expectedUpdatedAt: '2026-06-20T00:00:00.000Z',
     });
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
-  it('refuses a force regeneration without an OCC anchor and surfaces an error', async () => {
+  it('refuses a force regeneration confirm without an OCC anchor and surfaces an error', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const generateBatches = mutationStub();
+    const onRequestRegenerateConfirm = vi.fn();
     seedSetPlan(useWorkbenchStore, null);
 
     const { result } = renderHook(() =>
       useWorkbenchWriteHandlers({
         phase: 'setp',
         mutations: fakeMutations({ generateBatches }),
+        onRequestRegenerateConfirm,
       }),
     );
 
     act(() => {
-      result.current.onGenerateBatches(true);
+      result.current.onRequestRegenerate();
     });
 
+    expect(onRequestRegenerateConfirm).not.toHaveBeenCalled();
     expect(generateBatches.mutate).not.toHaveBeenCalled();
     expect(toastErrorMock).toHaveBeenCalledWith(
       'セットプランの版情報を取得できませんでした。患者を再選択してから実行してください。',
@@ -3229,7 +3242,7 @@ describe('useWorkbenchWriteHandlers generate set batches', () => {
     );
 
     act(() => {
-      result.current.onGenerateBatches(false);
+      result.current.onGenerateBatches();
     });
 
     expect(generateBatches.mutate).not.toHaveBeenCalled();
@@ -3249,7 +3262,7 @@ describe('useWorkbenchWriteHandlers generate set batches', () => {
     );
 
     act(() => {
-      result.current.onGenerateBatches(false);
+      result.current.onGenerateBatches();
     });
 
     expect(generateBatches.mutate).not.toHaveBeenCalled();
@@ -4305,5 +4318,166 @@ describe('useWorkbenchWriteHandlers confirm gating (S0 request/commit split)', (
     expect(setAudit.mutate).not.toHaveBeenCalled();
     expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
     expect(useWorkbenchStore.getState().auditCells[key]).toBe('ok');
+  });
+
+  // ── round-4 S1: force セットバッチ再生成（破壊的）も Confirm ゲート + ドリフト防御 ──
+  function forceRegenReadyState() {
+    return {
+      selId: 'patient_1',
+      writeContext: {
+        taskId: null,
+        cycleId: 'cycle_1',
+        cycleVersion: 4,
+        planId: 'plan_1',
+        lineGroupByDid: {},
+        groupIdByGid: {},
+        cellMeta: {},
+      },
+      calendarGeneration: {
+        batch_count: 5,
+        needs_initial_generation: false,
+        latest_batch_updated_at: '2026-06-20T00:00:00.000Z',
+        expected_updated_at: '2026-06-20T00:00:00.000Z',
+        can_generate: true,
+        can_force_regenerate: true,
+      },
+    };
+  }
+
+  it('onRequestRegenerate captures a force-regen descriptor without mutating (round-4 S1)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+    const onRequestRegenerateConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(forceRegenReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches }),
+        onRequestRegenerateConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onRequestRegenerate();
+    });
+
+    expect(generateBatches.mutate).not.toHaveBeenCalled();
+    expect(onRequestRegenerateConfirm).toHaveBeenCalledTimes(1);
+    expect(onRequestRegenerateConfirm.mock.calls[0][0]).toEqual({
+      patientId: 'patient_1',
+      planId: 'plan_1',
+      expectedUpdatedAt: '2026-06-20T00:00:00.000Z',
+    });
+  });
+
+  it('commitForceRegen submits force regeneration from the confirmed descriptor (round-4 S1)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+    const onRequestRegenerateConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(forceRegenReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches }),
+        onRequestRegenerateConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onRequestRegenerate();
+    });
+    const descriptor = onRequestRegenerateConfirm.mock.calls[0][0] as PendingForceRegen;
+
+    act(() => {
+      result.current.commitForceRegen(descriptor);
+    });
+
+    expect(generateBatches.mutate).toHaveBeenCalledTimes(1);
+    expect(generateBatches.mutate).toHaveBeenCalledWith({
+      force: true,
+      expected_updated_at: '2026-06-20T00:00:00.000Z',
+    });
+  });
+
+  it('commitForceRegen aborts when the active patient drifts after confirmation (round-4 S1)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+    const onRequestRegenerateConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(forceRegenReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches }),
+        onRequestRegenerateConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onRequestRegenerate();
+    });
+    const descriptor = onRequestRegenerateConfirm.mock.calls[0][0] as PendingForceRegen;
+
+    // 確認中に F-key 等で対象患者がドリフトした状況を再現。
+    act(() => {
+      useWorkbenchStore.setState({ selId: 'patient_2' });
+    });
+
+    act(() => {
+      result.current.commitForceRegen(descriptor);
+    });
+
+    expect(generateBatches.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
+  });
+
+  it('commitForceRegen aborts when the set-plan version drifts after confirmation (round-4 S1)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+    const onRequestRegenerateConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(forceRegenReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches }),
+        onRequestRegenerateConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onRequestRegenerate();
+    });
+    const descriptor = onRequestRegenerateConfirm.mock.calls[0][0] as PendingForceRegen;
+
+    // 確認中にセットプランが refetch / 並行再生成され updated_at が進んだ状況を再現。
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        calendarGeneration: state.calendarGeneration
+          ? { ...state.calendarGeneration, expected_updated_at: '2026-06-21T00:00:00.000Z' }
+          : null,
+      }));
+    });
+
+    act(() => {
+      result.current.commitForceRegen(descriptor);
+    });
+
+    expect(generateBatches.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
   });
 });

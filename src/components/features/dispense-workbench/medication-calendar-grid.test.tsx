@@ -110,7 +110,8 @@ describe('MedicationCalendarGrid set batch generation CTA', () => {
     expect((cta as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(cta);
 
-    expect(onGenerateBatches).toHaveBeenCalledWith(false);
+    expect(onGenerateBatches).toHaveBeenCalledTimes(1);
+    expect(onGenerateBatches).toHaveBeenCalledWith();
     expect(onRequestRegenerate).not.toHaveBeenCalled();
   });
 
