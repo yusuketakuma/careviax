@@ -38,6 +38,7 @@
   --color-tag-info: var(--tag-info);
   --color-weekend-sun: var(--weekend-sun);
   --color-weekend-sat: var(--weekend-sat);
+  --color-weekend-holiday: var(--weekend-holiday);
   /* 識別トークン(カテゴリ区別。status ではない — 緊急/警告は state / tag 系を使う) */
   --color-route-internal: var(--route-internal);
   --color-route-external: var(--route-external);
@@ -144,6 +145,9 @@
   --weekend-sat: oklch(
     0.52 0.07 245
   ); /* 土曜 — 低彩度の青（AA: on muted 4.72:1 / on card 5.46:1） */
+  --weekend-holiday: oklch(
+    0.53 0.12 340
+  ); /* 祝日 — 低彩度のローズ（日曜の赤・土曜の青・アラート色と区別） */
 
   /* 識別トークン (light) — カテゴリの区別を表す識別色。workflow 状態ではない
      (status・緊急・警告は state / tag 系を使う)。全て低彩度・text/border/dot/小チップ
@@ -227,6 +231,7 @@
   --tag-info: oklch(0.72 0.13 245);
   --weekend-sun: oklch(0.78 0.1 25); /* 日曜 — dark: 低彩度の赤 */
   --weekend-sat: oklch(0.76 0.08 245); /* 土曜 — dark: 低彩度の青 */
+  --weekend-holiday: oklch(0.78 0.11 340); /* 祝日 — dark: 低彩度のローズ */
   /* 識別トークン (dark) — light と同じ意味分担(status ではない・大面積塗り禁止)。
      dark は明インク。AA(on card=0.18 / on muted=0.22、≥4.5:1)は docs に証明。 */
   --route-internal: oklch(0.74 0.11 256);

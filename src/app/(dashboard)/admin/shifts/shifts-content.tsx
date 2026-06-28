@@ -985,7 +985,7 @@ export function ShiftsContent() {
                               {format(day, 'E', { locale: ja })}
                             </div>
                             {dayHolidays.length > 0 && (
-                              <div className="mt-1 text-xs text-rose-600">休</div>
+                              <div className="mt-1 text-xs text-weekend-holiday">休</div>
                             )}
                           </th>
                         );
@@ -1013,8 +1013,8 @@ export function ShiftsContent() {
                           const isSelected = selectedShiftKey === shift.key;
                           const cellContent = isHoliday ? (
                             <div className="space-y-0.5">
-                              <div className="text-xs font-medium text-rose-700">休</div>
-                              <div className="text-xs text-rose-600">
+                              <div className="text-xs font-medium text-weekend-holiday">休</div>
+                              <div className="text-xs text-weekend-holiday">
                                 {matchingHolidays[0]?.site?.name ?? '全体'}
                               </div>
                             </div>
