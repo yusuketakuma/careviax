@@ -23,6 +23,42 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Dashboard Monthly Stats GET No-Store And PHI-Safe Error Hardening
+
+- Coordination:
+  - Followed maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/dashboard/monthly-stats/route.ts` and `route.test.ts`; Claude ACKed no FE conflict.
+  - Implementation ran through a Codex maintainer subagent while main Codex stayed open for agmsg and FE/SSOT review interrupts.
+  - Privacy, medical safety, general Codex review, and verifier subagents approved before Claude checker review.
+  - Claude reviewed the BE diff, independently ran focused Vitest and scoped ESLint, and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, external sends, deploy, or destructive operations were touched by Codex.
+- Hardened dashboard monthly-stats API responses:
+  - Replaced the common `withAuthContext` route wrapper with explicit `requireAuthContext({ permission: 'canViewDashboard' })` so ordinary unexpected failures avoid the common raw-error logging path.
+  - Preserved exported `GET(req, routeContext)` direct-call compatibility for App Router and protected-route tests.
+  - Wrapped success, auth failure, validation error, and handled 500 responses in `withSensitiveNoStore`.
+  - Wrapped the route in `withRoutePerformance(req, ...)`.
+  - Added `runWithRequestAuthContext(ctx, ...)` defense-in-depth after successful auth.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging.
+  - Restricted logged `error_name` to an allowlist, falling back to `Error` for crafted names.
+  - Preserved `canViewDashboard`, month parsing/default month behavior, org-scoped `visitRecord.groupBy` and `patient.findMany` query shapes/selects, insurance-basis/monthly-limit logic, status ordering, and existing `{ month, summary, patient_stats }` response shape.
+  - Added tests for route-performance wrapper invocation, request auth-context wrapper invocation, auth failure no-store before monthly stats reads, fixed no-store 500, protected-route direct-call compatibility, and absence of raw patient/insurance/SQL/stack/crafted error-name/raw-error leakage from response/log surfaces.
+- Security/privacy risk reduced: patient monthly-stat responses consistently carry sensitive no-store headers, unexpected failures return fixed PHI-safe bodies, and handler logs avoid raw patient names, insurance details, SQL text, stacks, crafted error names, and raw error objects.
+- Performance issue improved: route latency/error metrics are captured with `withRoutePerformance`; no DB query shape or additional data read was introduced.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/dashboard/monthly-stats/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `9` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/monthly-stats GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - `pnpm exec eslint src/app/api/dashboard/monthly-stats/route.ts src/app/api/dashboard/monthly-stats/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/dashboard/monthly-stats/route.ts src/app/api/dashboard/monthly-stats/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/dashboard/monthly-stats/route.ts src/app/api/dashboard/monthly-stats/route.test.ts`: passed.
+  - Privacy compliance review: no findings.
+  - Medical safety review: no findings.
+  - General Codex review: no findings.
+  - Verifier subagent re-ran focused Vitest, protected-route filtered Vitest, scoped ESLint, scoped Prettier check, and focused diff whitespace check: all passed.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `9/9` and scoped ESLint, and verified query-shape and `GET(req, routeContext)` compatibility preservation.
+- Commit status: implementation committed locally as `054ba554`; this section records the progress-ledger slice for separate commit.
+- Next action: commit this progress-ledger slice, notify Claude, push grouped main commits, then continue the next backend/API candidate or review Claude FE patches as requested.
+
 ### 2026-06-28 JST - Staff Workload GET Route Performance And PHI-Safe Logging Hardening
 
 - Coordination:
