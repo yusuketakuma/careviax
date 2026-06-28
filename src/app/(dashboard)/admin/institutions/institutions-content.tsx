@@ -24,7 +24,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import {
+  PRESCRIBER_INSTITUTIONS_API_PATH,
+  buildPrescriberInstitutionApiPath,
+  buildPrescriberInstitutionsApiPath,
+} from '@/lib/prescriber-institutions/api-paths';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
 /** 最終処方日が「古い(要確認)」とみなす日数。これを超えると鮮度バッジを confirm 表示する。 */
@@ -131,7 +135,7 @@ export function InstitutionsContent() {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedQuery.trim()) params.set('q', debouncedQuery.trim());
-      const response = await fetch(`/api/prescriber-institutions?${params.toString()}`, {
+      const response = await fetch(buildPrescriberInstitutionsApiPath(params), {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('医療機関マスターの取得に失敗しました');
@@ -168,8 +172,8 @@ export function InstitutionsContent() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const endpoint = editingId
-        ? `/api/prescriber-institutions/${encodePathSegment(editingId)}`
-        : '/api/prescriber-institutions';
+        ? buildPrescriberInstitutionApiPath(editingId)
+        : PRESCRIBER_INSTITUTIONS_API_PATH;
       const method = editingId ? 'PATCH' : 'POST';
       const response = await fetch(endpoint, {
         method,
@@ -195,7 +199,7 @@ export function InstitutionsContent() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/prescriber-institutions/${encodePathSegment(id)}`, {
+      const response = await fetch(buildPrescriberInstitutionApiPath(id), {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });

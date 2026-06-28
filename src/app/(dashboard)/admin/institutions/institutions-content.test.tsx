@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPrescriberInstitutionApiPath } from '@/lib/prescriber-institutions/api-paths';
 
 setupDomTestEnv();
 
@@ -23,8 +24,9 @@ vi.mock('sonner', () => ({
 
 // org-header builders are mocked with SENTINEL returns ('x-test-helper') so the
 // tests prove the component DELEGATES to them. A raw inline `{ 'x-org-id': orgId }`
-// literal would not carry the sentinel. '@/lib/http/path-segment' is intentionally
-// NOT mocked, so hostile-id encode and dot fail-fast teeth exercise the real util.
+// literal would not carry the sentinel. The prescriber-institution API path helper
+// is mocked with its real implementation so tests can assert callsite delegation
+// while retaining hostile-encode and dot fail-fast teeth.
 const buildOrgHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({ 'x-org-id': orgId, 'x-test-helper': 'orgHeaders' })),
 );
@@ -39,6 +41,14 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgHeaders: buildOrgHeadersMock,
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
+
+vi.mock('@/lib/prescriber-institutions/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/prescriber-institutions/api-paths')>();
+  return {
+    ...actual,
+    buildPrescriberInstitutionApiPath: vi.fn(actual.buildPrescriberInstitutionApiPath),
+  };
+});
 
 vi.mock('@/components/ui/data-table', () => ({
   DataTable: ({
@@ -254,6 +264,7 @@ describe('InstitutionsContent', () => {
         expect.objectContaining({ method: 'PATCH', headers: buildOrgJsonHeaders('org_1') }),
       );
     });
+    expect(buildPrescriberInstitutionApiPath).toHaveBeenCalledWith('a/b c');
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
@@ -265,6 +276,7 @@ describe('InstitutionsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildPrescriberInstitutionApiPath).toHaveBeenCalledWith('.');
     const patchCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
     );
@@ -284,6 +296,7 @@ describe('InstitutionsContent', () => {
         expect.objectContaining({ method: 'DELETE', headers: buildOrgHeaders('org_1') }),
       );
     });
+    expect(buildPrescriberInstitutionApiPath).toHaveBeenCalledWith('a/b c');
   });
 
   it('DELETE with a dot-segment institution id fails closed before any DELETE fetch', async () => {
@@ -294,6 +307,7 @@ describe('InstitutionsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildPrescriberInstitutionApiPath).toHaveBeenCalledWith('.');
     const deleteCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
     );
