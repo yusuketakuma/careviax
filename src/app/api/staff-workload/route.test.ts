@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
+  authContext,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  loggerErrorMock,
+  withRoutePerformanceMock,
   membershipFindManyMock,
   taskGroupByMock,
   taskFindManyMock,
@@ -11,7 +15,15 @@ const {
   dispenseTaskGroupByMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
+  authContext: {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'pharmacist',
+  },
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+  loggerErrorMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
   membershipFindManyMock: vi.fn(),
   taskGroupByMock: vi.fn(),
   taskFindManyMock: vi.fn(),
@@ -23,6 +35,10 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -48,6 +64,14 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
+}));
+
 import { GET } from './route';
 
 function createRequest(url: string) {
@@ -62,13 +86,9 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/staff-workload', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist',
-      },
-    });
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
     membershipFindManyMock.mockResolvedValue([
       {
         role: 'pharmacist',
@@ -179,6 +199,12 @@ describe('/api/staff-workload', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: 'スタッフ業務量の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expectSensitiveNoStore(response);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       requestContext: expect.objectContaining({
@@ -259,6 +285,24 @@ describe('/api/staff-workload', () => {
     expect(Object.keys(payload.data[0].visits[0]).sort()).toEqual(['id', 'patient_name']);
   });
 
+  it('wraps auth failure responses in no-store headers before querying staff', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const response = await GET(
+      createRequest('http://localhost/api/staff-workload?date=2026-06-15'),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(403);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expectSensitiveNoStore(response);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid date filters before querying staff', async () => {
     const response = await GET(
       createRequest('http://localhost/api/staff-workload?date=2026/06/15'),
@@ -309,7 +353,11 @@ describe('/api/staff-workload', () => {
   });
 
   it('returns a fixed no-store 500 envelope when workload reads throw', async () => {
-    membershipFindManyMock.mockRejectedValueOnce(new Error('raw patient workload failure'));
+    const thrownError = new Error(
+      'patient 田中 花子 task 鈴木さんの監査 failed with SQL SELECT * FROM "Task"; stack line 1',
+    );
+    thrownError.name = 'PatientName田中Task鈴木SQLStack';
+    membershipFindManyMock.mockRejectedValueOnce(thrownError);
 
     const response = await GET(
       createRequest('http://localhost/api/staff-workload?date=2026-06-15'),
@@ -317,12 +365,34 @@ describe('/api/staff-workload', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(500);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expectSensitiveNoStore(response);
     const payload = await response.json();
     expect(payload).toEqual({
       code: 'INTERNAL_ERROR',
       message: 'サーバー内部でエラーが発生しました',
     });
-    expect(JSON.stringify(payload)).not.toContain('raw patient workload failure');
+    const responseBody = JSON.stringify(payload);
+    expect(responseBody).not.toContain('田中 花子');
+    expect(responseBody).not.toContain('鈴木さんの監査');
+    expect(responseBody).not.toContain('SELECT * FROM');
+    expect(responseBody).not.toContain('stack line');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith('staff_workload_unhandled_error', undefined, {
+      event: 'staff_workload_unhandled_error',
+      route: '/api/staff-workload',
+      method: 'GET',
+      status: 500,
+      error_name: 'Error',
+    });
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(thrownError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('田中 花子');
+    expect(logged).not.toContain('鈴木さんの監査');
+    expect(logged).not.toContain('SELECT * FROM');
+    expect(logged).not.toContain('"Task"');
+    expect(logged).not.toContain('stack line');
+    expect(logged).not.toContain('PatientName田中Task鈴木SQLStack');
   });
 });
