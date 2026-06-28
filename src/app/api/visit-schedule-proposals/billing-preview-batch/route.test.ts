@@ -56,6 +56,11 @@ import { POST } from './route';
 const emptyRouteContext = { params: Promise.resolve({}) };
 const withAuthRegistrationCalls = [...withAuthContextMock.mock.calls];
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedule-proposals/billing-preview-batch', {
     method: 'POST',
@@ -118,6 +123,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     // 組織横断アクセスロール(pharmacist)は担当割当スコープが撤廃されるため、
     // ケースアクセスは batch 全体で org_id + id IN の 1 query に集約される。
     expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
@@ -171,6 +177,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
@@ -181,6 +188,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -200,6 +208,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '入力値が不正です',
@@ -221,6 +230,28 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking raw service failures', async () => {
+    buildVisitScheduleBillingPreviewBatchMock.mockRejectedValueOnce(
+      new Error('PHI leak candidate: patient 山田太郎 billing preview failed'),
+    );
+
+    const response = await POST(
+      createPostRequest({
+        items: [{ key: 'proposal_1', case_id: 'case_1', proposed_date: '2026-04-03' }],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('PHI leak candidate');
+    expect(body).not.toContain('山田太郎');
   });
 });
