@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Admin Billing Rules API Path Helper Convergence
+
+- Coordination:
+  - Preserved unrelated dirty files and did not touch the Claude A2 locked files.
+  - Read the local Next.js client/server component guide before editing the `use client` page; the new helper imports only `@/lib/http/path-segment`.
+  - No DB mutation, route/Prisma/DB edit, push, deploy, migration, or destructive operation was run.
+- Hardened billing-rules admin API boundaries:
+  - Added `src/lib/billing-rules/api-paths.ts` with `BILLING_RULES_API_PATH` and `buildBillingRuleApiPath(ruleId)`.
+  - Routed collection GET, SSOT sync POST, create POST, update PATCH, and delete DELETE in `BillingRulesPage` through the shared collection/detail path contract.
+  - Preserved existing HTTP methods, headers, JSON body shape, query keys, invalidations, rendered UI, and error handling.
+  - Added helper coverage for collection path, normal ids, hostile ids containing `/`, space, `?`, and `#`, and exact `.` / `..` dot-segment fail-closed behavior.
+  - Strengthened page coverage to assert collection GET, SSOT sync POST body `{ action: 'seed_home_care_ssot' }`, create POST payload preservation, hostile-id update PATCH encoded detail path with method/body/header preservation, hostile-id delete DELETE encoded detail path, and exact dot-segment update/delete fail-closed behavior before fetch side effects.
+- Security/privacy risk reduced: admin billing-rule detail mutations no longer duplicate rule-id API path construction, reducing route-boundary drift for hostile `/`, space, `?`, or `#` rule ids and failing closed on exact dot segments before PATCH/DELETE side effects. Page tests assert the fail-closed toast/error does not include raw rule ids, raw billing-rule URLs, request body data, `conditions`, or `evidence_requirements`.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads/writes, external sends, polling, dependencies, or render-heavy computation.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' src/lib/billing-rules/api-paths.ts src/lib/billing-rules/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' src/lib/billing-rules/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `16` tests.
+  - `pnpm exec vitest run src/app/api/billing-rules/route.test.ts 'src/app/api/billing-rules/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `16` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' src/lib/billing-rules/api-paths.ts src/lib/billing-rules/api-paths.test.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' src/lib/billing-rules/api-paths.ts src/lib/billing-rules/api-paths.test.ts`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' src/lib/billing-rules/api-paths.ts src/lib/billing-rules/api-paths.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed after checking no concurrent long gate was running.
+- Commit status: billing-rules implementation committed locally as `fb93fdb0`; progress-ledger commit pending.
+- Next action: commit the progress-ledger slice, then push grouped main commits.
+
 ### 2026-06-28 JST - Admin Incident Reports API Path Helper Convergence
 
 - Coordination:
