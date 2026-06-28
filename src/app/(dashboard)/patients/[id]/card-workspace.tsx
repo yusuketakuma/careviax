@@ -64,6 +64,7 @@ import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
@@ -3829,7 +3830,7 @@ export function CardWorkspace({
   } = useQuery<PatientOverview>({
     queryKey: ['patient-overview', patientId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/overview`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者情報の取得に失敗しました');
@@ -3844,7 +3845,7 @@ export function CardWorkspace({
   const { data: homeOperations } = useQuery<PatientHomeOperationsSnapshot>({
     queryKey: ['patient-home-operations', patientId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/home-operations`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/home-operations'), {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('在宅運用管理の取得に失敗しました');
@@ -3856,7 +3857,7 @@ export function CardWorkspace({
   const { data: headerSummary, isError: headerSummaryError } = useQuery<PatientHeaderSummary>({
     queryKey: ['patient-header-summary', patientId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/header-summary`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/header-summary'), {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者ヘッダー情報の取得に失敗しました');

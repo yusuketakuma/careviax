@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type {
   PatientDocumentsSnapshot,
   PatientOverview,
@@ -53,6 +54,11 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
 vi.mock('@/lib/patient/navigation', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/patient/navigation')>();
   return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
 });
 
 import { buildPatientHref } from '@/lib/patient/navigation';
@@ -2735,7 +2741,7 @@ describe('CardWorkspace', () => {
     },
   );
 
-  // F-082 (card-workspace sub-slice 2/5): CardWorkspace overview + home-operations GET URL/header hardening.
+  // F-082 (card-workspace sub-slice 2/5): CardWorkspace overview + home-operations + header-summary GET URL/header hardening.
   function captureWorkspaceQueryConfig(scope: string, patientId: string) {
     mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { id: patientId } });
     const baseImpl = useQueryMock.getMockImplementation();
@@ -2754,6 +2760,7 @@ describe('CardWorkspace', () => {
   it.each([
     ['patient-overview', 'overview'],
     ['patient-home-operations', 'home-operations'],
+    ['patient-header-summary', 'header-summary'],
   ])('fetches %s from an encoded patient path with org headers', async (scope, segment) => {
     const hostileId = 'pt/1?x=y#z';
     const getConfig = captureWorkspaceQueryConfig(scope, hostileId);
@@ -2770,6 +2777,7 @@ describe('CardWorkspace', () => {
       await config?.queryFn?.();
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(hostileId, `/${segment}`);
       expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/${segment}`);
       expect(url).not.toContain('?x=y');
       expect(url).not.toContain('#z');
@@ -2786,6 +2794,8 @@ describe('CardWorkspace', () => {
     ['patient-overview', '..'],
     ['patient-home-operations', '.'],
     ['patient-home-operations', '..'],
+    ['patient-header-summary', '.'],
+    ['patient-header-summary', '..'],
   ])(
     'fails closed without fetching for %s with exact dot-segment patient id %p',
     async (scope, dotId) => {
@@ -2803,6 +2813,60 @@ describe('CardWorkspace', () => {
       }
     },
   );
+
+  it('routes workspace patient GETs through the shared patient API path helper return values', async () => {
+    const patientId = 'patient_1';
+    mockPatientQuery(buildWorkspace(), null, {}, { patientOverrides: { id: patientId } });
+    const baseImpl = useQueryMock.getMockImplementation();
+    const scopedConfigs = new Map<
+      string,
+      { queryKey: unknown[]; queryFn?: () => Promise<unknown> }
+    >();
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        if (
+          config?.queryKey?.[0] === 'patient-overview' ||
+          config?.queryKey?.[0] === 'patient-home-operations' ||
+          config?.queryKey?.[0] === 'patient-header-summary'
+        ) {
+          scopedConfigs.set(String(config.queryKey[0]), config);
+        }
+        return baseImpl?.(config);
+      },
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue({ ok: true, json: () => Promise.resolve({}) } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(buildPatientApiPath)
+      .mockReturnValueOnce('/api/patients/__helper_patient__/overview')
+      .mockReturnValueOnce('/api/patients/__helper_patient__/home-operations')
+      .mockReturnValueOnce('/api/patients/__helper_patient__/header-summary');
+
+    try {
+      render(<CardWorkspace patientId={patientId} />);
+
+      await scopedConfigs.get('patient-overview')?.queryFn?.();
+      await scopedConfigs.get('patient-home-operations')?.queryFn?.();
+      await scopedConfigs.get('patient-header-summary')?.queryFn?.();
+
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/overview');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId, '/home-operations');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(3, patientId, '/header-summary');
+      expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+        '/api/patients/__helper_patient__/overview',
+        '/api/patients/__helper_patient__/home-operations',
+        '/api/patients/__helper_patient__/header-summary',
+      ]);
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        `/api/patients/${patientId}/overview`,
+        expect.anything(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
 
   // F-083 (card-workspace sub-slice 3/5): billing-profile PATCH + mcs/logs POST URL/header hardening.
   // The two target mutationFns are not individually named in the mock, so we capture every useMutation config and
