@@ -238,6 +238,18 @@ describe('/api/dashboard/medication-deadlines', () => {
     );
   });
 
+  it('accepts the maximum medication deadline limit', async () => {
+    const response = (await GET(createRequest('?within_days=14&limit=50')))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 50,
+      }),
+    );
+  });
+
   it('rejects malformed within_days values before querying schedules', async () => {
     const response = (await GET(createRequest('?within_days=20abc')))!;
 
@@ -275,6 +287,7 @@ describe('/api/dashboard/medication-deadlines', () => {
     ['?limit=', { limit: ['limit は整数で指定してください'] }],
     ['?limit=%208%20', { limit: ['limit は整数で指定してください'] }],
     ['?limit=0', { limit: ['limit は1以上50以下で指定してください'] }],
+    ['?limit=51', { limit: ['limit は1以上50以下で指定してください'] }],
     [`?q=${'あ'.repeat(101)}`, { q: ['q は100文字以内で指定してください'] }],
   ])(
     'rejects malformed medication deadline query "%s" before querying schedules',
