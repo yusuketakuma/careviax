@@ -23,6 +23,192 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Dispensing Decision Packaging Tags Fallback And Workbench Projection Alignment
+
+- Coordination:
+  - Continued backend-first調剤/監査/セット連動 after the approved tracing-report lifecycle hardening slice.
+  - Sent Claude a checker review request for this BE slice after focused validation passed.
+  - No frontend source, DB schema, migration, external send, deploy, or DB mutation command was introduced.
+- Bug fixed:
+  - `DispensingDecision.packaging_instruction_tags` defaults to `[]`, and decisions created from `dispense-results` currently do not persist tags.
+  - `set-batches` and `set-plans/[id]/generate-batches` previously treated that empty decision tag array as authoritative, which could erase line-level safety/handling tags such as `cold_storage`, `narcotic`, `separate_pack`, and `unit_dose` from set batch snapshots.
+  - Added `resolveEffectivePackagingInstructionTags()` so non-empty decision tags still win, but empty/missing decision tags fall back to `PrescriptionLine.packaging_instruction_tags`.
+- Workbench projection alignment:
+  - `GET /api/dispense-tasks/[id]/workbench` now selects `DispensingDecision.packaging_instruction_tags`.
+  - Workbench safety handling tags and count rows use effective tags.
+  - Count rows now align group precedence with downstream set generation by using `decision.packaging_group_id ?? line.packaging_group_id`.
+- Validation passed:
+  - `pnpm exec vitest run 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' src/app/api/set-batches/route.test.ts 'src/app/api/set-plans/[id]/generate-batches/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `46` tests. Expected sanitized stderr from an existing set-batches 500-path test was observed.
+  - `pnpm exec eslint src/lib/dispensing/packaging.ts 'src/app/api/dispense-tasks/[id]/workbench/route.ts' 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' src/app/api/set-batches/route.ts src/app/api/set-batches/route.test.ts 'src/app/api/set-plans/[id]/generate-batches/route.ts' 'src/app/api/set-plans/[id]/generate-batches/route.test.ts'`: passed.
+  - `pnpm exec prettier --check src/lib/dispensing/packaging.ts 'src/app/api/dispense-tasks/[id]/workbench/route.ts' 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' src/app/api/set-batches/route.ts src/app/api/set-batches/route.test.ts 'src/app/api/set-plans/[id]/generate-batches/route.ts' 'src/app/api/set-plans/[id]/generate-batches/route.test.ts'`: passed.
+  - `git diff --check -- src/lib/dispensing/packaging.ts 'src/app/api/dispense-tasks/[id]/workbench/route.ts' 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' src/app/api/set-batches/route.ts src/app/api/set-batches/route.test.ts 'src/app/api/set-plans/[id]/generate-batches/route.ts' 'src/app/api/set-plans/[id]/generate-batches/route.test.ts'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Claude checker review:
+  - `APPROVED` on 2026-06-28 JST.
+  - Claude verified the core patient-safety bug: empty `DispensingDecision.packaging_instruction_tags` no longer erases line-level handling tags.
+  - Claude confirmed the fix is applied consistently to generated set batches, manual set batches, and workbench projection; response shapes remain non-breaking.
+  - Non-blocking confirmation: `packaging_group_id = decision?.packaging_group_id ?? line.packaging_group_id` is intentional because `DispensingDecision` is the pharmacist-confirmed authoritative override for downstream set generation and workbench display.
+- Remaining work:
+  - None for this backend slice.
+
+### 2026-06-28 JST - Tracing Reports Lifecycle Response Envelope Hardening
+
+- Coordination:
+  - Continued P1/P2 BE-without-FE contract hardening after `generate-batches` and `verify-barcode`.
+  - Sent Claude a lock/contract request for the tracing-reports BE slice. Claude ACKed no conflict and separated this response-envelope hardening from the roadmap severity decision for the missing dedicated tracing-report UI.
+  - A maintainer subagent started the patch but timed out after partial changes; Codex main integrated the remaining `[id]` route/test work and validation.
+  - No frontend files, DB schema, migrations, lifecycle semantics, audit semantics, external sends, deploy, or DB mutation commands were introduced.
+- Hardened tracing report lifecycle APIs:
+  - `POST /api/tracing-reports` now uses explicit `requireAuthContext({ permission: 'canAuthorReport', message: 'トレーシングレポートの作成権限がありません' })`, `runWithRequestAuthContext`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, and fixed `internalError()` fallback with PHI-safe allowlisted `error_name` logging.
+  - `GET /api/tracing-reports` preserved its existing response shape and no-store/fixed-500 behavior, and now logs ordinary unexpected failures with PHI-safe metadata.
+  - `PATCH /api/tracing-reports/[id]` and `DELETE /api/tracing-reports/[id]` now return sensitive no-store responses for success, auth failure, validation, not-found, forbidden, and handled 500 paths, and use route-performance wrappers plus fixed PHI-safe logging.
+  - Existing assignment access, `withOrgContext(..., { requestContext: ctx })`, status transition graph, default communication channel, manual fax channel behavior, communication request/event side effects, audit-log side effects, and hostile-id PDF path behavior were preserved.
+- B2 roadmap verdict:
+  - Re-reviewed live code and agreed with Claude v2 consensus: dedicated tracing-report UI gap should be P2, not P1.
+  - Evidence for partial reachability: `visit-records` can auto-create a tracing-report draft plus linked communication request; `communication-requests/[id]` can sync linked tracing-report status to `sent` / `received` / `acknowledged`; `resolve-followup` can acknowledge linked tracing reports.
+  - Remaining gap is real: no dedicated UI for arbitrary authoring/list/edit/delete/channel selection, and `/reports#tracing-reports` is effectively a dead anchor.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/tracing-reports/route.test.ts 'src/app/api/tracing-reports/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `32` tests.
+  - `pnpm exec eslint src/app/api/tracing-reports/route.ts src/app/api/tracing-reports/route.test.ts 'src/app/api/tracing-reports/[id]/route.ts' 'src/app/api/tracing-reports/[id]/route.test.ts'`: passed with no warnings after cleanup.
+  - `pnpm exec prettier --check src/app/api/tracing-reports/route.ts src/app/api/tracing-reports/route.test.ts 'src/app/api/tracing-reports/[id]/route.ts' 'src/app/api/tracing-reports/[id]/route.test.ts'`: passed.
+  - `git diff --check -- src/app/api/tracing-reports/route.ts src/app/api/tracing-reports/route.test.ts 'src/app/api/tracing-reports/[id]/route.ts' 'src/app/api/tracing-reports/[id]/route.test.ts'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "tracing-reports POST" --reporter=dot --testTimeout=30000`: passed, `3` tests / `97` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "tracing-reports GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+- Claude checker review:
+  - `APPROVED` on 2026-06-28 JST.
+  - Claude verified lifecycle semantics were preserved despite a large mechanical diff: status transition graph, assignment access, transaction side effects, linked communication request create/update, communication event creation, audit logs, PDF path behavior, channel defaults, DELETE draft-only guard, permissions, and filtered protected-route validation.
+  - Non-blocking style note: collection POST wraps no-store at the exported route boundary while `[id]` PATCH/DELETE wrap individual returns internally; both achieve the desired envelope and no change is required.
+- Remaining work:
+  - Dedicated tracing-report UI remains in Claude's FE roadmap lane at P2.
+
+### 2026-06-28 JST - Dispense Task Verify Barcode Route Hardening And Adapter Boundary
+
+- Coordination:
+  - Continued P1 BE-without-FE gap closure after the approved `generate-batches` contract slice.
+  - Sent Claude a lock/contract request for `verify-barcode`. Claude ACKed the scope and explicitly separated this hardening/adapter slice from the future patient-safety decision about whether dispense completion must require per-line barcode evidence or warning acknowledgement.
+  - This slice intentionally does not add scanner UI, persistence, evidence-required completion gates, DB schema, migrations, external sends, deploy, or DB mutation.
+- Hardened `POST /api/dispense-tasks/[id]/verify-barcode`:
+  - Replaced common `withAuthContext` wrapper with explicit `requireAuthContext({ permission: 'canDispense', message: 'バーコード照合権限がありません' })`.
+  - Wrapped the handler in `runWithRequestAuthContext(ctx, ...)`.
+  - Wrapped the exported route in `withRoutePerformance(req, ...)`.
+  - Wrapped success, auth failure, not-found, validation, and handled 500 responses in `withSensitiveNoStore`.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging and allowlisted `error_name`.
+  - Preserved existing assignment scoping, task/line lookup order, barcode parse order, warning text, and success response shape.
+- Added workbench FE-enablement boundary:
+  - Added `VerifyDispenseBarcodeInput` and `VerifyDispenseBarcodeResponse`.
+  - Added `verifyDispenseBarcode(input)` to `dispensing-workbench.adapter.ts`, using the existing `mutateJson` path and `buildDispenseTaskApiPath(taskId, '/verify-barcode')`.
+  - The adapter boundary lets the later scanner UI call the existing BE safely without duplicating path construction or response types.
+- Security/privacy risk reduced:
+  - Barcode verification responses are consistently no-store.
+  - Auth failure still short-circuits before task, line, drug master, or barcode parsing.
+  - Unexpected failures no longer expose raw patient/barcode/SQL/error text through response bodies or logger metadata.
+- Validation passed:
+  - `pnpm exec vitest run 'src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `8` tests.
+  - `pnpm exec eslint 'src/app/api/dispense-tasks/[id]/verify-barcode/route.ts' 'src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts' src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/api/dispense-tasks/[id]/verify-barcode/route.ts' 'src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts' src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`: passed after formatting `route.ts`.
+  - `git diff --check -- 'src/app/api/dispense-tasks/[id]/verify-barcode/route.ts' 'src/app/api/dispense-tasks/[id]/verify-barcode/route.test.ts' src/components/features/dispense-workbench/dispensing-workbench.adapter.ts src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Claude checker review:
+  - `APPROVED` on 2026-06-28 JST.
+  - Claude verified hardening pattern consistency, assignment-scope preservation, unchanged parse/warning/success response behavior, no completion-gate/persistence changes, route test coverage, and exact type/route response shape alignment for `VerifyDispenseBarcodeResponse`.
+  - Non-blocking hygiene note: adapter/type files are a FE-boundary surface and should be listed explicitly in future lock requests when touched.
+- Remaining work:
+  - The scanner UI, barcode evidence model, warning acknowledgement, and completion-gate requirement remain a separate joint mini-spec.
+
+### 2026-06-28 JST - Set Plan Calendar Generation Metadata Contract
+
+- Coordination:
+  - Continued the dispensing workbench backend implementation loop while preserving unrelated dirty files.
+  - Read-only mapped the P1 `generate-batches` integration gap: `POST /api/set-plans/[id]/generate-batches` already exists, but frontend callers had no safe read-side metadata for showing an initial generation or force-regeneration CTA.
+  - Sent Claude a contract/lock request. Claude replied that the field direction is useful but preferred no implementation until integrated roadmap convergence. The reply arrived after this additive local patch had already been implemented and validated. Codex kept the patch uncommitted/unstaged and sent it back for review because the current user directive is implementation with refactoring.
+- Backend contract added:
+  - `GET /api/set-plans/[id]/calendar` now returns `generation` metadata with `batch_count`, `needs_initial_generation`, `latest_batch_updated_at`, `expected_updated_at`, `can_generate`, and `can_force_regenerate`.
+  - `expected_updated_at` is `SetPlan.updated_at` and can be passed to `POST /api/set-plans/[id]/generate-batches` for forced regeneration OCC.
+  - `can_generate` mirrors the existing generation route's eligible statuses: `audited`, `setting`, and `set_audited`.
+  - `can_force_regenerate` is true only when batches exist and the cycle status is `audited` or `setting`; it is false after `set_audited`, matching the existing destructive-regeneration guard.
+  - `latest_batch_updated_at` is the max batch `updated_at`, or `null` before initial generation.
+  - `CalendarMatrixResponse` now exposes optional `generation` metadata for the workbench adapter/type boundary. No frontend behavior was changed.
+  - Added FE-usage comments to the response type: `needs_initial_generation` is the non-force initial generation gate, while `can_generate` is status-level permission and existing batches must use `can_force_regenerate` with force regeneration.
+- Safety/security risk reduced:
+  - The frontend no longer has to infer generation readiness from matrix emptiness or route errors.
+  - No PHI, line ids, drug names, patient labels, destructive-write payloads, DB schema, migration, external send, deploy, or DB mutation was introduced.
+- Validation passed:
+  - `pnpm exec vitest run 'src/app/api/set-plans/[id]/calendar/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `10` tests.
+  - `pnpm exec eslint 'src/app/api/set-plans/[id]/calendar/route.ts' 'src/app/api/set-plans/[id]/calendar/route.test.ts' src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/api/set-plans/[id]/calendar/route.ts' 'src/app/api/set-plans/[id]/calendar/route.test.ts' src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`: passed after formatting `route.ts`.
+  - `git diff --check -- 'src/app/api/set-plans/[id]/calendar/route.ts' 'src/app/api/set-plans/[id]/calendar/route.test.ts' src/components/features/dispense-workbench/dispensing-workbench.write-types.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Claude checker review:
+  - `APPROVED` on 2026-06-28 JST.
+  - Claude verified the contract is additive, write paths are unchanged, no PHI/line ids leak, and `can_generate` / `can_force_regenerate` / `expected_updated_at` semantics match the existing `generate-batches` route guards.
+  - Claude's only non-blocking note was to clarify FE usage so existing batches do not call non-force generation. Codex added that type comment and re-ran focused validation.
+- Remaining work:
+  - Frontend CTA/auto-prompt wiring is intentionally not implemented in this backend slice and remains in Claude's roadmap lane.
+
+### 2026-06-28 JST - Dashboard Dispensing Stats GET No-Store And PHI-Safe Error Hardening
+
+- Coordination:
+  - Continued Codex backend ownership under the agmsg maker/checker goal.
+  - Checked agmsg inbox before resuming; no new Claude messages were pending.
+  - Preserved unrelated dirty files: `.codex/hooks.json` and the already updated dispensing workbench planning docs/ledgers were not mixed into this backend validation scope.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, external sends, deploy, or destructive operations were touched.
+- Hardened dashboard dispensing-stats API responses:
+  - Replaced the common `withAuthContext` wrapper with explicit `requireAuthContext({ permission: 'canViewDashboard' })`, preserving the exact auth message `ダッシュボードの閲覧権限がありません`.
+  - Preserved exported `GET(req, routeContext?)` direct-call compatibility; route context is deliberately voided.
+  - Wrapped the aggregate body in `runWithRequestAuthContext(ctx, ...)`.
+  - Wrapped the exported route in `withRoutePerformance(req, ...)`.
+  - Wrapped success, auth failure, and handled 500 responses in `withSensitiveNoStore`.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging.
+  - Restricted logged `error_name` to an allowlist, falling back to `Error` for crafted names.
+  - Preserved the three existing `dispenseTask.count` query shapes and success response fields: `pendingTasks`, `auditPendingTasks`, and `completedToday`.
+  - Added prescription-registration linkage detection via `prescriptionRegisteredWithoutDispenseTasks`: cycles with `PrescriptionIntake` records and `overall_status in ['ready_to_dispense', 'dispensing']` but no `DispenseTask`. This catches breaks in the `PrescriptionIntake` -> `createDispenseDraft` -> `DispenseTask` contract without counting intentional `inquiry_pending` pauses.
+  - Added tests for route-performance wrapper invocation, auth options, request auth-context wrapper invocation, auth failure no-store before count reads, direct-call compatibility, no-store fixed 500 responses, and absence of raw dispensing/dashboard/SQL/stack/crafted error-name/raw-error leakage from response/log surfaces.
+- Security/privacy risk reduced: dispensing-stats dashboard responses consistently carry sensitive no-store headers, auth failure short-circuits before count reads, unexpected failures return fixed PHI-safe bodies, handler logs avoid raw dispensing/dashboard/error details, and prescription-registration linkage failures become visible as operational metrics.
+- Performance issue improved: route latency/error metrics are captured with `withRoutePerformance`; one bounded aggregate count was added for prescription-registration linkage monitoring, with no N+1 query or per-row fetch.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/dashboard/dispensing-stats/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `4` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/dispensing-stats GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - `pnpm exec eslint src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/dashboard/dispensing-stats/route.ts src/app/api/dashboard/dispensing-stats/route.test.ts`: passed.
+  - `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `22` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/workflow-prescription-to-report.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests; expected stderr from existing webhook dispatch and visit-record handoff error-path tests was observed.
+- Claude checker review:
+  - `APPROVED` on 2026-06-28 JST after strict review.
+  - Claude verified schema compatibility for `MedicationCycle.org_id`, `overall_status`, `prescription_intakes`, and `dispense_tasks`; the new `ready_to_dispense/dispensing` where clause; hardening pattern consistency; route test coverage; and org scoping across all four aggregate queries.
+  - Claude additionally confirmed the new field is approved as a backend-only additive metric with FE follow-up. `statistics-content.tsx` currently validates `dispensingStatsSchema` without `.strict()`, so Zod strips unknown keys and the new field does not break the existing three-KPI display.
+  - Non-blocking gap flagged: `prescriptionRegisteredWithoutDispenseTasks` is a new backend metric with no current FE display. Codex replied that the intended FE use is a data-integrity alert, not a normal KPI, preferably in the statistics headline strip or dashboard cockpit condition/blocked-reasons area with wording like `処方登録済みだが調剤タスク未生成`. Claude will carry this as a FE roadmap/gap-register item.
+- Remaining work:
+  - Frontend display for `prescriptionRegisteredWithoutDispenseTasks` remains pending in Claude's FE lane.
+  - Commit is intentionally not created in this turn because the active developer instruction says not to commit unless explicitly requested by the user.
+
+### 2026-06-28 JST - Dispensing Workbench Backend/System Coverage Plan Update
+
+- Scope:
+  - Responded to the user request to confirm whether the backend can support dispensing, dispensing audit, set, set audit, grouping, crushing, unit-dose packaging, PTP, mixing, oral/external/PRN/injection medicines, date management, and any other system-wide missing items.
+  - Performed a live repo check before updating the plan. The earlier plan had stale P0 statements saying persistent groups, set cell state, set-audit cell state, calendar API, and structured hold were missing.
+  - Preserved existing dirty implementation work in `.codex/hooks.json`, `src/app/api/dashboard/dispensing-stats/route.ts`, and `src/app/api/dashboard/dispensing-stats/route.test.ts`; no code/schema/API/migration/DB changes were made for this planning slice.
+- Updated `docs/dispensing-workbench-replacement-plan.md`:
+  - Corrected the live status of implemented backend surfaces: `PackagingGroup`, `SetBatch` cell state, `RejectCode`, `CycleHold`, `/api/dispense-tasks/[id]/groups`, `/api/set-plans/[id]/calendar`, `/api/set-plans/[id]/batches/cell`, `/api/set-plans/[id]/batches/bulk-set`, `/api/set-audits`, `/api/prescription-lines/[id]`, and `/api/dispense-workbench/patients`.
+  - Reframed remaining backend gaps from "schema/API missing" to cross-cutting structured coverage gaps: packaging/instruction vocabulary, drug route/dosage-form normalization, date-management SSOT/orchestration, outside-med/carry-packet projection, and offline/idempotent/external-sync boundaries.
+  - Added system-wide required items across prescription intake, QR/e-prescription mapping, drug master, packaging SSOT, grouping, date management, set/set-audit, outside medicines, dispensing audit, inventory/procurement, patient packaging profile, permissions, notifications/dashboard, visit prep/report/billing, external integration, offline/idempotency, audit/export, operational settings, and seed/E2E fixtures.
+  - Added priority order: safety blockers first, then workbench adapter connection, surrounding projections, and finally external sync from append-only confirmed records.
+- Validation passed:
+  - `pnpm exec vitest run 'src/app/api/dispense-tasks/[id]/groups/route.test.ts' 'src/app/api/set-plans/[id]/calendar/route.test.ts' 'src/app/api/set-plans/[id]/batches/cell/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `47` tests.
+  - `pnpm exec vitest run 'src/app/api/set-plans/[id]/batches/bulk-set/route.test.ts' 'src/app/api/set-audits/route.test.ts' 'src/app/api/prescription-lines/[id]/route.test.ts' 'src/app/api/dispense-workbench/patients/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `4` files / `79` tests.
+  - `pnpm exec prettier --check docs/dispensing-workbench-replacement-plan.md`: passed after formatting the doc with Prettier.
+  - `git diff --check -- docs/dispensing-workbench-replacement-plan.md`: passed.
+- Remaining work:
+  - This is a planning/coverage update only. Implementation should start with safety blockers and adapter/projection wiring, not by re-adding already implemented schema/API primitives.
+  - The parked `dashboard/dispensing-stats` hardening patch remains uncommitted and separate.
+
 ### 2026-06-28 JST - Dashboard Overdue GET No-Store And PHI-Safe Error Hardening
 
 - Coordination:
@@ -15287,3 +15473,43 @@ Next loop:
   - `pnpm typecheck:no-unused`: passed.
 - Remaining:
   - Commit the implementation group and this progress-ledger update separately, then send Claude a `PATCH_REVIEW_REQUEST`. The broader API sensitive-list no-store sweep remains incomplete.
+
+### Dispense Results POST — Idempotent Replay Guard
+
+- Coordination:
+  - Claude granted a backend-only lock for `src/app/api/dispense-results/route.ts`, `src/app/api/dispense-audits/route.ts`, and `src/app/api/set-audits/route.ts` investigation, with FE work staying read-only/ConfirmDialog-side.
+  - Codex inspected `dispense-audits` and `set-audits`; both already have stronger server-side approval/idempotency guards. The smallest high-value backend risk was `dispense-results` stale re-submit handling after prescription-linked dispensing result save.
+- Bugs found:
+  - `POST /api/dispense-results` rejected stale `expected_version` before mutation, but did not expose a safe idempotent replay contract for an already-persisted identical double-submit/F12 retry.
+- Implemented by Codex:
+  - Refactored stale replay matching into pure helper functions for optional text normalization, persisted-result/submitted-line comparison, duplicate-line rejection, and replay response construction.
+  - Selected `discrepancy_reason` with existing dispense results so replay comparison covers quantity discrepancy semantics.
+  - Added exact-match stale replay behavior: return HTTP 200 with `idempotent: true` and no duplicate CDS, transition, audit log, workflow notification, webhook, task update, or dispense result mutation side effects.
+  - Preserved the existing safety boundary: stale payloads with different persisted content still return HTTP 409 `WORKFLOW_CONFLICT` before side effects.
+- Validation:
+  - `pnpm exec vitest run src/app/api/dispense-results/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `29` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "dispense-results POST" --reporter=dot --testTimeout=30000`: passed, `3` tests / `97` skipped.
+  - `pnpm exec eslint src/app/api/dispense-results/route.ts src/app/api/dispense-results/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/dispense-results/route.ts src/app/api/dispense-results/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/dispense-results/route.ts src/app/api/dispense-results/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm exec vitest run src/app/api/__tests__/workflow-full-cycle.test.ts --reporter=dot --testTimeout=30000`: partially blocked by unrelated existing test mock gap. The prescription intake -> inquiry -> dispense -> audit -> visit -> report flow passed; the separate patient registration -> schedule generation case failed because `visit-schedules/generate` test prisma mock lacks `pharmacyOperatingHours.findMany`.
+- Remaining:
+  - Claude review passed. Server contract for FE: identical stale re-submit returns HTTP 200 + `idempotent: true`; different stale content remains HTTP 409.
+  - Claude non-blockers recorded only: replay path returns before validation because persisted results already passed original validation; partial stale replay remains conservative 409.
+
+### System-wide UI Roadmap — Codex Plan Review Reply
+
+- Coordination:
+  - Claude sent `.agent-loop/plans/SYSTEM_UI_AUDIT_ROADMAP.md` for pre-implementation wall review. Codex inspected the draft and live repo call sites, then returned a non-rubber-stamp agmsg verdict.
+- Codex verdict sent to Claude:
+  - Confirmed P1 BE-without-FE gaps: `verify-barcode`, `set-plans/[id]/generate-batches`, and `tracing-reports` authoring/lifecycle.
+  - Required joint FE/BE mini-specs for `verify-barcode` and `generate-batches`; scanner UI without server-required evidence would not close the safety gap, and set batch generation is a functional blocker when `SetBatch` rows are zero.
+  - Marked `dispense-results/[id] PATCH` as not dead: it is a rejected-audit rework endpoint with version OCC and `dispense_results_rework` workflow mutation, so it needs UI instead of deprecation.
+  - Marked `dispense-queue` as deprecated/compat rather than safe-delete because current tests/workflow still exercise it while the real workbench uses `dispense-workbench/patients`.
+  - Confirmed Skeleton false positives for `workflow`, `notifications`, and `conferences` because each already has `loading.tsx` with `Skeleton`/`SkeletonRows`; confirmed missing route loading/error files for `external`, `qr-scan`, and `collaboration`.
+  - Safety stance: ConfirmDialog/focus-visible/F-key scoping are behavior/a11y safety changes and should be allowed under the workbench visual SSOT protection.
+- Remaining:
+  - Claude accepted the Codex roadmap verdict and will fold it into an ultracode/self-review synthesis before frontend implementation waves start.
+  - Next coordination point: review Claude's integrated roadmap, then select joint FE/BE mini-spec order for `verify-barcode`, `generate-batches`, and tracing-reports.
