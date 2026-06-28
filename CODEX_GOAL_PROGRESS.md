@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Visit Schedule Billing Preview Batch POST No-Store Hardening
+
+- Coordination:
+  - Followed rev9 maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/visit-schedule-proposals/billing-preview-batch/route.ts` and `route.test.ts`; Claude ACKed no conflict.
+  - Implementation ran through a Codex maintainer subagent while main Codex stayed open for agmsg.
+  - Claude reviewed the finished two-file BE diff and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, push, deploy, external sends, or destructive operations were touched.
+- Hardened billing-preview batch API responses:
+  - Split the exported `POST` into `authenticatedPOST` plus a wrapper matching the adjacent single-preview route pattern.
+  - Wrapped all returned success/expected-error responses in `withSensitiveNoStore`.
+  - Added unexpected-error handling with `unstable_rethrow(err)` followed by `withSensitiveNoStore(internalError())`.
+  - Preserved existing `canVisit` permission, request validation, case access checks, 404-before-service behavior, service input mapping, and success response shape `{ data: ... }`.
+  - Added tests proving no-store headers on success, validation errors, not-found responses, and sanitized 500 responses.
+  - Added a PHI-like thrown service error regression test proving raw error text and a patient name are absent from the 500 response body.
+- Security/privacy risk reduced: batch visit-schedule billing preview responses now consistently carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`, and ordinary unexpected service failures return a fixed `INTERNAL_ERROR` body without leaking PHI-like raw service messages.
+- Performance issue improved: none. This is response-envelope hardening with no new DB reads/writes, no new external calls, no dependency changes, and no change to access-check query shape.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - `pnpm exec eslint src/app/api/visit-schedule-proposals/billing-preview-batch/route.ts src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/visit-schedule-proposals/billing-preview-batch/route.ts src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/visit-schedule-proposals/billing-preview-batch/route.ts src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts`: passed.
+  - Privacy compliance subagent review: no findings.
+  - Medical safety subagent review: no findings.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `7/7` and scoped ESLint.
+- Commit status: implementation committed locally as `fe5662a0`; this section records the progress-ledger slice for separate commit.
+- Next action: commit the progress-ledger slice, then continue the next backend/API candidate while monitoring Claude FE review requests.
+
 ### 2026-06-28 JST - Admin Billing Rules API Path Helper Convergence
 
 - Coordination:
