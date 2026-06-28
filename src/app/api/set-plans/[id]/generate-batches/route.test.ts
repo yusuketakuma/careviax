@@ -720,9 +720,9 @@ describe('set-plans/[id]/generate-batches POST', () => {
             packaging_group_id: null,
             packaging_method: null,
             packaging_instructions: null,
-            packaging_instruction_tags: [],
+            packaging_instruction_tags: ['cold_storage'],
             notes: null,
-            dispensing_decisions: [],
+            dispensing_decisions: [{ packaging_instruction_tags: [] }],
             dispense_results: [
               {
                 id: 'result_narcotic',
@@ -787,7 +787,7 @@ describe('set-plans/[id]/generate-batches POST', () => {
     expect(createdRows.filter((row) => row.line_id === 'line_master_narcotic')).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          packaging_instruction_tags_snapshot: expect.arrayContaining(['narcotic']),
+          packaging_instruction_tags_snapshot: expect.arrayContaining(['cold_storage', 'narcotic']),
         }),
       ]),
     );

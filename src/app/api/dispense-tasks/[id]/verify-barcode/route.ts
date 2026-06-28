@@ -1,21 +1,49 @@
 import { NextRequest } from 'next/server';
-import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { unstable_rethrow } from 'next/navigation';
+import { requireAuthContext, type AuthRouteContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { success, validationError, notFound, internalError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 import { parseGS1Barcode, isExpired } from '@/lib/pharmacy/barcode';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
+
+const ROUTE = '/api/dispense-tasks/[id]/verify-barcode';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
 
 const verifyBarcodeSchema = z.object({
   barcode: z.string().min(1, 'バーコードは必須です'),
   line_id: z.string().min(1, '処方明細IDは必須です'),
 });
 
-export const POST = withAuthContext<{ id: string }>(
-  async (req: NextRequest, ctx, { params }) => {
-    const { id: rawId } = await params;
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedPOST(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canDispense',
+    message: 'バーコード照合権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
+    const { id: rawId } = await routeContext.params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('調剤タスクIDが不正です');
 
@@ -111,9 +139,23 @@ export const POST = withAuthContext<{ id: string }>(
       },
       warnings,
     });
-  },
-  {
-    permission: 'canDispense',
-    message: 'バーコード照合権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest, routeContext: AuthRouteContext<{ id: string }>) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('dispense_task_verify_barcode_unhandled_error', undefined, {
+        event: 'dispense_task_verify_barcode_unhandled_error',
+        route: ROUTE,
+        method: 'POST',
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

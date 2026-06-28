@@ -19,6 +19,7 @@ import {
   buildWorkbenchRenalLabel,
   detectDoseDirection,
 } from '@/lib/dispensing/workbench-projection';
+import { resolveEffectivePackagingInstructionTags } from '@/lib/dispensing/packaging';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { findPreviousPrescriptionIntakeForMedicationDiff } from '@/server/services/prescription-intake-pair';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -179,6 +180,7 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
                       dispensing_method: true,
                       packaging_method: true,
                       packaging_instructions: true,
+                      packaging_instruction_tags: true,
                       packaging_group_id: true,
                     },
                   },
@@ -273,8 +275,17 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
   const handlingTags = Array.from(
     new Set(
       currentLines.flatMap((line) => {
-        const tags = [...line.packaging_instruction_tags] as string[];
-        if (isNarcoticLine(line) && !tags.includes('narcotic')) tags.unshift('narcotic');
+        const decision = line.dispensing_decisions[0] ?? null;
+        const tags = resolveEffectivePackagingInstructionTags(
+          decision?.packaging_instruction_tags,
+          line.packaging_instruction_tags,
+        );
+        if (
+          isNarcoticLine({ ...line, packaging_instruction_tags: tags }) &&
+          !tags.includes('narcotic')
+        ) {
+          tags.unshift('narcotic');
+        }
         return tags;
       }),
     ),
@@ -387,6 +398,10 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
   const countRows = currentLines.map((line) => {
     const result = resultByLineId.get(line.id) ?? null;
     const decision = line.dispensing_decisions[0] ?? null;
+    const effectiveTags = resolveEffectivePackagingInstructionTags(
+      decision?.packaging_instruction_tags,
+      line.packaging_instruction_tags,
+    );
     return {
       line_id: line.id,
       result_id: result?.id ?? null,
@@ -395,8 +410,8 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
       dose: line.dose,
       frequency: line.frequency,
       route: line.route,
-      tags: line.packaging_instruction_tags as string[],
-      is_narcotic: isNarcoticLine(line),
+      tags: effectiveTags,
+      is_narcotic: isNarcoticLine({ ...line, packaging_instruction_tags: effectiveTags }),
       is_generic: line.is_generic,
       prescribed_label: formatQuantityLabel(line),
       prescribed_quantity: line.quantity,
@@ -415,7 +430,7 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
       packaging_method: decision?.packaging_method ?? line.packaging_method ?? null,
       packaging_instructions:
         decision?.packaging_instructions ?? line.packaging_instructions ?? null,
-      packaging_group_id: line.packaging_group_id ?? null,
+      packaging_group_id: decision?.packaging_group_id ?? line.packaging_group_id ?? null,
     };
   });
   countRows.sort((left, right) => Number(right.is_narcotic) - Number(left.is_narcotic));

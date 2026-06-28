@@ -192,6 +192,17 @@ export interface NarcoticClassificationSummary {
   status: NarcoticClassificationStatus;
 }
 
+export interface SetBatchGenerationMetadata {
+  batch_count: number;
+  /** True only when FE should call non-force initial generation. Existing batches require force regeneration. */
+  needs_initial_generation: boolean;
+  latest_batch_updated_at: string | null;
+  expected_updated_at: string;
+  /** Status-level permission; use needs_initial_generation or can_force_regenerate to choose the action. */
+  can_generate: boolean;
+  can_force_regenerate: boolean;
+}
+
 /** GET /api/set-plans/[id]/calendar のレスポンス（success({data})）。 */
 export type CalendarMatrixResponse = CalendarMatrix & {
   plan_id: string;
@@ -199,6 +210,7 @@ export type CalendarMatrixResponse = CalendarMatrix & {
   cycle_version: number;
   cycle_status: string;
   set_method: string;
+  generation?: SetBatchGenerationMetadata;
   narcotic_classification?: NarcoticClassificationSummary;
 };
 
@@ -254,6 +266,26 @@ export interface SubmitDispenseResultsInput {
   task_id: string;
   lines: DispenseResultLineInput[];
   expected_version: number;
+}
+
+export interface VerifyDispenseBarcodeInput {
+  taskId: string;
+  line_id: string;
+  barcode: string;
+}
+
+export interface VerifyDispenseBarcodeResponse {
+  match: boolean;
+  decoded: {
+    gtin?: string;
+    expiryDate?: string;
+    lotNumber?: string;
+  };
+  expected: {
+    drug_code: string | null;
+    drug_name: string;
+  };
+  warnings: string[];
 }
 
 export interface SubmitDispenseAuditInput {

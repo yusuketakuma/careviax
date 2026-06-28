@@ -18,6 +18,7 @@ import {
 } from '@/lib/prescription/controlled-handling-tags';
 import {
   extractPackagingInstructionTags,
+  resolveEffectivePackagingInstructionTags,
   resolvePackagingSettings,
   type PackagingInstructionTagValue,
   type PackagingMethodValue,
@@ -485,7 +486,10 @@ export const POST = withAuthContext<{ id: string }>(
           const auditedResult = line.dispense_results?.[0] ?? null;
           collectNarcoticCandidateYjCode(
             narcoticCandidateYjCodes,
-            decision?.packaging_instruction_tags ?? line.packaging_instruction_tags,
+            resolveEffectivePackagingInstructionTags(
+              decision?.packaging_instruction_tags,
+              line.packaging_instruction_tags,
+            ),
             line.drug_code,
             auditedResult?.actual_drug_code,
           );
@@ -511,8 +515,10 @@ export const POST = withAuthContext<{ id: string }>(
           const packagingMethod = decision?.packaging_method ?? line.packaging_method ?? undefined;
           const packagingInstructions =
             decision?.packaging_instructions ?? line.packaging_instructions ?? undefined;
-          const packagingInstructionTags =
-            decision?.packaging_instruction_tags ?? line.packaging_instruction_tags;
+          const packagingInstructionTags = resolveEffectivePackagingInstructionTags(
+            decision?.packaging_instruction_tags,
+            line.packaging_instruction_tags,
+          );
           const packagingGroupId = decision?.packaging_group_id ?? line.packaging_group_id ?? null;
           const slots = resolveSlotsForMethod({
             frequency: line.frequency,

@@ -37,11 +37,11 @@ export type PackagingInstructionTagValue =
   (typeof PACKAGING_INSTRUCTION_TAG_OPTIONS)[number]['value'];
 
 export const PACKAGING_METHOD_LABELS = Object.fromEntries(
-  PACKAGING_METHOD_OPTIONS.map((option) => [option.value, option.label])
+  PACKAGING_METHOD_OPTIONS.map((option) => [option.value, option.label]),
 ) as Record<PackagingMethodValue, string>;
 
 export const PACKAGING_INSTRUCTION_TAG_LABELS = Object.fromEntries(
-  PACKAGING_INSTRUCTION_TAG_OPTIONS.map((option) => [option.value, option.label])
+  PACKAGING_INSTRUCTION_TAG_OPTIONS.map((option) => [option.value, option.label]),
 ) as Record<PackagingInstructionTagValue, string>;
 
 export type PackagingProfileLike = {
@@ -61,12 +61,9 @@ function normalizeText(value?: string | null) {
   return normalized && normalized.length > 0 ? normalized : null;
 }
 
-export function composePackagingDetail(
-  preset?: string | null,
-  custom?: string | null
-) {
+export function composePackagingDetail(preset?: string | null, custom?: string | null) {
   const values = [normalizeText(preset), normalizeText(custom)].filter(
-    (value): value is string => value != null
+    (value): value is string => value != null,
   );
 
   if (values.length === 0) return null;
@@ -93,7 +90,7 @@ export function splitPackagingDetail(value?: string | null) {
     normalized
       .split(' / ')
       .filter((part) => part !== matchedPreset)
-      .join(' / ')
+      .join(' / '),
   );
 
   return {
@@ -102,10 +99,7 @@ export function splitPackagingDetail(value?: string | null) {
   };
 }
 
-function stripKnownPhrases(
-  value: string,
-  phrases: readonly string[]
-) {
+function stripKnownPhrases(value: string, phrases: readonly string[]) {
   let next = value;
   for (const phrase of phrases) {
     next = next.replace(phrase, '');
@@ -150,9 +144,10 @@ const PACKAGING_PATTERNS: Array<{
   },
 ];
 
-export function parsePackagingMethod(
-  value?: string | null
-): { method: PackagingMethodValue | null; detail: string | null } {
+export function parsePackagingMethod(value?: string | null): {
+  method: PackagingMethodValue | null;
+  detail: string | null;
+} {
   const normalized = normalizeText(value);
   if (!normalized) return { method: null, detail: null };
 
@@ -231,14 +226,8 @@ export function resolvePackagingSettings(args: ResolvePackagingArgs) {
   const explicitText = normalizeText(args.packagingInstructions);
   const parsed = parsePackagingMethod(explicitText);
   const method =
-    args.packagingMethod ??
-    parsed.method ??
-    args.profile?.default_packaging_method ??
-    null;
-  const detail =
-    parsed.detail ??
-    normalizeText(args.profile?.notes) ??
-    null;
+    args.packagingMethod ?? parsed.method ?? args.profile?.default_packaging_method ?? null;
+  const detail = parsed.detail ?? normalizeText(args.profile?.notes) ?? null;
   const medicationBoxColor = normalizeText(args.profile?.medication_box_color);
 
   return {
@@ -256,9 +245,7 @@ export function extractPackagingInstructionTags(args: {
   notes?: string | null;
   packagingMethod?: PackagingMethodValue | null;
 }) {
-  const detail = normalizeText(
-    [args.packagingInstructions, args.notes].filter(Boolean).join(' ')
-  );
+  const detail = normalizeText([args.packagingInstructions, args.notes].filter(Boolean).join(' '));
   const tags = new Set<PackagingInstructionTagValue>();
 
   if (
@@ -279,7 +266,14 @@ export function extractPackagingInstructionTags(args: {
     }
   }
 
-  return PACKAGING_INSTRUCTION_TAG_OPTIONS
-    .map((option) => option.value)
-    .filter((value) => tags.has(value));
+  return PACKAGING_INSTRUCTION_TAG_OPTIONS.map((option) => option.value).filter((value) =>
+    tags.has(value),
+  );
+}
+
+export function resolveEffectivePackagingInstructionTags<T extends string>(
+  decisionTags: readonly T[] | null | undefined,
+  lineTags: readonly T[] | null | undefined,
+) {
+  return decisionTags && decisionTags.length > 0 ? [...decisionTags] : [...(lineTags ?? [])];
 }

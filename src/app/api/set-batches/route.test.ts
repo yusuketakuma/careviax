@@ -734,9 +734,9 @@ describe('set-batches POST', () => {
       packaging_group_id: null,
       packaging_method: null,
       packaging_instructions: null,
-      packaging_instruction_tags: [],
+      packaging_instruction_tags: ['cold_storage'],
       notes: null,
-      dispensing_decisions: [],
+      dispensing_decisions: [{ packaging_instruction_tags: [] }],
       dispense_results: [
         {
           id: 'result_1',
@@ -787,7 +787,7 @@ describe('set-batches POST', () => {
     expect(txMock.setBatch.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          packaging_instruction_tags_snapshot: ['narcotic'],
+          packaging_instruction_tags_snapshot: expect.arrayContaining(['cold_storage', 'narcotic']),
         }),
       }),
     );

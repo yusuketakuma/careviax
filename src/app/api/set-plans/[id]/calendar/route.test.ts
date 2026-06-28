@@ -56,6 +56,7 @@ describe('/api/set-plans/[id]/calendar GET', () => {
       target_period_start: new Date('2026-04-01T00:00:00.000Z'),
       target_period_end: new Date('2026-04-07T00:00:00.000Z'),
       set_method: 'custom',
+      updated_at: new Date('2026-04-01T09:00:00.000Z'),
       cycle: {
         id: 'cycle_1',
         overall_status: 'setting',
@@ -96,6 +97,7 @@ describe('/api/set-plans/[id]/calendar GET', () => {
         held_reason: null,
         packaging_instruction_tags_snapshot: [],
         version: 1,
+        updated_at: new Date('2026-04-01T10:00:00.000Z'),
       },
       {
         id: 'batch_d2_morning',
@@ -110,6 +112,7 @@ describe('/api/set-plans/[id]/calendar GET', () => {
         held_reason: null,
         packaging_instruction_tags_snapshot: [],
         version: 1,
+        updated_at: new Date('2026-04-01T10:05:00.000Z'),
       },
     ]);
   });
@@ -133,6 +136,14 @@ describe('/api/set-plans/[id]/calendar GET', () => {
       unresolved_line_count: 0,
       status: 'normal',
     });
+    expect(payload.data.generation).toEqual({
+      batch_count: 2,
+      needs_initial_generation: false,
+      latest_batch_updated_at: '2026-04-01T10:05:00.000Z',
+      expected_updated_at: '2026-04-01T09:00:00.000Z',
+      can_generate: true,
+      can_force_regenerate: true,
+    });
     expect(payload.data.day_count).toBe(7);
     expect(payload.data.slots).toEqual(['morning', 'noon', 'evening', 'bedtime', 'prn']);
 
@@ -155,6 +166,58 @@ describe('/api/set-plans/[id]/calendar GET', () => {
     expect(payload.data.completion_gate.pending_cells).toBe(1);
     expect(payload.data.completion_gate.set_complete).toBe(false);
     expect(payload.data.completion_gate.audit_complete).toBe(false);
+  });
+
+  it('exposes generation metadata for initial set batch creation', async () => {
+    prismaMock.setBatch.findMany.mockResolvedValue([]);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.generation).toEqual({
+      batch_count: 0,
+      needs_initial_generation: true,
+      latest_batch_updated_at: null,
+      expected_updated_at: '2026-04-01T09:00:00.000Z',
+      can_generate: true,
+      can_force_regenerate: false,
+    });
+    expect(payload.data.completion_gate.total_cells).toBe(0);
+    expect(payload.data.completion_gate.set_complete).toBe(false);
+  });
+
+  it('does not advertise forced regeneration after set audit has started', async () => {
+    prismaMock.setPlan.findFirst.mockResolvedValue({
+      id: 'plan_1',
+      cycle_id: 'cycle_1',
+      target_period_start: new Date('2026-04-01T00:00:00.000Z'),
+      target_period_end: new Date('2026-04-07T00:00:00.000Z'),
+      set_method: 'custom',
+      updated_at: new Date('2026-04-01T09:00:00.000Z'),
+      cycle: {
+        id: 'cycle_1',
+        overall_status: 'set_audited',
+        version: 6,
+      },
+    });
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.generation).toMatchObject({
+      batch_count: 2,
+      needs_initial_generation: false,
+      can_generate: true,
+      can_force_regenerate: false,
+    });
   });
 
   it('returns aggregate-only narcotic classification review status for lines without drug code or tag evidence', async () => {

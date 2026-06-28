@@ -17,6 +17,7 @@ import {
 } from '@/lib/prescription/controlled-handling-tags';
 import {
   extractPackagingInstructionTags,
+  resolveEffectivePackagingInstructionTags,
   resolvePackagingSettings,
 } from '@/lib/dispensing/packaging';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -388,8 +389,10 @@ export const POST = withAuthContext<Record<string, string>>(
       const packagingMethod = decision?.packaging_method ?? line.packaging_method ?? undefined;
       const packagingInstructions =
         decision?.packaging_instructions ?? line.packaging_instructions ?? undefined;
-      const packagingInstructionTags =
-        decision?.packaging_instruction_tags ?? line.packaging_instruction_tags;
+      const packagingInstructionTags = resolveEffectivePackagingInstructionTags(
+        decision?.packaging_instruction_tags,
+        line.packaging_instruction_tags,
+      );
       const packagingGroupId = decision?.packaging_group_id ?? line.packaging_group_id ?? null;
       const effectiveCarryType = decision?.carry_type_override ?? carry_type;
       const resolvedPackaging = resolvePackagingSettings({

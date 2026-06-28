@@ -18,6 +18,38 @@ function hasKnownNarcoticClassificationTag(tags: readonly string[]): boolean {
   return tags.includes('narcotic');
 }
 
+function latestBatchUpdatedAtIso(batches: Array<{ updated_at?: Date | null }>) {
+  return batches.reduce<string | null>((latest, batch) => {
+    const current = batch.updated_at?.toISOString();
+    if (!current) return latest;
+    return !latest || current > latest ? current : latest;
+  }, null);
+}
+
+function canGenerateSetBatches(cycleStatus: string) {
+  return cycleStatus === 'audited' || cycleStatus === 'setting' || cycleStatus === 'set_audited';
+}
+
+function canForceRegenerateSetBatches(cycleStatus: string) {
+  return cycleStatus === 'audited' || cycleStatus === 'setting';
+}
+
+function buildSetBatchGenerationMetadata(args: {
+  batchCount: number;
+  cycleStatus: string;
+  latestBatchUpdatedAt: string | null;
+  planUpdatedAt: Date;
+}) {
+  return {
+    batch_count: args.batchCount,
+    needs_initial_generation: args.batchCount === 0,
+    latest_batch_updated_at: args.latestBatchUpdatedAt,
+    expected_updated_at: args.planUpdatedAt.toISOString(),
+    can_generate: canGenerateSetBatches(args.cycleStatus),
+    can_force_regenerate: args.batchCount > 0 && canForceRegenerateSetBatches(args.cycleStatus),
+  };
+}
+
 /**
  * GET /api/set-plans/[id]/calendar
  *
@@ -51,6 +83,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         target_period_start: true,
         target_period_end: true,
         set_method: true,
+        updated_at: true,
         cycle: {
           select: {
             id: true,
@@ -82,6 +115,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
           held_reason: true,
           packaging_instruction_tags_snapshot: true,
           version: true,
+          updated_at: true,
         },
       }),
       prisma.prescriptionIntake.findMany({
@@ -175,6 +209,13 @@ const authenticatedGET = withAuthContext<{ id: string }>(
       version: batch.version,
     }));
 
+    const generation = buildSetBatchGenerationMetadata({
+      batchCount: batches.length,
+      cycleStatus: plan.cycle.overall_status,
+      latestBatchUpdatedAt: latestBatchUpdatedAtIso(batches),
+      planUpdatedAt: plan.updated_at,
+    });
+
     const matrix = buildCalendarMatrix({
       periodStart: plan.target_period_start,
       periodEnd: plan.target_period_end,
@@ -189,6 +230,7 @@ const authenticatedGET = withAuthContext<{ id: string }>(
         cycle_version: plan.cycle.version,
         cycle_status: plan.cycle.overall_status,
         set_method: plan.set_method,
+        generation,
         narcotic_classification: {
           unresolved_line_count: narcoticClassificationUnresolvedLineIds.size,
           status:

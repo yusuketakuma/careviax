@@ -52,6 +52,8 @@ import {
   type CalendarMatrixResponse,
   type SetBatchDto,
   type SubmitDispenseResultsInput,
+  type VerifyDispenseBarcodeInput,
+  type VerifyDispenseBarcodeResponse,
   type SubmitDispenseAuditInput,
   type UpdatePrescriptionLinesInput,
   type CellMutationInput,
@@ -498,6 +500,17 @@ export async function submitDispenseResults(
   return mutateJson('/api/dispense-results', 'POST', {
     ...input,
     safety_checklist: DISPENSE_SAFETY_CHECKLIST_ACK,
+  });
+}
+
+/** GS1バーコード照合（POST /api/dispense-tasks/[taskId]/verify-barcode）。 */
+export async function verifyDispenseBarcode(
+  input: VerifyDispenseBarcodeInput,
+): Promise<VerifyDispenseBarcodeResponse | MockWriteNoop> {
+  if (USE_MOCK) return MOCK_WRITE_NOOP;
+  return mutateJson(buildDispenseTaskApiPath(input.taskId, '/verify-barcode'), 'POST', {
+    barcode: input.barcode,
+    line_id: input.line_id,
   });
 }
 

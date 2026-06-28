@@ -9,6 +9,7 @@ const {
   drugMasterFindFirstMock,
   parseGS1BarcodeMock,
   isExpiredMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -17,6 +18,7 @@ const {
   drugMasterFindFirstMock: vi.fn(),
   parseGS1BarcodeMock: vi.fn(),
   isExpiredMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -43,6 +45,12 @@ vi.mock('@/lib/db/client', () => ({
 vi.mock('@/lib/pharmacy/barcode', () => ({
   parseGS1Barcode: parseGS1BarcodeMock,
   isExpired: isExpiredMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 import { POST } from './route';
@@ -101,6 +109,8 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(dispenseTaskFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'task_1',
@@ -142,6 +152,8 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     ))!;
 
     expect(response.status).toBe(403);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(dispenseTaskFindFirstMock).not.toHaveBeenCalled();
     expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
     expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
@@ -203,6 +215,8 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
     ))!;
 
     expect(response.status).toBe(404);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(prescriptionLineFindFirstMock).not.toHaveBeenCalled();
     expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
   });
@@ -231,6 +245,48 @@ describe('/api/dispense-tasks/[id]/verify-barcode', () => {
         }),
       }),
     );
+    expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 and PHI-safe log metadata on unexpected failures', async () => {
+    dispenseTaskFindFirstMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 verify barcode raw SQL stack GTIN'),
+    );
+
+    const response = (await POST(
+      createVerifyBarcodeRequest('task_1', {
+        barcode: '0101234567890123',
+        line_id: 'line_1',
+      }),
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw SQL');
+    expect(JSON.stringify(body)).not.toContain('GTIN');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'dispense_task_verify_barcode_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        route: '/api/dispense-tasks/[id]/verify-barcode',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('raw SQL');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('GTIN');
     expect(parseGS1BarcodeMock).not.toHaveBeenCalled();
   });
 });
