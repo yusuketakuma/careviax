@@ -21,7 +21,7 @@
  * ヘッダ高 3.5rem を控除（計画 §3 単一変更点）。
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import styles from './dispensing-workbench.module.css';
@@ -38,6 +38,7 @@ import {
 } from './dispensing-workbench.adapter';
 import { isCalendarPhase } from './dispensing-workbench.types';
 import type { FKeyAction, Phase } from './dispensing-workbench.types';
+import type { AuditNarcoticLine, PendingPrimary } from './dispensing-workbench.write-types';
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
@@ -76,6 +77,64 @@ function StatusClock() {
   return <>{clock}</>;
 }
 
+/** 麻薬監査承認 confirm の二重計数明細（麻薬 line のみ・非 PHI 表示）。 */
+function NarcoticLineList({ lines }: { lines: AuditNarcoticLine[] }) {
+  return (
+    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>
+      {lines.map((line) => (
+        <li key={line.line_id}>
+          {line.drug_name}：調剤数量 {line.dispensed_quantity ?? '—'} ／ 1回目{' '}
+          {line.first_count ?? '—'} ／ 2回目 {line.second_count ?? '—'}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+interface PrimaryConfirmProps {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  requiredConfirmText?: string;
+  children?: ReactNode;
+}
+
+/** pendingPrimary（不可逆 sign-off）から ConfirmDialog の site 別表示 props を導出する。 */
+function buildPrimaryConfirm(pending: PendingPrimary | null): PrimaryConfirmProps {
+  if (!pending) {
+    return { title: '', description: '', confirmLabel: '確認' };
+  }
+  if (pending.phase === 'dispense') {
+    return {
+      title: '調剤を完了します',
+      description: '調剤内容を確定し、監査工程へ進みます。確定後は取り消せません。',
+      confirmLabel: '調剤完了',
+    };
+  }
+  if (pending.phase === 'audit') {
+    if (pending.narcoticLines.length === 0) {
+      return {
+        title: '監査を承認します',
+        description: '監査を承認し確定します。この操作は取り消せません。',
+        confirmLabel: '監査承認',
+      };
+    }
+    return {
+      title: '監査を承認します（麻薬を含む）',
+      description: `麻薬 ${pending.narcoticLines.length} 件の二重計数を確認のうえ承認します。確定後は取り消せません。`,
+      confirmLabel: '監査承認',
+      requiredConfirmText: '麻薬',
+      children: <NarcoticLineList lines={pending.narcoticLines} />,
+    };
+  }
+  // seta
+  return {
+    title: 'セット監査を承認します',
+    description: 'セット監査を承認し確定します。この操作は取り消せません。',
+    confirmLabel: 'セット監査承認',
+  };
+}
+
 export interface DispensingWorkbenchProps {
   /** ルートから注入される工程。 */
   phase: Phase;
@@ -105,6 +164,10 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // セットバッチ force 再生成の確認ダイアログ開閉（破壊的操作のため二重確認）。
   const [forceConfirmOpen, setForceConfirmOpen] = useState(false);
 
+  // 不可逆 sign-off（調剤完了 / 監査承認 / セット監査承認）の確認待ち descriptor。
+  // real-data のみ非 null になり ConfirmDialog を開く（zustand へは持たない＝揮発 UI 状態）。
+  const [pendingPrimary, setPendingPrimary] = useState<PendingPrimary | null>(null);
+
   // ---- 書込結線（計画 §12 / W3b）----
   // mutation 群（実データ時のみ発火・mock は no-op）とフェーズ別ハンドラを生成し、
   // 子コンポーネントへ props で渡す。既定（モック）ではハンドラ内で store アクションのみを呼び、
@@ -114,7 +177,11 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     phase,
     mutations,
     onAdvance: (nextPhase) => router.push(PHASE_ROUTE[nextPhase]),
+    onRequestConfirm: setPendingPrimary,
   });
+
+  // pendingPrimary（不可逆 sign-off）から ConfirmDialog の site 別表示 props を導出する。
+  const primaryConfirm = buildPrimaryConfirm(pendingPrimary);
 
   // ---- 実データ結線（計画 §14 / 段階1b 読取のみ）----
   // 既定（モック）では isRealDataEnabled()=false でこの effect は no-op。
@@ -248,6 +315,18 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // ---- F-key / キーボードアクションの写像 ----
   const runAction = useCallback(
     (action: FKeyAction) => {
+      // 不可逆 sign-off の確認中は phase 遷移系 F-key を無効化し、確認離脱と F12 churn を抑止する。
+      // mutate 二重発火は request/commit 分割で防ぐが、確認中の phase 直行はここで止める。
+      if (
+        pendingPrimary !== null &&
+        (action === 'phaseDispense' ||
+          action === 'phaseAudit' ||
+          action === 'phaseSet' ||
+          action === 'phaseSetAudit' ||
+          action === 'next')
+      ) {
+        return;
+      }
       switch (action) {
         case 'prevPatient':
           navBy(-1);
@@ -282,7 +361,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           break;
       }
     },
-    [navBy, openHold, router, target, writeHandlers],
+    [navBy, openHold, pendingPrimary, router, target, writeHandlers],
   );
 
   // ---- 物理 F-key のバインド（レセコン風キーボード操作・デスクトップ専用）----
@@ -436,7 +515,12 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
               {online ? 'オンライン' : 'オフライン'}
             </span>
           </span>
-          <span className={styles.mono} style={{ letterSpacing: '.5px' }} suppressHydrationWarning>
+          <span
+            className={styles.mono}
+            style={{ letterSpacing: '.5px' }}
+            suppressHydrationWarning
+            data-testid="wb-status-clock"
+          >
             <StatusClock />
           </span>
         </div>
@@ -462,6 +546,27 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         confirmLabel="再生成する"
         onConfirm={() => writeHandlers.onGenerateBatches(true)}
       />
+
+      {/* 不可逆 sign-off（調剤完了 / 監査承認 / セット監査承認）の確認ゲート。
+          real-data の onPrimary が request 段で pendingPrimary を立て、ここで確認後に
+          commitPrimary が初めて mutation を発火する（楽観更新の前段に挿入）。 */}
+      <ConfirmDialog
+        open={pendingPrimary !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingPrimary(null);
+        }}
+        variant="destructive"
+        title={primaryConfirm.title}
+        description={primaryConfirm.description}
+        confirmLabel={primaryConfirm.confirmLabel}
+        requiredConfirmText={primaryConfirm.requiredConfirmText}
+        autoFocusConfirm
+        onConfirm={() => {
+          if (pendingPrimary) writeHandlers.commitPrimary(pendingPrimary);
+        }}
+      >
+        {primaryConfirm.children}
+      </ConfirmDialog>
     </div>
   );
 }

@@ -4,7 +4,8 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkbenchMutations } from './use-workbench-mutations';
-import type { SeedPatient } from './dispensing-workbench.types';
+import type { Drug, SeedPatient } from './dispensing-workbench.types';
+import type { PendingPrimary } from './dispensing-workbench.write-types';
 
 const { toastErrorMock } = vi.hoisted(() => ({
   toastErrorMock: vi.fn(),
@@ -658,10 +659,11 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(useWorkbenchStore.getState().holdInfo[key]).toBeUndefined();
   });
 
-  it('submits dispense audit approval before advancing from audit to set in real-data mode', async () => {
+  it('requests confirmation before audit approval and submits it only on commit in real-data mode', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const completeAudit = mutationStub((_input, options) => options?.onSuccess?.({}));
     const onAdvance = vi.fn();
+    const onRequestConfirm = vi.fn();
 
     act(() => {
       useWorkbenchStore.setState({
@@ -710,15 +712,28 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
         phase: 'audit',
         mutations: fakeMutations({ completeAudit }),
         onAdvance,
+        onRequestConfirm,
       }),
     );
 
+    // request 段: 検証 OK でも mutate せず ConfirmDialog を要求して null を返す。
     let nextPhase: unknown;
     act(() => {
       nextPhase = result.current.onPrimary();
     });
 
     expect(nextPhase).toBeNull();
+    expect(completeAudit.mutate).not.toHaveBeenCalled();
+    expect(onAdvance).not.toHaveBeenCalled();
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    expect(descriptor).toMatchObject({ phase: 'audit', next: 'setp', narcoticLines: [] });
+
+    // commit 段: ダイアログ確定からのみ承認を送り、成功で onAdvance。
+    act(() => {
+      result.current.commitPrimary(descriptor);
+    });
+
     expect(completeAudit.mutate).toHaveBeenCalledWith(
       { task_id: 'task_1', result: 'approved', expected_version: 4 },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
@@ -726,10 +741,11 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(onAdvance).toHaveBeenCalledWith('setp');
   });
 
-  it('submits narcotic double-count evidence with dispense audit approval', async () => {
+  it('carries narcotic double-count evidence through confirmation into the audit approval commit', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const completeAudit = mutationStub((_input, options) => options?.onSuccess?.({}));
     const onAdvance = vi.fn();
+    const onRequestConfirm = vi.fn();
 
     act(() => {
       useWorkbenchStore.setState({
@@ -783,15 +799,39 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
         phase: 'audit',
         mutations: fakeMutations({ completeAudit }),
         onAdvance,
+        onRequestConfirm,
       }),
     );
 
+    // request 段: 麻薬 line のみを descriptor.narcoticLines に載せ、mutate せず確認を要求する。
     let nextPhase: unknown;
     act(() => {
       nextPhase = result.current.onPrimary();
     });
 
     expect(nextPhase).toBeNull();
+    expect(completeAudit.mutate).not.toHaveBeenCalled();
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    expect(descriptor).toMatchObject({
+      phase: 'audit',
+      next: 'setp',
+      narcoticLines: [
+        {
+          line_id: 'line_narcotic',
+          drug_name: 'モルヒネ徐放錠',
+          dispensed_quantity: 12,
+          first_count: 12,
+          second_count: 12,
+        },
+      ],
+    });
+
+    // commit 段: 二重計数証跡を含む承認を送り、成功で onAdvance。
+    act(() => {
+      result.current.commitPrimary(descriptor);
+    });
+
     expect(completeAudit.mutate).toHaveBeenCalledWith(
       {
         task_id: 'task_1',
@@ -1012,12 +1052,13 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(useWorkbenchStore.getState().audit).toEqual({ line_1: true });
   });
 
-  it('clears optimistic dispense row checks when dispense completion fails', async () => {
+  it('clears optimistic dispense row checks when dispense completion fails after confirmation', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const completeDispense = mutationStub((_input, options) =>
       options?.onError?.(new Error('fail')),
     );
     const onAdvance = vi.fn();
+    const onRequestConfirm = vi.fn();
 
     act(() => {
       useWorkbenchStore.setState({
@@ -1067,11 +1108,23 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
         phase: 'dispense',
         mutations: fakeMutations({ completeDispense }),
         onAdvance,
+        onRequestConfirm,
       }),
     );
 
+    // request 段: mutate せず確認を要求する。
     act(() => {
       result.current.onPrimary();
+    });
+
+    expect(completeDispense.mutate).not.toHaveBeenCalled();
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    expect(descriptor).toMatchObject({ phase: 'dispense' });
+
+    // commit 段: 失敗時に楽観 done をロールバックし onAdvance しない。
+    act(() => {
+      result.current.commitPrimary(descriptor);
     });
 
     expect(completeDispense.mutate).toHaveBeenCalled();
@@ -1079,10 +1132,11 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(onAdvance).not.toHaveBeenCalled();
   });
 
-  it('clears optimistic audit row checks when dispense audit completion fails', async () => {
+  it('clears optimistic audit row checks when dispense audit completion fails after confirmation', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const completeAudit = mutationStub((_input, options) => options?.onError?.(new Error('fail')));
     const onAdvance = vi.fn();
+    const onRequestConfirm = vi.fn();
 
     act(() => {
       useWorkbenchStore.setState({
@@ -1131,11 +1185,23 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
         phase: 'audit',
         mutations: fakeMutations({ completeAudit }),
         onAdvance,
+        onRequestConfirm,
       }),
     );
 
+    // request 段: mutate せず確認を要求する。
     act(() => {
       result.current.onPrimary();
+    });
+
+    expect(completeAudit.mutate).not.toHaveBeenCalled();
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    expect(descriptor).toMatchObject({ phase: 'audit' });
+
+    // commit 段: 失敗時に楽観 audit をロールバックし onAdvance しない。
+    act(() => {
+      result.current.commitPrimary(descriptor);
     });
 
     expect(completeAudit.mutate).toHaveBeenCalled();
@@ -1143,10 +1209,11 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(onAdvance).not.toHaveBeenCalled();
   });
 
-  it('clears optimistic set-audit cell, checklist, and NG state when final approval fails', async () => {
+  it('clears optimistic set-audit cell, checklist, and NG state when final approval fails after confirmation', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const setAudit = mutationStub((_input, options) => options?.onError?.(new Error('fail')));
     const onAdvance = vi.fn();
+    const onRequestConfirm = vi.fn();
     const key = 'patient_1:0:朝';
 
     act(() => {
@@ -1214,11 +1281,23 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
         phase: 'seta',
         mutations: fakeMutations({ setAudit }),
         onAdvance,
+        onRequestConfirm,
       }),
     );
 
+    // request 段: mutate せず確認を要求する。
     act(() => {
       result.current.onPrimary();
+    });
+
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    expect(descriptor).toMatchObject({ phase: 'seta' });
+
+    // commit 段: 失敗時に楽観 auditCells/checks/ng をロールバックし onAdvance しない。
+    act(() => {
+      result.current.commitPrimary(descriptor);
     });
 
     expect(setAudit.mutate).toHaveBeenCalled();
@@ -3174,5 +3253,649 @@ describe('useWorkbenchWriteHandlers generate set batches', () => {
     });
 
     expect(generateBatches.mutate).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// S0: 不可逆 sign-off の ConfirmDialog gating（request/commit 分割）
+// テスト計画 §5（1-8 / site 1-3 = dispense/audit/seta）。実装 = onRequestConfirm を
+// 受ける onPrimary（request 段）と commitPrimary（確定段）。
+// ============================================================================
+
+const UNCONFIRMED_DISPENSE_QUANTITY_MESSAGE =
+  '実数量の確認が未完了の薬剤があります。数量確認を押してから調剤完了してください。';
+const INVALID_AUDIT_DOUBLE_COUNT_MESSAGE =
+  '麻薬ダブルカウントが未完了です。1回目・2回目を実数量と一致する値で入力してください。';
+const INCOMPLETE_CARRY_PACKET_MESSAGE =
+  '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。';
+
+function plainDrug(overrides: Partial<Drug> & Pick<Drug, 'did' | 'name'>): Drug {
+  return {
+    yoho: '朝食後',
+    a: '1',
+    h: '',
+    y: '',
+    n: '',
+    tag: '',
+    funsai: false,
+    note: '',
+    ...overrides,
+  };
+}
+
+/** dispense 確定が前段ガードを通過する最小 store 状態。 */
+function dispenseReadyState() {
+  return {
+    selId: 'patient_1',
+    patients: [patientFixture],
+    model: {
+      patient_1: [
+        {
+          gid: 'g_1',
+          label: '朝食後',
+          method: '一包化',
+          start: '2026-04-01',
+          days: 14,
+          drugs: [plainDrug({ did: 'line_1', name: 'アムロジピン錠5mg', prescribedQuantity: 14 })],
+        },
+      ],
+    },
+    done: { line_1: true },
+    quantityConfirmedByDid: { line_1: true },
+    writeContext: {
+      taskId: 'task_1',
+      cycleId: 'cycle_1',
+      cycleVersion: 4,
+      planId: null,
+      lineGroupByDid: {},
+      groupIdByGid: {},
+      cellMeta: {},
+    },
+  };
+}
+
+/** audit 承認が前段ガードを通過する最小 store 状態（非麻薬）。 */
+function auditReadyState() {
+  return {
+    selId: 'patient_1',
+    model: {
+      patient_1: [
+        {
+          gid: 'group_1',
+          label: '朝食後',
+          method: '一包化',
+          start: '2026-06-17',
+          days: 1,
+          drugs: [plainDrug({ did: 'line_1', name: 'アムロジピン錠5mg' })],
+        },
+      ],
+    },
+    done: { line_1: true },
+    audit: { line_1: true },
+    writeContext: {
+      taskId: 'task_1',
+      cycleId: 'cycle_1',
+      cycleVersion: 4,
+      planId: null,
+      lineGroupByDid: {},
+      groupIdByGid: {},
+      cellMeta: {},
+    },
+  };
+}
+
+/** audit 承認が前段ガードを通過する最小 store 状態（麻薬 line を含む）。 */
+function auditNarcoticReadyState() {
+  return {
+    selId: 'patient_1',
+    model: {
+      patient_1: [
+        {
+          gid: 'group_1',
+          label: '朝食後',
+          method: '一包化',
+          start: '2026-06-17',
+          days: 1,
+          drugs: [
+            plainDrug({ did: 'line_plain', name: 'アムロジピン錠5mg' }),
+            plainDrug({
+              did: 'line_narcotic',
+              name: 'モルヒネ徐放錠',
+              tag: '麻薬',
+              dispensedQuantity: 12,
+              isNarcotic: true,
+            }),
+          ],
+        },
+      ],
+    },
+    done: { line_plain: true, line_narcotic: true },
+    audit: { line_plain: true, line_narcotic: true },
+    auditDoubleCountByDid: { line_narcotic: { first: '12', second: '12' } },
+    writeContext: {
+      taskId: 'task_1',
+      cycleId: 'cycle_1',
+      cycleVersion: 4,
+      planId: null,
+      lineGroupByDid: {},
+      groupIdByGid: {},
+      cellMeta: {},
+    },
+  };
+}
+
+/** set-audit 承認が前段ガードを通過する最小 store 状態。 */
+function setaReadyState() {
+  const key = 'patient_1:0:朝';
+  return {
+    selId: 'patient_1',
+    model: {
+      patient_1: [
+        {
+          gid: 'group_1',
+          label: '朝食後',
+          method: '一包化',
+          start: '2026-06-17',
+          days: 1,
+          calendarStart: '2026-06-17',
+          calendarDayCount: 1,
+          drugs: [plainDrug({ did: 'line_1', name: 'アムロジピン錠5mg' })],
+        },
+      ],
+    },
+    setCells: { [key]: 'set' },
+    auditCells: { [key]: 'ok' },
+    checks: {
+      [`${key}:0`]: true,
+      [`${key}:1`]: true,
+      [`${key}:2`]: true,
+      [`${key}:3`]: true,
+      [`${key}:4`]: true,
+      [`${key}:5`]: true,
+    },
+    packet: { 'patient_1:cal': true, 'patient_1:doc': true, 'patient_1:note': true },
+    ng: { [key]: '薬剤違い' },
+    writeContext: {
+      taskId: null,
+      cycleId: 'cycle_1',
+      cycleVersion: 4,
+      planId: 'plan_1',
+      lineGroupByDid: {},
+      groupIdByGid: {},
+      cellMeta: {
+        [key]: { batchIds: ['batch_1'], versions: [7], dayNumber: 1, slot: 'morning' },
+      },
+    },
+  };
+}
+
+describe('useWorkbenchWriteHandlers confirm gating (S0 request/commit split)', () => {
+  afterEach(() => {
+    vi.doUnmock('./dispensing-workbench.adapter');
+    vi.resetModules();
+    toastErrorMock.mockReset();
+    window.localStorage.clear();
+  });
+
+  // ── §5-1 前段ガード: onPrimary は mutate せず descriptor 付きで confirm を要求する ──
+
+  it('dispense onPrimary requests confirmation without mutating', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeDispense = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(dispenseReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ completeDispense }),
+        onRequestConfirm,
+      }),
+    );
+
+    let nextPhase: unknown;
+    act(() => {
+      nextPhase = result.current.onPrimary();
+    });
+
+    expect(nextPhase).toBeNull();
+    expect(completeDispense.mutate).not.toHaveBeenCalled();
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+    expect(onRequestConfirm.mock.calls[0][0]).toMatchObject({ phase: 'dispense', next: 'audit' });
+  });
+
+  it('audit onPrimary requests confirmation without mutating', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeAudit = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(auditReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'audit',
+        mutations: fakeMutations({ completeAudit }),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+
+    expect(completeAudit.mutate).not.toHaveBeenCalled();
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+    expect(onRequestConfirm.mock.calls[0][0]).toMatchObject({
+      phase: 'audit',
+      next: 'setp',
+      narcoticLines: [],
+    });
+  });
+
+  it('set-audit onPrimary requests confirmation without mutating', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(setaReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+    expect(onRequestConfirm.mock.calls[0][0]).toMatchObject({ phase: 'seta', next: 'seta' });
+  });
+
+  // ── §5-2 confirm 後のみ commit: commitPrimary は正 payload で 1 回だけ mutate する ──
+
+  it('dispense commitPrimary submits exactly once with expected_version', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeDispense = mutationStub((_input, options) => options?.onSuccess?.({}));
+    const onAdvance = vi.fn();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(dispenseReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ completeDispense }),
+        onAdvance,
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    act(() => {
+      result.current.commitPrimary(descriptor);
+    });
+
+    expect(completeDispense.mutate).toHaveBeenCalledTimes(1);
+    expect(completeDispense.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task_id: 'task_1',
+        expected_version: 4,
+        lines: expect.arrayContaining([expect.objectContaining({ line_id: 'line_1' })]),
+      }),
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+    expect(onAdvance).toHaveBeenCalledWith('audit');
+  });
+
+  it('audit commitPrimary submits exactly once with expected_version', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeAudit = mutationStub((_input, options) => options?.onSuccess?.({}));
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(auditReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'audit',
+        mutations: fakeMutations({ completeAudit }),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    act(() => {
+      result.current.commitPrimary(descriptor);
+    });
+
+    expect(completeAudit.mutate).toHaveBeenCalledTimes(1);
+    expect(completeAudit.mutate).toHaveBeenCalledWith(
+      { task_id: 'task_1', result: 'approved', expected_version: 4 },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+  });
+
+  it('set-audit commitPrimary submits exactly once with per-cell expected_version', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub((_input, options) => options?.onSuccess?.({}));
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(setaReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    act(() => {
+      result.current.commitPrimary(descriptor);
+    });
+
+    expect(setAudit.mutate).toHaveBeenCalledTimes(1);
+    expect(setAudit.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        plan_id: 'plan_1',
+        result: 'approved',
+        cell_audits: expect.arrayContaining([
+          expect.objectContaining({ batch_id: 'batch_1', audit_state: 'ok', expected_version: 7 }),
+        ]),
+      }),
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+  });
+
+  // ── §5-3 cancel/Escape 相当: 確定しなければ書込スライスは無変化（target は対象外 / C5）──
+
+  it('cancelling (no commit) leaves clinical write slices unchanged and never mutates', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(setaReadyState());
+    });
+
+    const before = useWorkbenchStore.getState();
+    const snapshot = {
+      done: { ...before.done },
+      audit: { ...before.audit },
+      setCells: { ...before.setCells },
+      auditCells: { ...before.auditCells },
+      checks: { ...before.checks },
+      ng: { ...before.ng },
+    };
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestConfirm,
+      }),
+    );
+
+    // request 段のみ（= ダイアログを開く）。commitPrimary は呼ばない（cancel/Escape 相当）。
+    act(() => {
+      result.current.onPrimary();
+    });
+
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    const after = useWorkbenchStore.getState();
+    expect(after.done).toEqual(snapshot.done);
+    expect(after.audit).toEqual(snapshot.audit);
+    expect(after.setCells).toEqual(snapshot.setCells);
+    expect(after.auditCells).toEqual(snapshot.auditCells);
+    expect(after.checks).toEqual(snapshot.checks);
+    expect(after.ng).toEqual(snapshot.ng);
+  });
+
+  // ── §5-4 検証 NG は confirm を開かない（onRequestConfirm 未呼出・toast.error のみ）──
+
+  it('dispense validation failure does not open confirmation', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeDispense = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({ ...dispenseReadyState(), quantityConfirmedByDid: {} });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ completeDispense }),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+
+    expect(onRequestConfirm).not.toHaveBeenCalled();
+    expect(completeDispense.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(UNCONFIRMED_DISPENSE_QUANTITY_MESSAGE);
+  });
+
+  it('audit narcotic double-count mismatch does not open confirmation', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeAudit = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        ...auditNarcoticReadyState(),
+        auditDoubleCountByDid: { line_narcotic: { first: '12', second: '' } },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'audit',
+        mutations: fakeMutations({ completeAudit }),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+
+    expect(onRequestConfirm).not.toHaveBeenCalled();
+    expect(completeAudit.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(INVALID_AUDIT_DOUBLE_COUNT_MESSAGE);
+  });
+
+  it('set-audit incomplete carry packet evidence does not open confirmation', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({ ...setaReadyState(), packet: { 'patient_1:cal': true } });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+
+    expect(onRequestConfirm).not.toHaveBeenCalled();
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(INCOMPLETE_CARRY_PACKET_MESSAGE);
+  });
+
+  // ── §5-5 麻薬分岐: descriptor.narcoticLines は麻薬 line のみ（非麻薬は空）──
+
+  it('audit descriptor carries only narcotic lines when a narcotic is present', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(auditNarcoticReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'audit',
+        mutations: fakeMutations(),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    expect(descriptor.phase).toBe('audit');
+    // 非麻薬 line（line_plain）は含めず、麻薬 line のみ。
+    expect(descriptor.phase === 'audit' && descriptor.narcoticLines).toEqual([
+      {
+        line_id: 'line_narcotic',
+        drug_name: 'モルヒネ徐放錠',
+        dispensed_quantity: 12,
+        first_count: 12,
+        second_count: 12,
+      },
+    ]);
+  });
+
+  it('audit descriptor narcoticLines is empty when no narcotic is present', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(auditReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'audit',
+        mutations: fakeMutations(),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    expect(descriptor.phase === 'audit' && descriptor.narcoticLines).toEqual([]);
+  });
+
+  // ── §5-7 commit 直前に store が NG へ変わると mutate せず toast.error ──
+
+  it('commitPrimary re-validates and aborts when the store drifts to an invalid state', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeDispense = mutationStub();
+    const onAdvance = vi.fn();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(dispenseReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ completeDispense }),
+        onAdvance,
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+
+    // 確認中に背景 refetch 等で数量確認が外れた状態を再現。
+    act(() => {
+      useWorkbenchStore.setState({ quantityConfirmedByDid: {} });
+    });
+
+    act(() => {
+      result.current.commitPrimary(descriptor);
+    });
+
+    expect(completeDispense.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(UNCONFIRMED_DISPENSE_QUANTITY_MESSAGE);
+    expect(onAdvance).not.toHaveBeenCalled();
+  });
+
+  // ── §5-8 F-key ガード ──
+  // F8-F12（phaseDispense/phaseAudit/phaseSet/phaseSetAudit/next）の no-op ガードは
+  // dispensing-workbench.tsx の runAction（pendingPrimary !== null 早期 return,
+  // 同ファイル ~320-329 行）に実装される component-internal ロジックで、runAction /
+  // buildPrimaryConfirm は export されていないため hook 単体からは直接観測できない
+  // （実装変更は本タスクの禁止事項のため export 追加もしない）。
+  // ここでは、そのガードが依存する hook 側の前提条件 = real-data の onPrimary が
+  // 「ナビを返さず（null）pendingPrimary を立てる」契約を固定する。pendingPrimary が
+  // 非 null になることで runAction の F-key 早期 return が発火する。
+  it('onPrimary returns null and raises pendingPrimary, the precondition for the F-key guard', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(dispenseReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations(),
+        onRequestConfirm,
+      }),
+    );
+
+    // F12（runAction('next')）→ onPrimary。real-data では遷移用の値を返さない（null）。
+    let nextPhase: unknown;
+    act(() => {
+      nextPhase = result.current.onPrimary();
+    });
+
+    // null のため runAction('next') の `if (nextPhase) router.push` は no-op。
+    expect(nextPhase).toBeNull();
+    // pendingPrimary（= onRequestConfirm の引数）が立つので以降の F8-F12 が runAction で抑止される。
+    expect(onRequestConfirm).toHaveBeenCalledTimes(1);
   });
 });

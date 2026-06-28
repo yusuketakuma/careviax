@@ -1,6 +1,12 @@
 'use client';
 
-import { type ReactNode, useId, useState } from 'react';
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +32,13 @@ interface ConfirmDialogProps {
   requiredConfirmText?: string;
   confirmDisabled?: boolean;
   closeOnConfirm?: boolean;
+  /**
+   * 開封時に確定操作へフォーカスを寄せ、Enter で確定できるようにする（不可逆 sign-off 用）。
+   * `requiredConfirmText` 無し: 確定ボタンへ自動フォーカスし Enter で確定。
+   * `requiredConfirmText` 有り: 確認入力欄へ自動フォーカスし、一致時のみ Enter で確定（IME 変換確定中は除外）。
+   * 既定 false では従来挙動（Base UI 既定のフォーカス）を完全保持する。
+   */
+  autoFocusConfirm?: boolean;
   children?: ReactNode;
   onConfirm: () => void;
 }
@@ -41,11 +54,14 @@ export function ConfirmDialog({
   requiredConfirmText,
   confirmDisabled = false,
   closeOnConfirm = true,
+  autoFocusConfirm = false,
   children,
   onConfirm,
 }: ConfirmDialogProps) {
   const [inputValue, setInputValue] = useState('');
   const confirmInputId = useId();
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmInputRef = useRef<HTMLInputElement>(null);
 
   const isConfirmDisabled =
     confirmDisabled || (requiredConfirmText !== undefined && inputValue !== requiredConfirmText);
@@ -66,7 +82,11 @@ export function ConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={handleOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent
+        {...(autoFocusConfirm
+          ? { initialFocus: requiredConfirmText !== undefined ? confirmInputRef : confirmButtonRef }
+          : {})}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
@@ -84,9 +104,20 @@ export function ConfirmDialog({
               と入力してください
             </Label>
             <Input
+              ref={confirmInputRef}
               id={confirmInputId}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
+              {...(autoFocusConfirm
+                ? {
+                    onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
+                      if (e.key === 'Enter' && !e.nativeEvent.isComposing && !isConfirmDisabled) {
+                        e.preventDefault();
+                        handleConfirm();
+                      }
+                    },
+                  }
+                : {})}
               placeholder={requiredConfirmText}
               autoComplete="off"
             />
@@ -96,7 +127,18 @@ export function ConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
+            ref={confirmButtonRef}
             onClick={handleConfirm}
+            {...(autoFocusConfirm
+              ? {
+                  onKeyDown: (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+                    if (e.key === 'Enter' && !isConfirmDisabled) {
+                      e.preventDefault();
+                      handleConfirm();
+                    }
+                  },
+                }
+              : {})}
             disabled={isConfirmDisabled}
             className={
               variant === 'destructive'

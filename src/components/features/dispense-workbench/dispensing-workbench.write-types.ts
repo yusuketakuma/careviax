@@ -335,6 +335,27 @@ export interface SubmitSetAuditInput {
   }>;
 }
 
+// ============================================================================
+// 不可逆 sign-off 確認（ConfirmDialog gating / S0）
+// ============================================================================
+
+/**
+ * 監査承認時に二重計数を確認すべき麻薬 line（confirm ダイアログ表示用）。
+ * `collectDispenseAuditDoubleCount()` の戻り要素を再利用する
+ * （line_id / drug_name / dispensed_quantity / first_count / second_count）。
+ */
+export type AuditNarcoticLine = NonNullable<SubmitDispenseAuditInput['double_count']>[number];
+
+/**
+ * 確認待ちの主操作（不可逆 sign-off）。real-data の onPrimary が request 段で生成し、
+ * ConfirmDialog の onConfirm から commitPrimary が消費する。
+ * setp（セット完了→監査）は可逆ナビゲーションのため S0 では対象外（除外）。
+ */
+export type PendingPrimary =
+  | { phase: 'dispense'; next: Phase }
+  | { phase: 'audit'; next: Phase; narcoticLines: AuditNarcoticLine[] } // 空配列=非麻薬
+  | { phase: 'seta'; next: Phase };
+
 export interface CreateCycleHoldInput {
   cycle_id: string;
   phase: Phase | string;

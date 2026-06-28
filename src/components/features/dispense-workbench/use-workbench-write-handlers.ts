@@ -45,6 +45,7 @@ import {
   type SetAuditChecklistKey,
   type CellMutationTarget,
   type DispenseResultLineInput,
+  type PendingPrimary,
   type SubmitDispenseAuditInput,
   type SubmitSetAuditInput,
 } from './dispensing-workbench.write-types';
@@ -117,8 +118,17 @@ export interface WorkbenchWriteHandlers {
   onAddGroup: () => void;
   /** 一括処理（フェーズ依存・全調剤済 / 全監査OK / 全セット / 全OK）。 */
   onBulk: () => void;
-  /** 主操作（次工程へ）。ゲート通過時のみ次 phase を返す（遷移は呼び出し側）。 */
+  /**
+   * 主操作（次工程へ）。real-data の不可逆 sign-off（dispense/audit/seta）では前段ゲート通過時に
+   * 確定書込を発火せず onRequestConfirm(descriptor) で ConfirmDialog を要求し null を返す。
+   * demo（mock）はゲート通過時に次 phase を返す（遷移は呼び出し側）。
+   */
   onPrimary: () => Phase | null;
+  /**
+   * ConfirmDialog 確定時の確定書込（real-data のみ）。snap() で再取得しゲートを再検証してから
+   * mutate し、成功で onAdvance(descriptor.next)・失敗でロールバックする。
+   */
+  commitPrimary: (descriptor: PendingPrimary) => void;
 
   // ── カレンダー（setp）──
   /** セルを選択。 */
@@ -549,8 +559,10 @@ export function useWorkbenchWriteHandlers(args: {
   phase: Phase;
   mutations: WorkbenchMutations;
   onAdvance?: (phase: Phase) => void;
+  /** real-data の不可逆 sign-off で ConfirmDialog を要求する（descriptor を親 state に積む）。 */
+  onRequestConfirm?: (descriptor: PendingPrimary) => void;
 }): WorkbenchWriteHandlers {
-  const { phase, mutations, onAdvance } = args;
+  const { phase, mutations, onAdvance, onRequestConfirm } = args;
 
   // store アクション（楽観更新 / モック挙動の正本）。
   const toggleRow = useWorkbenchStore((s) => s.toggleRow);
@@ -628,6 +640,121 @@ export function useWorkbenchWriteHandlers(args: {
         return !!s.writeContext.taskId && s.writeContext.cycleVersion !== null;
       }
       return !!s.writeContext.planId;
+    };
+    const reportDispenseQuantityIssues = (
+      issues: ReturnType<typeof collectDispenseQuantityIssues>,
+    ) => {
+      toast.error(
+        issues.some((issue) => issue.reason === 'prescribed_quantity_required')
+          ? UNRESOLVED_DISPENSE_QUANTITY_MESSAGE
+          : issues.some((issue) => issue.reason === 'actual_quantity_invalid')
+            ? INVALID_DISPENSE_QUANTITY_MESSAGE
+            : issues.some((issue) => issue.reason === 'discrepancy_reason_required')
+              ? DISCREPANCY_REASON_REQUIRED_MESSAGE
+              : UNCONFIRMED_DISPENSE_QUANTITY_MESSAGE,
+      );
+    };
+    /**
+     * ConfirmDialog 確定時の確定書込（real-data のみ）。
+     * C7: snap() 再取得 → issue collector + writeContext 存在を再検証（NG は toast + return、mutate せず）。
+     * 親の ConfirmDialog は closeOnConfirm でダイアログを閉じ pendingPrimary をクリアする。
+     * mutate 前に書込スライスは変異させない（成功/失敗で onAdvance / ロールバックのみ）。
+     */
+    const commitPrimary = (descriptor: PendingPrimary) => {
+      if (!isRealDataEnabled()) return;
+      const s = snap();
+      if (descriptor.phase === 'dispense') {
+        if (!s.writeContext.taskId || s.writeContext.cycleVersion === null) {
+          reportMissingWriteContext();
+          return;
+        }
+        const quantityIssues = collectDispenseQuantityIssues(s);
+        if (quantityIssues.length > 0) {
+          reportDispenseQuantityIssues(quantityIssues);
+          return;
+        }
+        const lines = collectDispenseLines(s);
+        const submittedLineIds = lines.map((line) => line.line_id);
+        mutations.completeDispense.mutate(
+          {
+            task_id: s.writeContext.taskId,
+            lines,
+            expected_version: s.writeContext.cycleVersion,
+          },
+          {
+            onSuccess: () => onAdvance?.(descriptor.next),
+            onError: () => {
+              useWorkbenchStore.setState((state) => ({
+                done: clearBooleanKeys(state.done, submittedLineIds),
+              }));
+            },
+          },
+        );
+        return;
+      }
+      if (descriptor.phase === 'audit') {
+        if (!s.writeContext.taskId || s.writeContext.cycleVersion === null) {
+          reportMissingWriteContext();
+          return;
+        }
+        const doubleCountIssues = collectDispenseAuditDoubleCountIssues(s);
+        if (doubleCountIssues.length > 0) {
+          toast.error(INVALID_AUDIT_DOUBLE_COUNT_MESSAGE);
+          return;
+        }
+        const doubleCount = collectDispenseAuditDoubleCount(s);
+        const submittedLineIds = Object.keys(s.audit).filter((lineId) => s.audit[lineId]);
+        mutations.completeAudit.mutate(
+          {
+            task_id: s.writeContext.taskId,
+            result: 'approved',
+            expected_version: s.writeContext.cycleVersion,
+            ...(doubleCount.length > 0 ? { double_count: doubleCount } : {}),
+          },
+          {
+            onSuccess: () => onAdvance?.(descriptor.next),
+            onError: () => {
+              useWorkbenchStore.setState((state) => ({
+                audit: clearBooleanKeys(state.audit, submittedLineIds),
+              }));
+            },
+          },
+        );
+        return;
+      }
+      // seta
+      if (!s.writeContext.planId) {
+        reportMissingWriteContext();
+        return;
+      }
+      const patientId = s.selId;
+      const cellAudits = collectSetAuditCellAudits(s, 'ok');
+      const carryPacketEvidence = collectCarryPacketEvidence(s);
+      if (!carryPacketEvidence) {
+        toast.error(
+          '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
+        );
+        return;
+      }
+      mutations.setAudit.mutate(
+        {
+          plan_id: s.writeContext.planId,
+          result: 'approved',
+          checklist: collectSetAuditChecklist(s),
+          carry_packet_evidence: carryPacketEvidence,
+          ...(cellAudits.length > 0 ? { cell_audits: cellAudits } : {}),
+        },
+        {
+          onSuccess: () => onAdvance?.(descriptor.next),
+          onError: () => {
+            useWorkbenchStore.setState((state) => ({
+              auditCells: removePatientPrefixed(state.auditCells, patientId),
+              checks: removePatientPrefixed(state.checks, patientId),
+              ng: removePatientPrefixed(state.ng, patientId),
+            }));
+          },
+        },
+      );
     };
 
     return {
@@ -1009,111 +1136,54 @@ export function useWorkbenchWriteHandlers(args: {
             return null;
           }
         }
+        // primary(phase) はゲート判定＋next 算出に必須（target クリア副作用込み）。
         const next = primary(phase);
-        if (next) {
-          // ゲート通過時のみ確定書込（調剤完了 / セット監査承認）を発火。
-          if (isRealDataEnabled()) {
-            const s = snap();
-            if (
-              phase === 'dispense' &&
-              s.writeContext.taskId &&
-              s.writeContext.cycleVersion !== null
-            ) {
-              const quantityIssues = collectDispenseQuantityIssues(s);
-              if (quantityIssues.length > 0) {
-                toast.error(
-                  quantityIssues.some((issue) => issue.reason === 'prescribed_quantity_required')
-                    ? UNRESOLVED_DISPENSE_QUANTITY_MESSAGE
-                    : quantityIssues.some((issue) => issue.reason === 'actual_quantity_invalid')
-                      ? INVALID_DISPENSE_QUANTITY_MESSAGE
-                      : quantityIssues.some(
-                            (issue) => issue.reason === 'discrepancy_reason_required',
-                          )
-                        ? DISCREPANCY_REASON_REQUIRED_MESSAGE
-                        : UNCONFIRMED_DISPENSE_QUANTITY_MESSAGE,
-                );
-                return null;
-              }
-              const lines = collectDispenseLines(s);
-              const submittedLineIds = lines.map((line) => line.line_id);
-              mutations.completeDispense.mutate(
-                {
-                  task_id: s.writeContext.taskId,
-                  lines,
-                  expected_version: s.writeContext.cycleVersion,
-                },
-                {
-                  onSuccess: () => onAdvance?.(next),
-                  onError: () => {
-                    useWorkbenchStore.setState((state) => ({
-                      done: clearBooleanKeys(state.done, submittedLineIds),
-                    }));
-                  },
-                },
-              );
-            } else if (
-              phase === 'audit' &&
-              s.writeContext.taskId &&
-              s.writeContext.cycleVersion !== null
-            ) {
-              const doubleCountIssues = collectDispenseAuditDoubleCountIssues(s);
-              if (doubleCountIssues.length > 0) {
-                toast.error(INVALID_AUDIT_DOUBLE_COUNT_MESSAGE);
-                return null;
-              }
-              const doubleCount = collectDispenseAuditDoubleCount(s);
-              const submittedLineIds = Object.keys(s.audit).filter((lineId) => s.audit[lineId]);
-              mutations.completeAudit.mutate(
-                {
-                  task_id: s.writeContext.taskId,
-                  result: 'approved',
-                  expected_version: s.writeContext.cycleVersion,
-                  ...(doubleCount.length > 0 ? { double_count: doubleCount } : {}),
-                },
-                {
-                  onSuccess: () => onAdvance?.(next),
-                  onError: () => {
-                    useWorkbenchStore.setState((state) => ({
-                      audit: clearBooleanKeys(state.audit, submittedLineIds),
-                    }));
-                  },
-                },
-              );
-            } else if (phase === 'seta' && s.writeContext.planId) {
-              const patientId = s.selId;
-              const cellAudits = collectSetAuditCellAudits(s, 'ok');
-              const carryPacketEvidence = collectCarryPacketEvidence(s);
-              if (!carryPacketEvidence) {
-                toast.error(
-                  '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
-                );
-                return null;
-              }
-              mutations.setAudit.mutate(
-                {
-                  plan_id: s.writeContext.planId,
-                  result: 'approved',
-                  checklist: collectSetAuditChecklist(s),
-                  carry_packet_evidence: carryPacketEvidence,
-                  ...(cellAudits.length > 0 ? { cell_audits: cellAudits } : {}),
-                },
-                {
-                  onSuccess: () => onAdvance?.(next),
-                  onError: () => {
-                    useWorkbenchStore.setState((state) => ({
-                      auditCells: removePatientPrefixed(state.auditCells, patientId),
-                      checks: removePatientPrefixed(state.checks, patientId),
-                      ng: removePatientPrefixed(state.ng, patientId),
-                    }));
-                  },
-                },
-              );
+        if (next && isRealDataEnabled()) {
+          // request 段: 前段ガードのみ実行し、OK で書込せず ConfirmDialog を要求して null を返す。
+          // mutate は commitPrimary（ダイアログ確定）でのみ発火する。
+          const s = snap();
+          if (
+            phase === 'dispense' &&
+            s.writeContext.taskId &&
+            s.writeContext.cycleVersion !== null
+          ) {
+            const quantityIssues = collectDispenseQuantityIssues(s);
+            if (quantityIssues.length > 0) {
+              reportDispenseQuantityIssues(quantityIssues);
+              return null;
             }
-            return null;
+            onRequestConfirm?.({ phase: 'dispense', next });
+          } else if (
+            phase === 'audit' &&
+            s.writeContext.taskId &&
+            s.writeContext.cycleVersion !== null
+          ) {
+            const doubleCountIssues = collectDispenseAuditDoubleCountIssues(s);
+            if (doubleCountIssues.length > 0) {
+              toast.error(INVALID_AUDIT_DOUBLE_COUNT_MESSAGE);
+              return null;
+            }
+            onRequestConfirm?.({
+              phase: 'audit',
+              next,
+              narcoticLines: collectDispenseAuditDoubleCount(s),
+            });
+          } else if (phase === 'seta' && s.writeContext.planId) {
+            const carryPacketEvidence = collectCarryPacketEvidence(s);
+            if (!carryPacketEvidence) {
+              toast.error(
+                '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
+              );
+              return null;
+            }
+            onRequestConfirm?.({ phase: 'seta', next });
           }
+          // real-data はナビを commit の onAdvance に一本化するため常に null を返す。
+          return null;
         }
         return next;
       },
+      commitPrimary,
 
       // ── カレンダー（setp）──
       onSelectCell: (di, tk) => selectCell(di, tk),
@@ -1360,6 +1430,7 @@ export function useWorkbenchWriteHandlers(args: {
     openHold,
     saveHold,
     onAdvance,
+    onRequestConfirm,
   ]);
 }
 
