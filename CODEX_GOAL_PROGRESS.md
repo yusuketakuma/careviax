@@ -23,6 +23,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Shared Empty State / DataTable Medical UI Primitive Hardening
+
+- Coordination:
+  - Followed the user's latest direction to keep the main Codex agent available for Claude/agmsg and delegate implementation/review work to Codex subagents where practical.
+  - Drained `phos/codex` repeatedly. When Claude sent the cockpit performance consultation, Codex paused UI verification, checked local Prisma 7.8 / `@prisma/adapter-pg` state plus current Prisma docs, and replied with a backend recommendation without touching Claude-owned `src/app/api/dashboard/cockpit/route.ts` or `.perf-mint-token.ts`.
+  - Code mapper, verifier, and UI flow tester subagents were used for non-overlapping slice selection, focused validation, and screenshot evidence. Completed agents were closed after their results were integrated.
+- Updated the UI/UX SSOT before continuing implementation:
+  - Added the 2026-06-28 research addendum to `docs/ui-ux-design-guidelines.md`, binding PH-OS UI work to SAFER-first risk prioritization, NIST use-risk design, NHS/VA public-health layout conventions, safety-critical visual display principles, and Next.js route accessibility.
+  - Added adopted screen skeletons for worklists, patient/detail context, admin workbenches, and mobile visit workflows, plus screenshot and state-separation gates.
+- Hardened shared empty-state primitives:
+  - `EmptyState` now supports semantic heading levels, optional guidance copy, `role="status"`, `aria-live="polite"`, safer card tone, responsive padding, and text wrapping via a bounded text block.
+  - `DataTable` now renders shared `EmptyState` for desktop and mobile empty rows, separates true empty data from filtered-empty results, and keeps fetch errors distinct from real empty results.
+  - Mobile DataTable empty-state spacing was compacted so the fixed bottom navigation no longer overlaps the visible state container on `/admin/institutions`.
+- Bugs fixed:
+  - Shared table empty rows were plain text instead of semantic status content.
+  - Search/filter zero results could be visually indistinguishable from true empty data.
+  - Fetch failures could be perceived as an empty list unless the surrounding error alert was noticed.
+  - `/admin/institutions` mobile true-empty content initially overlapped the bottom nav; final measurement proved the visible empty-state bottom `775.59px` is above nav top `779px`.
+- Security/privacy risk reduced:
+  - No auth, authorization, PHI transport, DB, migration, external send, or data persistence surface changed.
+  - The UI now lowers false-empty/false-zero interpretation risk in medical worklists by making error, filtered empty, and true empty states visually and semantically distinct.
+- Performance issue improved: none. This is a shared UI primitive update with no new DB reads/writes, network calls, polling, dependencies, or render-heavy computation.
+- Validation passed:
+  - `pnpm exec prettier --write src/components/ui/empty-state.tsx src/components/ui/empty-state.test.tsx src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`: passed.
+  - `pnpm exec vitest run src/components/ui/empty-state.test.tsx src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`: passed, `2` files / `7` tests.
+  - `pnpm exec eslint src/components/ui/empty-state.tsx src/components/ui/empty-state.test.tsx src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`: passed.
+  - `pnpm exec prettier --check docs/ui-ux-design-guidelines.md src/components/ui/empty-state.tsx src/components/ui/empty-state.test.tsx src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`: passed.
+  - `git diff --check -- docs/ui-ux-design-guidelines.md src/components/ui/empty-state.tsx src/components/ui/empty-state.test.tsx src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - Route-mocked Playwright checks on the existing `localhost:3012` server produced `/tmp/careviax-uiux-20260628-institutions-empty-desktop-final-v2.png` and `/tmp/careviax-uiux-20260628-institutions-empty-mobile-final-v5.png`; console warnings/errors were empty and only mocked GET routes were fulfilled.
+  - UI flow tester subagent also verified true empty and filtered empty screenshots under `/tmp/careviax-empty-state-verify/`, with no mutation attempts.
+- Commit status: implementation/state commit pending; stage only the owned docs/UI primitive files. Preserve unrelated dirty files and Claude-owned cockpit performance instrumentation.
+- Next action: commit this owned slice if explicit-path staging remains clean, send Claude a review/FYI message, then continue to the next non-conflicting backend/API helper hardening slice.
+
 ### 2026-06-28 JST - Prescriber Institutions Admin API Path Helper Convergence
 
 - Coordination:
