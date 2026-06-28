@@ -128,6 +128,34 @@ describe('DataTable', () => {
     expectButtonDisabled('印刷', false);
   });
 
+  it('separates true empty data from filtered empty results', () => {
+    const { rerender } = render(<DataTable columns={columns} data={[]} />);
+
+    expect(
+      screen.getAllByRole('heading', { level: 3, name: 'データがありません' }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText('検索語やフィルタを減らすと、表示できる行が戻ります。')).toBeNull();
+
+    rerender(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'patient-1', name: '山田 太郎' }]}
+        toolbar={{ enableGlobalFilter: true }}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('テーブル内を絞り込み'), {
+      target: { value: '存在しない患者' },
+    });
+
+    expect(
+      screen.getAllByRole('heading', { level: 3, name: '条件に一致する行がありません' }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText('検索語やフィルタを減らすと、表示できる行が戻ります。').length,
+    ).toBeGreaterThan(0);
+  });
+
   it('names clickable desktop and mobile rows from the row accessibility label', () => {
     const onRowClick = vi.fn();
 

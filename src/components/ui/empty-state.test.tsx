@@ -9,9 +9,19 @@ setupDomTestEnv();
 
 describe('EmptyState', () => {
   it('shows its description without hiding the next action guidance', () => {
-    render(<EmptyState title="データなし" description="条件を変更してください。" />);
+    render(
+      <EmptyState
+        title="データなし"
+        description="条件を変更してください。"
+        guidance="再読み込み後も続く場合は権限を確認してください。"
+        headingLevel={2}
+      />,
+    );
 
+    expect(screen.getByRole('status').getAttribute('aria-live')).toBe('polite');
+    expect(screen.getByRole('heading', { level: 2, name: 'データなし' })).toBeTruthy();
     expect(screen.getByText('条件を変更してください。')).toBeTruthy();
+    expect(screen.getByText('再読み込み後も続く場合は権限を確認してください。')).toBeTruthy();
   });
 
   it('uses the shared button styling for link actions', () => {

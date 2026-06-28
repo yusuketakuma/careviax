@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { EmptyState } from '@/components/ui/empty-state';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -289,6 +290,19 @@ export function DataTable<TData>({
   const displayedEmptyMessage = errorMessage
     ? '取得エラーのため一覧を表示できません'
     : emptyMessage;
+  const hasActiveFilters =
+    globalFilter.trim().length > 0 ||
+    columnFilters.some((filter) => String(filter.value ?? '').trim().length > 0);
+  const emptyStateTitle = errorMessage
+    ? displayedEmptyMessage
+    : hasActiveFilters
+      ? '条件に一致する行がありません'
+      : displayedEmptyMessage;
+  const emptyStateDescription = errorMessage
+    ? '取得失敗は空状態とは別です。再読み込み、権限、接続状態を確認してください。'
+    : hasActiveFilters
+      ? '検索語やフィルタを減らすと、表示できる行が戻ります。'
+      : '登録済みの行がある場合は、再読み込みしてください。';
 
   function handleExport() {
     if (toolbarActionsDisabled) return;
@@ -518,9 +532,15 @@ export function DataTable<TData>({
                 <tr>
                   <td
                     colSpan={table.getVisibleLeafColumns().length}
-                    className="px-4 py-12 text-center text-sm text-muted-foreground"
+                    className="px-4 py-8 text-center"
                   >
-                    {displayedEmptyMessage}
+                    <EmptyState
+                      icon={Search}
+                      title={emptyStateTitle}
+                      description={emptyStateDescription}
+                      headingLevel={3}
+                      className="border-0 bg-transparent p-6"
+                    />
                   </td>
                 </tr>
               ) : (
@@ -589,7 +609,13 @@ export function DataTable<TData>({
             </div>
           ))
         ) : table.getRowModel().rows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{displayedEmptyMessage}</p>
+          <EmptyState
+            icon={Search}
+            title={emptyStateTitle}
+            description={emptyStateDescription}
+            headingLevel={3}
+            className="mb-32 gap-1 p-2.5 [&_p]:text-xs [&_p]:leading-5"
+          />
         ) : (
           table.getRowModel().rows.map((row) => {
             const visibleCells = row
