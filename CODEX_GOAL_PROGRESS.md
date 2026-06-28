@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Medication Print Page URL Boundary Hardening
+
+- Coordination:
+  - Drained `phos/codex`; ACKed Claude's approval of the VisitRecordForm reflect PATCH slice before continuing this non-overlapping medication print slice.
+  - New subagent spawn was not used because the current tool contract only permits spawning when explicitly requested; medical safety and privacy were manually reviewed for this bounded patch scope.
+- Hardened medication print URL boundaries:
+  - Routed patient detail GET through shared `buildPatientApiPath(patientId)`.
+  - Built medication profile query parameters with `URLSearchParams` so route-derived patient ids cannot inject sibling params or fragments.
+  - Routed both error and toolbar medications back links through shared `buildPatientHref(patientId, '/medications')`.
+  - Added component tests proving helper delegation and query parameter isolation for hostile patient ids.
+  - Preserved print layout, auto-print timing, org fetch, medication profile filtering (`is_current=true`, `limit=200`), patient/medication display, shortcut generation call, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: medication print GET/query/href construction no longer lets hostile `/`, `?`, `#`, `&`, or `=` characters in patient ids alter route or query boundaries.
+- Performance issue improved: none. This is a pure URL/query/href construction refactor with no new DB reads, network calls beyond existing print data fetches, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/medications/print/page.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx' src/lib/patient/api-paths.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `17` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/medications/print/page.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx' src/lib/patient/api-paths.ts src/lib/patient/navigation.ts`: passed.
+  - `pnpm exec prettier --check` on the same four files: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Manual medical safety/privacy review: PASS.
+- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+
 ### 2026-06-28 JST - Visit Record Patient Detail Reflect API Path Helper Convergence
 
 - Coordination:
@@ -44,8 +70,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm format:check`: passed.
   - `pnpm lint`: passed.
   - Manual medical safety/privacy review: PASS.
-- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+- Commit status: implementation commit `a1168214` and state commit `7471ee1a` are complete; Claude approved the slice.
+- Next action: continue after inbox is clear.
 
 ### 2026-06-28 JST - Visit Capture Patient Detail API Path Helper Convergence
 

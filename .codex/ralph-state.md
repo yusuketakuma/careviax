@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0955 JST
+
+- current task: medication print page URL-boundary hardening.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `MedicationPrintPage`, raw patient path/href scan output, `src/app/(dashboard)/patients/[id]/medications/print/page.tsx`, comparable print page tests under `visit-records/print` and `management-plan/print`, `src/lib/patient/api-paths.ts`, `src/lib/patient/api-paths.test.ts`, `src/lib/patient/navigation.ts`, and `src/lib/patient/navigation.test.ts`.
+- files changed: `src/app/(dashboard)/patients/[id]/medications/print/page.tsx`, `src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `MedicationPrintPage` interpolated route patient ids into the patient detail API path, the medication profile query string, and the medications back links. Hostile ids containing `/`, `?`, `#`, `&`, or `=` could alter API path/query/href boundaries before reaching the intended routes.
+- security risks found: reduced medication print route/query confusion risk by routing patient detail GET through `buildPatientApiPath(patientId)`, building medication profile query parameters with `URLSearchParams`, and routing error/toolbar back links through `buildPatientHref(patientId, '/medications')`. Added component tests proving helper delegation and query parameter isolation for hostile patient ids. Existing print layout, auto-print timing, org fetch, medication profile filtering (`is_current=true`, `limit=200`), patient/medication display, shortcut generation call, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL/query/href construction refactor with no new DB reads, network calls beyond existing print data fetches, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/medications/print/page.tsx' 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medications/print/page.test.tsx' src/lib/patient/api-paths.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus patient helper files; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
+- validation results: Prettier write passed. Focused medication print + patient API/navigation helper tests passed `3` files / `17` tests. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
+- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the owned medication print files for implementation commit after cached diff whitespace check.
+
 ### 20260628-0947 JST
 
 - current task: visit record patient-detail reflect PATCH API path helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond the existing optional reflect PATCH behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/visits/[id]/record/visit-record-form.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.shared.test.ts' 'src/lib/patient/api-paths.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/api-paths.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
 - validation results: Prettier write passed. Focused visit record form/shared + patient API path tests passed `3` files / `28` tests. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
-- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only the owned visit record files for implementation commit after cached diff whitespace check.
+- remaining work: implementation commit `a1168214` and state commit `7471ee1a` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: continue non-overlapping API/path helper convergence while monitoring agmsg for Claude interrupts.
 
 ### 20260628-0940 JST
 
