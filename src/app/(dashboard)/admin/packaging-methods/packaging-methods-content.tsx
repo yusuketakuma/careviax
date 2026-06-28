@@ -185,7 +185,7 @@ export function PackagingMethodsContent() {
                 <button
                   key={method.id}
                   type="button"
-                  className="rounded-2xl border border-border/70 bg-background p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"
+                  className="rounded-lg border border-border/70 bg-background p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/30"
                   onClick={() =>
                     setForm({
                       id: method.id,

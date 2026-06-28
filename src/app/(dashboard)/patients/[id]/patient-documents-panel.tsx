@@ -157,7 +157,7 @@ export function FirstVisitDocumentsPanel({
               return (
                 <div
                   key={document.id}
-                  className="rounded-2xl border border-border/70 bg-muted/10 p-4"
+                  className="rounded-lg border border-border/70 bg-muted/10 p-4"
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-1.5">

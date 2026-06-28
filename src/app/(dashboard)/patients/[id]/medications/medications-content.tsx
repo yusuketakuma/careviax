@@ -608,7 +608,7 @@ function QrExportDialog({
 
         {state ? (
           <div className="grid gap-6 md:grid-cols-[340px_minmax(0,1fr)]">
-            <div className="rounded-2xl border border-border/70 bg-white p-4 text-center shadow-sm">
+            <div className="rounded-lg border border-border/70 bg-white p-4 text-center shadow-sm">
               <Image
                 src={state.dataUrl}
                 alt={`${patientName} お薬手帳QR`}
@@ -635,13 +635,13 @@ function QrExportDialog({
             </div>
 
             <div className="space-y-3">
-              <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+              <div className="rounded-lg border border-border/70 bg-muted/20 p-4">
                 <p className="text-sm font-medium text-foreground">JAHIS ペイロード</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   画面表示と印刷で同じ内容を確認できます。
                 </p>
               </div>
-              <pre className="max-h-[420px] overflow-auto rounded-2xl border border-border/70 bg-slate-950 p-4 text-xs leading-5 text-slate-100">
+              <pre className="max-h-[420px] overflow-auto rounded-lg border border-border/70 bg-slate-950 p-4 text-xs leading-5 text-slate-100">
                 {state.payload}
               </pre>
             </div>

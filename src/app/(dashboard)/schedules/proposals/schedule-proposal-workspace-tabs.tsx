@@ -17,7 +17,7 @@ export function ScheduleProposalWorkspaceTabs({
   searchParams,
 }: WorkspaceTabsProps) {
   return (
-    <div className="rounded-2xl border border-border/70 bg-card/95 p-2">
+    <div className="rounded-lg border border-border/70 bg-card/95 p-2">
       <div className="flex flex-wrap gap-2">
         {(Object.keys(WORKSPACE_LABELS) as ScheduleProposalWorkspace[]).map((workspace) => {
           const active = workspace === activeWorkspace;

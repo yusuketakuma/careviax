@@ -230,7 +230,7 @@ export function ProposalHumanDecisionFlow({
     <section
       aria-label="訪問候補の人間決定フロー"
       className={cn(
-        'rounded-2xl border border-border/70 bg-card shadow-sm',
+        'rounded-lg border border-border/70 bg-card shadow-sm',
         compact ? 'space-y-3 px-3 py-3' : 'space-y-5 p-4',
       )}
     >

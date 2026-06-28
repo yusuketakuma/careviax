@@ -374,7 +374,7 @@ function ProposalRankingCard({
   return (
     <div
       className={cn(
-        'rounded-2xl border px-4 py-3',
+        'rounded-lg border px-4 py-3',
         candidate.id === activeProposalId
           ? 'border-primary/40 bg-primary/5'
           : 'border-border/70 bg-background',
@@ -441,7 +441,7 @@ function ProposalReasonChips({ proposal, className }: { proposal: Proposal; clas
 
 function ProposalOperationalFacts({ proposal }: { proposal: Proposal }) {
   return (
-    <div className="space-y-2 rounded-2xl bg-muted/30 p-4 text-sm">
+    <div className="space-y-2 rounded-lg bg-muted/30 p-4 text-sm">
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground">担当拠点</span>
         <span className="font-medium text-foreground">{proposal.site?.name ?? '未設定'}</span>
@@ -556,7 +556,7 @@ function ProposalMedicationWorkflowCard({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-border/70 bg-card p-4 text-sm',
+        'rounded-lg border border-border/70 bg-card p-4 text-sm',
         compact ? 'space-y-3' : 'space-y-4',
       )}
       data-testid="proposal-medication-workflow"
@@ -1687,7 +1687,7 @@ export function ScheduleProposalsContent({
             </div>
 
             {effectiveSelectedCaseSummary ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-foreground">
                     {effectiveSelectedCaseSummary.patient.name}
@@ -1710,7 +1710,7 @@ export function ScheduleProposalsContent({
             ) : null}
 
             {caseSearchInput.trim().length >= 2 ? (
-              <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/10 p-3">
+              <div className="space-y-2 rounded-lg border border-border/70 bg-muted/10 p-3">
                 <p className="text-xs font-medium text-muted-foreground">検索結果</p>
                 {casesQuery.isLoading ? (
                   <p className="text-sm text-muted-foreground">ケース候補を読み込み中...</p>
@@ -2994,7 +2994,7 @@ export function ScheduleProposalsContent({
                     detail.pharmacist_day_schedules.map((schedule) => (
                       <div
                         key={schedule.id}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 px-4 py-3"
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 px-4 py-3"
                       >
                         <div>
                           <p className="text-sm font-medium text-foreground">
@@ -3141,7 +3141,7 @@ export function ScheduleProposalsContent({
                   </div>
 
                   {detail.contact_logs.length > 0 ? (
-                    <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/20 p-4">
+                    <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-4">
                       <p className="text-sm font-medium text-foreground">最近の連絡履歴</p>
                       {detail.contact_logs.map((log) => (
                         <div

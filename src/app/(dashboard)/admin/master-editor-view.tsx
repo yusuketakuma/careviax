@@ -47,7 +47,7 @@ export function MasterEditorView({
         className="grid min-h-[calc(100dvh-16rem)] gap-5 lg:grid-cols-[220px_340px_minmax(0,1fr)] lg:gap-7 xl:grid-cols-[280px_430px_minmax(0,1fr)]"
         data-testid={testId}
       >
-        <Card className="order-3 rounded-2xl lg:order-1">
+        <Card className="order-3 rounded-lg lg:order-1">
           <CardContent className="space-y-8 p-5">
             <h2 className="text-lg font-bold text-foreground">カテゴリ</h2>
             <div className="space-y-3">
@@ -75,7 +75,7 @@ export function MasterEditorView({
           </CardContent>
         </Card>
 
-        <Card className="order-1 rounded-2xl lg:order-2">
+        <Card className="order-1 rounded-lg lg:order-2">
           <CardContent className="space-y-8 p-5">
             <h2 className="text-lg font-bold text-foreground">{listTitle}</h2>
             <div
@@ -98,7 +98,7 @@ export function MasterEditorView({
           </CardContent>
         </Card>
 
-        <Card className="order-2 overflow-hidden rounded-2xl lg:order-3">
+        <Card className="order-2 overflow-hidden rounded-lg lg:order-3">
           <CardContent className="space-y-8 p-5">
             <h2 className="text-lg font-bold text-foreground">詳細を編集</h2>
             <div className="space-y-5">

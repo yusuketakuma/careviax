@@ -1254,7 +1254,7 @@ export function ScheduleWeeklyOptimizer({
           </div>
 
           {selectedCaseId && activeCase ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-muted/15 px-4 py-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/15 px-4 py-3 text-sm">
               <div>
                 <p className="font-medium text-foreground">{activeCase.patient.name}</p>
                 <p className="text-muted-foreground">
@@ -1278,7 +1278,7 @@ export function ScheduleWeeklyOptimizer({
           ) : null}
 
           {caseSearchInput.trim().length >= 2 ? (
-            <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/10 p-3">
+            <div className="space-y-2 rounded-lg border border-border/70 bg-muted/10 p-3">
               <p className="text-xs font-medium text-muted-foreground">検索結果</p>
               {caseSearchQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">ケース候補を読み込み中...</p>
@@ -1306,7 +1306,7 @@ export function ScheduleWeeklyOptimizer({
           ) : null}
 
           {activeCase ? (
-            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">
+            <div className="rounded-lg border border-border/70 bg-muted/20 px-4 py-3 text-sm">
               <p className="font-medium text-foreground">{activeCase.patient.name}</p>
               <p className="text-muted-foreground">
                 主担当 {activeCase.primary_pharmacist_name ?? '未設定'} / 希望枠{' '}
@@ -1532,7 +1532,7 @@ export function ScheduleWeeklyOptimizer({
             {facilitySuggestions.map((suggestion) => (
               <div
                 key={`${suggestion.label}-${suggestion.targetDate}`}
-                className="rounded-2xl border border-border/70 px-4 py-3"
+                className="rounded-lg border border-border/70 px-4 py-3"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>

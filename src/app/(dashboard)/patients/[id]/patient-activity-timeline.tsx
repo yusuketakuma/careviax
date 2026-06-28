@@ -553,7 +553,7 @@ export function PatientActivityTimeline({
             timelineGroups.map((group) => (
               <section
                 key={group.key}
-                className="overflow-hidden rounded-2xl border border-border/70 bg-background"
+                className="overflow-hidden rounded-lg border border-border/70 bg-background"
               >
                 <div className="flex items-center justify-between border-b border-border/70 bg-muted/20 px-4 py-3">
                   <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
