@@ -12,7 +12,19 @@ describe('buildReportHref', () => {
     expect(buildReportHref('report_1')).toBe('/reports/report_1');
   });
 
+  it('keeps trusted suffixes outside the encoded report id segment', () => {
+    const reportId = 'report/1?tab=x#frag';
+
+    expect(buildReportHref(reportId, '/print')).toBe(
+      `/reports/${encodeURIComponent(reportId)}/print`,
+    );
+    expect(buildReportHref(reportId, '/share')).toBe(
+      `/reports/${encodeURIComponent(reportId)}/share`,
+    );
+  });
+
   it.each(['.', '..'])('rejects exact dot-segment report id %s', (reportId) => {
     expect(() => buildReportHref(reportId)).toThrow(RangeError);
+    expect(() => buildReportHref(reportId, '/print')).toThrow(RangeError);
   });
 });

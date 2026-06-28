@@ -35,9 +35,9 @@ import {
 import { Loading } from '@/components/ui/loading';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { encodePathSegment } from '@/lib/http/path-segment';
 import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { buildCareReportApiPath } from '@/lib/reports/api-paths';
+import { buildReportHref } from '@/lib/reports/navigation';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import {
   REPORT_TYPE_LABELS,
@@ -982,7 +982,7 @@ export default function ReportDetailPage() {
                 </a>
               ) : null}
               {isConfirmedReport && canOutputReport ? (
-                <Link href={`/reports/${encodePathSegment(id)}/print`}>
+                <Link href={buildReportHref(id, '/print')}>
                   <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
                     <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
                     印刷ビュー
@@ -991,7 +991,7 @@ export default function ReportDetailPage() {
               ) : null}
               {/* p1_05: 他職種向け共有ページ(相手別プレビュー + 返信確認) */}
               {canUseExternalShare ? (
-                <Link href={`/reports/${encodePathSegment(id)}/share`}>
+                <Link href={buildReportHref(id, '/share')}>
                   <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
                     <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
                     他職種共有

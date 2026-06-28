@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildReportHref } from '@/lib/reports/navigation';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useParamsMock = vi.hoisted(() => vi.fn());
@@ -108,6 +109,14 @@ vi.mock('@/components/features/reports/report-edit-form', () => ({
     <form data-testid="report-edit-form" data-updated-at={updatedAt} />
   ),
 }));
+
+vi.mock('@/lib/reports/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/reports/navigation')>();
+  return {
+    ...actual,
+    buildReportHref: vi.fn(actual.buildReportHref),
+  };
+});
 
 import ReportDetailPage from './page';
 
@@ -801,6 +810,8 @@ describe('ReportDetailPage send safety dialog', () => {
       `/reports/${ENCODED_HOSTILE_REPORT_ID}/print`,
       `/reports/${ENCODED_HOSTILE_REPORT_ID}/share`,
     ]);
+    expect(buildReportHref).toHaveBeenCalledWith(HOSTILE_REPORT_ID, '/print');
+    expect(buildReportHref).toHaveBeenCalledWith(HOSTILE_REPORT_ID, '/share');
     for (const href of hrefs) {
       expect(href).not.toContain('?');
       expect(href).not.toContain('#');
