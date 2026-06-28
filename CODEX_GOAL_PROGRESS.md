@@ -48,14 +48,14 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm exec vitest run src/app/api/dashboard/overdue/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
   - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/overdue GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
   - `pnpm exec eslint src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
-  - `pnpm exec prettier --check src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed after scoped formatting.
+  - `pnpm exec prettier --check src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
   - `git diff --check -- src/app/api/dashboard/overdue/route.ts src/app/api/dashboard/overdue/route.test.ts`: passed.
   - Privacy compliance review: no findings.
   - Medical safety review: no findings.
   - General Codex review: no findings.
   - Claude checker review: `APPROVED`; Claude independently ran Vitest `5/5`, scoped ESLint, and scoped Prettier check, and verified query body preservation, wrapper-only hardening, no-store coverage, and PHI-safe fixed logging.
 - Commit status: implementation committed locally as `cf521303`; this section records the progress-ledger slice for separate commit.
-- Next action: commit this progress-ledger slice, notify Claude, push grouped Codex-owned commits, then request the next backend/API lock. Candidate queue includes `dashboard/dispensing-stats`.
+- Next action: commit this progress-ledger slice, notify Claude, then request the next backend/API lock. Candidate queue includes `dashboard/dispensing-stats`.
 
 ### 2026-06-28 JST - Dashboard Workflow GET No-Store And PHI-Safe Error Hardening
 
