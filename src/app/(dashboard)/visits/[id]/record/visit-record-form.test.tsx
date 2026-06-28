@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { VisitRecordForm } from './visit-record-form';
 
 const {
@@ -64,6 +65,11 @@ vi.mock('sonner', () => ({
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 vi.mock('@/lib/hooks/use-network-online', () => ({
   useNetworkOnline: useNetworkOnlineMock,
@@ -555,6 +561,8 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
 
 describe('VisitRecordForm patient-detail reflect (⑤)', () => {
   const patientPatchBodies: unknown[] = [];
+  const patientPatchUrls: string[] = [];
+  let schedulePatientId = 'patient_1';
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -567,6 +575,11 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
     listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
     visitRecordPostBodies.length = 0;
     patientPatchBodies.length = 0;
+    patientPatchUrls.length = 0;
+    schedulePatientId = 'patient_1';
+    vi.mocked(buildPatientApiPath).mockImplementation(
+      (patientId, suffix = '') => `/api/patients/${encodeURIComponent(patientId)}${suffix}`,
+    );
 
     Object.defineProperty(window, 'requestAnimationFrame', {
       configurable: true,
@@ -585,7 +598,7 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
           return new Response(
             JSON.stringify({
               id: 'schedule_partial',
-              patient_id: 'patient_1',
+              patient_id: schedulePatientId,
               cycle_id: null,
               scheduled_date: '2026-04-09',
               schedule_status: 'ready',
@@ -618,13 +631,16 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
         if (url === '/api/visit-records') {
           visitRecordPostBodies.push(JSON.parse(String(init?.body ?? '{}')));
           return new Response(
-            JSON.stringify({ record: { id: 'record_1', version: 1, patient_id: 'patient_1' } }),
+            JSON.stringify({
+              record: { id: 'record_1', version: 1, patient_id: schedulePatientId },
+            }),
             { status: 201 },
           );
         }
-        if (url === '/api/patients/patient_1' && method === 'PATCH') {
+        if (url.startsWith('/api/patients/') && method === 'PATCH') {
+          patientPatchUrls.push(url);
           patientPatchBodies.push(JSON.parse(String(init?.body ?? '{}')));
-          return new Response(JSON.stringify({ id: 'patient_1' }), { status: 200 });
+          return new Response(JSON.stringify({ id: schedulePatientId }), { status: 200 });
         }
         throw new Error(`Unexpected fetch: ${method} ${url}`);
       }),
@@ -644,7 +660,7 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
   async function waitForPatientHydrated() {
     await waitFor(() => {
       expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
-        'patient_1',
+        schedulePatientId,
       );
     });
   }
@@ -671,6 +687,26 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
       source_visit_record_id: 'record_1',
     });
     expect(toastSuccessMock).toHaveBeenCalledWith('確認した内容を患者詳細に反映しました');
+  });
+
+  it('患者詳細反映 PATCH を共有 patient API path helper 経由にする', async () => {
+    schedulePatientId = 'pt/1?tab=x#frag';
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_reflect__');
+
+    renderForm();
+    await waitForPatientHydrated();
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.change(screen.getByLabelText('介護度'), { target: { value: '要介護3' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'この内容を患者詳細に反映する' }));
+
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(patientPatchUrls).toEqual(['/api/patients/__helper_reflect__']);
+    });
+    expect(buildPatientApiPath).toHaveBeenCalledWith(schedulePatientId);
+    expect(patientPatchUrls).not.toContain(`/api/patients/${schedulePatientId}`);
   });
 
   it('反映チェック無しなら患者詳細へ PATCH しない', async () => {

@@ -33,6 +33,7 @@ import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { listEvidenceDraftSummariesForSchedule } from '@/lib/offline/evidence-drafts';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import {
   enqueueForSync,
   registerVisitRecordConflict,
@@ -1036,7 +1037,7 @@ export function VisitRecordForm({
           medicationManager: reflectMedicationManager,
         });
         if (reflectIntake) {
-          void fetch(`/api/patients/${labPatientId}`, {
+          void fetch(buildPatientApiPath(labPatientId), {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
             body: JSON.stringify({
