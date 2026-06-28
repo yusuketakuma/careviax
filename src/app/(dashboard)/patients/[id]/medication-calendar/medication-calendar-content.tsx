@@ -339,7 +339,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
         <div
           role="alert"
           data-testid="medication-calendar-error"
-          className="flex flex-wrap items-center gap-2 rounded-lg border border-state-blocked/30 bg-state-blocked/10 px-4 py-4 text-sm text-state-blocked"
+          className="flex flex-wrap items-center gap-2 rounded-lg border-l-4 border-border/70 border-l-state-blocked bg-card px-4 py-4 text-sm text-state-blocked"
         >
           <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1">

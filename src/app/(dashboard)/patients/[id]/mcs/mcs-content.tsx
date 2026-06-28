@@ -851,7 +851,7 @@ function PatientMcsSummaryPanel({
   return (
     <div className="space-y-2">
       {link?.lastSyncError ? (
-        <p className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
+        <p className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-xs text-state-confirm">
           同期エラー中のため、以下は前回成功時点の MCS 要約です。
         </p>
       ) : null}
