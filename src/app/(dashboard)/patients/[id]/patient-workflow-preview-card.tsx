@@ -194,7 +194,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
             </Badge>
           </div>
           {preview.visit_preparation.blockers.length > 0 ? (
-            <div className="space-y-2 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3 text-sm">
+            <div className="space-y-2 rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-3 text-sm">
               {preview.visit_preparation.blockers.map((item) => (
                 <p key={item} className="text-state-confirm">
                   {item}
@@ -295,7 +295,7 @@ export function PatientWorkflowPreviewCard({ patientId }: { patientId: string })
             ) : null}
           </div>
           {preview.communication_priority.warnings.length > 0 ? (
-            <div className="space-y-2 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3 text-sm">
+            <div className="space-y-2 rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-3 text-sm">
               {preview.communication_priority.warnings.map((warning) => (
                 <p key={warning} className="text-state-confirm">
                   {warning}
