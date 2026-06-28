@@ -448,7 +448,6 @@ export default function QrDraftReviewPage() {
       <WorkflowPageIntro
         backHref="/prescriptions/qr-drafts"
         backLabel="QR下書き一覧へ戻る"
-        eyebrow="QR Draft Review"
         title="QR読取下書き確認"
         description={`スキャン日時: ${format(new Date(draft.created_at), 'yyyy年M月d日 HH:mm', { locale: ja })} / セッション: ${draft.session_id.slice(0, 8)}`}
         supportingContent={

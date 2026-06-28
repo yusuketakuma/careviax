@@ -24,7 +24,6 @@ export default async function PatientPrescriptionsPage({
         <WorkflowPageIntro
           backHref={buildPatientHref(id)}
           backLabel="患者詳細へ戻る"
-          eyebrow="Prescription History"
           title="処方内容一覧"
           description="患者詳細から直近の処方履歴を追い、次の受付や服薬管理へ移れます。"
           supportingContent={

@@ -14,7 +14,6 @@ export default function NewReferralPage() {
       <WorkflowPageIntro
         backHref="/patients"
         backLabel="患者一覧へ戻る"
-        eyebrow="Referral Intake"
         title="紹介受付"
         description="新規患者の紹介情報と患者基本情報をまとめて登録します"
         supportingContent={

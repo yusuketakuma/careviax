@@ -14,7 +14,6 @@ export default function NewPatientPage() {
       <WorkflowPageIntro
         backHref="/patients"
         backLabel="患者一覧へ戻る"
-        eyebrow="Patient Intake"
         title="患者新規登録"
         description="患者の基本情報を登録し、紹介受付や処方受付へつなげます。"
         supportingContent={

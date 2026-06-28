@@ -15,7 +15,6 @@ export default function PartnerCooperationBillingPage() {
       <WorkflowPageIntro
         backHref="/billing"
         backLabel="算定チェックへ戻る"
-        eyebrow="Partner Cooperation"
         title="薬局間協力 月次処理"
         description="協力薬局訪問の候補生成、請求書ドラフト、無償実績報告書を月次で確認します。"
         supportingContent={

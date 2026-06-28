@@ -22,7 +22,6 @@ export default async function MyDayPage({ searchParams }: MyDayPageProps) {
         <WorkflowPageIntro
           backHref="/dashboard"
           backLabel="ホームへ戻る"
-          eyebrow="Today Focus"
           title="My Day"
           description="今日の担当訪問・未完了タスク・優先対応をまとめて確認"
           className="mb-0"

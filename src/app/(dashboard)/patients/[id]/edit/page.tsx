@@ -17,7 +17,6 @@ export default async function PatientEditPage({ params }: { params: Promise<{ id
       <WorkflowPageIntro
         backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
-        eyebrow="Patient Edit"
         title="患者情報編集"
         description="患者基本情報、紹介受付票、訪問初期情報をまとめて更新します。"
         shortcuts={getPatientEditShortcutLinks(id)}

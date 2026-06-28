@@ -31,7 +31,6 @@ export default async function ScheduleProposalsPage({ searchParams }: SchedulePr
       <WorkflowPageIntro
         backHref="/schedules"
         backLabel="スケジュールへ戻る"
-        eyebrow="Schedule Proposals"
         title="訪問候補ダッシュボード"
         description="自動提案、患者連絡、再提案、確定までをこの画面で処理します。"
         supportingContent={

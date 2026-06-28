@@ -12,7 +12,6 @@ export default function NewPrescriptionPage() {
   return (
     <PageScaffold>
       <WorkflowPageHeader
-        eyebrow="Prescription Intake"
         title="新規処方受付"
         description="患者とケースを選び、QR下書き・原本・前回処方・他職種共有を確認してから下部の登録ボタンで調剤ワークフローを開始します"
         supportingContent={

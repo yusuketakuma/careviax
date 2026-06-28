@@ -33,7 +33,6 @@ describe('PharmacyCooperationSetupPage', () => {
     render(<PharmacyCooperationSetupPage />);
 
     expect(screen.getByRole('heading', { level: 1, name: '薬局間協力設定' })).toBeTruthy();
-    expect(screen.getByText('Pharmacy Cooperation Setup')).toBeTruthy();
     expect(screen.getByText('設定順序')).toBeTruthy();
     expect(
       screen.getByText('協力薬局を登録し、基準薬局との連携を有効化してから契約を作成します。'),

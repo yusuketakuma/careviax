@@ -280,7 +280,6 @@ export default function QrDraftsPage() {
   return (
     <PageScaffold>
       <WorkflowPageHeader
-        eyebrow="QR Drafts"
         title="QRスキャン下書き"
         description="スタッフがスキャンしたQR処方箋の下書き一覧です"
         action={{

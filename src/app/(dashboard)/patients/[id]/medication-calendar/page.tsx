@@ -36,7 +36,6 @@ export default async function MedicationCalendarPage({
       <WorkflowPageIntro
         backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
-        eyebrow="Medication Calendar"
         title="服薬カレンダー"
         description="月間服薬スケジュールの確認・印刷"
         supportingContent={

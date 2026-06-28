@@ -448,7 +448,6 @@ export default function QRScanPage() {
       <WorkflowPageIntro
         backHref="/prescriptions"
         backLabel="処方受付へ戻る"
-        eyebrow="QR Intake"
         title="お薬手帳 QR スキャン"
         description="読取後は QR 下書き一覧、処方受付、ワークフローへ横移動できます。"
         supportingContent={

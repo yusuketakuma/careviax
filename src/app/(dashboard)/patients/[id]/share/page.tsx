@@ -20,7 +20,6 @@ export default async function ExternalSharePage({ params }: { params: Promise<{ 
       <WorkflowPageIntro
         backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
-        eyebrow="External Sharing"
         title="他職種向け共有ページ"
         description="相手区分ごとに「相手に見える内容」を確認し、外部共有リンクの発行と返信のタスク化を行います（JWT + OTP）"
         supportingContent={

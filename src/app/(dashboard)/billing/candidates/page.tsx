@@ -30,7 +30,6 @@ export default async function BillingCandidatesPage({ searchParams }: BillingCan
       <WorkflowPageIntro
         backHref="/billing"
         backLabel="請求ダッシュボードへ戻る"
-        eyebrow="Billing Candidates"
         title="月次請求候補"
         description="算定候補の確認・バリデーション・CSV出力"
         supportingContent={

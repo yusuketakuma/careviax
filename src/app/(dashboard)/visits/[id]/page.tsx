@@ -20,7 +20,6 @@ export default async function VisitRecordDetailPage({
       <WorkflowPageIntro
         backHref="/visits"
         backLabel="訪問記録一覧へ戻る"
-        eyebrow="Visit Detail"
         title="訪問記録詳細"
         description="訪問の記録、添付、送達準備を確認します。"
         supportingContent={

@@ -21,7 +21,6 @@ export default async function VisitRecordPage({ params }: { params: Promise<{ id
         className="max-md:hidden"
         backHref="/visits"
         backLabel="訪問一覧へ戻る"
-        eyebrow="Visit Recording"
         title="訪問記録入力"
         description="SOAP形式で訪問内容を記録します"
         supportingContent={

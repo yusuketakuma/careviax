@@ -17,7 +17,6 @@ export default async function PatientMcsPage({ params }: { params: Promise<{ id:
       <WorkflowPageIntro
         backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
-        eyebrow="MCS Integration"
         title="MCS連携"
         description="Medical Care Station の連携状態、手動同期、取り込み済みメッセージを患者単位で確認します。"
         supportingContent={

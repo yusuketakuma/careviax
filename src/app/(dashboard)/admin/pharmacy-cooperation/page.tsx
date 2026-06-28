@@ -13,7 +13,6 @@ export default function PharmacyCooperationSetupPage() {
   return (
     <PageScaffold>
       <AdminPageHeader
-        eyebrow="Pharmacy Cooperation Setup"
         title="薬局間協力設定"
         description="協力薬局、薬局間連携、契約を登録し、協力訪問と月次請求の前提データを整えます。"
         supportingContent={

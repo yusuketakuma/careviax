@@ -196,7 +196,6 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
   return (
     <PageScaffold>
       <WorkflowPageHeader
-        eyebrow="Prescription Detail"
         title={`${patient.name} の処方受付`}
         description={`受付ID: ${intakeId.slice(-8)} / サイクル: ${data.cycle_id.slice(-8)}`}
         action={{

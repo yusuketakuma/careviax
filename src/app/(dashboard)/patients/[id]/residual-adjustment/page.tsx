@@ -22,7 +22,6 @@ export default async function ResidualAdjustmentPage({
       <WorkflowPageIntro
         backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
-        eyebrow="Residual Adjustment"
         title="残薬調整"
         description="残薬の確認から調整案の確定まで"
         supportingContent={

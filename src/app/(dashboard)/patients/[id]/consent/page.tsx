@@ -17,7 +17,6 @@ export default async function ConsentPage({ params }: { params: Promise<{ id: st
       <WorkflowPageIntro
         backHref={buildPatientHref(id)}
         backLabel="患者詳細へ戻る"
-        eyebrow="Consent Records"
         title="同意記録"
         description="同意の取得状況、期限、撤回を患者文脈で追跡します。"
         supportingContent={
