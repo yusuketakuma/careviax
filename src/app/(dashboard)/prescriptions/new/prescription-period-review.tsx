@@ -153,7 +153,7 @@ export function PrescriptionPeriodReview({
                   key={notice.text}
                   className={cn(
                     'text-sm font-medium leading-6',
-                    notice.severity === 'critical' ? 'text-destructive' : 'text-state-confirm',
+                    notice.severity === 'critical' ? 'text-state-blocked' : 'text-state-confirm',
                   )}
                 >
                   ・{notice.text}

@@ -904,8 +904,8 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
 
       {/* Reason fields */}
       {record.cancellation_reason && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-          <p className="text-xs font-medium text-destructive">キャンセル理由</p>
+        <div className="rounded-lg border border-state-blocked/30 bg-state-blocked/5 p-3">
+          <p className="text-xs font-medium text-state-blocked">キャンセル理由</p>
           <p className="mt-1 text-sm">{record.cancellation_reason}</p>
         </div>
       )}

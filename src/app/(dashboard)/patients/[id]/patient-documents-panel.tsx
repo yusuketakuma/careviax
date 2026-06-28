@@ -405,7 +405,7 @@ function PrintReadinessSummary({ readiness }: { readiness: FirstVisitPrintReadin
       ? 'border-transparent bg-state-done/10 text-state-done'
       : readiness.overall_status === 'warning'
         ? 'border-transparent bg-state-confirm/10 text-state-confirm'
-        : 'border-transparent bg-destructive/10 text-destructive';
+        : 'border-transparent bg-state-blocked/10 text-state-blocked';
 
   return (
     <div

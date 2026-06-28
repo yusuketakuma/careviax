@@ -238,7 +238,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
             <>
               <Separator orientation="vertical" className="h-5" />
               <span
-                className={`text-sm ${daysUntilExpiry != null && daysUntilExpiry < 0 ? 'font-medium text-destructive' : daysUntilExpiry != null && daysUntilExpiry <= 1 ? 'font-medium text-state-confirm' : 'text-muted-foreground'}`}
+                className={`text-sm ${daysUntilExpiry != null && daysUntilExpiry < 0 ? 'font-medium text-state-blocked' : daysUntilExpiry != null && daysUntilExpiry <= 1 ? 'font-medium text-state-confirm' : 'text-muted-foreground'}`}
               >
                 {daysUntilExpiry != null && daysUntilExpiry < 0 ? (
                   <>

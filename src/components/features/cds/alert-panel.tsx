@@ -21,9 +21,9 @@ function AlertItem({ alert }: AlertItemProps) {
   const config = {
     critical: {
       icon: AlertTriangle,
-      containerClass: 'border-destructive/40 bg-destructive/5',
-      iconClass: 'text-destructive',
-      titleClass: 'text-destructive font-semibold',
+      containerClass: 'border-state-blocked/40 bg-state-blocked/5',
+      iconClass: 'text-state-blocked',
+      titleClass: 'text-state-blocked font-semibold',
       label: '禁忌・危険',
     },
     warning: {
