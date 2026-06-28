@@ -175,7 +175,7 @@ function UrgentNowCard({
         <span className="text-xs text-muted-foreground">{rxNumber}</span>
         <span
           className={cn(
-            'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold',
+            'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold',
             typePill.className,
           )}
         >
@@ -330,7 +330,7 @@ function TodayFlowSection({
         </Button>
       </div>
       <div className="mt-4">
-        <div aria-hidden="true" className="flex justify-between text-[10px] text-muted-foreground">
+        <div aria-hidden="true" className="flex justify-between text-xs text-muted-foreground">
           {hourLabels.map((label) => (
             <span key={label}>{label}</span>
           ))}
@@ -349,7 +349,7 @@ function TodayFlowSection({
                   data-kind={block.kind}
                   title={block.label}
                   className={cn(
-                    'absolute inset-y-1 flex items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1.5 text-[11px] font-medium',
+                    'absolute inset-y-1 flex items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1.5 text-xs font-medium',
                     TIMELINE_BLOCK_CLASSES[block.kind],
                   )}
                   style={{ left: `${left}%`, width: `${width}%` }}
@@ -389,8 +389,14 @@ function TodayFlowSection({
 // ---------------------------------------------------------------------------
 
 const PROCESS_TILE_TONE_CLASSES: Record<ProcessNowTile['tone'], { tile: string; count: string }> = {
-  over: { tile: 'border-border/70 border-l-4 border-l-state-blocked bg-card', count: 'text-state-blocked' },
-  near: { tile: 'border-border/70 border-l-4 border-l-state-confirm bg-card', count: 'text-state-confirm' },
+  over: {
+    tile: 'border-border/70 border-l-4 border-l-state-blocked bg-card',
+    count: 'text-state-blocked',
+  },
+  near: {
+    tile: 'border-border/70 border-l-4 border-l-state-confirm bg-card',
+    count: 'text-state-confirm',
+  },
   normal: { tile: 'border-border/70 bg-background', count: 'text-foreground' },
 };
 
@@ -433,7 +439,7 @@ function ProcessNowSection({ statusCounts }: { statusCounts: Record<string, numb
             >
               {tile.count}
             </p>
-            <p className="text-[10px] text-muted-foreground">目安{tile.guide}</p>
+            <p className="text-xs text-muted-foreground">目安{tile.guide}</p>
           </li>
         ))}
       </ol>
