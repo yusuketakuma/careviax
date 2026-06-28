@@ -468,7 +468,7 @@ function CreateConsentDialog({
                   value={m}
                   checked={form.method === m}
                   onChange={() => setForm((f) => ({ ...f, method: m }))}
-                  className="accent-primary"
+                  className="accent-primary focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 />
                 {METHOD_LABELS[m]}
               </label>

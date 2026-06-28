@@ -300,7 +300,7 @@ export function DataExplorerContent() {
                     setSelectedRowId('');
                     setRowSearch('');
                   }}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
+                  className={`w-full rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
                     effectiveSelectedTable === model.tableName
                       ? 'border-primary bg-primary/5'
                       : 'border-border bg-card hover:bg-muted/40'
@@ -357,7 +357,7 @@ export function DataExplorerContent() {
                       type="button"
                       aria-label={dataExplorerRowActionLabel(tableData.tableName, index)}
                       onClick={() => setSelectedRowId(rowId)}
-                      className={`w-full rounded-xl border p-3 text-left transition ${
+                      className={`w-full rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
                         rowId === effectiveSelectedRowId
                           ? 'border-primary bg-primary/5'
                           : 'border-border bg-card hover:bg-muted/40'

@@ -113,7 +113,7 @@ function ConcernCard({
         onClick={onSelect}
         data-testid={`safety-concern-${concern.category}`}
         className={cn(
-          'min-h-[44px] w-full rounded-lg border bg-card p-4 text-left transition-colors',
+          'min-h-[44px] w-full rounded-lg border bg-card p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
           selected
             ? 'border-primary/60 ring-1 ring-primary/30'
             : 'border-border/70 hover:border-primary/40',

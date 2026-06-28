@@ -88,7 +88,7 @@ function PrescriptionFilterGroup({
             type="button"
             onClick={() => onSelect(opt.value)}
             className={cn(
-              'inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded px-2 text-[10px] font-medium transition-colors sm:px-1.5',
+              'inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded px-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:px-1.5',
               isActive ? activeClassName : inactiveClassName,
             )}
           >

@@ -1198,7 +1198,7 @@ export function ConferencesContent({
               <button
                 type="button"
                 aria-pressed={noteViewMode === 'list'}
-                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium ${
+                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
                   noteViewMode === 'list'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground'
@@ -1213,7 +1213,7 @@ export function ConferencesContent({
               <button
                 type="button"
                 aria-pressed={noteViewMode === 'calendar'}
-                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium ${
+                className={`min-h-11 min-w-11 rounded-md px-3 py-1 text-xs font-medium focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
                   noteViewMode === 'calendar'
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground'

@@ -348,7 +348,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
           <button
             type="button"
             onClick={() => void medicationQuery.refetch()}
-            className="inline-flex min-h-11 items-center rounded-md border border-state-blocked/40 px-3 text-xs font-medium text-state-blocked hover:bg-state-blocked/10"
+            className="inline-flex min-h-11 items-center rounded-md border border-state-blocked/40 px-3 text-xs font-medium text-state-blocked hover:bg-state-blocked/10 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             再試行
           </button>

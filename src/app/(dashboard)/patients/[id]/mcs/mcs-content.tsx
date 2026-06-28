@@ -468,7 +468,7 @@ function PatientMcsProfilePanel({
             </label>
             <select
               id="mcs-linked-status"
-              className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+              className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring"
               value={linkedStatus}
               onChange={(event) => setLinkedStatus(event.target.value)}
             >
@@ -485,7 +485,7 @@ function PatientMcsProfilePanel({
             </label>
             <select
               id="mcs-participation-status"
-              className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+              className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring"
               value={participationStatus}
               onChange={(event) => setParticipationStatus(event.target.value)}
             >
@@ -732,7 +732,7 @@ function PatientMcsCheckLogPanel({
             </label>
             <select
               id="mcs-log-content-type"
-              className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+              className="min-h-11 w-full rounded-lg border border-input bg-background px-2.5 text-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring"
               value={contentType}
               onChange={(event) => setContentType(event.target.value)}
             >

@@ -176,7 +176,7 @@ export function IncidentsContent() {
                     aria-pressed={active}
                     onClick={() => setSelectedId(report.id)}
                     className={cn(
-                      'min-h-11 w-full rounded-lg border px-4 py-3.5 text-left transition-colors',
+                      'min-h-11 w-full rounded-lg border px-4 py-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
                       active
                         ? 'border-primary/40 bg-primary/5'
                         : 'border-border bg-background hover:bg-muted/40',

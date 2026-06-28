@@ -215,7 +215,7 @@ function QrDraftList() {
             setFilterMode('all');
             setSelectedIndex(0);
           }}
-          className={`min-h-[44px] min-w-[44px] rounded-md px-3 py-1.5 text-sm font-medium transition-colors sm:min-h-0 sm:min-w-0 ${
+          className={`min-h-[44px] min-w-[44px] rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-0 sm:min-w-0 ${
             filterMode === 'all'
               ? 'bg-primary text-primary-foreground'
               : 'border border-input bg-background text-foreground hover:bg-accent'
@@ -229,7 +229,7 @@ function QrDraftList() {
             setFilterMode('unmatched');
             setSelectedIndex(0);
           }}
-          className={`flex min-h-[44px] min-w-[44px] items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors sm:min-h-0 sm:min-w-0 ${
+          className={`flex min-h-[44px] min-w-[44px] items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:min-h-0 sm:min-w-0 ${
             filterMode === 'unmatched'
               ? 'bg-primary text-primary-foreground'
               : 'border border-input bg-background text-foreground hover:bg-accent'

@@ -1182,7 +1182,7 @@ function ConsultWorkspace({
                     onClick={() => setSelectedId(item.id)}
                     aria-pressed={item.id === selectedItem?.id}
                     className={cn(
-                      'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                      'rounded-full border px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
                       item.id === selectedItem?.id
                         ? 'border-primary bg-primary/5 text-primary'
                         : 'border-border/70 text-muted-foreground hover:bg-muted/50',
