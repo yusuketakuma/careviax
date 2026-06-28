@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Service Areas Admin API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; ACKed Claude's approval of the drug-alert-rules slice before continuing this non-overlapping service-areas slice.
+  - gbrain `code_blast` for `ServiceAreasPage` returned `not_found`, so impact was bounded by direct source/test/helper inspection.
+  - Subagent spawn remains unavailable due to thread limit; medical safety and privacy were manually reviewed for this bounded admin service-area URL-construction patch.
+- Hardened service-area admin API boundaries:
+  - Added `src/lib/service-areas/api-paths.ts` with `SERVICE_AREAS_API_PATH` and `buildServiceAreaApiPath(areaId)`.
+  - Routed service-area list/create/update/delete calls through the shared collection/detail path contract.
+  - Preserved pharmacy-sites GET path, org headers, HTTP methods, JSON bodies, query keys, invalidations, JSON editor validation, rendered admin UI, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+  - Added helper tests for collection path, hostile id encoding, and dot-segment rejection; extended component tests to prove detail path callsites delegate to `buildServiceAreaApiPath` while preserving existing fail-closed behavior before PATCH/DELETE side effects.
+- Security/privacy risk reduced: admin service-area detail mutations no longer duplicate area-id API path construction, reducing route-boundary drift for hostile `/`, `?`, or `#` area ids.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing service-area calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx' src/lib/service-areas/api-paths.ts src/lib/service-areas/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/service-areas/page.test.tsx' src/lib/service-areas/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `15` tests.
+  - `pnpm exec eslint` on the changed implementation/test/helper files: passed.
+  - `pnpm exec prettier --check` on the same files: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+  - Manual medical safety/privacy review: PASS.
+- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+
 ### 2026-06-28 JST - Drug Alert Rules Admin API Path Helper Convergence
 
 - Coordination:
