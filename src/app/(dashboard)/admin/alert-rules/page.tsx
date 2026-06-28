@@ -22,7 +22,10 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import {
+  DRUG_ALERT_RULES_API_PATH,
+  buildDrugAlertRuleApiPath,
+} from '@/lib/drug-alert-rules/api-paths';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { SignalTuningPanel } from './signal-tuning-panel';
 import { PageSection } from '@/components/layout/page-section';
@@ -79,7 +82,7 @@ export default function AlertRulesPage() {
   const rulesQuery = useQuery({
     queryKey: ['drug-alert-rules', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/drug-alert-rules', {
+      const res = await fetch(DRUG_ALERT_RULES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('処方安全アラートルールの取得に失敗しました');
@@ -96,10 +99,10 @@ export default function AlertRulesPage() {
         '条件(JSON) の形式が不正です',
       );
 
-      // encodePathSegment runs during URL construction (before fetch), so a dot
+      // buildDrugAlertRuleApiPath validates during URL construction, so a dot
       // segment id fails closed BEFORE the mutating PATCH side effect.
       const res = await fetch(
-        form.id ? `/api/drug-alert-rules/${encodePathSegment(form.id)}` : '/api/drug-alert-rules',
+        form.id ? buildDrugAlertRuleApiPath(form.id) : DRUG_ALERT_RULES_API_PATH,
         {
           method: form.id ? 'PATCH' : 'POST',
           headers: buildOrgJsonHeaders(orgId),
@@ -139,9 +142,9 @@ export default function AlertRulesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      // encodePathSegment runs before fetch, so a dot-segment id fails closed
+      // buildDrugAlertRuleApiPath validates before fetch, so a dot-segment id fails closed
       // BEFORE the destructive DELETE side effect.
-      const res = await fetch(`/api/drug-alert-rules/${encodePathSegment(id)}`, {
+      const res = await fetch(buildDrugAlertRuleApiPath(id), {
         method: 'DELETE',
         headers: buildOrgHeaders(orgId),
       });

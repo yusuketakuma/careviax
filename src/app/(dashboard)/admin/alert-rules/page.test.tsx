@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildDrugAlertRuleApiPath } from '@/lib/drug-alert-rules/api-paths';
 import AlertRulesPage from './page';
 
 setupDomTestEnv();
@@ -18,9 +19,9 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 // org-header builders are mocked with SENTINEL returns ('x-test-helper') so the
 // tests prove the page DELEGATES to them: a raw inline { 'x-org-id': orgId } literal
 // lacks the sentinel, so a deep-equal on the sentinel object fails for un-converged
-// code. '@/lib/http/path-segment' is intentionally NOT mocked — the real
-// encodePathSegment is exercised so the hostile-encode and dot fail-fast teeth are
-// genuine rather than stubbed.
+// code. The alert-rule API path helper is mocked with its real implementation so
+// tests can assert callsite delegation while retaining hostile-encode and dot
+// fail-fast teeth.
 const buildOrgHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({ 'x-org-id': orgId, 'x-test-helper': 'orgHeaders' })),
 );
@@ -35,6 +36,14 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgHeaders: buildOrgHeadersMock,
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
+
+vi.mock('@/lib/drug-alert-rules/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/drug-alert-rules/api-paths')>();
+  return {
+    ...actual,
+    buildDrugAlertRuleApiPath: vi.fn(actual.buildDrugAlertRuleApiPath),
+  };
+});
 
 vi.mock('sonner', () => ({
   toast: {
@@ -416,13 +425,12 @@ describe('AlertRulesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => {
-      // real encodePathSegment('a/b c') === 'a%2Fb%20c' — proves the raw id is encoded,
-      // not interpolated raw into the destructive DELETE path.
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/drug-alert-rules/a%2Fb%20c',
         expect.objectContaining({ method: 'DELETE', headers: buildOrgHeaders('org_1') }),
       );
     });
+    expect(buildDrugAlertRuleApiPath).toHaveBeenCalledWith('a/b c');
   });
 
   it('DELETE with a dot-segment rule id fails closed before any DELETE fetch', async () => {
@@ -458,9 +466,10 @@ describe('AlertRulesPage', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
-    // the dot id throws inside the mutationFn (encodePathSegment) before fetch, so
+    // the dot id throws inside the mutationFn path helper before fetch, so
     // onError fires and NO DELETE request is ever issued.
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildDrugAlertRuleApiPath).toHaveBeenCalledWith('.');
     const deleteCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
     );
@@ -505,13 +514,12 @@ describe('AlertRulesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '更新する' }));
 
     await waitFor(() => {
-      // real encodePathSegment('a/b c') === 'a%2Fb%20c' — proves the raw id is encoded
-      // into the PATCH path, not interpolated raw.
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/drug-alert-rules/a%2Fb%20c',
         expect.objectContaining({ method: 'PATCH', headers: buildOrgJsonHeaders('org_1') }),
       );
     });
+    expect(buildDrugAlertRuleApiPath).toHaveBeenCalledWith('a/b c');
     expect(buildOrgJsonHeadersMock).toHaveBeenCalledWith('org_1');
   });
 
@@ -526,6 +534,7 @@ describe('AlertRulesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '更新する' }));
 
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildDrugAlertRuleApiPath).toHaveBeenCalledWith('.');
     const patchCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
     );

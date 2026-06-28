@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildDrugAlertRuleApiPath } from '@/lib/drug-alert-rules/api-paths';
 import { SignalTuningPanel } from './signal-tuning-panel';
 import type { SignalTuningRule } from './signal-tuning.shared';
 
@@ -22,9 +23,9 @@ vi.mock('sonner', () => ({
 
 // org-header builders are mocked with SENTINEL returns ('x-test-helper') so the tests
 // prove the panel DELEGATES to them (a raw inline literal lacks the sentinel, so a
-// deep-equal on the sentinel object fails for un-converged code). '@/lib/http/path-segment'
-// is intentionally NOT mocked — the real encodePathSegment is exercised for the
-// hostile-encode and dot fail-fast teeth.
+// deep-equal on the sentinel object fails for un-converged code). The alert-rule
+// API path helper is mocked with its real implementation so tests can assert
+// callsite delegation while retaining hostile-encode and dot fail-fast teeth.
 const buildOrgHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({ 'x-org-id': orgId, 'x-test-helper': 'orgHeaders' })),
 );
@@ -39,6 +40,14 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgHeaders: buildOrgHeadersMock,
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
+
+vi.mock('@/lib/drug-alert-rules/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/drug-alert-rules/api-paths')>();
+  return {
+    ...actual,
+    buildDrugAlertRuleApiPath: vi.fn(actual.buildDrugAlertRuleApiPath),
+  };
+});
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -148,6 +157,7 @@ describe('SignalTuningPanel', () => {
       ([input]) => String(input) === '/api/drug-alert-rules/a%2Fb%20c',
     );
     expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({ is_active: false });
+    expect(buildDrugAlertRuleApiPath).toHaveBeenCalledWith('a/b c');
   });
 
   it('activate (PATCH) encodes a hostile rule id and sends is_active:true', async () => {
@@ -174,6 +184,7 @@ describe('SignalTuningPanel', () => {
       ([input]) => String(input) === '/api/drug-alert-rules/x%2Fy%20z',
     );
     expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({ is_active: true });
+    expect(buildDrugAlertRuleApiPath).toHaveBeenCalledWith('x/y z');
   });
 
   it('PATCH with a dot-segment rule id fails closed before any PATCH fetch', async () => {
@@ -187,8 +198,9 @@ describe('SignalTuningPanel', () => {
     await waitFor(() => expect(saveButton().disabled).toBe(false));
     fireEvent.click(saveButton());
 
-    // encodePathSegment('.') throws inside the mutationFn before fetch -> onError, no PATCH.
+    // the shared path helper throws inside the mutationFn before fetch -> onError, no PATCH.
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildDrugAlertRuleApiPath).toHaveBeenCalledWith('.');
     const patchCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
     );
