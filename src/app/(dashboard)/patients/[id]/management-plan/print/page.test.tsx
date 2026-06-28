@@ -3,6 +3,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import ManagementPlanPrintPage from './page';
 
@@ -54,6 +55,11 @@ vi.mock('@/components/features/workflow/print-page-toolbar', () => ({
 vi.mock('@/components/features/workflow/page-shortcut-presets', () => ({
   getManagementPlanPrintShortcutLinks: vi.fn(() => []),
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 // Actual-backed spy: keep real encode/guard output and add return-value delegation teeth.
 vi.mock('@/lib/patient/navigation', async (importActual) => {
@@ -175,6 +181,7 @@ describe('ManagementPlanPrintPage', () => {
 
     await captured.get('management-plan-print-patient')?.queryFn();
     let [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(buildPatientApiPath).toHaveBeenCalledWith(hostilePatientId);
     expect(url).toBe(`/api/patients/${encodeURIComponent(hostilePatientId)}`);
     expect(url).not.toContain('?x=y');
     expect(url).not.toContain('#z');
@@ -235,6 +242,36 @@ describe('ManagementPlanPrintPage', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     },
   );
+
+  it('routes the patient fetch through the shared patient API path helper return value', async () => {
+    const patientId = 'patient_1';
+    setRoute(patientId, 'plan_1');
+
+    let capturedConfig: QueryConfig | undefined;
+    useQueryMock.mockImplementation((config: QueryConfig) => {
+      if (config.queryKey[0] === 'management-plan-print-patient') {
+        capturedConfig = config;
+      }
+      return { data: undefined, isLoading: true, error: null };
+    });
+
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okJson(patientSnapshot));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__');
+
+    try {
+      render(<ManagementPlanPrintPage />);
+
+      await capturedConfig?.queryFn();
+
+      expect(buildPatientApiPath).toHaveBeenCalledWith(patientId);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/patients/__helper_patient__');
+      expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}`, expect.anything());
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
 
   it('renders an error and suppresses print when the plan case belongs to another patient', () => {
     vi.useFakeTimers();

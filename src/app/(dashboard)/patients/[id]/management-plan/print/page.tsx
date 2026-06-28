@@ -13,6 +13,7 @@ import { Loading } from '@/components/ui/loading';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
@@ -59,7 +60,7 @@ export default function ManagementPlanPrintPage() {
     queryKey: ['management-plan-print-patient', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}`, {
+      const response = await fetch(buildPatientApiPath(patientId), {
         headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });

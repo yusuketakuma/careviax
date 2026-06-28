@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import PatientVisitRecordsPrintPage from './page';
 
@@ -44,6 +45,11 @@ vi.mock('@/components/features/workflow/print-page-toolbar', () => ({
     <a href={backHref}>{backLabel}</a>
   ),
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 // Actual-backed spy: real encode/guard output for hostile id + return-value delegation teeth.
 vi.mock('@/lib/patient/navigation', async (importActual) => {
@@ -107,6 +113,7 @@ describe('PatientVisitRecordsPrintPage', () => {
       await capturedConfig?.queryFn();
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(hostileId);
       expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}`);
       expect(url).not.toContain('?x=y');
       expect(url).not.toContain('#z');
@@ -197,6 +204,42 @@ describe('PatientVisitRecordsPrintPage', () => {
       }
     },
   );
+
+  it('routes the patient fetch through the shared patient API path helper return value', async () => {
+    const patientId = 'patient_1';
+    useParamsMock.mockReturnValue({ id: patientId });
+    useOrgIdMock.mockReturnValue('org_1');
+
+    let capturedConfig: { queryKey: unknown[]; queryFn: () => Promise<unknown> } | undefined;
+    useQueryMock.mockImplementation(
+      (config: { queryKey: unknown[]; queryFn: () => Promise<unknown> }) => {
+        if (config.queryKey[0] === 'visit-record-print-patient') {
+          capturedConfig = config;
+        }
+        return { data: undefined, isLoading: true, error: null };
+      },
+    );
+
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(patientSnapshot),
+    } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__');
+
+    try {
+      render(<PatientVisitRecordsPrintPage />);
+
+      await capturedConfig?.queryFn();
+
+      expect(buildPatientApiPath).toHaveBeenCalledWith(patientId);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/patients/__helper_patient__');
+      expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}`, expect.anything());
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
 
   it('routes the error fallback link and toolbar backHref through buildPatientHref', () => {
     const hostileId = 'pt/1?x=y#z';

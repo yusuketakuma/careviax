@@ -11,7 +11,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatDateLabel, formatDateTimeLabel } from '@/lib/ui/date-format';
 
@@ -89,7 +89,7 @@ export default function PatientVisitRecordsPrintPage() {
     queryKey: ['visit-record-print-patient', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}`, {
+      const response = await fetch(buildPatientApiPath(patientId), {
         headers: buildOrgHeaders(orgId),
         cache: 'no-store',
       });
