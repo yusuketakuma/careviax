@@ -51,14 +51,14 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm exec vitest run src/app/api/dashboard/workflow/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `20` tests.
   - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/workflow GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
   - `pnpm exec eslint src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`: passed.
-  - `pnpm exec prettier --check src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`: passed after scoped formatting of the two files.
+  - `pnpm exec prettier --check src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`: passed.
   - `git diff --check -- src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`: passed.
   - Privacy compliance review: no findings.
   - Medical safety review: no findings.
-  - General Codex review: no findings; broader reviewer-run validation also passed `4` files / `29` tests and a relaxed full TypeScript check.
+  - General Codex review: no findings; the main agent also ran full `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`, which passed.
   - Claude checker review: `APPROVED`; Claude independently ran Vitest `20/20`, scoped ESLint, and scoped Prettier check, and verified query/cache/body region preservation, FE response-shape preservation, no-store coverage, and PHI-safe fixed logging.
 - Commit status: implementation committed locally as `2f7f55b4`; this section records the progress-ledger slice for separate commit.
-- Next action: commit this progress-ledger slice, notify Claude, push grouped Codex-owned commits, then request the next backend/API lock. Candidate queue remains `dashboard/overdue` and `dashboard/dispensing-stats`, while workflow RLS transactionization is a separate larger follow-up.
+- Next action: commit this progress-ledger slice, notify Claude, then request the next backend/API lock. Candidate queue remains `dashboard/overdue` and `dashboard/dispensing-stats`, while workflow RLS transactionization is a separate larger follow-up.
 
 ### 2026-06-28 JST - Dashboard Medication Deadlines GET No-Store And PHI-Safe Error Hardening
 
