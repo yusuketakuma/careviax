@@ -938,8 +938,8 @@ export function VisitMedicationManagementSection({
           className={cn(
             'rounded-lg border px-3 py-2 text-sm',
             isReady
-              ? 'border-state-done/40 bg-state-done/10 text-state-done'
-              : 'border-state-confirm/40 bg-state-confirm/10 text-state-confirm',
+              ? 'border-l-4 border-border/70 border-l-state-done bg-card text-state-done'
+              : 'border-l-4 border-border/70 border-l-state-confirm bg-card text-state-confirm',
           )}
           role="status"
           aria-live="polite"

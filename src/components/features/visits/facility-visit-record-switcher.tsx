@@ -177,7 +177,7 @@ export function FacilityVisitRecordSwitcher({
       </div>
 
       {context.commonNotes ? (
-        <div className="mt-3 rounded-xl border border-state-confirm/40 bg-state-confirm/10 px-3 py-2">
+        <div className="mt-3 rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2">
           <p className="text-xs font-semibold text-state-confirm">訪問先共通メモ</p>
           <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-foreground">
             {context.commonNotes}

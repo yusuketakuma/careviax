@@ -377,7 +377,7 @@ export function VisitsToday() {
               </section>
 
               <p
-                className="rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2 text-sm leading-5 text-state-done"
+                className="rounded-md border-l-4 border-border/70 border-l-state-done bg-card px-3 py-2 text-sm leading-5 text-state-done"
                 data-testid="visits-today-offline-note"
               >
                 訪問モードはオフラインでも全機能が動きます。記録は端末に保存され、電波が戻ると自動同期されます。

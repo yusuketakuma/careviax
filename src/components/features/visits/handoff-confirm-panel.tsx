@@ -204,7 +204,7 @@ export function HandoffConfirmPanel({
           </div>
         </div>
         {isUnconfirmed && (
-          <div className="mt-2 rounded-md border border-state-confirm/40 bg-state-confirm/10 px-3 py-2 text-sm font-medium text-state-confirm">
+          <div className="mt-2 rounded-md border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm font-medium text-state-confirm">
             申し送り項目を確認してください
           </div>
         )}

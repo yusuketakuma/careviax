@@ -92,7 +92,7 @@ export function PatientCareTeamSourcePanel({
             ))}
           </div>
         ) : (
-          <p className="rounded-xl border border-state-confirm/40 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
+          <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm text-state-confirm">
             患者情報にクリニック・訪問看護・ケアマネジャーが登録されていません。報告書送付前に連携先を登録してください。
           </p>
         )}

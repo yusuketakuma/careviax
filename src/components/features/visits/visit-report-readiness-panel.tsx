@@ -112,8 +112,8 @@ export function VisitReportReadinessPanel({
           className={cn(
             'rounded-xl border px-3 py-2 text-sm',
             ready
-              ? 'border-state-done/40 bg-state-done/10 text-state-done'
-              : 'border-state-confirm/40 bg-state-confirm/10 text-state-confirm',
+              ? 'border-l-4 border-border/70 border-l-state-done bg-card text-state-done'
+              : 'border-l-4 border-border/70 border-l-state-confirm bg-card text-state-confirm',
           )}
           role="status"
           aria-live="polite"
@@ -137,9 +137,9 @@ export function VisitReportReadinessPanel({
                 className={cn(
                   'rounded-xl border px-2.5 py-2.5 sm:px-3 sm:py-3',
                   item.done
-                    ? 'border-state-done/40 bg-state-done/10'
+                    ? 'border-l-4 border-border/70 border-l-state-done bg-card'
                     : required
-                      ? 'border-state-confirm/40 bg-state-confirm/10'
+                      ? 'border-l-4 border-border/70 border-l-state-confirm bg-card'
                       : 'border-border/70 bg-muted/15',
                 )}
               >

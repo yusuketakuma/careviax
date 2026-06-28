@@ -277,7 +277,7 @@ export function VisitUnsyncedEvidenceBanner({ className }: { className?: string 
       role="status"
       data-testid="visit-unsynced-evidence-banner"
       className={cn(
-        'rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3',
+        'rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3',
         className,
       )}
     >

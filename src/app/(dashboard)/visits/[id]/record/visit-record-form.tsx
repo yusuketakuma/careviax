@@ -1570,7 +1570,7 @@ export function VisitRecordForm({
               ) : null}
 
               {carryItemsWarning && (
-                <Card className="border-state-blocked/30 bg-state-blocked/10">
+                <Card className="border-l-4 border-border/70 border-l-state-blocked bg-card">
                   <CardHeader className="pb-3">
                     <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-state-blocked">
                       <AlertTriangle className="h-5 w-5" aria-hidden="true" />
@@ -1622,7 +1622,7 @@ export function VisitRecordForm({
               )}
 
               {(visitAlertsLoading || visitAlertsError || visitAlerts.length > 0) && (
-                <Card className="border-state-confirm/30 bg-state-confirm/10">
+                <Card className="border-l-4 border-border/70 border-l-state-confirm bg-card">
                   <CardHeader className="pb-3">
                     <h3 className="font-heading text-sm leading-snug font-medium text-state-confirm">
                       訪問時チェック
@@ -1639,7 +1639,7 @@ export function VisitRecordForm({
               )}
 
               {(locationTrackingEnabled || visitGeoLog) && (
-                <Card className="border-tag-info/30 bg-tag-info/10">
+                <Card className="border-l-4 border-border/70 border-l-tag-info bg-card">
                   <CardHeader className="pb-3">
                     <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-tag-info">
                       <MapPin className="h-4 w-4 text-tag-info" aria-hidden="true" />
@@ -1727,7 +1727,7 @@ export function VisitRecordForm({
               )}
 
               {(isOffline || pendingSyncCount > 0) && (
-                <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
+                <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm">
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                     <div className="space-y-1">

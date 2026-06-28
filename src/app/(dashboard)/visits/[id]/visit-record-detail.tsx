@@ -904,19 +904,19 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
 
       {/* Reason fields */}
       {record.cancellation_reason && (
-        <div className="rounded-lg border border-state-blocked/30 bg-state-blocked/5 p-3">
+        <div className="rounded-lg border-l-4 border-border/70 border-l-state-blocked bg-card p-3">
           <p className="text-xs font-medium text-state-blocked">キャンセル理由</p>
           <p className="mt-1 text-sm">{record.cancellation_reason}</p>
         </div>
       )}
       {record.postpone_reason && (
-        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3">
+        <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-3">
           <p className="text-xs font-medium text-state-confirm">延期理由</p>
           <p className="mt-1 text-sm">{record.postpone_reason}</p>
         </div>
       )}
       {record.revisit_reason && (
-        <div className="rounded-lg border border-tag-info/30 bg-tag-info/10 p-3">
+        <div className="rounded-lg border-l-4 border-border/70 border-l-tag-info bg-card p-3">
           <p className="text-xs font-medium text-tag-info">再訪理由</p>
           <p className="mt-1 text-sm">{record.revisit_reason}</p>
         </div>
