@@ -23,6 +23,41 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Visit Billing Candidates Summary GET No-Store And PHI-Safe Error Hardening
+
+- Coordination:
+  - Followed maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/visit-billing-candidates/summary/route.ts` and `route.test.ts`; Claude ACKed no FE conflict.
+  - Implementation ran through a Codex maintainer subagent while main Codex stayed open for agmsg and FE review interrupts.
+  - Privacy, medical/billing safety, general Codex review, and verifier subagents approved before Claude checker review.
+  - Claude reviewed the BE diff, independently ran focused Vitest, scoped ESLint, and scoped Prettier check, and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, external sends, deploy, or destructive operations were touched by Codex.
+- Hardened visit billing summary API responses:
+  - Replaced the common `withAuthContext` route wrapper with explicit `requireAuthContext({ permission: 'canManageBilling' })` so ordinary unexpected failures avoid the common raw-error logging path.
+  - Wrapped success, auth failure, validation error, and handled 500 responses in `withSensitiveNoStore`.
+  - Wrapped the route in `withRoutePerformance(req, ...)`.
+  - Added `runWithRequestAuthContext(ctx, ...)` defense-in-depth after successful auth.
+  - Passed `{ requestContext: ctx }` into `withOrgContext` while preserving explicit org filters.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging.
+  - Restricted logged `error_name` to an allowlist, falling back to `Error` for crafted names.
+  - Preserved `canManageBilling`, `billing_month` and optional `share_case_id` / `partner_pharmacy_id` validation order, `partnerVisitRecord.count` and `visitBillingCandidate.findMany` query shapes/selects, aggregation logic, and the existing summary response shape.
+  - Added tests for route-performance wrapper invocation, request auth-context wrapper invocation, `withOrgContext` request context propagation, auth failure no-store before billing reads, fixed no-store 500, and absence of raw share-case/patient/billing/SQL/stack/crafted error-name/raw-error leakage from response/log surfaces.
+- Security/privacy risk reduced: visit billing candidate summary responses consistently carry sensitive no-store headers, unexpected failures return fixed PHI-safe bodies, and handler logs avoid raw patient, billing, share-case, SQL, stack, crafted error-name, and raw error object details.
+- Performance issue improved: route latency/error metrics are captured with `withRoutePerformance`; no DB query shape or additional data read was introduced.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/visit-billing-candidates/summary/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `8` tests.
+  - `pnpm exec eslint src/app/api/visit-billing-candidates/summary/route.ts src/app/api/visit-billing-candidates/summary/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/visit-billing-candidates/summary/route.ts src/app/api/visit-billing-candidates/summary/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/visit-billing-candidates/summary/route.ts src/app/api/visit-billing-candidates/summary/route.test.ts`: passed.
+  - Privacy compliance review: no findings.
+  - Medical/billing safety review: no findings.
+  - General Codex review: no findings.
+  - Verifier subagent re-ran focused Vitest, scoped ESLint, scoped Prettier check, and focused diff whitespace check: all passed.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `8/8`, scoped ESLint, scoped Prettier check, and verified validation order, no-store coverage, fixed logging, request context propagation, and query-shape preservation.
+- Commit status: implementation committed locally as `5b1c9621`; this section records the progress-ledger slice for separate commit.
+- Next action: commit this progress-ledger slice, notify Claude, push grouped main commits, then continue the next backend/API candidate or review Claude FE patches as requested.
+
 ### 2026-06-28 JST - Dashboard Monthly Stats GET No-Store And PHI-Safe Error Hardening
 
 - Coordination:
