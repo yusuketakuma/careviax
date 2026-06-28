@@ -683,7 +683,7 @@ function VehicleRoutePanel({
           </ul>
         )}
         {recommendedVehicle ? (
-          <div className="mt-3 rounded-md border border-tag-info/30 bg-tag-info/10 p-2.5">
+          <div className="mt-3 rounded-md border-l-4 border-border/70 border-l-tag-info bg-card p-2.5">
             <p className="text-xs leading-5 text-tag-info">
               自動提案: {recommendedVehicle.label} を未割当訪問
               {recommendedVehicleTargets.length}件へ反映できます。
@@ -988,7 +988,7 @@ function TeamGanttCard({
 
       {riskAlert ? (
         <div
-          className="mt-4 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2.5"
+          className="mt-4 rounded-md border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2.5"
           role="alert"
           data-testid="schedule-risk-banner"
         >
@@ -1042,7 +1042,7 @@ function PendingProposalRow({
 
   return (
     <li
-      className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2.5"
+      className="rounded-md border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2.5"
       data-testid="pending-proposal-row"
     >
       <div className="flex flex-wrap items-center gap-2">

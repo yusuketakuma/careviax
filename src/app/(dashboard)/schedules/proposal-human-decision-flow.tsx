@@ -260,7 +260,7 @@ export function ProposalHumanDecisionFlow({
       </div>
 
       {currentStep ? (
-        <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2.5 text-tag-info">
+        <div className="rounded-xl border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-2.5 text-tag-info">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="border-tag-info/40 bg-background/80 text-tag-info">
               今やること

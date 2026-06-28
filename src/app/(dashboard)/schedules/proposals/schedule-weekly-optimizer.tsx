@@ -1475,7 +1475,7 @@ export function ScheduleWeeklyOptimizer({
                             {cellProposals.slice(0, 3).map((proposal) => (
                               <div
                                 key={proposal.id}
-                                className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs"
+                                className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-xs"
                               >
                                 <p className="font-medium text-foreground">
                                   {proposal.case_.patient.name}

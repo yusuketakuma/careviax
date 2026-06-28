@@ -2215,12 +2215,12 @@ export function ScheduleProposalsContent({
                           {proposalListVisitPlaceLabel(proposal)}
                         </p>
                         {proposal.escalation_reason ? (
-                          <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
+                          <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm text-state-confirm">
                             {proposal.escalation_reason}
                           </p>
                         ) : null}
                         {proposalCadence ? (
-                          <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-sm text-tag-info">
+                          <div className="rounded-xl border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-2 text-sm text-tag-info">
                             <p className="font-medium">算定 cadence</p>
                             <p className="mt-1">
                               次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} /
@@ -2234,7 +2234,7 @@ export function ScheduleProposalsContent({
                           </div>
                         ) : null}
                         {impactedCount ? (
-                          <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
+                          <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm text-state-confirm">
                             リスケ影響 {impactedCount} 件
                             {impactedNames.length > 0 ? ` / ${impactedNames.join('、')}` : ''}
                           </p>
@@ -2742,7 +2742,7 @@ export function ScheduleProposalsContent({
                     ) : null}
                   </div>
                   {detailPreview ? (
-                    <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-sm text-tag-info">
+                    <div className="rounded-xl border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-2 text-sm text-tag-info">
                       <p className="font-medium">算定 cadence</p>
                       <p className="mt-1">
                         次回算定可能日: {detailPreview.cadence.next_billable_date ?? '提案不可'} /

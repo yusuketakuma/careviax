@@ -128,7 +128,7 @@ export function RouteBoardSummary({
           <span className="text-muted-foreground">担当薬剤師</span>
           <span className="font-medium text-foreground">{pharmacistName ?? '未設定'}</span>
         </div>
-        <div className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
+        <div className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-xs text-state-confirm">
           電話で患者合意が取れた候補のみ確定できます。確定後の変更は リスケジュール操作で行います。
         </div>
       </div>

@@ -200,7 +200,7 @@ function SyncConflictCard({
       : 'ローカル下書きを破棄してサーバー版を残します';
 
   return (
-    <div className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
+    <div className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-medium">訪問記録の競合</p>

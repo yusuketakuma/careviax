@@ -367,7 +367,7 @@ export function ScheduleCreateEditDrawer({
 
           <div
             role="note"
-            className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm"
+            className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm"
           >
             正式決定前の予定です。患者さんへ確認してから確定してください。
           </div>

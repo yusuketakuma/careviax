@@ -71,7 +71,7 @@ export function ScheduleDayOperationalTasksPanel({
         <TaskLoadingState label="再架電タスクを読み込んでいます..." />
       ) : callbackTasks.length > 0 ? (
         <div className="space-y-3">
-          <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-xs text-tag-info">
+          <div className="rounded-xl border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-2 text-xs text-tag-info">
             架電結果の再記録や折返し対応が必要な候補です。
           </div>
           <ul aria-label="再架電タスク" className="space-y-3">
@@ -246,7 +246,7 @@ function SchedulingTaskItem({
       {task.task_type === 'visit_schedule_override_approval' &&
         task.related_entity_id &&
         !relatedSchedule && (
-          <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
+          <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-xs text-state-confirm">
             対象予定をこの週の予定一覧で確認してから変更承認してください。
           </div>
         )}
