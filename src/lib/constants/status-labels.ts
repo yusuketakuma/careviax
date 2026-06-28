@@ -126,6 +126,19 @@ export const RISK_LEVEL_LABELS: Record<string, string> = {
   high: '高',
 };
 
+/**
+ * システム稼働状態(ヘルスチェック)の日本語ラベル。admin/settings の HealthCard 用。
+ * 上位ステータス(ok/degraded/down)に加え、取得前(loading)・サブチェック未取得(unknown)も含む。
+ * サブチェックの status は string 型なので呼び出し側は `?? value` で防御する。
+ */
+export const HEALTH_STATUS_LABELS: Record<string, string> = {
+  ok: '正常',
+  degraded: '低下',
+  down: '停止',
+  unknown: '不明',
+  loading: '確認中',
+};
+
 export const SCHEDULE_STATUS_LABELS: Record<string, string> = {
   planned: '予定',
   in_preparation: '準備中',

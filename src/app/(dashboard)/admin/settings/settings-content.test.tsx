@@ -72,6 +72,17 @@ describe('SettingsContent polling policy', () => {
     expect(screen.getAllByLabelText('設定編集モード').length).toBeGreaterThan(0);
   });
 
+  it('renders system health status as Japanese labels, not raw enums', () => {
+    render(<SettingsContent />);
+
+    // 全体ステータス ok -> 正常; sub-checks with no data fall back unknown -> 不明.
+    expect(screen.getAllByText('正常').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('不明').length).toBeGreaterThan(0);
+    // Raw English enum tokens must never reach the DOM.
+    expect(screen.queryByText('ok')).toBeNull();
+    expect(screen.queryByText('unknown')).toBeNull();
+  });
+
   it('labels the JSON settings editor', () => {
     expect(SOURCE).toContain('aria-label="設定JSON"');
   });

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
+import { HEALTH_STATUS_LABELS } from '@/lib/constants/status-labels';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -497,11 +498,11 @@ function HealthCard({
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
           {role ? (
             <StateBadge role={role} className="mt-2 text-xs">
-              {value}
+              {HEALTH_STATUS_LABELS[value] ?? value}
             </StateBadge>
           ) : (
             <Badge variant="outline" className="mt-2 text-xs">
-              {value}
+              {HEALTH_STATUS_LABELS[value] ?? value}
             </Badge>
           )}
           <p className="mt-2 text-xs text-muted-foreground">{description}</p>
