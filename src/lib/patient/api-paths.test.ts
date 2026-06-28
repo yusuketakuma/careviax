@@ -33,6 +33,7 @@ describe('buildPatientApiPath', () => {
       '/timeline',
       '/visit-constraints',
       '/visits',
+      '/visit-brief',
       '/visit-records/pdf',
     ]) {
       expect(buildPatientApiPath(patientId, suffix)).toBe(

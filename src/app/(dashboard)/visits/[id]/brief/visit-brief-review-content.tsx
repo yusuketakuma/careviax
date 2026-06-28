@@ -10,6 +10,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
 import type { VisitBrief } from '@/types/visit-brief';
 import {
@@ -73,7 +74,8 @@ export function VisitBriefReviewContent({ visitId }: { visitId: string }) {
   const briefQuery = useQuery<{ data: VisitBrief }>({
     queryKey: ['patient-visit-brief', patientId, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/visit-brief`, {
+      if (!patientId) throw new Error('患者IDが未解決です');
+      const res = await fetch(buildPatientApiPath(patientId, '/visit-brief'), {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('訪問前まとめの取得に失敗しました');
