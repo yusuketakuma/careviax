@@ -727,7 +727,7 @@ function PatientHomeOperationsPanel({
       </div>
       {topAlerts.length > 0 ? (
         <div
-          className="mt-4 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3"
+          className="mt-4 rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-3"
           data-testid="patient-home-operation-alerts"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1264,7 +1264,7 @@ function PatientShareCaseCreatePanel({
           </p>
         ) : null}
         {partnerships.length === 0 && !partnershipsQuery.isLoading ? (
-          <div className="rounded-md border border-state-confirm/30 bg-state-confirm/10 p-3 text-sm text-state-confirm">
+          <div className="rounded-md border-l-4 border-border/70 border-l-state-confirm bg-card p-3 text-sm text-state-confirm">
             有効な薬局間連携がありません。協力薬局設定で連携を有効化してから作成してください。
           </div>
         ) : null}
@@ -3475,7 +3475,7 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
       ) : null}
 
       {foundation.archive.archived ? (
-        <div className="mt-4 rounded-md border border-state-blocked/30 bg-state-blocked/10 p-3 text-sm text-state-blocked">
+        <div className="mt-4 rounded-md border-l-4 border-border/70 border-l-state-blocked bg-card p-3 text-sm text-state-blocked">
           <p className="font-semibold">アーカイブ中の患者です</p>
           <p className="mt-1 text-xs">
             {foundation.archive.archived_at ?? '日時未記録'}
