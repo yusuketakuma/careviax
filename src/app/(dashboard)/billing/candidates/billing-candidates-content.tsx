@@ -922,9 +922,9 @@ export function BillingCandidatesContent({
       </div>
 
       {summary?.blocker_reasons?.length ? (
-        <div className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
-          <p className="font-medium">締めを止めている主因</p>
-          <ul className="mt-1 space-y-1 text-xs">
+        <div className="rounded-md border border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-foreground">
+          <p className="font-medium text-state-confirm">締めを止めている主因</p>
+          <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
             {summary.blocker_reasons.map((item) => (
               <li key={item.reason}>
                 {item.reason} ({item.count}件)
@@ -972,7 +972,7 @@ export function BillingCandidatesContent({
                 variant={billingDomain === option.value ? 'default' : 'ghost'}
                 onClick={() => setBillingDomain(option.value)}
                 aria-pressed={billingDomain === option.value}
-                className="h-7 px-2 text-xs"
+                className="min-h-[44px] px-2 text-xs"
               >
                 {option.shortLabel}
               </Button>

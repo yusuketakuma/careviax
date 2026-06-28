@@ -602,15 +602,15 @@ function DraftResultPanel({ draft }: { draft: InvoiceDraftResult | null }) {
 
   return (
     <div
-      className="rounded-lg border border-state-done/30 bg-state-done/10 px-4 py-3 text-sm text-state-done"
+      className="rounded-lg border border-l-4 border-border/70 border-l-state-done bg-card px-4 py-3 text-sm text-foreground"
       data-testid="partner-invoice-draft-result"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="font-semibold">
+          <p className="font-semibold text-state-done">
             {documentLabel}ドラフト: {draft.id}
           </p>
-          <p className="mt-1 text-state-done">
+          <p className="mt-1 text-muted-foreground">
             {draft.item_count}件 / 合計 {formatYen(draft.total)}
             {draft.reused_existing_draft ? ' / 既存ドラフトを再利用' : ''}
           </p>
