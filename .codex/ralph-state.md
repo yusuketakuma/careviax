@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-1027 JST
+
+- current task: management-plan and visit-records print patient API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `ManagementPlanPrintPage` and `PatientVisitRecordsPrintPage` returning `not_found`, `src/app/(dashboard)/patients/[id]/management-plan/print/page.tsx`, `src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx`, `src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx`, `src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx`, and `src/lib/patient/api-paths.ts`.
+- files changed: `src/app/(dashboard)/patients/[id]/management-plan/print/page.tsx`, `src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx`, `src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx`, `src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: management-plan print and visit-records print pages still duplicated patient detail GET path construction. Hostile ids containing `/`, `?`, or `#` could drift from the shared encoded/fail-closed patient API path contract.
+- security risks found: reduced print-page patient detail route-confusion drift by routing both patient detail GETs through `buildPatientApiPath(patientId)`. Added regression tests proving hostile patient ids call the shared helper and both print-page patient GETs consume helper return values. Existing management-plan/case path construction through `encodePathSegment`, visit-records query construction through `URLSearchParams`, org headers, no-store cache, print timing, back links, toolbar shortcuts, rendered print content, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing print-data fetches, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/management-plan/print/page.tsx' 'src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/management-plan/print/page.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-records/print/page.test.tsx' src/lib/patient/api-paths.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/api-paths.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
+- validation results: Prettier write passed. Focused management-plan print + visit-records print + patient API path tests passed `3` files / `28` tests. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
+- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the owned print-page files for implementation commit after cached diff whitespace check.
+
 ### 20260628-1018 JST
 
 - current task: patient master card patient API path helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing mutations, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-master-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx' src/lib/patient/api-paths.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/api-paths.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
 - validation results: Prettier write passed. Focused patient master card + patient API path tests passed `2` files / `19` tests after correcting the helper mock to preserve dot-segment rejection. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
-- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only the owned patient-master-card files for implementation commit after cached diff whitespace check.
+- remaining work: implementation commit `e039087e` and state commit `7b711f15` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: continue non-overlapping API/path helper convergence while monitoring agmsg for Claude interrupts.
 
 ### 20260628-1010 JST
 
