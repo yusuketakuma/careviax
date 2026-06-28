@@ -882,17 +882,17 @@ function PrescriptionIntakeCard({
                   )}
                   <span>{intake.lines.length}剤</span>
                   {intake.source_type === 'refill' && (
-                    <Badge variant="outline" className="h-4 text-[9px]">
+                    <Badge variant="outline" className="h-5 text-xs">
                       薬局保管
                     </Badge>
                   )}
                   {intake.refill_remaining_count != null && intake.refill_remaining_count > 0 && (
-                    <Badge variant="outline" className="h-4 text-[9px]">
+                    <Badge variant="outline" className="h-5 text-xs">
                       リフィル残{intake.refill_remaining_count}回
                     </Badge>
                   )}
                   {intake.split_dispense_total != null && intake.split_dispense_current != null && (
-                    <Badge variant="outline" className="h-4 text-[9px]">
+                    <Badge variant="outline" className="h-5 text-xs">
                       分割 {intake.split_dispense_current}/{intake.split_dispense_total}
                       {intake.split_next_dispense_date
                         ? ` 次回 ${fmtDate(intake.split_next_dispense_date)}`
@@ -902,13 +902,13 @@ function PrescriptionIntakeCard({
                   {isFax && !originalCollected ? (
                     <Badge
                       variant={faxOriginalOverdue ? 'destructive' : 'outline'}
-                      className="h-4 text-[9px]"
+                      className="h-5 text-xs"
                     >
                       {faxOriginalOverdue ? 'FAX原本未回収' : 'FAX原本回収待ち'}
                     </Badge>
                   ) : null}
                   {isFax && originalCollected ? (
-                    <Badge variant="outline" className="h-4 text-[9px]">
+                    <Badge variant="outline" className="h-5 text-xs">
                       原本回収済{' '}
                       {intake.original_collected_at ? fmtDate(intake.original_collected_at) : ''}
                     </Badge>
