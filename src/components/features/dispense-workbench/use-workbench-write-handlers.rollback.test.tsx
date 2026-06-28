@@ -4221,4 +4221,89 @@ describe('useWorkbenchWriteHandlers confirm gating (S0 request/commit split)', (
     // onError で元の auditCells（'ok'）へロールバックする。
     expect(useWorkbenchStore.getState().auditCells[key]).toBe('ok');
   });
+
+  it('commitSetAuditReject aborts when the NG classification drifts after confirmation (round-3 S1)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const onRequestRejectConfirm = vi.fn();
+    const key = 'patient_1:0:朝';
+
+    act(() => {
+      useWorkbenchStore.setState({ ...setaReadyState(), target: { di: 0, tk: '朝' } });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestRejectConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onAuditNg();
+    });
+    const descriptor = onRequestRejectConfirm.mock.calls[0][0] as PendingSetAuditReject;
+    expect(descriptor.ngCode).toBe('drug_mismatch');
+
+    // 確認中に同一セルの NG 分類が別コードへ再分類された状況を再現（薬剤違い→数量不足）。
+    act(() => {
+      useWorkbenchStore.setState((state) => ({ ng: { ...state.ng, [key]: '数量不足' } }));
+    });
+
+    act(() => {
+      result.current.commitSetAuditReject(descriptor);
+    });
+
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
+    // 楽観 NG を適用しない（auditCells は据え置き）。
+    expect(useWorkbenchStore.getState().auditCells[key]).toBe('ok');
+  });
+
+  it('commitSetAuditReject aborts when the cell batch versions drift after confirmation (round-3 S1)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const onRequestRejectConfirm = vi.fn();
+    const key = 'patient_1:0:朝';
+
+    act(() => {
+      useWorkbenchStore.setState({ ...setaReadyState(), target: { di: 0, tk: '朝' } });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestRejectConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onAuditNg();
+    });
+    const descriptor = onRequestRejectConfirm.mock.calls[0][0] as PendingSetAuditReject;
+    expect(descriptor.meta.versions).toEqual([7]);
+
+    // 確認中に同一セルが refetch され batch version が進んだ状況を再現（version 7→8）。
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        writeContext: {
+          ...state.writeContext,
+          cellMeta: {
+            ...state.writeContext.cellMeta,
+            [key]: { batchIds: ['batch_1'], versions: [8], dayNumber: 1, slot: 'morning' },
+          },
+        },
+      }));
+    });
+
+    act(() => {
+      result.current.commitSetAuditReject(descriptor);
+    });
+
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
+    expect(useWorkbenchStore.getState().auditCells[key]).toBe('ok');
+  });
 });

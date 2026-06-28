@@ -38,6 +38,7 @@ import {
 } from './dispensing-workbench.adapter';
 import { isCalendarPhase } from './dispensing-workbench.types';
 import type { FKeyAction, Phase } from './dispensing-workbench.types';
+import { dispatchFKeyAction } from './dispensing-workbench.fkey';
 import type {
   AuditNarcoticLine,
   PendingPrimary,
@@ -107,15 +108,35 @@ interface PrimaryConfirmProps {
  * pendingPrimary（不可逆 sign-off）から ConfirmDialog の site 別表示 props を導出する。
  * 対象患者名（patientName）を description 先頭に明示し、不可逆性とあわせて誤確定を抑止する（#3）。
  */
+/**
+ * 不可逆確認ダイアログの患者前置（「氏名様（生年月日）の」）を組み立てる。
+ * 同名患者の取り違えを防ぐため可能なら生年月日も併記する（dob 未取得時='—' は氏名のみ）。
+ */
+function describePatient(patientName?: string, dob?: string): string {
+  if (!patientName) return '';
+  const hasDob = !!dob && dob !== '—';
+  return hasDob ? `${patientName}様（${dob}）の` : `${patientName} 様の`;
+}
+
+/** API slot キー → セット監査 reject 確認に出す時点ラベル（頓服含む）。 */
+const SETA_SLOT_LABELS: Record<string, string> = {
+  morning: '朝',
+  noon: '昼',
+  evening: '夕',
+  bedtime: '眠前',
+  prn: '頓服',
+};
+
 function buildPrimaryConfirm(
   pending: PendingPrimary | null,
   patientName?: string,
+  dob?: string,
 ): PrimaryConfirmProps {
   if (!pending) {
     return { title: '', description: '', confirmLabel: '確認' };
   }
   // 対象患者の前置（取得経路が無い場合は省略）。誤った患者への確定を視覚的に防ぐ。
-  const who = patientName ? `${patientName} 様の` : '';
+  const who = describePatient(patientName, dob);
   if (pending.phase === 'dispense') {
     return {
       title: '調剤を完了します',
@@ -144,6 +165,29 @@ function buildPrimaryConfirm(
     title: 'セット監査を承認します',
     description: `${who}セット監査を承認し確定します。この操作は取り消せません。`,
     confirmLabel: 'セット監査承認',
+  };
+}
+
+/**
+ * セット監査 reject（per-cell NG）確認ダイアログの表示文言を組み立てる。
+ * 患者識別（氏名+生年月日）・対象セル（n日目・時点）・NG 理由を description に明示し、
+ * 同名患者や隣接セルの取り違えによる誤った不可逆差戻しを抑止する（round-3 UX）。
+ */
+function buildRejectConfirm(
+  pending: PendingSetAuditReject | null,
+  patientName?: string,
+  dob?: string,
+): { title: string; description: string } {
+  const title = 'セット監査を差戻します（NG）';
+  if (!pending) {
+    return { title, description: '' };
+  }
+  const who = describePatient(patientName, dob);
+  const slot = SETA_SLOT_LABELS[pending.meta.slot] ?? pending.meta.slot;
+  const where = `${pending.meta.dayNumber}日目・${slot}`;
+  return {
+    title,
+    description: `${who}${where} のセルを「${pending.ngLabel}」として差戻し、対象計画を保留に遷移します。確定後は取り消せません。`,
   };
 }
 
@@ -210,8 +254,10 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   });
 
   // pendingPrimary（不可逆 sign-off）から ConfirmDialog の site 別表示 props を導出する。
-  // 対象患者名を明示して誤確定を抑止する（#3）。
-  const primaryConfirm = buildPrimaryConfirm(pendingPrimary, view.cur.name);
+  // 対象患者の氏名+生年月日を明示して誤確定・同名取り違えを抑止する（#3 / round-3 UX）。
+  const primaryConfirm = buildPrimaryConfirm(pendingPrimary, view.cur.name, view.cur.dob);
+  // pendingReject（セット監査 reject）の確認文言。患者識別+対象セル+NG 理由を明示する。
+  const rejectConfirm = buildRejectConfirm(pendingReject, view.cur.name, view.cur.dob);
 
   // ---- 実データ結線（計画 §14 / 段階1b 読取のみ）----
   // 既定（モック）では isRealDataEnabled()=false でこの effect は no-op。
@@ -346,44 +392,16 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   const runAction = useCallback(
     (action: FKeyAction) => {
       // 不可逆 sign-off / reject の確認中は全 F-key を無効化し、患者文脈ドリフト
-      // （prevPatient/nextPatient/bulk/hold 含む）と F12 churn を抑止する。
-      // mutate 二重発火は request/commit 分割 + ラッチで防ぐが、確認中の操作はここで一括停止する。
-      if (pendingPrimary !== null || pendingReject !== null) {
-        return;
-      }
-      switch (action) {
-        case 'prevPatient':
-          navBy(-1);
-          break;
-        case 'nextPatient':
-          navBy(1);
-          break;
-        case 'bulk':
-          writeHandlers.onBulk();
-          break;
-        case 'hold':
-          openHold(target);
-          break;
-        case 'phaseDispense':
-          router.push(PHASE_ROUTE.dispense);
-          break;
-        case 'phaseAudit':
-          router.push(PHASE_ROUTE.audit);
-          break;
-        case 'phaseSet':
-          router.push(PHASE_ROUTE.setp);
-          break;
-        case 'phaseSetAudit':
-          router.push(PHASE_ROUTE.seta);
-          break;
-        case 'next': {
-          const nextPhase = writeHandlers.onPrimary();
-          if (nextPhase) router.push(PHASE_ROUTE[nextPhase]);
-          break;
-        }
-        default:
-          break;
-      }
+      // （prevPatient/nextPatient/bulk/hold 含む）と F12 churn を抑止する。一括停止と
+      // ディスパッチは純粋関数 dispatchFKeyAction に委ね、確認中ガードの漏れを table-test で検出する。
+      dispatchFKeyAction(action, pendingPrimary !== null || pendingReject !== null, {
+        navBy,
+        onBulk: writeHandlers.onBulk,
+        openHold,
+        pushPhase: (nextPhase) => router.push(PHASE_ROUTE[nextPhase]),
+        onPrimary: writeHandlers.onPrimary,
+        target,
+      });
     },
     [navBy, openHold, pendingPrimary, pendingReject, router, target, writeHandlers],
   );
@@ -604,8 +622,8 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           if (!open) setPendingReject(null);
         }}
         variant="destructive"
-        title="セット監査を差戻します（NG）"
-        description="このセルをNGとして差戻し、対象計画を保留に遷移します。確定後は取り消せません。"
+        title={rejectConfirm.title}
+        description={rejectConfirm.description}
         confirmLabel="差戻す"
         autoFocusConfirm
         onConfirm={() => {

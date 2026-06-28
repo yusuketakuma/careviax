@@ -186,6 +186,20 @@ function resolveCellMeta(
   return cellMeta[cellKey(selId, target.di, target.tk)] ?? null;
 }
 
+/**
+ * CellMeta の OCC アンカー（batchIds / versions）が同順で一致するか。
+ * reject 確認中に対象セルが refetch され batch/version が変わった場合の
+ * ドリフト検出に使う（dayNumber/slot はセルキー由来で不変なため比較対象外）。
+ */
+function cellMetaEquals(a: CellMeta, b: CellMeta): boolean {
+  if (a.batchIds.length !== b.batchIds.length) return false;
+  if (a.versions.length !== b.versions.length) return false;
+  return (
+    a.batchIds.every((id, i) => id === b.batchIds[i]) &&
+    a.versions.every((v, i) => v === b.versions[i])
+  );
+}
+
 /** グループ配列から did → gid の所属マップを作る（D&D 移動 did の diff 用）。 */
 function membershipOf(groups: Group[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -799,16 +813,29 @@ export function useWorkbenchWriteHandlers(args: {
       }
       const target = descriptor.target;
       const key = cellKey(s.selId, target.di, target.tk);
-      const previousAuditState = s.auditCells[key];
-      const planId = s.writeContext.planId;
-      const meta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
-      // 現在の NG ラベルを再取得（背景でクリアされた場合は descriptor へフォールバック）。
-      const ngLabel = s.ng[key] ?? descriptor.ngLabel;
-      if (!planId || !meta) {
-        reportMissingWriteContext();
+      // ドリフト照合（round-3 S1）: 確認中に NG 分類やセル meta（batch/version）が変わると、
+      // 確認した内容と異なる terminal rejected を post しうる。現在値と descriptor を突き合わせ、
+      // 不一致なら applyCell/mutate 前に中止する（primary commit の #2d と対称な防御）。
+      const currentNgLabel = s.ng[key];
+      const currentNgCode = currentNgLabel ? NG_LABEL_TO_CODE[currentNgLabel] : undefined;
+      const currentMeta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
+      if (
+        currentNgCode !== descriptor.ngCode ||
+        !currentMeta ||
+        !cellMetaEquals(currentMeta, descriptor.meta)
+      ) {
+        toast.error(CONFIRM_TARGET_DRIFT_MESSAGE);
         return;
       }
-      const input = buildRejectedSetAuditInput(planId, meta, ngLabel);
+      const previousAuditState = s.auditCells[key];
+      // 確定は確認済み descriptor の値のみから組み立てる（現在 store 値ではなく確認した内容を正本化）。
+      // 上のドリフト照合を通過しているため descriptor と現在値は一致しているが、確認した値を
+      // 直接使うことで「確認した内容＝送信内容」を構造的に保証する。
+      const input = buildRejectedSetAuditInput(
+        descriptor.planId,
+        descriptor.meta,
+        descriptor.ngLabel,
+      );
       if (!input) {
         toast.error('NG分類を選択してから実行してください。');
         return;
