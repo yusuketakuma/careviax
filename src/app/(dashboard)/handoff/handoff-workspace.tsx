@@ -873,7 +873,7 @@ function ConsultDetail({ item }: { item: HandoffBoardItem | null }) {
             </p>
           ) : null}
           {item.resolution_note ? (
-            <div className="mt-2 rounded-md border border-state-waiting/30 bg-state-waiting/10 px-3 py-2 text-sm leading-6 text-state-waiting">
+            <div className="mt-2 rounded-md border-l-4 border-border/70 border-l-state-waiting bg-card px-3 py-2 text-sm leading-6 text-state-waiting">
               <span className="font-bold">薬剤師のメモ:</span> {item.resolution_note}
             </div>
           ) : null}
@@ -1284,7 +1284,7 @@ function VisitHandoffConfirmationWorkspace({
       </div>
 
       {selectedTask ? (
-        <p className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm font-medium text-state-confirm">
+        <p className="mt-3 rounded-md border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm font-medium text-state-confirm">
           {selectedTask.title}
         </p>
       ) : null}
@@ -1526,7 +1526,7 @@ export function HandoffWorkspace() {
                     ) : null}
                   </div>
                 ) : null}
-                <p className="mt-3 rounded-md border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-xs leading-5 text-tag-info">
+                <p className="mt-3 rounded-md border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-2 text-xs leading-5 text-tag-info">
                   事務からの疑義・判断もここに届き、対応は監査ログに残ります。
                 </p>
               </section>
@@ -1592,7 +1592,7 @@ export function HandoffWorkspace() {
               />
 
               <p
-                className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm leading-6 text-tag-info"
+                className="rounded-lg border-l-4 border-border/70 border-l-tag-info bg-card px-4 py-3 text-sm leading-6 text-tag-info"
                 data-testid="handoff-rule-bar"
               >
                 <strong className="font-bold">ハンドオフの3点セット:</strong> ①何を(作業の範囲)
