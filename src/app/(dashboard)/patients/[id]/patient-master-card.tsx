@@ -31,6 +31,7 @@ import { buildIntakeBadges, getHomeVisitIntake } from '@/lib/patient/intake-disp
 import { GENDER_LABELS } from '@/lib/constants/status-labels';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type FacilityOption = {
@@ -131,13 +132,10 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
   const qualificationCheckMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(
-        `/api/patients/${encodePathSegment(patient.id)}/qualification-check`,
-        {
-          method: 'POST',
-          headers: buildOrgHeaders(orgId),
-        },
-      );
+      const res = await fetch(buildPatientApiPath(patient.id, '/qualification-check'), {
+        method: 'POST',
+        headers: buildOrgHeaders(orgId),
+      });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 501) {
@@ -170,7 +168,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/patients/${encodePathSegment(patient.id)}`, {
+      const res = await fetch(buildPatientApiPath(patient.id), {
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify({

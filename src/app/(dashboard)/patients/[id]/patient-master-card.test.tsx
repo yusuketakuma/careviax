@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -22,6 +23,11 @@ vi.mock('sonner', () => ({
     warning: vi.fn(),
   },
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 import { PatientMasterCard } from './patient-master-card';
 
@@ -66,6 +72,12 @@ describe('PatientMasterCard', () => {
     useMutationMock.mockReturnValue({
       mutate: vi.fn(),
       isPending: false,
+    });
+    vi.mocked(buildPatientApiPath).mockImplementation((patientId, suffix = '') => {
+      if (patientId === '.' || patientId === '..') {
+        throw new RangeError('Patient id cannot be a dot segment');
+      }
+      return `/api/patients/${encodeURIComponent(patientId)}${suffix}`;
     });
   });
 
@@ -217,6 +229,7 @@ describe('PatientMasterCard', () => {
       await mutationConfigs[0]?.mutationFn?.();
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(hostilePatientId, '/qualification-check');
       expect(url).toBe(`/api/patients/${encodeURIComponent(hostilePatientId)}/qualification-check`);
       expect(url).not.toContain('?x=y');
       expect(url).not.toContain('#z');
@@ -244,6 +257,7 @@ describe('PatientMasterCard', () => {
       await mutationConfigs[1]?.mutationFn?.();
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(hostilePatientId);
       expect(url).toBe(`/api/patients/${encodeURIComponent(hostilePatientId)}`);
       expect(url).not.toContain('?x=y');
       expect(url).not.toContain('#z');
@@ -300,4 +314,36 @@ describe('PatientMasterCard', () => {
       }
     },
   );
+
+  it('routes patient API mutations through the shared patient API path helper return values', async () => {
+    const patientId = 'patient_1';
+    const { mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(buildPatientApiPath)
+      .mockReturnValueOnce('/api/patients/__helper_patient__/qualification-check')
+      .mockReturnValueOnce('/api/patients/__helper_patient__');
+
+    try {
+      render(<PatientMasterCard orgId="org_1" patient={buildPatientWith({ id: patientId })} />);
+
+      await mutationConfigs[0]?.mutationFn?.();
+      await mutationConfigs[1]?.mutationFn?.();
+
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/qualification-check');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(
+        '/api/patients/__helper_patient__/qualification-check',
+      );
+      expect(fetchMock.mock.calls[1]?.[0]).toBe('/api/patients/__helper_patient__');
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        `/api/patients/${patientId}/qualification-check`,
+        expect.anything(),
+      );
+      expect(fetchMock).not.toHaveBeenCalledWith(`/api/patients/${patientId}`, expect.anything());
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
 });
