@@ -91,9 +91,14 @@ vi.mock('@/components/ui/select', async () => {
     children?: React.ReactNode;
   };
 
+  type SelectValueProps = {
+    children?: React.ReactNode | ((value: unknown) => React.ReactNode);
+  };
+
   const SelectItem = ({ children }: ItemProps) => <>{children}</>;
   const SelectTrigger = ({ children }: TriggerProps) => <>{children}</>;
-  const SelectValue = () => null;
+  // 閉じた SelectTrigger のラベル契約を担うマーカー。children(value→label) は Select 側で解決する。
+  const SelectValue = (_props: SelectValueProps) => null;
   const SelectContent = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
 
   function flattenText(node: React.ReactNode): string {
@@ -108,12 +113,16 @@ vi.mock('@/components/ui/select', async () => {
   function collect(
     node: React.ReactNode,
     items: Array<{ value: string; label: string; className?: string }>,
+    found: { selectValue?: SelectValueProps['children'] },
   ): TriggerProps | null {
     let triggerProps: TriggerProps | null = null;
     React.Children.forEach(node, (child) => {
       if (!React.isValidElement(child)) return;
       if (child.type === SelectTrigger) {
         triggerProps = child.props as TriggerProps;
+      }
+      if (child.type === SelectValue && found.selectValue === undefined) {
+        found.selectValue = (child.props as SelectValueProps).children;
       }
       if (child.type === SelectItem) {
         const props = child.props as ItemProps;
@@ -125,7 +134,11 @@ vi.mock('@/components/ui/select', async () => {
         items.push(item);
         capturedSelectItems.push(item);
       }
-      const nested = collect((child.props as { children?: React.ReactNode }).children, items);
+      const nested = collect(
+        (child.props as { children?: React.ReactNode }).children,
+        items,
+        found,
+      );
       if (nested) triggerProps = nested;
     });
     return triggerProps;
@@ -133,7 +146,8 @@ vi.mock('@/components/ui/select', async () => {
 
   const Select = ({ value, onValueChange, children }: SelectProps) => {
     const items: Array<{ value: string; label: string; className?: string }> = [];
-    const triggerProps = collect(children, items) ?? {};
+    const found: { selectValue?: SelectValueProps['children'] } = {};
+    const triggerProps = collect(children, items, found) ?? {};
     capturedSelectTriggers.push({
       id: triggerProps.id,
       className: triggerProps.className,
@@ -141,21 +155,36 @@ vi.mock('@/components/ui/select', async () => {
       ariaLabelledBy: triggerProps['aria-labelledby'],
     });
 
+    // 閉じトリガーの表示ラベルを Base UI 契約どおりに再現する:
+    // children が関数なら value に適用、静的なら children、bare(未指定)なら生 value にフォールバック。
+    const resolver = found.selectValue;
+    const displayLabel =
+      typeof resolver === 'function'
+        ? resolver(value)
+        : resolver !== undefined
+          ? resolver
+          : value;
+
     return (
-      <select
-        id={triggerProps.id}
-        className={triggerProps.className}
-        aria-label={triggerProps['aria-label']}
-        aria-labelledby={triggerProps['aria-labelledby']}
-        value={value}
-        onChange={(event) => onValueChange?.(event.target.value)}
-      >
-        {items.map((item) => (
-          <option key={item.value} value={item.value}>
-            {item.label}
-          </option>
-        ))}
-      </select>
+      <>
+        <span data-slot="select-value-display" data-trigger-id={triggerProps.id}>
+          {displayLabel as React.ReactNode}
+        </span>
+        <select
+          id={triggerProps.id}
+          className={triggerProps.className}
+          aria-label={triggerProps['aria-label']}
+          aria-labelledby={triggerProps['aria-labelledby']}
+          value={value}
+          onChange={(event) => onValueChange?.(event.target.value)}
+        >
+          {items.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </>
     );
   };
 
@@ -417,6 +446,20 @@ describe('PatientLabsCard', () => {
     expect(link.getAttribute('href')).not.toContain('?x=1');
     expect(link.getAttribute('href')).not.toContain('#frag');
     expect(link.getAttribute('href')).not.toContain('%25');
+  });
+
+  it('shows the analyte label, not the raw code, in the closed select trigger', () => {
+    // bare <SelectValue /> は既定値 'egfr' の生コードを初期表示で漏らす。
+    // 明示 children(value→label) で常に表示ラベル('eGFR')を出すことを固定する(SSR enum 漏れ封止)。
+    const { container } = setupComponent();
+
+    fireEvent.click(screen.getByRole('button', { name: '検査値を追加' }));
+
+    const display = container.querySelector(
+      '[data-slot="select-value-display"][data-trigger-id="new-lab-analyte"]',
+    );
+    expect(display?.textContent).toContain('eGFR');
+    expect(display?.textContent).not.toContain('egfr');
   });
 
   it('keeps the analyte select accessible and 44px at trigger and item level', () => {
