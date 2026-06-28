@@ -390,7 +390,7 @@ function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
     const failureReason = displayDeliveryFailureReason(failedDelivery.failure_reason);
     return (
       <div className="space-y-2">
-        <div className="rounded-md border border-state-blocked/30 bg-state-blocked/10 p-2 text-state-blocked">
+        <div className="rounded-md border-l-4 border-border/70 border-l-state-blocked bg-card p-2 text-state-blocked">
           <span className="block text-sm font-semibold">送付失敗</span>
           <span className="block text-xs leading-5">
             {(DELIVERY_CHANNEL_LABELS[failedDelivery.channel] ?? failedDelivery.channel) +
@@ -687,7 +687,7 @@ export function ReportShareWorkspace() {
               <ReportOpenIssuesSection issues={data.open_issues} />
               <CreatedReportsSection reports={data.created_reports} />
               <p
-                className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm leading-6 text-tag-info"
+                className="rounded-lg border-l-4 border-border/70 border-l-tag-info bg-card px-4 py-3 text-sm leading-6 text-tag-info"
                 data-testid="report-template-policy-bar"
               >
                 テンプレートは宛先ごとに自動選択されます(医師向け/ケアマネ向け/施設向け)。印象ではなく事実を書く構成です:

@@ -1062,7 +1062,7 @@ export function PrintHubContent() {
             </p>
           ) : null}
           {shouldConfirmFirstVisitPrint && awaitingFirstVisitPrintConfirmation ? (
-            <div className="mt-3 space-y-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-3">
+            <div className="mt-3 space-y-3 rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-3">
               <p className="text-xs leading-5 text-state-confirm">
                 紙またはPDFの出力が完了してから、印刷履歴を記録してください。
               </p>

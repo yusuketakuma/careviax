@@ -50,7 +50,7 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
     <div className="space-y-4">
       {/* Warnings */}
       {content.warnings.length > 0 && (
-        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3">
+        <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-3">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-state-confirm">
             <AlertTriangle className="size-3.5" aria-hidden="true" />
             算定要件の未充足項目

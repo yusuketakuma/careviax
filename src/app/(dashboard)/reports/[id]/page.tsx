@@ -1477,7 +1477,7 @@ export default function ReportDetailPage() {
               </dl>
 
               {prescriberInstitutionSuggestion ? (
-                <div className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-3 py-3 text-sm">
+                <div className="rounded-lg border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-3 text-sm">
                   <p className="font-medium text-tag-info">
                     処方元医療機関候補: {prescriberInstitutionSuggestion.name}
                   </p>
@@ -1515,7 +1515,7 @@ export default function ReportDetailPage() {
               ) : null}
 
               {externalProfessionalSuggestions.length > 0 ? (
-                <div className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-3 py-3 text-sm">
+                <div className="rounded-lg border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-3 text-sm">
                   <p className="font-medium text-tag-info">患者情報のケアチーム送付候補</p>
                   <p className="mt-1 text-xs text-tag-info">
                     患者情報ページのクリニック・訪問看護・ケアマネジャーを送付先候補として取得しています。

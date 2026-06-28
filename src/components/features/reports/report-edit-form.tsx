@@ -451,7 +451,7 @@ function ComplianceEditGuide({
   const missing = checks.filter((item) => !item.passed);
 
   return (
-    <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 p-3 text-sm">
+    <div className="rounded-xl border-l-4 border-border/70 border-l-tag-info bg-card p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="space-y-1">
           <p className="font-medium text-tag-info">算定要件を満たすための編集ナビ</p>
@@ -472,7 +472,7 @@ function ComplianceEditGuide({
           ))}
         </div>
       ) : (
-        <p className="mt-3 rounded-lg border border-state-done/30 bg-state-done/10 px-3 py-2 text-state-done">
+        <p className="mt-3 rounded-lg border-l-4 border-border/70 border-l-state-done bg-card px-3 py-2 text-state-done">
           算定要件チェック上の必須項目は充足しています。送付先と送達方法を確認してください。
         </p>
       )}

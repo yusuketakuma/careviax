@@ -225,7 +225,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   if (reportQuery.error) {
     return (
       <PageScaffold>
-        <div className="rounded-lg border border-transparent bg-state-confirm/10 p-4 text-state-confirm">
+        <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-4 text-state-confirm">
           <h1 className="flex items-center gap-2 text-base font-semibold">
             <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
             報告書を取得できませんでした
@@ -297,7 +297,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
             actions={externalShareAction}
           />
           <div
-            className="rounded-lg border border-transparent bg-state-confirm/10 p-4 text-state-confirm"
+            className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-4 text-state-confirm"
             data-testid="share-permission-warning"
           >
             <h2 className="flex items-center gap-2 text-sm font-semibold">
@@ -329,7 +329,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
 
         {supportingDataErrors.length > 0 ? (
           <div
-            className="rounded-lg border border-transparent bg-state-confirm/10 p-4 text-state-confirm"
+            className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card p-4 text-state-confirm"
             data-testid="share-supporting-data-warning"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
