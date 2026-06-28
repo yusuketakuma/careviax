@@ -4,17 +4,33 @@
 (`claude-lead`, `codex-lead`) read this at the start of every cycle and write it back at the
 end. It is the first file consulted on resume and the last file written on a hard-stop.
 
-## Current runtime override - 2026-06-26 JST (rev8: parallel UI/UX→BE, driver fixed)
+## Current runtime override - 2026-06-28 JST (rev9: FE/BE split + mutual review restored)
 
-The user **re-enabled Claude** alongside Codex in **implementation-only PARALLEL
-mode** (this rev8 supersedes the rev3/rev5/rev7 "Codex-only" banners, which were
-produced by a stale codex-bridge/remote auto-restore process — NOT user intent.
-Codex killed that process and switched delivery monitor→turn on 2026-06-26
-~01:16Z, so this banner should now persist). Both lanes refine **disjoint
-screens** end-to-end (frontend as the entry point, fixing through to backend
-where a screen renders/behaves wrong; **no DB changes**), driven by a screenshot
-→ improve → re-screenshot loop. **No mutual review**; disjointness held purely
-via agmsg `LOCK` / `HANDOFF`.
+The user re-scoped the cooperation model (2026-06-28). **rev9 supersedes rev8's
+disjoint-screen / no-review parallel mode.** New active model — confirmed
+bilaterally with Codex over agmsg (both lanes independently proposed the
+identical split):
+
+- **Claude = frontend implementation lead.** Owns `src/app/(dashboard)/**` pages
+  (UI) + `src/components/**`. Studies existing code, delegates implementation to
+  FE subagents (`frontend-implementer` / `general-purpose`), runs the objective
+  gate on owned files.
+- **Codex = backend implementation lead.** Owns API route handlers, services,
+  Prisma/data-access, perf, RLS/tenant-isolation, validation.
+- **Mutual review RESTORED (maker/checker).** After implementation the maker
+  sends `PATCH_REVIEW_REQUEST` and the **opposite** lane reviews and returns
+  `APPROVED` / `CHANGES_REQUESTED` **before ship**. No self-approval.
+- **Both main agents stay open on agmsg as dispatchers.** Mains drain inbox,
+  ACK/LOCK/route reviews, steer subagents, commit. Implementation runs in
+  subagents; mains do not do the bulk editing themselves.
+- **Edit discipline.** LOCK exact paths via agmsg before editing; commit only
+  own files; drain inbox before commit. DB schema/migrations remain off-limits
+  without human approval (BLOCKED.md hard-stops).
+- **Sustained loop.** Claude self-drives FE discovery → implement → peer-review
+  → verify, pulling from FEATURE_QUEUE.md and autonomous recon when the queue is
+  dry. Consult the peer (agmsg) when procedure is unclear. Do NOT use OMC
+  `/ultragoal` (known to deadlock — see auto-memory); the `.agent-loop/` loop
+  convention IS the sustained-loop mechanism.
 
 **Active goal (user /goal 2026-06-26).** Refine the UI/UX of _all_ pages to a
 world-top-level ("10M-download") bar using a 足し算と引き算 (add/subtract)

@@ -8,13 +8,21 @@ things it can never self-resolve.
 **Hard rule (per §15 — always lands here, no exceptions).** Any task touching:
 
 - **auth** (Cognito / NextAuth / session / MFA),
-- **billing / payments**,
 - **security** (RLS policy changes, secrets, encryption keys, token signing),
 - **destructive migration** (drop/alter column, data backfill that loses information),
 - **prod deploy** (Amplify deploy / release to production),
 
 is cross-referenced here and CANNOT be auto-landed by a Supervisor. It waits for explicit
 human approval / external credentials regardless of how green the gates are.
+
+> **2026-06-28 — billing/payments restriction LIFTED (user directive).** The user removed
+> the billing/算定/payments hard-stop: billing logic is now treated the **same as any other
+> domain code** — it proceeds through the normal dual maker/checker loop + objective gates,
+> with **no special human-approval gate**. Existing rows below that were gated **solely** on
+> billing/算定 are therefore unblocked and re-enter the normal flow. Rows gated **also** on
+> auth / security / prod-deploy / destructive-migration STAY blocked on those grounds (a
+> billing fix that also changes authorization or runs a destructive migration is still gated
+> by the surviving category). auth/security/destructive-migration/prod-deploy remain §15.
 
 **How it is used in the loop.**
 
@@ -49,7 +57,7 @@ human approval / external credentials regardless of how green the gates are.
 | gbrain-embeddings                    | careviax imported (keyword-searchable) but NO semantic embeddings exist anywhere in the brain (natural-language `gbrain query` returns empty on every source). Enabling semantic recall is blocked on TWO independent constraints: (1) **Agent egress hard-block** — Claude Code's classifier hard-blocks the agent from sending private repo docs to an external embedding API (Voyage/OpenAI); in-chat user approval cannot clear it. (2) **Schema dimension lock** — the Postgres brain schema is fixed to `text-embedding-3-large` (OpenAI, 3072d); `gbrain config set embedding_model` is a no-op, switching to Voyage (1024d) needs the `docs/embedding-migrations.md` schema migration first. | human_approval + external_creds | 2026-06-20 | User-driven only: the USER runs `gbrain embed` themselves (their action, not the agent) with a key matching the schema — either (a) an OpenAI key (3072d, schema-compatible), or (b) migrate the schema to Voyage 1024d then embed with the Voyage key. **RESOLVED 2026-06-20**: USER switched the embedding provider to a **local Ollama model** (`ollama:mxbai-embed-large`, 1024d, `http://localhost:11434`). Both constraints cleared — (1) egress: a local model sends nothing to OpenAI/Voyage, no data leaves the Mac; (2) dimension: the brain schema is now 1024d and the default source (which holds careviax docs) reports **embed coverage 100%**. `gbrain query`/`search` verified returning cosine-scored results. No further user action required. |
 | F-20260620-008-control-plane-runtime | The Control Plane MVP intentionally adds docs/config only. Runtime enforcement remains unavailable for denied-path blocking, automatic budget/cost stop, automatic secret/SAST scan, golden eval mutation protection, dependency/workflow approval automation, branch/PR/merge automation, shadow/canary execution, and immutable incident storage. Claiming those as enforced would create false governance assurance.                                                                                                                                                                                                                                                                              | human_approval                  | 2026-06-20 | Open a separate implementation task with explicit human approval for the specific runtime surface. The task must include a validator/controller design, tests proving denied-path and high-risk approval enforcement, secret/PHI redaction proof, rollback behavior, and peer-reviewed updates to `CONTROL_PLANE_CONFIG.yml`, `GATE_CONFIG.md`, and the affected ledgers. Until then, supervisors apply the config manually and mark runtime enforcement as deferred.                                                                                                                                                                                                                                                                                             |
 
-<!-- APPEND NEW ROWS BELOW. auth/billing/payments/security/destructive-migration/prod-deploy ALWAYS land here (§15). -->
+<!-- APPEND NEW ROWS BELOW. auth/security/destructive-migration/prod-deploy ALWAYS land here (§15). billing/payments NO LONGER auto-gated as of 2026-06-28 (user lifted the billing restriction — normal loop applies). -->
 
 | RUN-20260622-001-medical-ui-gate-stabilization | Codex hit the loop hard-stop after repeated focused set-audit final approval conflict Playwright timeouts. The latest failed DOM showed set-audit progress 0/3 and disabled approval/checklist controls after set→set-audit navigation/hydration. Further safe progress likely requires Claude ownership or a narrow expanded lock for `src/components/features/dispense-workbench/*`; Codex must not keep blind-retrying or edit outside granted locked paths. | human_approval | 2026-06-22T09:33:50+09:00 | RESOLVED when claude-lead either takes ownership of the dispense-workbench hydration/write-handler root cause or grants Codex a narrow expanded lock, followed by a passing focused set-audit final approval conflict Playwright run. |
 
