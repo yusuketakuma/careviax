@@ -164,6 +164,13 @@ const PRIORITY_CONFIG: Record<string, { label: string; role: StatusRoleOrNeutral
   low: { label: '低', role: PRIORITY_ROLE.low },
 };
 
+// 中央値（偶数長は中央2値の平均、奇数長は中央値、空配列は 0）。
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const mid = Math.floor(values.length / 2);
+  return values.length % 2 === 0 ? (values[mid - 1] + values[mid]) / 2 : values[mid];
+}
+
 // neutral は状態色を付けず既定 Badge / text-muted で描く（移行台帳の neutral 運用）。
 function TaskStateBadge({ label, role }: { label: string; role: StatusRoleOrNeutral }) {
   if (role === 'neutral') {
@@ -458,6 +465,16 @@ export function TasksContent({
     [],
   );
 
+  // 依頼先の負荷バッジを相対トーンで強調するためのしきい値。workload_score は上限なし
+  // （訪問×3+調剤×2+未完了×1）なので、アクティブ負荷の中央値×1.5 を基準にする。
+  // 絶対 floor で、活動量が少ないチームを誤って高負荷扱いしないようにする。
+  const WORKLOAD_TONE_FLOOR = 20; // a genuinely busy day (e.g. ~7 visits or 10 open tasks) — avoids flagging low-activity teams
+  const activeScores = staffWorkload
+    .map((staff) => staff.workload_score)
+    .filter((score) => score > 0)
+    .sort((a, b) => a - b);
+  const highLoadThreshold = Math.max(WORKLOAD_TONE_FLOOR, median(activeScores) * 1.5);
+
   return (
     <div className="space-y-6">
       {contextSummary ? (
@@ -507,58 +524,70 @@ export function TasksContent({
         contentClassName="space-y-4"
       >
         <div className="grid gap-3 lg:grid-cols-3" data-testid="staff-workload-board">
-          {staffWorkload.map((staff) => (
-            <button
-              key={staff.id}
-              type="button"
-              onClick={() => setRequestAssignee(staff.id)}
-              className={`rounded-lg border p-4 text-left transition hover:border-primary/60 hover:bg-primary/5 ${
-                requestAssignee === staff.id ? 'border-primary bg-primary/5' : 'border-border/70'
-              }`}
-              data-testid="staff-workload-card"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{staff.name}</p>
-                  <p className="text-xs text-muted-foreground">{staff.role_label}</p>
+          {staffWorkload.map((staff) => {
+            // 相対トーン: チーム中央値より突出して高い負荷のスタッフだけ 注意/橙 で強調し、
+            // 過剰な追加依頼を避けられるようにする（色だけに依存せずアイコン+数値を併記）。
+            const isHighLoad =
+              staff.workload_score > 0 && staff.workload_score >= highLoadThreshold;
+            return (
+              <button
+                key={staff.id}
+                type="button"
+                onClick={() => setRequestAssignee(staff.id)}
+                className={`rounded-lg border p-4 text-left transition hover:border-primary/60 hover:bg-primary/5 ${
+                  requestAssignee === staff.id ? 'border-primary bg-primary/5' : 'border-border/70'
+                }`}
+                data-testid="staff-workload-card"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">{staff.name}</p>
+                    <p className="text-xs text-muted-foreground">{staff.role_label}</p>
+                  </div>
+                  {isHighLoad ? (
+                    <StateBadge role="confirm" showIcon className="text-xs">
+                      負荷 {staff.workload_score}
+                    </StateBadge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs">
+                      負荷 {staff.workload_score}
+                    </Badge>
+                  )}
                 </div>
-                <Badge variant="outline" className="text-xs">
-                  負荷 {staff.workload_score}
-                </Badge>
-              </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                <div className="rounded-md bg-muted/60 p-2">
-                  <p className="font-semibold text-foreground">{staff.today_visit_count}</p>
-                  <p className="text-muted-foreground">訪問</p>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded-md bg-muted/60 p-2">
+                    <p className="font-semibold text-foreground">{staff.today_visit_count}</p>
+                    <p className="text-muted-foreground">訪問</p>
+                  </div>
+                  <div className="rounded-md bg-muted/60 p-2">
+                    <p className="font-semibold text-foreground">{staff.open_task_count}</p>
+                    <p className="text-muted-foreground">未完了</p>
+                  </div>
+                  <div className="rounded-md bg-muted/60 p-2">
+                    <p className="font-semibold text-foreground">{staff.dispense_task_count}</p>
+                    <p className="text-muted-foreground">調剤中</p>
+                  </div>
                 </div>
-                <div className="rounded-md bg-muted/60 p-2">
-                  <p className="font-semibold text-foreground">{staff.open_task_count}</p>
-                  <p className="text-muted-foreground">未完了</p>
+                <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                  {staff.visits.slice(0, 2).map((visit) => (
+                    <p key={visit.id} className="truncate">
+                      訪問: {visit.patient_name}
+                    </p>
+                  ))}
+                  {staff.open_tasks.slice(0, 2).map((task) => (
+                    <p key={task.id} className="truncate">
+                      依頼: {task.title}
+                    </p>
+                  ))}
+                  {!isStaffWorkloadLoading &&
+                  staff.visits.length === 0 &&
+                  staff.open_tasks.length === 0 ? (
+                    <p>現在表示する抱え込みはありません</p>
+                  ) : null}
                 </div>
-                <div className="rounded-md bg-muted/60 p-2">
-                  <p className="font-semibold text-foreground">{staff.dispense_task_count}</p>
-                  <p className="text-muted-foreground">調剤中</p>
-                </div>
-              </div>
-              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                {staff.visits.slice(0, 2).map((visit) => (
-                  <p key={visit.id} className="truncate">
-                    訪問: {visit.patient_name}
-                  </p>
-                ))}
-                {staff.open_tasks.slice(0, 2).map((task) => (
-                  <p key={task.id} className="truncate">
-                    依頼: {task.title}
-                  </p>
-                ))}
-                {!isStaffWorkloadLoading &&
-                staff.visits.length === 0 &&
-                staff.open_tasks.length === 0 ? (
-                  <p>現在表示する抱え込みはありません</p>
-                ) : null}
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
           {isStaffWorkloadLoading ? (
             <p className="text-sm text-muted-foreground">スタッフ別業務量を読み込み中...</p>
           ) : null}
