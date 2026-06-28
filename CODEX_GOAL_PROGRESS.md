@@ -103,6 +103,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation commit pending; state commit pending; request Claude review/FYI after commits.
 - Next action: commit this owned implementation slice and ledger update with explicit-path staging only.
 
+### 2026-06-28 JST - Admin Business Holidays API Path Helper Convergence
+
+- Coordination:
+  - Kept main Codex available for Claude/agmsg and delegated the bounded implementation to a Codex `maintainer` subagent after a read-only mapper selected this slice.
+  - Drained `phos/codex`; ACKed Claude's read-only performance-planning workflow and confirmed it would not mutate the shared tree.
+  - Preserved unrelated dirty files, including report navigation work and `.codex/hooks.json`.
+- Hardened business-holiday admin API boundaries:
+  - Added `src/lib/business-holidays/api-paths.ts` with `BUSINESS_HOLIDAYS_API_PATH`, `buildBusinessHolidaysApiPath(params?)`, and `buildBusinessHolidayApiPath(holidayId)`.
+  - Routed business-holiday list/create/update/delete and bulk-create collection calls through the shared collection/list/detail path contract.
+  - Preserved the existing empty-params query shape, org headers, HTTP methods, JSON body shape, query keys, invalidations, rendered admin UI, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+  - Added helper tests for collection/list query paths, hostile holiday id encoding, and dot-segment rejection; extended component tests to prove callsites delegate through shared helpers and exact dot-segment ids fail closed before PATCH/DELETE side effects.
+- Security/privacy risk reduced: admin business-holiday paths no longer duplicate dynamic segment construction, reducing route-boundary drift for hostile `/`, `?`, or `#` holiday ids.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing business-holiday calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' src/lib/business-holidays/api-paths.ts src/lib/business-holidays/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' src/lib/business-holidays/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `17` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' src/lib/business-holidays/api-paths.ts src/lib/business-holidays/api-paths.test.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' src/lib/business-holidays/api-paths.ts src/lib/business-holidays/api-paths.test.ts`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' src/lib/business-holidays/api-paths.ts src/lib/business-holidays/api-paths.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+- Commit status: implementation commit pending; state commit pending; request Claude review/FYI after commits.
+- Next action: commit this owned implementation slice and ledger update with explicit-path staging only.
+
 ### 2026-06-28 JST - Prescriber Institutions Admin API Path Helper Convergence
 
 - Coordination:
