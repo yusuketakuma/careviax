@@ -42,11 +42,13 @@ const UPLOAD_URL = 'https://s3.example.test/upload';
 
 type FetchCall = { url: string; init?: RequestInit };
 
-function renderContent() {
+const DEFAULT_PATIENT_ID = 'patient_1';
+
+function renderContent(patientId = DEFAULT_PATIENT_ID) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ResidualAdjustmentContent patientId="patient_1" />
+      <ResidualAdjustmentContent patientId={patientId} />
     </QueryClientProvider>,
   );
 }
@@ -106,6 +108,30 @@ describe('ResidualAdjustmentContent tenant headers', () => {
     for (const call of getCalls) {
       expect((call.init?.headers as Record<string, string>)['x-org-id']).toBe('org_1');
     }
+  });
+
+  it('encodes patient_id query values for both list GETs', async () => {
+    const patientId = 'pt/1?tab=x#frag&status=open&limit=999';
+    renderContent(patientId);
+    await screen.findByTestId('residual-adjustment-page');
+
+    await waitFor(() => {
+      expect(calls.some((call) => call.url.startsWith('/api/residual-medications'))).toBe(true);
+      expect(calls.some((call) => call.url.startsWith('/api/inquiry-records'))).toBe(true);
+    });
+
+    expect(calls.map((call) => call.url)).toEqual(
+      expect.arrayContaining([
+        `/api/residual-medications?patient_id=${encodeURIComponent(patientId)}&limit=100`,
+        `/api/inquiry-records?patient_id=${encodeURIComponent(patientId)}&status=resolved`,
+      ]),
+    );
+    expect(calls.map((call) => call.url)).not.toEqual(
+      expect.arrayContaining([
+        `/api/residual-medications?patient_id=${patientId}&limit=100`,
+        `/api/inquiry-records?patient_id=${patientId}&status=resolved`,
+      ]),
+    );
   });
 
   it('uses buildOrgJsonHeaders for internal POSTs but never leaks x-org-id to the external presigned PUT', async () => {

@@ -38,7 +38,8 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
   const residualQuery = useQuery({
     queryKey: ['residual-adjustment', orgId, patientId],
     queryFn: async () => {
-      const res = await fetch(`/api/residual-medications?patient_id=${patientId}&limit=100`, {
+      const params = new URLSearchParams({ patient_id: patientId, limit: '100' });
+      const res = await fetch(`/api/residual-medications?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('残薬データの取得に失敗しました');
@@ -50,7 +51,8 @@ export function ResidualAdjustmentContent({ patientId }: { patientId: string }) 
   const instructionQuery = useQuery({
     queryKey: ['residual-adjustment-instructions', orgId, patientId],
     queryFn: async () => {
-      const res = await fetch(`/api/inquiry-records?patient_id=${patientId}&status=resolved`, {
+      const params = new URLSearchParams({ patient_id: patientId, status: 'resolved' });
+      const res = await fetch(`/api/inquiry-records?${params.toString()}`, {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('医師の指示記録の取得に失敗しました');
