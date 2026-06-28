@@ -4500,6 +4500,13 @@ export function CardWorkspace({
             ) : null}
           </div>
 
+          {/* 今回の作業: 今日の時限タスク + 処方/動き/履歴を Primary zone の h2 グループにまとめ、
+              h1→h3 の見出しスキップを解消する(SSOT L284-289 見出し階層 / L170-182 情報重力)。 */}
+          <h2 className="text-lg font-bold text-foreground">今回の作業</h2>
+
+          {/* このカードに紐づく今日: 時限タスク(締切/予定)を最下部 aside から Primary 最上部へ昇格(SSOT L429-433) */}
+          <CardTodayPanelMemo tasks={workspace.today_tasks} />
+
           {/* 今回の処方: 安全確認の直後に置き、正本/補助パネルより先に実作業へ入れる */}
           <SectionCard aria-label="今回の処方" data-testid="card-prescription-section">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4608,8 +4615,11 @@ export function CardWorkspace({
             </div>
           </SectionCard>
 
-          {/* 参照パネル群(Scroll ゾーン): 正本確認・プロフィール・在宅運用・共有ケース・初回訪問文書・訪問前確認。
-              実作業(今回の処方/直近の動き)を Primary に上げ、確認系はここへ降ろす(SSOT L170-182)。 */}
+          {/* 参照情報: 確認系パネル群(正本確認・プロフィール・在宅運用・共有ケース・初回訪問文書・訪問前確認)を
+              区切り線 + h2 で実作業ゾーンと明示的に分離する(SSOT L83-87 境界明示 / L382 補助大機能の分割)。 */}
+          <h2 className="border-t border-border pt-6 text-lg font-bold text-foreground">
+            参照情報
+          </h2>
           <PatientFoundationPanelMemo patient={patient} />
           <PatientProfilePanelMemo patient={patient} />
           <PatientHomeOperationsPanelMemo
@@ -4671,16 +4681,14 @@ export function CardWorkspace({
           <PatientStructuredCarePanel patientId={patientId} />
         </div>
 
-        <aside className="space-y-4" aria-label="このカードに紐づく今日">
-          <CardTodayPanelMemo tasks={workspace.today_tasks} />
-          <WorkspaceActionRail
-            nextAction={nextAction}
-            blockedReasons={blockedReasons}
-            blockedReasonsEmptyLabel="止まっている作業はありません"
-            evidence={evidence}
-            evidenceOpenLabel="開く"
-          />
-        </aside>
+        {/* 補助操作レール: 上部バーから開く右ドロワー(portal)。本文スペースは消費しない(SSOT 左ナビ・補助パネル) */}
+        <WorkspaceActionRail
+          nextAction={nextAction}
+          blockedReasons={blockedReasons}
+          blockedReasonsEmptyLabel="止まっている作業はありません"
+          evidence={evidence}
+          evidenceOpenLabel="開く"
+        />
       </div>
     </div>
   );

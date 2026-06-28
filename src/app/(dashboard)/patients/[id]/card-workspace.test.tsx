@@ -1082,7 +1082,7 @@ describe('CardWorkspace', () => {
       /border-emerald-200|bg-emerald-50|text-emerald-700|border-blue-200|bg-blue-50|text-blue-700/,
     );
 
-    // 右レール: このカードに紐づく今日(期限/監査後/時刻 + 遷移リンク)
+    // Primary zone: このカードに紐づく今日(期限/監査後/時刻 + 遷移リンク)を実作業の最上部へ昇格
     const todayPanel = screen.getByTestId('card-today-panel');
     expect(within(todayPanel).getByText('期限 12:00')).toBeTruthy();
     expect(within(todayPanel).getByText('麻薬監査')).toBeTruthy();

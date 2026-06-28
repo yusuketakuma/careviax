@@ -680,7 +680,6 @@ export function DashboardCockpit() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-foreground">ダッシュボード</h1>
-          <p className="text-sm font-medium text-muted-foreground">PH-OS ダッシュボード</p>
           {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
           <p className="text-sm text-muted-foreground" suppressHydrationWarning>
             {dateLabel}
