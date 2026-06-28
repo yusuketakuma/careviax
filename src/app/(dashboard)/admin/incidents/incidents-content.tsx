@@ -17,6 +17,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  INCIDENT_REPORTS_API_PATH,
+  buildIncidentReportApiPath,
+} from '@/lib/incident-reports/api-paths';
 import { cn } from '@/lib/utils';
 import {
   INCIDENT_PROCESS_OPTIONS,
@@ -68,7 +72,7 @@ export function IncidentsContent() {
   const reportsQuery = useQuery({
     queryKey: ['incident-reports', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/incident-reports', {
+      const res = await fetch(INCIDENT_REPORTS_API_PATH, {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('ヒヤリハット記録の取得に失敗しました');
@@ -94,7 +98,7 @@ export function IncidentsContent() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!selected) throw new Error('記録一覧から記録を選択してください');
-      const res = await fetch(`/api/incident-reports/${selected.id}`, {
+      const res = await fetch(buildIncidentReportApiPath(selected.id), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify(buildIncidentMemoPatchPayload(form)),

@@ -4,6 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  INCIDENT_REPORTS_API_PATH,
+  buildIncidentReportApiPath,
+} from '@/lib/incident-reports/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { IncidentsContent } from './incidents-content';
 import type { IncidentReportListItem } from './incidents-form';
@@ -31,6 +35,20 @@ function stubReports(reports: IncidentReportListItem[]) {
     'fetch',
     vi.fn(async () => new Response(JSON.stringify({ data: reports }), { status: 200 })),
   );
+}
+
+function stubIncidentFetch(reports: IncidentReportListItem[]) {
+  const fetchMock = vi.fn(
+    async (_input: RequestInfo | URL, init?: RequestInit) =>
+      new Response(
+        JSON.stringify(
+          init?.method === 'PATCH' ? { data: { id: reports[0]?.id } } : { data: reports },
+        ),
+        { status: 200 },
+      ),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
 }
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -97,6 +115,59 @@ describe('IncidentsContent', () => {
               String(input).startsWith('/api/incident-reports/') && init?.method === 'PATCH',
           ),
       ).toBe(false);
+    });
+  });
+
+  it('fetches incident reports from the shared collection API path with org header', async () => {
+    const fetchMock = stubIncidentFetch([makeReport()]);
+    render(<IncidentsContent />, { wrapper: createWrapper() });
+
+    expect(await screen.findByText('取り違えヒヤリ')).toBeTruthy();
+
+    expect(fetchMock).toHaveBeenCalledWith(INCIDENT_REPORTS_API_PATH, {
+      headers: { 'x-org-id': 'org_1' },
+    });
+  });
+
+  it('PATCH saves memo updates through the encoded detail API path without changing payloads', async () => {
+    const reportId = 'incident/1?mode=x#frag';
+    const fetchMock = stubIncidentFetch([
+      makeReport({
+        id: reportId,
+        title: '輸液ポンプ設定ヒヤリ',
+        cause: '指差し確認不足',
+        immediate_action: '薬剤師が再確認した',
+        prevention_plan: 'チェック表を更新',
+        related_process: 'dispensing',
+      }),
+    ]);
+    render(<IncidentsContent />, { wrapper: createWrapper() });
+
+    const causeInput = await screen.findByLabelText('原因');
+    fireEvent.change(causeInput, { target: { value: 'ダブルチェック不足' } });
+    fireEvent.submit(screen.getByTestId('incident-memo-form'));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+        ),
+      ).toBe(true);
+    });
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+    );
+    expect(patchCall).toBeTruthy();
+    const [, init] = patchCall as [RequestInfo | URL, RequestInit];
+    expect(patchCall?.[0]).toBe(buildIncidentReportApiPath(reportId));
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json', 'x-org-id': 'org_1' });
+    expect(JSON.parse(String(init.body))).toEqual({
+      what_happened: '別患者の薬を渡しかけた',
+      cause: 'ダブルチェック不足',
+      immediate_action: '薬剤師が再確認した',
+      prevention_plan: 'チェック表を更新',
+      related_process: 'dispensing',
     });
   });
 
