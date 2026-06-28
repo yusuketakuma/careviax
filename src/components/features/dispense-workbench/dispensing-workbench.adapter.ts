@@ -542,6 +542,21 @@ export async function bulkSetCells(
   });
 }
 
+/**
+ * セットバッチ生成 / 再生成（POST /api/set-plans/[planId]/generate-batches）。
+ * - 初回生成: force 省略（false）。既存バッチが無いセットプランに新規生成する。
+ * - 再生成: force=true + expected_updated_at（セットプランの OCC アンカー）必須。
+ *   既存セットを削除して作り直す破壊的操作のため、呼び出し側が確認導線を挟む。
+ * reused=true は「入力に変更が無く既存を再利用」（200）、false は新規生成/再生成（201）。
+ */
+export async function generateSetBatches(
+  planId: string,
+  body: { force?: boolean; expected_updated_at?: string },
+): Promise<{ data: { count: number; batches: SetBatchDto[]; reused: boolean } } | MockWriteNoop> {
+  if (USE_MOCK) return MOCK_WRITE_NOOP;
+  return mutateJson(buildSetPlanApiPath(planId, '/generate-batches'), 'POST', body);
+}
+
 /** セット監査 OK/部分/NG（POST /api/set-audits）。 */
 export async function submitSetAudit(
   input: SubmitSetAuditInput,

@@ -25,6 +25,8 @@ interface MedicationCalendarGridProps {
   phase: Phase;
   handlers?: WorkbenchWriteHandlers;
   isPending?: boolean;
+  /** force 再生成 CTA 押下時にシェルの確認ダイアログを開く（破壊的操作のため二重確認）。 */
+  onRequestRegenerate?: () => void;
 }
 
 /**
@@ -44,6 +46,7 @@ export function MedicationCalendarGrid({
   phase,
   handlers,
   isPending,
+  onRequestRegenerate,
 }: MedicationCalendarGridProps) {
   const router = useRouter();
   // 書込操作はシェル handlers（store + 実データ mutation）を優先し、未提供時のみ store へフォールバック。
@@ -421,6 +424,36 @@ export function MedicationCalendarGrid({
           {gate.text}
         </span>
         <span style={{ flex: 1 }} />
+        {view.batchGenerationVisible && (
+          <button
+            type="button"
+            onClick={() => {
+              if (view.canGenerateBatches) handlers?.onGenerateBatches(false);
+              else if (view.canForceRegenerate) onRequestRegenerate?.();
+            }}
+            disabled={isPending || (!view.canGenerateBatches && !view.canForceRegenerate)}
+            title={view.batchGenerationBlockedReason || undefined}
+            style={{
+              cursor:
+                isPending || (!view.canGenerateBatches && !view.canForceRegenerate)
+                  ? 'not-allowed'
+                  : 'pointer',
+              fontSize: 12,
+              fontWeight: 700,
+              color: 'var(--wb-ink)',
+              background: 'var(--wb-surface)',
+              border: '1px solid var(--wb-line)',
+              borderRadius: 5,
+              padding: '6px 14px',
+              whiteSpace: 'nowrap',
+              font: 'inherit',
+              opacity:
+                isPending || (!view.canGenerateBatches && !view.canForceRegenerate) ? 0.6 : 1,
+            }}
+          >
+            {view.batchGenerationLabel}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => bulk()}

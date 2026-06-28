@@ -38,6 +38,7 @@ import {
   submitDispenseAudit,
   mutateCell,
   bulkSetCells,
+  generateSetBatches,
   submitSetAudit,
   createCycleHold,
   resolveCycleHold,
@@ -146,7 +147,12 @@ async function recoverCalendarDirect(
     return;
   }
   const store = useWorkbenchStore.getState();
-  store.setCalendarState({ patientId, planId, ...result.calendarState });
+  store.setCalendarState({
+    patientId,
+    planId,
+    generation: result.matrix.generation ?? null,
+    ...result.calendarState,
+  });
   useWorkbenchStore.getState().setWriteContext(result.writeContext);
 }
 
@@ -239,6 +245,26 @@ export function useWorkbenchMutations(args: {
     onError: (error) => {
       reportWorkbenchError(error, '一括セットに失敗しました');
       if (error instanceof WorkbenchConflictError) recoverCalendar();
+    },
+    onSettled: () => {
+      if (isRealDataEnabled()) invalidateCalendar();
+    },
+  });
+
+  // ── セットバッチ生成 / 再生成（POST /api/set-plans/[planId]/generate-batches）──
+  const generateBatches = useMutation({
+    mutationFn: async (input: { force: boolean; expected_updated_at?: string }) => {
+      if (!isRealDataEnabled() || !planId) return null;
+      return generateSetBatches(planId, input);
+    },
+    onError: (error) => {
+      reportWorkbenchError(error, 'セットバッチの生成に失敗しました');
+      if (error instanceof WorkbenchConflictError) recoverCalendar();
+    },
+    // 生成は batch_id を総入れ替えするため cellMeta を再構築する必要がある。
+    // invalidate だけでは store の cellMeta が古いままになるので calendar を再 hydrate する。
+    onSuccess: () => {
+      if (isRealDataEnabled()) recoverCalendar();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateCalendar();
@@ -408,6 +434,7 @@ export function useWorkbenchMutations(args: {
     completeAudit,
     cellMutation,
     bulkSet,
+    generateBatches,
     setAudit,
     createHold,
     resolveHold,
@@ -422,6 +449,7 @@ export function useWorkbenchMutations(args: {
       completeAudit.isPending ||
       cellMutation.isPending ||
       bulkSet.isPending ||
+      generateBatches.isPending ||
       setAudit.isPending ||
       createHold.isPending ||
       resolveHold.isPending ||

@@ -129,6 +129,12 @@ export interface WorkbenchWriteHandlers {
   onToggleOut: (name: string) => void;
   /** 訪問持出パケット トグル。 */
   onTogglePacket: (item: string) => void;
+  /**
+   * セットバッチ生成。force=false は初回生成（即時）、force=true は既存削除＋再生成
+   * （破壊的・確認ダイアログ経由）。force 時は store.calendarGeneration の expected_updated_at を
+   * OCC アンカーに使う（無ければ実行しない）。
+   */
+  onGenerateBatches: (force: boolean) => void;
 
   // ── セット監査（seta）──
   /** 選択セル 監査OK。 */
@@ -1141,6 +1147,25 @@ export function useWorkbenchWriteHandlers(args: {
       },
       onToggleOut: (name) => toggleOut(name),
       onTogglePacket: (item) => togglePacket(item),
+      onGenerateBatches: (force) => {
+        if (isRealDataEnabled() && isAnyPending) return; // 実データ時のみ二重送信ガード
+        const before = snap();
+        if (!requireRealPlanContext(before)) return;
+        if (force) {
+          // 再生成は既存セットを削除して作り直す破壊的操作。OCC アンカー（セットプランの
+          // updated_at）が無ければ実行しない（楽観的に上書きして他更新を踏み潰さない）。
+          const expectedUpdatedAt = before.calendarGeneration?.expected_updated_at;
+          if (!expectedUpdatedAt) {
+            toast.error(
+              'セットプランの版情報を取得できませんでした。患者を再選択してから実行してください。',
+            );
+            return;
+          }
+          mutations.generateBatches.mutate({ force: true, expected_updated_at: expectedUpdatedAt });
+          return;
+        }
+        mutations.generateBatches.mutate({ force: false });
+      },
 
       // ── セット監査（seta）──
       onAuditOk: () => {

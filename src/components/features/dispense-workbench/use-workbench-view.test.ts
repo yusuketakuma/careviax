@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { buildView } from './use-workbench-view';
 import type { SeedPatient, WorkbenchModel } from './dispensing-workbench.types';
 import { cellKey } from './dispensing-workbench.logic';
-import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
+import {
+  SET_AUDIT_CHECK_ITEMS,
+  type SetBatchGenerationMetadata,
+} from './dispensing-workbench.write-types';
 
 const patient: SeedPatient = {
   id: 'patient_api',
@@ -523,6 +526,119 @@ describe('buildView calendar period', () => {
       text: '✓ 全セル監査OK（承認可）',
     });
     expect(allowed.primary.cursor).toBe('pointer');
+  });
+});
+
+describe('buildView set batch generation CTA', () => {
+  function generationMeta(
+    overrides: Partial<SetBatchGenerationMetadata> = {},
+  ): SetBatchGenerationMetadata {
+    return {
+      batch_count: 0,
+      needs_initial_generation: true,
+      latest_batch_updated_at: null,
+      expected_updated_at: '2026-06-20T00:00:00.000Z',
+      can_generate: true,
+      can_force_regenerate: false,
+      ...overrides,
+    };
+  }
+
+  const setArgs = {
+    phase: 'setp' as const,
+    selId: patient.id,
+    sortMode: 'start' as const,
+    done: {},
+    audit: {},
+    setCells: {},
+    auditCells: {},
+    outChk: {},
+    checks: {},
+    ng: {},
+    target: null,
+    holdModal: null,
+    holdInfo: {},
+    packet: {},
+    compareOpen: false,
+    model,
+    patients: [patient],
+  };
+
+  it('exposes the initial generate CTA when generation needs an initial run and is permitted', () => {
+    const view = buildView({ ...setArgs, calendarGeneration: generationMeta() });
+
+    expect(view.batchGenerationVisible).toBe(true);
+    expect(view.canGenerateBatches).toBe(true);
+    expect(view.canForceRegenerate).toBe(false);
+    expect(view.batchGenerationLabel).toBe('セットバッチを生成');
+    expect(view.batchGenerationBlockedReason).toBe('');
+  });
+
+  it('exposes the force regenerate CTA when batches exist and force is permitted', () => {
+    const view = buildView({
+      ...setArgs,
+      calendarGeneration: generationMeta({
+        needs_initial_generation: false,
+        batch_count: 14,
+        can_generate: false,
+        can_force_regenerate: true,
+      }),
+    });
+
+    expect(view.batchGenerationVisible).toBe(true);
+    expect(view.canGenerateBatches).toBe(false);
+    expect(view.canForceRegenerate).toBe(true);
+    expect(view.batchGenerationLabel).toBe('セットバッチ再生成');
+    expect(view.batchGenerationBlockedReason).toBe('');
+    expect(view.batchCount).toBe(14);
+    expect(view.expectedUpdatedAt).toBe('2026-06-20T00:00:00.000Z');
+  });
+
+  it('blocks regeneration with an explanatory reason after set audit', () => {
+    const view = buildView({
+      ...setArgs,
+      calendarGeneration: generationMeta({
+        needs_initial_generation: false,
+        batch_count: 14,
+        can_generate: false,
+        can_force_regenerate: false,
+      }),
+    });
+
+    expect(view.batchGenerationVisible).toBe(true);
+    expect(view.canGenerateBatches).toBe(false);
+    expect(view.canForceRegenerate).toBe(false);
+    expect(view.batchGenerationBlockedReason).toBe(
+      'セット監査後は再生成できません（差戻し後に実行してください）',
+    );
+  });
+
+  it('blocks initial generation with an explanatory reason before audit approval', () => {
+    const view = buildView({
+      ...setArgs,
+      calendarGeneration: generationMeta({
+        needs_initial_generation: true,
+        can_generate: false,
+      }),
+    });
+
+    expect(view.batchGenerationVisible).toBe(true);
+    expect(view.canGenerateBatches).toBe(false);
+    expect(view.canForceRegenerate).toBe(false);
+    expect(view.batchGenerationBlockedReason).toBe('鑑査承認後にセットバッチを生成できます');
+  });
+
+  it.each(['dispense', 'audit'] as const)(
+    'hides the generation CTA outside the set phase (%s)',
+    (phase) => {
+      const view = buildView({ ...setArgs, phase, calendarGeneration: generationMeta() });
+      expect(view.batchGenerationVisible).toBe(false);
+    },
+  );
+
+  it('hides the generation CTA when no generation metadata is available', () => {
+    expect(buildView({ ...setArgs }).batchGenerationVisible).toBe(false);
+    expect(buildView({ ...setArgs, calendarGeneration: null }).batchGenerationVisible).toBe(false);
   });
 });
 

@@ -48,6 +48,7 @@ import { MedicationCalendarGrid } from './medication-calendar-grid';
 import { RightPane } from './right-pane';
 import { HoldReasonDialog } from './hold-reason-dialog';
 import { PrescriptionCompareDialog } from './prescription-compare-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 /** phase → アプリルートパス（計画 §2 ルートマップ）。 */
 const PHASE_ROUTE: Record<Phase, string> = {
@@ -101,6 +102,8 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   const planId = useWorkbenchStore((s) => s.writeContext.planId);
   // 接続状態は HeaderSyncStatus と同一の useNetworkOnline（新規リアルタイム購読を増やさない）。
   const online = useNetworkOnline();
+  // セットバッチ force 再生成の確認ダイアログ開閉（破壊的操作のため二重確認）。
+  const [forceConfirmOpen, setForceConfirmOpen] = useState(false);
 
   // ---- 書込結線（計画 §12 / W3b）----
   // mutation 群（実データ時のみ発火・mock は no-op）とフェーズ別ハンドラを生成し、
@@ -195,7 +198,12 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           hydrate({ patients: [] });
           return;
         }
-        setCalendarState({ patientId: selId, planId, ...result.calendarState });
+        setCalendarState({
+          patientId: selId,
+          planId,
+          generation: result.matrix.generation ?? null,
+          ...result.calendarState,
+        });
         setWriteContext(result.writeContext);
         return;
       }
@@ -216,6 +224,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       setCalendarState({
         patientId: result.selId,
         planId: result.writeContext.planId,
+        generation: result.matrix.generation ?? null,
         ...result.calendarState,
       });
       setWriteContext(result.writeContext);
@@ -384,6 +393,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
               phase={phase}
               handlers={writeHandlers}
               isPending={mutations.isAnyPending}
+              onRequestRegenerate={() => setForceConfirmOpen(true)}
             />
           )}
         </div>
@@ -442,6 +452,16 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         />
       )}
       {view.compareOpen && <PrescriptionCompareDialog view={view} phase={phase} />}
+      <ConfirmDialog
+        open={forceConfirmOpen}
+        onOpenChange={setForceConfirmOpen}
+        variant="destructive"
+        title="セットバッチを再生成"
+        description="既存のセットを削除して作り直します。確定済みのセット状態・監査状態は失われ、この操作は取り消せません。"
+        requiredConfirmText="再生成"
+        confirmLabel="再生成する"
+        onConfirm={() => writeHandlers.onGenerateBatches(true)}
+      />
     </div>
   );
 }

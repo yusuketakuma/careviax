@@ -9,6 +9,7 @@ const {
   mutateCellMock,
   assignLinesToGroupMock,
   updatePrescriptionLinesMock,
+  generateSetBatchesMock,
   loadPatientsAsyncMock,
   loadWorkbenchAsyncMock,
   loadCalendarWriteContextAsyncMock,
@@ -17,6 +18,7 @@ const {
   mutateCellMock: vi.fn(),
   assignLinesToGroupMock: vi.fn(),
   updatePrescriptionLinesMock: vi.fn(),
+  generateSetBatchesMock: vi.fn(),
   loadPatientsAsyncMock: vi.fn(),
   loadWorkbenchAsyncMock: vi.fn(),
   loadCalendarWriteContextAsyncMock: vi.fn(),
@@ -42,6 +44,7 @@ vi.mock('./dispensing-workbench.adapter', () => ({
   submitDispenseAudit: vi.fn(),
   mutateCell: mutateCellMock,
   bulkSetCells: vi.fn(),
+  generateSetBatches: generateSetBatchesMock,
   submitSetAudit: vi.fn(),
   createCycleHold: vi.fn(),
   resolveCycleHold: vi.fn(),
@@ -129,6 +132,7 @@ describe('useWorkbenchMutations recovery', () => {
       }),
     );
     loadCalendarWriteContextAsyncMock.mockResolvedValue({
+      matrix: { generation: null },
       calendarState: {
         model: { patient_1: [] },
         setCells: { 'patient_1:0:朝': 'hold' },
@@ -259,6 +263,44 @@ describe('useWorkbenchMutations recovery', () => {
       expect(useWorkbenchStore.getState().writeContext.lineGroupByDid.line_1).toBe(
         'packaging_group_3',
       );
+    });
+  });
+
+  it('rehydrates calendar generation metadata after a successful batch generation', async () => {
+    generateSetBatchesMock.mockResolvedValue({ data: { count: 3, batches: [], reused: false } });
+    loadCalendarWriteContextAsyncMock.mockResolvedValue({
+      matrix: {
+        generation: {
+          batch_count: 3,
+          needs_initial_generation: false,
+          latest_batch_updated_at: '2026-06-20T00:00:00.000Z',
+          expected_updated_at: '2026-06-20T00:00:00.000Z',
+          can_generate: false,
+          can_force_regenerate: true,
+        },
+      },
+      calendarState: { model: { patient_1: [] }, setCells: {}, auditCells: {} },
+      writeContext: { planId: 'plan_1', cycleId: 'cycle_1', cycleVersion: 8, cellMeta: {} },
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const { result } = renderHook(
+      () => useWorkbenchMutations({ patientId: 'patient_1', planId: 'plan_1', phase: 'setp' }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    result.current.generateBatches.mutate({ force: false });
+
+    await waitFor(() => {
+      expect(generateSetBatchesMock).toHaveBeenCalledWith('plan_1', { force: false });
+    });
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().calendarGeneration?.batch_count).toBe(3);
     });
   });
 });

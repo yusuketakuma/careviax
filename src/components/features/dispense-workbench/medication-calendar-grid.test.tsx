@@ -64,6 +64,103 @@ function calendarView(): WorkbenchView {
   } as unknown as WorkbenchView;
 }
 
+function calendarViewWithGeneration(overrides: Partial<WorkbenchView>): WorkbenchView {
+  return {
+    ...calendarView(),
+    batchGenerationVisible: true,
+    batchGenerationLabel: 'セットバッチを生成',
+    canGenerateBatches: false,
+    canForceRegenerate: false,
+    batchGenerationBlockedReason: '',
+    ...overrides,
+  } as WorkbenchView;
+}
+
+function gridHandlers(overrides: Partial<WorkbenchWriteHandlers> = {}): WorkbenchWriteHandlers {
+  return {
+    onSelectCell: vi.fn(),
+    onBulk: vi.fn(),
+    onPrimary: vi.fn(() => null),
+    onGenerateBatches: vi.fn(),
+    ...overrides,
+  } as unknown as WorkbenchWriteHandlers;
+}
+
+describe('MedicationCalendarGrid set batch generation CTA', () => {
+  it('does not render the generation CTA when generation metadata is absent', () => {
+    render(<MedicationCalendarGrid view={calendarView()} phase="setp" handlers={gridHandlers()} />);
+
+    expect(screen.queryByRole('button', { name: 'セットバッチを生成' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'セットバッチ再生成' })).toBeNull();
+  });
+
+  it('runs an initial generation on click when generation is permitted', () => {
+    const onGenerateBatches = vi.fn();
+    const onRequestRegenerate = vi.fn();
+    render(
+      <MedicationCalendarGrid
+        view={calendarViewWithGeneration({ canGenerateBatches: true })}
+        phase="setp"
+        handlers={gridHandlers({ onGenerateBatches })}
+        onRequestRegenerate={onRequestRegenerate}
+      />,
+    );
+
+    const cta = screen.getByRole('button', { name: 'セットバッチを生成' });
+    expect((cta as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(cta);
+
+    expect(onGenerateBatches).toHaveBeenCalledWith(false);
+    expect(onRequestRegenerate).not.toHaveBeenCalled();
+  });
+
+  it('opens the confirm dialog instead of generating directly on a force regenerate click', () => {
+    const onGenerateBatches = vi.fn();
+    const onRequestRegenerate = vi.fn();
+    render(
+      <MedicationCalendarGrid
+        view={calendarViewWithGeneration({
+          canForceRegenerate: true,
+          batchGenerationLabel: 'セットバッチ再生成',
+        })}
+        phase="setp"
+        handlers={gridHandlers({ onGenerateBatches })}
+        onRequestRegenerate={onRequestRegenerate}
+      />,
+    );
+
+    const cta = screen.getByRole('button', { name: 'セットバッチ再生成' });
+    fireEvent.click(cta);
+
+    expect(onRequestRegenerate).toHaveBeenCalledTimes(1);
+    expect(onGenerateBatches).not.toHaveBeenCalled();
+  });
+
+  it('disables the CTA and surfaces the blocked reason as a tooltip when neither action is allowed', () => {
+    const onGenerateBatches = vi.fn();
+    render(
+      <MedicationCalendarGrid
+        view={calendarViewWithGeneration({
+          batchGenerationLabel: 'セットバッチ再生成',
+          batchGenerationBlockedReason:
+            'セット監査後は再生成できません（差戻し後に実行してください）',
+        })}
+        phase="setp"
+        handlers={gridHandlers({ onGenerateBatches })}
+      />,
+    );
+
+    const cta = screen.getByRole('button', { name: 'セットバッチ再生成' });
+    expect((cta as HTMLButtonElement).disabled).toBe(true);
+    expect(cta.getAttribute('title')).toBe(
+      'セット監査後は再生成できません（差戻し後に実行してください）',
+    );
+
+    fireEvent.click(cta);
+    expect(onGenerateBatches).not.toHaveBeenCalled();
+  });
+});
+
 describe('MedicationCalendarGrid', () => {
   it('renders calendar cells as native buttons with minimized accessible names', () => {
     const onSelectCell = vi.fn();

@@ -35,7 +35,11 @@ import type {
   SortMode,
   WorkbenchModel,
 } from './dispensing-workbench.types';
-import { emptyWriteContext, type WorkbenchWriteContext } from './dispensing-workbench.write-types';
+import {
+  emptyWriteContext,
+  type SetBatchGenerationMetadata,
+  type WorkbenchWriteContext,
+} from './dispensing-workbench.write-types';
 
 const SEED_PATIENTS = buildPatients();
 const REAL_DATA_ENABLED = isRealDataEnabled();
@@ -94,6 +98,12 @@ export interface WorkbenchState {
    */
   writeContext: WorkbenchWriteContext;
   /**
+   * セット工程のセットバッチ生成メタ（非永続）。実データ calendar 取得時のみ充填する。
+   * 既定（モック）/ 患者切替直後 / 空・失敗 hydrate は null（生成 CTA を出さない fail-closed）。
+   * force 再生成の OCC アンカー（expected_updated_at）も含むため、書込ハンドラはここから読む。
+   */
+  calendarGeneration: SetBatchGenerationMetadata | null;
+  /**
    * status bar 表示用の operator 情報（非永続）。dispenserName=実記録された調剤者、
    * operatorName=現在の操作者（API auditor=ログイン中の閲覧者。記録済み監査者ではない）。
    * 既定（モック）/ 実データ取得失敗 / カレンダー工程 / 患者切替直後は null（status bar は '—' へ fail-closed）。
@@ -144,6 +154,8 @@ export interface WorkbenchState {
     auditCells: Record<string, string>;
     ng?: Record<string, string>;
     holdInfo?: Record<string, HoldInfo>;
+    /** セットバッチ生成メタ（calendar レスポンス由来）。省略時は null（生成 CTA を出さない）。 */
+    generation?: SetBatchGenerationMetadata | null;
   }) => void;
   navBy: (delta: number) => void;
   setSort: (mode: SortMode) => void;
@@ -212,6 +224,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       patients: INITIAL_PATIENTS,
       hydrated: false,
       writeContext: emptyWriteContext(),
+      calendarGeneration: null,
       operators: { dispenserName: null, operatorName: null },
       loadError: false,
       retryNonce: 0,
@@ -222,7 +235,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           target: null,
           holdModal: null,
           writeContext: emptyWriteContext(),
-          // 患者切替直後は前患者の operator / エラー状態を残さない（effect が再取得して再評価する）。
+          // 患者切替直後は前患者の生成メタ / operator / エラー状態を残さない（effect が再取得して再評価する）。
+          calendarGeneration: null,
           operators: { dispenserName: null, operatorName: null },
           loadError: false,
         }),
@@ -243,11 +257,13 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         auditCells,
         ng = {},
         holdInfo = {},
+        generation = null,
       }) =>
         set((s) => {
           const preserveCarryEvidence = !!planId && s.writeContext.planId === planId;
           return {
             model: { ...s.model, ...model },
+            calendarGeneration: generation,
             setCells: replacePatientPrefixedState(s.setCells, patientId, setCells),
             auditCells: replacePatientPrefixedState(s.auditCells, patientId, auditCells),
             outChk: preserveCarryEvidence
@@ -281,7 +297,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
               auditDoubleCountByDid: {},
               model: {},
               writeContext: emptyWriteContext(),
-              // 空/失敗 hydrate では operator も null（捏造名を残さない）。
+              // 空/失敗 hydrate では生成メタ・operator も null（捏造値を残さない）。
+              calendarGeneration: null,
               operators: { dispenserName: null, operatorName: null },
             };
           }

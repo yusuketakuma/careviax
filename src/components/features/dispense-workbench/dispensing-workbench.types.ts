@@ -765,6 +765,23 @@ export interface WorkbenchView {
   primary: PrimaryButtonView;
   bulkLabel: string;
 
+  // セットバッチ生成（セット工程のみ。calendar レスポンスの generation メタ由来）
+  // buildView は常に全て設定する。set 工程以外を組む既存 fixture が値を省略できるよう optional。
+  /** 生成 CTA をフッタに出すか（isSet かつ generation メタ取得済み）。省略時 false 相当。 */
+  batchGenerationVisible?: boolean;
+  /** 生成 CTA のラベル（初回生成 / 再生成で文言が変わる）。 */
+  batchGenerationLabel?: string;
+  /** 初回生成（force=false）を即時実行できるか。 */
+  canGenerateBatches?: boolean;
+  /** 既存セットを削除して force 再生成できるか（確認ダイアログ経由）。 */
+  canForceRegenerate?: boolean;
+  /** 生成 CTA が無効なときの理由（title 表示用。有効時 / 非表示時は ''）。 */
+  batchGenerationBlockedReason?: string;
+  /** 現在のセットバッチ件数（generation メタ未取得時は 0）。 */
+  batchCount?: number;
+  /** force 再生成の OCC アンカー（セットプランの updated_at。未取得時は null）。 */
+  expectedUpdatedAt?: string | null;
+
   // F-key
   fkeys: FKeyView[];
 

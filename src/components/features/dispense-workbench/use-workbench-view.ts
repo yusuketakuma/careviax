@@ -39,7 +39,10 @@ import {
   totals as calcTotals,
 } from './dispensing-workbench.logic';
 import { isRealDataEnabled, loadPatients } from './dispensing-workbench.adapter';
-import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
+import {
+  SET_AUDIT_CHECK_ITEMS,
+  type SetBatchGenerationMetadata,
+} from './dispensing-workbench.write-types';
 import {
   areQuantitiesEquivalentForUnit,
   quantityInputModeForUnit,
@@ -194,6 +197,7 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
   const patients = useWorkbenchStore((s) => s.patients);
   const hydrated = useWorkbenchStore((s) => s.hydrated);
   const loadError = useWorkbenchStore((s) => s.loadError);
+  const calendarGeneration = useWorkbenchStore((s) => s.calendarGeneration);
 
   return useMemo(
     () =>
@@ -202,6 +206,7 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
         isRealData: isRealDataEnabled(),
         hydrated,
         loadError,
+        calendarGeneration,
         selId,
         sortMode,
         done,
@@ -247,6 +252,7 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
       patients,
       hydrated,
       loadError,
+      calendarGeneration,
     ],
   );
 }
@@ -280,6 +286,8 @@ interface BuildViewArgs {
   hydrated?: boolean;
   /** 実データ取得が失敗したか（true=error 状態）。 */
   loadError?: boolean;
+  /** セットバッチ生成メタ（calendar レスポンス由来）。省略時は null（生成 CTA を出さない）。 */
+  calendarGeneration?: SetBatchGenerationMetadata | null;
 }
 
 /** 左ペインの取得状態を導出する（loading/error/empty/ready）。 */
@@ -1103,6 +1111,29 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     gateBorder = 'var(--wb-confirm-border)';
   }
 
+  // ---- セットバッチ生成 CTA（セット工程のみ）----
+  // calendar レスポンスの generation メタから初回生成 / force 再生成の可否を導出する。
+  // generation 未取得（モック / 取得失敗 / カレンダー工程外）は非表示にして fail-closed。
+  const generation = args.calendarGeneration ?? null;
+  const batchGenerationVisible = isSet && generation !== null;
+  const needsInitialGeneration = generation?.needs_initial_generation ?? false;
+  const batchCount = generation?.batch_count ?? 0;
+  const expectedUpdatedAt = generation?.expected_updated_at ?? null;
+  const canGenerateBatches =
+    batchGenerationVisible && needsInitialGeneration && (generation?.can_generate ?? false);
+  const canForceRegenerate =
+    batchGenerationVisible &&
+    !needsInitialGeneration &&
+    batchCount > 0 &&
+    (generation?.can_force_regenerate ?? false);
+  const batchGenerationLabel = needsInitialGeneration ? 'セットバッチを生成' : 'セットバッチ再生成';
+  const batchGenerationBlockedReason =
+    batchGenerationVisible && !canGenerateBatches && !canForceRegenerate
+      ? needsInitialGeneration
+        ? '鑑査承認後にセットバッチを生成できます'
+        : 'セット監査後は再生成できません（差戻し後に実行してください）'
+      : '';
+
   // ---- 実装済み物理 F-key shortcuts ----
   const fkeys: WorkbenchView['fkeys'] = [
     fkey('F3', '前患者', 'prevPatient'),
@@ -1232,6 +1263,14 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       opacity: primaryOpacity,
     },
     bulkLabel,
+
+    batchGenerationVisible,
+    batchGenerationLabel,
+    canGenerateBatches,
+    canForceRegenerate,
+    batchGenerationBlockedReason,
+    batchCount,
+    expectedUpdatedAt,
 
     fkeys,
 

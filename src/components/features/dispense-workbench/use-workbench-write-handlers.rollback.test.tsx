@@ -67,6 +67,7 @@ function fakeMutations(
     assignLines: mutationStub(),
     editLine: mutationStub(),
     editLines: mutationStub(),
+    generateBatches: mutationStub(),
     isAnyPending: false,
     ...overrides,
   } as WorkbenchMutations;
@@ -3015,5 +3016,163 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
 
     expect(createGroup.mutate).toHaveBeenCalled();
     expect(useWorkbenchStore.getState().model.patient_1).toEqual([]);
+  });
+});
+
+describe('useWorkbenchWriteHandlers generate set batches', () => {
+  afterEach(() => {
+    vi.doUnmock('./dispensing-workbench.adapter');
+    vi.resetModules();
+    toastErrorMock.mockReset();
+    window.localStorage.clear();
+  });
+
+  function seedSetPlan(
+    useWorkbenchStore: Awaited<ReturnType<typeof importRealDataHandlers>>['useWorkbenchStore'],
+    calendarGeneration: unknown,
+  ) {
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        writeContext: {
+          taskId: null,
+          cycleId: 'cycle_1',
+          cycleVersion: 1,
+          planId: 'plan_1',
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+        calendarGeneration: calendarGeneration as ReturnType<
+          typeof useWorkbenchStore.getState
+        >['calendarGeneration'],
+      });
+    });
+  }
+
+  it('requests an initial (non-force) generation with the resolved plan context', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+    seedSetPlan(useWorkbenchStore, null);
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGenerateBatches(false);
+    });
+
+    expect(generateBatches.mutate).toHaveBeenCalledWith({ force: false });
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('requests a force regeneration with the set plan OCC anchor', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+    seedSetPlan(useWorkbenchStore, {
+      batch_count: 14,
+      needs_initial_generation: false,
+      latest_batch_updated_at: null,
+      expected_updated_at: '2026-06-20T00:00:00.000Z',
+      can_generate: false,
+      can_force_regenerate: true,
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGenerateBatches(true);
+    });
+
+    expect(generateBatches.mutate).toHaveBeenCalledWith({
+      force: true,
+      expected_updated_at: '2026-06-20T00:00:00.000Z',
+    });
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a force regeneration without an OCC anchor and surfaces an error', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+    seedSetPlan(useWorkbenchStore, null);
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGenerateBatches(true);
+    });
+
+    expect(generateBatches.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'セットプランの版情報を取得できませんでした。患者を再選択してから実行してください。',
+    );
+  });
+
+  it('reports missing plan context instead of generating without a set plan', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        writeContext: {
+          taskId: null,
+          cycleId: 'cycle_1',
+          cycleVersion: 1,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+        calendarGeneration: null,
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGenerateBatches(false);
+    });
+
+    expect(generateBatches.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(MISSING_WRITE_CONTEXT_MESSAGE);
+  });
+
+  it('guards against double submission while another real-data write is pending', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+    seedSetPlan(useWorkbenchStore, null);
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches, isAnyPending: true }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGenerateBatches(false);
+    });
+
+    expect(generateBatches.mutate).not.toHaveBeenCalled();
   });
 });

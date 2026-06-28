@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { MOCK_WRITE_NOOP } from './dispensing-workbench.write-types';
+
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -645,5 +647,69 @@ describe('dispensing-workbench.adapter real-data default + phase filtering', () 
     const result = await loadWorkbenchPatientRowsAsync({ phase: 'dispense' });
 
     expect(result).toEqual({ patients: [], rows: [], ok: true });
+  });
+});
+
+describe('dispensing-workbench.adapter generateSetBatches', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    delete process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA;
+  });
+
+  it('POSTs the force/expected_updated_at body to the generate-batches endpoint in real-data mode', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ data: { count: 3, batches: [], reused: false } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+    const result = await generateSetBatches('plan_1', {
+      force: true,
+      expected_updated_at: '2026-06-20T00:00:00.000Z',
+    });
+
+    expect(result).toEqual({ data: { count: 3, batches: [], reused: false } });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/set-plans/plan_1/generate-batches',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ force: true, expected_updated_at: '2026-06-20T00:00:00.000Z' }),
+      }),
+    );
+  });
+
+  it('returns a mock write noop without calling fetch when real data is opted out', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = 'mock';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+    const result = await generateSetBatches('plan_1', { force: false });
+
+    expect(result).toEqual(MOCK_WRITE_NOOP);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('promotes a 409 conflict response to a WorkbenchConflictError', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ message: '他の操作と競合しました。' }), {
+          status: 409,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    // vi.resetModules() gives the dynamically imported adapter a fresh module graph,
+    // so the thrown class must be resolved from the same fresh write-types instance.
+    const { generateSetBatches } = await import('./dispensing-workbench.adapter');
+    const { WorkbenchConflictError } = await import('./dispensing-workbench.write-types');
+
+    await expect(
+      generateSetBatches('plan_1', { force: true, expected_updated_at: 'x' }),
+    ).rejects.toBeInstanceOf(WorkbenchConflictError);
   });
 });
