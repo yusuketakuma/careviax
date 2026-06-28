@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/select';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
+import { BILLING_RULES_API_PATH, buildBillingRuleApiPath } from '@/lib/billing-rules/api-paths';
 
 // --- Types ---
 
@@ -99,13 +100,13 @@ const DEFAULT_FORM: RuleFormData = {
 // --- API helpers ---
 
 async function fetchBillingRules(): Promise<BillingRulesResponse> {
-  const res = await fetch('/api/billing-rules');
+  const res = await fetch(BILLING_RULES_API_PATH);
   if (!res.ok) throw new Error('Failed to fetch billing rules');
   return res.json();
 }
 
 async function syncBillingSsot(): Promise<{ message: string }> {
-  const res = await fetch('/api/billing-rules', {
+  const res = await fetch(BILLING_RULES_API_PATH, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'seed_home_care_ssot' }),
@@ -118,7 +119,7 @@ async function syncBillingSsot(): Promise<{ message: string }> {
 }
 
 async function createBillingRule(body: object): Promise<BillingRule> {
-  const res = await fetch('/api/billing-rules', {
+  const res = await fetch(BILLING_RULES_API_PATH, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -131,7 +132,7 @@ async function createBillingRule(body: object): Promise<BillingRule> {
 }
 
 async function updateBillingRule(id: string, body: object): Promise<BillingRule> {
-  const res = await fetch(`/api/billing-rules/${id}`, {
+  const res = await fetch(buildBillingRuleApiPath(id), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -144,7 +145,7 @@ async function updateBillingRule(id: string, body: object): Promise<BillingRule>
 }
 
 async function deleteBillingRule(id: string): Promise<void> {
-  const res = await fetch(`/api/billing-rules/${id}`, { method: 'DELETE' });
+  const res = await fetch(buildBillingRuleApiPath(id), { method: 'DELETE' });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message ?? 'Failed to delete billing rule');
