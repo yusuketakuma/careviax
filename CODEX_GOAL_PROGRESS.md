@@ -23,6 +23,42 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Dashboard Clerk Support GET No-Store And PHI-Safe Error Hardening
+
+- Coordination:
+  - Followed maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/dashboard/clerk-support/route.ts` and `route.test.ts`; Claude ACKed no conflict with its FE batch5 work.
+  - Implementation ran through the Codex backend lane while main Codex stayed open for agmsg and FE review interrupts.
+  - Codex reviewed Claude's FE typography-floor and enum-label slices separately, returning an `APPROVED` for the former and a later `CHANGES_REQUESTED` on workflow pseudo-channel labels without editing FE files.
+  - Privacy, medical safety, and general Codex review subagents approved the BE diff before Claude checker review.
+  - Claude reviewed the BE diff, independently ran focused Vitest, scoped ESLint, and scoped Prettier check, and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, external sends, deploy, or destructive operations were touched by Codex.
+- Hardened dashboard clerk-support API responses:
+  - Replaced the common `withAuthContext` route wrapper with explicit `requireAuthContext({ permission: 'canViewDashboard' })` so ordinary unexpected failures avoid the common raw-error logging path.
+  - Preserved exported `GET(req, routeContext?)` direct-call compatibility; the old handler body ignored route context.
+  - Wrapped the clerk-support aggregation body in `runWithRequestAuthContext(ctx, ...)`.
+  - Wrapped the exported route in `withRoutePerformance(req, ...)`.
+  - Wrapped success, auth failure, and handled 500 responses in `withSensitiveNoStore`.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging.
+  - Restricted logged `error_name` to an allowlist, falling back to `Error` for crafted names.
+  - Preserved `canViewDashboard`, the exact auth message `ダッシュボードの閲覧権限がありません`, all count/findMany where/select/orderBy/take semantics, six KPI response shape, document-channel active-case gap query, intake/proposal task mapping, hostile proposal href encoding, and consult items.
+  - Added tests for route-performance wrapper invocation, auth options, request auth-context wrapper invocation, auth failure no-store before DB reads, protected-route direct-call compatibility, and absence of raw patient/clerk/dashboard/SQL/stack/crafted error-name/raw-error leakage from response/log surfaces.
+- Security/privacy risk reduced: clerk-support dashboard responses consistently carry sensitive no-store headers, auth failure short-circuits before DB reads, unexpected failures return fixed PHI-safe bodies, and handler logs avoid raw patient/clerk/dashboard/error details.
+- Performance issue improved: route latency/error metrics are captured with `withRoutePerformance`; no DB query shape or additional data read was introduced.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/dashboard/clerk-support/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `4` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/clerk-support GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - `pnpm exec eslint src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/dashboard/clerk-support/route.ts src/app/api/dashboard/clerk-support/route.test.ts`: passed.
+  - Privacy compliance review: no findings.
+  - Medical safety review: no findings.
+  - General Codex review: no findings.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `4/4`, scoped ESLint, and scoped Prettier check, and verified auth/message preservation, query-shape preservation, no-store coverage, auth-failure DB short-circuit, and PHI-safe fixed logging.
+- Commit status: implementation committed locally as `f9129417`; this section records the progress-ledger slice for separate commit.
+- Next action: commit this progress-ledger slice, notify Claude, then implement the ACKed `dashboard/medication-deadlines` BE/API hardening slice or review Claude FE re-review requests as they arrive.
+
 ### 2026-06-28 JST - Dashboard Cockpit GET No-Store And PHI-Safe Error Hardening
 
 - Coordination:
