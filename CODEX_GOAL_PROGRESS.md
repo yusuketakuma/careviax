@@ -15513,3 +15513,27 @@ Next loop:
 - Remaining:
   - Claude accepted the Codex roadmap verdict and will fold it into an ultracode/self-review synthesis before frontend implementation waves start.
   - Next coordination point: review Claude's integrated roadmap, then select joint FE/BE mini-spec order for `verify-barcode`, `generate-batches`, and tracing-reports.
+
+### Dispense Task Lines — Classification And Packaging Update Contract
+
+- Coordination:
+  - Continued the backend implementation/refactor loop after committing the approved FE-unblocking workbench contract and related backend slices.
+  - Preserved pre-existing dirty files `.codex/hooks.json`, `docs/dispensing-workbench-replacement-plan.md`, and Claude's untracked `.agent-loop/plans/SYSTEM_UI_AUDIT_ROADMAP.md`.
+- Bugs found:
+  - `/api/dispense-tasks/[id]/lines` supported optimistic-lock, transaction-scoped line date/day edits, but could not update the structured dispensing classification fields that prescription registration already persists: `dosage_form`, `route`, `dispensing_method`, `packaging_method`, `packaging_instructions`, and `packaging_instruction_tags`.
+  - This left a backend contract gap for pharmacist corrections during dispensing/set preparation when route or packaging classification needed correction after prescription intake.
+- Implemented by Codex:
+  - Refactored the line PATCH schema to reuse packaging method/tag option constants from `src/lib/dispensing/packaging.ts` instead of duplicating packaging vocabulary.
+  - Extended line batch updates to support structured classification and packaging fields alongside existing `start_date` / `end_date` / `days` updates.
+  - Preserved the existing same-transaction audit pattern, optimistic `expected_updated_at` guard, cycle/org scope check, duplicate line rejection, workflow notification, and date-window validation.
+  - Added duplicate packaging-tag rejection before reads/writes.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/dispense-tasks/[id]/lines/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - `pnpm exec eslint 'src/app/api/dispense-tasks/[id]/lines/route.ts' 'src/app/api/dispense-tasks/[id]/lines/route.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/api/dispense-tasks/[id]/lines/route.ts' 'src/app/api/dispense-tasks/[id]/lines/route.test.ts'`: passed.
+  - `git diff --check -- 'src/app/api/dispense-tasks/[id]/lines/route.ts' 'src/app/api/dispense-tasks/[id]/lines/route.test.ts'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Send Claude a `PATCH_REVIEW_REQUEST` for this backend slice and address findings before commit.
+  - Broader scanner evidence persistence and FE wiring remain separate slices.
