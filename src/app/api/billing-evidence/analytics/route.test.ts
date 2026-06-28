@@ -1,15 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
+  authContext,
   requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  loggerErrorMock,
+  withRoutePerformanceMock,
   billingCandidateFindManyMock,
   billingCandidateGroupByMock,
   billingEvidenceFindManyMock,
   billingEvidenceGroupByMock,
   billingRuleCountMock,
 } = vi.hoisted(() => ({
+  authContext: {
+    orgId: 'org_1',
+    userId: 'report_1',
+    role: 'manager',
+  },
   requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+  loggerErrorMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
   billingCandidateFindManyMock: vi.fn(),
   billingCandidateGroupByMock: vi.fn(),
   billingEvidenceFindManyMock: vi.fn(),
@@ -19,6 +31,10 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -37,6 +53,14 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
+}));
+
 import { GET } from './route';
 
 function createRequest() {
@@ -47,18 +71,19 @@ function createRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/billing-evidence/analytics GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-02-28T15:30:00.000Z'));
-    requireAuthContextMock.mockResolvedValue({
-      ctx: {
-        orgId: 'org_1',
-        userId: 'report_1',
-        role: 'manager',
-      },
-    });
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
     billingRuleCountMock.mockResolvedValue(16);
     billingCandidateFindManyMock.mockResolvedValue([
       {
@@ -166,6 +191,13 @@ describe('/api/billing-evidence/analytics GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canReport',
+      message: '請求分析の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: {
         summary: {
@@ -238,5 +270,78 @@ describe('/api/billing-evidence/analytics GET', () => {
         take: 5,
       }),
     );
+  });
+
+  it('wraps auth failure responses in no-store headers before any billing lookup', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(403);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expectSensitiveNoStore(response);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(billingCandidateGroupByMock).not.toHaveBeenCalled();
+    expect(billingEvidenceFindManyMock).not.toHaveBeenCalled();
+    expect(billingEvidenceGroupByMock).not.toHaveBeenCalled();
+    expect(billingRuleCountMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking raw billing analytics failures', async () => {
+    const thrownError = new Error(
+      'patient 山田太郎 analytics failed with SQL select * from billing_evidence',
+    );
+    billingCandidateFindManyMock.mockRejectedValueOnce(thrownError);
+
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(500);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('patient 山田太郎');
+    expect(body).not.toContain('SQL select');
+    expect(body).not.toContain('billing_evidence');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'billing_evidence_analytics_unhandled_error',
+      undefined,
+      {
+        event: 'billing_evidence_analytics_unhandled_error',
+        route: '/api/billing-evidence/analytics',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(thrownError);
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('patient 山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('SQL select');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('select * from');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('stack');
+  });
+
+  it('sanitizes unexpected error names with a strict allowlist', async () => {
+    const thrownError = new Error('patient 山田太郎 should not leak');
+    thrownError.name = 'PatientName山田太郎';
+    billingCandidateFindManyMock.mockRejectedValueOnce(thrownError);
+
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(500);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'billing_evidence_analytics_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        error_name: 'Error',
+      }),
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('山田太郎');
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain('PatientName');
   });
 });
