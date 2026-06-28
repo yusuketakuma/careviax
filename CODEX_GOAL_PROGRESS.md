@@ -23,6 +23,43 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Dashboard Workflow GET No-Store And PHI-Safe Error Hardening
+
+- Coordination:
+  - Followed maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/dashboard/workflow/route.ts` and `route.test.ts`; Claude ACKed no conflict with its FE card-workspace/dashboard-cockpit work and asked to preserve `communication_queue` / `patient_risk_queue` response shape.
+  - Implementation ran through a Codex maintainer subagent while main Codex stayed open for agmsg.
+  - Privacy, medical safety, and general Codex review subagents reported no findings before Claude checker review.
+  - Claude reviewed the BE diff, independently ran focused Vitest, scoped ESLint, and scoped Prettier check, and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, external sends, deploy, or destructive operations were touched by Codex.
+- Hardened dashboard workflow API responses:
+  - Replaced the common `withAuthContext` route wrapper with explicit `requireAuthContext({ permission: 'canViewDashboard' })` so ordinary unexpected failures avoid the common raw-error logging path.
+  - Preserved the exact auth message `ダッシュボードの閲覧権限がありません`.
+  - Preserved exported `GET(req, routeContext?)` direct-call compatibility; route context is deliberately voided.
+  - Wrapped the workflow aggregate body in `runWithRequestAuthContext(ctx, ...)`.
+  - Wrapped the exported route in `withRoutePerformance(req, ...)`.
+  - Wrapped success, auth failure, validation error, cached success, and handled 500 responses in `withSensitiveNoStore`.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging.
+  - Restricted logged `error_name` to an allowlist, falling back to `Error` for crafted names.
+  - Preserved `parseWorkflowViewQuery` validation order, cache key/get/set behavior, all workflow aggregate calls, `responsePayload = { data: buildWorkflowDashboardData(...) }`, and field names consumed by FE including `communication_queue.items[].channel`, `communication_queue.summary`, and `patient_risk_queue.items[].level`.
+  - Deliberately deferred broader `withOrgContext` transactionization because the workflow aggregate spans many services and should be split into a separate compatibility slice.
+  - Added tests for route-performance wrapper invocation, auth options, request auth-context wrapper invocation, auth failure no-store before cache/DB/service reads, protected-route direct-call compatibility, cached no-store responses without rerunning aggregate reads, FE-sensitive response shape preservation, and absence of raw patient/workflow/dashboard/SQL/stack/crafted error-name/raw-error leakage from response/log surfaces.
+- Security/privacy risk reduced: workflow dashboard responses consistently carry sensitive no-store headers, auth failure short-circuits before cache and aggregate reads, unexpected failures return fixed PHI-safe bodies, and handler logs avoid raw patient/workflow/dashboard/error details.
+- Performance issue improved: route latency/error metrics are captured with `withRoutePerformance`; no additional data read, N+1 query, or cache key change was introduced.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/dashboard/workflow/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `20` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "dashboard/workflow GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - `pnpm exec eslint src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`: passed after scoped formatting of the two files.
+  - `git diff --check -- src/app/api/dashboard/workflow/route.ts src/app/api/dashboard/workflow/route.test.ts`: passed.
+  - Privacy compliance review: no findings.
+  - Medical safety review: no findings.
+  - General Codex review: no findings; broader reviewer-run validation also passed `4` files / `29` tests and a relaxed full TypeScript check.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `20/20`, scoped ESLint, and scoped Prettier check, and verified query/cache/body region preservation, FE response-shape preservation, no-store coverage, and PHI-safe fixed logging.
+- Commit status: implementation committed locally as `2f7f55b4`; this section records the progress-ledger slice for separate commit.
+- Next action: commit this progress-ledger slice, notify Claude, push grouped Codex-owned commits, then request the next backend/API lock. Candidate queue remains `dashboard/overdue` and `dashboard/dispensing-stats`, while workflow RLS transactionization is a separate larger follow-up.
+
 ### 2026-06-28 JST - Dashboard Medication Deadlines GET No-Store And PHI-Safe Error Hardening
 
 - Coordination:
