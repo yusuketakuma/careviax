@@ -179,11 +179,17 @@ type NewInterventionFormProps = {
   onCreated: (intervention: Intervention) => void;
 };
 
+// datetime-local はローカル壁時計を期待するため、UTC ISO ではなく getTimezoneOffset 補正値を使う
+function toLocalDateTimeInputValue(value: Date) {
+  const offsetMs = value.getTimezoneOffset() * 60_000;
+  return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
 function NewInterventionForm({ patientId, issueId, onCreated }: NewInterventionFormProps) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<InterventionType>('other');
   const [description, setDescription] = useState('');
-  const [performedAt, setPerformedAt] = useState(new Date().toISOString().slice(0, 16));
+  const [performedAt, setPerformedAt] = useState(toLocalDateTimeInputValue(new Date()));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -239,7 +245,9 @@ function NewInterventionForm({ patientId, issueId, onCreated }: NewInterventionF
               <Label>介入種別</Label>
               <Select value={type} onValueChange={(v) => setType(v as InterventionType)}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>
+                    {(value) => INTERVENTION_TYPE_LABELS[value as InterventionType] ?? value}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(INTERVENTION_TYPE_LABELS).map(([value, label]) => (

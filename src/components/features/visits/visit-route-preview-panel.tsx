@@ -137,7 +137,12 @@ export function VisitRoutePreviewPanel({
                   onValueChange={(value) => onTravelModeChange(value as VisitRouteTravelMode)}
                 >
                   <SelectTrigger id={travelModeControlId} className="w-[10rem]">
-                    <SelectValue />
+                    {/* Base UI は閉じた状態で既定値ラベルを SSR 解決できず生 enum を出すため明示する */}
+                    <SelectValue>
+                      {(value) =>
+                        VISIT_ROUTE_TRAVEL_MODE_LABELS[value as VisitRouteTravelMode] ?? value
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {VISIT_ROUTE_TRAVEL_MODE_OPTIONS.map((option) => (

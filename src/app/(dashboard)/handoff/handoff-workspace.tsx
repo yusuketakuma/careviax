@@ -288,6 +288,13 @@ const EMPTY_TRANSFER_DRAFT: TransferDraft = {
   priority: 'normal',
 };
 
+// Base UI の閉じた SelectTrigger は既定値ラベルを SSR 解決できず生 enum を出すため表示文言を明示する
+const TRANSFER_PRIORITY_LABELS: Record<string, string> = {
+  normal: '通常',
+  high: '高',
+  urgent: '緊急',
+};
+
 function TransferDialog({
   open,
   onOpenChange,
@@ -435,12 +442,16 @@ function TransferDialog({
                 }}
               >
                 <SelectTrigger id="handoff-transfer-priority" className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {(value) => TRANSFER_PRIORITY_LABELS[value as string] ?? value}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="normal">通常</SelectItem>
-                  <SelectItem value="high">高</SelectItem>
-                  <SelectItem value="urgent">緊急</SelectItem>
+                  {Object.entries(TRANSFER_PRIORITY_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -1153,47 +1164,47 @@ function ConsultWorkspace({
         </p>
       ) : (
         <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(220px,260px)_minmax(0,1fr)_minmax(240px,300px)]">
-        <ConsultStatusList
-          counts={counts}
-          selectedStatus={selectedStatus}
-          onSelectStatus={(status) => {
-            setSelectedStatus(status);
-            setSelectedId(null);
-          }}
-        />
-        <div className="order-2 min-w-0 space-y-3 lg:order-none">
-          {visibleItems.length > 1 ? (
-            <div className="flex flex-wrap gap-2" data-testid="handoff-consult-picker">
-              {visibleItems.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setSelectedId(item.id)}
-                  aria-pressed={item.id === selectedItem?.id}
-                  className={cn(
-                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                    item.id === selectedItem?.id
-                      ? 'border-primary bg-primary/5 text-primary'
-                      : 'border-border/70 text-muted-foreground hover:bg-muted/50',
-                  )}
-                >
-                  {item.content.slice(0, 16) || '相談'}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <ConsultDetail item={selectedItem} />
-        </div>
-        {canResolveConsult ? (
-          <ConsultResolutionPanel item={selectedItem} orgId={orgId} onResolved={onResolved} />
-        ) : (
-          <aside
-            className="rounded-md border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground"
-            data-testid="handoff-consult-resolution-readonly"
-          >
-            相談への対応は薬剤師が行います。事務は起票・確認のみです。
-          </aside>
-        )}
+          <ConsultStatusList
+            counts={counts}
+            selectedStatus={selectedStatus}
+            onSelectStatus={(status) => {
+              setSelectedStatus(status);
+              setSelectedId(null);
+            }}
+          />
+          <div className="order-2 min-w-0 space-y-3 lg:order-none">
+            {visibleItems.length > 1 ? (
+              <div className="flex flex-wrap gap-2" data-testid="handoff-consult-picker">
+                {visibleItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSelectedId(item.id)}
+                    aria-pressed={item.id === selectedItem?.id}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                      item.id === selectedItem?.id
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-border/70 text-muted-foreground hover:bg-muted/50',
+                    )}
+                  >
+                    {item.content.slice(0, 16) || '相談'}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <ConsultDetail item={selectedItem} />
+          </div>
+          {canResolveConsult ? (
+            <ConsultResolutionPanel item={selectedItem} orgId={orgId} onResolved={onResolved} />
+          ) : (
+            <aside
+              className="rounded-md border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground"
+              data-testid="handoff-consult-resolution-readonly"
+            >
+              相談への対応は薬剤師が行います。事務は起票・確認のみです。
+            </aside>
+          )}
         </div>
       )}
     </section>

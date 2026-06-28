@@ -197,7 +197,8 @@ function LabEditor({
                 id={`${title}-analyte`}
                 className="min-h-[44px] w-full sm:min-h-[44px]"
               >
-                <SelectValue />
+                {/* Base UI は閉じた状態で既定値ラベルを SSR 解決できず生 enum を出すため明示する */}
+                <SelectValue>{(value) => LAB_ANALYTE_LABELS[value as string] ?? value}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {LAB_ANALYTE_OPTIONS.map((option) => (

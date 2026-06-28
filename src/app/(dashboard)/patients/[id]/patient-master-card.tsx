@@ -34,6 +34,20 @@ import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
+// Base UI の閉じた SelectTrigger は既定値ラベルを SSR 解決できず生 enum を出すため表示文言を明示する
+const ALLERGY_CATEGORY_LABELS: Record<AllergyEntry['category'], string> = {
+  drug: '薬剤',
+  food: '食品',
+  other: 'その他',
+};
+
+const ALLERGY_SEVERITY_LABELS: Record<AllergyEntry['severity'], string> = {
+  unknown: '不明',
+  mild: '軽度',
+  moderate: '中等度',
+  severe: '重度',
+};
+
 type FacilityOption = {
   id: string;
   name: string;
@@ -495,12 +509,22 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   }
                 >
                   <SelectTrigger className="w-28" aria-label={`アレルギー${index + 1}件目の区分`}>
-                    <SelectValue />
+                    <SelectValue>
+                      {(value) =>
+                        ALLERGY_CATEGORY_LABELS[value as AllergyEntry['category']] ?? value
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="drug">薬剤</SelectItem>
-                    <SelectItem value="food">食品</SelectItem>
-                    <SelectItem value="other">その他</SelectItem>
+                    {(
+                      Object.entries(ALLERGY_CATEGORY_LABELS) as Array<
+                        [AllergyEntry['category'], string]
+                      >
+                    ).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Select
@@ -517,13 +541,22 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   }
                 >
                   <SelectTrigger className="w-28" aria-label={`アレルギー${index + 1}件目の重症度`}>
-                    <SelectValue />
+                    <SelectValue>
+                      {(value) =>
+                        ALLERGY_SEVERITY_LABELS[value as AllergyEntry['severity']] ?? value
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="unknown">不明</SelectItem>
-                    <SelectItem value="mild">軽度</SelectItem>
-                    <SelectItem value="moderate">中等度</SelectItem>
-                    <SelectItem value="severe">重度</SelectItem>
+                    {(
+                      Object.entries(ALLERGY_SEVERITY_LABELS) as Array<
+                        [AllergyEntry['severity'], string]
+                      >
+                    ).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Button
