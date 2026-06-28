@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Drug Alert Rules Admin API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; ACKed the previous CardWorkspace approval earlier in the continuation and no new Claude interrupt arrived while this slice was implemented and validated.
+  - gbrain `code_blast` for `AlertRulesPage` and `SignalTuningPanel` returned `not_found`, so impact was bounded by direct source/test/helper inspection.
+  - Subagent spawn remains unavailable due to thread limit; medical safety and privacy were manually reviewed for this bounded admin alert-rule URL-construction patch.
+- Hardened drug alert rule admin API boundaries:
+  - Added `src/lib/drug-alert-rules/api-paths.ts` with `DRUG_ALERT_RULES_API_PATH` and `buildDrugAlertRuleApiPath(ruleId)`.
+  - Routed alert-rule list/create/update/delete calls in the admin page through the shared collection/detail path contract.
+  - Routed signal tuning list/create/activate/deactivate calls through the same shared collection/detail path contract.
+  - Preserved org headers, HTTP methods, JSON bodies, query keys, invalidations, signal tuning diff semantics, rendered admin UI, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+  - Added helper tests for collection path, hostile id encoding, and dot-segment rejection; extended component tests to prove detail path callsites delegate to `buildDrugAlertRuleApiPath` while preserving existing fail-closed behavior before PATCH/DELETE side effects.
+- Security/privacy risk reduced: admin alert-rule detail mutations no longer duplicate rule-id API path construction, reducing route-boundary drift for hostile `/`, `?`, or `#` rule ids.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing alert-rule calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx' src/lib/drug-alert-rules/api-paths.ts src/lib/drug-alert-rules/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/alert-rules/signal-tuning-panel.test.tsx' src/lib/drug-alert-rules/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `24` tests.
+  - `pnpm exec eslint` on the changed implementation/test/helper files: passed.
+  - `pnpm exec prettier --check` on the same files: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+  - Manual medical safety/privacy review: PASS.
+- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+
 ### 2026-06-28 JST - Card Workspace Patient API Path Helper Convergence
 
 - Coordination:
