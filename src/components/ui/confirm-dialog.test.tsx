@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { useRef } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -206,5 +207,44 @@ describe('ConfirmDialog', () => {
     // 確定はボタンクリックでのみ発火する（従来どおり）。
     fireEvent.click(screen.getByRole('button', { name: '再生成' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  // ── #5 二重確定ラッチ ──
+  // dispensing-workbench.tsx は commit handler を useRef ラッチで包み、state 反映前の
+  // double Enter/click でも commit を 1 回に固定する。ここでは ConfirmDialog を開いたまま
+  // （closeOnConfirm=false）2 連続発火させ、ラッチが二重 commit を抑止することを固定する。
+  it('a commit latch around onConfirm fires the commit exactly once on double confirm (#5)', () => {
+    const commit = vi.fn();
+
+    function LatchedConfirm() {
+      const latch = useRef(false);
+      return (
+        <ConfirmDialog
+          open
+          onOpenChange={vi.fn()}
+          variant="destructive"
+          title="調剤を完了します"
+          description="調剤内容を確定し、監査工程へ進みます。確定後は取り消せません。"
+          confirmLabel="調剤完了"
+          autoFocusConfirm
+          closeOnConfirm={false}
+          onConfirm={() => {
+            if (latch.current) return;
+            latch.current = true;
+            commit();
+          }}
+        />
+      );
+    }
+
+    render(<LatchedConfirm />);
+    const button = screen.getByRole('button', { name: '調剤完了' });
+
+    // double click + Enter（state 反映前の連打相当）。
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.keyDown(button, { key: 'Enter' });
+
+    expect(commit).toHaveBeenCalledTimes(1);
   });
 });

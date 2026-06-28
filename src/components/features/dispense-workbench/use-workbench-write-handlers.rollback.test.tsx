@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkbenchMutations } from './use-workbench-mutations';
 import type { Drug, SeedPatient } from './dispensing-workbench.types';
-import type { PendingPrimary } from './dispensing-workbench.write-types';
+import type { PendingPrimary, PendingSetAuditReject } from './dispensing-workbench.write-types';
 
 const { toastErrorMock } = vi.hoisted(() => ({
   toastErrorMock: vi.fn(),
@@ -3268,6 +3268,7 @@ const INVALID_AUDIT_DOUBLE_COUNT_MESSAGE =
   '麻薬ダブルカウントが未完了です。1回目・2回目を実数量と一致する値で入力してください。';
 const INCOMPLETE_CARRY_PACKET_MESSAGE =
   '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。';
+const CONFIRM_TARGET_DRIFT_MESSAGE = '確認中に対象が変わりました。操作をやり直してください。';
 
 function plainDrug(overrides: Partial<Drug> & Pick<Drug, 'did' | 'name'>): Drug {
   return {
@@ -3897,5 +3898,327 @@ describe('useWorkbenchWriteHandlers confirm gating (S0 request/commit split)', (
     expect(nextPhase).toBeNull();
     // pendingPrimary（= onRequestConfirm の引数）が立つので以降の F8-F12 が runAction で抑止される。
     expect(onRequestConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  // ── #1 setp は確認非対象（可逆ナビゲーション）──
+  // T1: phase='setp' の onPrimary はゲート通過で next='seta' を返し、onRequestConfirm/mutation を呼ばない。
+  it('setp onPrimary returns the next phase without requesting confirmation or mutating (#1)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const bulkSet = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      // setaReadyState はカレンダーを充填済み（setCells=set / packet 完備 / 外薬なし）で setp ゲートも通る。
+      useWorkbenchStore.setState(setaReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ bulkSet }),
+        onRequestConfirm,
+      }),
+    );
+
+    let nextPhase: unknown;
+    act(() => {
+      nextPhase = result.current.onPrimary();
+    });
+
+    expect(nextPhase).toBe('seta');
+    expect(onRequestConfirm).not.toHaveBeenCalled();
+    expect(bulkSet.mutate).not.toHaveBeenCalled();
+  });
+
+  // ── #2 commit アンカー照合: 確認中に対象がドリフトしたら mutate しない ──
+  it('dispense commitPrimary aborts with a drift toast when the patient anchor no longer matches (#2)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeDispense = mutationStub();
+    const onAdvance = vi.fn();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(dispenseReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ completeDispense }),
+        onAdvance,
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    expect(descriptor).toMatchObject({
+      phase: 'dispense',
+      patientId: 'patient_1',
+      taskId: 'task_1',
+      cycleVersion: 4,
+    });
+
+    // 確認中に患者が切り替わった状況を再現（背景 refetch / 患者ナビ相当）。
+    act(() => {
+      useWorkbenchStore.setState({ selId: 'patient_2' });
+    });
+
+    act(() => {
+      result.current.commitPrimary(descriptor);
+    });
+
+    expect(completeDispense.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
+    expect(onAdvance).not.toHaveBeenCalled();
+  });
+
+  it('audit commitPrimary aborts when the cycle version anchor drifts (#2)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeAudit = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(auditReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'audit',
+        mutations: fakeMutations({ completeAudit }),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+
+    // 確認中に cycle が版上がり（他更新の取り込み）した状況を再現。
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        writeContext: { ...state.writeContext, cycleVersion: 5 },
+      }));
+    });
+
+    act(() => {
+      result.current.commitPrimary(descriptor);
+    });
+
+    expect(completeAudit.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
+  });
+
+  it('set-audit commitPrimary aborts when the plan anchor drifts (#2)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const onRequestConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(setaReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+    const descriptor = onRequestConfirm.mock.calls[0][0] as PendingPrimary;
+    expect(descriptor).toMatchObject({ phase: 'seta', patientId: 'patient_1', planId: 'plan_1' });
+
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        writeContext: { ...state.writeContext, planId: 'plan_2' },
+      }));
+    });
+
+    act(() => {
+      result.current.commitPrimary(descriptor);
+    });
+
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
+  });
+
+  // ── #2(a) F-key 全無効化の precondition ──
+  // runAction / buildPrimaryConfirm は dispensing-workbench.tsx 内部実装で非 export のため
+  // hook 単体からは prevPatient/nextPatient/bulk/hold/next の no-op を直接観測できない
+  // （既存 §5-8 と同じ前例）。ここでは runAction の早期 return が依存する hook 側 precondition、
+  // すなわち「real-data の onAuditNg が mutate せず reject 確認（pendingReject）を立てる」契約を固定する。
+  // pendingPrimary もしくは pendingReject が非 null になることで runAction の全 F-key ガードが発火する。
+
+  // ── #4 set-audit reject（per-cell NG）も Confirm ゲートを通す ──
+  it('onAuditNg requests reject confirmation without mutating, then commits rejected exactly once (#4)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const onRequestRejectConfirm = vi.fn();
+    const key = 'patient_1:0:朝';
+
+    act(() => {
+      useWorkbenchStore.setState({ ...setaReadyState(), target: { di: 0, tk: '朝' } });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestRejectConfirm,
+      }),
+    );
+
+    // request 段: mutate せず reject confirm を 1 回だけ要求する。
+    act(() => {
+      result.current.onAuditNg();
+    });
+
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(onRequestRejectConfirm).toHaveBeenCalledTimes(1);
+    const descriptor = onRequestRejectConfirm.mock.calls[0][0] as PendingSetAuditReject;
+    expect(descriptor).toMatchObject({
+      patientId: 'patient_1',
+      planId: 'plan_1',
+      target: { di: 0, tk: '朝' },
+      ngCode: 'drug_mismatch',
+      ngLabel: '薬剤違い',
+      meta: { batchIds: ['batch_1'], versions: [7] },
+    });
+    // 楽観 NG 表示も commit に寄せる（request 段では auditCells を変えない）。
+    expect(useWorkbenchStore.getState().auditCells[key]).toBe('ok');
+
+    // commit 段: rejected を per-cell expected_version 付きで 1 回だけ送る。
+    act(() => {
+      result.current.commitSetAuditReject(descriptor);
+    });
+
+    expect(setAudit.mutate).toHaveBeenCalledTimes(1);
+    expect(setAudit.mutate).toHaveBeenCalledWith(
+      {
+        plan_id: 'plan_1',
+        result: 'rejected',
+        reject_reason: '薬剤違い',
+        reject_reason_code: 'drug_mismatch',
+        cell_audits: [
+          {
+            batch_id: 'batch_1',
+            audit_state: 'ng',
+            ng_code: 'drug_mismatch',
+            expected_version: 7,
+          },
+        ],
+      },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
+    expect(useWorkbenchStore.getState().auditCells[key]).toBe('ng');
+  });
+
+  it('onAuditNg without an NG classification reports an error and does not request confirmation (#4)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const onRequestRejectConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        ...setaReadyState(),
+        target: { di: 0, tk: '朝' },
+        ng: {},
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestRejectConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onAuditNg();
+    });
+
+    expect(onRequestRejectConfirm).not.toHaveBeenCalled();
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith('NG分類を選択してから実行してください。');
+  });
+
+  it('commitSetAuditReject aborts with a drift toast when the plan anchor no longer matches (#4)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const onRequestRejectConfirm = vi.fn();
+    const key = 'patient_1:0:朝';
+
+    act(() => {
+      useWorkbenchStore.setState({ ...setaReadyState(), target: { di: 0, tk: '朝' } });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestRejectConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onAuditNg();
+    });
+    const descriptor = onRequestRejectConfirm.mock.calls[0][0] as PendingSetAuditReject;
+
+    // 確認中に対象計画がドリフトした状況を再現。
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        writeContext: { ...state.writeContext, planId: 'plan_2' },
+      }));
+    });
+
+    act(() => {
+      result.current.commitSetAuditReject(descriptor);
+    });
+
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
+    // 楽観 NG を適用しない（auditCells は据え置き）。
+    expect(useWorkbenchStore.getState().auditCells[key]).toBe('ok');
+  });
+
+  it('commitSetAuditReject rolls back the optimistic NG cell when the rejected submission fails (#4)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub((_input, options) => options?.onError?.(new Error('fail')));
+    const onRequestRejectConfirm = vi.fn();
+    const key = 'patient_1:0:朝';
+
+    act(() => {
+      useWorkbenchStore.setState({ ...setaReadyState(), target: { di: 0, tk: '朝' } });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+        onRequestRejectConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onAuditNg();
+    });
+    const descriptor = onRequestRejectConfirm.mock.calls[0][0] as PendingSetAuditReject;
+
+    act(() => {
+      result.current.commitSetAuditReject(descriptor);
+    });
+
+    expect(setAudit.mutate).toHaveBeenCalledTimes(1);
+    // onError で元の auditCells（'ok'）へロールバックする。
+    expect(useWorkbenchStore.getState().auditCells[key]).toBe('ok');
   });
 });

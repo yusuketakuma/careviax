@@ -350,11 +350,37 @@ export type AuditNarcoticLine = NonNullable<SubmitDispenseAuditInput['double_cou
  * 確認待ちの主操作（不可逆 sign-off）。real-data の onPrimary が request 段で生成し、
  * ConfirmDialog の onConfirm から commitPrimary が消費する。
  * setp（セット完了→監査）は可逆ナビゲーションのため S0 では対象外（除外）。
+ *
+ * 各 descriptor は識別アンカー（patientId / taskId / cycleVersion / planId）を持つ。
+ * ConfirmDialog 表示中に背景 refetch や患者切替で store がドリフトしたら、commit 時に
+ * 現 store と照合して不一致なら mutate せず中断する（患者文脈ドリフト防止 / #2）。
  */
 export type PendingPrimary =
-  | { phase: 'dispense'; next: Phase }
-  | { phase: 'audit'; next: Phase; narcoticLines: AuditNarcoticLine[] } // 空配列=非麻薬
-  | { phase: 'seta'; next: Phase };
+  | { phase: 'dispense'; next: Phase; patientId: string; taskId: string; cycleVersion: number }
+  | {
+      phase: 'audit';
+      next: Phase;
+      narcoticLines: AuditNarcoticLine[]; // 空配列=非麻薬
+      patientId: string;
+      taskId: string;
+      cycleVersion: number;
+    }
+  | { phase: 'seta'; next: Phase; patientId: string; planId: string };
+
+/**
+ * 確認待ちのセット監査 reject（per-cell NG・不可逆）。real-data の onAuditNg が request 段で
+ * 生成し、ConfirmDialog の onConfirm から commitSetAuditReject が消費する。
+ * commit 時に buildRejectedSetAuditInput を再構築できる情報（meta=CellMeta / ngCode / ngLabel）と
+ * アンカー（patientId / planId / target）を保持する（#4）。
+ */
+export interface PendingSetAuditReject {
+  patientId: string;
+  planId: string;
+  target: { di: number; tk: string };
+  ngCode: RejectCode;
+  ngLabel: string;
+  meta: CellMeta;
+}
 
 export interface CreateCycleHoldInput {
   cycle_id: string;

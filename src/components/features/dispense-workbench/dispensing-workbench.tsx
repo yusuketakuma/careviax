@@ -21,7 +21,7 @@
  * ヘッダ高 3.5rem を控除（計画 §3 単一変更点）。
  */
 
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import styles from './dispensing-workbench.module.css';
@@ -38,7 +38,11 @@ import {
 } from './dispensing-workbench.adapter';
 import { isCalendarPhase } from './dispensing-workbench.types';
 import type { FKeyAction, Phase } from './dispensing-workbench.types';
-import type { AuditNarcoticLine, PendingPrimary } from './dispensing-workbench.write-types';
+import type {
+  AuditNarcoticLine,
+  PendingPrimary,
+  PendingSetAuditReject,
+} from './dispensing-workbench.write-types';
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
@@ -99,15 +103,23 @@ interface PrimaryConfirmProps {
   children?: ReactNode;
 }
 
-/** pendingPrimary（不可逆 sign-off）から ConfirmDialog の site 別表示 props を導出する。 */
-function buildPrimaryConfirm(pending: PendingPrimary | null): PrimaryConfirmProps {
+/**
+ * pendingPrimary（不可逆 sign-off）から ConfirmDialog の site 別表示 props を導出する。
+ * 対象患者名（patientName）を description 先頭に明示し、不可逆性とあわせて誤確定を抑止する（#3）。
+ */
+function buildPrimaryConfirm(
+  pending: PendingPrimary | null,
+  patientName?: string,
+): PrimaryConfirmProps {
   if (!pending) {
     return { title: '', description: '', confirmLabel: '確認' };
   }
+  // 対象患者の前置（取得経路が無い場合は省略）。誤った患者への確定を視覚的に防ぐ。
+  const who = patientName ? `${patientName} 様の` : '';
   if (pending.phase === 'dispense') {
     return {
       title: '調剤を完了します',
-      description: '調剤内容を確定し、監査工程へ進みます。確定後は取り消せません。',
+      description: `${who}調剤内容を確定し、監査工程へ進みます。確定後は取り消せません。`,
       confirmLabel: '調剤完了',
     };
   }
@@ -115,13 +127,13 @@ function buildPrimaryConfirm(pending: PendingPrimary | null): PrimaryConfirmProp
     if (pending.narcoticLines.length === 0) {
       return {
         title: '監査を承認します',
-        description: '監査を承認し確定します。この操作は取り消せません。',
+        description: `${who}監査を承認し確定します。この操作は取り消せません。`,
         confirmLabel: '監査承認',
       };
     }
     return {
       title: '監査を承認します（麻薬を含む）',
-      description: `麻薬 ${pending.narcoticLines.length} 件の二重計数を確認のうえ承認します。確定後は取り消せません。`,
+      description: `${who}麻薬 ${pending.narcoticLines.length} 件の二重計数を確認のうえ承認します。確定後は取り消せません。`,
       confirmLabel: '監査承認',
       requiredConfirmText: '麻薬',
       children: <NarcoticLineList lines={pending.narcoticLines} />,
@@ -130,7 +142,7 @@ function buildPrimaryConfirm(pending: PendingPrimary | null): PrimaryConfirmProp
   // seta
   return {
     title: 'セット監査を承認します',
-    description: 'セット監査を承認し確定します。この操作は取り消せません。',
+    description: `${who}セット監査を承認し確定します。この操作は取り消せません。`,
     confirmLabel: 'セット監査承認',
   };
 }
@@ -167,6 +179,22 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // 不可逆 sign-off（調剤完了 / 監査承認 / セット監査承認）の確認待ち descriptor。
   // real-data のみ非 null になり ConfirmDialog を開く（zustand へは持たない＝揮発 UI 状態）。
   const [pendingPrimary, setPendingPrimary] = useState<PendingPrimary | null>(null);
+  // セット監査 reject（per-cell NG）の確認待ち descriptor。承認と同じく不可逆ゲートを通す（#4）。
+  const [pendingReject, setPendingReject] = useState<PendingSetAuditReject | null>(null);
+  // 二重確定ラッチ。React state 更新前の double Enter/click で commit が二度発火するのを防ぐ（#5）。
+  // 新たな confirm 要求（descriptor 設定）ごとに false へリセットする。
+  const commitLatchRef = useRef(false);
+
+  // confirm 要求時にラッチを解除してから descriptor を立てる（次の確定を 1 回だけ通す）。
+  // React Compiler 採用のため手動 useCallback は付けない（自動メモ化に委ねる / useRef は可）。
+  const requestPrimaryConfirm = (descriptor: PendingPrimary) => {
+    commitLatchRef.current = false;
+    setPendingPrimary(descriptor);
+  };
+  const requestRejectConfirm = (descriptor: PendingSetAuditReject) => {
+    commitLatchRef.current = false;
+    setPendingReject(descriptor);
+  };
 
   // ---- 書込結線（計画 §12 / W3b）----
   // mutation 群（実データ時のみ発火・mock は no-op）とフェーズ別ハンドラを生成し、
@@ -177,11 +205,13 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     phase,
     mutations,
     onAdvance: (nextPhase) => router.push(PHASE_ROUTE[nextPhase]),
-    onRequestConfirm: setPendingPrimary,
+    onRequestConfirm: requestPrimaryConfirm,
+    onRequestRejectConfirm: requestRejectConfirm,
   });
 
   // pendingPrimary（不可逆 sign-off）から ConfirmDialog の site 別表示 props を導出する。
-  const primaryConfirm = buildPrimaryConfirm(pendingPrimary);
+  // 対象患者名を明示して誤確定を抑止する（#3）。
+  const primaryConfirm = buildPrimaryConfirm(pendingPrimary, view.cur.name);
 
   // ---- 実データ結線（計画 §14 / 段階1b 読取のみ）----
   // 既定（モック）では isRealDataEnabled()=false でこの effect は no-op。
@@ -315,16 +345,10 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // ---- F-key / キーボードアクションの写像 ----
   const runAction = useCallback(
     (action: FKeyAction) => {
-      // 不可逆 sign-off の確認中は phase 遷移系 F-key を無効化し、確認離脱と F12 churn を抑止する。
-      // mutate 二重発火は request/commit 分割で防ぐが、確認中の phase 直行はここで止める。
-      if (
-        pendingPrimary !== null &&
-        (action === 'phaseDispense' ||
-          action === 'phaseAudit' ||
-          action === 'phaseSet' ||
-          action === 'phaseSetAudit' ||
-          action === 'next')
-      ) {
+      // 不可逆 sign-off / reject の確認中は全 F-key を無効化し、患者文脈ドリフト
+      // （prevPatient/nextPatient/bulk/hold 含む）と F12 churn を抑止する。
+      // mutate 二重発火は request/commit 分割 + ラッチで防ぐが、確認中の操作はここで一括停止する。
+      if (pendingPrimary !== null || pendingReject !== null) {
         return;
       }
       switch (action) {
@@ -361,7 +385,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           break;
       }
     },
-    [navBy, openHold, pendingPrimary, router, target, writeHandlers],
+    [navBy, openHold, pendingPrimary, pendingReject, router, target, writeHandlers],
   );
 
   // ---- 物理 F-key のバインド（レセコン風キーボード操作・デスクトップ専用）----
@@ -562,11 +586,36 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         requiredConfirmText={primaryConfirm.requiredConfirmText}
         autoFocusConfirm
         onConfirm={() => {
-          if (pendingPrimary) writeHandlers.commitPrimary(pendingPrimary);
+          // 二重確定ラッチ: state 反映前の double Enter/click でも mutate を 1 回に固定する（#5）。
+          if (commitLatchRef.current) return;
+          if (!pendingPrimary) return;
+          commitLatchRef.current = true;
+          writeHandlers.commitPrimary(pendingPrimary);
         }}
       >
         {primaryConfirm.children}
       </ConfirmDialog>
+
+      {/* セット監査 reject（per-cell NG）の不可逆確認ゲート。承認と同様 request 段で pendingReject を
+          立て、確認後に commitSetAuditReject が初めて rejected を post する（#4）。 */}
+      <ConfirmDialog
+        open={pendingReject !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingReject(null);
+        }}
+        variant="destructive"
+        title="セット監査を差戻します（NG）"
+        description="このセルをNGとして差戻し、対象計画を保留に遷移します。確定後は取り消せません。"
+        confirmLabel="差戻す"
+        autoFocusConfirm
+        onConfirm={() => {
+          // 二重確定ラッチ（#5）。
+          if (commitLatchRef.current) return;
+          if (!pendingReject) return;
+          commitLatchRef.current = true;
+          writeHandlers.commitSetAuditReject(pendingReject);
+        }}
+      />
     </div>
   );
 }

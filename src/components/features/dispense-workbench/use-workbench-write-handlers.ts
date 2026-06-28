@@ -46,6 +46,7 @@ import {
   type CellMutationTarget,
   type DispenseResultLineInput,
   type PendingPrimary,
+  type PendingSetAuditReject,
   type SubmitDispenseAuditInput,
   type SubmitSetAuditInput,
 } from './dispensing-workbench.write-types';
@@ -64,6 +65,7 @@ const DISCREPANCY_REASON_REQUIRED_MESSAGE =
   '処方数量と異なる実数量には差異理由を入力してください。';
 const INVALID_AUDIT_DOUBLE_COUNT_MESSAGE =
   '麻薬ダブルカウントが未完了です。1回目・2回目を実数量と一致する値で入力してください。';
+const CONFIRM_TARGET_DRIFT_MESSAGE = '確認中に対象が変わりました。操作をやり直してください。';
 
 type DispenseQuantityIssue = {
   line_id: string;
@@ -129,6 +131,11 @@ export interface WorkbenchWriteHandlers {
    * mutate し、成功で onAdvance(descriptor.next)・失敗でロールバックする。
    */
   commitPrimary: (descriptor: PendingPrimary) => void;
+  /**
+   * セット監査 reject（per-cell NG）の ConfirmDialog 確定時の確定書込（real-data のみ）。
+   * snap() で再取得し planId/meta/ngCode を再検証 + アンカー照合してから rejected で mutate する。
+   */
+  commitSetAuditReject: (descriptor: PendingSetAuditReject) => void;
 
   // ── カレンダー（setp）──
   /** セルを選択。 */
@@ -149,7 +156,11 @@ export interface WorkbenchWriteHandlers {
   // ── セット監査（seta）──
   /** 選択セル 監査OK。 */
   onAuditOk: () => void;
-  /** 選択セル NG・差戻し。 */
+  /**
+   * 選択セル NG・差戻し。real-data では即 post せず前段ガード通過時に
+   * onRequestRejectConfirm(descriptor) で ConfirmDialog を要求する（mutate は commit のみ）。
+   * demo（mock）はゲート通過時に楽観 NG のみ（API は叩かない）。
+   */
   onAuditNg: () => void;
   /** 確認項目トグル。 */
   onToggleCheck: (index: number) => void;
@@ -561,8 +572,10 @@ export function useWorkbenchWriteHandlers(args: {
   onAdvance?: (phase: Phase) => void;
   /** real-data の不可逆 sign-off で ConfirmDialog を要求する（descriptor を親 state に積む）。 */
   onRequestConfirm?: (descriptor: PendingPrimary) => void;
+  /** real-data のセット監査 reject（per-cell NG）で ConfirmDialog を要求する。 */
+  onRequestRejectConfirm?: (descriptor: PendingSetAuditReject) => void;
 }): WorkbenchWriteHandlers {
-  const { phase, mutations, onAdvance, onRequestConfirm } = args;
+  const { phase, mutations, onAdvance, onRequestConfirm, onRequestRejectConfirm } = args;
 
   // store アクション（楽観更新 / モック挙動の正本）。
   const toggleRow = useWorkbenchStore((s) => s.toggleRow);
@@ -663,6 +676,20 @@ export function useWorkbenchWriteHandlers(args: {
     const commitPrimary = (descriptor: PendingPrimary) => {
       if (!isRealDataEnabled()) return;
       const s = snap();
+      // アンカー照合: 確認中に患者/タスク/版/計画がドリフトしたら mutate しない（#2）。
+      if (descriptor.phase === 'seta') {
+        if (descriptor.patientId !== s.selId || descriptor.planId !== s.writeContext.planId) {
+          toast.error(CONFIRM_TARGET_DRIFT_MESSAGE);
+          return;
+        }
+      } else if (
+        descriptor.patientId !== s.selId ||
+        descriptor.taskId !== s.writeContext.taskId ||
+        descriptor.cycleVersion !== s.writeContext.cycleVersion
+      ) {
+        toast.error(CONFIRM_TARGET_DRIFT_MESSAGE);
+        return;
+      }
       if (descriptor.phase === 'dispense') {
         if (!s.writeContext.taskId || s.writeContext.cycleVersion === null) {
           reportMissingWriteContext();
@@ -755,6 +782,43 @@ export function useWorkbenchWriteHandlers(args: {
           },
         },
       );
+    };
+
+    /**
+     * セット監査 reject（per-cell NG）の確定書込（real-data のみ）。
+     * snap() 再取得 → アンカー照合（patientId/planId）→ planId/meta/ngCode 再検証 →
+     * 楽観 NG 表示 + rejected で mutate（失敗はセルをロールバック）。mutate は本関数でのみ発火する。
+     */
+    const commitSetAuditReject = (descriptor: PendingSetAuditReject) => {
+      if (!isRealDataEnabled()) return;
+      const s = snap();
+      // アンカー照合: 確認中に患者/計画がドリフトしたら mutate しない（#2/#4）。
+      if (descriptor.patientId !== s.selId || descriptor.planId !== s.writeContext.planId) {
+        toast.error(CONFIRM_TARGET_DRIFT_MESSAGE);
+        return;
+      }
+      const target = descriptor.target;
+      const key = cellKey(s.selId, target.di, target.tk);
+      const previousAuditState = s.auditCells[key];
+      const planId = s.writeContext.planId;
+      const meta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
+      // 現在の NG ラベルを再取得（背景でクリアされた場合は descriptor へフォールバック）。
+      const ngLabel = s.ng[key] ?? descriptor.ngLabel;
+      if (!planId || !meta) {
+        reportMissingWriteContext();
+        return;
+      }
+      const input = buildRejectedSetAuditInput(planId, meta, ngLabel);
+      if (!input) {
+        toast.error('NG分類を選択してから実行してください。');
+        return;
+      }
+      applyCell('seta', 'ng', target);
+      mutations.setAudit.mutate(input, {
+        onError: () => {
+          restoreCell('seta', s.selId, target, previousAuditState);
+        },
+      });
     };
 
     return {
@@ -1152,7 +1216,13 @@ export function useWorkbenchWriteHandlers(args: {
               reportDispenseQuantityIssues(quantityIssues);
               return null;
             }
-            onRequestConfirm?.({ phase: 'dispense', next });
+            onRequestConfirm?.({
+              phase: 'dispense',
+              next,
+              patientId: s.selId,
+              taskId: s.writeContext.taskId,
+              cycleVersion: s.writeContext.cycleVersion,
+            });
           } else if (
             phase === 'audit' &&
             s.writeContext.taskId &&
@@ -1167,6 +1237,9 @@ export function useWorkbenchWriteHandlers(args: {
               phase: 'audit',
               next,
               narcoticLines: collectDispenseAuditDoubleCount(s),
+              patientId: s.selId,
+              taskId: s.writeContext.taskId,
+              cycleVersion: s.writeContext.cycleVersion,
             });
           } else if (phase === 'seta' && s.writeContext.planId) {
             const carryPacketEvidence = collectCarryPacketEvidence(s);
@@ -1176,14 +1249,24 @@ export function useWorkbenchWriteHandlers(args: {
               );
               return null;
             }
-            onRequestConfirm?.({ phase: 'seta', next });
+            onRequestConfirm?.({
+              phase: 'seta',
+              next,
+              patientId: s.selId,
+              planId: s.writeContext.planId,
+            });
           }
-          // real-data はナビを commit の onAdvance に一本化するため常に null を返す。
+          // setp（セット完了→監査）は可逆ナビゲーションで confirm 非対象ゆえ、real-data でも
+          // 通常どおり next を返して遷移させる（gate 対象は dispense/audit/seta のみ）。
+          if (phase === 'setp') return next;
+          // 確認対象フェーズ（dispense/audit/seta）はナビを commit の onAdvance に一本化するため
+          // 常に null を返す（writeContext 欠如等で confirm を出せない場合も遷移させない）。
           return null;
         }
         return next;
       },
       commitPrimary,
+      commitSetAuditReject,
 
       // ── カレンダー（setp）──
       onSelectCell: (di, tk) => selectCell(di, tk),
@@ -1249,38 +1332,34 @@ export function useWorkbenchWriteHandlers(args: {
         if (!target) return;
         const before = snap();
         const key = cellKey(before.selId, target.di, target.tk);
-        const previousAuditState = before.auditCells[key];
         const ngLabel = before.ng[key];
         const ngCode = ngLabel ? NG_LABEL_TO_CODE[ngLabel] : undefined;
         if (isRealDataEnabled()) {
-          if (!ngCode) {
+          // plan-level rejected を即 post する不可逆 sign-off ゆえ、前段ガード通過後は mutate せず
+          // ConfirmDialog を要求し、確定は commitSetAuditReject でのみ行う（#4）。
+          if (!ngLabel || !ngCode) {
             toast.error('NG分類を選択してから実行してください。');
             return;
           }
-          if (!requireRealCellContext(before, target)) return;
-        }
-
-        applyCell(phase, 'ng', target);
-        real(() => {
-          const s = snap();
-          const planId = s.writeContext.planId;
-          const meta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
-          if (!planId || !meta || !ngCode) {
-            restoreCell(phase, before.selId, target, previousAuditState);
+          const meta = requireRealCellContext(before, target);
+          if (!meta) return;
+          const planId = before.writeContext.planId;
+          if (!planId) {
             reportMissingWriteContext();
             return;
           }
-          const input = buildRejectedSetAuditInput(planId, meta, ngLabel);
-          if (!input) {
-            restoreCell(phase, before.selId, target, previousAuditState);
-            return;
-          }
-          mutations.setAudit.mutate(input, {
-            onError: () => {
-              restoreCell(phase, before.selId, target, previousAuditState);
-            },
+          onRequestRejectConfirm?.({
+            patientId: before.selId,
+            planId,
+            target: { di: target.di, tk: target.tk },
+            ngCode,
+            ngLabel,
+            meta,
           });
-        });
+          return;
+        }
+        // mock: 従来どおり楽観 NG 表示のみ（API は叩かない）。
+        applyCell(phase, 'ng', target);
       },
       onToggleCheck: (index) => {
         const target = snap().target;
@@ -1431,6 +1510,7 @@ export function useWorkbenchWriteHandlers(args: {
     saveHold,
     onAdvance,
     onRequestConfirm,
+    onRequestRejectConfirm,
   ]);
 }
 
