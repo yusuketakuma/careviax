@@ -118,6 +118,20 @@ describe('PatientMasterCard', () => {
     expect(screen.getByLabelText('患者メモ')).toBeTruthy();
   });
 
+  it('shows allergy category/severity labels, not raw enums, in the closed select triggers', () => {
+    // bare <SelectValue /> は category 'drug' / severity 'severe' の生 enum を初期表示で漏らす。
+    // 明示 children で常に日本語ラベル('薬剤'/'重度')を表示することを固定する(SSR enum 漏れ封止)。
+    render(<PatientMasterCard orgId="org_1" patient={buildPatient()} />);
+
+    const categoryTrigger = screen.getByLabelText('アレルギー1件目の区分');
+    expect(categoryTrigger.textContent).toContain('薬剤');
+    expect(categoryTrigger.textContent).not.toContain('drug');
+
+    const severityTrigger = screen.getByLabelText('アレルギー1件目の重症度');
+    expect(severityTrigger.textContent).toContain('重度');
+    expect(severityTrigger.textContent).not.toContain('severe');
+  });
+
   type Patient = Parameters<typeof PatientMasterCard>[0]['patient'];
   type CapturedConfig = {
     queryKey?: unknown[];

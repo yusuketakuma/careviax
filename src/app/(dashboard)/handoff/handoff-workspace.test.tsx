@@ -389,6 +389,23 @@ describe('HandoffWorkspace', () => {
     });
   });
 
+  it('shows the priority label, not the raw enum, in the transfer dialog select', async () => {
+    // bare <SelectValue /> は既定値 'normal' の生 enum を初期表示で漏らす。
+    // 明示 children で常に日本語ラベル('通常')を表示することを固定する(SSR enum 漏れ封止)。
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    stubFetch();
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTestId('handoff-open-transfer'));
+    const priorityTrigger = await screen.findByLabelText('優先度');
+    expect(priorityTrigger.textContent).toContain('通常');
+    expect(priorityTrigger.textContent).not.toContain('normal');
+  });
+
   it('shows 受領確認 action for incoming items', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1' });
     const board: HandoffBoardResponse = {

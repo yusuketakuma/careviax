@@ -102,6 +102,26 @@ describe('VisitRoutePreviewPanel', () => {
     expect(handleApply).toHaveBeenCalledTimes(1);
   });
 
+  it('shows the travel mode label, not the raw enum, in the closed select trigger', () => {
+    // bare <SelectValue /> は既定値 'DRIVE' の生 enum を初期表示で漏らす。
+    // 明示 children で常に日本語ラベル('車')を表示することを固定する(SSR enum 漏れ封止)。
+    render(
+      <VisitRoutePreviewPanel
+        controlId="test-route-preview"
+        title="route preview"
+        description="desc"
+        travelMode="DRIVE"
+        plan={null}
+        points={[]}
+        onTravelModeChange={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByLabelText('移動手段');
+    expect(trigger.textContent).toContain('車');
+    expect(trigger.textContent).not.toContain('DRIVE');
+  });
+
   it('announces route calculation loading, empty, and error states', () => {
     const baseProps = {
       controlId: 'test-route-preview',
