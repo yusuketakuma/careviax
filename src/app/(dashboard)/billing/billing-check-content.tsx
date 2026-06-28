@@ -204,7 +204,7 @@ function BillingPrimaryStrip({
             ) : null}
           </div>
         ) : (
-          <p className="rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2.5 text-sm text-state-done">
+          <p className="rounded-md border-l-4 border-border/70 border-l-state-done bg-card px-3 py-2.5 text-sm text-state-done">
             止まっている作業はありません
           </p>
         )}
@@ -319,7 +319,7 @@ function ReviewTableSection({ data }: { data: BillingCheckResponse }) {
         </p>
       </div>
       {data.review_rows.length === 0 ? (
-        <p className="mt-3 rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2.5 text-sm text-state-done">
+        <p className="mt-3 rounded-md border-l-4 border-border/70 border-l-state-done bg-card px-3 py-2.5 text-sm text-state-done">
           疑義はありません — 自動チェックをすべて通過しています
         </p>
       ) : (
@@ -451,7 +451,7 @@ export function BillingCheckContent() {
               <ReviewTableSection data={data} />
               <KpiStrip data={data} />
               <p
-                className="rounded-md border border-tag-info/30 bg-tag-info/10 px-3 py-2.5 text-sm leading-6 text-tag-info"
+                className="rounded-md border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-2.5 text-sm leading-6 text-tag-info"
                 data-testid="billing-check-summary-note"
               >
                 レセプト摘要欄の文言は算定項目から自動生成されます。手で書くのは「確認すること」列の事実確認だけです。

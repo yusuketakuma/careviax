@@ -295,7 +295,7 @@ export function SharedViewerContent({ token }: { token: string }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm text-tag-info">
+          <div className="rounded-lg border-l-4 border-border/70 border-l-tag-info bg-card px-4 py-3 text-sm text-tag-info">
             共有情報の閲覧には OTP が必要です。入力内容は患者支援のために薬局内で記録されます。
           </div>
 

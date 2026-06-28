@@ -464,7 +464,7 @@ export function IntakeTriageContent() {
               {duplicateNotices.length > 0 ? (
                 <div
                   role="alert"
-                  className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm leading-6 text-state-confirm"
+                  className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm leading-6 text-state-confirm"
                   data-testid="intake-duplicate-banner"
                 >
                   <strong className="font-bold">重複検知 {duplicateNotices.length}件:</strong>{' '}

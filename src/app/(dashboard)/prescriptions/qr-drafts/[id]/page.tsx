@@ -490,7 +490,7 @@ export default function QrDraftReviewPage() {
       )}
 
       {pd.parseWarnings?.length ? (
-        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
+        <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm">
           <p className="mb-1 font-medium">QR解析時の確認事項</p>
           <ul className="list-disc space-y-0.5 pl-4">
             {pd.parseWarnings.map((warning, index) => (
@@ -713,7 +713,7 @@ export default function QrDraftReviewPage() {
       )}
 
       {!draft.patient_id && (
-        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
+        <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm">
           <p className="font-medium">患者が未紐付けです</p>
           <p className="text-xs mt-1">
             患者IDが解決されていないため確定できません。QRスキャン一覧から患者を紐付けてください。
@@ -1001,7 +1001,7 @@ export default function QrDraftReviewPage() {
 
       {/* Validation summary */}
       {!allRequiredFilled && (
-        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
+        <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm">
           <p className="font-medium">確定するには以下を入力してください</p>
           <ul className="mt-1 list-disc pl-4 text-xs space-y-0.5">
             {!prescribedDate && <li>処方日</li>}

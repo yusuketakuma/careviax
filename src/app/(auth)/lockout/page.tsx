@@ -59,7 +59,7 @@ export default function LockoutPage() {
           </ul>
         </div>
 
-        <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 p-3 text-sm sm:p-4">
+        <div className="rounded-xl border-l-4 border-border/70 border-l-tag-info bg-card p-3 text-sm sm:p-4">
           <div className="mb-3 flex items-center gap-2 font-semibold text-tag-info">
             <Phone className="h-4 w-4" aria-hidden="true" />
             管理者連絡先

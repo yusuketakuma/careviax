@@ -843,7 +843,7 @@ export function BillingCandidatesContent({
       {targetCandidateId ? (
         <div
           id="billing-target-candidate"
-          className="rounded-md border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm text-tag-info"
+          className="rounded-md border-l-4 border-border/70 border-l-tag-info bg-card px-4 py-3 text-sm text-tag-info"
           data-testid="billing-target-candidate"
         >
           <p className="font-medium">{targetCandidate ? '対象候補を選択中' : '対象候補を検索中'}</p>
@@ -871,7 +871,7 @@ export function BillingCandidatesContent({
       ) : null}
 
       {patientIdFilter ? (
-        <div className="rounded-md border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm text-tag-info">
+        <div className="rounded-md border-l-4 border-border/70 border-l-tag-info bg-card px-4 py-3 text-sm text-tag-info">
           <p className="font-medium">患者で絞り込み中</p>
           <p className="mt-1 text-xs">
             患者ID {patientIdFilter} の候補だけを表示しています。月次締めは全体確認が必要なため、

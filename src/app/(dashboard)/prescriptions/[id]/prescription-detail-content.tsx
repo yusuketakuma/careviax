@@ -562,7 +562,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                             <p className="mt-1 whitespace-pre-wrap">{inq.inquiry_content}</p>
                           </div>
                           {inq.change_detail && (
-                            <div className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm">
+                            <div className="rounded-md border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm">
                               <p className="text-xs font-medium text-state-confirm">変更内容:</p>
                               <p className="whitespace-pre-wrap text-state-confirm">
                                 {inq.change_detail}

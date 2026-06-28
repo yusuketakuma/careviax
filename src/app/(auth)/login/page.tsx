@@ -233,7 +233,7 @@ function LoginForm() {
             </Link>
           </div>
 
-          <div className="mt-4 rounded-xl border border-tag-info/30 bg-tag-info/10 p-4">
+          <div className="mt-4 rounded-xl border-l-4 border-border/70 border-l-tag-info bg-card p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <Smartphone className="h-4 w-4 text-tag-info" aria-hidden="true" />
               確認コードが必要な場合
