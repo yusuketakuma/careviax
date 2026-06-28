@@ -31,6 +31,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { formatDateKey } from '@/lib/date-key';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  PCA_PUMPS_API_PATH,
+  PCA_PUMP_RENTALS_API_PATH,
+  buildPcaPumpApiPath,
+  buildPcaPumpRentalApiPath,
+  buildPcaPumpRentalsApiPath,
+  buildPcaPumpsApiPath,
+} from '@/lib/pca-pumps/api-paths';
 import { isValidDateKey } from '@/lib/validations/date-key';
 
 type PcaPumpStatus = 'available' | 'rented' | 'maintenance' | 'retired';
@@ -457,7 +465,7 @@ export function PcaPumpsContent() {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedQuery.trim()) params.set('q', debouncedQuery.trim());
-      const response = await fetch(`/api/pca-pumps?${params.toString()}`, {
+      const response = await fetch(buildPcaPumpsApiPath(params), {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('PCAポンプ台帳の取得に失敗しました');
@@ -469,7 +477,7 @@ export function PcaPumpsContent() {
   const rentalsQuery = useQuery({
     queryKey: ['pca-pump-rentals', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/pca-pump-rentals?status=open', {
+      const response = await fetch(buildPcaPumpRentalsApiPath({ status: 'open' }), {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('PCAポンプレンタル履歴の取得に失敗しました');
@@ -482,7 +490,7 @@ export function PcaPumpsContent() {
     queryKey: ['pca-pump-rentals', orgId, 'return-inspection-pending'],
     queryFn: async () => {
       const response = await fetch(
-        '/api/pca-pump-rentals?status=returned&inspection_status=pending',
+        buildPcaPumpRentalsApiPath({ status: 'returned', inspection_status: 'pending' }),
         {
           headers: { 'x-org-id': orgId },
         },
@@ -546,7 +554,7 @@ export function PcaPumpsContent() {
 
   const createPumpMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch('/api/pca-pumps', {
+      const response = await fetch(PCA_PUMPS_API_PATH, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -584,7 +592,7 @@ export function PcaPumpsContent() {
       if (rentalSaveBlocker) {
         throw new Error(rentalSaveBlocker);
       }
-      const response = await fetch('/api/pca-pump-rentals', {
+      const response = await fetch(PCA_PUMP_RENTALS_API_PATH, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -621,7 +629,7 @@ export function PcaPumpsContent() {
 
   const updateRentalMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: PcaPumpRentalStatus }) => {
-      const response = await fetch(`/api/pca-pump-rentals/${id}`, {
+      const response = await fetch(buildPcaPumpRentalApiPath(id), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -657,7 +665,7 @@ export function PcaPumpsContent() {
       currentStatus: PcaPumpStatus;
       status: PcaPumpStatus;
     }) => {
-      const response = await fetch(`/api/pca-pumps/${id}`, {
+      const response = await fetch(buildPcaPumpApiPath(id), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -695,7 +703,7 @@ export function PcaPumpsContent() {
       if (blocker) throw new Error(blocker);
       if (!inspectionForm.rental)
         throw new Error('検品対象のPCAポンプレンタルが選択されていません');
-      const response = await fetch(`/api/pca-pump-rentals/${inspectionForm.rental.id}`, {
+      const response = await fetch(buildPcaPumpRentalApiPath(inspectionForm.rental.id), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

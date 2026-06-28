@@ -2,7 +2,15 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  PCA_PUMPS_API_PATH,
+  PCA_PUMP_RENTALS_API_PATH,
+  buildPcaPumpApiPath,
+  buildPcaPumpRentalApiPath,
+  buildPcaPumpRentalsApiPath,
+  buildPcaPumpsApiPath,
+} from '@/lib/pca-pumps/api-paths';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
   buildPcaPumpStatusUpdatePayload,
@@ -22,16 +30,19 @@ const {
   queryRefetchMock,
   useOrgIdMock,
   pcaPumpQueryKeysMock,
+  queryOptionsMock,
   returnInspectionEmptyMock,
 } = vi.hoisted(() => ({
   queryErrorKeysMock: new Set<string>(),
   queryRefetchMock: vi.fn(),
   useOrgIdMock: vi.fn(),
   pcaPumpQueryKeysMock: [] as Array<readonly unknown[]>,
+  queryOptionsMock: [] as Array<Record<string, unknown>>,
   returnInspectionEmptyMock: { value: false },
 }));
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+const mutationOptionsMock = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 
 function queryState(key: string) {
   return {
@@ -44,15 +55,31 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
 }));
 
+vi.mock('@/lib/pca-pumps/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/pca-pumps/api-paths')>();
+  return {
+    ...actual,
+    buildPcaPumpApiPath: vi.fn(actual.buildPcaPumpApiPath),
+    buildPcaPumpRentalApiPath: vi.fn(actual.buildPcaPumpRentalApiPath),
+    buildPcaPumpRentalsApiPath: vi.fn(actual.buildPcaPumpRentalsApiPath),
+    buildPcaPumpsApiPath: vi.fn(actual.buildPcaPumpsApiPath),
+  };
+});
+
 vi.mock('@tanstack/react-query', () => ({
-  useMutation: () => ({
-    mutate: mutationMutateMock,
-    isPending: false,
-  }),
+  useMutation: (options: Record<string, unknown>) => {
+    mutationOptionsMock.push(options);
+    return {
+      mutate: mutationMutateMock,
+      isPending: false,
+    };
+  },
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
   }),
-  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+  useQuery: (options: { queryKey: readonly unknown[] }) => {
+    queryOptionsMock.push(options);
+    const { queryKey } = options;
     const key = queryKey[0];
     if (key === 'pca-pumps') {
       pcaPumpQueryKeysMock.push(queryKey);
@@ -318,13 +345,41 @@ vi.mock('@/components/ui/select', async () => {
   };
 });
 
+function queryFnAt(index: number) {
+  const queryFn = queryOptionsMock[index]?.queryFn;
+  if (typeof queryFn !== 'function') throw new Error(`Missing queryFn at index ${index}`);
+  return queryFn as () => Promise<unknown>;
+}
+
+function latestMutationFn(slot: 0 | 1 | 2 | 3 | 4) {
+  const option = mutationOptionsMock.at(-(5 - slot));
+  const mutationFn = option?.mutationFn;
+  if (typeof mutationFn !== 'function') throw new Error(`Missing mutationFn at slot ${slot}`);
+  return mutationFn as (variables?: unknown) => Promise<unknown>;
+}
+
+function stubFetchOk(payload: unknown = { data: [] }) {
+  const fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => payload,
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 describe('PcaPumpsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     queryErrorKeysMock.clear();
     pcaPumpQueryKeysMock.length = 0;
+    queryOptionsMock.length = 0;
+    mutationOptionsMock.length = 0;
     returnInspectionEmptyMock.value = false;
     useOrgIdMock.mockReturnValue('org_1');
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('shows pump inventory and only open rental rows from seeded PCA data', () => {
@@ -374,6 +429,126 @@ describe('PcaPumpsContent', () => {
     // debounce 未経過のため pca-pumps クエリキーの検索語はまだ更新されない
     // (検索語が queryKey 直結だった旧実装ならここで '東' になる)。
     expect(pcaPumpQueryKeysMock.at(-1)?.[2]).toBe('');
+  });
+
+  it('list query functions delegate PCA pump and rental path construction to shared helpers', async () => {
+    const fetchMock = stubFetchOk();
+    render(<PcaPumpsContent />);
+
+    await queryFnAt(0)();
+    await queryFnAt(1)();
+    await queryFnAt(2)();
+
+    expect(buildPcaPumpsApiPath).toHaveBeenCalledWith(expect.any(URLSearchParams));
+    expect(buildPcaPumpRentalsApiPath).toHaveBeenNthCalledWith(1, { status: 'open' });
+    expect(buildPcaPumpRentalsApiPath).toHaveBeenNthCalledWith(2, {
+      status: 'returned',
+      inspection_status: 'pending',
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/pca-pumps?', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/pca-pump-rentals?status=open', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/pca-pump-rentals?status=returned&inspection_status=pending',
+      {
+        headers: { 'x-org-id': 'org_1' },
+      },
+    );
+  });
+
+  it('create mutations use the shared static collection paths without changing payloads', async () => {
+    const fetchMock = stubFetchOk();
+    render(<PcaPumpsContent />);
+
+    await latestMutationFn(0)();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      PCA_PUMPS_API_PATH,
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+        },
+      }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '貸出登録' }));
+    fireEvent.change(screen.getByLabelText('PCAポンプ'), { target: { value: 'pump_available' } });
+    fireEvent.change(screen.getByLabelText('貸出先医療機関'), {
+      target: { value: 'institution_1' },
+    });
+    fireEvent.change(screen.getByLabelText('返却予定日'), { target: { value: '2026-12-31' } });
+
+    await latestMutationFn(1)();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      PCA_PUMP_RENTALS_API_PATH,
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+        },
+      }),
+    );
+  });
+
+  it('update mutations encode hostile pump and rental ids via shared helpers', async () => {
+    const fetchMock = stubFetchOk();
+    render(<PcaPumpsContent />);
+
+    await latestMutationFn(2)({ id: 'rental/a b', status: 'returned' });
+    await latestMutationFn(3)({
+      id: 'pump/a b',
+      currentStatus: 'available',
+      status: 'maintenance',
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /検品 PCA-RETURNED サンプル在宅クリニック 返却日 2026\/6\/8/,
+      }),
+    );
+    for (const item of PCA_RETURN_INSPECTION_ITEMS) {
+      fireEvent.change(screen.getByLabelText(item.label), { target: { value: 'ok' } });
+    }
+    await latestMutationFn(4)();
+
+    expect(buildPcaPumpRentalApiPath).toHaveBeenCalledWith('rental/a b');
+    expect(buildPcaPumpApiPath).toHaveBeenCalledWith('pump/a b');
+    expect(buildPcaPumpRentalApiPath).toHaveBeenCalledWith('rental_returned_pending');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/pca-pump-rentals/rental%2Fa%20b',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/pca-pumps/pump%2Fa%20b',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/pca-pump-rentals/rental_returned_pending',
+      expect.objectContaining({ method: 'PATCH' }),
+    );
+  });
+
+  it('update mutations fail closed on exact dot-segment ids before fetch side effects', async () => {
+    const fetchMock = stubFetchOk();
+    render(<PcaPumpsContent />);
+
+    await expect(latestMutationFn(2)({ id: '.', status: 'returned' })).rejects.toThrow(
+      /dot segment/,
+    );
+
+    expect(buildPcaPumpRentalApiPath).toHaveBeenCalledWith('.');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('shows the return-inspection backlog count as a confirm badge when work is pending', () => {
