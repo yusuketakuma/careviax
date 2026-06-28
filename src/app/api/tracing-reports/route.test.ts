@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
+  requireAuthContextMock,
   tracingReportFindManyMock,
   tracingReportCreateMock,
   patientFindManyMock,
@@ -9,8 +10,10 @@ const {
   careCaseFindManyMock,
   careCaseFindFirstMock,
   medicationIssueFindFirstMock,
+  loggerErrorMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
+  requireAuthContextMock: vi.fn(),
   tracingReportFindManyMock: vi.fn(),
   tracingReportCreateMock: vi.fn(),
   patientFindManyMock: vi.fn(),
@@ -18,23 +21,30 @@ const {
   careCaseFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   medicationIssueFindFirstMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
   withAuthContext:
     (
       handler: (
         req: NextRequest,
         ctx: { orgId: string; userId: string; role: 'pharmacist' },
+        routeContext: { params: Promise<Record<string, string>> },
       ) => Promise<Response>,
     ) =>
-    (req: NextRequest) =>
-      handler(req, {
-        orgId: 'org_1',
-        userId: 'user_1',
-        role: 'pharmacist' as const,
-      }),
+    (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+      handler(
+        req,
+        {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist' as const,
+        },
+        routeContext,
+      ),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -58,6 +68,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -91,6 +105,13 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/tracing-reports', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+    });
     tracingReportFindManyMock.mockResolvedValue([
       { id: 'report_1', patient_id: 'patient_1', status: 'draft' },
     ]);
@@ -260,6 +281,7 @@ describe('/api/tracing-reports', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(tracingReportCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -267,6 +289,28 @@ describe('/api/tracing-reports', () => {
         content: { summary: '確認事項' },
       }),
     });
+  });
+
+  it('returns sensitive no-store auth failures before create side effects', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/tracing-reports', {
+        patient_id: 'patient_1',
+        content: { summary: '確認事項' },
+      }),
+    ))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({ code: 'AUTH_FORBIDDEN' });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportCreateMock).not.toHaveBeenCalled();
   });
 
   it('normalizes source fields before access checks and persistence', async () => {
@@ -319,6 +363,7 @@ describe('/api/tracing-reports', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
@@ -360,6 +405,7 @@ describe('/api/tracing-reports', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
@@ -373,6 +419,7 @@ describe('/api/tracing-reports', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -382,6 +429,45 @@ describe('/api/tracing-reports', () => {
     expect(medicationIssueFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(tracingReportCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 and PHI-safe log metadata when creation fails', async () => {
+    const unsafeError = new Error(
+      '患者 山田太郎 tracing report content raw SQL stack status_change_reason',
+    );
+    unsafeError.name = 'PatientTracingReportRawSqlStackError';
+    tracingReportCreateMock.mockRejectedValueOnce(unsafeError);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/tracing-reports', {
+        patient_id: 'patient_1',
+        content: { summary: '患者 山田太郎 report content' },
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('山田太郎');
+    expect(body).not.toContain('tracing report content');
+    expect(body).not.toContain('raw SQL');
+    expect(body).not.toContain('status_change_reason');
+    expect(loggerErrorMock).toHaveBeenCalledWith('tracing_reports_unhandled_error', undefined, {
+      event: 'tracing_reports_unhandled_error',
+      route: '/api/tracing-reports',
+      method: 'POST',
+      status: 500,
+      error_name: 'Error',
+    });
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('tracing report content');
+    expect(logged).not.toContain('raw SQL');
+    expect(logged).not.toContain('status_change_reason');
+    expect(logged).not.toContain('PatientTracingReportRawSqlStackError');
   });
 
   it('rejects mismatched patient and case combinations before creating', async () => {

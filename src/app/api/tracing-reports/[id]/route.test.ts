@@ -1,27 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
   requireAuthContextMock,
   tracingReportFindFirstMock,
   tracingReportUpdateMock,
+  tracingReportDeleteMock,
   careCaseFindFirstMock,
   communicationRequestFindManyMock,
   communicationRequestCreateMock,
   communicationRequestUpdateMock,
   communicationEventCreateMock,
   auditLogCreateMock,
+  loggerErrorMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   tracingReportFindFirstMock: vi.fn(),
   tracingReportUpdateMock: vi.fn(),
+  tracingReportDeleteMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   communicationRequestFindManyMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
   communicationRequestUpdateMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -42,6 +46,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
 }));
 
 import { DELETE, PATCH } from './route';
@@ -71,6 +79,11 @@ function createMalformedPatchRequest(headers?: Record<string, string>) {
 const HOSTILE_TRACING_REPORT_ID = 'tracing/with space%2F?x=#';
 const HOSTILE_TRACING_REPORT_PDF_URL =
   '/api/tracing-reports/tracing%2Fwith%20space%252F%3Fx%3D%23/pdf';
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
 
 describe('/api/tracing-reports/[id] PATCH', () => {
   beforeEach(() => {
@@ -145,6 +158,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'トレーシングレポートIDが不正です',
@@ -174,6 +188,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(tracingReportUpdateMock).toHaveBeenCalledWith({
       where: { id: 'tracing_1' },
       data: expect.objectContaining({
@@ -369,6 +384,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'channel が不正です',
@@ -479,6 +495,7 @@ describe('/api/tracing-reports/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(tracingReportUpdateMock).not.toHaveBeenCalled();
     expect(communicationRequestCreateMock).not.toHaveBeenCalled();
@@ -580,10 +597,11 @@ describe('/api/tracing-reports/[id] DELETE', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         tracingReport: {
-          delete: vi.fn().mockResolvedValue({ id: 'tracing_1' }),
+          delete: tracingReportDeleteMock,
         },
       }),
     );
+    tracingReportDeleteMock.mockResolvedValue({ id: 'tracing_1' });
   });
 
   it('rejects blank tracing report ids before loading or deleting the report', async () => {
@@ -593,6 +611,7 @@ describe('/api/tracing-reports/[id] DELETE', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'トレーシングレポートIDが不正です',
@@ -611,6 +630,26 @@ describe('/api/tracing-reports/[id] DELETE', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns sensitive no-store auth failures before delete lookups', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const response = await DELETE(createRequest(null, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'tracing_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({ code: 'AUTH_FORBIDDEN' });
+    expect(tracingReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(tracingReportDeleteMock).not.toHaveBeenCalled();
   });
 });

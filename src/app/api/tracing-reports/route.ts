@@ -1,4 +1,6 @@
-import { type AuthRouteContext, withAuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { type AuthRouteContext, requireAuthContext, withAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { internalError, success, validationError } from '@/lib/api/response';
@@ -14,6 +16,8 @@ import {
   canBypassVisitScheduleAssignmentAccess,
 } from '@/lib/auth/visit-schedule-access';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   optionalTracingReportStatusSchema,
   optionalTrimmedSearchParam,
@@ -22,6 +26,17 @@ import {
 } from '@/lib/validations/tracing-report';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
+const ROUTE = '/api/tracing-reports';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
 const createTracingReportSchema = z.object({
   patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
   case_id: optionalTrimmedStringSchema,
@@ -29,6 +44,21 @@ const createTracingReportSchema = z.object({
   content: z.record(z.string(), z.unknown()).default({}),
   sent_to_physician: optionalTrimmedStringSchema,
 });
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+function logUnhandledRouteError(method: string, err: unknown) {
+  logger.error('tracing_reports_unhandled_error', undefined, {
+    event: 'tracing_reports_unhandled_error',
+    route: ROUTE,
+    method,
+    status: 500,
+    error_name: safeErrorName(err),
+  });
+}
 
 function readPresentOptionalSearchParam(
   searchParams: URLSearchParams,
@@ -204,13 +234,22 @@ export async function GET(
 ) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
+    logUnhandledRouteError('GET', err);
     return withSensitiveNoStore(internalError());
   }
 }
 
-export const POST = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAuthorReport',
+    message: 'トレーシングレポートの作成権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -257,9 +296,21 @@ export const POST = withAuthContext(
     });
 
     return success({ data: report }, 201);
-  },
-  {
-    permission: 'canAuthorReport',
-    message: 'トレーシングレポートの作成権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(
+  req: NextRequest,
+  routeContext: AuthRouteContext<Record<string, string>>,
+) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logUnhandledRouteError('POST', err);
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
