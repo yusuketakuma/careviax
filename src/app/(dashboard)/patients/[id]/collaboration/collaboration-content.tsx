@@ -12,7 +12,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePresenceUsers } from '@/lib/hooks/use-presence-users';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import type { PatientOverview } from '../patient-detail.types';
@@ -70,7 +70,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
   const overviewQuery = useQuery<PatientOverview>({
     queryKey: overviewQueryKey,
     queryFn: async () => {
-      const res = await fetch(`/api/patients/${encodePathSegment(patientId)}/overview`, {
+      const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
         headers: buildOrgHeaders(orgId),
       });
       if (!res.ok) throw new Error('患者情報の取得に失敗しました');

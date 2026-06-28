@@ -3,6 +3,7 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -22,6 +23,11 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
 vi.mock('@/lib/patient/navigation', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/patient/navigation')>();
   return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
+});
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
 });
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -217,6 +223,7 @@ describe('CollaborationContent realtime presence policy', () => {
       await overviewConfig?.queryFn?.();
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(buildPatientApiPath).toHaveBeenCalledWith(hostilePatientId, '/overview');
       expect(fetchMock).toHaveBeenCalledWith(
         `/api/patients/${encodeURIComponent(hostilePatientId)}/overview`,
         { headers: sentinelHeaders },
@@ -231,6 +238,46 @@ describe('CollaborationContent realtime presence policy', () => {
       expect(invalidateQueriesMock).toHaveBeenCalledWith({
         queryKey: ['patient-overview', hostilePatientId, 'org_1'],
       });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('routes the patient overview fetch through the shared patient API path helper return value', async () => {
+    const patientId = 'patient_1';
+    const queryConfigs: Array<{ queryKey?: unknown[]; queryFn?: () => Promise<unknown> }> = [];
+    useQueryMock.mockImplementation(
+      (options: { queryKey?: unknown[]; queryFn?: () => Promise<unknown> }) => {
+        queryConfigs.push(options);
+        const [scope] = options.queryKey ?? [];
+        if (scope === 'presence') return { data: [] };
+        if (scope === 'patient-overview') {
+          return { data: { name: '田中 一郎' }, isError: false, isLoading: false };
+        }
+        throw new Error(`Unexpected query key: ${JSON.stringify(options.queryKey)}`);
+      },
+    );
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__/overview');
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ name: '田中 一郎' }),
+    } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+
+    try {
+      render(<CollaborationContent patientId={patientId} />);
+      const overviewConfig = queryConfigs.find(
+        (config) => config.queryKey?.[0] === 'patient-overview',
+      );
+
+      await overviewConfig?.queryFn?.();
+
+      expect(buildPatientApiPath).toHaveBeenCalledWith(patientId, '/overview');
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/patients/__helper_patient__/overview');
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        `/api/patients/${patientId}/overview`,
+        expect.anything(),
+      );
     } finally {
       vi.unstubAllGlobals();
     }
