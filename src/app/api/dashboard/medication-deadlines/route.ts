@@ -1,11 +1,26 @@
-import { withAuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { prisma } from '@/lib/db/client';
+import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
 const DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS = 7;
 const MAX_MEDICATION_DEADLINE_WITHIN_DAYS = 365;
+const ROUTE = '/api/dashboard/medication-deadlines';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
 
 type MedicationDeadlineQuery = {
   withinDays: number;
@@ -101,8 +116,20 @@ function parseMedicationDeadlineQuery(params: URLSearchParams): QueryParseResult
   };
 }
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canViewDashboard',
+    message: 'ダッシュボードの閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const parsed = parseMedicationDeadlineQuery(searchParams);
     if (!parsed.ok) {
@@ -115,52 +142,59 @@ const authenticatedGET = withAuthContext(
     const deadline = addUtcDays(today, withinDays);
 
     // Find visit schedules with medication_end_date approaching
-    const schedules = await prisma.visitSchedule.findMany({
-      where: {
-        org_id: ctx.orgId,
-        medication_end_date: {
-          gte: today,
-          lte: deadline,
-        },
-        schedule_status: { notIn: ['cancelled', 'completed'] },
-        ...(query
-          ? {
-              case_: {
-                is: {
-                  patient: {
-                    is: {
-                      name: {
-                        contains: query,
-                        mode: 'insensitive',
-                      },
-                    },
+    const schedules = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.visitSchedule.findMany({
+          where: {
+            org_id: ctx.orgId,
+            medication_end_date: {
+              gte: today,
+              lte: deadline,
+            },
+            schedule_status: { notIn: ['cancelled', 'completed'] },
+            case_: {
+              is: {
+                org_id: ctx.orgId,
+                patient: {
+                  is: {
+                    org_id: ctx.orgId,
+                    ...(query
+                      ? {
+                          name: {
+                            contains: query,
+                            mode: 'insensitive',
+                          },
+                        }
+                      : {}),
                   },
                 },
               },
-            }
-          : {}),
-      },
-      orderBy: { medication_end_date: 'asc' },
-      take: limit,
-      select: {
-        id: true,
-        case_id: true,
-        scheduled_date: true,
-        medication_end_date: true,
-        visit_type: true,
-        pharmacist_id: true,
-        case_: {
+            },
+          },
+          orderBy: { medication_end_date: 'asc' },
+          take: limit,
           select: {
-            patient: {
+            id: true,
+            case_id: true,
+            scheduled_date: true,
+            medication_end_date: true,
+            visit_type: true,
+            pharmacist_id: true,
+            case_: {
               select: {
-                id: true,
-                name: true,
+                patient: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
               },
             },
           },
-        },
-      },
-    });
+        }),
+      { requestContext: ctx },
+    );
 
     // Group by urgency (3 days / 7 days)
     const threeDays = addUtcDays(today, 3);
@@ -177,17 +211,24 @@ const authenticatedGET = withAuthContext(
       critical: { count: critical.length, items: critical },
       warning: { count: warning.length, items: warning },
     });
-  },
-  {
-    permission: 'canViewDashboard',
-    message: 'ダッシュボードの閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
-    return withSensitiveNoStore(internalError());
-  }
-};
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('dashboard_medication_deadlines_unhandled_error', undefined, {
+        event: 'dashboard_medication_deadlines_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

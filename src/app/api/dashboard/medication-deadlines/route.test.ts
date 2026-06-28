@@ -1,25 +1,67 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-const { authMock, membershipFindFirstMock, visitScheduleFindManyMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  visitScheduleFindManyMock: vi.fn(),
+const {
+  authContext,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  successMock,
+  loggerErrorMock,
+  withOrgContextMock,
+  withRoutePerformanceMock,
+  visitScheduleFindManyMock,
+} = vi.hoisted(() => {
+  const authContext = {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'admin',
+  };
+
+  return {
+    authContext,
+    requireAuthContextMock: vi.fn(),
+    runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+    successMock: vi.fn(),
+    loggerErrorMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
+    visitScheduleFindManyMock: vi.fn(),
+  };
+});
+
+vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
 }));
 
-vi.mock('@/lib/auth/config', () => ({
-  auth: authMock,
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    membership: {
-      findFirst: membershipFindFirstMock,
-    },
-    visitSchedule: {
-      findMany: visitScheduleFindManyMock,
-    },
+vi.mock('@/lib/api/response', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/response')>();
+  successMock.mockImplementation(actual.success);
+  return {
+    ...actual,
+    success: successMock,
+  };
+});
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+const txMock = {
+  visitSchedule: {
+    findMany: visitScheduleFindManyMock,
   },
+};
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 import { GET as rawGET } from './route';
@@ -52,8 +94,10 @@ describe('/api/dashboard/medication-deadlines', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-01T12:00:00.000Z'));
     vi.clearAllMocks();
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
     const today = new Date();
     const inTwoDays = new Date(today);
     inTwoDays.setDate(today.getDate() + 2);
@@ -79,20 +123,76 @@ describe('/api/dashboard/medication-deadlines', () => {
     const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ダッシュボードの閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: authContext,
+    });
+    expect(successMock).toHaveBeenCalledWith({
+      total: 2,
+      critical: {
+        count: 1,
+        items: [expect.objectContaining({ id: 'schedule_1' })],
+      },
+      warning: {
+        count: 1,
+        items: [expect.objectContaining({ id: 'schedule_2' })],
+      },
+    });
     expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       total: 2,
       critical: { count: 1 },
       warning: { count: 1 },
     });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          case_: {
+            is: {
+              org_id: 'org_1',
+              patient: {
+                is: {
+                  org_id: 'org_1',
+                },
+              },
+            },
+          },
+        }),
+      }),
+    );
   });
 
-  it('defaults within_days to 7 when omitted', async () => {
+  it('remains compatible with protected direct calls that omit routeContext', async () => {
+    const response = (await rawGET(createRequest()))!;
+
+    expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expectSensitiveNoStore(response);
+  });
+
+  it('defaults within_days to 7 and preserves omitted limit semantics', async () => {
     const response = (await GET(createRequest('')))!;
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
     expect(getLastDeadlineWindowDays()).toBe(7);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: undefined,
+      }),
+    );
   });
 
   it('rejects padded within_days values before querying schedules', async () => {
@@ -120,8 +220,10 @@ describe('/api/dashboard/medication-deadlines', () => {
         where: expect.objectContaining({
           case_: {
             is: {
+              org_id: 'org_1',
               patient: {
                 is: {
+                  org_id: 'org_1',
                   name: {
                     contains: '田中',
                     mode: 'insensitive',
@@ -190,16 +292,67 @@ describe('/api/dashboard/medication-deadlines', () => {
     },
   );
 
+  it('wraps auth failure responses in no-store headers before deadline DB reads', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const response = (await GET(createRequest()))!;
+
+    expect(response.status).toBe(403);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ダッシュボードの閲覧権限がありません',
+    });
+    expectSensitiveNoStore(response);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns a sanitized no-store 500 when deadline reads fail', async () => {
-    const rawError = 'raw medication deadline read failure';
-    visitScheduleFindManyMock.mockRejectedValueOnce(new Error(rawError));
+    const unsafeError = new Error(
+      'raw patient raw medication deadline_secret SQL stack_secret raw-error text must not leak',
+    );
+    unsafeError.name = 'crafted-name.raw-patient.medication.deadline.SQL.stack.raw-error';
+    visitScheduleFindManyMock.mockRejectedValueOnce(unsafeError);
 
     const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(500);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
     expectSensitiveNoStore(response);
-    const body = await response.json();
-    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
-    expect(JSON.stringify(body)).not.toContain(rawError);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw patient');
+    expect(body).not.toContain('raw medication');
+    expect(body).not.toContain('deadline_secret');
+    expect(body).not.toContain('SQL');
+    expect(body).not.toContain('stack_secret');
+    expect(body).not.toContain('crafted-name');
+    expect(body).not.toContain('raw-error');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'dashboard_medication_deadlines_unhandled_error',
+      undefined,
+      {
+        event: 'dashboard_medication_deadlines_unhandled_error',
+        route: '/api/dashboard/medication-deadlines',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('raw patient');
+    expect(logged).not.toContain('raw medication');
+    expect(logged).not.toContain('deadline_secret');
+    expect(logged).not.toContain('SQL');
+    expect(logged).not.toContain('stack_secret');
+    expect(logged).not.toContain('crafted-name');
+    expect(logged).not.toContain('raw-error text');
   });
 });
