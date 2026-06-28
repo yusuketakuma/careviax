@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Residual Adjustment Query Boundary Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new Claude interrupt arrived during this slice.
+  - Used medication safety and privacy read-only reviewers because the surface reads residual medication data, physician instructions, and saves dose-adjustment interventions.
+- Hardened residual adjustment query construction:
+  - Built residual medication and inquiry-record list GET queries with `URLSearchParams` instead of raw `patient_id` interpolation.
+  - Added header test coverage proving both GET URLs encode `/`, `?`, `#`, `&`, and `=` reserved characters inside the `patient_id` value while preserving `limit=100` and `status=resolved`.
+  - Preserved React Query keys, internal POST JSON body `patient_id`, residual adjustment plan semantics, physician-instruction filtering, confirmation/intervention save behavior, tenant headers, external presigned PUT header isolation, DB schema/data, migrations, external sends beyond existing upload flow, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: residual adjustment GETs can no longer let route-derived patient ids inject sibling query params or URL fragments through raw interpolation.
+- Performance issue improved: none. This is a pure query-construction refactor with no new DB reads, network calls beyond existing list fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.headers.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.headers.test.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment.shared.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `16` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.headers.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.headers.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.tsx' 'src/app/(dashboard)/patients/[id]/residual-adjustment/residual-adjustment-content.headers.test.tsx'`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medication safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `170d37be` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Residual Medication Chart Query Boundary Hardening
 
 - Coordination:
@@ -46,8 +72,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medical safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `94eb5f26` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `94eb5f26` and state commit `24cece42` are complete; Claude approved the slice.
+- Next action: continue after inbox is clear.
 
 ### 2026-06-28 JST - Patient Structured Care API Path Helper Convergence
 
