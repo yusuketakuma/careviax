@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Dashboard Patient Card Prescription Intake Boundary Hardening
+
+- Coordination:
+  - Drained `phos/codex`; no new Claude interrupt arrived during this slice.
+  - Initial privacy and safety reviews flagged remaining patient-name raw href and downstream `/prescriptions/new` raw API URL interpolation; both were fixed before commit and both reviewers passed re-review.
+- Hardened dashboard patient card and prescription intake URL boundaries:
+  - Routed dashboard patient-name and prerequisite links through shared `buildPatientHref(patient.patient_id)`.
+  - Built dashboard prescription intake links with `URLSearchParams({ patient_id, case_id })`.
+  - Added pure prescription intake URL helpers so selected patient detail and previous-prescription paths use `buildPatientApiPath`, while active case and previous-prescription queries use `URLSearchParams`.
+  - Added tests proving hostile patient/case ids remain encoded in dashboard links and downstream `/prescriptions/new` fetch URLs, including dot-segment fail-closed coverage for patient API paths.
+  - Preserved dashboard visual structure, readiness logic, prescription intake query keys, selected patient/case identity, previous prescription case scoping, submit payload JSON body identity, backend validation, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: dashboard card navigation and the receiving prescription intake form no longer let route-derived patient/case ids inject path segments, query params, or fragments through raw interpolation.
+- Performance issue improved: none. This is a pure href/API URL construction refactor with no new DB reads, network calls beyond existing intake fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/dashboard/patient-card.tsx' 'src/app/(dashboard)/dashboard/patient-card.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-urls.ts' 'src/app/(dashboard)/prescriptions/new/prescription-intake-urls.test.ts' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/dashboard/patient-card.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-urls.test.ts' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts' src/lib/patient/navigation.test.ts src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `6` files / `35` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/dashboard/patient-card.tsx' 'src/app/(dashboard)/dashboard/patient-card.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-urls.ts' 'src/app/(dashboard)/prescriptions/new/prescription-intake-urls.test.ts' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts'`: passed.
+  - `pnpm exec prettier --check` on the same six files: passed.
+  - `git diff --cached --check`: passed before commit.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Patient safety reviewer re-review: PASS.
+  - Privacy reviewer re-review: PASS.
+- Commit status: implementation commit `b860023a` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Residual Adjustment Query Boundary Hardening
 
 - Coordination:
@@ -46,8 +74,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Medication safety reviewer: PASS.
   - Privacy reviewer: PASS.
-- Commit status: implementation commit `170d37be` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `170d37be` and state commit `e2b44025` are complete; Claude approved the slice.
+- Next action: continue after inbox is clear.
 
 ### 2026-06-28 JST - Residual Medication Chart Query Boundary Hardening
 
