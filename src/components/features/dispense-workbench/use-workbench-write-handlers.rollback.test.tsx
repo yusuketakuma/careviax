@@ -4480,4 +4480,41 @@ describe('useWorkbenchWriteHandlers confirm gating (S0 request/commit split)', (
     expect(generateBatches.mutate).not.toHaveBeenCalled();
     expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
   });
+
+  it('commitForceRegen aborts when only the active set plan drifts after confirmation (round-4 S1)', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const generateBatches = mutationStub();
+    const onRequestRegenerateConfirm = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState(forceRegenReadyState());
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ generateBatches }),
+        onRequestRegenerateConfirm,
+      }),
+    );
+
+    act(() => {
+      result.current.onRequestRegenerate();
+    });
+    const descriptor = onRequestRegenerateConfirm.mock.calls[0][0] as PendingForceRegen;
+
+    // 患者・版は据え置きで対象セットプラン（planId）のみが切り替わった状況を再現。
+    act(() => {
+      useWorkbenchStore.setState((state) => ({
+        writeContext: { ...state.writeContext, planId: 'plan_2' },
+      }));
+    });
+
+    act(() => {
+      result.current.commitForceRegen(descriptor);
+    });
+
+    expect(generateBatches.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(CONFIRM_TARGET_DRIFT_MESSAGE);
+  });
 });
