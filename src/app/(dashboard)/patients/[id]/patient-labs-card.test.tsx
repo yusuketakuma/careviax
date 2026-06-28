@@ -98,7 +98,7 @@ vi.mock('@/components/ui/select', async () => {
   const SelectItem = ({ children }: ItemProps) => <>{children}</>;
   const SelectTrigger = ({ children }: TriggerProps) => <>{children}</>;
   // 閉じた SelectTrigger のラベル契約を担うマーカー。children(value→label) は Select 側で解決する。
-  const SelectValue = (_props: SelectValueProps) => null;
+  const SelectValue: React.FC<SelectValueProps> = () => null;
   const SelectContent = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
 
   function flattenText(node: React.ReactNode): string {
@@ -159,11 +159,7 @@ vi.mock('@/components/ui/select', async () => {
     // children が関数なら value に適用、静的なら children、bare(未指定)なら生 value にフォールバック。
     const resolver = found.selectValue;
     const displayLabel =
-      typeof resolver === 'function'
-        ? resolver(value)
-        : resolver !== undefined
-          ? resolver
-          : value;
+      typeof resolver === 'function' ? resolver(value) : resolver !== undefined ? resolver : value;
 
     return (
       <>
