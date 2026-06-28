@@ -1,23 +1,42 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-const { authMock, membershipFindFirstMock, patientFindManyMock, visitRecordGroupByMock } =
-  vi.hoisted(() => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
+const {
+  authContext,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  loggerErrorMock,
+  withRoutePerformanceMock,
+  patientFindManyMock,
+  visitRecordGroupByMock,
+} = vi.hoisted(() => {
+  const authContext = {
+    orgId: 'org_1',
+    userId: 'user_1',
+    role: 'clerk',
+  };
+
+  return {
+    authContext,
+    requireAuthContextMock: vi.fn(),
+    runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+    loggerErrorMock: vi.fn(),
+    withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
     patientFindManyMock: vi.fn(),
     visitRecordGroupByMock: vi.fn(),
-  }));
+  };
+});
 
-vi.mock('@/lib/auth/config', () => ({
-  auth: authMock,
+vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    membership: {
-      findFirst: membershipFindFirstMock,
-    },
     patient: {
       findMany: patientFindManyMock,
     },
@@ -25,6 +44,14 @@ vi.mock('@/lib/db/client', () => ({
       groupBy: visitRecordGroupByMock,
     },
   },
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
 }));
 
 import { GET as rawGET } from './route';
@@ -46,6 +73,9 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/dashboard/monthly-stats GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({ ctx: authContext });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
   });
 
   afterEach(() => {
@@ -53,9 +83,6 @@ describe('/api/dashboard/monthly-stats GET', () => {
   });
 
   it('returns validation error for invalid month format', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
-
     const response = await GET(
       createRequest('http://localhost/api/dashboard/monthly-stats?month=2026/03', {
         'x-org-id': 'org_1',
@@ -65,13 +92,14 @@ describe('/api/dashboard/monthly-stats GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expectSensitiveNoStore(response);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ダッシュボードの閲覧権限がありません',
+    });
     expect(visitRecordGroupByMock).not.toHaveBeenCalled();
   });
 
   it('rejects out-of-range month values', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
-
     const response = await GET(
       createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-13', {
         'x-org-id': 'org_1',
@@ -88,9 +116,6 @@ describe('/api/dashboard/monthly-stats GET', () => {
     ['blank month', 'http://localhost/api/dashboard/monthly-stats?month='],
     ['padded month', 'http://localhost/api/dashboard/monthly-stats?month=%202026-03%20'],
   ])('rejects %s before querying monthly visit stats', async (_label, url) => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
-
     const response = await GET(createRequest(url, { 'x-org-id': 'org_1' }));
 
     if (!response) throw new Error('response is required');
@@ -104,9 +129,6 @@ describe('/api/dashboard/monthly-stats GET', () => {
   });
 
   it('rejects duplicate month params before querying monthly visit stats', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
-
     const response = await GET(
       createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-03&month=2026-04', {
         'x-org-id': 'org_1',
@@ -129,8 +151,6 @@ describe('/api/dashboard/monthly-stats GET', () => {
   it('defaults to the current month when month is omitted', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 3, 15, 12, 0, 0));
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
     visitRecordGroupByMock.mockResolvedValue([]);
 
     const response = await GET(
@@ -139,6 +159,15 @@ describe('/api/dashboard/monthly-stats GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ダッシュボードの閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(authContext, expect.any(Function));
     expectSensitiveNoStore(response);
     expect(visitRecordGroupByMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -158,8 +187,6 @@ describe('/api/dashboard/monthly-stats GET', () => {
   });
 
   it('returns grouped monthly patient stats', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
     visitRecordGroupByMock.mockResolvedValue([
       {
         patient_id: 'patient_1',
@@ -248,5 +275,68 @@ describe('/api/dashboard/monthly-stats GET', () => {
         }),
       ],
     });
+  });
+
+  it('wraps auth failure responses in no-store headers before any monthly stats lookup', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
+    });
+
+    const response = await GET(
+      createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-03', {
+        'x-org-id': 'org_1',
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expectSensitiveNoStore(response);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(visitRecordGroupByMock).not.toHaveBeenCalled();
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a no-store fixed error without leaking raw monthly stats failures', async () => {
+    const leakyError = new Error(
+      'patient 山田太郎 insurance_number SELECT * FROM Patient stack trace',
+    );
+    leakyError.name = 'PatientLeakError:山田:insurance:SQL';
+    visitRecordGroupByMock.mockRejectedValueOnce(leakyError);
+
+    const response = await GET(
+      createRequest('http://localhost/api/dashboard/monthly-stats?month=2026-03', {
+        'x-org-id': 'org_1',
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('patient 山田太郎');
+    expect(body).not.toContain('insurance_number');
+    expect(body).not.toContain('SELECT');
+    expect(body).not.toContain('stack trace');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(leakyError);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'dashboard_monthly_stats_unhandled_error',
+      undefined,
+      {
+        event: 'dashboard_monthly_stats_unhandled_error',
+        route: '/api/dashboard/monthly-stats',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('PatientLeakError');
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('insurance_number');
+    expect(logged).not.toContain('SELECT');
+    expect(logged).not.toContain('stack');
   });
 });

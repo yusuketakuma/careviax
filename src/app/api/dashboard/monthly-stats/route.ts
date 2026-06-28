@@ -1,8 +1,24 @@
 import { endOfMonth, startOfMonth } from 'date-fns';
-import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
+
+const ROUTE = '/api/dashboard/monthly-stats';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
 
 type MonthlyBucket = {
   patient_id: string;
@@ -18,6 +34,11 @@ type MonthlyPatientStat = MonthlyBucket & {
 
 function formatMonthLabel(value: Date) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
 }
 
 type MonthParseResult =
@@ -63,8 +84,15 @@ function parseMonthParam(searchParams: URLSearchParams): MonthParseResult {
   };
 }
 
-const authenticatedGET = withAuthContext(
-  async (req, ctx) => {
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canViewDashboard',
+    message: 'ダッシュボードの閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const parsedMonth = parseMonthParam(searchParams);
     if (!parsedMonth.ok) {
@@ -163,12 +191,24 @@ const authenticatedGET = withAuthContext(
       },
       patient_stats,
     });
-  },
-  {
-    permission: 'canViewDashboard',
-    message: 'ダッシュボードの閲覧権限がありません',
-  },
-);
+  });
+}
 
-export const GET: typeof authenticatedGET = async (req, routeContext) =>
-  withSensitiveNoStore(await authenticatedGET(req, routeContext));
+export async function GET(req: NextRequest, routeContext?: unknown) {
+  void routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('dashboard_monthly_stats_unhandled_error', undefined, {
+        event: 'dashboard_monthly_stats_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
