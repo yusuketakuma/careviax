@@ -22,7 +22,7 @@ type AdminPageHeaderProps = {
 };
 
 export function AdminPageHeader({
-  eyebrow = 'Admin Console',
+  eyebrow,
   title,
   description,
   shortcuts = [],
