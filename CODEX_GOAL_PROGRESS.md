@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Billing Evidence Check GET No-Store And PHI-Safe Error Hardening
+
+- Coordination:
+  - Followed rev9 maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/billing-evidence/check/route.ts` and `route.test.ts`; Claude ACKed no conflict with active FE work.
+  - Implementation ran through a Codex maintainer subagent while main Codex stayed open for agmsg, then Codex main fixed reviewer findings before requesting Claude review.
+  - Claude reviewed the finished BE diff and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, push, deploy, external sends, or destructive operations were touched.
+- Hardened billing-evidence check API responses:
+  - Replaced the `withAuthContext` route wrapper with explicit `requireAuthContext({ permission: 'canReport' })` plus `runWithRequestAuthContext` so this sensitive route avoids the common wrapper's raw `logger.error(..., err)` path for ordinary handler failures.
+  - Wrapped exported `GET` in `withRoutePerformance(req, ...)` to preserve route performance accounting.
+  - Wrapped success, validation error, auth failure, and handled 500 responses in `withSensitiveNoStore`.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging: event, route, method, status, and sanitized error name only.
+  - Preserved validation-before-transaction behavior, org-scoped reads, current/previous month semantics, review row shape, patient href encoding, action/evidence mapping, and success response shape `{ data: ... }`.
+  - Added tests proving no-store on success, invalid month, auth failure, and fixed 500 responses; `canReport` auth options; route-performance wrapper invocation; and no raw PHI-like error text in the response or logger calls.
+- Security/privacy risk reduced: patient-label/patient-link billing review responses now consistently carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`, while ordinary unexpected failures avoid raw error body and raw error log leakage.
+- Performance issue improved: restored `withRoutePerformance` around the manual sensitive-route wrapper so the endpoint remains visible in route latency/error metrics.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/billing-evidence/check/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - `pnpm exec eslint src/app/api/billing-evidence/check/route.ts src/app/api/billing-evidence/check/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/billing-evidence/check/route.ts src/app/api/billing-evidence/check/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/billing-evidence/check/route.ts src/app/api/billing-evidence/check/route.test.ts`: passed.
+  - Privacy compliance re-review: no findings after the raw-error logging fix.
+  - Medical safety review: low observability finding addressed with PHI-safe structured logging.
+  - Final Codex reviewer: no findings after restoring `withRoutePerformance`.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `6/6` and scoped ESLint.
+- Commit status: implementation committed locally as `b792e9f1`; this section records the progress-ledger slice for separate commit.
+- Next action: commit this progress-ledger slice, then inspect sibling worktrees before pushing and merging grouped main commits.
+
 ### 2026-06-28 JST - Visit Schedule Billing Preview Batch POST No-Store Hardening
 
 - Coordination:
