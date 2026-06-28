@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-0940 JST
+
+- current task: visit capture fallback patient detail API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `EvidenceCaptureContent`, `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`, `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`, `src/app/(dashboard)/visits/[id]/capture/capture.shared.ts`, `src/app/(dashboard)/visits/[id]/capture/capture.shared.test.ts`, `src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.test.tsx`, `src/lib/patient/api-paths.ts`, and `src/lib/patient/api-paths.test.ts`.
+- files changed: `src/app/(dashboard)/visits/[id]/capture/capture-content.tsx`, `src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `EvidenceCaptureContent` fallback visit-record path still interpolated a resolved patient id into `/api/patients/${patientId}` before fetching the patient name. Hostile ids containing `/`, `?`, or `#` could alter the patient detail API URL before reaching the server route.
+- security risks found: reduced visit capture patient-detail route-confusion risk by routing the fallback GET through shared `buildPatientApiPath(patientId)`. Added a component test proving raw patient id remains in component data while the network URL consumes the shared helper return value. Existing visit schedule/record resolution, evidence draft encryption/offline save behavior, online sync behavior, category/file-name semantics, tenant header behavior, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing fallback patient detail fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/visits/[id]/capture/capture-content.tsx' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/capture/capture.shared.test.ts' 'src/app/(dashboard)/visits/[id]/capture/capture-content.test.tsx' 'src/lib/patient/api-paths.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/api-paths.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
+- validation results: Prettier write passed. Focused capture shared/content + patient API path tests passed `3` files / `22` tests. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
+- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the owned capture files for implementation commit after cached diff whitespace check.
+
 ### 20260628-0932 JST
 
 - current task: visit brief review API path helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing visit brief fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx' 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.test.tsx' src/lib/patient/api-paths.test.ts`; `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.test.tsx' 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review.shared.test.ts' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the three changed implementation/test files; scoped Prettier check for the same three files; `git diff --cached --check`; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; medication safety reviewer read-only review; privacy compliance reviewer read-only review.
 - validation results: Prettier write passed. Focused visit brief review + shared + patient API/path-segment tests passed `4` files / `40` tests. Scoped ESLint, scoped Prettier check, cached diff whitespace check, full TypeScript, `typecheck:no-unused`, format check, lint, medication safety review, and privacy review passed.
-- remaining work: state commit is pending for implementation commit `c59e4a97`, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md` for the state commit.
+- remaining work: implementation commit `c59e4a97` and state commit `2d00c528` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: continue non-overlapping API/path helper convergence while monitoring agmsg for Claude interrupts.
 
 ### 20260628-0919 JST
 
