@@ -8,6 +8,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { cn } from '@/lib/utils';
 import type { PatientBoardResponse } from '@/types/patient-board';
 import { fetchPatientBoard } from '../patients-board';
@@ -27,7 +29,7 @@ import {
  */
 
 async function fetchPatientOverview(orgId: string, patientId: string): Promise<PatientOverview> {
-  const res = await fetch(`/api/patients/${patientId}/overview`, {
+  const res = await fetch(buildPatientApiPath(patientId, '/overview'), {
     headers: { 'x-org-id': orgId },
   });
   if (!res.ok) throw new Error('患者情報の取得に失敗しました');
@@ -137,7 +139,7 @@ function ComparePreviewCard({
 
       <div className="mt-6">
         <Link
-          href={`/patients/${patientId}`}
+          href={buildPatientHref(patientId)}
           className={buttonVariants({ className: 'min-w-40' })}
           data-testid="compare-card-open"
         >
