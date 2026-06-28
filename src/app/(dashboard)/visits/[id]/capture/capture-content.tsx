@@ -11,6 +11,7 @@ import {
   setupEvidenceAutoSync,
   syncEvidenceDrafts,
 } from '@/lib/offline/evidence-drafts';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { cn } from '@/lib/utils';
 import { pickVisitPatientId } from '../brief/visit-brief-review.shared';
 import type { EvidenceCategoryId } from '../../evidence/evidence-gallery.shared';
@@ -75,7 +76,7 @@ export function EvidenceCaptureContent({
       if (recordRes.ok) {
         const patientId = pickVisitPatientId(await recordRes.json());
         if (patientId) {
-          const patientRes = await fetch(`/api/patients/${patientId}`, { headers });
+          const patientRes = await fetch(buildPatientApiPath(patientId), { headers });
           const patient = patientRes.ok ? await patientRes.json().catch(() => null) : null;
           const patientName = typeof patient?.name === 'string' ? patient.name : null;
           return { patientId, patientName, visitRecordId: visitId };
