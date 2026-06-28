@@ -30,6 +30,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  PHARMACIST_CREDENTIALS_API_PATH,
+  buildPharmacistCredentialApiPath,
+} from '@/lib/pharmacist-credentials/api-paths';
 
 type PharmacistCredential = {
   id: string;
@@ -217,7 +221,7 @@ export function PharmacistCredentialsContent() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['pharmacist-credentials', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/admin/pharmacist-credentials', {
+      const response = await fetch(PHARMACIST_CREDENTIALS_API_PATH, {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('薬剤師認定情報の取得に失敗しました');
@@ -251,8 +255,8 @@ export function PharmacistCredentialsContent() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       const url = editingCredential
-        ? `/api/admin/pharmacist-credentials/${editingCredential.id}`
-        : '/api/admin/pharmacist-credentials';
+        ? buildPharmacistCredentialApiPath(editingCredential.id)
+        : PHARMACIST_CREDENTIALS_API_PATH;
       const method = editingCredential ? 'PATCH' : 'POST';
       const response = await fetch(url, {
         method,
@@ -288,7 +292,7 @@ export function PharmacistCredentialsContent() {
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!deleteTarget) throw new Error('削除対象がありません');
-      const response = await fetch(`/api/admin/pharmacist-credentials/${deleteTarget.id}`, {
+      const response = await fetch(buildPharmacistCredentialApiPath(deleteTarget.id), {
         method: 'DELETE',
         headers: { 'x-org-id': orgId },
       });

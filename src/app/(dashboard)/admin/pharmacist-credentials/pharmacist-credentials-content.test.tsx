@@ -1,9 +1,13 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import {
+  PHARMACIST_CREDENTIALS_API_PATH,
+  buildPharmacistCredentialApiPath,
+} from '@/lib/pharmacist-credentials/api-paths';
 import { PharmacistCredentialsContent } from './pharmacist-credentials-content';
 
 setupDomTestEnv();
@@ -11,13 +15,25 @@ setupDomTestEnv();
 const mutationMutateMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 
+type MutationOptions = {
+  mutationFn?: () => Promise<unknown>;
+  onError?: (error: unknown) => void;
+  onSuccess?: (data: unknown) => void | Promise<void>;
+};
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useMutation: () => ({
-    mutate: mutationMutateMock,
+  useMutation: (options: MutationOptions) => ({
+    mutate: () => {
+      mutationMutateMock();
+      void Promise.resolve(options.mutationFn?.()).then(
+        (data) => void options.onSuccess?.(data),
+        (error: unknown) => options.onError?.(error),
+      );
+    },
     isPending: false,
   }),
   useQuery: useQueryMock,
@@ -26,26 +42,36 @@ vi.mock('@tanstack/react-query', () => ({
   }),
 }));
 
+vi.mock('@/lib/pharmacist-credentials/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/pharmacist-credentials/api-paths')>();
+  return {
+    ...actual,
+    buildPharmacistCredentialApiPath: vi.fn(actual.buildPharmacistCredentialApiPath),
+  };
+});
+
+function credentialFixture(id = 'credential_1') {
+  return {
+    id,
+    user_id: 'user_1',
+    user_name: '山田 太郎',
+    certification_type: '研修認定',
+    certification_number: 'CERT-001',
+    issued_date: '2025-04-01T00:00:00.000Z',
+    expiry_date: '2028-03-31T00:00:00.000Z',
+    tenure_years: 5.5,
+    weekly_work_hours: 32,
+    consented_patients: [],
+  };
+}
+
 function defaultUseQueryImpl({ queryKey }: { queryKey: readonly unknown[] }) {
   const key = queryKey[0];
 
   if (key === 'pharmacist-credentials') {
     return {
       data: {
-        data: [
-          {
-            id: 'credential_1',
-            user_id: 'user_1',
-            user_name: '山田 太郎',
-            certification_type: '研修認定',
-            certification_number: 'CERT-001',
-            issued_date: '2025-04-01T00:00:00.000Z',
-            expiry_date: '2028-03-31T00:00:00.000Z',
-            tenure_years: 5.5,
-            weekly_work_hours: 32,
-            consented_patients: [],
-          },
-        ],
+        data: [credentialFixture()],
       },
       isLoading: false,
       isError: false,
@@ -161,6 +187,10 @@ describe('PharmacistCredentialsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useQueryMock.mockImplementation(defaultUseQueryImpl);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ data: {} }), { status: 200 })),
+    );
   });
 
   it('keeps credential list actions at the full medical touch target size', () => {
@@ -251,6 +281,156 @@ describe('PharmacistCredentialsContent', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('list query uses the centralized collection API path', async () => {
+    let capturedQueryFn: (() => Promise<unknown>) | undefined;
+    useQueryMock.mockImplementation(
+      ({
+        queryKey,
+        queryFn,
+      }: {
+        queryKey: readonly unknown[];
+        queryFn?: () => Promise<unknown>;
+      }) => {
+        if (queryKey[0] === 'pharmacist-credentials') {
+          capturedQueryFn = queryFn;
+        }
+        return defaultUseQueryImpl({ queryKey });
+      },
+    );
+    render(<PharmacistCredentialsContent />);
+
+    await capturedQueryFn?.();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      PHARMACIST_CREDENTIALS_API_PATH,
+      expect.objectContaining({ headers: { 'x-org-id': 'org_1' } }),
+    );
+  });
+
+  it('create (POST) uses the centralized collection API path', async () => {
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '資格を登録' }));
+    fireEvent.change(screen.getByLabelText('対象スタッフ'), { target: { value: 'user_1' } });
+    fireEvent.change(screen.getByLabelText('認定種別'), { target: { value: '研修認定' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        PHARMACIST_CREDENTIALS_API_PATH,
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+  });
+
+  it('update (PATCH) encodes a hostile credential id via the shared path helper', async () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[0] === 'pharmacist-credentials') {
+        return {
+          data: {
+            data: [credentialFixture('credential/a b?x#y')],
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return defaultUseQueryImpl({ queryKey });
+    });
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎 の 研修認定 を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/admin/pharmacist-credentials/credential%2Fa%20b%3Fx%23y',
+        expect.objectContaining({ method: 'PATCH' }),
+      );
+    });
+    expect(buildPharmacistCredentialApiPath).toHaveBeenCalledWith('credential/a b?x#y');
+  });
+
+  it('update (PATCH) with a dot-segment credential id fails closed before any PATCH fetch', async () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[0] === 'pharmacist-credentials') {
+        return {
+          data: {
+            data: [credentialFixture('.')],
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return defaultUseQueryImpl({ queryKey });
+    });
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎 の 研修認定 を編集' }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(buildPharmacistCredentialApiPath).toHaveBeenCalledWith('.'));
+    const patchCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'PATCH');
+    expect(patchCalls).toHaveLength(0);
+  });
+
+  it('DELETE encodes a hostile credential id via the shared path helper', async () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[0] === 'pharmacist-credentials') {
+        return {
+          data: {
+            data: [credentialFixture('credential/a b?x#y')],
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return defaultUseQueryImpl({ queryKey });
+    });
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎 の 研修認定 を失効' }));
+    fireEvent.click(screen.getByRole('button', { name: '失効する' }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/admin/pharmacist-credentials/credential%2Fa%20b%3Fx%23y',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+    expect(buildPharmacistCredentialApiPath).toHaveBeenCalledWith('credential/a b?x#y');
+  });
+
+  it('DELETE with a dot-segment credential id fails closed before any DELETE fetch', async () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
+      if (queryKey[0] === 'pharmacist-credentials') {
+        return {
+          data: {
+            data: [credentialFixture('..')],
+          },
+          isLoading: false,
+          isError: false,
+          refetch: vi.fn(),
+        };
+      }
+      return defaultUseQueryImpl({ queryKey });
+    });
+    render(<PharmacistCredentialsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎 の 研修認定 を失効' }));
+    fireEvent.click(screen.getByRole('button', { name: '失効する' }));
+
+    await waitFor(() => expect(buildPharmacistCredentialApiPath).toHaveBeenCalledWith('..'));
+    const deleteCalls = vi
+      .mocked(global.fetch)
+      .mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE');
+    expect(deleteCalls).toHaveLength(0);
   });
 
   it('surfaces a retry instead of a silent-empty staff dropdown when pharmacist options fail', () => {
