@@ -1,9 +1,15 @@
+import { unstable_rethrow } from 'next/navigation';
+import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { billingMonthForJapanTimestamp } from '@/server/services/billing-evidence';
 import { buildTodayOpsRail } from '@/server/services/today-ops-rail';
 import type { BillingCheckResponse, BillingCheckReviewRow } from '@/types/billing-check';
@@ -69,8 +75,20 @@ function buildPatientLabel(
   return `${patientName} 様`;
 }
 
-export const GET = withAuthContext(
-  async (req, ctx) => {
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return typeof err;
+  return /^[A-Za-z0-9_.:-]{1,80}$/.test(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedGET(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canReport',
+    message: '算定チェックの閲覧権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const ctx = authResult.ctx;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const parsed = querySchema.safeParse({
       month: searchParams.get('month') ?? undefined,
@@ -270,9 +288,23 @@ export const GET = withAuthContext(
     })();
 
     return success({ data });
-  },
-  {
-    permission: 'canReport',
-    message: '算定チェックの閲覧権限がありません',
-  },
-);
+  });
+}
+
+export async function GET(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('billing_evidence_check_unhandled_error', undefined, {
+        event: 'billing_evidence_check_unhandled_error',
+        route: req.nextUrl?.pathname ?? '/api/billing-evidence/check',
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
