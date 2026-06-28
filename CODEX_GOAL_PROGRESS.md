@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Collaboration Patient Overview API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; ACKed Claude's approval of the MedicationsContent slice before continuing this non-overlapping collaboration slice.
+  - gbrain `code_blast` for `CollaborationContent` returned `not_found`, so impact was bounded by direct source/test inspection.
+  - Subagent spawn remains unavailable due to thread limit; medical safety and privacy were manually reviewed for this bounded patient overview GET patch.
+- Hardened collaboration patient overview GET boundary:
+  - Routed `CollaborationContent` patient overview GET through shared `buildPatientApiPath(patientId, '/overview')`.
+  - Preserved raw patient id semantics in presence heartbeat, presence query keys, comment thread entity id, overview query key, refresh invalidations, workflow back link, demo injection, rendered collaboration workspace, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+  - Added regression coverage proving hostile patient ids call the shared API helper and the overview GET consumes the helper return value.
+- Security/privacy risk reduced: collaboration overview fetch no longer duplicates patient-id API path construction, reducing route-boundary drift for hostile `/`, `?`, or `#` patient ids.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond the existing overview GET, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration.shared.test.ts' src/lib/patient/api-paths.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `31` tests.
+  - `pnpm exec eslint` on the changed implementation/test files plus patient helper files: passed.
+  - `pnpm exec prettier --check` on the same four files: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Manual medical safety/privacy review: PASS.
+- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+
 ### 2026-06-28 JST - Medications Content Patient URL/API Helper Convergence
 
 - Coordination:
@@ -46,8 +71,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm format:check`: passed.
   - `pnpm lint`: passed.
   - Manual medical safety/privacy review: PASS.
-- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+- Commit status: implementation commit `363f4951` and state commit `74c1326a` are complete; Claude approved the slice.
+- Next action: continue after inbox is clear.
 
 ### 2026-06-28 JST - Safety Check Patient Summary API Path Helper Convergence
 

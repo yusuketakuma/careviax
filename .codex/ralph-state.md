@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-1046 JST
+
+- current task: collaboration patient overview API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `CollaborationContent` returning `not_found`, `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx`, `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx`, `src/lib/patient/api-paths.ts`, and `src/lib/patient/navigation.ts`.
+- files changed: `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx`, `src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `CollaborationContent` still duplicated patient overview GET path construction. Hostile ids containing `/`, `?`, or `#` could drift from the shared encoded/fail-closed patient API path contract.
+- security risks found: reduced collaboration overview route-confusion drift by routing the overview GET through `buildPatientApiPath(patientId, '/overview')`. Added regression tests proving hostile patient ids call the shared API helper and the overview GET consumes helper return values. Existing raw patient id semantics in presence heartbeat, presence query keys, comment thread entity id, overview query key, refresh invalidations, workflow back link, demo injection, rendered collaboration workspace, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond the existing overview GET, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration.shared.test.ts' src/lib/patient/api-paths.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/api-paths.ts` and `src/lib/patient/navigation.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
+- validation results: Prettier write passed. Focused collaboration content/shared + patient API/navigation helper tests passed `4` files / `31` tests. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
+- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the owned collaboration files for implementation commit after cached diff whitespace check.
+
 ### 20260628-1040 JST
 
 - current task: medications content patient URL/API helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL/href construction helper refactor with no new DB reads, network calls beyond existing GETs, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/medications/medications-content.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' src/lib/patient/api-paths.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/api-paths.ts` and `src/lib/patient/navigation.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
 - validation results: Prettier write passed. Focused medications content + patient API/navigation helper tests passed `3` files / `28` tests after updating dot-segment coverage to assert render-time fail-closed behavior. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
-- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only the owned medications-content files for implementation commit after cached diff whitespace check.
+- remaining work: implementation commit `363f4951` and state commit `74c1326a` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: continue non-overlapping API/path helper convergence while monitoring agmsg for Claude interrupts.
 
 ### 20260628-1032 JST
 
