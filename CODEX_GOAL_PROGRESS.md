@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Billing Evidence Stats GET No-Store And PHI-Safe Error Hardening
+
+- Coordination:
+  - Followed rev9 maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/billing-evidence/stats/route.ts` and `route.test.ts`; Claude ACKed no conflict with active visual-verification FE work.
+  - Implementation ran through a Codex maintainer subagent while main Codex stayed open for agmsg.
+  - Claude reviewed the finished BE diff and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, push, deploy, external sends, or destructive operations were touched.
+- Hardened billing-evidence stats API responses:
+  - Added explicit `authenticatedGET` with `requireAuthContext({ permission: 'canReport' })` and `runWithRequestAuthContext(ctx, ...)`.
+  - Wrapped exported `GET` in `withRoutePerformance(req, ...)` to preserve route performance accounting.
+  - Wrapped success, auth failure, and handled 500 responses in `withSensitiveNoStore`.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging: event, route, method, status, and sanitized error name only.
+  - Preserved explicit org scoping, month semantics, all Prisma query shapes/selects/take/order, derived revision/site-config/previsit-blocker calculations, and success response shape `{ data: ... }`.
+  - Added tests proving no-store on success/auth failure/fixed 500 responses, `canReport` auth options, request-context wrapper invocation, route-performance wrapper invocation, no billing lookup on auth failure, and no raw PHI-like error text in response or logger calls.
+- Security/privacy risk reduced: billing evidence, consent/management-plan blocker, visit-schedule, and care-report operational aggregate responses now consistently carry `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`, while ordinary unexpected failures avoid raw error body and raw error log leakage.
+- Performance issue improved: preserved route latency/error metrics with `withRoutePerformance`; request-context propagation is now explicit defense-in-depth while keeping existing `org_id` filters.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/billing-evidence/stats/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `3` tests.
+  - `pnpm exec eslint src/app/api/billing-evidence/stats/route.ts src/app/api/billing-evidence/stats/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/billing-evidence/stats/route.ts src/app/api/billing-evidence/stats/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/billing-evidence/stats/route.ts src/app/api/billing-evidence/stats/route.test.ts`: passed.
+  - Privacy compliance review: no findings.
+  - Medical safety review: no findings.
+  - Final Codex reviewer: no findings.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `3/3` and scoped ESLint.
+- Commit status: implementation committed locally as `d3d2bd12`; this section records the progress-ledger slice for separate commit.
+- Next action: commit this progress-ledger slice, then continue the next backend/API candidate or review Claude FE patches as requested.
+
 ### 2026-06-28 JST - Billing Evidence Check GET No-Store And PHI-Safe Error Hardening
 
 - Coordination:

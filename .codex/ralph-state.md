@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-1501 JST
+
+- current task: `GET /api/billing-evidence/stats` sensitive no-store, fixed-error, PHI-safe observability, and route-performance hardening under rev9 Claude/Codex maker-checker coordination.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`, `node_modules/next/dist/docs/01-app/01-getting-started/10-error-handling.md`, `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/unstable_rethrow.md`, `src/app/api/billing-evidence/stats/route.ts`, `src/app/api/billing-evidence/stats/route.test.ts`, just-landed `src/app/api/billing-evidence/check/route.ts`, `src/app/api/billing-evidence/check/route.test.ts`, and focused diffs/status after implementation.
+- files changed: `src/app/api/billing-evidence/stats/route.ts`, `src/app/api/billing-evidence/stats/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the billing evidence stats GET returned billing evidence, consent/management-plan blocker, visit-schedule, and care-report operational aggregates without explicit sensitive no-store headers or fixed PHI-safe unexpected-error handling.
+- security risks found: reduced cache/log/body leakage risk by wrapping success, auth failure, and handled 500 responses with `withSensitiveNoStore`; converting ordinary unexpected failures to fixed `internalError()`; preserving Next.js control-flow errors with `unstable_rethrow(err)`; and logging only PHI-safe structured metadata with a sanitized error name. Existing `canReport` permission, auth early response behavior, explicit `org_id` scoping, month semantics, Prisma query shapes, derived aggregate logic, DB schema/data, migrations, external sends, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: preserved and extended route observability by wrapping the manual sensitive-route handler in `withRoutePerformance(req, ...)`. Adding `runWithRequestAuthContext(ctx, ...)` is defense-in-depth for request-context propagation while preserving explicit org filters.
+- validation commands: `pnpm exec vitest run src/app/api/billing-evidence/stats/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint src/app/api/billing-evidence/stats/route.ts src/app/api/billing-evidence/stats/route.test.ts`; `pnpm exec prettier --check src/app/api/billing-evidence/stats/route.ts src/app/api/billing-evidence/stats/route.test.ts`; `git diff --check -- src/app/api/billing-evidence/stats/route.ts src/app/api/billing-evidence/stats/route.test.ts`; privacy compliance subagent review; medical safety subagent review; final Codex reviewer; Claude checker review over agmsg.
+- validation results: focused Vitest passed `1` file / `3` tests. Scoped ESLint, scoped Prettier check, and focused diff whitespace check passed. Privacy, medical, and final Codex reviewers reported no findings. Claude checker independently verified the approved `billing-evidence/check` pattern, query-shape preservation, and ran Vitest `3/3` plus scoped ESLint before sending `APPROVED`.
+- remaining work: no remaining work for this bounded BE slice. Implementation commit is `d3d2bd12`; this entry records the progress-ledger slice for separate commit. Claude currently owns active FE visual-verification dirty files and they must not be staged by Codex.
+- next action: commit this ledger slice separately, then continue the next backend/API candidate or review Claude FE patches as requested.
+
 ### 20260628-1444 JST
 
 - current task: `GET /api/billing-evidence/check` sensitive no-store, PHI-safe fixed-error, PHI-safe observability, and route-performance hardening under rev9 Claude/Codex maker-checker coordination.
