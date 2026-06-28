@@ -1396,7 +1396,7 @@ export function ConferencesContent({
                           {format(day, 'd')}
                         </span>
                         {dayNotes.length > 0 ? (
-                          <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                          <Badge variant="outline" className="px-1.5 py-0 text-xs">
                             {dayNotes.length}件
                           </Badge>
                         ) : null}
@@ -1405,13 +1405,13 @@ export function ConferencesContent({
                         {visibleNotes.map((note) => (
                           <div
                             key={note.id}
-                            className="truncate rounded bg-tag-info/10 px-1.5 py-1 text-[11px] text-tag-info"
+                            className="truncate rounded bg-tag-info/10 px-1.5 py-1 text-xs text-tag-info"
                           >
                             {format(parseISO(note.conference_date), 'HH:mm')} {note.title}
                           </div>
                         ))}
                         {overflowCount > 0 ? (
-                          <div className="text-[11px] text-muted-foreground">
+                          <div className="text-xs text-muted-foreground">
                             ほか {overflowCount} 件
                           </div>
                         ) : null}

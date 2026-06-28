@@ -596,36 +596,36 @@ const baseColumns: ColumnDef<DrugMasterRow>[] = [
         {row.original.is_generic && (
           <Badge
             variant="outline"
-            className="border-transparent bg-tag-info/10 text-[10px] text-tag-info"
+            className="border-transparent bg-tag-info/10 text-xs text-tag-info"
           >
             後発
           </Badge>
         )}
         {row.original.is_narcotic && (
-          <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-medium text-tag-hazard">
+          <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-xs font-medium text-tag-hazard">
             <AlertTriangle className="size-2.5" aria-hidden="true" />
             麻薬
           </span>
         )}
         {row.original.is_psychotropic && (
-          <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-medium text-tag-hazard">
+          <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-xs font-medium text-tag-hazard">
             <Shield className="size-2.5" aria-hidden="true" />
             向精神
           </span>
         )}
         {row.original.is_high_risk && (
-          <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-medium text-tag-hazard">
+          <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-xs font-medium text-tag-hazard">
             <AlertTriangle className="size-2.5" aria-hidden="true" />
             ハイリスク
           </span>
         )}
         {row.original.outpatient_injection_eligible && (
-          <span className="inline-flex items-center gap-0.5 rounded border border-tag-info/30 bg-tag-info/10 px-1 py-0.5 text-[10px] font-medium text-tag-info">
+          <span className="inline-flex items-center gap-0.5 rounded border border-tag-info/30 bg-tag-info/10 px-1 py-0.5 text-xs font-medium text-tag-info">
             自己注射
           </span>
         )}
         {row.original.is_lasa_risk && (
-          <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-medium text-tag-hazard">
+          <span className="inline-flex items-center gap-0.5 rounded border border-tag-hazard/30 bg-tag-hazard/10 px-1 py-0.5 text-xs font-medium text-tag-hazard">
             LASA
           </span>
         )}
@@ -788,7 +788,7 @@ function DrugNameCell({ drug }: { drug: DrugMasterRow }) {
         <Pill className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="font-medium text-foreground">{displayName}</span>
         {hasTallMan && (
-          <Badge variant="outline" className="border-tag-hazard/30 text-[10px] text-tag-hazard">
+          <Badge variant="outline" className="border-tag-hazard/30 text-xs text-tag-hazard">
             Tall Man
           </Badge>
         )}
@@ -2355,7 +2355,7 @@ function DrugMasterOperationalContent({
                   <ListChecks className="size-4" aria-hidden="true" />
                   影響レビューキュー
                 </h2>
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-xs">
                   {impactQueueTotalCount.toLocaleString()}件中
                   {impactQueueRows.length.toLocaleString()}件表示
                 </Badge>
@@ -2570,7 +2570,7 @@ function DrugMasterOperationalContent({
                           )}
                         </p>
                       </div>
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-xs">
                         QR {masterChangeReport.price_impact.scanned_draft_count.toLocaleString()}件
                       </Badge>
                     </div>
@@ -2649,7 +2649,7 @@ function DrugMasterOperationalContent({
                   <Building2 className="size-4" aria-hidden="true" />
                   拠点間コピー
                 </h3>
-                <Badge variant="outline" className="text-[10px]">
+                <Badge variant="outline" className="text-xs">
                   コピー先:{' '}
                   {sites.find((site) => site.id === effectiveSelectedSiteId)?.name ?? '未選択'}
                 </Badge>
@@ -2779,7 +2779,7 @@ function DrugMasterOperationalContent({
                         </span>
                         <span className="flex items-center gap-2 text-muted-foreground">
                           <span className="font-mono">{row.drug_master.yj_code}</span>
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-xs">
                             {row.action === 'create'
                               ? '追加'
                               : row.action === 'update'
@@ -2797,7 +2797,7 @@ function DrugMasterOperationalContent({
                   <h4 className="text-sm font-semibold text-foreground">
                     施設別採用品テンプレート
                   </h4>
-                  <Badge variant="outline" className="text-[10px]">
+                  <Badge variant="outline" className="text-xs">
                     {formularyTemplates.length.toLocaleString()}件
                   </Badge>
                 </div>
@@ -2936,7 +2936,7 @@ function DrugMasterOperationalContent({
                           </span>
                           <span className="flex items-center gap-2 text-muted-foreground">
                             <span className="font-mono">{row.drug_master.yj_code}</span>
-                            <Badge variant="outline" className="text-[10px]">
+                            <Badge variant="outline" className="text-xs">
                               {row.action === 'create'
                                 ? '追加'
                                 : row.action === 'update'
@@ -3506,7 +3506,7 @@ function DrugMasterOperationalContent({
                 <div className="space-y-0.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium">{source.label}</span>
-                    <Badge variant="outline" className="text-[10px]">
+                    <Badge variant="outline" className="text-xs">
                       {source.is_free ? '標準取込' : '外部設定'}
                     </Badge>
                   </div>
@@ -3525,12 +3525,12 @@ function DrugMasterOperationalContent({
                         : '直近30日の実行なし'}
                     </span>
                     {source.recent_runs_30d.latest_status && (
-                      <Badge variant="outline" className="text-[10px]">
+                      <Badge variant="outline" className="text-xs">
                         最新実行 {formatImportStatusLabel(source.recent_runs_30d.latest_status)}
                       </Badge>
                     )}
                     {source.recent_runs_30d.failure_streak > 0 && (
-                      <Badge variant="destructive" className="text-[10px]">
+                      <Badge variant="destructive" className="text-xs">
                         連続失敗 {source.recent_runs_30d.failure_streak}回
                       </Badge>
                     )}
@@ -3546,7 +3546,7 @@ function DrugMasterOperationalContent({
                           ? 'destructive'
                           : 'destructive'
                   }
-                  className="text-[10px]"
+                  className="text-xs"
                 >
                   {source.freshness === 'fresh'
                     ? '最新'
@@ -3658,7 +3658,7 @@ function DrugMasterOperationalContent({
                     </span>
                     <Badge
                       variant={log.status === 'failed' ? 'destructive' : 'outline'}
-                      className="text-[10px]"
+                      className="text-xs"
                     >
                       {formatImportStatusLabel(log.status)}
                     </Badge>
@@ -3977,7 +3977,7 @@ function DrugMasterOperationalContent({
                                     ? 'destructive'
                                     : 'secondary'
                               }
-                              className="text-[10px]"
+                              className="text-xs"
                             >
                               {stockConfig?.follow_up_status === 'resolved'
                                 ? '対応済み'
@@ -4230,7 +4230,7 @@ function DrugMasterOperationalContent({
                               <p className="text-sm font-medium text-foreground">
                                 {formatStockHistoryActionLabel(item.action)}
                               </p>
-                              <Badge variant="outline" className="text-[10px]">
+                              <Badge variant="outline" className="text-xs">
                                 {new Date(item.created_at).toLocaleDateString('ja-JP')}
                               </Badge>
                             </div>

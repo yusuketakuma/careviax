@@ -195,7 +195,7 @@ function HandoffItemCard({
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={cn(
-            'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-bold',
+            'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-bold',
             badge.className,
           )}
         >
@@ -561,7 +561,7 @@ function HandoffCommentFeed({
                 <span className="font-semibold text-foreground">
                   {familyNameOf(comment.author_name)}
                 </span>
-                <span className="rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-[11px]">
+                <span className="rounded-full border border-border bg-muted/40 px-1.5 py-0.5 text-xs">
                   {COMMENT_ENTITY_LABELS[comment.entity_type] ?? comment.entity_type}
                 </span>
                 {comment.mentions_me ? (
@@ -696,7 +696,7 @@ function HandoffMessageChannel({
                 <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-foreground">
                   {item.content}
                 </p>
-                <div className="mt-1 flex items-center gap-2 text-[11px]">
+                <div className="mt-1 flex items-center gap-2 text-xs">
                   {outgoing ? (
                     <span className={readByRecipient ? 'text-state-done' : 'text-muted-foreground'}>
                       {readByRecipient ? '既読' : '未読'}
@@ -706,7 +706,7 @@ function HandoffMessageChannel({
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-[11px]"
+                      className="px-3 text-xs"
                       disabled={readMutation.isPending}
                       onClick={() => readMutation.mutate(item.id)}
                       data-testid="handoff-message-confirm"
