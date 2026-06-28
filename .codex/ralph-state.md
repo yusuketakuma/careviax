@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-1010 JST
+
+- current task: patients board patient link helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `PatientBoardCardItem`, raw patient href scan output, `src/app/(dashboard)/patients/patients-board.tsx`, `src/app/(dashboard)/patients/patients-board.test.tsx`, and `src/lib/patient/navigation.ts`.
+- files changed: `src/app/(dashboard)/patients/patients-board.tsx`, `src/app/(dashboard)/patients/patients-board.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `PatientBoardCardItem` still interpolated `card.patient_id` into the patient-name href and fallback patient-detail href. Hostile ids containing `/`, `?`, or `#` could alter patient-detail href boundaries on the board.
+- security risks found: reduced patients-board route-confusion risk by routing patient-name links and missing-`foundation_href` fallback detail links through `buildPatientHref(card.patient_id)`. Added a regression test proving both links consume the shared helper return value for a hostile patient id while existing API-provided `foundation_href` remains respected. Existing board fetch/realtime behavior, filters/sorting/search, action links, foundation API href display, status chips, process dots, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure href construction refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/patients-board.test.tsx' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus `src/lib/patient/navigation.ts`; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
+- validation results: Prettier write passed. Focused patients board + patient navigation tests passed `2` files / `23` tests. Scoped ESLint, scoped Prettier check, full TypeScript after replacing `null` test fixture with `undefined`, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
+- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the owned patients-board files for implementation commit after cached diff whitespace check.
+
 ### 20260628-1001 JST
 
 - current task: compare board patient overview API path and patient link helper convergence.
@@ -30,8 +43,8 @@ Backup directory:
 - performance issues found: none. This is a pure URL/href construction refactor with no new DB reads, network calls beyond existing per-patient overview fetches, loops, cache keys, polling, dependencies, or render-heavy behavior.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/patients/compare/compare-board.tsx' 'src/app/(dashboard)/patients/compare/compare-board.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/patients/compare/compare-board.test.tsx' 'src/app/(dashboard)/patients/compare/compare-card-helpers.test.ts' src/lib/patient/api-paths.test.ts src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test files plus patient helper files; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; manual medical safety and privacy review of the patch scope.
 - validation results: Prettier write passed. Focused compare board/helpers + patient API/navigation helper tests passed `4` files / `33` tests. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, lint, and manual medical safety/privacy review passed.
-- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
-- next action: stage only the owned compare board files for implementation commit after cached diff whitespace check.
+- remaining work: implementation commit `5e12f104` and state commit `ce274e00` are complete; Claude approved the slice. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: continue non-overlapping API/path helper convergence while monitoring agmsg for Claude interrupts.
 
 ### 20260628-0955 JST
 

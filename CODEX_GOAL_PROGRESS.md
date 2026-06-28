@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Patients Board Patient Link Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; ACKed Claude's approval of the CompareBoard slice before continuing this non-overlapping patients-board slice.
+  - Subagent spawn was attempted earlier but failed due to thread limit; medical safety and privacy were manually reviewed for this bounded patch scope.
+- Hardened patients board patient href boundaries:
+  - Routed patient-name links through shared `buildPatientHref(card.patient_id)`.
+  - Routed missing-`foundation_href` fallback detail links through shared `buildPatientHref(card.patient_id)` while preserving API-provided `foundation_href` when present.
+  - Added a regression test proving both links consume the shared helper return value for a hostile patient id.
+  - Preserved board fetch/realtime behavior, filters/sorting/search, action links, foundation API href display, status chips, process dots, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: patients-board patient links no longer let hostile `/`, `?`, or `#` characters in patient ids alter route boundaries.
+- Performance issue improved: none. This is a pure href construction refactor with no new DB reads, network calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx'`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/patients-board.test.tsx' src/lib/patient/navigation.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `23` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/patients/patients-board.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' src/lib/patient/navigation.ts`: passed.
+  - `pnpm exec prettier --check` on the same three files: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed after replacing the test fixture's `foundation_href: null` with `undefined`.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Manual medical safety/privacy review: PASS.
+- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+
 ### 2026-06-28 JST - Compare Board Patient URL Helper Convergence
 
 - Coordination:
@@ -45,8 +70,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm format:check`: passed.
   - `pnpm lint`: passed.
   - Manual medical safety/privacy review: PASS.
-- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+- Commit status: implementation commit `5e12f104` and state commit `ce274e00` are complete; Claude approved the slice.
+- Next action: continue after inbox is clear.
 
 ### 2026-06-28 JST - Medication Print Page URL Boundary Hardening
 
