@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import type { SafetyIssueRecord } from './safety-check.shared';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -29,6 +30,11 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
 
 // encodePathSegment is intentionally NOT mocked so its real fail-closed dot-segment
 // contract (RangeError on '.'/'..') is exercised end-to-end.
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -243,6 +249,7 @@ describe('SafetyCheckContent url/header convergence', () => {
     try {
       await queryConfigs.get('patient-safety-check-summary')!.queryFn();
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(HOSTILE);
       expect(url).toBe(`/api/patients/${ENCODED}`);
       expect(url).not.toContain('%25');
       expect(init.headers).toBe(sentinel);
@@ -273,6 +280,21 @@ describe('SafetyCheckContent url/header convergence', () => {
       }
     },
   );
+
+  it('patient summary GET consumes the shared patient API path helper return value', async () => {
+    const { queryConfigs } = renderSafetyCheck({ patientId: 'patient_1' });
+    const fetchMock = stubFetch();
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__');
+
+    try {
+      await queryConfigs.get('patient-safety-check-summary')!.queryFn();
+      expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1');
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/patients/__helper_patient__');
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/patients/patient_1', expect.anything());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it('cds helper issues the medication-cycles GET then cds/check POST via the shared helpers', async () => {
     const getSentinel = { 'x-org-id': 'org_1', 'x-test-helper': 'buildOrgHeaders' };

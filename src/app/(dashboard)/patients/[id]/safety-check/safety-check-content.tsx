@@ -22,6 +22,7 @@ import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-l
 import { PatientHeader } from '@/components/features/patients/patient-header';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
@@ -336,7 +337,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
   const patientQuery = useQuery({
     queryKey: ['patient-safety-check-summary', patientId, orgId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}`, {
+      const response = await fetch(buildPatientApiPath(patientId), {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('患者情報の取得に失敗しました');
