@@ -279,7 +279,7 @@ export function FacilityStandardsContent() {
 
       {/* Alert banner */}
       {(alertItems.length > 0 || standards.some((item) => item.claim_status === 'blocked')) && (
-        <div className="flex items-start gap-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
+        <div className="flex items-start gap-3 rounded-md border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3 text-sm text-state-confirm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <div>
             <p className="font-medium">更新期限または要件未達の届出があります</p>

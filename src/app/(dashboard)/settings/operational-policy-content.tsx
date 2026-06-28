@@ -786,7 +786,7 @@ export function OperationalPolicyContent() {
                 </PolicyCard>
 
                 <p
-                  className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2.5 text-sm leading-6 text-state-confirm"
+                  className="rounded-md border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2.5 text-sm leading-6 text-state-confirm"
                   data-testid="policy-impact-banner"
                 >
                   設定の変更は保存前に<strong className="font-bold">影響範囲</strong>

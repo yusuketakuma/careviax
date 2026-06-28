@@ -256,7 +256,7 @@ export function MasterHubContent() {
                 ))}
               </div>
               <p
-                className="rounded-md border border-tag-info/30 bg-tag-info/10 px-3 py-2.5 text-sm leading-6 text-tag-info"
+                className="rounded-md border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-2.5 text-sm leading-6 text-tag-info"
                 data-testid="master-hub-freshness-note"
               >
                 <strong className="font-bold">マスターは鮮度の画面:</strong>{' '}

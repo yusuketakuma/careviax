@@ -176,7 +176,7 @@ export function PackagingMethodsContent() {
         </CardHeader>
         <CardContent>
           {methods.length === 0 ? (
-            <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm text-state-confirm">
+            <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm text-state-confirm">
               配薬方法が未登録です。セット作成前に最低1件登録してください。
             </p>
           ) : (

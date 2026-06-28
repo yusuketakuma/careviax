@@ -326,7 +326,7 @@ export default function PerformancePage() {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-          <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3">
+          <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3">
             <p className="text-sm font-medium text-state-confirm">変更承認待ち</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
               {performance.pendingOverrides}
@@ -340,7 +340,7 @@ export default function PerformancePage() {
             </p>
             <p className="mt-1 text-xs text-muted-foreground">割込・緊急訪問</p>
           </div>
-          <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3">
+          <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3">
             <p className="text-sm font-medium text-state-confirm">API P95</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
               {runtime?.summary.overall_p95_ms ?? 0}
@@ -498,7 +498,7 @@ export default function PerformancePage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {performance.pendingOverrides > 0 && (
-              <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-state-confirm">
+              <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-state-confirm">
                 確定済み予定の変更承認が {performance.pendingOverrides} 件あります。
               </p>
             )}
@@ -508,7 +508,7 @@ export default function PerformancePage() {
               </p>
             )}
             {performance.avgRouteScore > 0 && (
-              <p className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-tag-info">
+              <p className="rounded-xl border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-2 text-tag-info">
                 平均移動スコアは {performance.avgRouteScore.toFixed(1)} です。
               </p>
             )}
@@ -695,7 +695,7 @@ export default function PerformancePage() {
                   </div>
                 </div>
                 {(runtime?.summary.total_requests ?? 0) === 0 ? (
-                  <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-state-confirm">
+                  <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-state-confirm">
                     まだ API サンプルがありません。通常画面を操作すると current-process
                     の計測が蓄積されます。
                   </p>

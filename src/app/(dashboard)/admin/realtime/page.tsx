@@ -186,7 +186,7 @@ export default function RealtimePage() {
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-lg border border-state-blocked/30 bg-state-blocked/10 px-4 py-3">
+          <div className="rounded-lg border-l-4 border-border/70 border-l-state-blocked bg-card px-4 py-3">
             <p className="text-sm font-medium text-state-blocked">至急通知</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
               {urgentNotifications.length}
@@ -195,7 +195,7 @@ export default function RealtimePage() {
               未読通知 {liveNotifications.length} 件
             </p>
           </div>
-          <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3">
+          <div className="rounded-lg border-l-4 border-border/70 border-l-state-confirm bg-card px-4 py-3">
             <p className="text-sm font-medium text-state-confirm">高優先ワークベンチ</p>
             <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
               {priorityWorkbenchItems.length}
