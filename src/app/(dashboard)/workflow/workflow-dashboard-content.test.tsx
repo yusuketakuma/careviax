@@ -283,4 +283,75 @@ describe('WorkflowDashboardContent', () => {
     expect(screen.getByRole('button', { name: 'リフィル1件目の再訪候補を生成' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /佐藤花子/ })).toBeNull();
   });
+
+  it('labels communication-queue pseudo channels in Japanese without leaking raw enums', () => {
+    const base = buildWorkflowData();
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        data: {
+          ...base,
+          communication_queue: {
+            ...base.communication_queue,
+            items: [
+              {
+                id: 'cq_portal',
+                queue_type: 'self_report',
+                title: '自己申告の確認',
+                summary: '連絡サマリ甲',
+                channel: 'patient_portal',
+                status: 'pending',
+                priority: 'normal' as const,
+                patient_name: '患者甲',
+                due_at: null,
+                action_href: '/x1',
+                action_label: '確認',
+              },
+              {
+                id: 'cq_collab',
+                queue_type: 'request',
+                title: '依頼の確認',
+                summary: '連絡サマリ乙',
+                channel: 'collaboration',
+                status: 'open',
+                priority: 'high' as const,
+                patient_name: '患者乙',
+                due_at: null,
+                action_href: '/x2',
+                action_label: '確認',
+              },
+              {
+                id: 'cq_external',
+                queue_type: 'external_share',
+                title: '共有期限の確認',
+                summary: '連絡サマリ丙',
+                channel: 'external_portal',
+                status: 'pending',
+                priority: 'urgent' as const,
+                patient_name: '患者丙',
+                due_at: null,
+                action_href: '/x3',
+                action_label: '確認',
+              },
+            ],
+          },
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(
+      <WorkflowDashboardContent initialFocus="communication" initialContext="dashboard_home" />,
+    );
+
+    // Pseudo channels render as Japanese labels (proves the items mounted + mapped)...
+    expect(screen.queryAllByText('患者ポータル').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('多職種連携').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('外部共有').length).toBeGreaterThan(0);
+    // ...and the raw English enum tokens never reach the DOM.
+    expect(screen.queryByText('patient_portal')).toBeNull();
+    expect(screen.queryByText('collaboration')).toBeNull();
+    expect(screen.queryByText('external_portal')).toBeNull();
+  });
 });

@@ -30,8 +30,10 @@ import { StagnationIndicator } from '@/components/features/workflow/stagnation-i
 import { cn } from '@/lib/utils';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import {
+  COMMUNICATION_QUEUE_CHANNEL_LABELS,
   MEDICATION_CYCLE_STATUS_ROLE,
   PRIORITY_ROLE,
+  RISK_LEVEL_LABELS,
   SELF_REPORT_STATUS_LABELS,
   type StatusRoleOrNeutral,
 } from '@/lib/constants/status-labels';
@@ -436,7 +438,7 @@ export function WorkflowDashboardView({
                       </p>
                     </div>
                     <Badge variant={item.priority === 'urgent' ? 'destructive' : 'outline'}>
-                      {item.channel}
+                      {COMMUNICATION_QUEUE_CHANNEL_LABELS[item.channel] ?? item.channel}
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{item.summary}</p>
@@ -822,7 +824,7 @@ export function WorkflowDashboardView({
                       </p>
                     </div>
                     <Badge variant={item.level === 'high' ? 'destructive' : 'outline'}>
-                      {item.level} / {item.score}
+                      {RISK_LEVEL_LABELS[item.level] ?? item.level} / {item.score}
                     </Badge>
                   </div>
                   <div className="space-y-1">

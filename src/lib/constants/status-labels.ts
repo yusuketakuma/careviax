@@ -105,6 +105,27 @@ export const CHANNEL_LABELS: Record<string, string> = {
   ses: 'メール(SES)',
 };
 
+/**
+ * 連携ダッシュボードの「連絡キュー」channel 表示ラベル。
+ * 配送系 channel(CHANNEL_LABELS)に加え、communication-queue が出す
+ * 擬似 channel(patient_portal/collaboration/external_portal)も網羅する。
+ * 配送 channel セレクタ(document-delivery-rule-manager 等)を汚さないため
+ * CHANNEL_LABELS 本体は拡張せず、ここで spread して別マップにしている。
+ */
+export const COMMUNICATION_QUEUE_CHANNEL_LABELS: Record<string, string> = {
+  ...CHANNEL_LABELS,
+  patient_portal: '患者ポータル',
+  collaboration: '多職種連携',
+  external_portal: '外部共有',
+};
+
+/** 患者リスク水準(stable/watch/high)の日本語ラベル。patient-risk-card の表記と統一。 */
+export const RISK_LEVEL_LABELS: Record<string, string> = {
+  stable: '安定',
+  watch: '注意',
+  high: '高',
+};
+
 export const SCHEDULE_STATUS_LABELS: Record<string, string> = {
   planned: '予定',
   in_preparation: '準備中',
