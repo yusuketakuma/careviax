@@ -23,6 +23,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Staff Workload GET Route Performance And PHI-Safe Logging Hardening
+
+- Coordination:
+  - Followed maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/staff-workload/route.ts` and `route.test.ts`; Claude ACKed no FE conflict.
+  - Implementation ran through a Codex maintainer subagent while main Codex stayed open for agmsg and FE review interrupts.
+  - Privacy, medical safety, general Codex review, and verifier subagents approved before Claude checker review.
+  - Claude reviewed the BE diff, independently ran focused Vitest and scoped ESLint, and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, external sends, deploy, or destructive operations were touched by Codex.
+- Hardened staff workload API observability and request context:
+  - Kept the existing explicit `requireAuthContext({ permission: 'canVisit' })`, `withSensitiveNoStore`, `unstable_rethrow(err)`, and fixed `internalError()` 500 behavior.
+  - Wrapped the exported `GET` in `withRoutePerformance(req, ...)`.
+  - Added `runWithRequestAuthContext(ctx, ...)` after successful auth as RLS/request-context defense-in-depth.
+  - Added PHI-safe structured `logger.error` for ordinary unexpected failures without passing the raw error object.
+  - Restricted logged `error_name` to an allowlist, falling back to `Error` for crafted names.
+  - Preserved auth/query validation order, explicit `org_id` scoping, active staff filtering, the raw SQL `ROW_NUMBER()` task preview query, visit/dispense aggregations, workload score formula, and the existing `{ data, date }` response shape.
+  - Added tests for route-performance wrapper invocation, request auth-context wrapper invocation, no-store auth failure before staff queries, fixed no-store 500, and absence of raw PHI-like patient/task text, SQL text, stack text, crafted error names, and raw error object from response/log surfaces.
+- Security/privacy risk reduced: staff workload responses already used sensitive no-store and fixed 500 behavior; this slice adds PHI-safe structured observability and request-context propagation without expanding returned data.
+- Performance issue improved: route latency/error metrics are now captured with `withRoutePerformance`; no DB query shape or additional data read was introduced.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/staff-workload/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - `pnpm exec eslint src/app/api/staff-workload/route.ts src/app/api/staff-workload/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/staff-workload/route.ts src/app/api/staff-workload/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/staff-workload/route.ts src/app/api/staff-workload/route.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - Privacy compliance review: no findings.
+  - Medical safety review: no findings.
+  - General Codex review: no findings.
+  - Verifier subagent re-ran focused Vitest, scoped ESLint, scoped Prettier check, and focused diff whitespace check: all passed.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `7/7` and scoped ESLint, and verified query-shape preservation.
+- Commit status: implementation committed locally as `44ca344f`; this section records the progress-ledger slice for separate commit.
+- Next action: commit this progress-ledger slice, notify Claude, push grouped main commits, then continue the next backend/API candidate or review Claude FE patches as requested.
+
 ### 2026-06-28 JST - Billing Evidence Analytics GET No-Store And PHI-Safe Error Hardening
 
 - Coordination:
