@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -19,6 +20,11 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
     buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
     buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
   };
+});
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
 });
 
 vi.mock('next/navigation', () => ({
@@ -636,6 +642,7 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     try {
       await queryConfigs.get('patient-prescriptions')!.queryFn();
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(HOSTILE, '/prescriptions');
       expect(url).toBe(`/api/patients/${ENCODED}/prescriptions?limit=100`);
       expect(url).not.toContain('%25');
       expect(init.headers).toBe(sentinel);
@@ -666,6 +673,24 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
       }
     },
   );
+
+  it('prescriptions GET consumes the shared patient API path helper return value', async () => {
+    const { queryConfigs } = renderHistory({ patientId: 'patient_1' });
+    const fetchMock = stubFetch({ patient: {}, data: [], diff_review: null, diff_meta: null });
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__/rx');
+
+    try {
+      await queryConfigs.get('patient-prescriptions')!.queryFn();
+      expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1', '/prescriptions');
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/patients/__helper_patient__/rx?limit=100');
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        '/api/patients/patient_1/prescriptions?limit=100',
+        expect.anything(),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it('drug-masters batch POST adopts json helper with the exact yj_codes body (static path)', async () => {
     const sentinel = {

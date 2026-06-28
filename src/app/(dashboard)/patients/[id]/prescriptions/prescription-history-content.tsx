@@ -42,7 +42,7 @@ import {
 import { HelpPopover } from '@/components/ui/help-popover';
 import { formatDateKey } from '@/lib/date-key';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
@@ -1187,12 +1187,9 @@ export function PrescriptionHistoryContent() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['patient-prescriptions', orgId, patientId],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/patients/${encodePathSegment(patientId)}/prescriptions?limit=100`,
-        {
-          headers: buildOrgHeaders(orgId),
-        },
-      );
+      const res = await fetch(`${buildPatientApiPath(patientId, '/prescriptions')}?limit=100`, {
+        headers: buildOrgHeaders(orgId),
+      });
       if (!res.ok) throw new Error('処方履歴の取得に失敗しました');
       return res.json() as Promise<{
         patient: PatientInfo;
