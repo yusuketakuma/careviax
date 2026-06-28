@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { PatientInsuranceCard } from './patient-insurance-card';
 
 setupDomTestEnv();
@@ -25,6 +26,11 @@ vi.mock('sonner', () => ({
     error: vi.fn(),
   },
 }));
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
 
 describe('PatientInsuranceCard', () => {
   beforeEach(() => {
@@ -264,6 +270,7 @@ describe('PatientInsuranceCard', () => {
       await queryConfigs[0]?.queryFn?.();
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(hostileId, '/insurance');
       expect(url).toBe(`/api/patients/${encodeURIComponent(hostileId)}/insurance`);
       expect(url).not.toContain('?x=y');
       expect(url).not.toContain('#z');
@@ -291,6 +298,10 @@ describe('PatientInsuranceCard', () => {
       });
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(
+        hostilePatientId,
+        `/insurance/${encodeURIComponent(hostileInsuranceId)}`,
+      );
       expect(url).toBe(
         `/api/patients/${encodeURIComponent(hostilePatientId)}/insurance/${encodeURIComponent(hostileInsuranceId)}`,
       );
@@ -322,6 +333,7 @@ describe('PatientInsuranceCard', () => {
       await mutationConfigs[0]?.mutationFn?.({ form: sampleForm });
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(hostilePatientId, '/insurance');
       expect(url).toBe(`/api/patients/${encodeURIComponent(hostilePatientId)}/insurance`);
       expect(init.method).toBe('POST');
       expect(init.headers).toEqual(buildOrgJsonHeaders('org_1'));
@@ -344,12 +356,56 @@ describe('PatientInsuranceCard', () => {
       await mutationConfigs[1]?.mutationFn?.(hostileInsuranceId);
 
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(
+        hostilePatientId,
+        `/insurance/${encodeURIComponent(hostileInsuranceId)}`,
+      );
       expect(url).toBe(
         `/api/patients/${encodeURIComponent(hostilePatientId)}/insurance/${encodeURIComponent(hostileInsuranceId)}`,
       );
       expect(url).not.toContain('%25');
       expect(init.method).toBe('DELETE');
       expect(init.headers).toEqual(buildOrgHeaders('org_1'));
+    } finally {
+      vi.unstubAllGlobals();
+      vi.clearAllMocks();
+    }
+  });
+
+  it('routes insurance list/save/delete paths through the shared patient API path helper return values', async () => {
+    const patientId = 'patient_1';
+    const insuranceId = 'ins_1';
+    const { queryConfigs, mutationConfigs } = captureConfigs();
+    const fetchMock = okFetch();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.mocked(buildPatientApiPath)
+      .mockReturnValueOnce('/api/patients/__helper_patient__/insurance')
+      .mockReturnValueOnce('/api/patients/__helper_patient__/insurance')
+      .mockReturnValueOnce('/api/patients/__helper_patient__/insurance/ins_1')
+      .mockReturnValueOnce('/api/patients/__helper_patient__/insurance/ins_1');
+
+    try {
+      render(<PatientInsuranceCard patientId={patientId} orgId="org_1" />);
+
+      await queryConfigs[0]?.queryFn?.();
+      await mutationConfigs[0]?.mutationFn?.({ form: sampleForm });
+      await mutationConfigs[0]?.mutationFn?.({ insuranceId, form: sampleForm });
+      await mutationConfigs[1]?.mutationFn?.(insuranceId);
+
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(1, patientId, '/insurance');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(2, patientId, '/insurance');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(3, patientId, '/insurance/ins_1');
+      expect(buildPatientApiPath).toHaveBeenNthCalledWith(4, patientId, '/insurance/ins_1');
+      expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+        '/api/patients/__helper_patient__/insurance',
+        '/api/patients/__helper_patient__/insurance',
+        '/api/patients/__helper_patient__/insurance/ins_1',
+        '/api/patients/__helper_patient__/insurance/ins_1',
+      ]);
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        `/api/patients/${patientId}/insurance`,
+        expect.anything(),
+      );
     } finally {
       vi.unstubAllGlobals();
       vi.clearAllMocks();

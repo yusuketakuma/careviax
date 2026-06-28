@@ -22,6 +22,7 @@ import {
 } from '@/lib/patient/insurance-summary';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
@@ -575,7 +576,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
   const insuranceQuery = useQuery<InsuranceResponse>({
     queryKey: ['patient-insurance', orgId, patientId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}/insurance`, {
+      const response = await fetch(buildPatientApiPath(patientId, '/insurance'), {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('患者保険情報の取得に失敗しました');
@@ -589,8 +590,8 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
       const { insuranceId } = args;
       const response = await fetch(
         insuranceId
-          ? `/api/patients/${encodePathSegment(patientId)}/insurance/${encodePathSegment(insuranceId)}`
-          : `/api/patients/${encodePathSegment(patientId)}/insurance`,
+          ? buildPatientApiPath(patientId, `/insurance/${encodePathSegment(insuranceId)}`)
+          : buildPatientApiPath(patientId, '/insurance'),
         {
           method: insuranceId ? 'PUT' : 'POST',
           headers: buildOrgJsonHeaders(orgId),
@@ -626,7 +627,7 @@ export function PatientInsuranceCard({ patientId, orgId }: { patientId: string; 
   const deleteMutation = useMutation({
     mutationFn: async (insuranceId: string) => {
       const response = await fetch(
-        `/api/patients/${encodePathSegment(patientId)}/insurance/${encodePathSegment(insuranceId)}`,
+        buildPatientApiPath(patientId, `/insurance/${encodePathSegment(insuranceId)}`),
         {
           method: 'DELETE',
           headers: buildOrgHeaders(orgId),
