@@ -7,9 +7,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { CheckCircle2, ClipboardPlus, Edit3, Plus, Printer, QrCode, RefreshCw } from 'lucide-react';
+import {
+  CheckCircle2,
+  ClipboardPlus,
+  Edit3,
+  Pill,
+  Plus,
+  Printer,
+  QrCode,
+  RefreshCw,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Card, CardAction, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { HelpPopover } from '@/components/ui/help-popover';
@@ -939,12 +949,11 @@ export function MedicationsContent({
         {isLoading ? (
           <div className="py-8 text-center text-sm text-muted-foreground">読み込み中...</div>
         ) : profiles.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border py-12 text-center">
-            <p className="text-sm text-muted-foreground">服薬中の薬剤がありません</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              「薬剤追加」またはQRスキャンで登録してください
-            </p>
-          </div>
+          <EmptyState
+            icon={Pill}
+            title="服薬中の薬剤がありません"
+            description="「薬剤追加」またはQRスキャンで登録してください"
+          />
         ) : (
           <div className="space-y-6">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">

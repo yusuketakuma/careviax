@@ -1,13 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
 import { format, parseISO } from 'date-fns';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Route } from 'lucide-react';
 import { toast } from 'sonner';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -489,19 +490,13 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
 
   if (compareVisits.length === 0) {
     return (
-      <div
-        className="rounded-xl border border-border/70 bg-card p-6"
-        data-testid="route-scenario-compare"
-      >
+      <div className="space-y-4" data-testid="route-scenario-compare">
         <h1 className="text-base font-bold text-foreground">ルート案を比べる</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          本日({targetDate})の個人宅訪問の予定がないため、比較できるルート案がありません。
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          <Link href="/schedules" className="font-medium text-primary hover:underline">
-            スケジュールへ戻る →
-          </Link>
-        </p>
+        <EmptyState
+          icon={Route}
+          title={`本日(${targetDate})の個人宅訪問の予定がないため、比較できるルート案がありません。`}
+          action={{ label: 'スケジュールへ戻る', href: '/schedules' }}
+        />
       </div>
     );
   }

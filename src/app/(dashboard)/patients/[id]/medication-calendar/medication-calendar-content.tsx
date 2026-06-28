@@ -13,8 +13,16 @@ import {
   addMonths,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertTriangle, ChevronLeft, ChevronRight, FileText, Printer } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarX,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Printer,
+} from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
@@ -354,9 +362,11 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
           </button>
         </div>
       ) : profiles.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card px-4 py-6 text-sm text-muted-foreground">
-          現在の服薬情報が登録されていません。服薬管理画面で現行処方を登録するとカレンダーに反映されます。
-        </div>
+        <EmptyState
+          icon={CalendarX}
+          title="現在の服薬情報が登録されていません"
+          description="服薬管理画面で現行処方を登録するとカレンダーに反映されます。"
+        />
       ) : null}
 
       {!medicationQuery.isLoading &&

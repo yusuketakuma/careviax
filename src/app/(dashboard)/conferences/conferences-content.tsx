@@ -33,6 +33,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
@@ -1273,9 +1274,7 @@ export function ConferencesContent({
         ) : noteViewMode === 'list' ? (
           <div className="space-y-4">
             {notes.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                カンファレンス記録はまだありません
-              </div>
+              <EmptyState icon={Users} title="カンファレンス記録はまだありません" />
             ) : (
               notes.map((note) => (
                 <div key={note.id} className="space-y-3">

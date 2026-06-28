@@ -14,6 +14,7 @@ import {
   PhoneCall,
   RefreshCw,
   Route,
+  SearchX,
   UserRound,
   XCircle,
 } from 'lucide-react';
@@ -42,6 +43,7 @@ import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
@@ -2074,11 +2076,7 @@ export function ScheduleProposalsContent({
               </CardContent>
             </Card>
           ) : visibleProposals.length === 0 ? (
-            <Card>
-              <CardContent className="py-10 text-sm text-muted-foreground">
-                条件に一致する訪問候補はありません。
-              </CardContent>
-            </Card>
+            <EmptyState icon={SearchX} title="条件に一致する訪問候補はありません。" />
           ) : (
             visibleProposals.map((proposal) => {
               const proposalPreview = proposalPreviewMap?.get(proposal.id);

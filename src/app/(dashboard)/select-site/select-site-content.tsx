@@ -2,8 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Building2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -102,9 +104,11 @@ export function SelectSiteContent() {
           />
         </div>
       ) : sites.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          所属している薬局がありません。管理者にお問い合わせください。
-        </p>
+        <EmptyState
+          icon={Building2}
+          title="所属している薬局がありません"
+          description="管理者にお問い合わせください。"
+        />
       ) : (
         <>
           <div
