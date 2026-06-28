@@ -26,10 +26,10 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ['residual-medications-chart', orgId, patientId],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/residual-medications?patient_id=${patientId}&limit=100`,
-        { headers: { 'x-org-id': orgId } }
-      );
+      const params = new URLSearchParams({ patient_id: patientId, limit: '100' });
+      const res = await fetch(`/api/residual-medications?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
       if (!res.ok) throw new Error('残薬データの取得に失敗しました');
       return res.json() as Promise<{ data: ResidualRecord[] }>;
     },
@@ -84,7 +84,8 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
   const plotHeight = chartHeight - paddingY * 2;
 
   const points = chartData.map((d, i) => {
-    const x = paddingX + (chartData.length > 1 ? (i / (chartData.length - 1)) * plotWidth : plotWidth / 2);
+    const x =
+      paddingX + (chartData.length > 1 ? (i / (chartData.length - 1)) * plotWidth : plotWidth / 2);
     const y = paddingY + plotHeight - (d.totalExcessDays / maxVal) * plotHeight;
     return { x, y, ...d };
   });
@@ -139,14 +140,10 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
           {/* Data points */}
           {points.map((p, i) => (
             <g key={p.date}>
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={3}
-                fill="hsl(var(--primary))"
-              />
+              <circle cx={p.x} cy={p.y} r={3} fill="hsl(var(--primary))" />
               {/* X-axis labels (show every nth to avoid overlap) */}
-              {(i % Math.max(1, Math.floor(chartData.length / 8)) === 0 || i === chartData.length - 1) && (
+              {(i % Math.max(1, Math.floor(chartData.length / 8)) === 0 ||
+                i === chartData.length - 1) && (
                 <text
                   x={p.x}
                   y={chartHeight - 2}
