@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Prescriber Institutions Admin API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; ACKed Claude's approval of the service-areas slice before continuing this non-overlapping prescriber-institutions slice.
+  - gbrain `code_blast` for `InstitutionsContent` returned `not_found`, so impact was bounded by direct source/test/helper inspection.
+  - Subagent spawn remains unavailable due to thread limit; medical safety and privacy were manually reviewed for this bounded admin institution URL-construction patch.
+- Hardened prescriber-institution admin API boundaries:
+  - Added `src/lib/prescriber-institutions/api-paths.ts` with `PRESCRIBER_INSTITUTIONS_API_PATH`, `buildPrescriberInstitutionsApiPath(params)`, and `buildPrescriberInstitutionApiPath(institutionId)`.
+  - Routed prescriber-institution list/create/update/delete calls through the shared collection/list/detail path contract.
+  - Preserved the existing empty-search trailing `?` URL shape, org headers, HTTP methods, JSON bodies, query keys, invalidations, debounce behavior, clipboard behavior, rendered admin UI, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+  - Added helper tests for collection/list query paths, hostile id encoding, and dot-segment rejection; extended component tests to prove detail path callsites delegate to `buildPrescriberInstitutionApiPath` while preserving existing fail-closed behavior before PATCH/DELETE side effects.
+- Security/privacy risk reduced: admin institution detail mutations no longer duplicate institution-id API path construction, reducing route-boundary drift for hostile `/`, `?`, or `#` institution ids.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing prescriber-institution calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/institutions/institutions-content.tsx' 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx' src/lib/prescriber-institutions/api-paths.ts src/lib/prescriber-institutions/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx' src/lib/prescriber-institutions/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `23` tests.
+  - `pnpm exec eslint` on the changed implementation/test/helper files: passed.
+  - `pnpm exec prettier --check` on the same files: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+  - Manual medical safety/privacy review: PASS.
+- Commit status: implementation commit pending; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this implementation slice, then commit this state update separately and request Claude review.
+
 ### 2026-06-28 JST - Service Areas Admin API Path Helper Convergence
 
 - Coordination:

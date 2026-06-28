@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260628-1131 JST
+
+- current task: prescriber institutions admin API path helper convergence.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox/send for `phos/codex`, gbrain `code_blast` for `InstitutionsContent` returning `not_found`, raw `/api/prescriber-institutions` and `encodePathSegment` scan output, `src/app/(dashboard)/admin/institutions/institutions-content.tsx`, `src/app/(dashboard)/admin/institutions/institutions-content.test.tsx`, and existing `src/lib/*/api-paths.ts` helper patterns.
+- files changed: `src/lib/prescriber-institutions/api-paths.ts`, `src/lib/prescriber-institutions/api-paths.test.ts`, `src/app/(dashboard)/admin/institutions/institutions-content.tsx`, `src/app/(dashboard)/admin/institutions/institutions-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: `InstitutionsContent` duplicated prescriber-institution list/detail API path construction. Hostile institution ids containing `/`, `?`, or `#` could drift from the shared encoded/fail-closed detail path contract in future callsites.
+- security risks found: reduced prescriber-institution route-confusion drift by centralizing the collection path in `PRESCRIBER_INSTITUTIONS_API_PATH`, list query path in `buildPrescriberInstitutionsApiPath(params)`, and detail paths in `buildPrescriberInstitutionApiPath(institutionId)`. Kept empty search params producing the existing trailing `?` list URL and exact dot-segment ids fail-closed before PATCH/DELETE side effects. Existing org headers, HTTP methods, JSON bodies, query keys, invalidations, debounce behavior, clipboard behavior, rendered admin UI, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries were not changed.
+- performance issues found: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing prescriber-institution GET/POST/PATCH/DELETE calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/admin/institutions/institutions-content.tsx' 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx' src/lib/prescriber-institutions/api-paths.ts src/lib/prescriber-institutions/api-paths.test.ts`; `pnpm exec vitest run 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx' src/lib/prescriber-institutions/api-paths.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for the changed implementation/test/helper files; scoped Prettier check for the same files; `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; `git diff --check`; manual medical safety and privacy review of this bounded admin institution URL-construction patch.
+- validation results: Prettier write passed. Focused institutions content + prescriber-institution helper tests passed `2` files / `23` tests. Scoped ESLint, scoped Prettier check, full TypeScript, `typecheck:no-unused`, format check, repo-wide lint, diff whitespace check, and manual medical safety/privacy review passed.
+- remaining work: implementation commit and state commit are pending, then send Claude a `PATCH_REVIEW_REQUEST`. The broader all-page PH-OS UI/UX polish and backend/helper convergence loop remains incomplete.
+- next action: stage only the owned institutions files for implementation commit after cached diff whitespace check.
+
 ### 20260628-1125 JST
 
 - current task: service areas admin API path helper convergence.
