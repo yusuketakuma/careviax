@@ -34,6 +34,7 @@ import type {
   ScheduleDayBoardOperationalTask,
   ScheduleDayBoardResponse,
 } from '@/types/schedule-day-board';
+import { PRIORITY_DISPLAY_LABELS } from '@/lib/constants/status-labels';
 import { TASK_TYPE_LABELS, formatTaskDueLabel, taskPriorityClass } from './day-view.shared';
 import {
   BOARD_END_MINUTES,
@@ -1239,16 +1240,16 @@ function ScheduleOperationalTasksCard({
               className="rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
             >
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded bg-background px-1.5 py-0.5 text-[11px] font-bold text-muted-foreground">
+                <span className="rounded bg-background px-1.5 py-0.5 text-xs font-bold text-muted-foreground">
                   {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
                 </span>
                 <span
                   className={cn(
-                    'rounded px-1.5 py-0.5 text-[11px] font-bold',
+                    'rounded px-1.5 py-0.5 text-xs font-bold',
                     taskPriorityClass(task.priority),
                   )}
                 >
-                  {task.priority}
+                  {PRIORITY_DISPLAY_LABELS[task.priority] ?? task.priority}
                 </span>
                 <span className="ml-auto text-xs font-semibold text-muted-foreground">
                   期限 {formatTaskDueLabel(task)}

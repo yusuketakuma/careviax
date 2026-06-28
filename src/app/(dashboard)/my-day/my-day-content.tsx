@@ -533,12 +533,12 @@ export function MyDayContent({
                         <div className="ml-2 flex shrink-0 items-center gap-1">
                           <Badge
                             variant="outline"
-                            className={`text-[10px] ${statusBadgeClass(visit.schedule_status)}`}
+                            className={`text-xs ${statusBadgeClass(visit.schedule_status)}`}
                           >
                             {SCHEDULE_STATUS_LABELS[visit.schedule_status] ?? visit.schedule_status}
                           </Badge>
                           {!visit.preparation?.prepared_at && (
-                            <StateBadge role="confirm" showIcon={false} className="text-[10px]">
+                            <StateBadge role="confirm" showIcon={false} className="text-xs">
                               準備未
                             </StateBadge>
                           )}
@@ -581,9 +581,7 @@ export function MyDayContent({
                           className="flex min-h-[70px] flex-col justify-center rounded-md border p-2 text-center"
                         >
                           <p className="text-lg font-bold text-foreground">{step.count}</p>
-                          <p className="text-[10px] leading-tight text-muted-foreground">
-                            {step.label}
-                          </p>
+                          <p className="text-xs text-muted-foreground">{step.label}</p>
                         </div>
                       ))}
                   </div>
@@ -691,8 +689,8 @@ export function MyDayContent({
                         <div className="ml-2 flex shrink-0 items-center gap-1">
                           {(task.priority === 'urgent' || task.priority === 'high') && (
                             <Badge
-                              variant={task.priority === 'urgent' ? 'destructive' : 'secondary'}
-                              className="text-[10px]"
+                              variant="outline"
+                              className={`text-xs ${PRIORITY_STYLES[task.priority] ?? ''}`}
                             >
                               {task.priority === 'urgent' ? '緊急' : '高'}
                             </Badge>

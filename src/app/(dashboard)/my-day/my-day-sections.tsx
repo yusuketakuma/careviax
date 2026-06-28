@@ -47,7 +47,7 @@ export function QuickStat({
       <p className={`text-xl font-bold ${urgent ? 'text-state-blocked' : 'text-foreground'}`}>
         {loading ? '...' : value}
       </p>
-      <p className="text-[10px] leading-tight text-muted-foreground">{label}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }
