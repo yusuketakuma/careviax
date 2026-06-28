@@ -417,7 +417,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                       <tbody>
                         {data.lines.map((line) => (
                           <tr key={line.id} className="border-b border-border/40 last:border-0">
-                            <td className="py-2.5 pr-3 text-xs text-muted-foreground">
+                            <td className="py-2.5 pr-3 text-xs text-muted-foreground tabular-nums">
                               {line.line_number}
                             </td>
                             <td className="py-2.5 pr-3">
@@ -445,9 +445,9 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                                 </p>
                               )}
                             </td>
-                            <td className="py-2.5 pr-3">{line.dose}</td>
+                            <td className="py-2.5 pr-3 tabular-nums">{line.dose}</td>
                             <td className="py-2.5 pr-3">{line.frequency}</td>
-                            <td className="py-2.5 pr-3">{line.days}日</td>
+                            <td className="py-2.5 pr-3 tabular-nums">{line.days}日</td>
                             <td className="py-2.5 pr-3 max-md:hidden text-muted-foreground">
                               {line.route ? (ROUTE_LABELS[line.route] ?? line.route) : '—'}
                             </td>

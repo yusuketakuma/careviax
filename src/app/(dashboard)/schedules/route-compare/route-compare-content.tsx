@@ -568,13 +568,13 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
                     <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
                       <div className="rounded-md bg-muted/50 px-2 py-1.5">
                         <p className="text-muted-foreground">移動</p>
-                        <p className="font-semibold text-foreground">
+                        <p className="font-semibold text-foreground tabular-nums">
                           {comparison.travelMinutes}分
                         </p>
                       </div>
                       <div className="rounded-md bg-muted/50 px-2 py-1.5">
                         <p className="text-muted-foreground">推奨比</p>
-                        <p className="font-semibold text-foreground">
+                        <p className="font-semibold text-foreground tabular-nums">
                           {comparison.travelDeltaMinutes === 0
                             ? '±0分'
                             : `+${comparison.travelDeltaMinutes}分`}
@@ -582,7 +582,9 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
                       </div>
                       <div className="rounded-md bg-muted/50 px-2 py-1.5">
                         <p className="text-muted-foreground">訪問</p>
-                        <p className="font-semibold text-foreground">{comparison.stopCount}件</p>
+                        <p className="font-semibold text-foreground tabular-nums">
+                          {comparison.stopCount}件
+                        </p>
                       </div>
                     </div>
                   </div>

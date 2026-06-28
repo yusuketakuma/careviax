@@ -174,10 +174,14 @@ export default function MedicationPrintPage() {
                   profiles.map((profile) => (
                     <tr key={profile.id}>
                       <td className="px-2 py-1">{profile.drug_name}</td>
-                      <td className="px-2 py-1">{profile.dose ?? '—'}</td>
+                      <td className="px-2 py-1 tabular-nums">{profile.dose ?? '—'}</td>
                       <td className="px-2 py-1">{profile.frequency ?? '—'}</td>
-                      <td className="px-2 py-1">{formatDateLabel(profile.start_date)}</td>
-                      <td className="px-2 py-1">{formatDateLabel(profile.end_date)}</td>
+                      <td className="px-2 py-1 tabular-nums">
+                        {formatDateLabel(profile.start_date)}
+                      </td>
+                      <td className="px-2 py-1 tabular-nums">
+                        {formatDateLabel(profile.end_date)}
+                      </td>
                       <td className="px-2 py-1">{profile.prescriber ?? '—'}</td>
                       <td className="px-2 py-1">{profile.is_current ? '服薬中' : '終了'}</td>
                     </tr>

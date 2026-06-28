@@ -207,7 +207,9 @@ export default function PatientVisitRecordsPrintPage() {
                 {records.length > 0 ? (
                   records.map((record) => (
                     <tr key={record.id}>
-                      <td className="px-2 py-1">{formatDateLabel(record.visit_date)}</td>
+                      <td className="px-2 py-1 tabular-nums">
+                        {formatDateLabel(record.visit_date)}
+                      </td>
                       <td className="px-2 py-1">
                         {record.schedule
                           ? (visitTypeLabels[record.schedule.visit_type] ??
@@ -217,10 +219,12 @@ export default function PatientVisitRecordsPrintPage() {
                       <td className="px-2 py-1">
                         {outcomeLabels[record.outcome_status] ?? record.outcome_status}
                       </td>
-                      <td className="px-2 py-1">
+                      <td className="px-2 py-1 tabular-nums">
                         {formatDateLabel(record.next_visit_suggestion_date)}
                       </td>
-                      <td className="px-2 py-1">{formatDateTimeLabel(record.updated_at)}</td>
+                      <td className="px-2 py-1 tabular-nums">
+                        {formatDateTimeLabel(record.updated_at)}
+                      </td>
                     </tr>
                   ))
                 ) : (
