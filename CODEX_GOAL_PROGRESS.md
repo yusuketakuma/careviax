@@ -23,6 +23,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Billing Evidence Analytics GET No-Store And PHI-Safe Error Hardening
+
+- Coordination:
+  - Followed maker/checker split: Codex owned backend/API implementation; Claude owned checker review.
+  - Sent `LOCK` for `src/app/api/billing-evidence/analytics/route.ts` and `route.test.ts`; Claude ACKed no conflict with active FE work.
+  - Implementation ran through a Codex maintainer subagent while main Codex stayed open for agmsg.
+  - Privacy, medical/billing safety, and general Codex reviewers approved before Claude checker review.
+  - Claude reviewed the BE diff, independently ran focused Vitest and scoped ESLint, and sent `APPROVED` before Codex committed.
+  - No frontend files, Prisma schema, migrations, generated files, DB data, external sends, deploy, or destructive operations were touched by Codex.
+- Hardened billing-evidence analytics API responses:
+  - Split the route into `authenticatedGET` plus an exported wrapper.
+  - Wrapped success, auth failure, and handled 500 responses in `withSensitiveNoStore`.
+  - Wrapped the route in `withRoutePerformance(req, ...)`.
+  - Added `runWithRequestAuthContext(ctx, ...)` defense-in-depth.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` with PHI-safe structured logging.
+  - Restricted logged `error_name` to an allowlist, falling back to `Error` for crafted names.
+  - Preserved `canReport`, explicit `org_id` scoping, current/range month semantics, all billing candidate/evidence/rule query shapes and order/take semantics, and the existing `{ data: { summary, monthly_trend, blocker_reasons, top_codes } }` response shape.
+  - Added tests for no-store on success/auth failure/fixed 500, no DB lookup on auth failure, request-context and performance wrapper invocation, fixed `INTERNAL_ERROR`, and absence of raw PHI-like error text, SQL text, stack text, crafted error names, and raw error object from response/log surfaces.
+- Security/privacy risk reduced: billing candidate/evidence analytics responses now carry explicit sensitive no-store headers, unexpected failures return a fixed PHI-safe body, and handler logs avoid raw error details.
+- Performance issue improved: route latency/error metrics are now captured with `withRoutePerformance`; no DB query shape or additional data read was introduced.
+- Validation passed:
+  - `pnpm exec vitest run src/app/api/billing-evidence/analytics/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `4` tests.
+  - `pnpm exec eslint src/app/api/billing-evidence/analytics/route.ts src/app/api/billing-evidence/analytics/route.test.ts`: passed.
+  - `pnpm exec prettier --check src/app/api/billing-evidence/analytics/route.ts src/app/api/billing-evidence/analytics/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/billing-evidence/analytics/route.ts src/app/api/billing-evidence/analytics/route.test.ts`: passed.
+  - Privacy compliance review: no findings.
+  - Medical/billing safety review: no findings.
+  - General Codex review: no findings.
+  - Claude checker review: `APPROVED`; Claude independently ran Vitest `4/4` and scoped ESLint, and verified 9 Prisma calls before/after with query-shape preservation.
+- Commit status: implementation committed locally as `66989868`; this section records the progress-ledger slice for separate commit.
+- Next action: commit this progress-ledger slice, notify Claude, and push after ensuring only owned commits are included.
+
 ### 2026-06-28 JST - Medication Cycle History GET No-Store And PHI-Safe Error Hardening
 
 - Coordination:
