@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { serverCache } from '@/lib/utils/server-cache';
 
 const {
-  authMock,
-  membershipFindFirstMock,
+  authContextMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  loggerErrorMock,
+  withRoutePerformanceMock,
   cycleGroupByMock,
   workflowExceptionCountMock,
   workflowExceptionFindManyMock,
@@ -41,8 +44,11 @@ const {
   billingPreviewBatchMock,
   queryRawMock,
 } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
+  authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'clerk' },
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn((_ctx, callback) => callback()),
+  loggerErrorMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn((_req, handler) => handler()),
   cycleGroupByMock: vi.fn(),
   workflowExceptionCountMock: vi.fn(),
   workflowExceptionFindManyMock: vi.fn(),
@@ -80,15 +86,16 @@ const {
   queryRawMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/config', () => ({
-  auth: authMock,
+vi.mock('@/lib/auth/context', () => ({
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
-    membership: {
-      findFirst: membershipFindFirstMock,
-    },
     medicationCycle: {
       groupBy: cycleGroupByMock,
       count: medicationCycleCountMock,
@@ -165,6 +172,14 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
+}));
+
 vi.mock('@/server/services/communication-queue', () => ({
   listCommunicationQueue: communicationQueueMock,
 }));
@@ -204,6 +219,9 @@ describe('/api/dashboard/workflow GET', () => {
     vi.resetAllMocks();
     serverCache.clear();
 
+    requireAuthContextMock.mockResolvedValue({ ctx: authContextMock });
+    runWithRequestAuthContextMock.mockImplementation((_ctx, callback) => callback());
+    withRoutePerformanceMock.mockImplementation((_req, handler) => handler());
     queryRawMock.mockResolvedValue([{ count: BigInt(0) }]);
     cycleGroupByMock.mockResolvedValue([
       { overall_status: 'visit_completed', _count: { id: 2 } },
@@ -508,23 +526,54 @@ describe('/api/dashboard/workflow GET', () => {
   });
 
   it('returns 401 when unauthenticated', async () => {
-    authMock.mockResolvedValue(null);
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json({ code: 'AUTH_UNAUTHORIZED' }, { status: 401 }),
+    });
+    const cacheGetSpy = vi.spyOn(serverCache, 'get');
+    const cacheSetSpy = vi.spyOn(serverCache, 'set');
 
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(401);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ダッシュボードの閲覧権限がありません',
+    });
     expectSensitiveNoStore(response);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(cacheGetSpy).not.toHaveBeenCalled();
+    expect(cacheSetSpy).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(cycleGroupByMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+    expect(communicationQueueMock).not.toHaveBeenCalled();
+    expect(patientRiskQueueMock).not.toHaveBeenCalled();
+    expect(homeCareFeatureSummaryMock).not.toHaveBeenCalled();
+    expect(billingPreviewBatchMock).not.toHaveBeenCalled();
   });
 
   it('returns unified workflow/workbench data', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
-
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canViewDashboard',
+      message: 'ダッシュボードの閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      authContextMock,
+      expect.any(Function),
+    );
     expectSensitiveNoStore(response);
 
     const payload = await response.json();
@@ -665,6 +714,29 @@ describe('/api/dashboard/workflow GET', () => {
       },
     });
     expect(payload).toMatchSnapshot();
+    expect(payload.data.communication_queue.summary).toMatchObject({
+      pending_count: 2,
+      overdue_count: 1,
+      self_reports: 1,
+      callback_followups: 1,
+      open_requests: 1,
+      delivery_backlog: 1,
+      expiring_external_shares: 0,
+    });
+    expect(payload.data.communication_queue.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: 'patient_portal',
+        }),
+      ]),
+    );
+    expect(payload.data.patient_risk_queue.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'high',
+        }),
+      ]),
+    );
     expect(homeCareFeatureSummaryMock).not.toHaveBeenCalled();
     expect(communicationQueueMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
@@ -719,9 +791,38 @@ describe('/api/dashboard/workflow GET', () => {
     expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('works when called directly without a routeContext argument', async () => {
+    const response = await rawGET(createRequest({ 'x-org-id': 'org_1' }));
+
+    expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        role_inboxes: {
+          current_role: 'clerk',
+        },
+      },
+    });
+  });
+
+  it('wraps cached workflow responses in no-store headers without rerunning aggregate reads', async () => {
+    const firstResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
+    const secondResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
+
+    expect(firstResponse.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
+    expectSensitiveNoStore(firstResponse);
+    expectSensitiveNoStore(secondResponse);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(2);
+    expect(cycleGroupByMock).toHaveBeenCalledTimes(1);
+
+    const firstPayload = await firstResponse.json();
+    const secondPayload = await secondResponse.json();
+    expect(secondPayload).toEqual(firstPayload);
+  });
+
   it('passes upcoming schedule local calendar dates to billing previews', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
     visitScheduleFindManyMock.mockReset();
     visitScheduleFindManyMock
       .mockResolvedValueOnce([
@@ -778,8 +879,6 @@ describe('/api/dashboard/workflow GET', () => {
   });
 
   it('keeps patient-level issue cycle fallback inside assigned cases', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
     medicationIssueFindManyMock.mockResolvedValue([
       {
         id: 'issue_patient_level',
@@ -821,9 +920,6 @@ describe('/api/dashboard/workflow GET', () => {
   });
 
   it('serves phase navigation data without running full dashboard side-rail aggregations', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
-
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=phase'));
 
     expect(response.status).toBe(200);
@@ -875,8 +971,9 @@ describe('/api/dashboard/workflow GET', () => {
   });
 
   it('serves realtime admin data with open exception counts but without full dashboard aggregations', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { ...authContextMock, role: 'admin' },
+    });
 
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=realtime'));
 
@@ -915,8 +1012,9 @@ describe('/api/dashboard/workflow GET', () => {
   });
 
   it('serves performance admin data with workload metrics but without full dashboard aggregations', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { ...authContextMock, role: 'admin' },
+    });
 
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=performance'));
 
@@ -955,8 +1053,9 @@ describe('/api/dashboard/workflow GET', () => {
   });
 
   it('accepts an explicit full workflow view as the full dashboard aggregate', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { ...authContextMock, role: 'admin' },
+    });
 
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=full'));
 
@@ -970,8 +1069,9 @@ describe('/api/dashboard/workflow GET', () => {
   it.each(['?view=', '?view=%20phase', '?view=phase%20', '?view=unknown'])(
     'rejects malformed workflow view "%s" before cache or dashboard aggregate reads',
     async (search) => {
-      authMock.mockResolvedValue({ user: { id: 'user_1' } });
-      membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+      requireAuthContextMock.mockResolvedValueOnce({
+        ctx: { ...authContextMock, role: 'admin' },
+      });
       const cacheGetSpy = vi.spyOn(serverCache, 'get');
 
       const response = await GET(createRequest({ 'x-org-id': 'org_1' }, search));
@@ -993,8 +1093,9 @@ describe('/api/dashboard/workflow GET', () => {
   );
 
   it('rejects duplicate workflow view before cache or dashboard aggregate reads', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: { ...authContextMock, role: 'admin' },
+    });
     const cacheGetSpy = vi.spyOn(serverCache, 'get');
 
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=phase&view=realtime'));
@@ -1015,26 +1116,51 @@ describe('/api/dashboard/workflow GET', () => {
   });
 
   it('returns a sanitized no-store 500 when workflow dashboard reads fail', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
-    const rawError = 'raw workflow dashboard read failure';
-    cycleGroupByMock.mockRejectedValueOnce(new Error(rawError));
+    const rawError =
+      'raw workflow raw patient raw dashboard SQL stack trace raw-error text must not leak';
+    const unsafeError = new Error(rawError);
+    unsafeError.name = 'crafted-name.raw-workflow.raw-patient.raw-dashboard.SQL.stack.raw-error';
+    cycleGroupByMock.mockRejectedValueOnce(unsafeError);
 
     const response = await GET(createRequest({ 'x-org-id': 'org_1' }));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(500);
+    expect(withRoutePerformanceMock).toHaveBeenCalledTimes(1);
     expectSensitiveNoStore(response);
-    const body = await response.json();
-    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
-    expect(JSON.stringify(body)).not.toContain(rawError);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain('raw workflow');
+    expect(body).not.toContain('raw patient');
+    expect(body).not.toContain('raw dashboard');
+    expect(body).not.toContain('SQL');
+    expect(body).not.toContain('stack trace');
+    expect(body).not.toContain('crafted-name');
+    expect(body).not.toContain('raw-error text');
+    expect(loggerErrorMock).toHaveBeenCalledTimes(1);
+    expect(loggerErrorMock).toHaveBeenCalledWith('dashboard_workflow_unhandled_error', undefined, {
+      event: 'dashboard_workflow_unhandled_error',
+      route: '/api/dashboard/workflow',
+      method: 'GET',
+      status: 500,
+      error_name: 'Error',
+    });
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('raw workflow');
+    expect(logged).not.toContain('raw patient');
+    expect(logged).not.toContain('raw dashboard');
+    expect(logged).not.toContain('SQL');
+    expect(logged).not.toContain('stack trace');
+    expect(logged).not.toContain('crafted-name');
+    expect(logged).not.toContain('raw-error text');
   });
 
   it('keeps role-specific inbox state out of cross-role cache hits', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock
-      .mockResolvedValueOnce({ role: 'clerk' })
-      .mockResolvedValueOnce({ role: 'pharmacist' });
+    requireAuthContextMock
+      .mockResolvedValueOnce({ ctx: { ...authContextMock, role: 'clerk' } })
+      .mockResolvedValueOnce({ ctx: { ...authContextMock, role: 'pharmacist' } });
 
     const firstResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
     const secondResponse = await GET(createRequest({ 'x-org-id': 'org_1' }));
@@ -1049,8 +1175,6 @@ describe('/api/dashboard/workflow GET', () => {
   });
 
   it('does not replay cached workflow PHI after the same user assignment scope changes', async () => {
-    authMock.mockResolvedValue({ user: { id: 'user_1' } });
-    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
     careCaseFindManyMock
       .mockResolvedValueOnce([{ id: 'case_1', patient_id: 'patient_1' }])
       .mockResolvedValueOnce([]);
