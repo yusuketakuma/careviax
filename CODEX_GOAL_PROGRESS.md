@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Visit Brief Review API Path Helper Convergence
+
+- Coordination:
+  - Drained `phos/codex`; ACKed Claude's approval of the dashboard/prescription intake boundary slice before continuing this non-overlapping visit brief review slice.
+  - Used medication safety and privacy read-only reviewers because the surface fetches patient visit brief PHI and posts pharmacist feedback.
+- Hardened/converged visit brief review API URL:
+  - Routed `VisitBriefReviewContent` patient visit brief fetch through shared `buildPatientApiPath(patientId, '/visit-brief')`.
+  - Added a component test proving the hostile patient id resolved from visit schedule/record remains in the query key/component flow while the network URL consumes the shared helper return value.
+  - Added `/visit-brief` to the shared patient API path suffix regression list.
+  - Preserved visit schedule/record patient resolution, brief rendering, pharmacist confirmation/edit feedback payload semantics, route handlers, no-store/sanitized route envelope, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+- Security/privacy risk reduced: visit brief review GET no longer interpolates raw patient ids into the patient API path; hostile `/`, `?`, or `#` ids now flow through the shared encoded/fail-closed patient API path helper.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing visit brief fetch behavior, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx' 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.test.tsx' src/lib/patient/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.test.tsx' 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review.shared.test.ts' src/lib/patient/api-paths.test.ts src/lib/http/path-segment.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `40` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.tsx' 'src/app/(dashboard)/visits/[id]/brief/visit-brief-review-content.test.tsx' src/lib/patient/api-paths.test.ts`: passed.
+  - `pnpm exec prettier --check` on the same three files: passed.
+  - `git diff --cached --check`: passed before commit.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - Medication safety reviewer: PASS.
+  - Privacy reviewer: PASS.
+- Commit status: implementation commit `c59e4a97` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
+- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+
 ### 2026-06-28 JST - Dashboard Patient Card Prescription Intake Boundary Hardening
 
 - Coordination:
@@ -48,8 +75,8 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm lint`: passed.
   - Patient safety reviewer re-review: PASS.
   - Privacy reviewer re-review: PASS.
-- Commit status: implementation commit `b860023a` is complete; state commit pending; Claude `PATCH_REVIEW_REQUEST` will be sent after the state commit.
-- Next action: commit this state update separately, send Claude a `PATCH_REVIEW_REQUEST`, then continue after inbox is clear.
+- Commit status: implementation commit `b860023a` and state commit `35af8fff` are complete; Claude approved the slice.
+- Next action: continue after inbox is clear.
 
 ### 2026-06-28 JST - Residual Adjustment Query Boundary Hardening
 
