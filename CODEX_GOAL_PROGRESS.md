@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### 2026-06-28 JST - Admin PCA Pump/Rental API Path Helper Convergence
+
+- Coordination:
+  - Kept the main Codex agent available for Claude/agmsg; drained `phos/codex` once and saw no new messages.
+  - Incorporated the medical safety reviewer P2 requirements before final validation.
+  - Preserved unrelated dirty files, including `.codex/hooks.json`, report navigation files, and any cockpit/prisma/perf/generated-client areas.
+- Hardened PCA pump/rental admin API boundaries:
+  - Added `src/lib/pca-pumps/api-paths.ts` with `PCA_PUMPS_API_PATH`, `PCA_PUMP_RENTALS_API_PATH`, `buildPcaPumpsApiPath(params?)`, `buildPcaPumpApiPath(pumpId)`, `buildPcaPumpRentalsApiPath(params?)`, and `buildPcaPumpRentalApiPath(rentalId)`.
+  - Routed inventory GET, open-rental GET, return-inspection-pending GET, pump create/status update, rental create/status update, and return inspection PATCH through the shared collection/query/detail path contract.
+  - Preserved exact existing URL strings, including `/api/pca-pumps?`, `/api/pca-pump-rentals?status=open`, and `/api/pca-pump-rentals?status=returned&inspection_status=pending`.
+  - Added helper coverage for hostile pump/rental ids and exact `.` / `..` dot-segment fail-closed behavior via `encodePathSegment`.
+  - Added component tests that execute captured queryFn/mutationFn paths and assert fetch URLs plus `x-org-id` headers for inventory GET, open rental GET, inspection-pending GET, create pump POST, create rental POST, rental PATCH, pump PATCH, and inspection PATCH.
+- Security/privacy risk reduced: admin PCA pump/rental dynamic path construction no longer duplicates raw interpolation for pump/rental ids, reducing route-boundary drift for hostile `/`, `?`, or `#` ids and failing closed on exact dot segments before mutation side effects.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads/writes, external sends, polling, dependencies, or render-heavy computation.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx' src/lib/pca-pumps/api-paths.ts src/lib/pca-pumps/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx' src/lib/pca-pumps/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `26` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx' src/lib/pca-pumps/api-paths.ts src/lib/pca-pumps/api-paths.test.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx' src/lib/pca-pumps/api-paths.ts src/lib/pca-pumps/api-paths.test.ts`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx' src/lib/pca-pumps/api-paths.ts src/lib/pca-pumps/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/pca-pumps/route.test.ts 'src/app/api/pca-pumps/[id]/route.test.ts' src/app/api/pca-pump-rentals/route.test.ts 'src/app/api/pca-pump-rentals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `4` files / `42` tests.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+- Commit status: PCA implementation committed locally as `b8b17e79`; progress-ledger commit pending.
+- Next action: commit the progress-ledger slice, then continue the next bounded backend/API slice.
+
 ### 2026-06-28 JST - Shared Empty State / DataTable Medical UI Primitive Hardening
 
 - Coordination:
