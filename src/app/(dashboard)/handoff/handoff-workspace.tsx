@@ -499,7 +499,6 @@ function TransferDialog({
           <DialogFooter>
             <Button
               type="submit"
-              className="min-h-[44px]"
               disabled={!isComplete || createMutation.isPending || !boardId || !canSelectRecipient}
               aria-describedby={
                 !isComplete && !createMutation.isPending && boardId
@@ -768,7 +767,6 @@ function HandoffMessageChannel({
           <Button
             type="submit"
             size="sm"
-            className="min-h-[40px]"
             disabled={!isComplete || sendMutation.isPending || !boardId || !canSelectRecipient}
             data-testid="handoff-message-send"
           >
@@ -1090,7 +1088,6 @@ function ConsultIntake({
         <Button
           type="submit"
           size="sm"
-          className="min-h-[40px]"
           disabled={!isComplete || createMutation.isPending || !boardId || !canSelectRecipient}
           data-testid="handoff-consult-submit"
         >

@@ -95,7 +95,7 @@ export function PatientStructuredCarePanel({ patientId }: { patientId: string })
           type="button"
           variant="outline"
           size="sm"
-          className="mt-3 min-h-[44px] bg-background sm:min-h-0"
+          className="mt-3 bg-background"
           onClick={() => void refetch()}
         >
           再読み込み

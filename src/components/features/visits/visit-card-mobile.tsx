@@ -264,7 +264,7 @@ export function VisitCardMobile({
         {showStartAction && (
           <Button
             size="sm"
-            className="min-h-[44px] flex-1"
+            className="flex-1"
             onClick={() => onStartVisit(id)}
             aria-label={`${actionContext}の${startActionText}`}
           >
@@ -276,7 +276,7 @@ export function VisitCardMobile({
         {!showStartAction && showCompleteAction && (
           <Button
             size="sm"
-            className="min-h-[44px] flex-1 bg-state-done text-white hover:bg-state-done/90"
+            className="flex-1 bg-state-done text-white hover:bg-state-done/90"
             onClick={() => onCompleteVisit(id)}
             aria-label={`${patientName}の訪問を完了`}
           >

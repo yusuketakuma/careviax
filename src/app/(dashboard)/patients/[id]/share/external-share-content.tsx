@@ -731,7 +731,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
             <Button
               type="button"
               data-testid="share-next-task-button"
-              className="mt-4 min-h-[44px] w-full"
+              className="mt-4 w-full"
               disabled={!latestReply || createTaskMutation.isPending || taskCreated}
               onClick={() => createTaskMutation.mutate()}
             >

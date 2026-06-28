@@ -238,7 +238,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
               </p>
               <Button
                 type="button"
-                className="mt-5 min-h-[44px] w-full"
+                className="mt-5 w-full"
                 onClick={() => refreshMutation.mutate()}
                 disabled={refreshMutation.isPending}
                 data-testid="collaboration-refresh"

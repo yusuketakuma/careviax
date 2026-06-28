@@ -492,13 +492,13 @@ export function TasksContent({
         tone="subtle"
         actions={
           <>
-            <Button asChild size="sm" variant="outline" className="min-h-[44px]">
+            <Button asChild size="sm" variant="outline">
               <a href="#tasks-list">一覧へ移動</a>
             </Button>
-            <Button asChild size="sm" variant="ghost" className="min-h-[44px]">
+            <Button asChild size="sm" variant="ghost">
               <Link href="/my-day">My Day</Link>
             </Button>
-            <Button asChild size="sm" variant="ghost" className="min-h-[44px]">
+            <Button asChild size="sm" variant="ghost">
               <Link href="/workflow">ワークフロー</Link>
             </Button>
           </>

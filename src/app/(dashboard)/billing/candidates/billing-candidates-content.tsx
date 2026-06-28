@@ -972,7 +972,7 @@ export function BillingCandidatesContent({
                 variant={billingDomain === option.value ? 'default' : 'ghost'}
                 onClick={() => setBillingDomain(option.value)}
                 aria-pressed={billingDomain === option.value}
-                className="min-h-[44px] px-2 text-xs"
+                className="px-2 text-xs"
               >
                 {option.shortLabel}
               </Button>

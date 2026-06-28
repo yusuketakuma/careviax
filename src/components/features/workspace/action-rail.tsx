@@ -84,16 +84,11 @@ export function NextActionPanel({
   return (
     <RailCard title="次にやること" className={className} data-testid="next-action-panel">
       {actionHref ? (
-        <Button asChild className="min-h-[44px] w-full" disabled={actionDisabled}>
+        <Button asChild className="w-full" disabled={actionDisabled}>
           <a href={actionHref}>{actionLabel}</a>
         </Button>
       ) : (
-        <Button
-          type="button"
-          className="min-h-[44px] w-full"
-          onClick={onAction}
-          disabled={actionDisabled}
-        >
+        <Button type="button" className="w-full" onClick={onAction} disabled={actionDisabled}>
           {actionLabel}
         </Button>
       )}
@@ -101,7 +96,7 @@ export function NextActionPanel({
         <Button
           type="button"
           variant="outline"
-          className="min-h-[44px] w-full text-primary hover:text-primary"
+          className="w-full text-primary hover:text-primary"
           onClick={onSecondaryAction}
           disabled={secondaryActionDisabled}
         >

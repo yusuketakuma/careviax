@@ -237,7 +237,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
             type="button"
             variant="outline"
             size="sm"
-            className="mt-3 min-h-[44px] bg-background sm:min-h-0"
+            className="mt-3 bg-background"
             onClick={() => void reportQuery.refetch()}
           >
             再読み込み
@@ -347,7 +347,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
                 type="button"
                 variant="outline"
                 size="sm"
-                className="min-h-[44px] bg-background sm:min-h-0"
+                className="bg-background"
                 onClick={() => {
                   if (canLoadPatientSupport) {
                     void careTeamQuery.refetch();
@@ -482,7 +482,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
             <Button
               type="button"
               data-testid="share-next-task-button"
-              className="mt-4 min-h-[44px] w-full"
+              className="mt-4 w-full"
               disabled={
                 !canCreateFollowupTask ||
                 !latestReply ||

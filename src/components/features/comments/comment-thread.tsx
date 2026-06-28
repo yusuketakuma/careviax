@@ -162,12 +162,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
           onMentionsChange={setMentions}
         />
         <div className="flex justify-end">
-          <Button
-            type="submit"
-            size="sm"
-            disabled={!content.trim() || createMutation.isPending}
-            className="min-h-[44px]"
-          >
+          <Button type="submit" size="sm" disabled={!content.trim() || createMutation.isPending}>
             {createMutation.isPending ? '送信中...' : '送信'}
           </Button>
         </div>

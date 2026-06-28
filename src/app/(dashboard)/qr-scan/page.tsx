@@ -464,12 +464,7 @@ export default function QRScanPage() {
         mainWorkflowDescription="QR スキャンは処方登録の前段支援として扱い、受付確定へ戻る位置を明示しています。"
         actions={
           phase !== 'camera' ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="min-h-[44px] sm:min-h-0"
-              onClick={resetScan}
-            >
+            <Button variant="outline" size="sm" onClick={resetScan}>
               <RotateCcw className="mr-1.5 h-4 w-4" />
               やり直す
             </Button>
@@ -516,12 +511,7 @@ export default function QRScanPage() {
                 >
                   <CameraOff className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground">{cameraError}</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-h-[44px] sm:min-h-0"
-                    onClick={() => startCamera()}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => startCamera()}>
                     <Camera className="mr-1.5 h-4 w-4" />
                     再試行
                   </Button>
@@ -551,12 +541,7 @@ export default function QRScanPage() {
                 className="hidden"
                 onChange={handleFileUpload}
               />
-              <Button
-                variant="outline"
-                size="sm"
-                className="min-h-[44px] sm:min-h-0"
-                onClick={() => fileInputRef.current?.click()}
-              >
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                 <Upload className="mr-1.5 h-4 w-4" />
                 画像から読取
               </Button>
@@ -581,11 +566,11 @@ export default function QRScanPage() {
           contentClassName="space-y-3"
         >
           <ActionRail align="between">
-            <Button className="min-h-[44px] flex-1" variant="outline" onClick={continueScanning}>
+            <Button className="flex-1" variant="outline" onClick={continueScanning}>
               <Camera className="mr-1.5 h-4 w-4" />
               次のQRをスキャン
             </Button>
-            <Button className="min-h-[44px] flex-1" onClick={() => finalizeScan(scannedTexts)}>
+            <Button className="flex-1" onClick={() => finalizeScan(scannedTexts)}>
               <CheckCircle className="mr-1.5 h-4 w-4" />
               スキャン完了
             </Button>
@@ -884,15 +869,12 @@ export default function QRScanPage() {
 
               <ActionRail align="between">
                 {selectedPatient && (
-                  <Button
-                    className="min-h-[44px] flex-1"
-                    onClick={() => sendToDraft(selectedPatient.id)}
-                  >
+                  <Button className="flex-1" onClick={() => sendToDraft(selectedPatient.id)}>
                     <Send className="mr-1.5 h-4 w-4" />
                     PCに送信
                   </Button>
                 )}
-                <Button variant="outline" className="min-h-[44px] flex-1" onClick={goToNewPatient}>
+                <Button variant="outline" className="flex-1" onClick={goToNewPatient}>
                   <UserPlus className="mr-1.5 h-4 w-4" />
                   新規患者登録
                 </Button>

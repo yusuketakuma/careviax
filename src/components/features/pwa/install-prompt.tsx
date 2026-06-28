@@ -53,29 +53,22 @@ export function InstallPrompt() {
       className={cn(
         'fixed bottom-20 left-4 right-4 z-50 md:bottom-4 md:left-auto md:right-4 md:w-80',
         'flex items-start gap-3 rounded-lg border border-border bg-card p-4 shadow-lg',
-        'animate-in slide-in-from-bottom duration-300'
+        'animate-in slide-in-from-bottom duration-300',
       )}
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary">
         <Download className="h-5 w-5 text-primary-foreground" aria-hidden="true" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-card-foreground">
-          PH-OS をホーム画面に追加
-        </p>
+        <p className="text-sm font-semibold text-card-foreground">PH-OS をホーム画面に追加</p>
         <p className="mt-0.5 text-xs text-muted-foreground">
           オフラインでも使えるアプリとして利用できます。
         </p>
         <div className="mt-3 flex gap-2">
-          <Button size="sm" className="min-h-[44px] flex-1" onClick={handleInstall}>
+          <Button size="sm" className="flex-1" onClick={handleInstall}>
             追加
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="min-h-[44px] flex-1"
-            onClick={handleDismiss}
-          >
+          <Button variant="outline" size="sm" className="flex-1" onClick={handleDismiss}>
             後で
           </Button>
         </div>

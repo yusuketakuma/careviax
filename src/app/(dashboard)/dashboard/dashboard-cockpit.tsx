@@ -218,11 +218,11 @@ function UrgentNowCard({
       ) : null}
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
         {isPrimary ? (
-          <Button asChild className="min-h-[40px]">
+          <Button asChild>
             <Link href="/audit">監査を開始する</Link>
           </Button>
         ) : (
-          <Button asChild variant="outline" className="min-h-[40px]">
+          <Button asChild variant="outline">
             <Link href="/audit">監査を開く</Link>
           </Button>
         )}

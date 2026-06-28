@@ -667,7 +667,7 @@ export default function ReportDetailPage() {
         <Button
           type="button"
           variant="outline"
-          className="mt-4 min-h-[44px] bg-background sm:min-h-0"
+          className="mt-4 bg-background"
           onClick={() => void refetch()}
         >
           再読み込み
@@ -905,7 +905,6 @@ export default function ReportDetailPage() {
           <Button
             variant="outline"
             size="sm"
-            className="min-h-[44px] sm:min-h-0"
             disabled={shareTargetsLoading}
             onClick={() => {
               // 既定で全候補を選択し、共有先の取りこぼしを防ぐ。
@@ -925,7 +924,6 @@ export default function ReportDetailPage() {
         ) : null}
         <Button
           size="sm"
-          className="min-h-[44px] sm:min-h-0"
           onClick={() => {
             if (prescriberInstitutionSuggestion) {
               applyInstitutionSuggestion();
@@ -957,12 +955,7 @@ export default function ReportDetailPage() {
             <>
               {statusCfg && <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>}
               {hasContentView && canEditCurrentDraft && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="min-h-[44px] sm:min-h-0"
-                  onClick={() => setEditMode((v) => !v)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setEditMode((v) => !v)}>
                   <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
                   {isEditingReport ? '表示に戻る' : '編集'}
                 </Button>
@@ -983,7 +976,7 @@ export default function ReportDetailPage() {
               ) : null}
               {isConfirmedReport && canOutputReport ? (
                 <Link href={buildReportHref(id, '/print')}>
-                  <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
+                  <Button variant="outline" size="sm">
                     <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
                     印刷ビュー
                   </Button>
@@ -992,7 +985,7 @@ export default function ReportDetailPage() {
               {/* p1_05: 他職種向け共有ページ(相手別プレビュー + 返信確認) */}
               {canUseExternalShare ? (
                 <Link href={buildReportHref(id, '/share')}>
-                  <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
+                  <Button variant="outline" size="sm">
                     <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
                     他職種共有
                   </Button>
@@ -1039,12 +1032,7 @@ export default function ReportDetailPage() {
                 <Share2 className="size-4" aria-hidden="true" />
                 {isRetryableReport ? '報告書を再送・共有' : '報告書を作成・共有'}
               </CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="min-h-[44px] sm:min-h-0"
-                onClick={() => setComposerOpen(false)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setComposerOpen(false)}>
                 閉じる
               </Button>
             </CardHeader>
@@ -1498,7 +1486,7 @@ export default function ReportDetailPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="mt-3 min-h-[44px] sm:min-h-0"
+                    className="mt-3"
                     onClick={applyInstitutionSuggestion}
                   >
                     候補を適用
@@ -1527,7 +1515,6 @@ export default function ReportDetailPage() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="min-h-[44px] sm:min-h-0"
                         onClick={() => applyExternalProfessionalSuggestion(suggestion)}
                       >
                         {suggestion.name}
@@ -1671,17 +1658,12 @@ export default function ReportDetailPage() {
             <DialogFooter>
               <Button
                 variant="outline"
-                className="min-h-[44px] sm:min-h-0"
                 onClick={() => setSendDialogOpen(false)}
                 disabled={sendMutation.isPending}
               >
                 キャンセル
               </Button>
-              <Button
-                className="min-h-[44px] sm:min-h-0"
-                onClick={handleSend}
-                disabled={sendMutation.isPending}
-              >
+              <Button onClick={handleSend} disabled={sendMutation.isPending}>
                 <Send className="mr-1.5 size-3.5" aria-hidden="true" />
                 {sendMutation.isPending
                   ? isRetryableReport

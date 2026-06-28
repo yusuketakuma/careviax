@@ -57,7 +57,7 @@ export function VisitReflectedFieldsCard({ recordId }: { recordId: string }) {
             type="button"
             variant="outline"
             size="sm"
-            className="min-h-[44px] bg-background sm:min-h-0"
+            className="bg-background"
             onClick={() => void refetch()}
           >
             再読み込み

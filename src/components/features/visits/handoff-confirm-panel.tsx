@@ -90,7 +90,7 @@ function EditableTagList({
           variant="outline"
           onClick={addItem}
           disabled={!draft.trim()}
-          className="min-h-[44px] min-w-[44px]"
+          className="min-w-[44px]"
         >
           追加
         </Button>
@@ -297,7 +297,6 @@ export function HandoffConfirmPanel({
                 size="sm"
                 onClick={() => confirmMutation.mutate()}
                 disabled={confirmMutation.isPending}
-                className="min-h-[44px]"
               >
                 {confirmMutation.isPending ? '確定中...' : '編集して確定'}
               </Button>
@@ -313,7 +312,6 @@ export function HandoffConfirmPanel({
                     decision_rationale: handoff.decision_rationale ?? '',
                   });
                 }}
-                className="min-h-[44px]"
               >
                 キャンセル
               </Button>
@@ -326,18 +324,11 @@ export function HandoffConfirmPanel({
                   size="sm"
                   onClick={() => confirmMutation.mutate()}
                   disabled={confirmMutation.isPending}
-                  className="min-h-[44px]"
                 >
                   {confirmMutation.isPending ? '確定中...' : '確認'}
                 </Button>
               )}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setEditMode(true)}
-                className="min-h-[44px]"
-              >
+              <Button type="button" size="sm" variant="outline" onClick={() => setEditMode(true)}>
                 編集して確定
               </Button>
             </>

@@ -299,18 +299,13 @@ export function VisitsToday() {
         </div>
         {/* 主操作(青)は 1 画面 1 つ: 訪問モードの開始 */}
         {firstVisitHref ? (
-          <Button asChild className="min-h-[44px]">
+          <Button asChild>
             <Link href={firstVisitHref}>訪問モードを開始</Link>
           </Button>
         ) : (
           // 無効ボタンは理由を示し、可能なら解消導線を置く(Action beside evidence)
           <div className="flex flex-col items-start gap-1.5">
-            <Button
-              type="button"
-              className="min-h-[44px]"
-              disabled
-              aria-describedby="visit-start-disabled-reason"
-            >
+            <Button type="button" disabled aria-describedby="visit-start-disabled-reason">
               訪問モードを開始
             </Button>
             <p id="visit-start-disabled-reason" className="text-xs text-muted-foreground">
