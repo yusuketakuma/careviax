@@ -201,7 +201,7 @@ export function FacilityCriteriaChecklist({
             ))}
           </div>
         )}
-        <Button type="button" className="mt-5 min-h-11 w-full sm:w-52" onClick={onAddDocument}>
+        <Button type="button" className="mt-5 w-full sm:w-52" onClick={onAddDocument}>
           資料を追加
         </Button>
       </div>
