@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildServiceAreaApiPath } from '@/lib/service-areas/api-paths';
 import ServiceAreasPage from './page';
 
 setupDomTestEnv();
@@ -17,9 +18,9 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 // org-header builders are mocked with SENTINEL returns ('x-test-helper') so the tests
 // prove the page DELEGATES to them (a raw inline literal lacks the sentinel, so a
-// deep-equal on the sentinel object fails for un-converged code). '@/lib/http/path-segment'
-// is intentionally NOT mocked — the real encodePathSegment is exercised for the
-// hostile-encode and dot fail-fast teeth.
+// deep-equal on the sentinel object fails for un-converged code). The service-area
+// API path helper is mocked with its real implementation so tests can assert
+// callsite delegation while retaining hostile-encode and dot fail-fast teeth.
 const buildOrgHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({ 'x-org-id': orgId, 'x-test-helper': 'orgHeaders' })),
 );
@@ -34,6 +35,14 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgHeaders: buildOrgHeadersMock,
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
+
+vi.mock('@/lib/service-areas/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/service-areas/api-paths')>();
+  return {
+    ...actual,
+    buildServiceAreaApiPath: vi.fn(actual.buildServiceAreaApiPath),
+  };
+});
 
 vi.mock('sonner', () => ({
   toast: {
@@ -352,6 +361,7 @@ describe('ServiceAreasPage', () => {
         expect.objectContaining({ method: 'PATCH', headers: buildOrgJsonHeaders('org_1') }),
       );
     });
+    expect(buildServiceAreaApiPath).toHaveBeenCalledWith('a/b c');
   });
 
   it('update (PATCH) with a dot-segment area id fails closed before any PATCH fetch', async () => {
@@ -363,6 +373,7 @@ describe('ServiceAreasPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '更新する' }));
 
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildServiceAreaApiPath).toHaveBeenCalledWith('.');
     const patchCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
     );
@@ -382,6 +393,7 @@ describe('ServiceAreasPage', () => {
         expect.objectContaining({ method: 'DELETE', headers: buildOrgHeaders('org_1') }),
       );
     });
+    expect(buildServiceAreaApiPath).toHaveBeenCalledWith('a/b c');
   });
 
   it('DELETE with a dot-segment area id fails closed before any DELETE fetch', async () => {
@@ -393,6 +405,7 @@ describe('ServiceAreasPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildServiceAreaApiPath).toHaveBeenCalledWith('.');
     const deleteCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
     );
