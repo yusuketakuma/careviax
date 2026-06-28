@@ -126,6 +126,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Commit status: implementation commit pending; state commit pending; request Claude review/FYI after commits.
 - Next action: commit this owned implementation slice and ledger update with explicit-path staging only.
 
+### 2026-06-28 JST - Admin Packaging Methods API Path Helper Convergence
+
+- Coordination:
+  - Kept main Codex available for Claude/agmsg and delegated the bounded implementation to a Codex `maintainer` subagent after a read-only mapper selected this slice.
+  - Drained `phos/codex`; no new Claude interrupt arrived during final review/validation.
+  - Preserved unrelated dirty files, including report navigation work and `.codex/hooks.json`.
+- Hardened packaging-method admin API boundaries:
+  - Added `src/lib/packaging-methods/api-paths.ts` with `PACKAGING_METHODS_API_PATH` and `buildPackagingMethodApiPath(methodId)`.
+  - Routed packaging-method list/create/update calls through the shared collection/detail path contract.
+  - Preserved org headers, HTTP methods, JSON body shape, query keys, invalidations, rendered admin UI, DB schema/data, migrations, external sends, PHI logging, billing, push/deploy, and destructive-operation boundaries.
+  - Added helper tests for collection/detail paths, hostile method id encoding, and dot-segment rejection; extended component tests to prove callsites delegate through shared helpers and exact dot-segment ids fail closed before PATCH side effects.
+- Security/privacy risk reduced: admin packaging-method paths no longer duplicate dynamic segment construction, reducing route-boundary drift for hostile `/`, `?`, or `#` method ids.
+- Performance issue improved: none. This is a pure URL-construction helper refactor with no new DB reads, network calls beyond existing packaging-method calls, loops, cache keys, polling, dependencies, or render-heavy behavior.
+- Validation passed:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx' 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx' src/lib/packaging-methods/api-paths.ts src/lib/packaging-methods/api-paths.test.ts`: passed.
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx' src/lib/packaging-methods/api-paths.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `11` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx' 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx' src/lib/packaging-methods/api-paths.ts src/lib/packaging-methods/api-paths.test.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx' 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx' src/lib/packaging-methods/api-paths.ts src/lib/packaging-methods/api-paths.test.ts`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.tsx' 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx' src/lib/packaging-methods/api-paths.ts src/lib/packaging-methods/api-paths.test.ts`: passed.
+  - `pnpm exec tsc --noEmit --pretty false --incremental false --project tsconfig.json`: passed.
+- Commit status: implementation commit pending; state commit pending; request Claude review/FYI after commits.
+- Next action: commit this owned implementation slice and ledger update with explicit-path staging only.
+
 ### 2026-06-28 JST - Prescriber Institutions Admin API Path Helper Convergence
 
 - Coordination:
