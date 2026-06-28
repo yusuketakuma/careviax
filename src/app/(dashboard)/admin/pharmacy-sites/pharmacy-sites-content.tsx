@@ -44,7 +44,12 @@ import {
 import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
+import {
+  PHARMACY_SITES_API_PATH,
+  buildPharmacySiteApiPath,
+  buildPharmacySiteInsuranceConfigApiPath,
+  buildPharmacySiteInsuranceConfigsApiPath,
+} from '@/lib/pharmacy-sites/api-paths';
 import { isValidDateKey } from '@/lib/validations/date-key';
 
 type PharmacySite = {
@@ -168,7 +173,7 @@ export function PharmacySitesContent() {
   const { data, isLoading } = useQuery({
     queryKey: ['pharmacy-sites-admin', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/pharmacy-sites', {
+      const response = await fetch(PHARMACY_SITES_API_PATH, {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('薬局情報の取得に失敗しました');
@@ -183,14 +188,11 @@ export function PharmacySitesContent() {
     queryKey: ['insurance-configs', orgId, configSiteId],
     queryFn: async () => {
       // enabled gates this on a non-null configSiteId; guard keeps the type narrowed
-      // for encodePathSegment and fails closed if ever invoked without one.
+      // for the API path helper and fails closed if ever invoked without one.
       if (!configSiteId) throw new Error('拠点が選択されていません');
-      const response = await fetch(
-        `/api/pharmacy-sites/${encodePathSegment(configSiteId)}/insurance-configs`,
-        {
-          headers: buildOrgHeaders(orgId),
-        },
-      );
+      const response = await fetch(buildPharmacySiteInsuranceConfigsApiPath(configSiteId), {
+        headers: buildOrgHeaders(orgId),
+      });
       if (!response.ok) throw new Error('保険設定の取得に失敗しました');
       return response.json() as Promise<{ data: InsuranceConfig[] }>;
     },
@@ -205,7 +207,7 @@ export function PharmacySitesContent() {
   const saveSiteMutation = useMutation({
     mutationFn: async () => {
       if (!editingSite || !siteForm) throw new Error('編集対象がありません');
-      const response = await fetch(`/api/pharmacy-sites/${encodePathSegment(editingSite.id)}`, {
+      const response = await fetch(buildPharmacySiteApiPath(editingSite.id), {
         method: 'PATCH',
         headers: buildOrgJsonHeaders(orgId),
         body: JSON.stringify(siteForm),
@@ -231,12 +233,9 @@ export function PharmacySitesContent() {
     mutationFn: async () => {
       if (!configSiteId || !configForm) throw new Error('設定対象がありません');
       if (configSaveBlocker) throw new Error(configSaveBlocker);
-      // encode EVERY dynamic segment independently (configSiteId, and editingConfigId
-      // on PATCH); each fails closed on a dot segment before the mutation.
-      const encodedSiteId = encodePathSegment(configSiteId);
       const url = editingConfigId
-        ? `/api/pharmacy-sites/${encodedSiteId}/insurance-configs/${encodePathSegment(editingConfigId)}`
-        : `/api/pharmacy-sites/${encodedSiteId}/insurance-configs`;
+        ? buildPharmacySiteInsuranceConfigApiPath(configSiteId, editingConfigId)
+        : buildPharmacySiteInsuranceConfigsApiPath(configSiteId);
       const method = editingConfigId ? 'PATCH' : 'POST';
       const response = await fetch(url, {
         method,
@@ -271,7 +270,7 @@ export function PharmacySitesContent() {
     mutationFn: async () => {
       if (!deleteConfig) throw new Error('削除対象がありません');
       const response = await fetch(
-        `/api/pharmacy-sites/${encodePathSegment(deleteConfig.siteId)}/insurance-configs/${encodePathSegment(deleteConfig.configId)}`,
+        buildPharmacySiteInsuranceConfigApiPath(deleteConfig.siteId, deleteConfig.configId),
         { method: 'DELETE', headers: buildOrgHeaders(orgId) },
       );
       if (!response.ok) throw new Error('削除に失敗しました');

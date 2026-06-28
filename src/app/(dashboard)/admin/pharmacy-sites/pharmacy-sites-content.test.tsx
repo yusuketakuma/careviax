@@ -7,6 +7,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import {
+  PHARMACY_SITES_API_PATH,
+  buildPharmacySiteApiPath,
+  buildPharmacySiteInsuranceConfigApiPath,
+  buildPharmacySiteInsuranceConfigsApiPath,
+} from '@/lib/pharmacy-sites/api-paths';
 import { PharmacySitesContent } from './pharmacy-sites-content';
 
 setupDomTestEnv();
@@ -26,7 +32,7 @@ vi.mock('sonner', () => ({
 // prove the page DELEGATES to them (a raw inline literal lacks the sentinel, so a
 // deep-equal on the sentinel object fails for un-converged code). '@/lib/http/path-segment'
 // is intentionally NOT mocked — the real encodePathSegment is exercised for the
-// per-segment hostile-encode and dot fail-fast teeth.
+// shared pharmacy-site path helpers' per-segment hostile-encode and dot fail-fast teeth.
 const buildOrgHeadersMock = vi.hoisted(() =>
   vi.fn((orgId: string) => ({ 'x-org-id': orgId, 'x-test-helper': 'orgHeaders' })),
 );
@@ -41,6 +47,18 @@ vi.mock('@/lib/api/org-headers', () => ({
   buildOrgHeaders: buildOrgHeadersMock,
   buildOrgJsonHeaders: buildOrgJsonHeadersMock,
 }));
+
+vi.mock('@/lib/pharmacy-sites/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/pharmacy-sites/api-paths')>();
+  return {
+    ...actual,
+    buildPharmacySiteApiPath: vi.fn(actual.buildPharmacySiteApiPath),
+    buildPharmacySiteInsuranceConfigsApiPath: vi.fn(
+      actual.buildPharmacySiteInsuranceConfigsApiPath,
+    ),
+    buildPharmacySiteInsuranceConfigApiPath: vi.fn(actual.buildPharmacySiteInsuranceConfigApiPath),
+  };
+});
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -61,6 +79,7 @@ function renderContent() {
 
 describe('PharmacySitesContent', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
@@ -277,16 +296,17 @@ describe('PharmacySitesContent', () => {
     await screen.findByRole('button', { name: '医療保険 2024の保険設定を削除' });
 
     expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1');
-    expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy-sites', {
+    expect(fetchMock).toHaveBeenCalledWith(PHARMACY_SITES_API_PATH, {
       headers: buildOrgHeaders('org_1'),
     });
-    // configs GET encodes the hostile site id segment
+    // configs GET delegates to the shared helper, which encodes the hostile site id segment.
     expect(fetchMock).toHaveBeenCalledWith('/api/pharmacy-sites/a%2Fb%20c/insurance-configs', {
       headers: buildOrgHeaders('org_1'),
     });
+    expect(buildPharmacySiteInsuranceConfigsApiPath).toHaveBeenCalledWith('a/b c');
   });
 
-  it('save site (PATCH) encodes a hostile site id via encodePathSegment and uses buildOrgJsonHeaders', async () => {
+  it('save site (PATCH) encodes a hostile site id via the shared path helper and uses buildOrgJsonHeaders', async () => {
     const fetchMock = stubFetch('a/b c', 'cfg_1');
     renderContent();
 
@@ -299,9 +319,10 @@ describe('PharmacySitesContent', () => {
         expect.objectContaining({ method: 'PATCH', headers: buildOrgJsonHeaders('org_1') }),
       );
     });
+    expect(buildPharmacySiteApiPath).toHaveBeenCalledWith('a/b c');
   });
 
-  it('create insurance config (POST) encodes the site id segment and uses buildOrgJsonHeaders', async () => {
+  it('create insurance config (POST) encodes the site id segment via the shared path helper and uses buildOrgJsonHeaders', async () => {
     const fetchMock = stubFetch('a/b c', 'cfg_1');
     renderContent();
 
@@ -316,9 +337,10 @@ describe('PharmacySitesContent', () => {
         expect.objectContaining({ method: 'POST', headers: buildOrgJsonHeaders('org_1') }),
       );
     });
+    expect(buildPharmacySiteInsuranceConfigsApiPath).toHaveBeenCalledWith('a/b c');
   });
 
-  it('update insurance config (PATCH) encodes BOTH the site id and config id segments', async () => {
+  it('update insurance config (PATCH) encodes BOTH the site id and config id segments via the shared path helper', async () => {
     const fetchMock = stubFetch('a/b c', 'x/y z');
     renderContent();
 
@@ -332,9 +354,10 @@ describe('PharmacySitesContent', () => {
         expect.objectContaining({ method: 'PATCH', headers: buildOrgJsonHeaders('org_1') }),
       );
     });
+    expect(buildPharmacySiteInsuranceConfigApiPath).toHaveBeenCalledWith('a/b c', 'x/y z');
   });
 
-  it('delete insurance config (DELETE) encodes BOTH segments and uses buildOrgHeaders', async () => {
+  it('delete insurance config (DELETE) encodes BOTH segments via the shared path helper and uses buildOrgHeaders', async () => {
     const fetchMock = stubFetch('a/b c', 'x/y z');
     renderContent();
 
@@ -348,6 +371,7 @@ describe('PharmacySitesContent', () => {
         expect.objectContaining({ method: 'DELETE', headers: buildOrgHeaders('org_1') }),
       );
     });
+    expect(buildPharmacySiteInsuranceConfigApiPath).toHaveBeenCalledWith('a/b c', 'x/y z');
   });
 
   it('delete insurance config with a dot-segment config id fails closed before any DELETE fetch', async () => {
@@ -378,8 +402,9 @@ describe('PharmacySitesContent', () => {
     fireEvent.change(screen.getByLabelText('施行日'), { target: { value: '2026-06-01' } });
     fireEvent.click(screen.getByRole('button', { name: '登録する' }));
 
-    // encodePathSegment(configSiteId='.') throws inside the mutationFn before fetch.
+    // buildPharmacySiteInsuranceConfigsApiPath(configSiteId='.') throws inside the mutationFn before fetch.
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalled());
+    expect(buildPharmacySiteInsuranceConfigsApiPath).toHaveBeenCalledWith('.');
     const postCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
     );
