@@ -34,6 +34,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { ResidualMedicationChart } from '@/components/features/patients/residual-medication-chart';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { encodePathSegment } from '@/lib/http/path-segment';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { buildJahisQRText, type JahisPatient } from '@/lib/pharmacy/jahis-qr';
@@ -682,7 +684,7 @@ export function MedicationsContent({
   const patientSummaryQuery = useQuery({
     queryKey: ['patient-medication-summary', patientId, orgId],
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${encodePathSegment(patientId)}`, {
+      const response = await fetch(buildPatientApiPath(patientId), {
         headers: buildOrgHeaders(orgId),
       });
       if (!response.ok) throw new Error('患者情報の取得に失敗しました');
@@ -1290,7 +1292,7 @@ export function MedicationsContent({
               </CardDescription>
               <CardAction>
                 <Link
-                  href={`/patients/${patientId}/residual-adjustment`}
+                  href={buildPatientHref(patientId, '/residual-adjustment')}
                   className={buttonVariants({
                     variant: 'outline',
                     size: 'sm',

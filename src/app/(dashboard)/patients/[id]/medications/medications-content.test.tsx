@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildPatientHref } from '@/lib/patient/navigation';
 
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useOrgIdMock = vi.hoisted(() => vi.fn());
@@ -24,6 +26,16 @@ vi.mock('@/lib/api/org-headers', async (importActual) => {
     buildOrgHeaders: vi.fn(actual.buildOrgHeaders),
     buildOrgJsonHeaders: vi.fn(actual.buildOrgJsonHeaders),
   };
+});
+
+vi.mock('@/lib/patient/api-paths', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/api-paths')>();
+  return { ...actual, buildPatientApiPath: vi.fn(actual.buildPatientApiPath) };
+});
+
+vi.mock('@/lib/patient/navigation', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/patient/navigation')>();
+  return { ...actual, buildPatientHref: vi.fn(actual.buildPatientHref) };
 });
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -239,6 +251,7 @@ describe('MedicationsContent url/header convergence', () => {
       fetchMock.mockClear();
       await queryConfigs.get('patient-medication-summary')!.queryFn();
       const [summaryUrl, summaryInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(buildPatientApiPath).toHaveBeenCalledWith(HOSTILE);
       expect(summaryUrl).toBe(`/api/patients/${ENCODED}`);
       expect(summaryUrl).not.toContain('%25');
       expect(summaryInit.headers).toBe(sentinel);
@@ -255,20 +268,43 @@ describe('MedicationsContent url/header convergence', () => {
   });
 
   it.each(['.', '..'])(
-    'patient summary GET fails closed before fetch for the exact dot patient id %p',
+    'fails closed before any fetch for the exact dot patient id %p',
     async (dotId) => {
-      const { queryConfigs } = renderMeds({ patientId: dotId });
       const fetchMock = stubFetch();
       try {
-        await expect(queryConfigs.get('patient-medication-summary')!.queryFn()).rejects.toThrow(
-          RangeError,
-        );
+        expect(() => renderMeds({ patientId: dotId })).toThrow(RangeError);
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
       }
     },
   );
+
+  it('patient summary GET consumes the shared patient API path helper return value', async () => {
+    const { queryConfigs } = renderMeds({ patientId: 'patient_1' });
+    const fetchMock = stubFetch();
+    vi.mocked(buildPatientApiPath).mockReturnValueOnce('/api/patients/__helper_patient__');
+
+    try {
+      await queryConfigs.get('patient-medication-summary')!.queryFn();
+      expect(buildPatientApiPath).toHaveBeenCalledWith('patient_1');
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/patients/__helper_patient__');
+      expect(fetchMock).not.toHaveBeenCalledWith('/api/patients/patient_1', expect.anything());
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('routes the residual adjustment link through the shared patient href helper', () => {
+    vi.mocked(buildPatientHref).mockReturnValueOnce('/patients/__helper_residual__');
+
+    renderMeds({ patientId: 'patient_1' });
+
+    expect(buildPatientHref).toHaveBeenCalledWith('patient_1', '/residual-adjustment');
+    expect(screen.getByRole('link', { name: '残薬調整を開く' }).getAttribute('href')).toBe(
+      '/patients/__helper_residual__',
+    );
+  });
 
   it('issue status PATCH single-encodes the path issueId, adopts json helper, keeps id out of body', async () => {
     const sentinel = {
