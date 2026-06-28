@@ -10,6 +10,8 @@ import { PrintLayout } from '@/components/features/reports/print-layout';
 import { buttonVariants } from '@/components/ui/button';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildPatientHref } from '@/lib/patient/navigation';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
 type PatientResponse = {
@@ -59,7 +61,7 @@ export default function MedicationPrintPage() {
     queryKey: ['patient-print', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}`, {
+      const response = await fetch(buildPatientApiPath(patientId), {
         headers: { 'x-org-id': orgId },
         cache: 'no-store',
       });
@@ -72,13 +74,15 @@ export default function MedicationPrintPage() {
     queryKey: ['medication-print', patientId, orgId],
     enabled: Boolean(patientId && orgId),
     queryFn: async () => {
-      const response = await fetch(
-        `/api/medication-profiles?patient_id=${patientId}&is_current=true&limit=200`,
-        {
-          headers: { 'x-org-id': orgId },
-          cache: 'no-store',
-        }
-      );
+      const params = new URLSearchParams({
+        patient_id: patientId,
+        is_current: 'true',
+        limit: '200',
+      });
+      const response = await fetch(`/api/medication-profiles?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+        cache: 'no-store',
+      });
       if (!response.ok) throw new Error('服薬一覧を取得できませんでした');
       return response.json();
     },
@@ -87,7 +91,8 @@ export default function MedicationPrintPage() {
   const org = orgQuery.data;
   const patient = patientQuery.data;
   const profiles = medicationQuery.data?.data ?? [];
-  const isLoadingPrintData = orgQuery.isLoading || patientQuery.isLoading || medicationQuery.isLoading;
+  const isLoadingPrintData =
+    orgQuery.isLoading || patientQuery.isLoading || medicationQuery.isLoading;
   const hasPrintData = Boolean(org && patient);
   const ready = hasPrintData && !isLoadingPrintData;
 
@@ -106,7 +111,7 @@ export default function MedicationPrintPage() {
       <div className="mx-auto max-w-3xl space-y-4 p-6">
         <p className="text-sm text-destructive">印刷データを取得できませんでした。</p>
         <Link
-          href={`/patients/${patientId}/medications`}
+          href={buildPatientHref(patientId, '/medications')}
           className={buttonVariants({ variant: 'outline' })}
         >
           戻る
@@ -118,7 +123,7 @@ export default function MedicationPrintPage() {
   return (
     <div className="mx-auto max-w-4xl p-6 print:p-0">
       <PrintPageToolbar
-        backHref={`/patients/${patientId}/medications`}
+        backHref={buildPatientHref(patientId, '/medications')}
         backLabel="服薬管理へ戻る"
         title="薬歴・服薬一覧 印刷ビュー"
         description="服薬中薬剤と処方履歴をまとめて印刷できます。"
