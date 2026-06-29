@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0556 JST
+
+- current task: add sensitive no-store response headers and sanitized unexpected-error envelopes to `PUT /api/patients/[id]/care-team` without changing care-team replacement semantics.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, relevant other-profession route scans, local Next.js route-handler docs read earlier this turn, `src/app/api/patients/[id]/care-team/route.ts`, `src/app/api/patients/[id]/care-team/route.test.ts`, and current codex-owned visit-schedule WIP status.
+- files changed: `src/app/api/patients/[id]/care-team/route.ts`, `src/app/api/patients/[id]/care-team/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex-owned visit-schedule WIP.
+- bugs found: `PUT /api/patients/[id]/care-team` returned care-team replacement success, validation, role mismatch, archived-patient conflict, concurrent-update conflict, and 404 responses without the route's sensitive no-store envelope. Unexpected update failures could also fall through to framework 500 behavior instead of a fixed `INTERNAL_ERROR` envelope.
+- security risks found: reduced PHI-adjacent interprofessional care-team response caching risk and raw unexpected-error disclosure risk for patient/care-team update failures. Authorization, writable-patient guard, case assignment scope, external-professional org/role validation, audit redaction, response body shapes, transaction behavior, schema, live DB data, external send, push, deploy, and secret handling were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps existing route responses and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patients/[id]/care-team/route.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`; `git diff --check -- 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused care-team route Vitest passed `1` file / `20` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Ledger-inclusive Prettier and diff checks passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store coverage, sanitized 500 behavior, role-mismatch/audit-redaction non-regression, and raw error non-leakage. `PATCH_REVIEW_REQUEST` was also sent to codex; no blocker was received before commit preparation.
+- remaining work: explicit-path stage only codex2-owned files plus ledgers, commit, and send agmsg FYI.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0537 JST
 
 - current task: harden report and visit-record PDF routes so only typed PDF not-found errors become 404 responses and hostile raw render messages cannot be reflected to clients.

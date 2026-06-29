@@ -214,6 +214,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -233,6 +234,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -249,6 +251,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -280,6 +283,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(externalProfessionalFindManyMock).not.toHaveBeenCalled();
@@ -344,6 +348,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).toHaveBeenCalledWith(
       'corg1234567890123456789012',
       expect.any(Function),
@@ -415,6 +420,62 @@ describe('/api/patients/[id]/care-team', () => {
     });
   });
 
+  it('adds no-store headers to PUT auth rejection responses', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'FORBIDDEN', message: '患者情報の更新権限がありません' }),
+        { status: 403 },
+      ),
+    });
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when care-team updates fail unexpectedly', async () => {
+    const rawError = '患者A 03-9999-8888 care-team update failure';
+    careCaseFindFirstMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('03-9999-8888');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
+
   it('records a redacted care-team replacement audit log', async () => {
     findManyMock
       .mockResolvedValueOnce([
@@ -478,6 +539,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -575,6 +637,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const json = await response.json();
     expect(json).toMatchObject({
       case_id: 'case_active',
@@ -645,6 +708,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(createManyMock).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({ role: 'physician', name: '主治医A', is_primary: true }),
@@ -680,6 +744,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'ケアチームが同時に更新されました。再読み込みしてください',
     });
@@ -705,6 +770,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'アーカイブ中の患者は復元するまで更新できません',
     });
@@ -737,6 +803,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(createManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       message: '他組織の他職種はケアチームに登録できません',
@@ -769,6 +836,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(deleteManyMock).not.toHaveBeenCalled();
     expect(createManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
@@ -803,6 +871,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(deleteManyMock).not.toHaveBeenCalled();
     expect(createManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
@@ -844,6 +913,7 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(createManyMock).not.toHaveBeenCalled();
   });

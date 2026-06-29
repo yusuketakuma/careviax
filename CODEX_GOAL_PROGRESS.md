@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Care-Team PUT No-Store / Sanitized Envelope - 2026-06-30 05:56 JST
+
+- Scope:
+  - Continued codex2's other-profession collaboration objective on `PUT /api/patients/[id]/care-team`.
+  - Focused only on sensitive response cache headers and unexpected-error envelope behavior for care-team replacement responses.
+  - Preserved codex-owned visit-schedule WIP under `src/app/api/visit-schedule-proposals/route.ts`, `src/app/api/visit-schedule-proposals/route.test.ts`, `src/app/api/visit-schedules/generate/route.test.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/lib/validations/visit-schedule.ts`, and `src/server/services/visit-schedule-service.ts`.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - The care-team update route now runs through an `authenticatedPUT` helper and wraps all returned responses with `withSensitiveNoStore`, matching the existing GET envelope pattern.
+  - Unexpected PUT failures now return fixed no-store `INTERNAL_ERROR` responses instead of falling through to framework 500 behavior.
+- Safety:
+  - Reduces PHI-adjacent caching risk for care-team replacement success data, reliability warnings, validation errors, archived-patient conflicts, concurrent-update conflicts, role-mismatch errors, and 404 responses.
+  - Reduces raw unexpected-error disclosure risk for patient/care-team update failures while preserving authorization, writable-patient guard, case assignment scope, external-professional org/role validation, audit redaction, response body shapes, and transaction behavior.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/care-team/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `20` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - `git diff --check -- 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope, validation, and requested API/privacy/clinical safety lenses.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store coverage, sanitized 500 behavior, role-mismatch/audit-redaction non-regression, and raw error non-leakage.
+- Remaining:
+  - Stage only explicit codex2-owned files plus ledgers and commit while preserving codex visit-schedule WIP.
+
 ### PDF Not-Found Error Boundary Hardening - 2026-06-30 05:37 JST
 
 - Scope:

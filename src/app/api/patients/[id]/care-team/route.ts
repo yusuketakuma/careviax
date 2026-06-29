@@ -205,7 +205,7 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
   }
 }
 
-export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '患者情報の更新権限がありません',
@@ -368,5 +368,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return conflict('ケアチームが同時に更新されました。再読み込みしてください');
     }
     throw error;
+  }
+}
+
+export async function PUT(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPUT(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
   }
 }
