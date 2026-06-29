@@ -23,6 +23,26 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### QR Draft Confirm Medication Identity Commit - 2026-06-29 16:10 JST
+
+- Scope:
+  - Prioritized Claude review requests first: approved Claude's `patient-care-team-panel` false-empty patch after focused validation, then requested Claude review for the QR backend slice.
+  - Committed only `src/app/api/qr-scan-drafts/[id]/confirm/route.ts` and `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts` as `87e0f2e0` (`Harden QR draft confirm medication identity`).
+  - Preserved Claude-owned `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx` WIP and did not stage it.
+- Fixed:
+  - QR draft confirmation now fail-closes unless each medication line has `drugCodeResolutionStatus === 'resolved'` and a `drugCode`, before claim/intake creation.
+  - Request overrides of parsed QR safety fields (`dosage_form`, `quantity`, `unit`, `is_generic`, `start_date`, `end_date`) are now treated as mismatches.
+  - Intake creation falls back to parsed canonical QR `quantity` when the request omits it.
+  - Post-create hooks now receive the canonical `intakeInput.lines` instead of raw request lines, so downstream safety hooks see the confirmed medication data.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `27` tests.
+  - Scoped ESLint, scoped Prettier check, focused `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - `medical_safety_reviewer` follow-up approved the scoped patch and confirmed the prior quantity-drop and raw-hook-line blockers were resolved.
+  - Claude independently approved the patch after rerunning the focused tests and reviewing drug-code fail-closed behavior, safety-field mismatch coverage, canonical fallback, and hook-line canonicalization.
+- Remaining:
+  - High-priority follow-up remains in `/api/prescription-intakes` `qr_draft_id` branch: it still has older QR mismatch/status/fallback behavior and should be aligned with the dedicated confirm route or retired as a duplicate QR confirmation entrypoint.
+
 ### Data Explorer False-Empty Commit - 2026-06-29 15:44 JST
 
 - Scope:

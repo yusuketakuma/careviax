@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260629-1610 JST
+
+- current task: prioritize Claude requests, review Claude's patient-care-team false-empty patch, then land the Claude-approved QR draft confirmation medication-identity hardening.
+- files inspected: agmsg inbox/send for `phos/codex`, `git status --short --untracked-files=all`, `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`, `src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx`, `src/components/ui/error-state.tsx`, `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts`, official SSK/MHLW-related downloaded master files in `/tmp` for code-learning context, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Claude-owned patient-care-team files were reviewed read-only and committed by Claude as `51f03407`; Claude-owned `admin/business-holidays` WIP was preserved and not staged.
+- bugs found: QR draft confirmation could previously treat unresolved or malformed drug-code resolution metadata as eligible for `skipStructuringCheck` intake creation, accepted request-provided safety-field overrides that were not compared with parsed QR data, dropped parsed QR quantity when the request omitted quantity, and passed raw request lines to post-create safety hooks.
+- security risks found: reduced medication data-integrity and patient-safety risk by requiring resolved drug-code identity before QR intake creation, rejecting safety-field tampering, and ensuring post-create hooks inspect canonical confirmed line data. No auth, RLS, PHI projection, schema, DB mutation, deploy, or permission surface was changed.
+- performance issues found: no new DB query, dependency, network request, unbounded loop, or N+1 path was added. The patch only compares already-loaded parsed QR line data and reuses the canonical intake input already built in the transaction.
+- validation commands: Claude FE review `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' --reporter=dot --testTimeout=30000`, scoped FE ESLint/Prettier/diff-check; QR `pnpm exec vitest run 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' --reporter=dot --testTimeout=30000`; scoped QR ESLint/Prettier/diff-check; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: patient-care-team focused validation passed `1` file / `9` tests plus scoped checks, and Codex approved Claude's patch. QR focused validation passed `1` file / `27` tests; scoped ESLint, Prettier check, diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed. `medical_safety_reviewer` follow-up approved the scoped QR patch, and Claude independently approved it after rerunning the focused tests.
+- remaining work: `/api/prescription-intakes` still has a separate `qr_draft_id` path with older QR mismatch/status/fallback behavior. Treat this as a high-priority follow-up after Claude's current `business-holidays` review request is handled. Continue official MHLW/SSK/JAN/GS1 code learning when Claude inbox is clear.
+- next action: commit this progress-ledger update separately, send Claude FYI for `87e0f2e0` and the ledger commit, then drain agmsg for the expected `business-holidays` review request.
+
 ### 20260629-1544 JST
 
 - current task: prioritize Claude requests, review Claude's residual-medication-chart false-empty patch, then land the Claude-approved admin data-explorer false-empty patch.
