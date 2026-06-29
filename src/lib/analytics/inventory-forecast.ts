@@ -15,6 +15,10 @@ export const ORDER_REQUIRED_STOCK_RATIO = 0.5;
 
 export type DrugForecastStatus = 'order_required' | 'order_candidate' | 'sufficient';
 
+export type UnresolvedDrugForecastReason = 'missing_code' | 'code_not_found' | 'ambiguous_code';
+
+export type DrugResolutionStatus = 'resolved' | UnresolvedDrugForecastReason;
+
 /** 対応バッジの表示ラベル(要発注=赤 / 発注候補=橙 / 余裕あり=中立) */
 export const DRUG_FORECAST_STATUS_LABELS: Record<DrugForecastStatus, string> = {
   order_required: '要発注',
@@ -24,6 +28,9 @@ export const DRUG_FORECAST_STATUS_LABELS: Record<DrugForecastStatus, string> = {
 
 export type ForecastLineInput = {
   drugName: string;
+  drugCode?: string | null;
+  drugMasterId?: string | null;
+  drugResolutionStatus?: DrugResolutionStatus;
   dose: string;
   frequency: string;
   days: number;
@@ -54,6 +61,8 @@ export type ForecastVisitInput = {
 
 export type ForecastStockInput = {
   drugName: string;
+  drugCode?: string | null;
+  drugMasterId?: string | null;
   /** 五十音順ソート用のカナ名(DrugMaster.drug_name_kana) */
   drugNameKana: string | null;
   unit: string | null;
@@ -61,6 +70,10 @@ export type ForecastStockInput = {
 };
 
 export type DrugForecastRow = {
+  /** 内部集計キー。master:<DrugMaster.id> を優先し、次に code:<YJ/receipt/HOT> を使う。 */
+  drugIdentityKey: string;
+  /** YJコード。未解決名フォールバックでは null。 */
+  drugCode: string | null;
   /** 規格・剤形を除いた薬剤ベース名(表示キー) */
   drugKey: string;
   /** 来週 7 日分の必要量見込み(切り上げ整数) */
@@ -71,6 +84,16 @@ export type DrugForecastRow = {
   status: DrugForecastStatus;
 };
 
+export type UnresolvedDrugForecastRow = {
+  drugIdentityKey: string;
+  drugCode: string | null;
+  reason: UnresolvedDrugForecastReason;
+  drugKey: string;
+  requiredQty: number;
+  unit: string;
+  affectedPatientCount: number;
+};
+
 export type InventoryForecastRunOutBasis =
   | 'line_end_date'
   | 'line_start_date_plus_days'
@@ -79,6 +102,8 @@ export type InventoryForecastRunOutBasis =
 export type InventoryForecastUrgency = 'critical' | 'warning' | 'normal' | 'unknown';
 
 export type PatientDrugShortageDetail = {
+  drugIdentityKey: string;
+  drugCode: string | null;
   drugKey: string;
   requiredQty: number;
   stockQty: number;
@@ -119,6 +144,7 @@ export type AffectedPatientCard = {
 export type InventoryForecastSummary = {
   drugs: DrugForecastRow[];
   patients: AffectedPatientCard[];
+  unresolvedDrugs: UnresolvedDrugForecastRow[];
 };
 
 export type InventoryForecastDecisionSummary = {
@@ -248,6 +274,50 @@ export function drugBaseName(drugName: string): string {
   return withoutStrength.length > 0 ? withoutStrength : head;
 }
 
+function normalizeDrugCode(code?: string | null): string | null {
+  return code?.trim() || null;
+}
+
+function normalizeDrugMasterId(id?: string | null): string | null {
+  return id?.trim() || null;
+}
+
+function forecastDrugIdentity(input: {
+  drugName: string;
+  drugCode?: string | null;
+  drugMasterId?: string | null;
+  drugResolutionStatus?: DrugResolutionStatus;
+}): {
+  identityKey: string;
+  drugCode: string | null;
+  drugKey: string;
+  isResolved: boolean;
+  unresolvedReason: UnresolvedDrugForecastReason | null;
+} {
+  const drugMasterId = normalizeDrugMasterId(input.drugMasterId);
+  const drugCode = normalizeDrugCode(input.drugCode);
+  const drugKey = drugBaseName(input.drugName);
+  const status = input.drugResolutionStatus;
+  const codeIsResolved = status == null || status === 'resolved';
+  const isResolved = Boolean(drugMasterId || (drugCode && codeIsResolved));
+  const unresolvedReason: UnresolvedDrugForecastReason | null = isResolved
+    ? null
+    : status === 'code_not_found' || status === 'ambiguous_code'
+      ? status
+      : 'missing_code';
+  return {
+    identityKey: drugMasterId
+      ? `master:${drugMasterId}`
+      : isResolved && drugCode
+        ? `code:${drugCode}`
+        : '',
+    drugCode,
+    drugKey,
+    isResolved,
+    unresolvedReason,
+  };
+}
+
 /** 用法文字列から 1 日の服用回数を概算する(不明は 1 回)。 */
 function frequencyPerDay(frequency: string): number {
   const explicit = frequency.match(/([0-9０-９]+)\s*回/u);
@@ -340,7 +410,8 @@ function sortShortageDetails(details: PatientDrugShortageDetail[]): PatientDrugS
       shortageStatusPriority(left.status) - shortageStatusPriority(right.status) ||
       urgencyPriority(left.urgency) - urgencyPriority(right.urgency) ||
       compareNullableDateKeys(left.runOutDateKey, right.runOutDateKey) ||
-      left.drugKey.localeCompare(right.drugKey, 'ja'),
+      left.drugKey.localeCompare(right.drugKey, 'ja') ||
+      left.drugIdentityKey.localeCompare(right.drugIdentityKey),
   );
 }
 
@@ -376,15 +447,15 @@ function mergeShortageDetails(
   const detailsByDrug = new Map<string, PatientDrugShortageDetail>();
 
   for (const detail of [...existing, ...incoming]) {
-    const current = detailsByDrug.get(detail.drugKey);
+    const current = detailsByDrug.get(detail.drugIdentityKey);
     if (!current) {
-      detailsByDrug.set(detail.drugKey, { ...detail });
+      detailsByDrug.set(detail.drugIdentityKey, { ...detail });
       continue;
     }
 
     const useIncomingRunOut =
       compareNullableDateKeys(detail.runOutDateKey, current.runOutDateKey) < 0;
-    detailsByDrug.set(detail.drugKey, {
+    detailsByDrug.set(detail.drugIdentityKey, {
       ...current,
       requiredQty: current.requiredQty + detail.requiredQty,
       affectedPatientCount: current.affectedPatientCount + detail.affectedPatientCount,
@@ -430,33 +501,84 @@ export function buildInventoryForecast(input: {
     }
   }
 
-  // 薬剤ベース名ごとの必要量見込み(1日量 × 7日 × 該当患者ぶんの合算)
-  const requiredByDrug = new Map<string, { requiredQty: number; unit: string | null }>();
+  // 解決済み薬剤コードごとの必要量見込み(1日量 × 7日 × 該当患者ぶんの合算)
+  const requiredByDrug = new Map<
+    string,
+    { drugKey: string; drugCode: string | null; requiredQty: number; unit: string | null }
+  >();
+  const unresolvedByDrug = new Map<
+    string,
+    {
+      drugIdentityKey: string;
+      drugCode: string | null;
+      reason: UnresolvedDrugForecastReason;
+      drugKey: string;
+      requiredQty: number;
+      unit: string;
+      patientIds: Set<string>;
+    }
+  >();
   for (const patientId of visitingPatients.keys()) {
     const lines = linesByPatient.get(patientId) ?? [];
     for (const line of lines) {
-      const key = drugBaseName(line.drugName);
-      if (key.length === 0) continue;
-      const entry = requiredByDrug.get(key) ?? { requiredQty: 0, unit: null };
+      const identity = forecastDrugIdentity(line);
+      if (identity.drugKey.length === 0) continue;
+      if (!identity.isResolved) {
+        const unresolvedReason = identity.unresolvedReason ?? 'missing_code';
+        const unresolvedKey = identity.drugCode
+          ? `unresolved-code:${identity.drugCode}`
+          : `unresolved-name:${identity.drugKey}`;
+        const entry = unresolvedByDrug.get(unresolvedKey) ?? {
+          drugIdentityKey: unresolvedKey,
+          drugCode: identity.drugCode,
+          reason: unresolvedReason,
+          drugKey: identity.drugKey,
+          requiredQty: 0,
+          unit: line.unit ?? '錠',
+          patientIds: new Set<string>(),
+        };
+        entry.requiredQty += estimateDailyDose(line) * FORECAST_DAYS;
+        entry.patientIds.add(patientId);
+        unresolvedByDrug.set(unresolvedKey, entry);
+        continue;
+      }
+      const entry = requiredByDrug.get(identity.identityKey) ?? {
+        drugKey: identity.drugKey,
+        drugCode: identity.drugCode,
+        requiredQty: 0,
+        unit: null,
+      };
       entry.requiredQty += estimateDailyDose(line) * FORECAST_DAYS;
       entry.unit = entry.unit ?? line.unit;
-      requiredByDrug.set(key, entry);
+      requiredByDrug.set(identity.identityKey, entry);
     }
   }
 
-  // 在庫(同一ベース名は全拠点・全規格を合算)
+  // 在庫(同一 DrugMaster / コードは全拠点合算。未解決名では自動突合しない)
   const stockByDrug = new Map<
     string,
-    { stockQty: number; unit: string | null; nameKana: string | null }
+    {
+      drugKey: string;
+      drugCode: string | null;
+      stockQty: number;
+      unit: string | null;
+      nameKana: string | null;
+    }
   >();
   for (const stock of input.stocks) {
-    const key = drugBaseName(stock.drugName);
-    if (key.length === 0) continue;
-    const entry = stockByDrug.get(key) ?? { stockQty: 0, unit: null, nameKana: null };
+    const identity = forecastDrugIdentity(stock);
+    if (identity.drugKey.length === 0 || !identity.isResolved) continue;
+    const entry = stockByDrug.get(identity.identityKey) ?? {
+      drugKey: identity.drugKey,
+      drugCode: identity.drugCode,
+      stockQty: 0,
+      unit: null,
+      nameKana: null,
+    };
     entry.stockQty += stock.stockQty ?? 0;
     entry.unit = entry.unit ?? stock.unit;
     entry.nameKana = entry.nameKana ?? stock.drugNameKana;
-    stockByDrug.set(key, entry);
+    stockByDrug.set(identity.identityKey, entry);
   }
 
   const drugs: DrugForecastRow[] = [...requiredByDrug.entries()]
@@ -465,7 +587,9 @@ export function buildInventoryForecast(input: {
       const stock = stockByDrug.get(key)!;
       const requiredQty = Math.ceil(entry.requiredQty);
       const row: DrugForecastRow = {
-        drugKey: key,
+        drugIdentityKey: key,
+        drugCode: entry.drugCode ?? stock.drugCode,
+        drugKey: entry.drugKey,
         requiredQty,
         stockQty: stock.stockQty,
         unit: entry.unit ?? stock.unit ?? '錠',
@@ -477,8 +601,8 @@ export function buildInventoryForecast(input: {
     .sort((a, b) => a.sortKana.localeCompare(b.sortKana, 'ja'))
     .map((item) => item.row);
 
-  const shortageDrugKeys = new Set(
-    drugs.filter((drug) => drug.status !== 'sufficient').map((drug) => drug.drugKey),
+  const shortageDrugIdentityKeys = new Set(
+    drugs.filter((drug) => drug.status !== 'sufficient').map((drug) => drug.drugIdentityKey),
   );
   const shortageRowsByDrug = new Map(
     drugs
@@ -486,13 +610,15 @@ export function buildInventoryForecast(input: {
         (drug): drug is DrugForecastRow & { status: Exclude<DrugForecastStatus, 'sufficient'> } =>
           drug.status !== 'sufficient',
       )
-      .map((drug) => [drug.drugKey, drug]),
+      .map((drug) => [drug.drugIdentityKey, drug]),
   );
 
   const usesShortageDrug = (patientId: string): boolean =>
-    (linesByPatient.get(patientId) ?? []).some((line) =>
-      shortageDrugKeys.has(drugBaseName(line.drugName)),
-    );
+    (linesByPatient.get(patientId) ?? []).some((line) => {
+      const identity = forecastDrugIdentity(line);
+      if (!identity.isResolved) return false;
+      return shortageDrugIdentityKeys.has(identity.identityKey);
+    });
 
   const shortageDetailsForPatient = (
     patientId: string,
@@ -507,17 +633,20 @@ export function buildInventoryForecast(input: {
     >();
 
     for (const line of intake.lines) {
-      const key = drugBaseName(line.drugName);
-      const shortageRow = shortageRowsByDrug.get(key);
+      const identity = forecastDrugIdentity(line);
+      if (!identity.isResolved) continue;
+      const shortageRow = shortageRowsByDrug.get(identity.identityKey);
       if (!shortageRow) continue;
 
       const dailyQty = estimateDailyDose(line);
       const runOut = resolveLineRunOut({ line });
-      const current = detailAccumulators.get(key);
+      const current = detailAccumulators.get(identity.identityKey);
       const useIncomingRunOut =
         current == null || compareNullableDateKeys(runOut.runOutDateKey, current.runOutDateKey) < 0;
       const baseDetail = current ?? {
-        drugKey: key,
+        drugIdentityKey: identity.identityKey,
+        drugCode: identity.drugCode ?? shortageRow.drugCode,
+        drugKey: identity.drugKey,
         requiredQty: 0,
         stockQty: shortageRow.stockQty,
         unit: line.unit ?? shortageRow.unit,
@@ -531,7 +660,7 @@ export function buildInventoryForecast(input: {
         }),
       };
 
-      detailAccumulators.set(key, {
+      detailAccumulators.set(identity.identityKey, {
         ...baseDetail,
         requiredQty: baseDetail.requiredQty + dailyQty * FORECAST_DAYS,
         runOutDateKey: useIncomingRunOut ? runOut.runOutDateKey : baseDetail.runOutDateKey,
@@ -609,5 +738,21 @@ export function buildInventoryForecast(input: {
       a.label.localeCompare(b.label, 'ja'),
   );
 
-  return { drugs, patients };
+  const unresolvedDrugs: UnresolvedDrugForecastRow[] = [...unresolvedByDrug.values()]
+    .map((row) => ({
+      drugIdentityKey: row.drugIdentityKey,
+      drugCode: row.drugCode,
+      reason: row.reason,
+      drugKey: row.drugKey,
+      requiredQty: Math.ceil(row.requiredQty),
+      unit: row.unit,
+      affectedPatientCount: row.patientIds.size,
+    }))
+    .sort(
+      (left, right) =>
+        left.drugKey.localeCompare(right.drugKey, 'ja') ||
+        left.drugIdentityKey.localeCompare(right.drugIdentityKey),
+    );
+
+  return { drugs, patients, unresolvedDrugs };
 }

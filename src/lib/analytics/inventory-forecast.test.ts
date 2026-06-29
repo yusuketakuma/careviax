@@ -13,6 +13,8 @@ import {
   summarizeInventoryForecast,
   type ForecastIntakeInput,
   type ForecastLineInput,
+  type ForecastStockInput,
+  type ForecastVisitInput,
 } from './inventory-forecast';
 
 function line(overrides: Partial<ForecastLineInput> = {}): ForecastLineInput {
@@ -201,6 +203,8 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
   it('computes stock coverage and chooses the highest priority shortage', () => {
     const drugs = [
       {
+        drugIdentityKey: 'code:YJ_AMLO',
+        drugCode: 'YJ_AMLO',
         drugKey: 'アムロジピン',
         requiredQty: 35,
         stockQty: 20,
@@ -208,6 +212,8 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
         status: 'order_candidate' as const,
       },
       {
+        drugIdentityKey: 'code:YJ_TORA',
+        drugCode: 'YJ_TORA',
         drugKey: 'トラセミド',
         requiredQty: 21,
         stockQty: 3,
@@ -215,6 +221,8 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
         status: 'order_required' as const,
       },
       {
+        drugIdentityKey: 'code:YJ_MG',
+        drugCode: 'YJ_MG',
         drugKey: '酸化Mg',
         requiredQty: 84,
         stockQty: 112,
@@ -242,6 +250,8 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
           urgency: 'critical',
           shortageDetails: [
             {
+              drugIdentityKey: 'code:YJ_TORA',
+              drugCode: 'YJ_TORA',
               drugKey: 'トラセミド',
               requiredQty: 7,
               stockQty: 3,
@@ -269,6 +279,8 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
     const summary = summarizeInventoryForecast({
       drugs: [
         {
+          drugIdentityKey: 'code:YJ_MG',
+          drugCode: 'YJ_MG',
           drugKey: '酸化Mg',
           requiredQty: 84,
           stockQty: 112,
@@ -289,7 +301,11 @@ describe('buildInventoryForecast', () => {
   const tuesday = new Date('2026-06-16T00:00:00.000Z');
   const thursday = new Date('2026-06-18T00:00:00.000Z');
 
-  const baseInput = () => ({
+  const baseInput = (): {
+    visits: ForecastVisitInput[];
+    intakes: ForecastIntakeInput[];
+    stocks: ForecastStockInput[];
+  } => ({
     visits: [
       {
         patientId: 'p-tanaka',
@@ -324,6 +340,7 @@ describe('buildInventoryForecast', () => {
         lines: [
           line({
             drugName: 'アムロジピン 5mg',
+            drugCode: 'YJ_AMLO',
             quantity: 28,
             days: 28,
             startDate: new Date('2026-06-10T00:00:00.000Z'),
@@ -337,12 +354,14 @@ describe('buildInventoryForecast', () => {
         lines: [
           line({
             drugName: 'トラセミド 4mg',
+            drugCode: 'YJ_TORA',
             quantity: 28,
             days: 28,
             startDate: new Date('2026-06-08T00:00:00.000Z'),
           }),
           line({
             drugName: '酸化Mg 330mg',
+            drugCode: 'YJ_MG',
             quantity: 84,
             days: 28,
             startDate: new Date('2026-06-08T00:00:00.000Z'),
@@ -356,6 +375,7 @@ describe('buildInventoryForecast', () => {
         lines: [
           line({
             drugName: 'アムロジピン 5mg',
+            drugCode: 'YJ_AMLO',
             quantity: 28,
             days: 28,
             startDate: new Date('2026-06-08T00:00:00.000Z'),
@@ -369,6 +389,7 @@ describe('buildInventoryForecast', () => {
         lines: [
           line({
             drugName: 'トラセミド 4mg',
+            drugCode: 'YJ_TORA',
             quantity: 28,
             days: 28,
             startDate: new Date('2026-06-08T00:00:00.000Z'),
@@ -383,6 +404,7 @@ describe('buildInventoryForecast', () => {
         lines: [
           line({
             drugName: 'アムロジピン 5mg',
+            drugCode: 'YJ_AMLO',
             quantity: 280,
             days: 28,
             startDate: new Date('2026-06-08T00:00:00.000Z'),
@@ -393,14 +415,33 @@ describe('buildInventoryForecast', () => {
     stocks: [
       {
         drugName: 'アムロジピン 5mg',
+        drugCode: 'YJ_AMLO',
         drugNameKana: 'アムロジピン',
         unit: '錠',
         stockQty: 18,
       },
-      { drugName: '酸化Mg 330mg', drugNameKana: 'サンカマグネシウム', unit: '錠', stockQty: 112 },
-      { drugName: 'トラセミド 4mg', drugNameKana: 'トラセミド', unit: '錠', stockQty: 3 },
+      {
+        drugName: '酸化Mg 330mg',
+        drugCode: 'YJ_MG',
+        drugNameKana: 'サンカマグネシウム',
+        unit: '錠',
+        stockQty: 112,
+      },
+      {
+        drugName: 'トラセミド 4mg',
+        drugCode: 'YJ_TORA',
+        drugNameKana: 'トラセミド',
+        unit: '錠',
+        stockQty: 3,
+      },
       // 需要ゼロの在庫はテーブルに出さない
-      { drugName: 'ファモチジン 10mg', drugNameKana: 'ファモチジン', unit: '錠', stockQty: 50 },
+      {
+        drugName: 'ファモチジン 10mg',
+        drugCode: 'YJ_FAMO',
+        drugNameKana: 'ファモチジン',
+        unit: '錠',
+        stockQty: 50,
+      },
     ],
   });
 
@@ -409,6 +450,8 @@ describe('buildInventoryForecast', () => {
     expect(summary.drugs).toEqual([
       // アムロジピン: (1 + 1) 錠/日 × 7日 = 14 / 在庫18 → 余裕あり…ではなく 18 >= 14 → sufficient
       {
+        drugIdentityKey: 'code:YJ_AMLO',
+        drugCode: 'YJ_AMLO',
         drugKey: 'アムロジピン',
         requiredQty: 14,
         stockQty: 18,
@@ -416,9 +459,224 @@ describe('buildInventoryForecast', () => {
         status: 'sufficient',
       },
       // 酸化Mg: 3錠/日 × 7日 = 21 / 在庫112 → 余裕あり
-      { drugKey: '酸化Mg', requiredQty: 21, stockQty: 112, unit: '錠', status: 'sufficient' },
+      {
+        drugIdentityKey: 'code:YJ_MG',
+        drugCode: 'YJ_MG',
+        drugKey: '酸化Mg',
+        requiredQty: 21,
+        stockQty: 112,
+        unit: '錠',
+        status: 'sufficient',
+      },
       // トラセミド: (1 + 1) 錠/日 × 7日 = 14 / 在庫3 → 3 < 7 → 要発注
-      { drugKey: 'トラセミド', requiredQty: 14, stockQty: 3, unit: '錠', status: 'order_required' },
+      {
+        drugIdentityKey: 'code:YJ_TORA',
+        drugCode: 'YJ_TORA',
+        drugKey: 'トラセミド',
+        requiredQty: 14,
+        stockQty: 3,
+        unit: '錠',
+        status: 'order_required',
+      },
+    ]);
+  });
+
+  it('uses drug codes before base names so same-name different-code drugs are not merged', () => {
+    const input = baseInput();
+    input.visits = [
+      {
+        patientId: 'p-code-a',
+        patientName: '患者A',
+        scheduledDate: new Date('2026-06-15T00:00:00.000Z'),
+        facilityBatch: null,
+      },
+      {
+        patientId: 'p-code-b',
+        patientName: '患者B',
+        scheduledDate: new Date('2026-06-16T00:00:00.000Z'),
+        facilityBatch: null,
+      },
+    ];
+    input.intakes = [
+      {
+        patientId: 'p-code-a',
+        prescribedDate: new Date('2026-06-10T00:00:00.000Z'),
+        createdAt: new Date('2026-06-10T10:00:00.000Z'),
+        lines: [
+          line({
+            drugName: '同名薬 5mg',
+            drugCode: 'YJ_A',
+            quantity: 28,
+            days: 28,
+          }),
+        ],
+      },
+      {
+        patientId: 'p-code-b',
+        prescribedDate: new Date('2026-06-10T00:00:00.000Z'),
+        createdAt: new Date('2026-06-10T10:00:00.000Z'),
+        lines: [
+          line({
+            drugName: '同名薬 10mg',
+            drugCode: 'YJ_B',
+            quantity: 56,
+            days: 28,
+          }),
+        ],
+      },
+    ];
+    input.stocks = [
+      {
+        drugName: '同名薬 5mg',
+        drugCode: 'YJ_A',
+        drugNameKana: 'ドウメイヤク',
+        unit: '錠',
+        stockQty: 10,
+      },
+      {
+        drugName: '同名薬 10mg',
+        drugCode: 'YJ_B',
+        drugNameKana: 'ドウメイヤク',
+        unit: '錠',
+        stockQty: 3,
+      },
+    ];
+
+    const summary = buildInventoryForecast(input);
+
+    expect(summary.drugs).toEqual([
+      {
+        drugIdentityKey: 'code:YJ_A',
+        drugCode: 'YJ_A',
+        drugKey: '同名薬',
+        requiredQty: 7,
+        stockQty: 10,
+        unit: '錠',
+        status: 'sufficient',
+      },
+      {
+        drugIdentityKey: 'code:YJ_B',
+        drugCode: 'YJ_B',
+        drugKey: '同名薬',
+        requiredQty: 14,
+        stockQty: 3,
+        unit: '錠',
+        status: 'order_required',
+      },
+    ]);
+    expect(summary.patients.map((card) => card.key)).toEqual(['patient:p-code-b']);
+    expect(summary.patients[0]?.shortageDetails).toEqual([
+      expect.objectContaining({
+        drugIdentityKey: 'code:YJ_B',
+        drugCode: 'YJ_B',
+        drugKey: '同名薬',
+        requiredQty: 14,
+      }),
+    ]);
+  });
+
+  it('keeps unresolved name-only prescription lines out of automatic stock shortage matching', () => {
+    const input = baseInput();
+    input.visits = [
+      {
+        patientId: 'p-unresolved',
+        patientName: '未解決 患者',
+        scheduledDate: new Date('2026-06-15T00:00:00.000Z'),
+        facilityBatch: null,
+      },
+    ];
+    input.intakes = [
+      {
+        patientId: 'p-unresolved',
+        prescribedDate: new Date('2026-06-10T00:00:00.000Z'),
+        createdAt: new Date('2026-06-10T10:00:00.000Z'),
+        lines: [
+          line({
+            drugName: '同名薬 5mg',
+            drugCode: null,
+            quantity: 28,
+            days: 28,
+          }),
+        ],
+      },
+    ];
+    input.stocks = [
+      {
+        drugName: '同名薬 5mg',
+        drugCode: 'YJ_RESOLVED',
+        drugNameKana: 'ドウメイヤク',
+        unit: '錠',
+        stockQty: 0,
+      },
+    ];
+
+    const summary = buildInventoryForecast(input);
+
+    expect(summary.drugs).toEqual([]);
+    expect(summary.patients).toEqual([]);
+    expect(summary.unresolvedDrugs).toEqual([
+      {
+        drugIdentityKey: 'unresolved-name:同名薬',
+        drugCode: null,
+        reason: 'missing_code',
+        drugKey: '同名薬',
+        requiredQty: 7,
+        unit: '錠',
+        affectedPatientCount: 1,
+      },
+    ]);
+  });
+
+  it('keeps code-not-found prescription lines out of automatic stock shortage matching', () => {
+    const input = baseInput();
+    input.visits = [
+      {
+        patientId: 'p-bad-code',
+        patientName: '未収載 患者',
+        scheduledDate: new Date('2026-06-15T00:00:00.000Z'),
+        facilityBatch: null,
+      },
+    ];
+    input.intakes = [
+      {
+        patientId: 'p-bad-code',
+        prescribedDate: new Date('2026-06-10T00:00:00.000Z'),
+        createdAt: new Date('2026-06-10T10:00:00.000Z'),
+        lines: [
+          line({
+            drugName: '同名薬 5mg',
+            drugCode: 'BADCODE',
+            drugResolutionStatus: 'code_not_found',
+            quantity: 28,
+            days: 28,
+          }),
+        ],
+      },
+    ];
+    input.stocks = [
+      {
+        drugName: '同名薬 5mg',
+        drugCode: 'YJ_RESOLVED',
+        drugNameKana: 'ドウメイヤク',
+        unit: '錠',
+        stockQty: 0,
+      },
+    ];
+
+    const summary = buildInventoryForecast(input);
+
+    expect(summary.drugs).toEqual([]);
+    expect(summary.patients).toEqual([]);
+    expect(summary.unresolvedDrugs).toEqual([
+      {
+        drugIdentityKey: 'unresolved-code:BADCODE',
+        drugCode: 'BADCODE',
+        reason: 'code_not_found',
+        drugKey: '同名薬',
+        requiredQty: 7,
+        unit: '錠',
+        affectedPatientCount: 1,
+      },
     ]);
   });
 
@@ -450,6 +708,8 @@ describe('buildInventoryForecast', () => {
         urgency: 'normal',
         shortageDetails: [
           {
+            drugIdentityKey: 'code:YJ_AMLO',
+            drugCode: 'YJ_AMLO',
             drugKey: 'アムロジピン',
             requiredQty: 7,
             stockQty: 10,
@@ -477,6 +737,8 @@ describe('buildInventoryForecast', () => {
         urgency: 'normal',
         shortageDetails: [
           {
+            drugIdentityKey: 'code:YJ_TORA',
+            drugCode: 'YJ_TORA',
             drugKey: 'トラセミド',
             requiredQty: 7,
             stockQty: 3,
@@ -504,6 +766,8 @@ describe('buildInventoryForecast', () => {
         urgency: 'normal',
         shortageDetails: [
           {
+            drugIdentityKey: 'code:YJ_TORA',
+            drugCode: 'YJ_TORA',
             drugKey: 'トラセミド',
             requiredQty: 7,
             stockQty: 3,
@@ -515,6 +779,8 @@ describe('buildInventoryForecast', () => {
             urgency: 'normal',
           },
           {
+            drugIdentityKey: 'code:YJ_AMLO',
+            drugCode: 'YJ_AMLO',
             drugKey: 'アムロジピン',
             requiredQty: 7,
             stockQty: 10,
@@ -537,6 +803,7 @@ describe('buildInventoryForecast', () => {
       lines: [
         line({
           drugName: 'トラセミド 4mg',
+          drugCode: 'YJ_TORA',
           quantity: 28,
           days: 28,
           endDate: new Date('2026-06-17T00:00:00.000Z'),
@@ -559,6 +826,8 @@ describe('buildInventoryForecast', () => {
       urgency: 'critical',
       shortageDetails: [
         {
+          drugIdentityKey: 'code:YJ_TORA',
+          drugCode: 'YJ_TORA',
           drugKey: 'トラセミド',
           requiredQty: 14,
           stockQty: 3,

@@ -21,6 +21,7 @@ import {
   type DrugForecastStatus,
   type InventoryForecastRunOutBasis,
   type InventoryForecastUrgency,
+  type UnresolvedDrugForecastRow,
 } from '@/lib/analytics/inventory-forecast';
 
 /**
@@ -32,6 +33,7 @@ type InventoryForecast = {
   week: { start_date: string; end_date: string };
   drugs: DrugForecastRow[];
   patients: AffectedPatientCard[];
+  unresolvedDrugs?: UnresolvedDrugForecastRow[];
 };
 
 // 警告 3 段階の規約内: 要発注=blocked(赤) / 発注候補=confirm(橙) / 余裕あり=中立(既定 Badge)
@@ -62,6 +64,12 @@ const URGENCY_BORDER: Record<InventoryForecastUrgency, string> = {
   warning: 'border-l-4 border-l-state-confirm',
   normal: '',
   unknown: '',
+};
+
+const UNRESOLVED_REASON_LABEL: Record<UnresolvedDrugForecastRow['reason'], string> = {
+  missing_code: 'コード未登録',
+  code_not_found: 'マスター未一致',
+  ambiguous_code: '候補複数',
 };
 
 function formatMonthDay(dateKey: string): string {
@@ -114,7 +122,14 @@ const drugForecastColumns: ColumnDef<DrugForecastRow>[] = [
   {
     accessorKey: 'drugKey',
     header: '薬剤',
-    cell: ({ row }) => <span className="font-medium">{row.original.drugKey}</span>,
+    cell: ({ row }) => (
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="font-medium">{row.original.drugKey}</span>
+        {row.original.drugCode ? (
+          <span className="text-xs text-muted-foreground">{row.original.drugCode}</span>
+        ) : null}
+      </span>
+    ),
     meta: { label: '薬剤' },
   },
   {
@@ -196,6 +211,7 @@ export function InventoryForecastContent() {
   }
 
   const forecast = forecastQuery.data;
+  const unresolvedDrugs = forecast.unresolvedDrugs ?? [];
   const summary = summarizeInventoryForecast({
     drugs: forecast.drugs,
     patients: forecast.patients,
@@ -259,6 +275,51 @@ export function InventoryForecastContent() {
         />
       </section>
 
+      {unresolvedDrugs.length > 0 ? (
+        <section
+          className="rounded-lg border border-state-confirm/40 bg-state-confirm/5 p-4"
+          aria-labelledby="inventory-forecast-unresolved-heading"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2
+                id="inventory-forecast-unresolved-heading"
+                className="text-sm font-bold text-foreground"
+              >
+                コード未解決の処方需要
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                自動発注判定から分離しています。医薬品マスターのコード確認後に在庫と照合してください。
+              </p>
+            </div>
+            <StateBadge role="confirm">{unresolvedDrugs.length}件 要確認</StateBadge>
+          </div>
+          <ul className="mt-4 divide-y divide-border/70" role="list">
+            {unresolvedDrugs.map((drug) => (
+              <li
+                key={drug.drugIdentityKey}
+                className="grid gap-2 py-3 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_auto]"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-foreground">{drug.drugKey}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {UNRESOLVED_REASON_LABEL[drug.reason]}
+                    {drug.drugCode ? `: ${drug.drugCode}` : ''}
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground md:text-right">
+                  <span className="font-medium text-foreground">
+                    {drug.requiredQty}
+                    {drug.unit}
+                  </span>
+                  <span className="ml-2">{drug.affectedPatientCount}名分</span>
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       <div className="grid items-start gap-4 xl:grid-cols-5">
         <section
           className="rounded-lg border border-border/70 bg-card p-4 xl:col-span-3"
@@ -277,7 +338,7 @@ export function InventoryForecastContent() {
                 columns={drugForecastColumns}
                 data={forecast.drugs}
                 caption="来週必要になりそうな薬"
-                getRowId={(row) => row.drugKey}
+                getRowId={(row) => row.drugIdentityKey}
                 getRowA11yLabel={(row) =>
                   `${row.drugKey} ${DRUG_FORECAST_STATUS_LABELS[row.status]}`
                 }

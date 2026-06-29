@@ -9,6 +9,7 @@ import {
   nextWeekUtcRange,
   type ForecastIntakeInput,
   type ForecastVisitInput,
+  type DrugResolutionStatus,
 } from '@/lib/analytics/inventory-forecast';
 
 /**
@@ -16,6 +17,85 @@ import {
  * 直近処方の 1 日量から薬剤別の必要量見込みを作り、薬局在庫と突合して
  * 「来週必要になりそうな薬」と「影響する患者さん」を返す BFF。
  */
+
+function normalizeForecastDrugCode(code: string | null | undefined) {
+  return code?.replace(/\s/g, '').trim() || null;
+}
+
+type ForecastDrugMasterMatch = {
+  id: string;
+  yj_code: string;
+  receipt_code: string | null;
+  hot_code: string | null;
+};
+
+type ForecastDrugResolution =
+  | { status: 'resolved'; drug: { id: string; yj_code: string } }
+  | { status: 'ambiguous_code' };
+
+function buildForecastDrugResolutionByCode(
+  drugs: ForecastDrugMasterMatch[],
+): Map<string, ForecastDrugResolution> {
+  const resolvedByYj = new Map<string, ForecastDrugResolution>();
+  for (const drug of drugs) {
+    const yjCode = normalizeForecastDrugCode(drug.yj_code);
+    if (yjCode && !resolvedByYj.has(yjCode)) {
+      resolvedByYj.set(yjCode, { status: 'resolved', drug });
+    }
+  }
+
+  const nonYjCandidates = new Map<string, Map<string, { id: string; yj_code: string }>>();
+  for (const drug of drugs) {
+    for (const code of [
+      normalizeForecastDrugCode(drug.receipt_code),
+      normalizeForecastDrugCode(drug.hot_code),
+    ]) {
+      if (!code || resolvedByYj.has(code)) continue;
+      const candidates =
+        nonYjCandidates.get(code) ?? new Map<string, { id: string; yj_code: string }>();
+      candidates.set(drug.id, drug);
+      nonYjCandidates.set(code, candidates);
+    }
+  }
+
+  const resolutions = new Map(resolvedByYj);
+  for (const [code, candidates] of nonYjCandidates.entries()) {
+    const candidateList = [...candidates.values()];
+    resolutions.set(
+      code,
+      candidateList.length === 1
+        ? { status: 'resolved', drug: candidateList[0] }
+        : { status: 'ambiguous_code' },
+    );
+  }
+  return resolutions;
+}
+
+function resolveLineDrugCode(
+  rawCode: string | null,
+  drugByCode: Map<string, ForecastDrugResolution>,
+): {
+  drugCode: string | null;
+  drugMasterId: string | null;
+  drugResolutionStatus: DrugResolutionStatus;
+} {
+  if (!rawCode) {
+    return { drugCode: null, drugMasterId: null, drugResolutionStatus: 'missing_code' };
+  }
+  const resolution = drugByCode.get(rawCode);
+  if (resolution?.status === 'resolved') {
+    return {
+      drugCode: resolution.drug.yj_code,
+      drugMasterId: resolution.drug.id,
+      drugResolutionStatus: 'resolved',
+    };
+  }
+  return {
+    drugCode: rawCode,
+    drugMasterId: null,
+    drugResolutionStatus: resolution?.status ?? 'code_not_found',
+  };
+}
 
 const authenticatedGET = withAuthContext(
   async (_req, ctx) => {
@@ -51,7 +131,7 @@ const authenticatedGET = withAuthContext(
         select: {
           stock_qty: true,
           drug_master: {
-            select: { drug_name: true, drug_name_kana: true, unit: true },
+            select: { id: true, yj_code: true, drug_name: true, drug_name_kana: true, unit: true },
           },
         },
       }),
@@ -92,6 +172,7 @@ const authenticatedGET = withAuthContext(
               lines: {
                 select: {
                   drug_name: true,
+                  drug_code: true,
                   dose: true,
                   frequency: true,
                   days: true,
@@ -104,6 +185,27 @@ const authenticatedGET = withAuthContext(
             },
           })
         : [];
+    const intakeDrugCodes = [
+      ...new Set(
+        intakeRows
+          .flatMap((row) => row.lines.map((line) => normalizeForecastDrugCode(line.drug_code)))
+          .filter((code): code is string => code != null),
+      ),
+    ];
+    const matchedDrugs =
+      intakeDrugCodes.length > 0
+        ? await prisma.drugMaster.findMany({
+            where: {
+              OR: [
+                { yj_code: { in: intakeDrugCodes } },
+                { receipt_code: { in: intakeDrugCodes } },
+                { hot_code: { in: intakeDrugCodes } },
+              ],
+            },
+            select: { id: true, yj_code: true, receipt_code: true, hot_code: true },
+          })
+        : [];
+    const drugByCode = buildForecastDrugResolutionByCode(matchedDrugs);
 
     const visits: ForecastVisitInput[] = visitRows.map((row) => ({
       patientId: row.case_.patient.id,
@@ -122,16 +224,23 @@ const authenticatedGET = withAuthContext(
       patientId: row.cycle.patient_id,
       prescribedDate: row.prescribed_date,
       createdAt: row.created_at,
-      lines: row.lines.map((line) => ({
-        drugName: line.drug_name,
-        dose: line.dose,
-        frequency: line.frequency,
-        days: line.days,
-        quantity: line.quantity,
-        unit: line.unit,
-        startDate: line.start_date,
-        endDate: line.end_date,
-      })),
+      lines: row.lines.map((line) => {
+        const drugResolution = resolveLineDrugCode(
+          normalizeForecastDrugCode(line.drug_code),
+          drugByCode,
+        );
+        return {
+          drugName: line.drug_name,
+          ...drugResolution,
+          dose: line.dose,
+          frequency: line.frequency,
+          days: line.days,
+          quantity: line.quantity,
+          unit: line.unit,
+          startDate: line.start_date,
+          endDate: line.end_date,
+        };
+      }),
     }));
 
     const summary = buildInventoryForecast({
@@ -139,6 +248,8 @@ const authenticatedGET = withAuthContext(
       intakes,
       stocks: stockRows.map((row) => ({
         drugName: row.drug_master.drug_name,
+        drugCode: row.drug_master.yj_code,
+        drugMasterId: row.drug_master.id,
         drugNameKana: row.drug_master.drug_name_kana,
         unit: row.drug_master.unit,
         stockQty: row.stock_qty,
@@ -150,6 +261,7 @@ const authenticatedGET = withAuthContext(
         week: { start_date: week.startKey, end_date: week.endKey },
         drugs: summary.drugs,
         patients: summary.patients,
+        unresolvedDrugs: summary.unresolvedDrugs,
       },
     });
   },

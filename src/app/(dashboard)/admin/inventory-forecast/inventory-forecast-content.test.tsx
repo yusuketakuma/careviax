@@ -50,6 +50,8 @@ describe('InventoryForecastContent', () => {
               week: { start_date: '2026-06-22', end_date: '2026-06-28' },
               drugs: [
                 {
+                  drugIdentityKey: 'code:YJ_AMLO',
+                  drugCode: 'YJ_AMLO',
                   drugKey: 'アムロジピン',
                   requiredQty: 14,
                   stockQty: 4,
@@ -57,6 +59,8 @@ describe('InventoryForecastContent', () => {
                   status: 'order_required',
                 },
                 {
+                  drugIdentityKey: 'name:酸化Mg',
+                  drugCode: null,
                   drugKey: '酸化Mg',
                   requiredQty: 7,
                   stockQty: 10,
@@ -78,7 +82,21 @@ describe('InventoryForecastContent', () => {
                   runOutDateKey: '2026-06-23',
                   runOutBasis: 'line_end_date',
                   urgency: 'critical',
-                  shortageDetails: [],
+                  shortageDetails: [
+                    {
+                      drugIdentityKey: 'code:YJ_AMLO',
+                      drugCode: 'YJ_AMLO',
+                      drugKey: 'アムロジピン',
+                      requiredQty: 14,
+                      stockQty: 4,
+                      unit: '錠',
+                      status: 'order_required',
+                      affectedPatientCount: 1,
+                      runOutDateKey: '2026-06-23',
+                      runOutBasis: 'line_end_date',
+                      urgency: 'critical',
+                    },
+                  ],
                 },
                 {
                   key: 'facility-batch:f1',
@@ -113,6 +131,7 @@ describe('InventoryForecastContent', () => {
     expect(screen.getByRole('button', { name: '列' })).toBeTruthy();
     expect(screen.getAllByText('要発注').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('14錠').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('YJ_AMLO').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('患者A 様')).toBeTruthy();
     expect(screen.queryByLabelText('影響患者内検索')).toBeNull();
   });
@@ -163,6 +182,8 @@ describe('InventoryForecastContent', () => {
               week: { start_date: '2026-06-22', end_date: '2026-06-28' },
               drugs: [
                 {
+                  drugIdentityKey: 'code:YJ_AMLO',
+                  drugCode: 'YJ_AMLO',
                   drugKey: 'アムロジピン',
                   requiredQty: 14,
                   stockQty: 4,
@@ -198,5 +219,48 @@ describe('InventoryForecastContent', () => {
     expect(await screen.findByText('患者B 様')).toBeTruthy();
     expect(screen.getByText('薬切れ見込み日: 算出不可（処方期間情報なし）')).toBeTruthy();
     expect(screen.getByText('予定日不明')).toBeTruthy();
+  });
+
+  it('surfaces unresolved prescription demand separately from automatic shortage matching', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) !== '/api/admin/inventory-forecast') {
+          return new Response('{}', { status: 404 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              week: { start_date: '2026-06-22', end_date: '2026-06-28' },
+              drugs: [],
+              patients: [],
+              unresolvedDrugs: [
+                {
+                  drugIdentityKey: 'unresolved-code:BADCODE',
+                  drugCode: 'BADCODE',
+                  reason: 'code_not_found',
+                  drugKey: '同名薬',
+                  requiredQty: 7,
+                  unit: '錠',
+                  affectedPatientCount: 1,
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    renderContent();
+
+    expect(await screen.findByRole('heading', { name: 'コード未解決の処方需要' })).toBeTruthy();
+    expect(screen.getByText('1件 要確認')).toBeTruthy();
+    expect(screen.getByText('同名薬')).toBeTruthy();
+    expect(screen.getByText('マスター未一致: BADCODE')).toBeTruthy();
+    expect(screen.getByText('7錠')).toBeTruthy();
+    expect(screen.getByText('1名分')).toBeTruthy();
+    expect(
+      screen.getByText('来週の訪問予定と在庫登録から計算できる薬剤がありません。'),
+    ).toBeTruthy();
   });
 });
