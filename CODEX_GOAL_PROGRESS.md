@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Report Share Suggestion Failure State - 2026-06-30 03:23 JST
+
+- Scope:
+  - Continued the codex2 visit-time / reports / interprofessional sharing objective on `/reports/[id]`.
+  - Preserved concurrent codex WIP in dashboard/me/date-boundary/API files and only touched the report detail page, its tests, and progress ledgers.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `care-report-external-professionals` query failures are no longer treated as a true empty candidate list.
+  - The report readiness area now shows a retryable inline error when care-team send candidates fail to load, while manual direct send remains available.
+  - The share composer shows the same retryable error and suppresses the misleading `送付可能な共有先候補がありません。` text during candidate-load failures.
+  - Partial candidate failures still preserve available direct targets such as the prescriber institution suggestion and its bulk-send action.
+  - The direct-send dialog now surfaces the candidate-load error without hiding manual name/contact inputs.
+  - A peer-review polish note was addressed so the composer does not render an empty target list when an error exists and no targets are available.
+- Safety:
+  - Reduces interprofessional delivery risk by making an unverified care-team candidate list visible as an error state rather than silently dropping share targets.
+  - Does not log PHI, add a new external request path, or change the direct-send / PH-OS external-access channel boundaries.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/page.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `29` tests after fixing the new test's manual-field selectors.
+  - `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx' && git diff --check -- 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed after unrelated peer/codex WIP was cleaned up.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Coordination:
+  - codex reviewed and approved the report patch, independently reran the focused report-detail Vitest, and found no API contract, PHI/security, or send-safety blocker.
+  - Claude reviewed and approved the false-empty fail-close behavior after independent focused validation.
+- Remaining:
+  - Commit only the explicit codex2-owned files and ledgers, then notify peers with the commit hash.
+
 ### Prescription History Drug-Master-ID Slice - 2026-06-30 03:07 JST
 
 - Scope:

@@ -16,6 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ErrorState } from '@/components/ui/error-state';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import {
@@ -767,6 +768,8 @@ export default function ReportDetailPage() {
       externalProfessionalSuggestionsQuery.data?.data ??
       [])
     : [];
+  const externalProfessionalSuggestionsError =
+    canUseDeliverySupport && externalProfessionalSuggestionsQuery.isError;
   const careTeamSuggestionContacts = externalProfessionalSuggestions.map((suggestion) => ({
     id: suggestion.id,
     role: suggestion.profession_type,
@@ -1040,6 +1043,22 @@ export default function ReportDetailPage() {
           items={reportReadinessItems}
           actions={sendReportAction}
         />
+        {externalProfessionalSuggestionsError ? (
+          <ErrorState
+            variant="server"
+            size="inline"
+            headingLevel={2}
+            title="他職種候補を読み込めませんでした"
+            description="ケアチーム送付候補の取得に失敗しています。手入力での送付は続行できますが、共有候補を使う場合は再読み込みしてください。"
+            action={{
+              label: '候補を再読み込み',
+              onClick: () => void externalProfessionalSuggestionsQuery.refetch(),
+              variant: 'outline',
+              size: 'sm',
+            }}
+            className="items-start text-left"
+          />
+        ) : null}
 
         {/* p0_28: 報告書コンポーザー(共有先複数選択 + 報告内容 + 送付前チェック) */}
         {composerOpen && canSendReportStatus && canUseExternalShare ? (
@@ -1058,11 +1077,28 @@ export default function ReportDetailPage() {
                 {/* LEFT: 共有先 multi-select */}
                 <section aria-label="共有先" className="space-y-2">
                   <h3 className="text-sm font-semibold text-foreground">共有先</h3>
-                  {shareTargets.length === 0 ? (
+                  {externalProfessionalSuggestionsError ? (
+                    <ErrorState
+                      variant="server"
+                      size="inline"
+                      headingLevel={3}
+                      title="他職種候補を読み込めませんでした"
+                      description="共有先候補の一部または全部を確認できません。再読み込みしてから共有先を選んでください。"
+                      action={{
+                        label: '候補を再読み込み',
+                        onClick: () => void externalProfessionalSuggestionsQuery.refetch(),
+                        variant: 'outline',
+                        size: 'sm',
+                      }}
+                      className="px-3 py-4"
+                    />
+                  ) : null}
+                  {shareTargets.length === 0 && !externalProfessionalSuggestionsError ? (
                     <p className="text-sm text-muted-foreground">
                       送付可能な共有先候補がありません。
                     </p>
-                  ) : (
+                  ) : null}
+                  {shareTargets.length > 0 ? (
                     <ul className="space-y-2">
                       {shareTargets.map((target) => {
                         const checked = effectiveSelectedTargetIds.includes(target.id);
@@ -1104,7 +1140,7 @@ export default function ReportDetailPage() {
                         );
                       })}
                     </ul>
-                  )}
+                  ) : null}
                   {composerRecipientError ? (
                     <p
                       id="report-composer-recipient-error"
@@ -1480,6 +1516,23 @@ export default function ReportDetailPage() {
                   <dd>{statusCfg?.label ?? report.status}</dd>
                 </div>
               </dl>
+
+              {externalProfessionalSuggestionsError ? (
+                <ErrorState
+                  variant="server"
+                  size="inline"
+                  headingLevel={3}
+                  title="他職種候補を読み込めませんでした"
+                  description="患者情報ページのケアチーム候補を確認できません。手入力での送付は続行できます。"
+                  action={{
+                    label: '候補を再読み込み',
+                    onClick: () => void externalProfessionalSuggestionsQuery.refetch(),
+                    variant: 'outline',
+                    size: 'sm',
+                  }}
+                  className="items-start px-3 py-4 text-left"
+                />
+              ) : null}
 
               {prescriberInstitutionSuggestion ? (
                 <div className="rounded-lg border-l-4 border-border/70 border-l-tag-info bg-card px-3 py-3 text-sm">

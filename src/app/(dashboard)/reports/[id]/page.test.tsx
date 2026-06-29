@@ -1252,6 +1252,88 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.queryByText('報告書が見つかりません')).toBeNull();
   });
 
+  it('surfaces a retryable external-professional suggestion error without hiding manual direct send', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isFetching: false,
+          isError: true,
+          refetch,
+        };
+      }
+
+      return {
+        data: { data: mockReport() },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByText('他職種候補を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '共有を作成' })).toBeNull();
+    expect(screen.queryByText('送付可能な共有先候補がありません。')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '候補を再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '送付' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('他職種候補を読み込めませんでした')).toBeTruthy();
+    expect(within(dialog).getByPlaceholderText('例: 山田 太郎 先生')).toBeTruthy();
+    expect(within(dialog).getByPlaceholderText('メールアドレスまたはFAX番号')).toBeTruthy();
+  });
+
+  it('shows partial suggestion loading errors inside the composer while preserving available targets', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isFetching: false,
+          isError: true,
+          refetch,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            prescriber_institution_suggestion: {
+              id: 'institution_1',
+              name: '青葉内科',
+              phone: null,
+              fax: '03-1111-1111',
+              address: null,
+              recommended_channels: ['fax'],
+              prescribed_date: '2026-03-28T00:00:00.000Z',
+              prescriber_name: '青葉 医師',
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '共有を作成' }));
+
+    const composer = screen.getByTestId('report-composer');
+    expect(within(composer).getByText('他職種候補を読み込めませんでした')).toBeTruthy();
+    expect(within(composer).queryByText('送付可能な共有先候補がありません。')).toBeNull();
+    expect(within(composer).getByText('一括送付（1件）')).toBeTruthy();
+    fireEvent.click(within(composer).getByRole('button', { name: '候補を再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it('waits for share target suggestions before opening the auto-selected composer', () => {
     let externalSuggestions: unknown[] = [];
     let externalSuggestionsLoading = true;

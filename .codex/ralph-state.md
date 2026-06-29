@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0323 JST
+
+- current task: harden report-detail interprofessional sharing when external professional suggestion loading fails.
+- files inspected: agmsg inbox for `phos/codex2`, `git status --short --untracked-files=all`, current dirty diff/stat, `.agent-loop/FEATURE_QUEUE.md`, existing patient care-team false-empty tests/current code, `docs/ui-ux-design-guidelines.md`, local Next.js server/client component docs, `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/reports/[id]/page.test.tsx`, and `src/components/ui/error-state.tsx`.
+- files changed: `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/reports/[id]/page.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `/reports/[id]` collapsed `care-report-external-professionals` query failures into an empty `externalProfessionalSuggestions` array, so the readiness area, share composer, and direct-send dialog could silently hide care-team suggestions or show an empty-candidates state even though the system had not verified the candidate list.
+- security risks found: reduced interprofessional PHI delivery risk by distinguishing query failure from true no-candidates, keeping manual direct-send available, and adding retry affordances without logging PHI or widening the direct-send/external-access contract.
+- performance issues found: no new dependency, eager query, polling, DB call, external request, or unbounded rendering loop was added. The patch only reuses the existing React Query state and explicit `refetch()` action.
+- validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/page.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx' && git diff --check -- 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. The first focused test run exposed a test query issue for direct-send manual fields; the test was corrected to assert placeholders and the final focused Vitest passed `1` file / `29` tests after also fixing codex's nonblocking empty-`ul` review note. Scoped ESLint passed. Scoped Prettier check plus focused `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed after unrelated peer/codex WIP was cleaned up.
+- remaining work: Claude and codex both approved the patch; stage only explicit codex2-owned files and progress ledgers for a coherent commit, then send agmsg FYI with the commit hash.
+- next action: commit the reviewed report-share suggestion failure slice while preserving unrelated codex API/date-boundary/admin/dispensing WIP.
+
 ### 20260630-0307 JST
 
 - current task: finish the prescription-history drug-master-id enrichment slice and cleanly commit it after Claude/codex2 priority reviews.
