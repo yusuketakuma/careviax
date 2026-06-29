@@ -101,7 +101,12 @@ function parseMonthlyByday(byday: string) {
     const match = entry.match(/^(-?\d)([A-Z]{2})$/);
     const nthOccurrence = match ? Number.parseInt(match[1], 10) : 0;
     const targetDayIndex = match ? dayNameToIndex[match[2]] : undefined;
-    if (!match || nthOccurrence === 0 || targetDayIndex === undefined) {
+    if (
+      !match ||
+      nthOccurrence === 0 ||
+      Math.abs(nthOccurrence) > 5 ||
+      targetDayIndex === undefined
+    ) {
       invalidBydayTokens.push(entry || rawEntry);
       continue;
     }

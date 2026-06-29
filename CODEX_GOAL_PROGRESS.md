@@ -80,6 +80,16 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Review:
   - Pre-implementation subagents covered code mapping, API contract, test architecture, backend review, and medical safety. Their P2 blockers were addressed in this patch.
   - Post-implementation verifier passed the three-runtime focused tests and `pnpm typecheck` on the dirty tree without file edits.
+  - Strict reviewer later found a P1 monthly BYDAY gap where `6MO` / `-9FR` were syntax-valid but impossible ordinals and could be silently dropped during route generation. Follow-up patch now treats monthly ordinal absolute values above `5` as invalid BYDAY tokens and adds a route-level pre-DB rejection test for `BYDAY=1WE,6MO,-1FR`.
+- Follow-up validation:
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/lib/visits/rrule.test.ts src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `120` tests.
+  - `TZ=UTC pnpm exec vitest run src/lib/visits/rrule.test.ts src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `120` tests.
+  - `TZ=America/Los_Angeles pnpm exec vitest run src/lib/visits/rrule.test.ts src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `120` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
 - Remaining:
   - Monthly `series_anchor_date` is covered at parser level; a route-level monthly regeneration test can be added in a later slice if we expand the generate-route matrix.
   - Unsupported/unknown RRULE parts, duplicate parts, and malformed `INTERVAL` diagnostics remain a separate hardening topic. The current slice fixes the patient-safety phase and invalid BYDAY issues identified for P2.

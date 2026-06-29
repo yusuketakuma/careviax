@@ -212,12 +212,12 @@ describe('parseSimpleRruleDates', () => {
 
   it('reports invalid monthly BYDAY tokens without dropping valid ordinal weekdays silently', () => {
     const result = parseSimpleRruleDatesWithDiagnostics(
-      'FREQ=MONTHLY;INTERVAL=1;BYDAY=1WE,9XY,-1FR',
+      'FREQ=MONTHLY;INTERVAL=1;BYDAY=1WE,6MO,9XY,-1FR,-9FR',
       new Date(Date.UTC(2026, 3, 1)),
       new Date(Date.UTC(2026, 3, 30)),
     );
 
-    expect(result.diagnostics.invalidBydayTokens).toEqual(['9XY']);
+    expect(result.diagnostics.invalidBydayTokens).toEqual(['6MO', '9XY', '-9FR']);
     expect(result.dates.map((date) => utcIso(date))).toEqual([
       '2026-04-01T00:00:00.000Z',
       '2026-04-24T00:00:00.000Z',

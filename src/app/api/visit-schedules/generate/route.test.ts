@@ -1137,6 +1137,40 @@ describe('/api/visit-schedules/generate POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects monthly recurrence rules with impossible ordinal BYDAY tokens before loading the case', async () => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=MONTHLY;INTERVAL=1;BYDAY=1WE,6MO,-1FR',
+        start_date: '2026-04-01',
+        end_date: '2026-04-30',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'RRULEのBYDAYに無効な指定があります',
+      details: {
+        recurrence_rule: ['BYDAYに無効な指定があります: 6MO'],
+        rrule: {
+          code: 'RRULE_INVALID_BYDAY',
+          part: 'BYDAY',
+          invalidTokens: ['6MO'],
+        },
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGatesMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects recurring generation ranges longer than 120 days before loading the case', async () => {
     const response = await POST(
       createRequest({
