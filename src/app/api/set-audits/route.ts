@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
 import { unstable_rethrow } from 'next/navigation';
-import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { withOrgContext } from '@/lib/db/rls';
-import { prisma } from '@/lib/db/client';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -33,8 +33,26 @@ import {
 import { RejectCode, SetAuditCellState, type ScheduleStatus } from '@prisma/client';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
+
+const ROUTE = '/api/set-audits';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 // 調剤ワークベンチ共通 NG 分類 (RejectCode, 14種)。差戻し/セル NG の理由を構造化する。
 const REJECT_CODE_VALUES = Object.values(RejectCode) as [RejectCode, ...RejectCode[]];
@@ -156,6 +174,7 @@ type SetAuditEvidenceBatch = {
   line: {
     id: string;
     drug_name: string;
+    drug_code: string | null;
     dosage_form: string | null;
     dose: string;
     frequency: string;
@@ -458,6 +477,7 @@ function buildSetCarryItems(
     line: {
       id: string;
       drug_name: string;
+      drug_code: string | null;
       dose: string;
       frequency: string;
       unit: string | null;
@@ -480,6 +500,7 @@ function buildSetCarryItems(
       batch_id: batch.id,
       line_id: batch.line.id,
       drug_name: batch.line.drug_name,
+      drug_code: batch.line.drug_code,
       dose: batch.line.dose,
       frequency: batch.line.frequency,
       day_number: batch.day_number,
@@ -545,82 +566,96 @@ function summarizeCellStates(batches: Array<{ audit_state: SetAuditCellState }>)
   return summary;
 }
 
-const authenticatedGET = withAuthContext(
-  async (req: NextRequest, ctx: AuthContext) => {
+async function authenticatedGET(req: NextRequest) {
+  const auth = await requireAuthContext(req, {
+    permission: 'canAuditSet',
+    message: 'セット鑑査の閲覧権限がありません',
+  });
+  if ('response' in auth) return auth.response;
+
+  const { ctx } = auth;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { searchParams } = new URL(req.url);
     const planId = searchParams.get('plan_id') ?? undefined;
     const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);
 
     // 監査待ち = サイクルが setting 状態のセットプラン。plan_id 指定で単一プランに絞れる。
-    const plans = await prisma.setPlan.findMany({
-      where: {
-        org_id: ctx.orgId,
-        ...(planId ? { id: planId } : {}),
-        cycle: { overall_status: 'setting' },
-        ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
-      },
-      orderBy: { created_at: 'desc' },
-      select: {
-        id: true,
-        cycle_id: true,
-        target_period_start: true,
-        target_period_end: true,
-        set_method: true,
-        created_at: true,
-        updated_at: true,
-        cycle: {
+    const plans = await withOrgContext(
+      ctx.orgId,
+      (tx) =>
+        tx.setPlan.findMany({
+          where: {
+            org_id: ctx.orgId,
+            ...(planId ? { id: planId } : {}),
+            cycle: { overall_status: 'setting' },
+            ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
+          },
+          orderBy: { created_at: 'desc' },
           select: {
             id: true,
-            overall_status: true,
-            patient_id: true,
-            case_: {
+            cycle_id: true,
+            target_period_start: true,
+            target_period_end: true,
+            set_method: true,
+            created_at: true,
+            updated_at: true,
+            cycle: {
               select: {
-                patient: {
-                  select: { id: true, name: true, name_kana: true },
+                id: true,
+                overall_status: true,
+                patient_id: true,
+                case_: {
+                  select: {
+                    patient: {
+                      select: { id: true, name: true, name_kana: true },
+                    },
+                  },
                 },
               },
             },
-          },
-        },
-        batches: {
-          orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
-          select: {
-            id: true,
-            slot: true,
-            day_number: true,
-            quantity: true,
-            carry_type: true,
-            set_state: true,
-            audit_state: true,
-            ng_code: true,
-            set_by: true,
-            audited_by: true,
-            audited_at: true,
-            version: true,
-            line: {
+            batches: {
+              orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
               select: {
                 id: true,
-                drug_name: true,
-                dose: true,
-                frequency: true,
-                unit: true,
+                slot: true,
+                day_number: true,
+                quantity: true,
+                carry_type: true,
+                set_state: true,
+                audit_state: true,
+                ng_code: true,
+                set_by: true,
+                audited_by: true,
+                audited_at: true,
+                version: true,
+                line: {
+                  select: {
+                    id: true,
+                    drug_name: true,
+                    drug_code: true,
+                    dose: true,
+                    frequency: true,
+                    unit: true,
+                  },
+                },
+              },
+            },
+            audits: {
+              orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }],
+              take: 1,
+              select: {
+                id: true,
+                result: true,
+                reject_reason: true,
+                audited_at: true,
+                audited_by: true,
               },
             },
           },
-        },
-        audits: {
-          orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }],
-          take: 1,
-          select: {
-            id: true,
-            result: true,
-            reject_reason: true,
-            audited_at: true,
-            audited_by: true,
-          },
-        },
-      },
-    });
+        }),
+      { requestContext: ctx },
+    );
 
     return success({
       data: plans.map((plan) => ({
@@ -628,24 +663,36 @@ const authenticatedGET = withAuthContext(
         cell_summary: summarizeCellStates(plan.batches),
       })),
     });
-  },
-  {
+  });
+}
+
+export async function GET(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('set_audits_get_unhandled_error', undefined, {
+        event: 'set_audits_get_unhandled_error',
+        route: ROUTE,
+        method: 'GET',
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const auth = await requireAuthContext(req, {
     permission: 'canAuditSet',
-    message: 'セット鑑査の閲覧権限がありません',
-  },
-);
+    message: 'セット鑑査の実行権限がありません',
+  });
+  if ('response' in auth) return auth.response;
 
-export const GET: typeof authenticatedGET = async (req, routeContext) => {
-  try {
-    return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch (err) {
-    unstable_rethrow(err);
-    return withSensitiveNoStore(internalError());
-  }
-};
+  const { ctx } = auth;
 
-export const POST = withAuthContext(
-  async (req: NextRequest, ctx: AuthContext) => {
+  return runWithRequestAuthContext(ctx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -704,565 +751,577 @@ export const POST = withAuthContext(
       }
     }
 
-    const auditResult = await withOrgContext(ctx.orgId, async (tx) => {
-      const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);
-      const auditAssignmentWhere = buildSetAuditAssignmentWhere(ctx);
-      const plan = await tx.setPlan.findFirst({
-        where: {
-          id: plan_id,
-          org_id: ctx.orgId,
-          ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
-        },
-        select: {
-          id: true,
-          cycle_id: true,
-          cycle: {
-            select: {
-              patient_id: true,
-            },
-          },
-        },
-      });
-
-      if (!plan) return null;
-
-      // D6: 監査時刻はサーバ信頼時刻に統一 (クライアント audited_at は不採用)。
-      const now = new Date();
-      const setBatches = await tx.setBatch.findMany({
-        where: { plan_id, org_id: ctx.orgId },
-        include: {
-          line: {
-            select: {
-              id: true,
-              drug_name: true,
-              dosage_form: true,
-              dose: true,
-              frequency: true,
-              unit: true,
-              route: true,
-              packaging_instructions: true,
-              packaging_instruction_tags: true,
-              notes: true,
-            },
-          },
-        },
-      });
-
-      // B3: Zero-batch guard
-      if (setBatches.length === 0) {
-        return { error: 'no_batches' as const };
-      }
-
-      const carryPacketValidation =
-        result === 'approved' && carry_packet_evidence
-          ? validateCarryPacketEvidence({
-              evidence: carry_packet_evidence,
-              planId: plan_id,
-              cycleId: plan.cycle_id,
-              patientId: plan.cycle?.patient_id ?? null,
-              batches: setBatches,
-            })
-          : null;
-      if (carryPacketValidation && !carryPacketValidation.ok) {
-        return {
-          error: 'invalid_carry_packet_evidence' as const,
-          reason: carryPacketValidation.reason,
-        };
-      }
-      const normalizedCarryPacketEvidence =
-        carryPacketValidation && carryPacketValidation.ok ? carryPacketValidation.evidence : null;
-      const carryPacketEvidenceSummary =
-        carryPacketValidation && carryPacketValidation.ok ? carryPacketValidation.summary : null;
-      const persistedChecklist = buildPersistedSetAuditChecklist(
-        checklist,
-        normalizedCarryPacketEvidence,
-      );
-
-      const existingTerminalAudit = await tx.setAudit.findFirst({
-        where: {
-          plan_id,
-          org_id: ctx.orgId,
-          result: { in: ['approved', 'rejected'] },
-          ...(auditAssignmentWhere ? { AND: [auditAssignmentWhere] } : {}),
-        },
-        orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }],
-        select: {
-          id: true,
-          result: true,
-          approved_scope: true,
-          reject_reason: true,
-          checklist: true,
-          photo_asset_ids: true,
-          audited_by: true,
-          same_operator_reason: true,
-        },
-      });
-      if (existingTerminalAudit) {
-        if (
-          result === 'approved' &&
-          existingSetAuditMatchesApprovedReplay({
-            existingAudit: existingTerminalAudit,
-            userId: ctx.userId,
-            approvedScope: normalizeApprovedScope(approved_scope),
-            checklist: persistedChecklist ? toPrismaJsonInput(persistedChecklist) : undefined,
-            photoAssetIds: photo_asset_ids,
-            sameOperatorReason: same_operator_reason,
-          }) &&
-          cellAuditsAlreadyApplied(setBatches, cell_audits)
-        ) {
-          return { ...existingTerminalAudit, idempotent: true } as const;
-        }
-        return { error: 'already_audited' as const, conflict: true };
-      }
-
-      const invalidPhotoAssetIds = await findInvalidSetAuditPhotoAssetIds(tx, {
-        orgId: ctx.orgId,
-        photoAssetIds: photo_asset_ids,
-      });
-      if (invalidPhotoAssetIds.length > 0) {
-        return {
-          error: 'invalid_photo_assets' as const,
-          photoAssetIds: invalidPhotoAssetIds,
-        };
-      }
-
-      // B3: Validate approved_scope keys match actual batches
-      if (approved_scope) {
-        const validKeys = new Set(setBatches.map((b) => `${b.day_number}-${b.slot}`));
-        const invalidKeys = Object.keys(approved_scope).filter((key) => !validKeys.has(key));
-        if (invalidKeys.length > 0) {
-          return { error: 'invalid_scope_keys' as const, keys: invalidKeys };
-        }
-      }
-
-      // セル単位監査の事前検証 (職務分離 + バッチ所属確認)。
-      // 確定 (SetBatch.audit_state/ng_code 更新) は監査記録作成後にまとめて行う。
-      // D1=B: セット実施者=監査者 (自己監査) を検出する。two-person rule の原則は維持し、
-      // 自己監査は「理由必須 + admin 承認」を満たした限定例外でのみ許可する。
-      let selfAuditDetected = false;
-      if (cell_audits && cell_audits.length > 0) {
-        const batchById = new Map(setBatches.map((batch) => [batch.id, batch]));
-
-        for (const cell of cell_audits) {
-          const batch = batchById.get(cell.batch_id);
-          // 指定バッチが当該プランに属さない → 不正リクエスト。
-          if (!batch) {
-            return { error: 'invalid_batch' as const, batchId: cell.batch_id };
-          }
-          // The auditor must confirm the same SetBatch version they saw in the calendar UI.
-          if (cell.expected_version !== batch.version) {
-            return { error: 'cell_version_conflict' as const, conflict: true };
-          }
-          // 職務分離 (§12-5): セット実施者は自身がセットしたセルを監査できない (原則)。
-          if (batch.set_by && batch.set_by === ctx.userId) {
-            selfAuditDetected = true;
-          }
-        }
-      }
-
-      // D1=B: 自己監査の限定例外ガード。
-      // ① 理由 (same_operator_reason) 必須。② admin 承認権限 (owner/admin) 必須。
-      // いずれかを欠く場合は従来どおり職務分離違反として拒否する。
-      let selfAuditApprovedBy: string | null = null;
-      if (selfAuditDetected) {
-        if (!same_operator_reason) {
-          return { error: 'self_audit' as const };
-        }
-        const adminMembership = await tx.membership.findFirst({
+    const auditResult = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);
+        const auditAssignmentWhere = buildSetAuditAssignmentWhere(ctx);
+        const plan = await tx.setPlan.findFirst({
           where: {
+            id: plan_id,
             org_id: ctx.orgId,
-            user_id: ctx.userId,
-            is_active: true,
-            role: { in: [...ADMIN_MEMBER_ROLES] },
+            ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
           },
-          select: { id: true },
-        });
-        if (!adminMembership) {
-          return { error: 'self_audit_not_approved' as const };
-        }
-        selfAuditApprovedBy = ctx.userId;
-      }
-
-      const effectiveSetBatches = applyCellAuditPreview(setBatches, cell_audits);
-
-      const latestAudit =
-        result === 'partial_approved'
-          ? await tx.setAudit.findFirst({
-              where: {
-                plan_id,
-                org_id: ctx.orgId,
-                ...(auditAssignmentWhere ? { AND: [auditAssignmentWhere] } : {}),
-              },
-              orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }],
+          select: {
+            id: true,
+            cycle_id: true,
+            cycle: {
               select: {
-                result: true,
-                approved_scope: true,
+                patient_id: true,
               },
-            })
-          : null;
+            },
+          },
+        });
 
-      const effectiveApprovedScope =
-        result === 'partial_approved'
-          ? latestAudit?.result === 'partial_approved'
-            ? mergeApprovedScope(latestAudit.approved_scope, approved_scope)
-            : normalizeApprovedScope(approved_scope)
-          : normalizeApprovedScope(approved_scope);
+        if (!plan) return null;
 
-      if (result === 'partial_approved' && !effectiveApprovedScope) {
-        return { error: 'missing_scope' as const };
-      }
+        // D6: 監査時刻はサーバ信頼時刻に統一 (クライアント audited_at は不採用)。
+        const now = new Date();
+        const setBatches = await tx.setBatch.findMany({
+          where: { plan_id, org_id: ctx.orgId },
+          include: {
+            line: {
+              select: {
+                id: true,
+                drug_name: true,
+                drug_code: true,
+                dosage_form: true,
+                dose: true,
+                frequency: true,
+                unit: true,
+                route: true,
+                packaging_instructions: true,
+                packaging_instruction_tags: true,
+                notes: true,
+              },
+            },
+          },
+        });
 
-      if (result === 'partial_approved' && effectiveApprovedScope) {
-        const partialScope = findPartialApprovalScopeBlockers(
-          effectiveSetBatches,
-          effectiveApprovedScope,
+        // B3: Zero-batch guard
+        if (setBatches.length === 0) {
+          return { error: 'no_batches' as const };
+        }
+
+        const carryPacketValidation =
+          result === 'approved' && carry_packet_evidence
+            ? validateCarryPacketEvidence({
+                evidence: carry_packet_evidence,
+                planId: plan_id,
+                cycleId: plan.cycle_id,
+                patientId: plan.cycle?.patient_id ?? null,
+                batches: setBatches,
+              })
+            : null;
+        if (carryPacketValidation && !carryPacketValidation.ok) {
+          return {
+            error: 'invalid_carry_packet_evidence' as const,
+            reason: carryPacketValidation.reason,
+          };
+        }
+        const normalizedCarryPacketEvidence =
+          carryPacketValidation && carryPacketValidation.ok ? carryPacketValidation.evidence : null;
+        const carryPacketEvidenceSummary =
+          carryPacketValidation && carryPacketValidation.ok ? carryPacketValidation.summary : null;
+        const persistedChecklist = buildPersistedSetAuditChecklist(
+          checklist,
+          normalizedCarryPacketEvidence,
         );
-        if (partialScope.readyCount === 0 || partialScope.blockers.length > 0) {
+
+        const existingTerminalAudit = await tx.setAudit.findFirst({
+          where: {
+            plan_id,
+            org_id: ctx.orgId,
+            result: { in: ['approved', 'rejected'] },
+            ...(auditAssignmentWhere ? { AND: [auditAssignmentWhere] } : {}),
+          },
+          orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }],
+          select: {
+            id: true,
+            result: true,
+            approved_scope: true,
+            reject_reason: true,
+            checklist: true,
+            photo_asset_ids: true,
+            audited_by: true,
+            same_operator_reason: true,
+          },
+        });
+        if (existingTerminalAudit) {
+          if (
+            result === 'approved' &&
+            existingSetAuditMatchesApprovedReplay({
+              existingAudit: existingTerminalAudit,
+              userId: ctx.userId,
+              approvedScope: normalizeApprovedScope(approved_scope),
+              checklist: persistedChecklist ? toPrismaJsonInput(persistedChecklist) : undefined,
+              photoAssetIds: photo_asset_ids,
+              sameOperatorReason: same_operator_reason,
+            }) &&
+            cellAuditsAlreadyApplied(setBatches, cell_audits)
+          ) {
+            return { ...existingTerminalAudit, idempotent: true } as const;
+          }
+          return { error: 'already_audited' as const, conflict: true };
+        }
+
+        const invalidPhotoAssetIds = await findInvalidSetAuditPhotoAssetIds(tx, {
+          orgId: ctx.orgId,
+          photoAssetIds: photo_asset_ids,
+        });
+        if (invalidPhotoAssetIds.length > 0) {
           return {
-            error: 'partial_scope_not_ready' as const,
-            blockers: partialScope.blockers.map((batch) => ({
-              batch_id: batch.id,
-              set_state: batch.set_state,
-              audit_state: batch.audit_state,
-              ng_code: batch.ng_code ?? null,
-            })),
+            error: 'invalid_photo_assets' as const,
+            photoAssetIds: invalidPhotoAssetIds,
           };
         }
-      }
 
-      if (result === 'approved') {
-        const approvalBlockers = findSetAuditApprovalBlockers(effectiveSetBatches);
-        if (approvalBlockers.length > 0) {
-          return {
-            error: 'approval_not_ready' as const,
-            blockers: approvalBlockers.map((batch) => ({
-              batch_id: batch.id,
-              set_state: batch.set_state,
-              audit_state: batch.audit_state,
-              ng_code: batch.ng_code ?? null,
-            })),
-          };
+        // B3: Validate approved_scope keys match actual batches
+        if (approved_scope) {
+          const validKeys = new Set(setBatches.map((b) => `${b.day_number}-${b.slot}`));
+          const invalidKeys = Object.keys(approved_scope).filter((key) => !validKeys.has(key));
+          if (invalidKeys.length > 0) {
+            return { error: 'invalid_scope_keys' as const, keys: invalidKeys };
+          }
         }
-      }
 
-      // セル単位監査の確定: SetBatch.audit_state / ng_code を先に OCC 更新する。
-      // ここで競合した場合は cycle / visit / SetAudit に触らず 409 を返す。
-      if (cell_audits && cell_audits.length > 0) {
-        const batchById = new Map(setBatches.map((batch) => [batch.id, batch]));
+        // セル単位監査の事前検証 (職務分離 + バッチ所属確認)。
+        // 確定 (SetBatch.audit_state/ng_code 更新) は監査記録作成後にまとめて行う。
+        // D1=B: セット実施者=監査者 (自己監査) を検出する。two-person rule の原則は維持し、
+        // 自己監査は「理由必須 + admin 承認」を満たした限定例外でのみ許可する。
+        let selfAuditDetected = false;
+        if (cell_audits && cell_audits.length > 0) {
+          const batchById = new Map(setBatches.map((batch) => [batch.id, batch]));
 
-        for (const cell of cell_audits) {
-          const before = batchById.get(cell.batch_id);
-          if (!before) continue; // 事前検証済み: 通常到達しない。
-          const ngCode = cell.audit_state === 'ng' ? (cell.ng_code as RejectCode) : null;
+          for (const cell of cell_audits) {
+            const batch = batchById.get(cell.batch_id);
+            // 指定バッチが当該プランに属さない → 不正リクエスト。
+            if (!batch) {
+              return { error: 'invalid_batch' as const, batchId: cell.batch_id };
+            }
+            // The auditor must confirm the same SetBatch version they saw in the calendar UI.
+            if (cell.expected_version !== batch.version) {
+              return { error: 'cell_version_conflict' as const, conflict: true };
+            }
+            // 職務分離 (§12-5): セット実施者は自身がセットしたセルを監査できない (原則)。
+            if (batch.set_by && batch.set_by === ctx.userId) {
+              selfAuditDetected = true;
+            }
+          }
+        }
 
-          const updateResult = await tx.setBatch.updateMany({
-            where: { id: cell.batch_id, org_id: ctx.orgId, version: before.version },
-            data: {
+        // D1=B: 自己監査の限定例外ガード。
+        // ① 理由 (same_operator_reason) 必須。② admin 承認権限 (owner/admin) 必須。
+        // いずれかを欠く場合は従来どおり職務分離違反として拒否する。
+        let selfAuditApprovedBy: string | null = null;
+        if (selfAuditDetected) {
+          if (!same_operator_reason) {
+            return { error: 'self_audit' as const };
+          }
+          const adminMembership = await tx.membership.findFirst({
+            where: {
+              org_id: ctx.orgId,
+              user_id: ctx.userId,
+              is_active: true,
+              role: { in: [...ADMIN_MEMBER_ROLES] },
+            },
+            select: { id: true },
+          });
+          if (!adminMembership) {
+            return { error: 'self_audit_not_approved' as const };
+          }
+          selfAuditApprovedBy = ctx.userId;
+        }
+
+        const effectiveSetBatches = applyCellAuditPreview(setBatches, cell_audits);
+
+        const latestAudit =
+          result === 'partial_approved'
+            ? await tx.setAudit.findFirst({
+                where: {
+                  plan_id,
+                  org_id: ctx.orgId,
+                  ...(auditAssignmentWhere ? { AND: [auditAssignmentWhere] } : {}),
+                },
+                orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }],
+                select: {
+                  result: true,
+                  approved_scope: true,
+                },
+              })
+            : null;
+
+        const effectiveApprovedScope =
+          result === 'partial_approved'
+            ? latestAudit?.result === 'partial_approved'
+              ? mergeApprovedScope(latestAudit.approved_scope, approved_scope)
+              : normalizeApprovedScope(approved_scope)
+            : normalizeApprovedScope(approved_scope);
+
+        if (result === 'partial_approved' && !effectiveApprovedScope) {
+          return { error: 'missing_scope' as const };
+        }
+
+        if (result === 'partial_approved' && effectiveApprovedScope) {
+          const partialScope = findPartialApprovalScopeBlockers(
+            effectiveSetBatches,
+            effectiveApprovedScope,
+          );
+          if (partialScope.readyCount === 0 || partialScope.blockers.length > 0) {
+            return {
+              error: 'partial_scope_not_ready' as const,
+              blockers: partialScope.blockers.map((batch) => ({
+                batch_id: batch.id,
+                set_state: batch.set_state,
+                audit_state: batch.audit_state,
+                ng_code: batch.ng_code ?? null,
+              })),
+            };
+          }
+        }
+
+        if (result === 'approved') {
+          const approvalBlockers = findSetAuditApprovalBlockers(effectiveSetBatches);
+          if (approvalBlockers.length > 0) {
+            return {
+              error: 'approval_not_ready' as const,
+              blockers: approvalBlockers.map((batch) => ({
+                batch_id: batch.id,
+                set_state: batch.set_state,
+                audit_state: batch.audit_state,
+                ng_code: batch.ng_code ?? null,
+              })),
+            };
+          }
+        }
+
+        // セル単位監査の確定: SetBatch.audit_state / ng_code を先に OCC 更新する。
+        // ここで競合した場合は cycle / visit / SetAudit に触らず 409 を返す。
+        if (cell_audits && cell_audits.length > 0) {
+          const batchById = new Map(setBatches.map((batch) => [batch.id, batch]));
+
+          for (const cell of cell_audits) {
+            const before = batchById.get(cell.batch_id);
+            if (!before) continue; // 事前検証済み: 通常到達しない。
+            const ngCode = cell.audit_state === 'ng' ? (cell.ng_code as RejectCode) : null;
+
+            const updateResult = await tx.setBatch.updateMany({
+              where: { id: cell.batch_id, org_id: ctx.orgId, version: before.version },
+              data: {
+                audit_state: cell.audit_state satisfies SetAuditCellState,
+                ng_code: ngCode,
+                audited_by: ctx.userId,
+                audited_at: now,
+                version: { increment: 1 },
+              },
+            });
+            if (updateResult.count === 0) {
+              throw new SetAuditRollback({ error: 'cell_version_conflict', conflict: true });
+            }
+
+            const after = {
+              ...before,
               audit_state: cell.audit_state satisfies SetAuditCellState,
               ng_code: ngCode,
               audited_by: ctx.userId,
               audited_at: now,
-              version: { increment: 1 },
+              version: before.version + 1,
+            };
+
+            await createSetBatchChangeLog(tx, {
+              orgId: ctx.orgId,
+              planId: plan_id,
+              batchId: cell.batch_id,
+              action: 'cell_audit',
+              triggerSource: 'set_audit',
+              reason: ngCode ? `セルNG: ${ngCode}` : 'セルOK',
+              lineIds: [before.line_id],
+              beforeSnapshot: [buildSetBatchHistorySnapshot(before)],
+              afterSnapshot: [buildSetBatchHistorySnapshot(after)],
+              changedBy: ctx.userId,
+            });
+
+            await createAuditLogEntry(tx, ctx, {
+              action: 'set_audit.cell',
+              targetType: 'set_batch',
+              targetId: cell.batch_id,
+              changes: {
+                plan_id,
+                cycle_id: plan.cycle_id,
+                line_id: before.line_id,
+                day_number: before.day_number,
+                slot: before.slot,
+                audit_state: cell.audit_state,
+                ng_code: ngCode,
+              },
+            });
+          }
+        }
+
+        const transitionHelper = async (
+          toStatus: string,
+          options?: { exceptionStatus?: string | null },
+        ) => {
+          try {
+            await transitionCycleStatus(
+              tx,
+              plan.cycle_id,
+              ctx.orgId,
+              toStatus,
+              ctx.userId,
+              options,
+            );
+          } catch (err) {
+            if (err instanceof InvalidTransitionError) {
+              return {
+                error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
+              } as const;
+            }
+            if (err instanceof VersionConflictError) {
+              return { error: err.message, conflict: true } as const;
+            }
+            throw err;
+          }
+          return null;
+        };
+
+        if (result === 'approved') {
+          // carry_items confirmed — advance cycle to set_audited
+          const carryItems = buildSetCarryItems(effectiveSetBatches);
+          const carryItemsInput = toPrismaJsonInput(carryItems);
+          const transitionErr = await transitionHelper('set_audited');
+          if (transitionErr) throw new SetAuditRollback(transitionErr);
+          await tx.visitSchedule.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              cycle_id: plan.cycle_id,
+              schedule_status: {
+                in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
+              },
+            },
+            data: {
+              carry_items: carryItemsInput,
+              carry_items_status: 'ready',
             },
           });
-          if (updateResult.count === 0) {
-            throw new SetAuditRollback({ error: 'cell_version_conflict', conflict: true });
-          }
+          await tx.visitPreparation.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              schedule: {
+                org_id: ctx.orgId,
+                cycle_id: plan.cycle_id,
+                schedule_status: 'ready',
+              },
+            },
+            data: {
+              carry_items_confirmed: false,
+              prepared_at: null,
+            },
+          });
+          await tx.visitSchedule.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              cycle_id: plan.cycle_id,
+              schedule_status: 'ready',
+            },
+            data: {
+              carry_items: carryItemsInput,
+              carry_items_status: 'ready',
+              schedule_status: 'in_preparation',
+              pre_visit_checklist_completed: false,
+            },
+          });
 
-          const after = {
-            ...before,
-            audit_state: cell.audit_state satisfies SetAuditCellState,
-            ng_code: ngCode,
+          // B4: Auto-resolve open set_audit_rejected exceptions on approval
+          await tx.workflowException.updateMany({
+            where: {
+              cycle_id: plan.cycle_id,
+              exception_type: 'set_audit_rejected',
+              status: 'open' satisfies ExceptionStatus,
+            },
+            data: {
+              status: 'resolved' satisfies ExceptionStatus,
+              resolved_by: ctx.userId,
+              resolved_at: new Date(),
+            },
+          });
+        } else if (result === 'partial_approved') {
+          // Partial: carry_items_partial + re-work task
+          const carryItems = buildSetCarryItems(effectiveSetBatches, effectiveApprovedScope);
+          const carryItemsInput = toPrismaJsonInput(carryItems);
+          const transitionErr = await transitionHelper('set_audited', {
+            exceptionStatus: 'carry_items_partial',
+          });
+          if (transitionErr) throw new SetAuditRollback(transitionErr);
+          await tx.visitSchedule.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              cycle_id: plan.cycle_id,
+              schedule_status: {
+                in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
+              },
+            },
+            data: {
+              carry_items: carryItemsInput,
+              carry_items_status: 'partial',
+            },
+          });
+          await tx.visitPreparation.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              schedule: {
+                org_id: ctx.orgId,
+                cycle_id: plan.cycle_id,
+                schedule_status: 'ready',
+              },
+            },
+            data: {
+              carry_items_confirmed: false,
+              prepared_at: null,
+            },
+          });
+          await tx.visitSchedule.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              cycle_id: plan.cycle_id,
+              schedule_status: 'ready',
+            },
+            data: {
+              carry_items: carryItemsInput,
+              carry_items_status: 'partial',
+              schedule_status: 'in_preparation',
+              pre_visit_checklist_completed: false,
+            },
+          });
+
+          await tx.task.create({
+            data: {
+              org_id: ctx.orgId,
+              title: 'セット再作業（部分承認）',
+              description: `セット鑑査で部分承認となりました。承認範囲: ${
+                effectiveApprovedScope ? JSON.stringify(effectiveApprovedScope) : '未指定'
+              }`,
+              status: 'pending',
+              priority: 'high',
+              related_entity_type: 'cycle',
+              related_entity_id: plan.cycle_id,
+            },
+          });
+        } else {
+          // rejected — notify + WorkflowException + hold for rework.
+          const transitionErr = await transitionHelper('on_hold');
+          if (transitionErr) throw new SetAuditRollback(transitionErr);
+          await tx.visitSchedule.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              cycle_id: plan.cycle_id,
+              schedule_status: {
+                in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
+              },
+            },
+            data: {
+              carry_items: [],
+              carry_items_status: 'blocked',
+            },
+          });
+          await tx.visitPreparation.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              schedule: {
+                org_id: ctx.orgId,
+                cycle_id: plan.cycle_id,
+                schedule_status: 'ready',
+              },
+            },
+            data: {
+              carry_items_confirmed: false,
+              prepared_at: null,
+            },
+          });
+          await tx.visitSchedule.updateMany({
+            where: {
+              org_id: ctx.orgId,
+              cycle_id: plan.cycle_id,
+              schedule_status: 'ready',
+            },
+            data: {
+              carry_items: [],
+              carry_items_status: 'blocked',
+              schedule_status: 'in_preparation',
+              pre_visit_checklist_completed: false,
+            },
+          });
+
+          await tx.workflowException.create({
+            data: {
+              org_id: ctx.orgId,
+              cycle_id: plan.cycle_id,
+              patient_id: plan.cycle?.patient_id ?? null,
+              exception_type: 'set_audit_rejected',
+              description: `セット鑑査差戻し: ${reject_reason ?? '理由未記入'}`,
+              severity: 'warning' satisfies ExceptionSeverity,
+              status: 'open' satisfies ExceptionStatus,
+            },
+          });
+        }
+
+        const audit = await tx.setAudit.create({
+          data: {
+            org_id: ctx.orgId,
+            plan_id,
+            result,
+            approved_scope: effectiveApprovedScope
+              ? toPrismaJsonInput(effectiveApprovedScope)
+              : undefined,
+            reject_reason: reject_reason ?? null,
+            checklist: persistedChecklist ? toPrismaJsonInput(persistedChecklist) : undefined,
+            photo_asset_ids: photo_asset_ids ?? [],
             audited_by: ctx.userId,
             audited_at: now,
-            version: before.version + 1,
-          };
-
-          await createSetBatchChangeLog(tx, {
-            orgId: ctx.orgId,
-            planId: plan_id,
-            batchId: cell.batch_id,
-            action: 'cell_audit',
-            triggerSource: 'set_audit',
-            reason: ngCode ? `セルNG: ${ngCode}` : 'セルOK',
-            lineIds: [before.line_id],
-            beforeSnapshot: [buildSetBatchHistorySnapshot(before)],
-            afterSnapshot: [buildSetBatchHistorySnapshot(after)],
-            changedBy: ctx.userId,
-          });
-
-          await createAuditLogEntry(tx, ctx, {
-            action: 'set_audit.cell',
-            targetType: 'set_batch',
-            targetId: cell.batch_id,
-            changes: {
-              plan_id,
-              cycle_id: plan.cycle_id,
-              line_id: before.line_id,
-              day_number: before.day_number,
-              slot: before.slot,
-              audit_state: cell.audit_state,
-              ng_code: ngCode,
-            },
-          });
-        }
-      }
-
-      const transitionHelper = async (
-        toStatus: string,
-        options?: { exceptionStatus?: string | null },
-      ) => {
-        try {
-          await transitionCycleStatus(tx, plan.cycle_id, ctx.orgId, toStatus, ctx.userId, options);
-        } catch (err) {
-          if (err instanceof InvalidTransitionError) {
-            return {
-              error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
-            } as const;
-          }
-          if (err instanceof VersionConflictError) {
-            return { error: err.message, conflict: true } as const;
-          }
-          throw err;
-        }
-        return null;
-      };
-
-      if (result === 'approved') {
-        // carry_items confirmed — advance cycle to set_audited
-        const carryItems = buildSetCarryItems(effectiveSetBatches);
-        const carryItemsInput = toPrismaJsonInput(carryItems);
-        const transitionErr = await transitionHelper('set_audited');
-        if (transitionErr) throw new SetAuditRollback(transitionErr);
-        await tx.visitSchedule.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            cycle_id: plan.cycle_id,
-            schedule_status: {
-              in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
-            },
-          },
-          data: {
-            carry_items: carryItemsInput,
-            carry_items_status: 'ready',
-          },
-        });
-        await tx.visitPreparation.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            schedule: {
-              org_id: ctx.orgId,
-              cycle_id: plan.cycle_id,
-              schedule_status: 'ready',
-            },
-          },
-          data: {
-            carry_items_confirmed: false,
-            prepared_at: null,
-          },
-        });
-        await tx.visitSchedule.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            cycle_id: plan.cycle_id,
-            schedule_status: 'ready',
-          },
-          data: {
-            carry_items: carryItemsInput,
-            carry_items_status: 'ready',
-            schedule_status: 'in_preparation',
-            pre_visit_checklist_completed: false,
+            // D1=B: 自己監査の限定例外を満たした場合のみ理由 + 承認者を記録 (それ以外は NULL)。
+            same_operator_reason: selfAuditDetected ? same_operator_reason : null,
+            same_operator_approved_by: selfAuditApprovedBy,
           },
         });
 
-        // B4: Auto-resolve open set_audit_rejected exceptions on approval
-        await tx.workflowException.updateMany({
-          where: {
-            cycle_id: plan.cycle_id,
-            exception_type: 'set_audit_rejected',
-            status: 'open' satisfies ExceptionStatus,
-          },
-          data: {
-            status: 'resolved' satisfies ExceptionStatus,
-            resolved_by: ctx.userId,
-            resolved_at: new Date(),
-          },
-        });
-      } else if (result === 'partial_approved') {
-        // Partial: carry_items_partial + re-work task
-        const carryItems = buildSetCarryItems(effectiveSetBatches, effectiveApprovedScope);
-        const carryItemsInput = toPrismaJsonInput(carryItems);
-        const transitionErr = await transitionHelper('set_audited', {
-          exceptionStatus: 'carry_items_partial',
-        });
-        if (transitionErr) throw new SetAuditRollback(transitionErr);
-        await tx.visitSchedule.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            cycle_id: plan.cycle_id,
-            schedule_status: {
-              in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
-            },
-          },
-          data: {
-            carry_items: carryItemsInput,
-            carry_items_status: 'partial',
-          },
-        });
-        await tx.visitPreparation.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            schedule: {
-              org_id: ctx.orgId,
-              cycle_id: plan.cycle_id,
-              schedule_status: 'ready',
-            },
-          },
-          data: {
-            carry_items_confirmed: false,
-            prepared_at: null,
-          },
-        });
-        await tx.visitSchedule.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            cycle_id: plan.cycle_id,
-            schedule_status: 'ready',
-          },
-          data: {
-            carry_items: carryItemsInput,
-            carry_items_status: 'partial',
-            schedule_status: 'in_preparation',
-            pre_visit_checklist_completed: false,
-          },
-        });
-
-        await tx.task.create({
-          data: {
-            org_id: ctx.orgId,
-            title: 'セット再作業（部分承認）',
-            description: `セット鑑査で部分承認となりました。承認範囲: ${
-              effectiveApprovedScope ? JSON.stringify(effectiveApprovedScope) : '未指定'
-            }`,
-            status: 'pending',
-            priority: 'high',
-            related_entity_type: 'cycle',
-            related_entity_id: plan.cycle_id,
-          },
-        });
-      } else {
-        // rejected — notify + WorkflowException + hold for rework.
-        const transitionErr = await transitionHelper('on_hold');
-        if (transitionErr) throw new SetAuditRollback(transitionErr);
-        await tx.visitSchedule.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            cycle_id: plan.cycle_id,
-            schedule_status: {
-              in: NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES,
-            },
-          },
-          data: {
-            carry_items: [],
-            carry_items_status: 'blocked',
-          },
-        });
-        await tx.visitPreparation.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            schedule: {
-              org_id: ctx.orgId,
-              cycle_id: plan.cycle_id,
-              schedule_status: 'ready',
-            },
-          },
-          data: {
-            carry_items_confirmed: false,
-            prepared_at: null,
-          },
-        });
-        await tx.visitSchedule.updateMany({
-          where: {
-            org_id: ctx.orgId,
-            cycle_id: plan.cycle_id,
-            schedule_status: 'ready',
-          },
-          data: {
-            carry_items: [],
-            carry_items_status: 'blocked',
-            schedule_status: 'in_preparation',
-            pre_visit_checklist_completed: false,
-          },
-        });
-
-        await tx.workflowException.create({
-          data: {
-            org_id: ctx.orgId,
-            cycle_id: plan.cycle_id,
-            patient_id: plan.cycle?.patient_id ?? null,
-            exception_type: 'set_audit_rejected',
-            description: `セット鑑査差戻し: ${reject_reason ?? '理由未記入'}`,
-            severity: 'warning' satisfies ExceptionSeverity,
-            status: 'open' satisfies ExceptionStatus,
-          },
-        });
-      }
-
-      const audit = await tx.setAudit.create({
-        data: {
-          org_id: ctx.orgId,
-          plan_id,
-          result,
-          approved_scope: effectiveApprovedScope
-            ? toPrismaJsonInput(effectiveApprovedScope)
-            : undefined,
-          reject_reason: reject_reason ?? null,
-          checklist: persistedChecklist ? toPrismaJsonInput(persistedChecklist) : undefined,
-          photo_asset_ids: photo_asset_ids ?? [],
-          audited_by: ctx.userId,
-          audited_at: now,
-          // D1=B: 自己監査の限定例外を満たした場合のみ理由 + 承認者を記録 (それ以外は NULL)。
-          same_operator_reason: selfAuditDetected ? same_operator_reason : null,
-          same_operator_approved_by: selfAuditApprovedBy,
-        },
-      });
-
-      // 監査ログ(audit-by-default): セット鑑査の判定・チェックリスト・写真資産を記録。
-      await createAuditLogEntry(tx, ctx, {
-        action: 'set_audit.create',
-        targetType: 'set_audit',
-        targetId: audit.id,
-        changes: {
-          plan_id,
-          cycle_id: plan.cycle_id,
-          result,
-          reject_reason: reject_reason ?? null,
-          reject_reason_code: reject_reason_code ?? null,
-          checklist: checklist ?? null,
-          carry_packet_evidence_summary: carryPacketEvidenceSummary,
-          photo_asset_ids: photo_asset_ids ?? [],
-        },
-      });
-
-      // D1=B: 自己監査の限定例外を発動した場合は append-only で別途記録する。
-      // two-person rule の例外行使を監査証跡で追跡可能にする (§12-5)。
-      if (selfAuditDetected) {
+        // 監査ログ(audit-by-default): セット鑑査の判定・チェックリスト・写真資産を記録。
         await createAuditLogEntry(tx, ctx, {
-          action: 'set_audit.self_audit_exception',
+          action: 'set_audit.create',
           targetType: 'set_audit',
           targetId: audit.id,
           changes: {
             plan_id,
             cycle_id: plan.cycle_id,
             result,
-            same_operator_reason: same_operator_reason ?? null,
-            same_operator_approved_by: selfAuditApprovedBy,
+            reject_reason: reject_reason ?? null,
+            reject_reason_code: reject_reason_code ?? null,
+            checklist: checklist ?? null,
+            carry_packet_evidence_summary: carryPacketEvidenceSummary,
+            photo_asset_ids: photo_asset_ids ?? [],
           },
         });
-      }
 
-      return audit;
-    }).catch((err: unknown) => {
+        // D1=B: 自己監査の限定例外を発動した場合は append-only で別途記録する。
+        // two-person rule の例外行使を監査証跡で追跡可能にする (§12-5)。
+        if (selfAuditDetected) {
+          await createAuditLogEntry(tx, ctx, {
+            action: 'set_audit.self_audit_exception',
+            targetType: 'set_audit',
+            targetId: audit.id,
+            changes: {
+              plan_id,
+              cycle_id: plan.cycle_id,
+              result,
+              same_operator_reason: same_operator_reason ?? null,
+              same_operator_approved_by: selfAuditApprovedBy,
+            },
+          });
+        }
+
+        return audit;
+      },
+      { requestContext: ctx },
+    ).catch((err: unknown) => {
       if (err instanceof SetAuditRollback) return err.result;
       throw err;
     });
@@ -1334,9 +1393,22 @@ export const POST = withAuthContext(
     });
 
     return success({ data: auditResult }, 201);
-  },
-  {
-    permission: 'canAuditSet',
-    message: 'セット鑑査の実行権限がありません',
-  },
-);
+  });
+}
+
+export async function POST(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('set_audits_post_unhandled_error', undefined, {
+        event: 'set_audits_post_unhandled_error',
+        route: ROUTE,
+        method: 'POST',
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

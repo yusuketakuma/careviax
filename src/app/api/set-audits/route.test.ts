@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  loggerErrorMock,
   authMock,
   membershipFindFirstMock,
   membershipTxFindFirstMock,
@@ -24,6 +25,7 @@ const {
   notifyWorkflowMutationMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
+  loggerErrorMock: vi.fn(),
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   membershipTxFindFirstMock: vi.fn(),
@@ -53,6 +55,12 @@ vi.mock('@/lib/auth/config', () => ({
 
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
+  },
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -93,9 +101,8 @@ vi.mock('@/lib/dispensing/set-batch-history', () => ({
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
-const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req);
+const GET = (req: NextRequest) => rawGET(req);
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/set-audits', {
@@ -179,6 +186,7 @@ describe('/api/set-audits POST', () => {
         line: {
           id: 'line_1',
           drug_name: 'アムロジピン錠5mg',
+          drug_code: '2149001F1020',
           dosage_form: '錠剤',
           dose: '1回1錠',
           frequency: '朝食後',
@@ -273,6 +281,19 @@ describe('/api/set-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      }),
+    );
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
     expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
       where: {
@@ -287,6 +308,7 @@ describe('/api/set-audits POST', () => {
           expect.objectContaining({
             batch_id: 'batch_1',
             drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001F1020',
             carry_type: 'carry',
           }),
         ],
@@ -318,6 +340,7 @@ describe('/api/set-audits POST', () => {
           expect.objectContaining({
             batch_id: 'batch_1',
             drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001F1020',
             carry_type: 'carry',
           }),
         ],
@@ -493,6 +516,63 @@ describe('/api/set-audits POST', () => {
     expect(taskCreateMock).not.toHaveBeenCalled();
     expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unauthenticated malformed JSON before parsing or transaction side effects', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = await POST(createMalformedPostRequest({ 'x-org-id': 'org_1' }));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(setBatchFindManyMock).not.toHaveBeenCalled();
+    expect(setAuditFindFirstMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when set audit mutation fails unexpectedly', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('患者 山田太郎 raw set audit mutation drug reject_reason'),
+    );
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田太郎');
+    expect(JSON.stringify(body)).not.toContain('raw set audit mutation');
+    expect(JSON.stringify(body)).not.toContain('drug reject_reason');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'set_audits_post_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'set_audits_post_unhandled_error',
+        route: '/api/set-audits',
+        method: 'POST',
+        error_name: 'Error',
+      }),
+    );
   });
 
   it('rejects approval without the current checklist before transaction side effects', async () => {
@@ -1862,6 +1942,13 @@ describe('/api/set-audits GET', () => {
         audits: [],
       },
     ]);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        setPlan: {
+          findMany: setPlanFindManyMock,
+        },
+      }),
+    );
   });
 
   function createGetRequest(query = '') {
@@ -1881,6 +1968,17 @@ describe('/api/set-audits GET', () => {
     const body = await response.json();
     expect(body.data).toHaveLength(1);
     expect(body.data[0].cell_summary).toEqual({ total: 3, unaudited: 1, ok: 1, ng: 1 });
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: expect.objectContaining({
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      }),
+    );
     expect(setPlanFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -1910,6 +2008,16 @@ describe('/api/set-audits GET', () => {
     expect(JSON.stringify(body)).not.toContain('山田太郎');
     expect(JSON.stringify(body)).not.toContain('raw set audit queue');
     expect(JSON.stringify(body)).not.toContain('drug reject_reason');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'set_audits_get_unhandled_error',
+      undefined,
+      expect.objectContaining({
+        event: 'set_audits_get_unhandled_error',
+        route: '/api/set-audits',
+        method: 'GET',
+        error_name: 'Error',
+      }),
+    );
   });
 
   it('filters by plan_id when provided', async () => {
