@@ -528,7 +528,7 @@ async function completeSetAuditChecklist(main: Locator) {
 
 async function confirmVisitCarryPacketOnSetPage(main: Locator) {
   const outsideMeds = main
-    .getByText('カレンダー外薬（同梱確認）', { exact: true })
+    .getByText('カレンダーその他薬（同梱確認）', { exact: true })
     .locator('xpath=ancestor::div[1]/following-sibling::div[1]');
   await expect(outsideMeds).toBeVisible({ timeout: 10_000 });
   await pressAllUnpressedToggleButtons(outsideMeds, { required: true });

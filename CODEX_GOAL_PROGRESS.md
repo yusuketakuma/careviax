@@ -23,6 +23,30 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### その他薬 Rename Backend Completion - 2026-06-29 18:32 JST
+
+- Scope:
+  - Prioritized Claude's urgent user-directive message: replace user-facing `外薬` terminology with `その他薬`.
+  - Reviewed Claude's FE commits `21c33840` and `e400db7f` for discriminator rename and §11-7 Phase 2 rendering.
+  - Completed backend/server/test/docs leftovers in Codex lane.
+- Fixed:
+  - `set-audits` validation messages now say `その他薬同梱`.
+  - Visit-preparation/server/lib comments and SSOT docs now use `その他薬` for the category while keeping English identifiers and wire codes unchanged.
+  - The E2E dispensing flow expectation now looks for `カレンダーその他薬（同梱確認）`.
+  - Remaining `rg "外薬"` hit is only `海外薬局`, unrelated to the renamed medication category.
+- Validation:
+  - `pnpm exec vitest run src/app/api/set-audits/route.test.ts src/lib/dispensing/outside-med-classification.test.ts 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `87` tests.
+  - FE/Claude review focused run plus backend route: `pnpm exec vitest run src/components/visit-brief/visit-brief-card.test.tsx src/components/features/reports/physician-report-view.test.tsx src/components/features/visits/visit-medication-management-section.test.tsx src/components/features/dispense-workbench/dispensing-workbench.logic.test.ts src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx src/components/features/dispense-workbench/workbench-color-tokens.test.ts 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/app/api/set-audits/route.test.ts --reporter=dot --testTimeout=30000`: passed, `8` files / `213` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed after formatting `docs/dispensing-workbench-replacement-plan.md`.
+  - `git diff --check`: passed.
+- Review:
+  - Claude FE commits are approved: wire code `outside_med_missing` remains unchanged, displayed discriminator labels use `その他薬`, and Phase 2 card/report rendering consumes the backend `outside_med_kind`/`outside_med_label` projection.
+- Remaining:
+  - Commit the backend/docs/test rename slice and send Claude the review result plus commit hash.
+
 ### PrescriptionLine DrugMaster Backfill Dry-Run - 2026-06-29 18:25 JST
 
 - Scope:

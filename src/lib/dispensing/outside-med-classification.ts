@@ -2,7 +2,7 @@ import { parseFrequencyToSlots } from './packaging-group';
 import { type OutsideMedEvidenceKind } from './set-audit-constants';
 
 /**
- * 外薬(セット外で持ち出す薬)の分類 SSOT。
+ * その他薬(セット外で持ち出す薬)の分類 SSOT。
  *
  * セット監査(set-audits)が carry-packet 証跡の期待値を導出するために使っていた
  * deriveOutsideMedEvidenceKind / isInternalRoute をここへ集約し、訪問準備・患者カード・
@@ -30,7 +30,7 @@ export function isInternalRoute(route: string | null | undefined): boolean {
 }
 
 /**
- * 処方明細を外薬分類へ写像する。内服でセット同梱できるものは null。
+ * 処方明細をその他薬分類へ写像する。内服でセット同梱できるものは null。
  * 経路・剤形・用法・包装タグ・備考の構造化+テキストから判定する。
  */
 export function deriveOutsideMedEvidenceKind(
@@ -60,7 +60,7 @@ export function deriveOutsideMedEvidenceKind(
   return null;
 }
 
-/** 外薬分類の日本語ラベル SSOT(UI/報告で同一語彙を使う)。 */
+/** その他薬分類の日本語ラベル SSOT(UI/報告で同一語彙を使う)。 */
 export const OUTSIDE_MED_EVIDENCE_KIND_LABELS: Record<OutsideMedEvidenceKind, string> = {
   prn: '頓服',
   topical: '外用',

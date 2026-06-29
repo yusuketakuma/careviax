@@ -99,7 +99,7 @@
   /* 訪問持出パケット 完成判定コンテナ（setp 系 workflow セクション。頓服 category ではない）。 */
   --wb-packet-bg: #f3f0f8;
   --wb-packet-border: #e2dcea;
-  /* カレンダー外薬リスク（外用/冷所/注射/液剤/別容器も含む総称）。頓用/頓服(--wb-tag-tonyo)に
+  /* カレンダーその他薬リスク（外用/冷所/注射/液剤/別容器も含む総称）。頓用/頓服(--wb-tag-tonyo)に
      畳むと PRN と誤読されるため専用 token。白地に載るテキスト色＝白地 AA に足る暗 slate-blue。 */
   --wb-outside-med: oklch(0.45 0.06 265);
 

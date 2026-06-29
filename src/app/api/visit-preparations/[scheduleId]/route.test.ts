@@ -1057,7 +1057,7 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
     if (!response) throw new Error('response is required');
     const body = await response.json();
 
-    // 外用/冷所/頓服が同一語彙で projection され、通常内服(line_plain)は外薬でないため除外される。
+    // 外用/冷所/頓服が同一語彙で projection され、通常内服(line_plain)はその他薬でないため除外される。
     // 冷所は頓服シグナル(発熱時)より優先される。
     expect(body.data.pack.outside_meds).toEqual([
       {

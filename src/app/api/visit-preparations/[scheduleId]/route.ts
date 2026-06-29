@@ -979,7 +979,7 @@ async function authenticatedGET(
             days: true,
             start_date: true,
             end_date: true,
-            // 外薬分類(§11-7)の導出に必要なフィールドを追加 select する。
+            // その他薬分類(§11-7)の導出に必要なフィールドを追加 select する。
             route: true,
             dosage_form: true,
             unit: true,
@@ -1233,7 +1233,7 @@ async function authenticatedGET(
   const latestIntake = recentPrescriptionIntakes[0] ?? null;
   const previousIntake = recentPrescriptionIntakes[1] ?? null;
 
-  // 外薬(セット外で持ち出す薬: 外用/頓服/注射/液剤/冷所)の分類を最新処方明細から導出し、
+  // その他薬(セット外で持ち出す薬: 外用/頓服/注射/液剤/冷所)の分類を最新処方明細から導出し、
   // 訪問準備 UI が同一語彙で表示できるよう server projection する(§11-7)。
   // FE 側で部分フィールドから再導出させない(outside_med_kind/label を消費)。
   const outsideMeds = (latestIntake?.lines ?? [])

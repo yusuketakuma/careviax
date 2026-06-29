@@ -634,7 +634,7 @@ describe('/api/set-audits POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      message: '監査OKには外薬同梱と訪問持出パケットの確認証跡が必要です',
+      message: '監査OKにはその他薬同梱と訪問持出パケットの確認証跡が必要です',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(setAuditCreateMock).not.toHaveBeenCalled();
@@ -656,7 +656,7 @@ describe('/api/set-audits POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      message: '外薬同梱と訪問持出パケットの確認証跡が不正です',
+      message: 'その他薬同梱と訪問持出パケットの確認証跡が不正です',
       details: { reason: 'patient_mismatch' },
     });
     expect(setAuditCreateMock).not.toHaveBeenCalled();

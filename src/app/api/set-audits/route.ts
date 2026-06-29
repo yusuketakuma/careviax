@@ -692,7 +692,7 @@ async function authenticatedPOST(req: NextRequest) {
         return validationError('監査OKには全6項目のチェックが必要です');
       }
       if (!carry_packet_evidence) {
-        return validationError('監査OKには外薬同梱と訪問持出パケットの確認証跡が必要です');
+        return validationError('監査OKにはその他薬同梱と訪問持出パケットの確認証跡が必要です');
       }
     }
 
@@ -1324,7 +1324,7 @@ async function authenticatedPOST(req: NextRequest) {
         });
       }
       if (auditResult.error === 'invalid_carry_packet_evidence') {
-        return validationError('外薬同梱と訪問持出パケットの確認証跡が不正です', {
+        return validationError('その他薬同梱と訪問持出パケットの確認証跡が不正です', {
           reason: 'reason' in auditResult ? auditResult.reason : null,
         });
       }
