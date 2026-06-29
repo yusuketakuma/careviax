@@ -19412,3 +19412,28 @@ Next loop:
 - Remaining:
   - Commit only `src/app/api/patients/[id]/care-team/route.ts`, `src/app/api/patients/[id]/care-team/route.test.ts`, `.codex/ralph-state.md`, and `CODEX_GOAL_PROGRESS.md`.
   - Do not stage unrelated dirty scheduling/billing paths.
+
+### Care-Team Profession Role Guard Slice — 2026-06-30 01:23 JST
+
+- Scope:
+  - Continued interprofessional collaboration hardening on `/api/patients/[id]/care-team` without changing response shape or UI behavior.
+  - Guarded only strict master professions where the care-team role has a direct report/workflow meaning: `physician`, `nurse`, and `care_manager`.
+- Fixed:
+  - The org-scoped external-professional lookup now selects `profession_type` and rejects submissions where a strict master profession is paired with a different care-team `role`.
+  - The rejection happens before `CareTeamLink.deleteMany`, `createMany`, and audit logging, so invalid payloads do not partially replace or audit a case link set.
+  - Broad external professions such as MSW/PT/dietitian remain operationally flexible and can still be represented under the appropriate care-team role or `other`.
+- Review:
+  - codex returned `PATCH_REVIEW_RESULT: APPROVED` with no findings after checking route/test diff, patient role validation, care-team role normalization, and downstream workflow/report role consumers.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/care-team/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `17` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the care-team route/test plus ledgers.
+  - Preserve unrelated scheduling/billing dirty paths.

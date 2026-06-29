@@ -45,6 +45,19 @@ function pickDefaultCaseId(cases: Array<{ id: string; status: string; created_at
   return cases.find((careCase) => careCase.status === 'active')?.id ?? cases[0]?.id ?? null;
 }
 
+function strictCareTeamRoleForProfession(professionType: string | null | undefined) {
+  switch (professionType) {
+    case 'physician':
+      return 'physician';
+    case 'nurse':
+      return 'nurse';
+    case 'care_manager':
+      return 'care_manager';
+    default:
+      return null;
+  }
+}
+
 type CareTeamLinkAuditSubject = {
   id?: string | null;
   external_professional_id?: string | null;
@@ -230,11 +243,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
               org_id: ctx.orgId,
               id: { in: externalProfessionalIds },
             },
-            select: { id: true },
+            select: { id: true, profession_type: true },
           });
 
           if (items.length !== new Set(externalProfessionalIds).size) {
             throw new Error('INVALID_EXTERNAL_PROFESSIONAL');
+          }
+
+          const externalProfessionalById = new Map(items.map((item) => [item.id, item]));
+          const hasRoleMismatch = normalizedLinks.some((link) => {
+            if (!link.external_professional_id) return false;
+            const professional = externalProfessionalById.get(link.external_professional_id);
+            const strictRole = strictCareTeamRoleForProfession(professional?.profession_type);
+            return strictRole != null && link.role !== strictRole;
+          });
+          if (hasRoleMismatch) {
+            throw new Error('EXTERNAL_PROFESSIONAL_ROLE_MISMATCH');
           }
         }
 
@@ -323,6 +347,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch (error) {
     if (error instanceof Error && error.message === 'INVALID_EXTERNAL_PROFESSIONAL') {
       return validationError('他組織の他職種はケアチームに登録できません');
+    }
+    if (error instanceof Error && error.message === 'EXTERNAL_PROFESSIONAL_ROLE_MISMATCH') {
+      return validationError('他職種マスターの職種とケアチーム上の役割が一致しません');
     }
     if (isPrismaUniqueConstraintError(error)) {
       return conflict('ケアチームが同時に更新されました。再読み込みしてください');

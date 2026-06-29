@@ -126,7 +126,9 @@ describe('/api/patients/[id]/care-team', () => {
         fax: null,
       },
     ]);
-    externalProfessionalFindManyMock.mockResolvedValue([{ id: 'external_1' }]);
+    externalProfessionalFindManyMock.mockResolvedValue([
+      { id: 'external_1', profession_type: 'nurse' },
+    ]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -380,7 +382,7 @@ describe('/api/patients/[id]/care-team', () => {
         org_id: 'corg1234567890123456789012',
         id: { in: ['external_1'] },
       },
-      select: { id: true },
+      select: { id: true, profession_type: true },
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -738,6 +740,40 @@ describe('/api/patients/[id]/care-team', () => {
     expect(createManyMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       message: '他組織の他職種はケアチームに登録できません',
+    });
+  });
+
+  it('rejects strict master profession and care-team role mismatches before replacing links', async () => {
+    externalProfessionalFindManyMock.mockResolvedValue([
+      { id: 'external_physician', profession_type: 'physician' },
+    ]);
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [
+            {
+              external_professional_id: 'external_physician',
+              role: 'nurse',
+              name: '医師を看護師として登録',
+              is_primary: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      message: '他職種マスターの職種とケアチーム上の役割が一致しません',
     });
   });
 
