@@ -19462,3 +19462,26 @@ Next loop:
 - Remaining:
   - Commit only the care-team route/test plus ledgers.
   - Preserve unrelated scheduling/billing dirty paths.
+
+### Report Print-Audit Path Helper Slice — 2026-06-30 01:39 JST
+
+- Scope:
+  - Continued codex2's report-feature scope by removing the remaining inline care-report print-audit API path construction from the print hub.
+  - Kept the existing preview-rendered and print-requested audit intents, fetch method, headers, response parsing, and UI behavior unchanged.
+- Fixed:
+  - `src/app/(dashboard)/reports/print/print-hub-content.tsx` now calls `buildCareReportPrintAuditApiPath(visitReportSource.id)` for both print-audit writes.
+  - The print hub no longer imports local `encodePathSegment` for care-report audit routes, so hostile report ID encoding and dot-segment rejection stay centralized in `src/lib/reports/api-paths.ts`.
+- Review:
+  - codex returned `PATCH_REVIEW_RESULT: APPROVED` with no findings after independently checking both print-audit fetch sites, shared helper path behavior, scoped tests, scoped ESLint/Prettier/diff-check, and the removed `encodePathSegment` usage.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/print/print-hub-content.tsx'`: passed.
+  - `pnpm exec vitest run src/lib/reports/api-paths.test.ts 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `26` tests.
+  - Scoped ESLint on print hub, reports API path helper/test, and print hub test: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `rg -n "encodePathSegment" 'src/app/(dashboard)/reports/print/print-hub-content.tsx'`: no remaining matches.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the print hub file plus ledgers and send agmsg FYI.

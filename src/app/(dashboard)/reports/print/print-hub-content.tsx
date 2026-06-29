@@ -10,8 +10,8 @@ import { Label } from '@/components/ui/label';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { readApiJson } from '@/lib/api/client-json';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
-import { encodePathSegment } from '@/lib/http/path-segment';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
+import { buildCareReportPrintAuditApiPath } from '@/lib/reports/api-paths';
 import {
   careReportPrintAuditResponseSchema,
   type CareReportPrintAuditResponse,
@@ -722,14 +722,11 @@ export function PrintHubContent() {
     ],
     queryFn: async () => {
       if (!visitReportSource) throw new Error('印刷対象の報告書がありません');
-      const res = await fetch(
-        `/api/care-reports/${encodePathSegment(visitReportSource.id)}/print-audit`,
-        {
-          method: 'POST',
-          headers: buildOrgJsonHeaders(orgId),
-          body: JSON.stringify({ intent: 'preview_rendered' }),
-        },
-      );
+      const res = await fetch(buildCareReportPrintAuditApiPath(visitReportSource.id), {
+        method: 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({ intent: 'preview_rendered' }),
+      });
       return readApiJson<CareReportPrintAuditResponse>(res, {
         fallbackMessage: '報告書の印刷監査に失敗しました',
         schema: careReportPrintAuditResponseSchema,
@@ -837,14 +834,11 @@ export function PrintHubContent() {
       return;
     }
     if (documentType === 'visit_report' && visitReportSource) {
-      const res = await fetch(
-        `/api/care-reports/${encodePathSegment(visitReportSource.id)}/print-audit`,
-        {
-          method: 'POST',
-          headers: buildOrgJsonHeaders(orgId),
-          body: JSON.stringify({ intent: 'print_requested' }),
-        },
-      );
+      const res = await fetch(buildCareReportPrintAuditApiPath(visitReportSource.id), {
+        method: 'POST',
+        headers: buildOrgJsonHeaders(orgId),
+        body: JSON.stringify({ intent: 'print_requested' }),
+      });
       try {
         const audit = await readApiJson<CareReportPrintAuditResponse>(res, {
           fallbackMessage: '報告書の印刷監査を記録できませんでした。再読み込みしてください。',
