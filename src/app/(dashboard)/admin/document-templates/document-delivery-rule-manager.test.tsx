@@ -9,8 +9,9 @@ import { DocumentDeliveryRuleManager } from './document-delivery-rule-manager';
 
 setupDomTestEnv();
 
+const orgIdMock = vi.hoisted(() => ({ value: 'org_1' }));
 vi.mock('@/lib/hooks/use-org-id', () => ({
-  useOrgId: () => 'org_1',
+  useOrgId: () => orgIdMock.value,
 }));
 
 vi.mock('sonner', () => ({
@@ -39,6 +40,7 @@ function renderManager() {
 
 describe('DocumentDeliveryRuleManager', () => {
   beforeEach(() => {
+    orgIdMock.value = 'org_1';
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -232,5 +234,68 @@ describe('DocumentDeliveryRuleManager', () => {
     const scope = within(container);
     expect(scope.getByRole('heading', { level: 3, name: '送達ルールを登録' })).toBeTruthy();
     expect(scope.getByRole('heading', { level: 3, name: '送達ルール一覧' })).toBeTruthy();
+  });
+
+  it('fails closed with a retryable error instead of an empty-state when the rules fetch fails', async () => {
+    // A failed rules fetch must not render the "文書送達ルールはまだありません。" empty-state — that
+    // false-empty reads as "no delivery rules" and would skew report delivery-channel suggestions.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/document-delivery-rules' && !init?.method) {
+          return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }),
+    );
+    renderManager();
+
+    // the error title is an h4 (nested under the h3 一覧 panel) — not a default h2 that would
+    // regress the heading hierarchy.
+    expect(
+      await screen.findByRole('heading', { level: 4, name: '送達ルールを取得できませんでした' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('文書送達ルールはまだありません。')).toBeNull();
+
+    fireEvent.click(await screen.findByRole('button', { name: '再試行' }));
+    await waitFor(() => {
+      const ruleCalls = vi
+        .mocked(global.fetch)
+        .mock.calls.filter(
+          ([u, i]) =>
+            String(u) === '/api/document-delivery-rules' && !(i as RequestInit | undefined)?.method,
+        );
+      expect(ruleCalls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('shows a loading state instead of the empty-state while the rules fetch is pending', () => {
+    // A deferred (never-resolving) fetch keeps the query in its loading state. The empty-state
+    // copy must NOT show during loading — that would be a false-empty (loading read as "no rules").
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    renderManager();
+
+    expect(screen.getByText('送達ルールを読み込み中...')).toBeTruthy();
+    expect(screen.queryByText('文書送達ルールはまだありません。')).toBeNull();
+  });
+
+  it('shows loading (not the empty-state) while orgId is unresolved and the query is disabled', () => {
+    // useOrgId returns '' until the auth store resolves, so enabled: !!orgId keeps the query
+    // pending-but-not-fetching (isPending true, isLoading false). The empty-state must not show.
+    orgIdMock.value = '';
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderManager();
+
+    expect(screen.getByText('送達ルールを読み込み中...')).toBeTruthy();
+    expect(screen.queryByText('文書送達ルールはまだありません。')).toBeNull();
+    // the disabled query must not have fired a fetch
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

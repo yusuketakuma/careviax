@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -307,7 +308,28 @@ export function DocumentDeliveryRuleManager() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {rules.length === 0 ? (
+          {rulesQuery.isError ? (
+            <ErrorState
+              variant="server"
+              size="inline"
+              headingLevel={4}
+              title="送達ルールを取得できませんでした"
+              description={
+                rulesQuery.error instanceof Error
+                  ? rulesQuery.error.message
+                  : '文書送達ルールの取得に失敗しました'
+              }
+              action={{ label: '再試行', onClick: () => void rulesQuery.refetch() }}
+              live="polite"
+            />
+          ) : rulesQuery.isPending ? (
+            // isPending (not isLoading) so an unresolved orgId — which disables the query
+            // (enabled: !!orgId) and leaves it pending-but-not-fetching — also shows loading
+            // rather than the empty-state.
+            <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+              送達ルールを読み込み中...
+            </p>
+          ) : rules.length === 0 ? (
             <p className="text-sm text-muted-foreground">文書送達ルールはまだありません。</p>
           ) : (
             rules.map((rule) => (
