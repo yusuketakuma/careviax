@@ -60,6 +60,7 @@ import {
   type SubmitSetAuditInput,
   type CreateCycleHoldInput,
   type WorkbenchWriteContextPatch,
+  type SetBatchGenerationMetadata,
 } from './dispensing-workbench.write-types';
 import { DISPENSE_SAFETY_CHECKLIST_ACK } from '@/lib/dispensing/safety-checklist';
 
@@ -308,6 +309,33 @@ export async function loadCalendarWriteContextAsync(
       cycleVersion: matrix.cycle_version,
       cellMeta: cellMetaFromCalendar(patientId, matrix),
     },
+  };
+}
+
+export type CalendarPlanLoadOutcome =
+  | { status: 'error' }
+  | {
+      status: 'loaded';
+      generation: SetBatchGenerationMetadata | null;
+      calendarState: ReturnType<typeof calendarWorkbenchStateFromApi>;
+      writeContext: WorkbenchWriteContextPatch;
+    };
+
+/**
+ * planId 確定（SetPlan 実在）時の calendar 読取結果を、シェルが適用する store アクションへ分類する。
+ * loadCalendarWriteContextAsync は USE_MOCK ゲート後の fetch 失敗 / 未認証 / 異常欠落を一様に null へ畳む。
+ * planId があるのに calendar が取れない＝取得失敗なので fail-closed で 'error'（空状態へ潰さない）。
+ * 取得失敗を空（対象患者ゼロ）に見せると操作者が再取得できず、医療データの false-empty になる。
+ */
+export function classifyCalendarPlanLoad(
+  result: Awaited<ReturnType<typeof loadCalendarWriteContextAsync>>,
+): CalendarPlanLoadOutcome {
+  if (!result) return { status: 'error' };
+  return {
+    status: 'loaded',
+    generation: result.matrix.generation ?? null,
+    calendarState: result.calendarState,
+    writeContext: result.writeContext,
   };
 }
 

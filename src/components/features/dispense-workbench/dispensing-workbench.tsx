@@ -35,6 +35,7 @@ import {
   loadWorkbenchAsync,
   loadCalendarWriteContextAsync,
   loadSetCalendarForPatientAsync,
+  classifyCalendarPlanLoad,
 } from './dispensing-workbench.adapter';
 import { isCalendarPhase } from './dispensing-workbench.types';
 import type { FKeyAction, Phase } from './dispensing-workbench.types';
@@ -372,17 +373,22 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       if (planId) {
         const result = await loadCalendarWriteContextAsync(selId, planId, { orgId });
         if (cancelled) return;
-        if (!result) {
+        const outcome = classifyCalendarPlanLoad(result);
+        if (outcome.status === 'error') {
+          // planId 実在で calendar が取れない＝取得失敗。空状態へ倒すと「対象患者ゼロ」に化け
+          // 再取得できなくなる（医療データの false-empty）ため、error へ倒して ErrorState+retry を出す。
+          // 直下の planId なし分岐（loadSetCalendarForPatientAsync の null）と対称な fail-closed 配線。
           hydrate({ patients: [] });
+          setLoadError(true);
           return;
         }
         setCalendarState({
           patientId: selId,
           planId,
-          generation: result.matrix.generation ?? null,
-          ...result.calendarState,
+          generation: outcome.generation,
+          ...outcome.calendarState,
         });
-        setWriteContext(result.writeContext);
+        setWriteContext(outcome.writeContext);
         return;
       }
 

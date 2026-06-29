@@ -713,3 +713,63 @@ describe('dispensing-workbench.adapter generateSetBatches', () => {
     ).rejects.toBeInstanceOf(WorkbenchConflictError);
   });
 });
+
+describe('dispensing-workbench.adapter classifyCalendarPlanLoad (set/seta planId branch fail-closed)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    delete process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA;
+  });
+
+  it('classifies a failed calendar fetch (HTTP 500) as error so the left pane shows a fetch error, not a false-empty patient list', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => new Response('server error', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadCalendarWriteContextAsync, classifyCalendarPlanLoad } =
+      await import('./dispensing-workbench.adapter');
+    const result = await loadCalendarWriteContextAsync('patient_1', 'plan_1', { orgId: 'org_1' });
+
+    expect(result).toBeNull();
+    // planId 実在で calendar 取得に失敗 → 空（対象患者ゼロ）でなく error。これが false-empty 回帰の歯止め。
+    expect(classifyCalendarPlanLoad(result)).toEqual({ status: 'error' });
+  });
+
+  it('treats a 404 calendar response as error as well (a missing plan calendar is a failure, never an empty queue)', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => new Response('not found', { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadCalendarWriteContextAsync, classifyCalendarPlanLoad } =
+      await import('./dispensing-workbench.adapter');
+    const result = await loadCalendarWriteContextAsync('patient_1', 'plan_1', { orgId: 'org_1' });
+
+    expect(classifyCalendarPlanLoad(result)).toEqual({ status: 'error' });
+  });
+
+  it('classifies a successful calendar load as loaded with calendar state and write context', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/set-plans/plan_1/calendar') {
+        return jsonResponse(calendarBody());
+      }
+      return new Response('unexpected fetch', { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadCalendarWriteContextAsync, classifyCalendarPlanLoad } =
+      await import('./dispensing-workbench.adapter');
+    const result = await loadCalendarWriteContextAsync('patient_1', 'plan_1', { orgId: 'org_1' });
+    expect(result).not.toBeNull();
+
+    const outcome = classifyCalendarPlanLoad(result);
+    expect(outcome.status).toBe('loaded');
+    if (outcome.status === 'loaded') {
+      expect(outcome.writeContext.planId).toBe('plan_1');
+      expect(outcome.writeContext.cycleId).toBe('cycle_1');
+      expect(outcome.calendarState).toEqual(result!.calendarState);
+      expect(outcome.generation).toBe(result!.matrix.generation ?? null);
+    }
+  });
+});
