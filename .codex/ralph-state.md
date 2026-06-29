@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0718 JST
+
+- current task: harden patient MCS sync conflict responses so interprofessional MCS patient-name mismatch details are not echoed to clients.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, `src/app/api/patients/[id]/mcs-sync/route.ts`, `src/app/api/patients/[id]/mcs-sync/route.test.ts`, `src/server/services/patient-mcs.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/patients/[id]/mcs-sync/route.ts`, `src/app/api/patients/[id]/mcs-sync/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved Claude-owned document-delivery-rule-manager WIP.
+- bugs found: `PatientMcsSyncError(kind="conflict")` messages could include both the remote MCS patient name and the target patient name, and the route echoed `cause.message` directly into the 409 response body.
+- security risks found: reduced PHI disclosure risk in MCS interprofessional sync conflict responses by returning a fixed 409 message while preserving sensitive no-store headers and conflict status. Validation error messages were inspected and left unchanged because current service validation failures are fixed URL/project-id messages without PHI. Auth, permissions, writable-patient guard, MCS sync side effects, external failure handling, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only replaces a client-facing conflict string and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patients/[id]/mcs-sync/route.ts' 'src/app/api/patients/[id]/mcs-sync/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patients/[id]/mcs-sync/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two MCS sync files; scoped `git diff --check` on the two MCS sync files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused MCS sync Vitest passed `1` file / `11` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after verifying the conflict message PHI source, fixed-message 409 semantics, validation-message non-PHI status, no-store coverage, and regression assertions.
+- remaining work: explicit-path stage only this MCS sync slice plus ledger hunks, commit, send agmsg FYI, then continue remaining visit/report/interprofessional API candidates or incoming review interrupts.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0711 JST
 
 - current task: close the visit-record attachment validation raw-echo follow-up by replacing client-facing attachment validation failure messages with a fixed safe message.

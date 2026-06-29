@@ -292,6 +292,10 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
 
     expect(response.status).toBe(409);
     expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('MCS の患者情報が対象患者と一致しません');
+    expect(body).not.toContain('別患者');
+    expect(body).not.toContain('青葉 花子');
   });
 
   it('maps external sync failures to a sanitized no-store 502', async () => {

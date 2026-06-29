@@ -23,6 +23,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient MCS Sync Conflict Message Hardening - 2026-06-30 07:18 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration objective on `POST /api/patients/[id]/mcs-sync`.
+  - Focused only on `PatientMcsSyncError(kind="conflict")` responses that can carry remote MCS patient names and target patient names.
+  - Preserved Claude-owned document-delivery-rule-manager WIP.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - MCS sync conflict responses now return the fixed message `MCS の患者情報が対象患者と一致しません。連携先 URL を確認してください` instead of `cause.message`.
+  - Added a regression proving 409/no-store semantics remain while remote MCS patient name and target patient name are not echoed.
+- Safety:
+  - Reduces PHI disclosure risk in MCS interprofessional sync conflict responses.
+  - Preserves auth/permission behavior, writable-patient guard, MCS sync side effects, external 502 sanitization, and validation messages that were inspected as fixed URL/project-id failures without PHI.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only replaces a client-facing conflict string and adds focused tests.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/mcs-sync/route.ts' 'src/app/api/patients/[id]/mcs-sync/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/mcs-sync/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `11` tests.
+  - Scoped ESLint on the two MCS sync files: passed.
+  - Scoped `git diff --check` on the two MCS sync files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` was sent to Claude and codex with scope and validation evidence.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after verifying the conflict message PHI source, fixed-message 409 semantics, validation-message non-PHI status, no-store coverage, and regression assertions.
+- Remaining:
+  - Stage only explicit codex2-owned MCS sync files plus the MCS ledger hunks, commit, and send agmsg FYI.
+  - Continue remaining visit/report/interprofessional API candidates or incoming review interrupts.
+
 ### Visit Record Attachment Validation Raw-Echo Hardening - 2026-06-30 07:11 JST
 
 - Scope:

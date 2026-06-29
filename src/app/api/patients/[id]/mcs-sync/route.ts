@@ -20,6 +20,9 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 export const runtime = 'nodejs';
 
+const PATIENT_MCS_SYNC_CONFLICT_MESSAGE =
+  'MCS の患者情報が対象患者と一致しません。連携先 URL を確認してください';
+
 async function authenticatedPOST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -65,7 +68,7 @@ async function authenticatedPOST(
       }
 
       if (cause.kind === 'conflict') {
-        return conflict(cause.message);
+        return conflict(PATIENT_MCS_SYNC_CONFLICT_MESSAGE);
       }
     }
 
