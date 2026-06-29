@@ -59,6 +59,9 @@ type PrescriptionLine = {
   drug_name: string;
   drug_master_id?: string | null;
   drug_code: string | null;
+  source_drug_code?: string | null;
+  source_drug_code_type?: string | null;
+  drug_resolution_status?: string | null;
   dosage_form: string | null;
   dose: string;
   frequency: string;
@@ -128,6 +131,7 @@ type DiffMeta = {
 };
 
 type DrugMasterInfo = {
+  id: string;
   yj_code: string;
   drug_name: string;
   dosage_form: string | null;
@@ -142,6 +146,11 @@ type DrugMasterInfo = {
   lasa_group_key: string | null;
   max_administration_days: number | null;
   therapeutic_category: string | null;
+};
+
+type DrugMasterBatchResponse = {
+  by_drug_master_id?: Record<string, DrugMasterInfo>;
+  [yjCode: string]: DrugMasterInfo | Record<string, DrugMasterInfo> | undefined;
 };
 
 type ChangeType = 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | 'unchanged' | 'do';
@@ -299,6 +308,53 @@ function isDifferentDrugMaster(row: DiffReviewRow): boolean {
   const currentMasterId = row.current_drug_master_id?.trim();
   const previousMasterId = row.previous_drug_master_id?.trim();
   return Boolean(currentMasterId && previousMasterId && currentMasterId !== previousMasterId);
+}
+
+function isDrugMasterInfo(value: unknown): value is DrugMasterInfo {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'yj_code' in value &&
+    typeof value.yj_code === 'string',
+  );
+}
+
+function canonicalDrugMasterId(line: PrescriptionLine): string | null {
+  return line.drug_master_id?.trim() || null;
+}
+
+function getDrugMasterInfo(
+  line: PrescriptionLine,
+  masterData: DrugMasterBatchResponse,
+): DrugMasterInfo | undefined {
+  const masterId = canonicalDrugMasterId(line);
+  const byId = masterId ? masterData.by_drug_master_id?.[masterId] : null;
+  if (isDrugMasterInfo(byId)) return byId;
+  if (masterId) return undefined;
+  const byCode = line.drug_code ? masterData[line.drug_code] : null;
+  if (isDrugMasterInfo(byCode)) return byCode;
+  return undefined;
+}
+
+function sourceDrugCodeLabel(line: PrescriptionLine): string | null {
+  const sourceCode = line.source_drug_code?.trim();
+  if (!sourceCode) return null;
+  const sourceType = line.source_drug_code_type?.trim();
+  return sourceType ? `元コード: ${sourceType} ${sourceCode}` : `元コード: ${sourceCode}`;
+}
+
+function isMedicationResolutionIncomplete(
+  line: PrescriptionLine,
+  masterInfo: DrugMasterInfo | undefined,
+  masterLookupComplete: boolean,
+): boolean {
+  const status = line.drug_resolution_status?.trim();
+  if (status && status !== 'resolved') return true;
+  const masterId = canonicalDrugMasterId(line);
+  if (masterId && masterLookupComplete && !masterInfo) return true;
+  return !masterId && !line.drug_code?.trim();
 }
 
 /** Group lines by frequency+days+route into Rp groups (レセコン方式) */
@@ -531,12 +587,14 @@ function DrugLineRow({
   changeType,
   hasOverlap,
   masterInfo,
+  masterLookupComplete,
 }: {
   line: PrescriptionLine;
   prescribedDate: string;
   changeType: ChangeType;
   hasOverlap: boolean;
   masterInfo?: DrugMasterInfo;
+  masterLookupComplete: boolean;
 }) {
   const method = inferMethod(line);
   const methodCfg = method ? (METHOD_CONFIG[method] ?? null) : null;
@@ -547,6 +605,12 @@ function DrugLineRow({
   const crushedWarn = method === 'crushed' && isCrushedIncompatible(line);
   const displayDrugName = masterInfo?.tall_man_name?.trim() || line.drug_name;
   const hasTallManName = displayDrugName !== line.drug_name;
+  const medicationResolutionIncomplete = isMedicationResolutionIncomplete(
+    line,
+    masterInfo,
+    masterLookupComplete,
+  );
+  const sourceCodeLabel = sourceDrugCodeLabel(line);
 
   return (
     <div
@@ -583,6 +647,15 @@ function DrugLineRow({
           )}
           {line.dosage_form && (
             <span className="text-xs text-muted-foreground">[{line.dosage_form}]</span>
+          )}
+          {medicationResolutionIncomplete && (
+            <span
+              className="inline-flex items-center gap-0.5 rounded border border-state-confirm/30 bg-state-confirm/10 px-1 py-0.5 text-[10px] font-bold text-state-confirm"
+              role="alert"
+            >
+              <AlertTriangle className="size-2.5" aria-hidden="true" />
+              薬剤未解決
+            </span>
           )}
           {masterInfo?.is_narcotic && (
             <span className="inline-flex items-center gap-0.5 rounded bg-tag-hazard/10 px-1 py-0.5 text-[10px] font-bold text-tag-hazard">
@@ -623,6 +696,9 @@ function DrugLineRow({
         </div>
         {hasTallManName && (
           <p className="text-xs text-muted-foreground">通常表記: {line.drug_name}</p>
+        )}
+        {medicationResolutionIncomplete && sourceCodeLabel && (
+          <p className="text-xs font-medium text-state-confirm">{sourceCodeLabel}</p>
         )}
         {masterInfo?.lasa_group_key && (
           <p className="text-xs font-medium text-tag-hazard">
@@ -701,13 +777,15 @@ function RpGroupBlock({
   prevLines,
   overlapSet,
   masterMap,
+  masterLookupComplete,
 }: {
   group: RpGroup;
   rpIndex: number;
   prescribedDate: string;
   prevLines: PrescriptionLine[] | null;
   overlapSet: Set<string>;
-  masterMap: Record<string, DrugMasterInfo>;
+  masterMap: DrugMasterBatchResponse;
+  masterLookupComplete: boolean;
 }) {
   const routeCfg = ROUTE_CONFIG[group.route] ?? ROUTE_CONFIG.other;
   const RouteIcon = routeCfg.icon;
@@ -736,7 +814,8 @@ function RpGroupBlock({
           prescribedDate={prescribedDate}
           changeType={detectChange(prevLines, line)}
           hasOverlap={overlapSet.has(line.id)}
-          masterInfo={line.drug_code ? masterMap[line.drug_code] : undefined}
+          masterInfo={getDrugMasterInfo(line, masterMap)}
+          masterLookupComplete={masterLookupComplete}
         />
       ))}
     </div>
@@ -753,6 +832,7 @@ function RouteSection({
   prevLines,
   overlapSet,
   masterMap,
+  masterLookupComplete,
 }: {
   routeKey: string;
   groups: RpGroup[];
@@ -760,7 +840,8 @@ function RouteSection({
   prescribedDate: string;
   prevLines: PrescriptionLine[] | null;
   overlapSet: Set<string>;
-  masterMap: Record<string, DrugMasterInfo>;
+  masterMap: DrugMasterBatchResponse;
+  masterLookupComplete: boolean;
 }) {
   const cfg = ROUTE_CONFIG[routeKey] ?? ROUTE_CONFIG.other;
   const totalDrugs = groups.reduce((sum, g) => sum + g.lines.length, 0);
@@ -788,6 +869,7 @@ function RouteSection({
           prevLines={prevLines}
           overlapSet={overlapSet}
           masterMap={masterMap}
+          masterLookupComplete={masterLookupComplete}
         />
       ))}
     </section>
@@ -801,13 +883,15 @@ function PrescriptionIntakeCard({
   prevIntake,
   overlapSet,
   masterMap,
+  masterLookupComplete,
   onMarkOriginalCollected,
   isMarkingOriginalCollected,
 }: {
   intake: PrescriptionIntake;
   prevIntake: PrescriptionIntake | null;
   overlapSet: Set<string>;
-  masterMap: Record<string, DrugMasterInfo>;
+  masterMap: DrugMasterBatchResponse;
+  masterLookupComplete: boolean;
   onMarkOriginalCollected: (intakeId: string) => void;
   isMarkingOriginalCollected: boolean;
 }) {
@@ -998,7 +1082,7 @@ function PrescriptionIntakeCard({
             </div>
           )}
 
-          {(['internal', 'external', 'injection'] as const).map((routeKey) => {
+          {(['internal', 'external', 'injection', 'other'] as const).map((routeKey) => {
             const groups = sections[routeKey] ?? [];
             if (groups.length === 0) return null;
             const offset = rpCounter;
@@ -1013,6 +1097,7 @@ function PrescriptionIntakeCard({
                 prevLines={prevLines}
                 overlapSet={overlapSet}
                 masterMap={masterMap}
+                masterLookupComplete={masterLookupComplete}
               />
             );
           })}
@@ -1029,6 +1114,7 @@ const ROUTE_FILTER_OPTIONS = [
   { value: 'internal', label: '内服薬' },
   { value: 'external', label: '外用薬' },
   { value: 'injection', label: '注射薬' },
+  { value: 'other', label: 'その他' },
 ] as const;
 
 const METHOD_FILTER_OPTIONS = [
@@ -1231,41 +1317,56 @@ export function PrescriptionHistoryContent() {
     enabled: !!orgId && !!patientId,
   });
 
-  // Batch-fetch DrugMaster info for all drug_codes
+  // Batch-fetch DrugMaster info for canonical ids first, then YJ fallback.
   const allDrugCodes = useMemo(() => {
     if (!data?.data) return [];
     const codes = new Set<string>();
     for (const intake of data.data) {
       for (const line of intake.lines) {
-        if (line.drug_code) codes.add(line.drug_code);
+        const code = line.drug_code?.trim();
+        if (code) codes.add(code);
       }
     }
     return Array.from(codes);
   }, [data]);
 
+  const allDrugMasterIds = useMemo(() => {
+    if (!data?.data) return [];
+    const ids = new Set<string>();
+    for (const intake of data.data) {
+      for (const line of intake.lines) {
+        const id = line.drug_master_id?.trim();
+        if (id) ids.add(id);
+      }
+    }
+    return Array.from(ids);
+  }, [data]);
+
   const {
     data: masterData,
     isError: isMasterError,
+    isLoading: isMasterLoading,
     refetch: refetchMaster,
   } = useQuery({
-    queryKey: ['drug-masters-batch', orgId, allDrugCodes],
+    queryKey: ['drug-masters-batch', orgId, allDrugCodes, allDrugMasterIds],
     queryFn: async () => {
-      if (allDrugCodes.length === 0) return {};
+      if (allDrugCodes.length === 0 && allDrugMasterIds.length === 0) return {};
       const res = await fetch('/api/drug-masters/batch', {
         method: 'POST',
         headers: buildOrgJsonHeaders(orgId),
-        body: JSON.stringify({ yj_codes: allDrugCodes }),
+        body: JSON.stringify({ yj_codes: allDrugCodes, drug_master_ids: allDrugMasterIds }),
       });
       // 取得失敗を黙って {} に潰さず error 状態へ。エンリッチは補助なので画面全体は止めず、
       // timeline 上部に非ブロッキング通知を出して「薬剤情報が欠けている可能性」を可視化する。
       if (!res.ok) throw new Error('薬剤マスタの取得に失敗しました');
-      return res.json() as Promise<Record<string, DrugMasterInfo>>;
+      return res.json() as Promise<DrugMasterBatchResponse>;
     },
-    enabled: !!orgId && allDrugCodes.length > 0,
+    enabled: !!orgId && (allDrugCodes.length > 0 || allDrugMasterIds.length > 0),
     staleTime: 5 * 60_000,
   });
 
-  const masterMap: Record<string, DrugMasterInfo> = masterData ?? {};
+  const masterMap: DrugMasterBatchResponse = masterData ?? {};
+  const masterLookupComplete = !isMasterError && !isMasterLoading;
 
   const markOriginalCollectedMutation = useMutation({
     mutationFn: async (intakeId: string) => {
@@ -1538,6 +1639,7 @@ export function PrescriptionHistoryContent() {
                   prevIntake={prevIntake}
                   overlapSet={overlapSet}
                   masterMap={masterMap}
+                  masterLookupComplete={masterLookupComplete}
                   onMarkOriginalCollected={(intakeId) =>
                     markOriginalCollectedMutation.mutate(intakeId)
                   }
@@ -1644,6 +1746,7 @@ export function PrescriptionHistoryContent() {
                 prevIntake={previousIntake}
                 overlapSet={overlapSet}
                 masterMap={masterMap}
+                masterLookupComplete={masterLookupComplete}
                 onMarkOriginalCollected={(intakeId) =>
                   markOriginalCollectedMutation.mutate(intakeId)
                 }
@@ -1663,6 +1766,7 @@ export function PrescriptionHistoryContent() {
                 prevIntake={null}
                 overlapSet={overlapSet}
                 masterMap={masterMap}
+                masterLookupComplete={masterLookupComplete}
                 onMarkOriginalCollected={(intakeId) =>
                   markOriginalCollectedMutation.mutate(intakeId)
                 }

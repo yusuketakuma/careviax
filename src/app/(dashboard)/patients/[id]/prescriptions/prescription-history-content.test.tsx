@@ -756,6 +756,375 @@ describe('PrescriptionHistoryContent', () => {
     expect(screen.getAllByText('前回から中止:').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('prefers drug-master-id enrichment over stale YJ code enrichment for safety badges', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    const masterInfo = (overrides: Record<string, unknown>) => ({
+      id: 'drug_master_current',
+      yj_code: 'YJ_NEW',
+      drug_name: '正しいマスター薬',
+      dosage_form: '錠',
+      drug_price: 12,
+      unit: '錠',
+      is_generic: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      is_high_risk: true,
+      is_lasa_risk: true,
+      tall_man_name: 'amLODIPine',
+      lasa_group_key: 'amlodipine_lasa',
+      max_administration_days: 30,
+      therapeutic_category: '循環器官用薬',
+      ...overrides,
+    });
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return {
+          data: {
+            YJ_STALE: masterInfo({
+              id: 'drug_master_wrong',
+              yj_code: 'YJ_STALE',
+              tall_man_name: 'WRONGTall',
+              is_high_risk: false,
+              is_lasa_risk: false,
+            }),
+            by_drug_master_id: {
+              drug_master_current: masterInfo({}),
+            },
+          },
+          isLoading: false,
+        };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_stale_code',
+              cycle_id: 'cycle_stale_code',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines: [
+                {
+                  id: 'line_stale_code',
+                  line_number: 1,
+                  drug_name: '旧表示名',
+                  drug_master_id: 'drug_master_current',
+                  drug_code: 'YJ_STALE',
+                  dosage_form: '錠',
+                  dose: '1錠',
+                  frequency: '夕食後',
+                  days: 28,
+                  quantity: 28,
+                  unit: '錠',
+                  is_generic: false,
+                  packaging_instructions: null,
+                  notes: null,
+                  route: 'internal',
+                  dispensing_method: null,
+                  start_date: null,
+                  end_date: null,
+                },
+              ],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    expect(screen.getByText('amLODIPine')).toBeTruthy();
+    expect(screen.getByText('通常表記: 旧表示名')).toBeTruthy();
+    expect(screen.getByText('ハイリスク')).toBeTruthy();
+    expect(screen.getByText('LASA')).toBeTruthy();
+    expect(screen.getByText('類似薬剤名グループ: amlodipine_lasa')).toBeTruthy();
+    expect(screen.queryByText('WRONGTall')).toBeNull();
+  });
+
+  it('does not fall back to stale YJ enrichment when canonical drug-master-id lookup misses', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    const wrongStaleMaster = {
+      id: 'drug_master_wrong',
+      yj_code: 'YJ_STALE',
+      drug_name: '誤ったマスター薬',
+      dosage_form: '錠',
+      drug_price: 12,
+      unit: '錠',
+      is_generic: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      is_high_risk: true,
+      is_lasa_risk: true,
+      tall_man_name: 'WRONGTall',
+      lasa_group_key: 'wrong_lasa',
+      max_administration_days: 30,
+      therapeutic_category: '循環器官用薬',
+    };
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return {
+          data: {
+            YJ_STALE: wrongStaleMaster,
+            by_drug_master_id: {},
+          },
+          isLoading: false,
+        };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_missing_master',
+              cycle_id: 'cycle_missing_master',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines: [
+                {
+                  id: 'line_missing_master',
+                  line_number: 1,
+                  drug_name: '旧表示名',
+                  drug_master_id: 'missing_master',
+                  drug_code: 'YJ_STALE',
+                  source_drug_code: 'RC001',
+                  source_drug_code_type: 'receipt',
+                  dosage_form: '錠',
+                  dose: '1錠',
+                  frequency: '夕食後',
+                  days: 28,
+                  quantity: 28,
+                  unit: '錠',
+                  is_generic: false,
+                  packaging_instructions: null,
+                  notes: null,
+                  route: 'internal',
+                  dispensing_method: null,
+                  start_date: null,
+                  end_date: null,
+                },
+              ],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    expect(screen.getAllByText('旧表示名').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('薬剤未解決')).toBeTruthy();
+    expect(screen.getByText('元コード: receipt RC001')).toBeTruthy();
+    expect(screen.queryByText('WRONGTall')).toBeNull();
+    expect(screen.queryByText('ハイリスク')).toBeNull();
+    expect(screen.queryByText('LASA')).toBeNull();
+    expect(screen.queryByText('類似薬剤名グループ: wrong_lasa')).toBeNull();
+  });
+
+  it('trims drug-master-id before by-id enrichment', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    const masterInfo = {
+      id: 'drug_master_current',
+      yj_code: 'YJ_NEW',
+      drug_name: '正しいマスター薬',
+      dosage_form: '錠',
+      drug_price: 12,
+      unit: '錠',
+      is_generic: false,
+      is_narcotic: false,
+      is_psychotropic: false,
+      is_high_risk: true,
+      is_lasa_risk: false,
+      tall_man_name: 'amLODIPine',
+      lasa_group_key: null,
+      max_administration_days: 30,
+      therapeutic_category: '循環器官用薬',
+    };
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return {
+          data: {
+            YJ_STALE: { ...masterInfo, id: 'drug_master_wrong', tall_man_name: 'WRONGTall' },
+            by_drug_master_id: {
+              drug_master_current: masterInfo,
+            },
+          },
+          isLoading: false,
+        };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_trimmed_master',
+              cycle_id: 'cycle_trimmed_master',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines: [
+                {
+                  id: 'line_trimmed_master',
+                  line_number: 1,
+                  drug_name: '旧表示名',
+                  drug_master_id: ' drug_master_current ',
+                  drug_code: 'YJ_STALE',
+                  dosage_form: '錠',
+                  dose: '1錠',
+                  frequency: '夕食後',
+                  days: 28,
+                  quantity: 28,
+                  unit: '錠',
+                  is_generic: false,
+                  packaging_instructions: null,
+                  notes: null,
+                  route: 'internal',
+                  dispensing_method: null,
+                  start_date: null,
+                  end_date: null,
+                },
+              ],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    expect(screen.getByText('amLODIPine')).toBeTruthy();
+    expect(screen.getByText('通常表記: 旧表示名')).toBeTruthy();
+    expect(screen.getByText('ハイリスク')).toBeTruthy();
+    expect(screen.queryByText('薬剤未解決')).toBeNull();
+    expect(screen.queryByText('WRONGTall')).toBeNull();
+  });
+
+  it('shows non-resolved medication status on other-route lines with the source drug code', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_unresolved',
+              cycle_id: 'cycle_unresolved',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines: [
+                {
+                  id: 'line_unresolved',
+                  line_number: 1,
+                  drug_name: '未確認薬',
+                  drug_master_id: null,
+                  drug_code: null,
+                  source_drug_code: 'RC001',
+                  source_drug_code_type: 'receipt',
+                  drug_resolution_status: 'code_not_found',
+                  dosage_form: '錠',
+                  dose: '1錠',
+                  frequency: '夕食後',
+                  days: 28,
+                  quantity: 28,
+                  unit: '錠',
+                  is_generic: false,
+                  packaging_instructions: null,
+                  notes: null,
+                  route: 'other',
+                  dispensing_method: null,
+                  start_date: null,
+                  end_date: null,
+                },
+              ],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    expect(screen.getByText('その他（1剤）')).toBeTruthy();
+    expect(screen.getByText('薬剤未解決')).toBeTruthy();
+    expect(screen.getByText('元コード: receipt RC001')).toBeTruthy();
+  });
+
   it('renders the 後発 (generic) badge without state color (classification value)', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'patient_1' });
@@ -821,7 +1190,28 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
   const HOSTILE = 'pt/1?x=y#z';
   const ENCODED = 'pt%2F1%3Fx%3Dy%23z';
 
-  function buildLine(drugCode: string | null) {
+  type HistoryLineFixture = {
+    id: string;
+    line_number: number;
+    drug_name: string;
+    drug_master_id: string | null;
+    drug_code: string | null;
+    dosage_form: string | null;
+    dose: string;
+    frequency: string;
+    days: number;
+    quantity: number;
+    unit: string;
+    is_generic: boolean;
+    packaging_instructions: string | null;
+    notes: string | null;
+    route: string | null;
+    dispensing_method: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  };
+
+  function buildLine(drugCode: string | null, overrides: Partial<HistoryLineFixture> = {}) {
     return {
       id: 'line_1',
       line_number: 1,
@@ -841,6 +1231,7 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
       dispensing_method: null,
       start_date: null,
       end_date: null,
+      ...overrides,
     };
   }
 
@@ -965,15 +1356,23 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
     }
   });
 
-  it('drug-masters batch POST adopts json helper with the exact yj_codes body (static path)', async () => {
+  it('drug-masters batch POST adopts json helper with yj_codes and drug_master_ids', async () => {
     const sentinel = {
       'Content-Type': 'application/json',
       'x-org-id': 'org_1',
       'x-test-helper': 'buildOrgJsonHeaders',
     };
     vi.mocked(buildOrgJsonHeaders).mockReturnValue(sentinel);
-    // a drug_code line makes allDrugCodes non-empty so the batch queryFn actually fetches
-    const { queryConfigs } = renderHistory({ lines: [buildLine('YJ1234567890')] });
+    const { queryConfigs } = renderHistory({
+      lines: [
+        buildLine('YJ_STALE', { drug_master_id: 'drug_master_current' }),
+        buildLine(null, {
+          id: 'line_id_only',
+          drug_name: 'ロサルタン錠25mg',
+          drug_master_id: 'drug_master_id_only',
+        }),
+      ],
+    });
     const fetchMock = stubFetch({});
     try {
       await queryConfigs.get('drug-masters-batch')!.queryFn();
@@ -982,7 +1381,16 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
       expect(init.method).toBe('POST');
       expect(init.headers).toBe(sentinel);
       expect(vi.mocked(buildOrgJsonHeaders)).toHaveBeenCalledWith('org_1');
-      expect(JSON.parse(init.body as string)).toEqual({ yj_codes: ['YJ1234567890'] });
+      expect(queryConfigs.get('drug-masters-batch')!.queryKey).toEqual([
+        'drug-masters-batch',
+        'org_1',
+        ['YJ_STALE'],
+        ['drug_master_current', 'drug_master_id_only'],
+      ]);
+      expect(JSON.parse(init.body as string)).toEqual({
+        yj_codes: ['YJ_STALE'],
+        drug_master_ids: ['drug_master_current', 'drug_master_id_only'],
+      });
     } finally {
       vi.unstubAllGlobals();
     }

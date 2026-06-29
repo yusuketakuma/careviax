@@ -232,10 +232,59 @@ describe('/api/patients/[id]/prescriptions', () => {
           select: expect.objectContaining({
             id: true,
             updated_at: true,
+            drug_master_id: true,
+            drug_code: true,
+            source_drug_code: true,
+            source_drug_code_type: true,
+            drug_resolution_status: true,
           }),
         }),
       }),
     );
+  });
+
+  it('returns medication resolution fields so unresolved drugs are visible in history', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_unresolved',
+        cycle_id: 'cycle_1',
+        prescribed_date: new Date('2026-04-20T00:00:00.000Z'),
+        created_at: new Date('2026-04-20T10:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_unresolved',
+            line_number: 1,
+            drug_name: '未確認薬',
+            drug_master_id: null,
+            drug_code: null,
+            source_drug_code: 'RC001',
+            source_drug_code_type: 'receipt',
+            drug_resolution_status: 'review_required',
+            dose: '1錠',
+            frequency: '夕食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+        ],
+      },
+    ]);
+
+    const response = (await GET(createGetRequest('patient_1', 'limit=5&case_id=case_1'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data[0].lines[0]).toMatchObject({
+      drug_master_id: null,
+      drug_code: null,
+      source_drug_code: 'RC001',
+      source_drug_code_type: 'receipt',
+      drug_resolution_status: 'review_required',
+    });
   });
 
   it('keeps diff review rows line-scoped when the same drug appears twice', async () => {
