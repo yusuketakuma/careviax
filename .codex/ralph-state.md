@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0453 JST
+
+- current task: add sensitive no-store response headers to `POST /api/partner-visit-records` so interprofessional partner visit record draft save responses are not cacheable.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `git log --oneline -8`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, local Next.js route-handler docs, `src/app/api/partner-visit-records/route.ts`, `src/app/api/partner-visit-records/route.test.ts`, `src/app/api/care-reports/generate-from-visit/route.ts`, `src/lib/api/sensitive-response.ts`, `src/lib/api/response.ts`, and `src/lib/auth/context.ts`.
+- files changed: `src/app/api/partner-visit-records/route.ts`, `src/app/api/partner-visit-records/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `POST /api/partner-visit-records` saved partner-owned visit record drafts and returned draft identifiers/status/revision metadata plus `has_*` flags without setting the repository's sensitive `private, no-store` headers on success, validation, or workflow-conflict responses.
+- security risks found: reduced PHI-adjacent interprofessional visit-record caching risk by wrapping all authenticated POST responses with `withSensitiveNoStore`. Regression assertions cover success, invalid-payload validation, and unaccepted/submitted workflow-conflict responses. Auth/RLS, patient-share and partnership checks, audit content scrubbing, response body shape, schema, live DB data, external send, push, deploy, and secret handling were not changed.
+- performance issues found: no DB query, external request, dependency, retry loop, synchronous blocking, or unbounded work was added. The patch only sets fixed response headers on an existing route boundary.
+- validation commands: `pnpm exec prettier --write src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`; `pnpm exec vitest run src/app/api/partner-visit-records/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`; `git diff --check -- src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused partner-visit-records route Vitest passed `1` file / `13` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Ledger-inclusive Prettier and diff checks passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store/error semantics. codex ACKed the lock, preserved the partner-visit-records files while committing `5b6a7994`, and was sent the same `PATCH_REVIEW_REQUEST`.
+- remaining work: stage only explicit codex2-owned files and commit this slice while preserving codex's patients-board/package WIP.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0448 JST
 
 - current task: prioritize codex2's `generate-from-visit` no-store review request, then make pharmacist monthly counts and pharmacy-site resource-map windows use Japan business dates for Japan-only operation.

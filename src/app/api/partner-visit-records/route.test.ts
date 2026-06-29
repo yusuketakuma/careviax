@@ -316,6 +316,8 @@ describe('/api/partner-visit-records', () => {
     );
 
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(sourceVisitRecordFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'visit_record_1', org_id: 'org_1', patient_id: 'patient_1' },
       select: { id: true },
@@ -371,6 +373,27 @@ describe('/api/partner-visit-records', () => {
     expect(responseText).not.toContain('A薬');
   });
 
+  it('rejects invalid draft payloads with no-store headers before loading records', async () => {
+    const response = await POST(
+      createRequest({
+        visit_request_id: 'visit_request_1',
+        visit_at: 'invalid-visit-at',
+        record_content: {},
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
   it('rejects unaccepted visit requests before record or audit side effects', async () => {
     pharmacyVisitRequestFindFirstMock.mockResolvedValue({
       id: 'visit_request_1',
@@ -393,6 +416,8 @@ describe('/api/partner-visit-records', () => {
     );
 
     expect(response.status).toBe(409);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(partnerVisitRecordCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
@@ -414,6 +439,8 @@ describe('/api/partner-visit-records', () => {
     );
 
     expect(response.status).toBe(409);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });

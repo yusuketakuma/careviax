@@ -201,7 +201,7 @@ export const GET: typeof authenticatedGET = async (req, routeContext) => {
   }
 };
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -399,3 +399,7 @@ export const POST = withAuthContext(
     message: '協力訪問記録の保存権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+};

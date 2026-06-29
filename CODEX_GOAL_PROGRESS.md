@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Partner Visit Record POST No-Store - 2026-06-30 04:53 JST
+
+- Scope:
+  - Continued codex2's visit-time / report / interprofessional collaboration objective on `POST /api/partner-visit-records`.
+  - Focused only on sensitive response cache headers for partner-owned visit record draft saves.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - The partner visit record save route now wraps authenticated `POST` responses with `withSensitiveNoStore`.
+  - Success, invalid-payload validation, and workflow-conflict responses now include `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
+- Safety:
+  - Reduces PHI-adjacent caching risk for partner visit record draft identifiers, status/revision metadata, and derived `has_*` flags returned after interprofessional visit-record saves.
+  - Preserves existing authorization, validation, patient-share/partnership checks, audit content scrubbing, response body shape, and create/update workflow semantics.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/partner-visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store/error semantics.
+  - codex ACKed the lock, preserved the partner-visit-records files while committing `5b6a7994`, and was sent the same `PATCH_REVIEW_REQUEST`.
+- Remaining:
+  - Stage only explicit codex2-owned files plus ledgers and commit while preserving codex's patients-board WIP.
+
 ### Pharmacist / Pharmacy-Site Japan Business-Day Windows - 2026-06-30 04:48 JST
 
 - Scope:
