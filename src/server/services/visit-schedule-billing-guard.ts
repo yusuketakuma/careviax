@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { formatUtcDateKey } from '@/lib/date-key';
+import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 import { resolveBillingPayerBasis, type BillingPayerBasis } from './billing-payer-basis';
 import {
@@ -68,7 +69,7 @@ async function resolveInsuranceNumber(args: {
   type: 'medical' | 'care';
   asOf: Date;
 }) {
-  const date = utcDateFromLocalKey(localDateKey(args.asOf));
+  const date = utcDateFromLocalKey(formatUtcDateKey(args.asOf));
   const record = await args.db.patientInsurance.findFirst({
     where: {
       org_id: args.orgId,

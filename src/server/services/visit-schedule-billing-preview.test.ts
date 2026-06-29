@@ -310,8 +310,78 @@ describe('buildVisitScheduleBillingPreview', () => {
           patient_id: 'patient_1',
           insurance_type: 'public_subsidy',
           application_status: { in: ['applying', 'change_pending'] },
+          OR: [{ valid_from: null }, { valid_from: { lte: new Date('2026-04-03T00:00:00.000Z') } }],
+          AND: [
+            {
+              OR: [
+                { valid_until: null },
+                { valid_until: { gte: new Date('2026-04-03T00:00:00.000Z') } },
+              ],
+            },
+          ],
         }),
         take: 1,
+      }),
+    );
+  });
+
+  it('keeps same-day batch insurance prefetch on UTC date sentinels across runtime timezones', async () => {
+    patientInsuranceFindManyMock.mockResolvedValue([
+      makeInsuranceRecord({
+        id: 'insurance_care_pending',
+        insurance_type: 'care',
+        application_status: 'change_pending',
+        number: null,
+        previous_care_level: 'care_2',
+        provisional_care_level: 'care_3',
+        confirmed_care_level: null,
+        valid_from: new Date('2026-04-03T00:00:00.000Z'),
+        valid_until: new Date('2026-04-03T00:00:00.000Z'),
+      }),
+    ]);
+
+    const previews = await buildVisitScheduleBillingPreviewBatch(
+      [
+        {
+          key: 'proposal_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-03',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+      ],
+      'org_1',
+    );
+
+    expect(previews.proposal_1?.alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'care_insurance_application_pending',
+        }),
+      ]),
+    );
+    expect(validateBillingRequirementsMock.mock.calls[0]?.[0].proposedDate.toISOString()).toBe(
+      '2026-04-03T00:00:00.000Z',
+    );
+    expect(resolveBillingRuntimeContextMock.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        asOfDate: new Date('2026-04-03T00:00:00.000Z'),
+      }),
+    );
+    expect(patientInsuranceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [{ valid_from: null }, { valid_from: { lte: new Date('2026-04-03T00:00:00.000Z') } }],
+          AND: [
+            {
+              OR: [
+                { valid_until: null },
+                { valid_until: { gte: new Date('2026-04-03T00:00:00.000Z') } },
+              ],
+            },
+          ],
+        }),
       }),
     );
   });

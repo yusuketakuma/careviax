@@ -48,7 +48,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `git diff --check -- src/server/services/visit-brief-ai.ts src/server/services/visit-brief-ai.test.ts src/server/services/patient-mcs-ai.ts src/server/services/patient-mcs-ai.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
 - Remaining:
   - codex and Claude approved after independent validation and adversarial raw `.message` / mutable `.name` review.
-  - Commit is pending for this slice.
+  - Committed as `a495969f Sanitize AI fallback reasons`; no remaining work for this slice.
+
+### Visit-Schedule Billing Date Sentinels - 2026-06-30 04:11 JST
+
+- Scope:
+  - Continued Japan-only timezone hardening for visit-schedule billing preview and save-time billing guard.
+  - Kept this as an `@db.Date` sentinel/runtime-TZ bug fix only. Payer-basis rules, monthly/weekly cap semantics, active schedule/proposal status sets, and billing rule thresholds were not changed.
+  - Preserved codex2's AI fallback slice and reviewed/approved it before continuing.
+- Fixed:
+  - Billing preview insurance effective-date checks now convert proposal/as-of `@db.Date` sentinels with `formatUtcDateKey()` rather than server-local `localDateKey()`.
+  - Runtime-context cache keys now use UTC date keys, so same proposal days do not split or merge by server timezone.
+  - Save-time billing guard insurance lookup now queries `PatientInsurance.valid_from/valid_until` with the canonical UTC midnight sentinel for the proposed visit day.
+  - `pnpm test:schedule-time:tz` now includes `visit-schedule-billing-preview.test.ts` and `visit-schedule-billing-guard.test.ts`.
+- Safety:
+  - Reduces over/under blocking and payer-basis drift where a negative-offset runtime could treat `2026-04-03T00:00:00.000Z` as April 2 for insurance validity and billing guard checks.
+  - No auth/RLS policy, schema, live DB mutation, external send, deploy, push, or secret handling changed.
+- Validation:
+  - `TZ=America/Los_Angeles pnpm exec vitest run src/server/services/visit-schedule-billing-preview.test.ts src/server/services/visit-schedule-billing-guard.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `12` tests.
+  - `TZ=UTC pnpm exec vitest run src/server/services/visit-schedule-billing-preview.test.ts src/server/services/visit-schedule-billing-guard.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `12` tests.
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/server/services/visit-schedule-billing-preview.test.ts src/server/services/visit-schedule-billing-guard.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `12` tests.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz`: passed, `25` files / `398` tests.
+  - `TZ=UTC pnpm test:schedule-time:tz`: passed, `25` files / `398` tests.
+  - `TZ=America/Los_Angeles pnpm test:schedule-time:tz`: passed, `25` files / `398` tests.
+  - Scoped ESLint, scoped Prettier check, and scoped `git diff --check`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm date-slices:check`: passed.
+- Review/coordination:
+  - `code_mapper`, `medical_safety_reviewer`, and `test_architect` all reviewed the candidate read-only before edits. Medical safety classified this as a safe sentinel bug fix as long as billing semantics were not expanded.
+  - codex2 ACKed the billing date-sentinel lock and preserved these paths.
+- Remaining:
+  - Commit only the five billing/package files plus ledgers and send agmsg FYI.
 
 ### Visit-Record Handoff Extraction Logging - 2026-06-30 03:46 JST
 

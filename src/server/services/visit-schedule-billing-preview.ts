@@ -22,7 +22,8 @@ import type {
 } from './billing-runtime-context';
 import { resolveBillingRuntimeContext } from './billing-runtime-context';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
-import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { formatUtcDateKey } from '@/lib/date-key';
+import { addUtcDays, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import { ACTIVE_BILLING_SCHEDULE_STATUSES, startOfBillingMonth } from './billing-cadence';
 
@@ -148,7 +149,7 @@ const BILLING_PREVIEW_CARE_CASE_SELECT = {
 } as const;
 
 function effectiveInsuranceDate(asOf: Date): Date {
-  return utcDateFromLocalKey(localDateKey(asOf));
+  return utcDateFromLocalKey(formatUtcDateKey(asOf));
 }
 
 function buildRuntimeContextCacheKey(args: {
@@ -162,7 +163,7 @@ function buildRuntimeContextCacheKey(args: {
     args.orgId,
     args.payerBasis,
     args.siteId,
-    localDateKey(args.asOfDate),
+    formatUtcDateKey(args.asOfDate),
     args.buildingPatientCount,
   ]);
 }
