@@ -30,8 +30,8 @@ Backup directory:
 - performance issues found: no new DB query, external request, dependency, retry loop, or data expansion was added. The wrapper only mutates response headers and catches unexpected errors.
 - validation commands: `pnpm exec prettier --write src/app/api/external-professionals/suggestions/route.ts src/app/api/external-professionals/suggestions/route.test.ts`; `pnpm exec vitest run src/app/api/external-professionals/suggestions/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 src/app/api/external-professionals/suggestions/route.ts src/app/api/external-professionals/suggestions/route.test.ts`; `git diff --check -- src/app/api/external-professionals/suggestions/route.ts src/app/api/external-professionals/suggestions/route.test.ts`; `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
 - validation results: Prettier passed. Focused suggestions route Vitest passed `1` file / `5` tests. Scoped ESLint and focused `git diff --check` passed. Protected GET matrix passed `1` file / `369` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed.
-- remaining work: Claude approved the security/API patch; codex acknowledged the lock and no blocker was returned before commit. Stage only explicit codex2-owned files and progress ledgers for a coherent commit.
-- next action: commit the reviewed suggestions API no-store/sanitized-error patch while preserving unrelated care-reports/date-boundary WIP.
+- remaining work: committed as `a5d494f5 No-store external professional suggestions`; no remaining work for this slice beyond agmsg FYI notification.
+- next action: send agmsg FYI with the commit hash, then continue preserving unrelated care-reports/date-boundary WIP.
 
 ### 20260630-0323 JST
 
