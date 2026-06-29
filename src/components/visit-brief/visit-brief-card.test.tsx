@@ -191,4 +191,58 @@ describe('VisitBriefCard', () => {
     // 末尾矢印で途切れないこと
     expect(screen.queryByText('佐藤医師 →')).toBeNull();
   });
+
+  it('lists outside-med classification (その他薬) for classified dispensing items (§11-7)', () => {
+    const queryClient = new QueryClient();
+    const brief: VisitBrief = {
+      ...buildBrief(),
+      dispensing_items: [
+        {
+          drug_name: 'モーラステープ',
+          dispensing_method: null,
+          packaging_instructions: null,
+          set_method: null,
+          set_period_label: null,
+          audit_status: null,
+          outside_med_kind: 'topical',
+          outside_med_label: '外用',
+          note: '',
+        },
+        {
+          drug_name: '一包化対象錠',
+          dispensing_method: '一包化',
+          packaging_instructions: null,
+          set_method: null,
+          set_period_label: null,
+          audit_status: null,
+          outside_med_kind: null,
+          outside_med_label: null,
+          note: '一包化',
+        },
+      ],
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={brief} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('その他薬（セット外で持参）')).toBeTruthy();
+    expect(screen.getByText('外用')).toBeTruthy();
+    // モーラステープは調剤方法とその他薬セクションの両方に出るため複数一致を許容。
+    expect(screen.getAllByText('モーラステープ').length).toBeGreaterThan(0);
+  });
+
+  it('omits the その他薬 section when no dispensing item is classified', () => {
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={buildBrief()} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByText('その他薬（セット外で持参）')).toBeNull();
+  });
 });

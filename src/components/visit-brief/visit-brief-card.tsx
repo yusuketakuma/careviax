@@ -78,6 +78,8 @@ export function VisitBriefCard({
   const duplicateMedicationChangeNames = findDuplicateMedicationChangeNames(medicationChanges);
   const patientChanges = brief.patient_changes.slice(0, compact ? 3 : 6);
   const dispensingItems = brief.dispensing_items.slice(0, compact ? 3 : 5);
+  // その他薬(セット外で持参)は slice 前の全明細から拾う(PRN/外用/冷所が件数上限で漏れないように)。
+  const outsideMedItems = brief.dispensing_items.filter((item) => item.outside_med_kind);
   const deliveryItems = brief.delivery_status.slice(0, compact ? 3 : 4);
   const dosageSupport = brief.dosage_form_support.slice(0, compact ? 3 : 4);
   const communicationItems = brief.multidisciplinary_updates.slice(0, compact ? 3 : 4);
@@ -381,6 +383,23 @@ export function VisitBriefCard({
               </ul>
             )}
           </Section>
+
+          {outsideMedItems.length > 0 ? (
+            <Section title="その他薬（セット外で持参）" icon={Pill}>
+              <ul className="space-y-2">
+                {outsideMedItems.map((item, index) => (
+                  <li
+                    key={`${item.drug_name}:${item.outside_med_kind}:${index}`}
+                    className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                  >
+                    {/* 分類はラベル(テキスト)で示し色のみに依存しない(WCAG AA)。 */}
+                    <Badge variant="outline">{item.outside_med_label}</Badge>
+                    <span className="font-medium text-foreground">{item.drug_name}</span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          ) : null}
 
           <Section title="送達・共有状態" icon={Send}>
             {deliveryItems.length === 0 ? (

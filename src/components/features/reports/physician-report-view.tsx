@@ -45,6 +45,8 @@ function FunctionalItem({ label, value }: { label: string; value: string }) {
 
 export function PhysicianReportView({ content }: { content: PhysicianReportContent }) {
   const adherenceCfg = ADHERENCE_LABELS[content.medication_management.adherence_score];
+  // その他薬(セット外で持参)に分類された処方のみ抜き出す(§11-7)。
+  const outsideMeds = content.prescriptions.filter((rx) => rx.outside_med_kind);
 
   return (
     <div className="space-y-4">
@@ -154,6 +156,24 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
               </tbody>
             </table>
           </div>
+        </SectionCard>
+      )}
+
+      {/* Outside meds (§11-7) */}
+      {outsideMeds.length > 0 && (
+        <SectionCard title="その他薬（セット外で持参）">
+          <ul className="space-y-2 text-sm">
+            {outsideMeds.map((rx, i) => (
+              <li
+                key={i}
+                className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2"
+              >
+                <Badge variant="outline">{rx.outside_med_label}</Badge>
+                <span className="font-medium">{rx.drug_name}</span>
+                {rx.dose ? <span className="text-muted-foreground">{rx.dose}</span> : null}
+              </li>
+            ))}
+          </ul>
         </SectionCard>
       )}
 
