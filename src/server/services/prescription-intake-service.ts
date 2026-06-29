@@ -30,6 +30,11 @@ import {
 } from '@/server/services/prescription-access';
 import { findCurrentAndPreviousPrescriptionIntakesForMedicationDiff } from '@/server/services/prescription-intake-pair';
 import { validatePrescriptionDateWindow } from '@/lib/prescription/prescription-date-window';
+import {
+  buildDrugIdentityResolutionByCode,
+  normalizeMedicationCode,
+  resolveMedicationCode,
+} from '@/lib/pharmacy/drug-identity-resolution';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 export interface CreateIntakeLineInput {
@@ -1334,8 +1339,7 @@ async function syncMedicationProfiles(
 }
 
 function normalizePrescriptionDrugCode(code: string | null | undefined) {
-  const normalized = code?.replace(/\s/g, '').trim();
-  return normalized || null;
+  return normalizeMedicationCode(code);
 }
 
 function profileKeys(profile: { drug_master_id?: string | null; drug_name: string }) {
@@ -1394,11 +1398,13 @@ async function resolveDrugMasterIdsByPrescriptionCode(lines: MedicationProfileSy
     },
   });
 
-  for (const master of masters) {
-    for (const code of [master.yj_code, master.receipt_code, master.hot_code]) {
-      if (code && codes.includes(code) && !byCode.has(code)) {
-        byCode.set(code, master.id);
-      }
+  // The shared resolver performs deterministic YJ-first resolution and leaves
+  // duplicate receipt/HOT candidates unresolved instead of relying on DB order.
+  const resolutions = buildDrugIdentityResolutionByCode(masters);
+  for (const code of codes) {
+    const resolution = resolveMedicationCode(code, resolutions);
+    if (resolution.status === 'resolved') {
+      byCode.set(code, resolution.drug.id);
     }
   }
 

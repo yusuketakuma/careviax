@@ -1150,6 +1150,57 @@ describe('createPrescriptionIntake', () => {
     expect(result.profileSyncResult).toEqual({ created: 0, updated: 1, discontinued: 0 });
   });
 
+  it('does not master-link medication profiles when a receipt code maps to multiple DrugMaster rows', async () => {
+    prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
+    prismaMock.medicationProfile.findMany.mockResolvedValue([]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_master_receipt_a',
+        yj_code: 'YJ_A',
+        receipt_code: 'RC_DUP',
+        hot_code: null,
+      },
+      {
+        id: 'drug_master_receipt_b',
+        yj_code: 'YJ_B',
+        receipt_code: 'RC_DUP',
+        hot_code: null,
+      },
+    ]);
+
+    const result = await runPrescriptionIntakePostCreateHooks({
+      cycleId: 'cycle_1',
+      intakeId: 'intake_1',
+      patientId: 'patient_1',
+      orgId: 'org_1',
+      lines: [
+        {
+          drug_name: '曖昧コード薬',
+          drug_code: 'RC_DUP',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+        },
+      ],
+      prescriberName: '処方医A',
+      sourceType: 'qr_scan',
+    });
+
+    expect(prismaMock.medicationProfile.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          drug_name: '曖昧コード薬',
+          drug_master_id: null,
+        }),
+      ],
+    });
+    expect(prismaMock.medicationProfile.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ drug_master_id: expect.any(String) }),
+      }),
+    );
+    expect(result.profileSyncResult).toEqual({ created: 1, updated: 0, discontinued: 0 });
+  });
+
   it('does not update an existing medication profile by name when the incoming line resolves to a different DrugMaster', async () => {
     prismaMock.prescriptionIntake.findFirst.mockResolvedValue(null);
     prismaMock.medicationProfile.findMany.mockResolvedValue([

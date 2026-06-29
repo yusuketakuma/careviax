@@ -11,6 +11,12 @@ import {
   type ForecastVisitInput,
   type DrugResolutionStatus,
 } from '@/lib/analytics/inventory-forecast';
+import {
+  buildDrugIdentityResolutionByCode,
+  normalizeMedicationCode,
+  resolveMedicationCode,
+  type DrugIdentityResolution,
+} from '@/lib/pharmacy/drug-identity-resolution';
 
 /**
  * p1_07「在庫と定期処方の予測」: 来週(翌週月曜〜日曜)の訪問予定患者と
@@ -18,82 +24,26 @@ import {
  * 「来週必要になりそうな薬」と「影響する患者さん」を返す BFF。
  */
 
-function normalizeForecastDrugCode(code: string | null | undefined) {
-  return code?.replace(/\s/g, '').trim() || null;
-}
-
-type ForecastDrugMasterMatch = {
-  id: string;
-  yj_code: string;
-  receipt_code: string | null;
-  hot_code: string | null;
-};
-
-type ForecastDrugResolution =
-  | { status: 'resolved'; drug: { id: string; yj_code: string } }
-  | { status: 'ambiguous_code' };
-
-function buildForecastDrugResolutionByCode(
-  drugs: ForecastDrugMasterMatch[],
-): Map<string, ForecastDrugResolution> {
-  const resolvedByYj = new Map<string, ForecastDrugResolution>();
-  for (const drug of drugs) {
-    const yjCode = normalizeForecastDrugCode(drug.yj_code);
-    if (yjCode && !resolvedByYj.has(yjCode)) {
-      resolvedByYj.set(yjCode, { status: 'resolved', drug });
-    }
-  }
-
-  const nonYjCandidates = new Map<string, Map<string, { id: string; yj_code: string }>>();
-  for (const drug of drugs) {
-    for (const code of [
-      normalizeForecastDrugCode(drug.receipt_code),
-      normalizeForecastDrugCode(drug.hot_code),
-    ]) {
-      if (!code || resolvedByYj.has(code)) continue;
-      const candidates =
-        nonYjCandidates.get(code) ?? new Map<string, { id: string; yj_code: string }>();
-      candidates.set(drug.id, drug);
-      nonYjCandidates.set(code, candidates);
-    }
-  }
-
-  const resolutions = new Map(resolvedByYj);
-  for (const [code, candidates] of nonYjCandidates.entries()) {
-    const candidateList = [...candidates.values()];
-    resolutions.set(
-      code,
-      candidateList.length === 1
-        ? { status: 'resolved', drug: candidateList[0] }
-        : { status: 'ambiguous_code' },
-    );
-  }
-  return resolutions;
-}
-
 function resolveLineDrugCode(
   rawCode: string | null,
-  drugByCode: Map<string, ForecastDrugResolution>,
+  drugByCode: Map<string, DrugIdentityResolution>,
 ): {
   drugCode: string | null;
   drugMasterId: string | null;
   drugResolutionStatus: DrugResolutionStatus;
 } {
-  if (!rawCode) {
-    return { drugCode: null, drugMasterId: null, drugResolutionStatus: 'missing_code' };
-  }
-  const resolution = drugByCode.get(rawCode);
-  if (resolution?.status === 'resolved') {
+  const resolution = resolveMedicationCode(rawCode, drugByCode);
+  if (resolution.status === 'resolved') {
     return {
-      drugCode: resolution.drug.yj_code,
+      drugCode: resolution.canonicalDrugCode,
       drugMasterId: resolution.drug.id,
       drugResolutionStatus: 'resolved',
     };
   }
   return {
-    drugCode: rawCode,
+    drugCode: resolution.sourceCode,
     drugMasterId: null,
-    drugResolutionStatus: resolution?.status ?? 'code_not_found',
+    drugResolutionStatus: resolution.status,
   };
 }
 
@@ -188,7 +138,7 @@ const authenticatedGET = withAuthContext(
     const intakeDrugCodes = [
       ...new Set(
         intakeRows
-          .flatMap((row) => row.lines.map((line) => normalizeForecastDrugCode(line.drug_code)))
+          .flatMap((row) => row.lines.map((line) => normalizeMedicationCode(line.drug_code)))
           .filter((code): code is string => code != null),
       ),
     ];
@@ -205,7 +155,7 @@ const authenticatedGET = withAuthContext(
             select: { id: true, yj_code: true, receipt_code: true, hot_code: true },
           })
         : [];
-    const drugByCode = buildForecastDrugResolutionByCode(matchedDrugs);
+    const drugByCode = buildDrugIdentityResolutionByCode(matchedDrugs);
 
     const visits: ForecastVisitInput[] = visitRows.map((row) => ({
       patientId: row.case_.patient.id,
@@ -226,7 +176,7 @@ const authenticatedGET = withAuthContext(
       createdAt: row.created_at,
       lines: row.lines.map((line) => {
         const drugResolution = resolveLineDrugCode(
-          normalizeForecastDrugCode(line.drug_code),
+          normalizeMedicationCode(line.drug_code),
           drugByCode,
         );
         return {
