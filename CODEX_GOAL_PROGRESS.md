@@ -23,6 +23,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Medication Bulk-Export POST No-Store / Sanitized Envelope - 2026-06-30 07:27 JST
+
+- Scope:
+  - Continued codex2's report/PDF export objective on `POST /api/patients/medications/bulk-export`.
+  - Focused on sensitive no-store coverage and sanitized unexpected-error envelopes for medication-history bulk PDF export queue registration.
+  - Preserved Claude-owned document-delivery-rule-manager WIP and codex-owned billing-candidates WIP.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - POST now delegates to `authenticatedPOST`, and the exported handler wraps all returned responses with `withSensitiveNoStore`.
+  - Unexpected outer route failures now use the established `unstable_rethrow` + fixed no-store `internalError()` pattern.
+  - Added no-store assertions for 202 success, validation/malformed JSON responses, and raw queue-registration failure responses.
+- Safety:
+  - Reduces caching and raw-error disclosure risk for medication-history bulk PDF export queue responses.
+  - Preserves auth/permission behavior, queue registration semantics, drain trigger behavior, controlled `MedicationHistoryBulkExportError` mappings, and generic queue-registration failure mapping.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused tests.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/patients/medications/bulk-export/route.ts src/app/api/patients/medications/bulk-export/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/patients/medications/bulk-export/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint on the two bulk-export route files: passed.
+  - Scoped `git diff --check` on the two bulk-export route files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` was sent to Claude and codex with scope and validation evidence.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after verifying all POST paths get no-store, `unstable_rethrow` placement, controlled service error messages, raw patient/token non-leakage, and existing mapping preservation.
+- Remaining:
+  - Stage only explicit codex2-owned bulk-export files plus the bulk-export ledger hunks, commit, and send agmsg FYI.
+  - Continue remaining visit/report/interprofessional API candidates or incoming review interrupts.
+
 ### Billing Collection PATCH No-Store / Sanitized Envelope - 2026-06-30 07:21 JST
 
 - Scope:

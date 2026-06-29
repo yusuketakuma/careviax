@@ -61,6 +61,11 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/medications/bulk-export POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -96,6 +101,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
       throw new Error('Expected a response from bulk export POST');
     }
     expect(response.status).toBe(202);
+    expectSensitiveNoStore(response);
     expect(queueMedicationHistoryBulkExportMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       requestedBy: 'user_1',
@@ -142,6 +148,7 @@ describe('/api/patients/medications/bulk-export POST', () => {
       throw new Error('Expected a response from invalid bulk export POST');
     }
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(queueMedicationHistoryBulkExportMock).not.toHaveBeenCalled();
   });
 
@@ -174,10 +181,30 @@ describe('/api/patients/medications/bulk-export POST', () => {
       throw new Error('Expected a response from malformed JSON bulk export POST');
     }
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
     expect(queueMedicationHistoryBulkExportMock).not.toHaveBeenCalled();
+    expect(drainMedicationHistoryBulkExportQueueMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when queue registration fails unexpectedly', async () => {
+    const rawError = '患者A medication-history raw export token=secret failed';
+    queueMedicationHistoryBulkExportMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await POST(createRequest({ patient_ids: ['patient_1'] }));
+
+    if (!response) {
+      throw new Error('Expected a response from failed bulk export POST');
+    }
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('EXTERNAL_PDF_RENDER_FAILED');
+    expect(body).not.toContain(rawError);
+    expect(body).not.toContain('患者A');
+    expect(body).not.toContain('token=secret');
     expect(drainMedicationHistoryBulkExportQueueMock).not.toHaveBeenCalled();
   });
 });
