@@ -155,8 +155,11 @@ the numbered entries that follow.
       and propose targeted tests; reconcile `UI_AUDIT_MATRIX`/`FEATURE_QUEUE`/`STATE` with the actual
       landed state and note stale entries.
     - **g. No-passive-wait fallback.** If none of the above is safe to edit, still create value before
-      backing off: send `REQUEST_DELEGATE` for a non-conflicting subtask, write a read-only recon/scope
-      note, flag a stale ledger, or record `BlockedContext`. Increment `zero_actionable_count` only
+      backing off: run `.agent-loop/scripts/idle-assist.sh request <claude|codex>` to send
+      `REQUEST_DELEGATE` for a non-conflicting subtask, write a read-only recon/scope note, flag a stale
+      ledger, or record `BlockedContext`. The peer can answer with
+      `.agent-loop/scripts/idle-assist.sh delegate <from> <to> <task_id> <summary> <locked_paths> ...`
+      to provide concrete scoped work. Increment `zero_actionable_count` only
       after this exploration is done and recorded.
       Constraints (so idle work stays safe): read-only by default; writes only to your own lane, gbrain, or
       jointly-owned ledgers under explicit LOCK; never edit peer-locked paths or start implementation

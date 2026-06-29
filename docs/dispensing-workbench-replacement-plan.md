@@ -229,13 +229,15 @@ src/components/features/dispense-workbench/
 
 ### 11-1. 結論サマリ
 
-既存バックエンドは**調剤グリッド工程（dispense/audit）の読み取りは概ね充足**（`/api/dispense-tasks/[id]/workbench` が比較・計数・包装グループ導出まで提供）。一方、**設計が新たに要求する「永続的なグループ編成」「お薬カレンダーのセル状態」「セット監査のセル単位判定」「構造化された保留」は軒並み未対応**で、結線にはスキーマ追加が前提になる。最大の不足は次の5点:
+既存バックエンドは**調剤グリッド工程（dispense/audit）の読み取りは概ね充足**（`/api/dispense-tasks/[id]/workbench` が比較・計数・包装グループ導出まで提供）。2026-06-28 の live repo 突合では、当初未対応だった `PackagingGroup`、`SetBatch` セル状態、`RejectCode`、`CycleHold`、`/api/dispense-tasks/[id]/groups`、`/api/set-plans/[id]/calendar`、`/api/set-plans/[id]/batches/cell`、`/api/set-plans/[id]/batches/bulk-set`、`/api/set-audits` のセル監査は実装済みである。
 
-1. 🔴 **グループが永続実体でない** — `buildDispenseMedicationGroups`/`generatePackagingGroups` が用法から毎回導出。設計の「＋新規グループ」「D&Dグループ移動」の結果を保存する先が無い（`packaging_group_id` は自由文字列で参照先実体なし）。
-2. 🔴 **SetBatch にセル状態列が皆無** — `setCells/auditCells`（set/hold/監査OK/NG）を永続化できない。`SetBatch` は slot/day/quantity/snapshot のみ。
-3. 🔴 **セット監査がプラン単位1行** — `SetAudit.approved_scope`(Json) の真偽のみで、セル毎の未監査/OK/NG/保留と NG分類を残せない。
-4. 🔴 **カレンダーマトリクス API が無い** — `GET /api/set-plans/[id]` は batches を `{id, updated_at}` しか返さない。7日×用法の整形が FE 任せ。
-5. 🔴 **保留の構造化保存が無い** — 設計の保留（理由必須/期限/担当/メモ）に対し、現状は理由自由文＋メモのみ。期限・担当の列が無く、保留理由コードも3系統に不統一。
+残る主要不足は「スキーマ/書込 API が無い」よりも、**薬剤・包装・日付・外部連携・周辺業務を横断した構造化粒度が足りない**点に移っている。最大の不足は次の5点:
+
+1. 🟡 **包装・加工指示の構造化が不足** — 一包化、粉砕、PTP、混合は既存の `PackagingMethod` / `packaging_instructions` / `PackagingInstructionTag` で表現できるが、賦形、脱カプ、分包除外、PTP手撒き、粉砕可否などは自由文または粗い分類に残る。
+2. 🟡 **薬剤経路・剤形の正規化が不足** — `route` は `internal/external/injection/other`、`dosage_form` は自由文字列。内服薬・外用薬・頓服薬・注射薬の表示/ゲートには使えるが、薬効・保管・自己注射可否・剤形アイコンを安定判定するには DrugMaster 連携の正規化が必要。
+3. 🟡 **日付管理の SSOT が分散** — `PrescriptionLine.start_date/end_date/days`、`SetPlan.target_period_*`、`VisitSchedule.medication_*`、`DispenseResult.dispensed_at` が併存。編集 API はあるが、変更時の再計算・再セット・監査差戻し・訪問予定への波及を一貫処理する orchestration が必要。
+4. 🟡 **外薬・持出パケットはサーバ検証済みだが、周辺投影が不足** — `set-audits` は外用/注射/頓服/液剤/冷所の同梱証跡を検証できる。一方で、訪問準備・報告・請求・患者カード側へ同じ分類を表示する共通 projection が不足している。
+5. 🟡 **オフライン/冪等/外部システム同期は工程別に未完** — 確定 API は OCC と監査ログを持つが、dispense/set/audit の未同期キュー、再送冪等キー、レセコン/電子薬歴/在庫への同期境界は工程横断で整理が必要。
 
 ### 11-2. 工程別 連携マトリクス（要点）
 
@@ -246,12 +248,12 @@ src/components/features/dispense-workbench/
 | 薬品名/用法/処方日数            | `PrescriptionLine` / workbench `count_rows`                                  | ✅   | そのまま                                                                                                                                                                        |
 | 朝昼夕眠前の数量                | `prescribed_quantity/days/slots` の機械按分                                  | 🟡   | 端数で「要確認」化。`PrescriptionLine.dose_schedule`(Json) か `PrescriptionLineDoseSlot` 子モデルで時点別実量を保持（構造化データ方針）                                         |
 | 剤形アイコン(錠/散/カ/液/外/頓) | `PrescriptionLine.dosage_form`/`DrugMaster.dosage_form`                      | 🟡   | workbench BFF が `dosage_form` を select していない → `WorkbenchCountRow` に追加 + 剤形→アイコン正規化純関数                                                                    |
-| 粉砕/賦形/別包/PTPバッジ        | `packaging_instructions`(自由文)を正規表現抽出                               | 🟡   | `PackagingInstructionTag` enum に `excipient(賦形)/decapsulation(脱カプ)/exclude_from_unit_dose(分包しない)/ptp` を追加し構造化                                                 |
+| 粉砕/賦形/別包/PTPバッジ        | `packaging_instructions`(自由文) + `packaging_instruction_tags`              | 🟡   | 既存タグは冷所/麻薬/半錠/粉砕禁止/別包/一包化/ホッチキス/ラベル。`excipient(賦形)/decapsulation(脱カプ)/exclude_from_unit_dose(分包しない)/ptp/manual_ptp` を追加し構造化       |
 | 調剤チェック（行ON/OFF）        | `DispenseResult`（task単位の lines 一括POST）                                | 🟡   | 行単位の即時保存 API は無い。`POST /api/dispense-results` 一括を維持し、チェックは送信対象選択UIに割当（段階1）                                                                 |
-| グループ見出しの調剤方法 select | `DispensingDecision`(行単位)                                                 | 🟡🔴 | **グループ実体が無い**。`PackagingGroup` モデル新設＋`PATCH /api/dispense-tasks/[id]/groups`                                                                                    |
+| グループ見出しの調剤方法 select | `PackagingGroup` + `DispensingDecision`                                      | ✅🟡 | `POST/PATCH /api/dispense-tasks/[id]/groups` は実装済み。残は FE adapter 結線、PTP/粉砕/混合など method 値域の SSOT 化、監査画面への投影                                        |
 | 服用開始日/処方日数→終了日      | `PrescriptionLine.start_date/days`（編集APIなし）/ `SetPlan.target_period_*` | 🟡🔴 | 期間 SoT を確定（CareCase/PrescriptionLine/SetPlan）＋`PATCH /api/prescription-lines/[id]`＋`computeEndDate` 純関数（境界 end=start+days-1 を `generate-batches` の +1 と整合） |
-| 行のD&Dグループ移動             | —                                                                            | 🔴   | `PackagingGroup` + 行割当 `PATCH .../groups`（`visit-routes/reorder` の sort_order 一括更新パターン踏襲）                                                                       |
-| ＋新規グループ                  | —                                                                            | 🔴   | `POST /api/dispense-tasks/[id]/groups`                                                                                                                                          |
+| 行のD&Dグループ移動             | `PATCH /api/dispense-tasks/[id]/groups`                                      | ✅   | OCC 付き行割当 API 実装済み。FE 側は expected_packaging_group_id を必ず送る                                                                                                     |
+| ＋新規グループ                  | `POST /api/dispense-tasks/[id]/groups`                                       | ✅   | group_key idempotency / duplicate race recovery 実装済み                                                                                                                        |
 
 #### 調剤監査（/audit）
 
@@ -265,55 +267,55 @@ src/components/features/dispense-workbench/
 
 | UI要素                                       | バインド先                                                     | 状態 | 対応                                                                                                                                     |
 | -------------------------------------------- | -------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 7日×用法マトリクス                           | `SetPlan`/`SetBatch`（個別取得）                               | 🔴   | **`GET /api/set-plans/[id]/calendar` 新設**（matrix + 各セル状態 + 列/行合計 + completion_gate を1レスポンス）                           |
-| セル状態（未セット/セット済/保留）           | `SetBatch`（存在=セット済の二値導出のみ）                      | 🔴   | **`SetBatch` に `set_state`/`held_reason`/`held_by`/`held_at`** 追加（粒度は line×day×slot のまま）                                      |
+| 7日×用法マトリクス                           | `GET /api/set-plans/[id]/calendar`                             | ✅   | matrix + 各セル状態 + completion_gate 実装済み。残は FE adapter 結線と visit/report への共通 projection                                  |
+| セル状態（未セット/セット済/保留）           | `SetBatch.set_state/held_*` + cell PATCH/bulk-set              | ✅   | `PATCH /batches/cell` と `POST /batches/bulk-set` 実装済み。保留の due/assigned は `CycleHold` 側と同期方針を決める                      |
 | セット方法（カレンダー/BOX/薬袋/施設カート） | `SetPlan.set_method`(配薬リズム) / `PackagingMethod`(包装形態) | 🟡   | 値域が UI と不一致。`SetPlan.dispense_destination`(calendar/box/bag/facility_cart) 新設＋自動判定（`PatientPackagingProfile`＋施設在籍） |
 | セット手順4ステップ                          | —                                                              | 🔴   | `SET_PROCEDURE_STEPS` 定数（destination別）を `src/lib/dispensing` に。永続編集要なら `SetProcedureTemplate`                             |
 | カレンダー外薬 同梱チェック                  | `VisitPreparation.carry_items_confirmed`(単一ブール)           | 🟡   | 項目別 done を `packet_checklist`(Json) に                                                                                               |
 | 訪問持出パケット完成判定                     | —                                                              | 🔴   | `CarryPacket` モデル or `SetPlan.carry_packet_status`(Json)。完成=全 required==done                                                      |
-| 一括セット済                                 | —                                                              | 🔴   | `POST /api/set-plans/[id]/batches/bulk-set`（セル状態列前提）                                                                            |
+| 一括セット済                                 | `POST /api/set-plans/[id]/batches/bulk-set`                    | ✅   | OCC + 監査ログ + change log 実装済み                                                                                                     |
 
 #### セット監査（/set-audit）
 
-| UI要素                                   | バインド先                                                             | 状態 | 対応                                                                                                                                                                                                                         |
-| ---------------------------------------- | ---------------------------------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| セル単位 監査OK/NG/保留                  | `SetAudit`(plan単位1行)                                                | 🔴   | `SetBatch.audit_state`(unaudited/ok/ng)/`ng_code`/`audited_by`/`audited_at` 追加（セル粒度）                                                                                                                                 |
-| NG分類14種                               | `SetAudit.reject_reason`(自由文)                                       | 🔴   | **共通 `RejectCode` enum(14種)** を新設し `DispenseAudit.reject_reason_code`(enum化) と `SetAudit.reject_reason_code`(新設) と `SetBatch.ng_code` で共用                                                                     |
-| 保留(hold)                               | enum `SetAuditResult`（現状 `approved`/`partial_approved`/`rejected`） | 🔴   | enum `SetAuditResult` に `hold` を追加 or セル状態側で表現（`DispenseAuditResult` は既に `hold`/`emergency_approved` を持つので enum 統一設計の参考に）                                                                      |
-| 監査OK/NGゲート（未監査=0/NG=0で承認可） | 一部サーバ強制済                                                       | 🟡🔴 | **6項目チェックリスト完了ゲートは既に `set-audits` POST でサーバ強制済**（route.ts:141-149）。**セル単位 OK/NG/未監査 の quadstate ゲートはセル状態未永続のためサーバ未検証**→セル状態永続化＋セル粒度サーバ検証が未対応範囲 |
-| 二人制（セット実施者≠監査者）            | —                                                                      | 🔴   | `SetBatch.set_by` 追加＋`set-audits` POST で拒否ガード（`DispenseAudit` パターン踏襲）                                                                                                                                       |
-| 差戻し(セルをセットへ戻す)               | —                                                                      | 🔴   | セル状態の `ng→pending` 遷移＋`SetBatchChangeLog` に記録                                                                                                                                                                     |
-| 監査証跡写真                             | `SetAudit.photo_asset_ids`(書込のみ)                                   | 🟡   | GET 経路と一覧 API（`GET /api/files?purpose=set-photo&plan_id=`）追加                                                                                                                                                        |
+| UI要素                                   | バインド先                                                             | 状態 | 対応                                                                                                                                                    |
+| ---------------------------------------- | ---------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| セル単位 監査OK/NG/保留                  | `SetBatch.audit_state/ng_code/audited_*` + `set-audits.cell_audits`    | ✅   | セル単位 OK/NG と version conflict は実装済み。保留は set_state hold と `CycleHold` の責務分担を追加設計                                                |
+| NG分類14種                               | `RejectCode` + `SetBatch.ng_code`                                      | ✅🟡 | `RejectCode` は実装済み。`DispenseAudit.reject_reason_code` は後方互換の String のままなので語彙統合は将来移行                                          |
+| 保留(hold)                               | enum `SetAuditResult`（現状 `approved`/`partial_approved`/`rejected`） | 🔴   | enum `SetAuditResult` に `hold` を追加 or セル状態側で表現（`DispenseAuditResult` は既に `hold`/`emergency_approved` を持つので enum 統一設計の参考に） |
+| 監査OK/NGゲート（未監査=0/NG=0で承認可） | `set-audits` POST                                                      | ✅   | 全6項目チェック、外薬/持出パケット証跡、全セル set+ok、部分承認 scope の安全性をサーバ検証                                                              |
+| 二人制（セット実施者≠監査者）            | `SetBatch.set_by` + `same_operator_*`                                  | ✅   | 原則拒否。自己監査は理由 + admin 承認の限定例外として監査ログに記録                                                                                     |
+| 差戻し(セルをセットへ戻す)               | —                                                                      | 🔴   | セル状態の `ng→pending` 遷移＋`SetBatchChangeLog` に記録                                                                                                |
+| 監査証跡写真                             | `SetAudit.photo_asset_ids`(書込のみ)                                   | 🟡   | GET 経路と一覧 API（`GET /api/files?purpose=set-photo&plan_id=`）追加                                                                                   |
 
 #### 共通（患者リスト/リボン/保留/F-key/工程遷移）
 
-| UI要素                             | バインド先                                                                               | 状態 | 対応                                                                                                                                                                                |
-| ---------------------------------- | ---------------------------------------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 「処方登録患者」リスト             | `/api/dispense-queue`(task中心, pending/in_progress のみ)                                | 🔴   | **`GET /api/dispense-workbench/patients` 新設**（患者×最新 cycle status×start_date、intake〜audited 全域、開始日/登録日ソート）                                                     |
-| 状態バッジ（監査済/作業中/未着手） | `MedicationCycle.overall_status`(16値)                                                   | 🟡   | `deriveListBadge()` 純関数（16→3値マッピング）                                                                                                                                      |
-| 患者番号                           | —                                                                                        | 🔴   | `Patient.patient_number`(org内ユニーク, 採番) 追加。暫定は id 表示                                                                                                                  |
-| 区分（在宅訪問）                   | `Residence.facility_id` 有無の間接導出                                                   | 🟡   | `CareCase.visit_type` enum 追加 or 正規化純関数                                                                                                                                     |
-| 主たる調剤方法/予製可否/申し送り   | `PatientPackagingProfile`(予製可否・申し送り列なし)                                      | 🟡   | `prefab_allowed`/`handover_note` 追加＋**RLSポリシー追加**（現状 PatientPackagingProfile に RLS 未設定）                                                                            |
-| 保留（理由7種/期限/担当/メモ）     | `DispenseAudit.hold`(自由文)/`WorkflowException`                                         | 🔴   | `CycleHold` モデル新設(cycle_id, phase, scope, reason enum 7種, due_at, assigned_to, note) or `WorkflowException` 拡張。保留理由7種を SSOT enum 化（既存 `HOLD_OPTIONS` 4種と統一） |
-| F7 保留                            | dispense=`WorkflowException`起票(cycle は dispensing のまま) / audit・set=`on_hold` 遷移 | 🟡   | 工程別に分岐。意味統一なら dispensing→on_hold 遷移を許可（`ALLOWED_TRANSITIONS` は既に許可）                                                                                        |
-| F12 次工程へ                       | 各完了API / `transition`                                                                 | 🟡   | **F12=工程完了は必ず各完了API（dispense-results/dispense-audits/set-audits）経由**。`transition` 直叩きで副作用（記録・通知・carry_items）をスキップさせない                        |
-| ステータスバー（調剤者/監査者）    | `DispenseResult.dispensed_by`/`DispenseAudit.audited_by`                                 | 🟡   | set工程は `SetBatch.set_by`(新設) が必要                                                                                                                                            |
+| UI要素                             | バインド先                                                                               | 状態 | 対応                                                                                                                                                         |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 「処方登録患者」リスト             | `GET /api/dispense-workbench/patients`                                                   | ✅   | phase フィルタ、開始日/登録日/カナ順、set/set-audit のセル進捗込みで実装済み                                                                                 |
+| 状態バッジ（監査済/作業中/未着手） | `MedicationCycle.overall_status`(16値)                                                   | 🟡   | `deriveListBadge()` 純関数（16→3値マッピング）                                                                                                               |
+| 患者番号                           | —                                                                                        | 🔴   | `Patient.patient_number`(org内ユニーク, 採番) 追加。暫定は id 表示                                                                                           |
+| 区分（在宅訪問）                   | `Residence.facility_id` 有無の間接導出                                                   | 🟡   | `CareCase.visit_type` enum 追加 or 正規化純関数                                                                                                              |
+| 主たる調剤方法/予製可否/申し送り   | `PatientPackagingProfile`(予製可否・申し送り列なし)                                      | 🟡   | `prefab_allowed`/`handover_note` 追加＋**RLSポリシー追加**（現状 PatientPackagingProfile に RLS 未設定）                                                     |
+| 保留（理由7種/期限/担当/メモ）     | `CycleHold` + `SetBatch.set_state=hold` + `WorkflowException`                            | 🟡   | モデルは実装済み。必要なのは phase 共通の CRUD/BFF、期限/担当の UI、SetBatch hold との同期、WorkflowException との二重管理整理                               |
+| F7 保留                            | dispense=`WorkflowException`起票(cycle は dispensing のまま) / audit・set=`on_hold` 遷移 | 🟡   | 工程別に分岐。意味統一なら dispensing→on_hold 遷移を許可（`ALLOWED_TRANSITIONS` は既に許可）                                                                 |
+| F12 次工程へ                       | 各完了API / `transition`                                                                 | 🟡   | **F12=工程完了は必ず各完了API（dispense-results/dispense-audits/set-audits）経由**。`transition` 直叩きで副作用（記録・通知・carry_items）をスキップさせない |
+| ステータスバー（調剤者/監査者）    | `DispenseResult.dispensed_by`/`DispenseAudit.audited_by`                                 | 🟡   | set工程は `SetBatch.set_by`(新設) が必要                                                                                                                     |
 
 ### 11-3. 新設 API サーフェス（まとめ）
 
-1. `GET /api/dispense-workbench/patients` — 患者中心リスト（最新サイクル状態＋開始日＋バッジ、ソート）
+1. `GET /api/dispense-workbench/patients` — 患者中心リスト（最新サイクル状態＋開始日＋バッジ、ソート） **実装済み**
 2. 患者リボン/右ペイン BFF（患者属性＋最新 intake＋SetPlan 期間＋区分＋主たる調剤方法＋予製＋申し送り）or workbench 拡張
-3. `POST/PATCH /api/dispense-tasks/[id]/groups` — グループ CRUD＋行割当（D&D・新規グループ・方法変更）
-4. `PATCH /api/prescription-lines/[id]`（or intake/[id]/lines）— 服用開始日/日数/用法/dose 編集
-5. `GET /api/set-plans/[id]/calendar` — 7日×用法マトリクス＋セル状態＋completion_gate
-6. `POST /api/set-plans/[id]/batches/bulk-set` — 一括セット済
-7. set-audits `GET`（checklist＋photo_asset_ids＋result）／`GET /api/files?purpose=set-photo&plan_id=`
+3. `POST/PATCH /api/dispense-tasks/[id]/groups` — グループ CRUD＋行割当（D&D・新規グループ・方法変更） **実装済み**
+4. `PATCH /api/prescription-lines/[id]`（or intake/[id]/lines）— 服用開始日/日数/用法/dose 編集 **実装済み**
+5. `GET /api/set-plans/[id]/calendar` — 7日×用法マトリクス＋セル状態＋completion_gate **実装済み**
+6. `POST /api/set-plans/[id]/batches/bulk-set` — 一括セット済 **実装済み**
+7. set-audits `GET/POST`（checklist＋photo_asset_ids＋result＋cell_audits）／`GET /api/files?purpose=set-photo&plan_id=` **前者は実装済み、写真一覧 BFF は要確認**
 8. （オフライン）`OfflineSyncQueue.entityType` を dispense_result/dispense_audit/set_audit/cycle_transition に拡張＋サーバ冪等受理
 
 ### 11-4. Prisma スキーマ変更（まとめ・優先度順）
 
-- **P0（無いと結線不能）**: `PackagingGroup`（グループ実体）/ `SetBatch` セル状態列（set*state/audit_state/ng_code/held*\*/set_by/audited_by/at）/ 共通 `RejectCode` enum(14種) / `CycleHold`（構造化保留）
-- **P1（充足度向上）**: `Patient.patient_number` / `CareCase.visit_type` / `PatientPackagingProfile.prefab_allowed`・`handover_note`・**RLSポリシー** / `SetPlan.dispense_destination`・`carry_packet_status`(or `CarryPacket`) / `PackagingInstructionTag` 拡張(賦形/脱カプ/分包しない/ptp) / `PackagingMethod` 拡張(分包機機種/PTP手撒き/頓用) / `SetAuditResult` に hold
+- **P0（結線ブロッカーは解消済み）**: `PackagingGroup`（グループ実体）/ `SetBatch` セル状態列（set*state/audit_state/ng_code/held*\*/set_by/audited_by/at）/ 共通 `RejectCode` enum(14種) / `CycleHold`（構造化保留）は live schema で実装済み。残は API/BFF/FE adapter の責務整理。
+- **P1（充足度向上）**: `Patient.patient_number` / `CareCase.visit_type` / `PatientPackagingProfile.prefab_allowed`・`handover_note`・**RLSポリシー** / `SetPlan.dispense_destination`・`carry_packet_status`(or `CarryPacket`) / `PackagingInstructionTag` 拡張(賦形/脱カプ/分包しない/ptp/manual_ptp) / `PackagingMethod` 拡張(分包機機種/PTP手撒き/頓用) / `SetAuditResult` に hold
 - **P2（構造化データ強化）**: `PrescriptionLine.dose_schedule`(時点別実量)・`is_prn` / `DrugMaster.is_auto_packable`・`is_crushable` / `DispenseResult.first_count/second_count`(ダブルカウント) / `ResidualMedication.cycle_id/line_id`
 
 ### 11-5. 共有純関数/型（shared/logic に集約・スキーマ変更不要）
@@ -323,6 +325,38 @@ src/components/features/dispense-workbench/
 ### 11-6. アダプタ境界
 
 `dispensing-workbench.adapter.ts` に `loadWorkbenchPatients()` / `loadWorkbench(phase, ...)` / `loadCalendar(planId)` / `mutate*` を定義し、段階1は seed、結線時は上記APIへ。**fixtures は必ず公開型（shared/types）に整形して返す**（プロト独自構造のまま持つと変換層が増え二重実装化）。
+
+### 11-7. システム全体で追加する必要項目（2026-06-28 live repo 突合）
+
+ユーザー要求の「グループ化・粉砕・一包化・PTP・混合・内服薬・外用薬・頓服薬・注射薬・日付管理」は、調剤ワークベンチ単体では完結しない。処方受付、患者カード、訪問準備、報告、請求、在庫、監査ログ、設定ポリシーまで同じ分類を通す必要がある。以下を追加スコープとして扱う。
+
+| 領域                       | 追加が必要な項目                                                                                                                                            | 現行根拠                                                                                                                                                           | 実装方向                                                                                                                                                    |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 処方受付 / QR / 電子処方箋 | route / dosage_form / packaging_method / packaging_instruction_tags / start_date / end_date を必ず保持し、PTP・混合・粉砕可否・自己注射可否を取りこぼさない | `PrescriptionLine` に route/dosage_form/packaging/date はある。`prescription-intakes` と `qr-scan-drafts/[id]/confirm` は注射剤の外来/在宅自己注射可否ガードを持つ | JAHIS/電子処方箋 mapping に PTP/混合/粉砕/別包/一包化の正規化テーブルを追加。未分類は `other` でなく「要薬剤師確認」として intake triage に出す             |
+| 薬剤マスタ                 | 粉砕可否、自動分包可否、PTP手撒き可否、冷所/遮光/麻薬/向精神/ハイリスク、注射剤の保険薬局調剤可否                                                           | `DrugMaster` は `dosage_form`, `is_narcotic`, `is_high_risk`, `outpatient_injection_eligible` を持つが、粉砕可否・自動分包可否は未構造化                           | `DrugMaster.is_crushable`, `is_auto_packable`, `ptp_hand_pack_allowed`, `storage_category` を追加または `DrugPackageInsert` 由来の safety projection を作る |
+| 包装/加工 SSOT             | 一包化、朝夕別一包化、粉砕・混合、PTP、別包、分包除外、賦形、脱カプ、半錠、ホッチキス、ラベルを UI/API/監査で同一語彙にする                                 | `PackagingMethod` と `PackagingInstructionTag` はあるが PTP/賦形/脱カプ/分包除外が不足                                                                             | `PackagingInstructionTag` を拡張し、`src/lib/dispensing/packaging.ts` と validations を単一 SSOT 化。自由文は補助情報に下げる                               |
+| グループ化                 | 自動生成グループと薬剤師が D&D で確定したグループの優先順位、sort_order、method、slot を全工程で同じにする                                                  | `PackagingGroup` と `/groups` API は実装済み。`PrescriptionLine.packaging_group_id` は loose String                                                                | workbench adapter で `PackagingGroup` を主に読み、未確定 line のみ `generatePackagingGroups` を fallback にする。監査・セットでは同じ group label を表示    |
+| 日付管理                   | 服用開始日/終了日、処方日数、セット対象期間、訪問予定日、調剤実施日、監査日時の責務分離                                                                     | `PrescriptionLine` 編集 API、`SetPlan.target_period_*`、`DispenseResult.dispensed_at`、`SetAudit.audited_at` がある                                                | `computeEndDate(start, days)=start+days-1` を SSOT 化。日付変更時は set batch 再生成/差戻し/訪問 carry_items 再計算を transaction で連動                    |
+| セット / セット監査        | SetBatch hold と CycleHold の二重管理整理、セル保留の期限/担当、差戻しから再セットへの復帰                                                                  | `SetBatch.set_state=hold` と `CycleHold` がある。`set-audits` は NG/部分承認/差戻しを持つ                                                                          | CycleHold を phase 共通の保留台帳、SetBatch hold をセル表示状態に限定。hold 作成/解消 API を追加し、WorkflowException との重複を整理                        |
+| 外薬 / 持出パケット        | 外用薬、頓服薬、注射薬、液剤、冷所をセット外薬として訪問準備・報告・請求にも出す                                                                            | `set-audits` は carry_packet_evidence をサーバ検証し、external/injection/prn/liquid/cold を導出する                                                                | `deriveOutsideMedEvidenceKind` 相当を shared projection に移し、visit preparation / patients board / reports / billing で再利用                             |
+| 調剤監査                   | 麻薬/ハイリスクのダブルカウント、1回目/2回目計数者、差異理由、監査者分離                                                                                    | `DispenseAudit` は task 単位。`DispenseResult.actual_quantity` と AuditLog はあるが二重計数は構造化されていない                                                    | `DispenseCountRecord` または `DispenseResult.first_count/second_count/count_matched` を追加。麻薬/高リスク時だけ必須ゲート化                                |
+| 在庫 / 発注                | 粉砕・一包化・PTP手撒き・注射薬の作業可否を在庫単位、包装単位、薬局サイト単位で判定                                                                         | `PharmacyDrugStock` と stock request 系 API はある                                                                                                                 | set/dispense 確定時に必要量予約、欠品時は `CycleHold(reason=stock_shortage)` を自動候補化。箱単位/包装単位は薬剤マスタ拡張と連動                            |
+| 患者包装プロファイル       | 患者ごとの一包化可否、粉砕希望/禁止、PTP希望、服薬BOX色、施設ルール、申し送り                                                                               | PatientPackagingProfile 系 API は存在するが、prefab_allowed/handover_note/RLS が計画上の残課題                                                                     | Patient ribbon / workbench 右ペインに投影。変更は audit log と effective date を持たせる                                                                    |
+| 権限 / 職務分離            | canDispense / canAuditDispense / canSet / canAuditSet の工程別 UI/API 制御と一人薬剤師例外                                                                  | admin users は工程権限を持つ。set-audit は same_operator_reason + admin 承認を持つ                                                                                 | dispense-audit も set-audit と同じ例外理由/承認者/監査ログの表現に揃える。事務補助者のセット作業は supervising_pharmacist_id を P1                          |
+| 通知 / ダッシュボード      | 待ち解除、粉砕不可、注射可否未確認、PTP手撒き、日付不整合、在庫不足、セット監査NGを詰まり理由として出す                                                     | WorkflowException / dashboard workflow / patients board がある                                                                                                     | `workflow_exception_type` と右レール projection に包装・日付・在庫・外薬カテゴリを追加。赤/橙の alert fatigue を避ける                                      |
+| 訪問準備 / 報告 / 請求     | セット完了済み carry_items を訪問準備で確認し、報告・請求根拠に接続                                                                                         | `set-audits` は visitSchedule.carry_items を更新する                                                                                                               | carry_items に packaging tags / outside med kind / set audit evidence summary を含めるか、参照可能な BFF を追加する                                         |
+| 外部連携                   | レセコン、電子薬歴、分包機、監査機器、在庫システムへの同期境界                                                                                              | `docs/compliance/responsibility-matrix.md` はレセコン pull/push 方針を持つ                                                                                         | 外部へ出す確定データは `DispenseResult` / `DispenseAudit` / `SetAudit` の append-only 記録から生成。中間状態は外部送信しない                                |
+| オフライン / 冪等          | dispensation/audit/set/set-audit の再送・衝突・未同期表示                                                                                                   | Dexie syncQueue はあるが dispense 系 entityType は計画上 defer                                                                                                     | 確定 API に idempotency_key と expected_version を追加。オフライン許可範囲は「セット準備のみ」など工程別に明文化                                            |
+| 監査 / エクスポート        | 操作証跡、写真証跡、差戻し理由、保留理由、日付変更理由を検索・出力可能にする                                                                                | AuditLog / SetBatchChangeLog / set audit photo_asset_ids がある                                                                                                    | audit-log filters に target/action の工程語彙を追加。患者単位・cycle 単位の監査タイムライン BFF を追加                                                      |
+| 設定 / ポリシー            | 薬局ごとの一包化既定、PTP扱い、粉砕禁止の表示強度、二人制例外、在庫不足時の保留方針                                                                         | `settings/operational-policy` 系がある                                                                                                                             | 変更可能な運用ポリシーと医療安全上ロックするポリシーを分ける。設定変更は audit log 必須                                                                     |
+| seed / E2E                 | 内服・外用・頓服・注射・粉砕・混合・PTP・一包化・日付不整合を同一シナリオで再現                                                                             | focused unit tests は存在。端から端までの fixture は不足しがち                                                                                                     | `e2e-prescription-dispensing-flow` に、QR取込→グループ化→セット→セット監査→訪問 carry_items までの cross-domain fixture を追加                              |
+
+この表の項目は、すべてを一度に実装しない。優先順位は以下。
+
+1. **安全ブロッカー**: 粉砕禁止/注射剤可否/麻薬・冷所/日付逆転/セット監査 NG のサーバゲート。
+2. **ワークベンチ結線**: adapter が既存 API を使い、seed/mock と本番 BFF の型を一致させる。
+3. **周辺 projection**: 患者カード、訪問準備、報告、請求、ダッシュボードで同じ分類を表示する。
+4. **外部同期**: 確定済み append-only 記録だけを外部連携へ流す。
 
 ---
 

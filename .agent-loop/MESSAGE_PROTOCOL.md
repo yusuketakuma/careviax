@@ -104,6 +104,10 @@ details: |
 | `BLOCKED`                    | either           | Work blocked on external dependency (`cc:blocked`).                                                          |
 | `UNBLOCK`                    | either           | Dependency resolved; resume.                                                                                 |
 | `HANDOFF`                    | lead → lead      | Transfer ownership of a task/subtask to the other lead with ACK, stable idempotency, and explicit locks.     |
+| `REQUEST_DELEGATE`           | idle → peer      | Signal spare capacity and ask the peer to delegate one bounded, non-conflicting task.                        |
+| `DELEGATE`                   | peer → idle      | Offer a specific task/subtask with task id, scope, locked paths, forbidden paths, and validation.            |
+| `DELEGATE_ACCEPT`            | receiver → peer  | Accept a delegated task before sending/recording the concrete path lock.                                     |
+| `DELEGATE_DECLINE`           | receiver → peer  | Decline a delegated task with a short reason; ownership remains unchanged.                                   |
 | `STATUS_PING`                | either           | Liveness / cycle heartbeat.                                                                                  |
 | `DONE`                       | either           | Task complete, verified, locks released.                                                                     |
 | `FEATURE_INTAKE`             | either           | New feature request landed; enqueue to `.agent-loop/FEATURE_QUEUE.md`.                                       |
@@ -183,6 +187,24 @@ team `phos`.
 ```bash
 ~/.agents/skills/agmsg/scripts/send.sh phos <from> <to> "<body>"
 ```
+
+**Idle assistance helper:**
+
+```bash
+.agent-loop/scripts/idle-assist.sh request codex
+.agent-loop/scripts/idle-assist.sh request claude
+.agent-loop/scripts/idle-assist.sh delegate claude codex F-20260628-901 \
+  "Harden one bounded backend/API route" \
+  "src/app/api/example/route.ts,src/app/api/example/route.test.ts" \
+  "src/components/**,prisma/**" \
+  "focused vitest + scoped eslint + prettier + typecheck"
+```
+
+`idle-assist.sh request` sends `REQUEST_DELEGATE` when a supervisor has spare
+capacity. `idle-assist.sh delegate` sends `DELEGATE` for a concrete task. The
+helper does not grant locks or run validation; the receiver still ACKs or
+declines, acquires the explicit path lock before editing, preserves forbidden
+paths, and runs the normal objective gate before review/done.
 
 **Check inbox:**
 

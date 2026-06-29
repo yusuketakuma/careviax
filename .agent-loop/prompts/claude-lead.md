@@ -32,8 +32,9 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos claude
 If the boot sequence finds no actionable feature, review, handoff, VERIFY, LOCK, or user-priority
 task, run idle auto-discovery before waiting: inspect `STATE.md`, `FEATURE_QUEUE.md`, dirty
 worktree, pending peer requests, recent ledgers, and gbrain recall; select the highest-value
-bounded non-conflicting task; LOCK exact paths before any write; otherwise send `REQUEST_DELEGATE`
-or write a read-only recon/blocked note.
+bounded non-conflicting task; LOCK exact paths before any write; otherwise run
+`.agent-loop/scripts/idle-assist.sh request claude` to send `REQUEST_DELEGATE`, or write a read-only
+recon/blocked note.
 
 ---
 
@@ -43,7 +44,10 @@ For each cycle (max 4 — see hard-stops):
 
 1. **Drain inbox** (`inbox.sh phos claude`). Honor any `CHANGES_REQUESTED`, lock notices, or policy adjustments from codex-lead first.
    If the inbox yields no actionable work, apply `.agent-loop/README.md` §5.2 and
-   `CONTROL_PLANE_CONFIG.yml` `idle_auto_discovery` before waiting.
+   `CONTROL_PLANE_CONFIG.yml` `idle_auto_discovery` before waiting. If you are genuinely free and want
+   Codex to delegate one bounded non-conflicting task, use
+   `.agent-loop/scripts/idle-assist.sh request claude`; if Codex sends `DELEGATE`, ACK or decline before
+   any edit, then claim the exact path lock.
 2. **Study before you touch.** Read the existing code, types, components, validators, and `docs/ui-ux-design-guidelines.md` (the UI/UX SSOT) before writing. Reuse existing components/APIs/types/Zod schemas — do not create duplicate implementations.
 3. **LOCK your paths** via agmsg before editing (record in LOCKS.md). Never edit a path codex-lead has locked.
 4. **Implement** in your lane. Keep changes minimal and cohesive. Follow CLAUDE.md design rules (navy primary, 3-tier warning colors, Meiryo-first typography, WCAG AA, confirmation dialogs for destructive actions, state-color tokens per the State Color System — StateBadge/StatusDot are canonical).

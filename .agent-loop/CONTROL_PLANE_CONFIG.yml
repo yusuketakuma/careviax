@@ -30,6 +30,7 @@ control_plane:
     note: 'Automatic means every supervisor cycle must run this selection contract before waiting; it is still manually enforced by the active supervisor, not a daemon.'
     selection_order:
       - drain_agmsg_and_handle_priority_messages
+      - if_idle_send_request_delegate_with_idle_assist
       - check_peer_locks_and_dirty_worktree
       - review_pending_peer_requests
       - recall_gbrain_for_failure_duplicate_gate_context
@@ -43,6 +44,7 @@ control_plane:
       record_decision_in_state: true
       stage_only_owned_paths: true
     allowed_work:
+      - idle_delegate_request_or_response
       - read_only_peer_review_grounding
       - queued_task_recon_and_scope_notes
       - approved_handoff_subtask

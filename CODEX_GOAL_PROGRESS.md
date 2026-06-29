@@ -23,6 +23,31 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Data Explorer False-Empty Commit - 2026-06-29 15:44 JST
+
+- Scope:
+  - Prioritized Claude's residual-medication-chart review request, approved it after independent focused validation, and let Claude commit that separate slice as `d009f4c0`.
+  - Implemented Claude triage #2 for admin data-explorer false-empty handling.
+  - Committed only `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx` and `src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx` as `51768dd3` (`Surface data explorer fetch failures`).
+  - Preserved Claude's new `src/components/features/pharmacy/drug-suggest.tsx` lock and all unrelated dirty backend/agent-loop/schema files.
+- Fixed:
+  - `modelsQuery` failures now show retryable `ErrorState` instead of falling through to an empty model list.
+  - `rowsQuery` failures now show retryable `ErrorState` instead of falling through to "一致するレコードがありません。".
+  - The selected table card description now reports row fetch failure instead of deriving count/selection text from missing data.
+  - Genuine no-match model filtering still has its own empty state, separated from fetch failure.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint, scoped Prettier check, and focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Independent verifier `019f1218-8018-78c2-bea6-0946a245a96e` reran the focused Vitest and found no findings.
+- Review:
+  - Claude approved the data-explorer patch after independent diff review and focused test rerun.
+  - Codex approved Claude's residual-medication-chart patch with no findings after rerunning residual and medication consumer tests plus scoped checks.
+- Remaining:
+  - Claude is working on `drug-suggest.tsx`; Codex must avoid that lock.
+  - Next Codex backend candidate: QR draft confirmation safety blockers from the medical reviewer, especially persisted-line mismatch coverage and unresolved/missing drug-code status before `skipStructuringCheck` intake creation.
+
 ### Inventory Forecast Unstocked Resolved Demand Commit - 2026-06-29 14:52 JST
 
 - Scope:

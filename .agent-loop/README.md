@@ -67,6 +67,24 @@ Long gate lease helper:
 If `acquire` reports `status=locked`, do not start the gate; drain agmsg and
 wait or negotiate with the peer.
 
+Idle assistance helper:
+
+```bash
+.agent-loop/scripts/idle-assist.sh request codex
+.agent-loop/scripts/idle-assist.sh request claude
+.agent-loop/scripts/idle-assist.sh delegate claude codex F-20260628-901 \
+  "Harden one bounded backend/API route" \
+  "src/app/api/example/route.ts,src/app/api/example/route.test.ts" \
+  "src/components/**,prisma/**" \
+  "focused vitest + scoped eslint + prettier + typecheck"
+```
+
+Use `request` when the local supervisor is free after draining agmsg and has no
+higher-priority user/review/lock work. It sends `REQUEST_DELEGATE` to the peer.
+Use `delegate` to offer a concrete narrow task back. The helper only sends the
+coordination packet; the receiver still ACKs or declines, claims exact paths via
+LOCK before editing, and runs the normal validation/review flow.
+
 ---
 
 ## 2. File map (`.agent-loop/`)
@@ -234,8 +252,10 @@ Idle auto-discovery contract:
 4. Execute the first candidate that is bounded, non-conflicting, and reviewable. Before any write,
    send a path `LOCK`, confirm no peer conflict, and stay inside the declared paths.
 5. If no candidate is safe to edit, still produce useful output: a read-only recon note,
-   `REQUEST_DELEGATE`, stale-ledger finding, or explicit blocked context. `zero_actionable_count`
-   should increase only after this exploration is recorded.
+   `REQUEST_DELEGATE` via `.agent-loop/scripts/idle-assist.sh request <agent>`, stale-ledger
+   finding, or explicit blocked context. The peer can answer with
+   `.agent-loop/scripts/idle-assist.sh delegate <from> <to> ...` to provide a concrete scoped task.
+   `zero_actionable_count` should increase only after this exploration is recorded.
 6. Yield immediately when a higher-priority inbound message arrives, then resume selection after
    that message is handled.
 

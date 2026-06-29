@@ -107,6 +107,241 @@ old tasks unless they are actively being edited for another reason.
 
 ## Queue
 
+```yaml
+- task_id: F-20260629-006
+  status: done
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: codex-lead
+  type: bugfix
+  risk_level: high
+  priority: P1
+  feature_name: Harden inventory forecast drug identity to DrugMaster/code-first matching
+  background: >
+    Admin inventory forecast estimates next-week medication demand from recent
+    prescription lines and pharmacy stock. The forecast path must not join by
+    display drug names because same-name/different-code products can differ by
+    strength, package, or master identity. Medical safety review also found that
+    unresolved demand could be hidden if code-less/code-not-found/ambiguous rows
+    were separated from automatic matching but not shown to users.
+  user_value: >
+    Pharmacists should see automatic shortage forecasts only when a prescription
+    line can be resolved to DrugMaster/code identity, while unresolved coded
+    demand remains visible as a review item instead of being silently dropped or
+    name-joined to the wrong stock.
+  acceptance_criteria:
+    - Automatic forecast matching uses DrugMaster id first and canonical code second; drug base names are not used to join prescription demand to stock.
+    - Prescription line YJ, receipt, and HOT codes resolve through DrugMaster before forecast aggregation.
+    - DrugMaster code-not-found lines and missing-code lines are returned as unresolved demand, not automatic shortage matches.
+    - Duplicate receipt/HOT candidates are not resolved by DB row order; they are surfaced as ambiguous unresolved demand.
+    - The admin UI visibly surfaces unresolved demand with reason/code, required quantity, affected patient count, and 要確認 status.
+    - Focused pure, route, and UI tests cover the code-first behavior and unresolved-demand visibility.
+  constraints:
+    - No DB migration, no external fetch, no name-based DrugMaster matching, no destructive DB operation.
+    - Preserve route auth, no-store behavior, next-week visit cohort semantics, and existing automatic shortage DTO shape.
+    - Follow PH-OS UI/UX guidance: no false empty, clear state, and separate unresolved review demand from automatic shortage rows.
+  verification:
+    - pnpm exec vitest run src/lib/analytics/inventory-forecast.test.ts src/app/api/admin/inventory-forecast/route.test.ts 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx' --reporter=dot --testTimeout=30000
+    - pnpm exec eslint --max-warnings=0 src/lib/analytics/inventory-forecast.ts src/lib/analytics/inventory-forecast.test.ts src/app/api/admin/inventory-forecast/route.ts src/app/api/admin/inventory-forecast/route.test.ts 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx' 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx'
+    - pnpm exec prettier --check src/lib/analytics/inventory-forecast.ts src/lib/analytics/inventory-forecast.test.ts src/app/api/admin/inventory-forecast/route.ts src/app/api/admin/inventory-forecast/route.test.ts 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx' 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx'
+    - git diff --check -- src/lib/analytics/inventory-forecast.ts src/lib/analytics/inventory-forecast.test.ts src/app/api/admin/inventory-forecast/route.ts src/app/api/admin/inventory-forecast/route.test.ts 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx' 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx'
+    - pnpm typecheck
+    - pnpm typecheck:no-unused
+  gbrain_memory_used:
+    - gbrain search "CareViaX PrescriptionLine drug_master_id drug_code code-first" (no directly relevant CareViaX hit; returned unrelated careroute-rx snippets)
+  completion:
+    commit: 51edfa10
+    review: Claude APPROVED 2026-06-29T04:34:04Z
+    validation: focused vitest 3 files/38 tests, scoped eslint, scoped prettier --check, git diff --check, pnpm typecheck, pnpm typecheck:no-unused
+```
+
+```yaml
+- task_id: F-20260629-005
+  status: done
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: codex-lead
+  type: bugfix
+  risk_level: medium
+  priority: P1
+  feature_name: Resolve pharmacy stock usage mismatch by YJ, receipt, and HOT codes
+  background: >
+    GET /api/pharmacy-drug-stocks/usage-mismatch summarizes recent QR draft
+    medication usage against adopted pharmacy stock. The route already stopped
+    matching name-only rows to DrugMaster, but coded rows were normalized by
+    slicing drugCode to 12 characters and matching DrugMaster.yj_code only.
+    That could leave 9-digit receipt codes and 13-digit HOT codes unmatched, or
+    truncate HOT codes before lookup.
+  user_value: >
+    Adoption gap checks should classify QR usage by the same public medication
+    code families used by the drug master: YJ, receipt, and HOT. Pharmacists
+    should not see a coded medicine as unrecognized merely because the source
+    QR carried a receipt or HOT code instead of YJ.
+  acceptance_criteria:
+    - QR usage code normalization preserves the full source code and does not truncate 13-digit HOT codes.
+    - DrugMaster lookup resolves usage by yj_code, receipt_code, or hot_code.
+    - If the same source code appears in multiple DrugMaster code families, lookup resolves deterministically by YJ, then receipt code, then HOT code.
+    - Name-only QR medication rows remain unresolved; no drug_name lookup is reintroduced.
+    - The matched_drug response shape remains limited to the previous safe display projection.
+    - Focused route tests cover receipt-code and HOT-code resolution, code-family priority, plus response projection.
+  constraints:
+    - No DB migration, no external fetch, no name-based DrugMaster matching.
+    - Preserve route auth, RLS context, no-store/fixed-error behavior, query validation, and response totals.
+    - Do not touch Claude FE locked medications files.
+  verification:
+    - pnpm exec vitest run src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts --reporter=dot --testTimeout=30000
+    - pnpm exec eslint --max-warnings=0 src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts
+    - pnpm exec prettier --check src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts
+    - git diff --check -- src/app/api/pharmacy-drug-stocks/usage-mismatch/route.ts src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts
+    - pnpm typecheck
+    - pnpm typecheck:no-unused
+  gbrain_memory_used:
+    - gbrain search "CareViaX PrescriptionLine drug_master_id drug_code code-first" (no directly relevant CareViaX hit; returned unrelated careroute-rx snippets)
+```
+
+```yaml
+- task_id: F-20260629-004
+  status: done
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: codex-lead
+  type: hardening
+  risk_level: medium
+  priority: P1
+  feature_name: Harden electronic prescription intake POST response boundary
+  background: >
+    POST /api/patients/[id]/prescriptions/e-prescription accepts external
+    electronic-prescription identifiers and creates PrescriptionIntake rows.
+    The route already forwards drugCode into the code-first intake service, but
+    it did not yet use the standard sensitive no-store/fixed-error wrapper used
+    by adjacent prescription intake routes.
+  user_value: >
+    Electronic prescription intake responses should not be cached and unexpected
+    external/intake failures should not leak prescription identifiers, patient
+    context, or raw upstream details.
+  acceptance_criteria:
+    - Existing auth, validation, idempotency, adapter error, case selection, and code-forwarding semantics remain unchanged.
+    - All POST responses pass through sensitive no-store headers.
+    - Unexpected throws return a fixed INTERNAL_ERROR body and metadata-only log context.
+    - Focused route tests cover sanitized no-store 500 behavior without leaking raw prescription identifiers.
+  constraints:
+    - Do not change electronic prescription adapter behavior or external provider configuration.
+    - Do not change createPrescriptionIntake drug-code validation/profile-sync semantics.
+    - No DB migration, no external API fetch in tests, no commit/push.
+  verification:
+    - pnpm exec vitest run src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts --reporter=dot --testTimeout=30000
+    - pnpm exec eslint --max-warnings=0 src/app/api/patients/[id]/prescriptions/e-prescription/route.ts src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts
+    - pnpm typecheck
+    - pnpm typecheck:no-unused
+  gbrain_memory_used: []
+```
+
+```yaml
+- task_id: F-20260629-003
+  status: done
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: codex-lead
+  type: bugfix
+  risk_level: high
+  priority: P1
+  feature_name: Remove MHLW generic mapping drug-name includes write identity
+  background: >
+    MHLW generic-name mapping import grouped brand candidates by exception YJ
+    code, DrugMaster.generic_name, and a fallback `drug_name.includes(generic_name)`.
+    The includes fallback could write GenericDrugMapping.brand_drug_ids for a
+    product whose display name merely contains the generic-name text.
+  user_value: >
+    Generic substitution mapping should be based on official MHLW code/generic
+    identity, not display-name substring matching that can attach unrelated
+    same-text products.
+  acceptance_criteria:
+    - GenericDrugMapping brand candidates are matched only by official exception YJ codes or exact DrugMaster.generic_name.
+    - DrugMaster.drug_name substring matching is not used as a write identity.
+    - Existing exception-code and exact generic-name mapping behavior remains intact.
+    - Focused MHLW import tests cover name-only false-positive exclusion.
+  constraints:
+    - No DB migration or external MHLW fetch during tests.
+    - Do not change MHLW price-list import semantics.
+    - Preserve import log and GenericDrugMapping response shape.
+  verification:
+    - pnpm exec vitest run src/server/services/drug-master-import/mhlw.test.ts --reporter=dot --testTimeout=30000
+    - pnpm exec eslint --max-warnings=0 src/server/services/drug-master-import/mhlw.ts src/server/services/drug-master-import/mhlw.test.ts
+    - pnpm typecheck
+    - pnpm typecheck:no-unused
+  gbrain_memory_used: []
+```
+
+```yaml
+- task_id: F-20260629-002
+  status: done
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: codex-lead
+  type: bugfix
+  risk_level: medium
+  priority: P1
+  feature_name: Link QR OTC MedicationProfile promotions by JAN code
+  background: >
+    QR supplemental record type 3 can carry OTC/general-drug JAN identity, while
+    DrugMaster already has jan_code. The promotion path previously discarded the
+    JAN and always created otc_qr MedicationProfile rows with drug_master_id null.
+  user_value: >
+    OTC medication profiles confirmed from QR data should preserve coded product
+    identity when JAN matches DrugMaster, reducing name-only medication ambiguity.
+  acceptance_criteria:
+    - QR OTC candidate extraction preserves labeled and raw-line JAN codes without mistaking date fields for JAN.
+    - OTC promotion resolves DrugMaster by JAN when available and writes drug_master_id.
+    - Duplicate-current checks prefer resolved drug_master_id while preserving legacy name-only duplicate protection.
+    - Existing name-only OTC promotion remains supported when no JAN/DrugMaster match is available.
+  constraints:
+    - No DB migration; use existing DrugMaster.jan_code and MedicationProfile.drug_master_id.
+    - Do not auto-resolve by OTC drug_name.
+    - Keep promotion explicit; do not change QR draft confirmation behavior.
+  verification:
+    - pnpm exec vitest run src/server/services/qr-otc-promotion.test.ts --reporter=dot --testTimeout=30000
+    - pnpm exec eslint --max-warnings=0 src/server/services/qr-otc-promotion.ts src/server/services/qr-otc-promotion.test.ts
+    - pnpm typecheck
+    - pnpm typecheck:no-unused
+  gbrain_memory_used: []
+```
+
+```yaml
+- task_id: F-20260629-001
+  status: done
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: claude-lead
+  type: bugfix
+  risk_level: high
+  priority: P1
+  feature_name: Remove PMDA package-insert name-only fallback write identity
+  background: >
+    During the 2026-06-29 PMDA route-hardening review, Claude confirmed the route
+    wrapper was clean and identified the service-level name fallback in
+    src/server/services/drug-master-import/pmda.ts as a separate code-first follow-up.
+    The current import can choose a DrugMaster by drug_name contains matching when a
+    PMDA record lacks yj_code.
+  user_value: >
+    PMDA package insert and interaction metadata should attach to the intended
+    coded medicine, not to a same-name or fuzzy-matched different-code product.
+  acceptance_criteria:
+    - PMDA package insert primary DrugMaster selection no longer writes by fuzzy name-only identity.
+    - Interaction counterpart matching prefers coded YJ identity and does not create unsafe fuzzy name-only links.
+    - Existing route hardening behavior, URL policy validation, and response shape remain intact.
+    - Focused PMDA service and route tests cover YJ-coded matching and rejected or skipped unsafe name-only records.
+  constraints:
+    - Do not mix this with route wrapper hardening; treat it as a behavior-changing code-first slice.
+    - Preserve true-global table handling unless the data model changes.
+    - No DB migration or external PMDA fetch during tests.
+  verification:
+    - pnpm exec vitest run src/server/services/drug-master-import/pmda.test.ts src/app/api/drug-master-imports/pmda/route.test.ts --reporter=dot --testTimeout=30000
+    - pnpm exec eslint --max-warnings=0 src/server/services/drug-master-import/pmda.ts src/server/services/drug-master-import/pmda.test.ts src/app/api/drug-master-imports/pmda/route.ts src/app/api/drug-master-imports/pmda/route.test.ts
+    - pnpm typecheck
+    - pnpm typecheck:no-unused
+  gbrain_memory_used: []
+```
+
 <!-- No real features yet. Copy the commented template below for each new task.
      Keep highest priority at the top. -->
 
@@ -614,11 +849,48 @@ Pattern B only（header swap のみ、小・低価値だが安全）:
 
 - [x] **harden-day-board-explicit-500**（owner: Codex, **Low/defensive**, est S）: done `52eda9a4`。`GET /api/visit-schedules/day-board` は既に明示 try/catch と 500 no-store 専用テストを持っていたため、残差として catch 先頭に `unstable_rethrow(err)` を追加し、Next.js control-flow error を飲まずに既存の sanitized no-store 500 fallback へ戻る標準形へ揃えた。focused day-board + protected GET matrix `2` files / `380` tests、scoped ESLint/Prettier/diff-check、full `tsc`、`typecheck:no-unused` green。evidence: claude audit, `src/app/api/visit-schedules/day-board/route.ts`, `src/app/api/visit-schedules/day-board/route.test.ts`。
 - [x] **harden-rls-session-unification-list-reads**（owner: Codex, **Info/consistency**, est M）: done `ed71df9c`。`GET /api/management-plans` の list read と `GET /api/staff-workload` の membership/task/raw SQL/visit/dispense list reads を `withOrgContext(ctx.orgId, ..., { requestContext: ctx })` に統一し、既存 app 層 `org_id` フィルタ、assignment scope、case_id/date validation、raw SQL parameterization、response shape を維持した。exported `GET` catch は `unstable_rethrow(err)` + fixed no-store `INTERNAL_ERROR` fallback へ揃えた。DB/schema/data/migration/UI 変更なし。focused route+protected matrix `3` files / `387` tests、DB steward rerun `2` files / `21` tests、scoped ESLint/Prettier/diff-check、full `tsc`、`typecheck:no-unused` green。Privacy reviewer の non-blocking P3 として `management-plans` list が full `content` を返す点を確認したが、現 FE edit/preview が `content` を使用しているため response-shape 変更は別 slice とした。evidence: claude audit, DB steward/privacy reviews。
-- [ ] **minimize-management-plans-list-payload**（owner: 未割当, **P3/privacy**, est S/M）: `GET /api/management-plans` list は現在 `content` / `summary` / reviewer/approver IDs を含む full row を返す。`src/app/(dashboard)/patients/[id]/management-plan-panel.tsx` が draft edit/preview で `content` を使っているため、単純な select 最小化は FE 契約変更を伴う。metadata-only list + detail fetch へ分けるか、編集対象だけ detail hydrate する設計を別途検討。evidence: 2026-06-27 privacy reviewer P3。
+- [x] **external-viewer-false-empty-on-fetch-error**（owner: Claude FE, reviewer: Codex, est M, **correctness/medical-safety**）: done（Codex APPROVED 2026-06-28T22:39Z、no-commit posture により実 commit はユーザー明示要求まで保留）。`src/app/(dashboard)/external/external-viewer-content.tsx` の 3 react-query（grants/selfReports/activities）が取得失敗（isError）を空状態に潰し、fetch 失敗時に「有効な共有リンクはありません」等の **false-empty** と上部サマリーの誤った「0」を表示していた correctness バグを修正。`PanelBody` ヘルパーに集約し優先順 loading→`Skeleton` shell / error→`ErrorState`(variant=server, size=inline, live=polite, action=再試行→query.refetch()) / empty→空文言 / data、3パネルは独立クエリゆえ独立エラー処理（1失敗でも他2つは通常表示）。`SummaryCard` を error-aware 化（誤った 0 でなく「—」+「取得に失敗しました」、正当な空は引き続き 0）。付随: ローディング text→Skeleton 化(guideline L460)、内側カード rounded-xl→rounded-lg(commit 42f738a2 の radius 正規化に追随)。focused Vitest 6/6（既存4＋新規2: 共有クエリ失敗時の ErrorState+再試行+refetch+サマリー「—」、単一クエリ失敗時の独立性）、scoped ESLint/Prettier/diff-check、full `tsc`/`typecheck:no-unused` green。Codex も独立に vitest 6/6・eslint・diff-check 再実行で APPROVED。evidence: recon(design-analyst high-confidence)、既存 fail-close 先例 clerk-support/statistics/admin F-004。
+- [x] **consent-records-false-empty-on-fetch-error**（owner: Claude FE, reviewer: Codex, est S, **correctness/医療コンプライアンス**）: done（Codex APPROVED 2026-06-28T22:57Z、no-commit posture により実 commit 保留）。`src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx` の useQuery が isError を destructure せず、取得失敗時 `data?.data ?? []` で空配列 → DataTable が emptyMessage を表示し **取得失敗が「同意記録ゼロ件」に化ける** false-empty。consent は要配慮データで害大。修正は最小（useQuery に isError/refetch 追加 → DataTable に `errorMessage={isError ? '同意記録を取得できませんでした' : undefined}` + `onRetry={() => void refetch()}` を配線、DataTable 既存の role=alert error 表示機構を使うだけ）。既存 T1 caller(admin/institutions, admin/pca-pumps)と同一 fail-close パターン。focused Vitest 7/7（既存6＋新規1: 500時にエラー文言+「再読み込み」提示・空テーブルに化けない）、scoped ESLint/Prettier/diff-check、full `tsc`/`typecheck:no-unused` green。evidence: recon(design-analyst high)、FEATURE_QUEUE:504「consent は isLoading 済=isError 未対応 open」。
+- [x] **external-share-overview-false-empty-on-fetch-error**（owner: Claude FE, reviewer: Codex, est S/M, **correctness/監査文脈**）: done（Codex APPROVED 2026-06-28T23:02Z、no-commit posture により実 commit 保留）。`src/app/(dashboard)/patients/[id]/share/external-share-content.tsx` の overviewQuery(ページ主データ源)が isLoading のみガードし isError 分岐欠如 → 取得失敗後も 3カラム UI 全体を描画、中央プレビュー全空・右「共有済みリンクはまだありません。」等で **通信/権限エラーが「共有実績ゼロ」に化ける** false-empty。external_shares は外部共有アクセス痕跡=監査文脈で誤判断の害大。修正は loading ガード直後に `overviewQuery.isError` ガードを追加し ErrorState(variant=server, detail=error.message, action=再試行→refetch, live=polite)を border カードで返す。同画面群 collaboration-content.tsx の overviewQuery+ErrorState と完全同型。focused Vitest 4/4（既存3＋新規1: 失敗時にエラー+再試行提示・「共有設定」見出し非表示=false-empty に化けない・refetch 呼出）、scoped ESLint/Prettier/diff-check、full `tsc`/`typecheck:no-unused` green。副次クエリ(careTeam/contacts/requests)の error degrade は別 slice 余地として残す。evidence: recon(design-analyst high)。
+- [x] **minimize-management-plans-list-payload**（owner: Codex backend/privacy, reviewer: Claude, **P3/privacy**, est S/M）: done（Claude APPROVED 2026-06-29 09:46 JST、no-commit posture により実 commit はユーザー明示要求まで保留）。`GET /api/management-plans` list は `content` / `summary` / creator/reviewer/approver IDs / `source_plan_id` を返さない metadata-only `select` + allowlist mapper へ縮小済み。現 canonical の `card-workspace.tsx` は管理計画 list を共有ケース作成のドロップダウン用に `plan.id` / `plan.version` / `status` 等のメタデータのみ消費し、`management-plan/print/page.tsx` は detail エンドポイント `/api/management-plans/{id}` から full `content` を取得するため FE 契約変更なし。focused management-plans route tests `1` file / `15` tests、combined route/detail/card-workspace/print validation `4` files / `103` tests、protected GET targeted matrix `6` tests / `363` skipped、scoped ESLint/Prettier/diff-check、`pnpm typecheck`、`pnpm typecheck:no-unused` green。evidence: `CODEX_GOAL_PROGRESS.md` 2026-06-29 09:43 JST, `.codex/ralph-state.md` 20260629-0943 JST, Claude approval 2026-06-29 09:46 JST。
+
+### FE false-empty 追加発見（2026-06-29, Explore スキャン由来）
+
+高頻度表示画面の react-query で「isError 未処理 → fetch 失敗が空状態/0 に化ける fail-open」を再スキャン。確証ある実バグのみ採用（card-workspace partnershipsQuery は L1262 に既存 ErrorState 分岐ありで**誤検出→除外**、patient-labs/patients-board/dashboard-cockpit/my-day 等は対処済み）。
+
+- [x] **medications-content-false-empty-on-fetch-error**（owner: Claude FE, reviewer: Codex, est M, **correctness/医療安全**）: done（Codex APPROVED rev3 2026-06-29 03:59Z、no-commit posture により実 commit はユーザー明示要求まで保留）。`src/app/(dashboard)/patients/[id]/medications/medications-content.tsx` で fetch 失敗（queryFn の throw→isError）が「正常な空/0」へ化ける fail-open を修正。**rev1**: 3 クエリ（issuesQuery=薬学的課題 / inquiryQuery=疑義照会 / residualQuery=残薬提案）の直接リストに isLoading→isError→empty→list 順で ErrorState(variant=server, size=inline)+再読み込み(refetch) を挿入。**rev2**（Codex High catch）: 主データ query **medication-profiles**（現在服薬リスト=最重要）も同じ false-empty だったため isError/refetch を destructure し同パターン適用。**rev3**（Codex High catch）: 同一失敗源の**別 consumer** — カウントバッジ（未解決課題/回答待ち照会/副作用歴）の false-zero を owning query isError 時「—」表示へ、副作用履歴セクション（sideEffectHistory=medication-issues 由来）に ErrorState+retry を追加。patientSummaryQuery は識別フィールドの fallback 専用で false-empty バグクラス外と確認（対象外で正しい）。focused Vitest 20/20（既存14＋error 4: profiles/issues/inquiry/residual＋rev3 2: バッジ false-zero/副作用 false-empty 非表示・refetch 呼出）、scoped ESLint/Prettier/diff-check、full `tsc`/`typecheck:no-unused` green。**学び**: 直接リストだけ見て派生 consumer（バッジ/別セクション）を見落とす盲点 → 同一クエリを読む全 render consumer を grep 確認すべし。evidence: Explore false-empty スキャン、既存先例 external-viewer/consent/external-share、Codex 2連続 CHANGES_REQUESTED の teeth。
+- [x] **handoff-recent-comments-false-empty-on-fetch-error**（owner: Claude FE, reviewer: Codex, est S, **correctness/連携記録**）: done（Codex APPROVED 2026-06-29 04:12Z、no-commit posture により実 commit はユーザー明示要求まで保留）。`src/app/(dashboard)/handoff/handoff-workspace.tsx` の `HandoffCommentFeed`（L522 インライン定義）が `!isLoading && comments.length === 0` で section ごと null 返し → commentsQuery（/api/comments/recent、fetchRecentComments は !res.ok で throw）失敗時も `data ?? []` 空配列で「やり取り」section が無言消失（薬剤師⇔事務の連携記録 [[careviax-handoff-comms-hub]] が「あなた宛コメント無し」と区別不能に化ける）MEDIUM false-empty。修正: props に `isError`/`onRetry` 追加、null 早期 return を `!isLoading && !isError && comments.length === 0` に（正当な空のみ隠す）、isLoading→isError→list 順で error 時 ErrorState(server,inline)+再読み込み(refetch)。call site 配線。learned lesson 適用で commentsQuery 消費を grep 確認＝単一 consumer（二次 false-zero 無し）。**test harness 知見**: 実 QueryClient+fetch スタブで従来 /api/comments/recent 未ハンドル=throw→isError で**バグが既存テスト中ずっと黙って発火**していた（feed を誰も assert せず露見せず）。stubFetch に `/api/comments/recent` ハンドラ（option recentCommentsStatus 既定200 / recentComments 既定[]）を追加し既存テストを正当空=hidden に保持＋500 注入の新テスト。focused Vitest 18/18（既存16＋2: error 時 section 可視・再読み込み・refetch teeth／success 非空で error affordance 非表示）、scoped ESLint/Prettier/diff-check、full `tsc`/`typecheck:no-unused` green。evidence: Explore false-empty スキャン（独立検証で実在確認、card-workspace 誤検出は除外済み）。
+
+**backlog（2026-06-29 Explore 第2弾スキャン、未着手・要個別検証）:** 高頻度ワークフロー画面で Explore が 8 件の false-empty 候補を報告。Explore は過剰報告するため**着手前に必ず実コードで独立検証**（前回 card-workspace は誤検出で除外済み）。各画面は二次 consumer（バッジ/カウント/別セクション/dropdown）も含め remediation に nuance あり。優先順（Explore 評価＋一部 Claude 検証）:
+
+- [x] **visit-record-detail-care-reports-billing-false-empty**（CRITICAL, Claude maker / Codex reviewer）: done（Codex APPROVED rev2 2026-06-29 05:07Z、commit `7c889f15`）。careReports/billingCandidates/residuals の3クエリが fetch 失敗を「報告書/請求候補/残薬ゼロ」に化けさせる false-empty。**rev1 で警告バナーのみ→Codex CHANGES_REQUESTED「警告はアクション抑制と対でないと危険」**（careReports error 時も report 生成メニューが actionable=重複生成余地、billing 0 前提で generate）。**rev2**: pure `buildPostVisitWorkflowActions` に `reportsError`/`billingCandidatesError` 入力を足し、error 時は report/billing アクションを generate 系でなく安全な非破壊 affordance(edit_visit_record / open_billing_candidates)へ切替。component で `handleGenerateReport` 早期 return＋`showAutomaticReportGeneration = !careReportsError && ...` guard。residuals queryFn を throw 化＋統合警告バナー+3refetch。teeth: pure 14(+2 error 抑制)、新規 component test harness 3(banner/refetch/residuals単独)。**教訓: workflow-action 文脈の false-empty は警告だけでなく派生アクションの抑制が必須**（[[careviax-fe-false-empty-fail-close]] に追記）。非ブロッキング follow-up: residuals error 時 readiness 残薬項目 done=false（許容）。
+- [x] **prescription-intake-secondary-lookups-false-empty**（CRITICAL, Claude maker / Codex reviewer）: done（Codex APPROVED 2026-06-29 05:22Z、commit `1ed993ce`）。`prescription-intake-form.tsx` の二次 lookup 3クエリが fetch 失敗を「該当なし/ケースなし/過去処方なし」に化けさせる false-empty。**独立検証で確証3件採用・2件除外**: casesData(HIGH, ケースselector全消失→submit検証はケース要求のトラップ)/patientsData(MEDIUM, 検索失敗が no-match と区別不能)/previousPrescriptionsData(MEDIUM-LOW, 引用導線消失→過去処方なしに化け) に `isError`/`refetch` を配線し inline ErrorState+再読み込み。除外: prescriberInstitutions(手入力 free-text fallback あり graceful)/selectedPatientData(識別 enrichment 専用 prop fallback で benign)。teeth: 新規 component test harness 4（props 無し→searchParams seed、useDebouncedValue identity mock、heavy child stub）。gate: vitest 4/4・eslint・prettier・diff-check・typecheck exit0・typecheck:no-unused exit0。Codex 非ブロッキング指摘#2(patient-search refetch assertion)は commit 前反映。
+- [x] **shifts-admin-sites-holidays-templates-false-empty**（HIGH, Claude maker / Codex reviewer）: done（Codex APPROVED 2026-06-29 05:36Z、commit `bcbb3ec3`）。`admin/shifts/shifts-content.tsx` の sitesData/holidaysData/templatesData が isError 未配線→補助マスター取得失敗が空 dropdown・休日マーカー欠落に化ける（既存 ErrorState L934 は pharmacists/shifts のみ判定）。**統合警告バナー**（visit-record 同型、ページ最上部、失敗データ名列挙＋失敗分のみ refetch、sites は「店舗未登録ではなく取得エラー」明示）。**honest scoping**: site_id 空での silent fail-open 保存は既に塞がれている（シフト保存 L442-445 throw／template 保存 L1527-1529 disable）ことをコードで確認し submit 抑制は不要と判断、Codex も明示承認。teeth: 既存 test harness を error 注入可能に refactor（既存5不変）＋3追加、vitest 8/8。gate 全 green。
+- [x] **drug-masters-admin-status-logs-false-empty**（HIGH/監査, Claude maker / Codex reviewer）: done（Codex APPROVED rev2 2026-06-29 05:59Z、commit `c03cae2b`）。sitesData/masterStatusData/importLogsData の isError 未配線→fetch 失敗が「拠点未登録/ステータス未取得/取込履歴なし」に化ける。importLogs(監査) は empty 分岐＋FilterSummaryBar「表示: 0件」の二重 false-zero、masterStatus は section 消失、sites は dropdown 空。ErrorState 配線＋importLogs 失敗時は「表示: 取得失敗」。**rev1 で FilterSummaryBar の false-zero を Codex CHANGES_REQUESTED（全 render consumer 網羅の盲点再発）→rev2 で修正**。sites は全 mutation が site_id 空で throw 済＝warning-only（Codex 承認）。teeth: 既存 harness を error 注入可能に refactor（既存61不変）＋3、vitest 64/64。gate 全 green。
+- [ ] **visit-record-residuals-false-empty**（HIGH, candidate #1 に内包）: 上記 visit-record-detail の残薬 query。care-reports/billing と同一ファイルゆえ 1 スライスで対応推奨。
+- [x] **schedules-calendar/proposals-preview-map-false-empty**（MEDIUM, Claude maker / Codex reviewer）: done（Codex APPROVED 2026-06-29 06:20Z、commit `135cf1f6`）。calendar-view/proposals の billing-preview-batch query（同一API）が isError 未配線→失敗時に請求サイクル警告（hasCadenceWarning / proposalWarningMessages）が無言で「警告なし」に化ける false-negative。preview は補助情報なので warning-only（グリッド/リスト直上に ErrorState 通知+retry、主データと core action は非抑制）。teeth: calendar=実QueryClient＋global.fetch を preview のみ !ok にする async、proposals=useQueryMock で preview queryKey に isError 注入。vitest 6/6・33/33。
+- [x] **qr-drafts-edit-cases-false-empty**（MEDIUM, Codex maker / Claude reviewer）: done（Claude APPROVED 2026-06-29 06:2xZ、Codex commit 予定）。`prescriptions/qr-drafts/[id]/page.tsx` casesData の isError 未配線→/api/cases 失敗が「アクティブケース無し」に化ける（確定フロー）。**fail-closed**（補助 preview と違い患者/処方確定フローなので warning-only でなく effectiveCaseId で confirm/deep-link を全 gate）＋stale case の membership check＋URLSearchParams で patient_id/case_id injection 対策。teeth: false-empty/stale-case(case_2 消失で確定 disabled＋deep-link から除去)/hostile-id(case_id 注入阻止を実証) 3本。Claude 独立検証 7/7。
+
+着手方針（合意済）: CRITICAL 2件（visit-record-detail / prescription-intake）を優先し maker/checker で順次。各着手前に実コード独立検証で誤検出除外。
+
+**進捗（2026-06-29 campaign = 全完了）**: CRITICAL#1 visit-record-detail=7c889f15 / CRITICAL#2 prescription-intake=1ed993ce / HIGH shifts-content=bcbb3ec3 / HIGH drug-master-content=c03cae2b(rev2) / MEDIUM schedules-preview-map=135cf1f6 / MEDIUM qr-drafts(Codex maker, Claude APPROVED)。+ Codex inventory-forecast F-006=2503917a(Claude APPROVED)。Explore 第2弾 8候補すべて maker/checker 相互レビューで処理済み。
+
+### false-empty 第3ラウンド（2026-06-29 Explore 第3弾、Claude 独立検証 triage 済）
+
+Explore が6候補報告→検証で整理。FE なので Claude 順次担当（Codex は backend/data-integrity 並行）。
+
+- [ ] **residual-medication-chart-false-empty**（HIGH 患者残薬, Claude 着手中→PATCH 済）: `src/components/features/patients/residual-medication-chart.tsx` の `useQuery` が isError 無し→fetch 失敗が「残薬データがありません」に化ける。medications-content の**子コンポで独立クエリ**（前回の親修正とは別物）。isError→ErrorState+retry、test +1。Codex review 待ち。
+- [ ] **data-explorer-false-empty**（MEDIUM-HIGH 監査, 確証）: `admin/data-explorer/data-explorer-content.tsx` modelsQuery(L120)/rowsQuery(L150) が isError 無し→DB アクセス失敗が「モデル/レコードなし」に化ける。監査・検証ツールの目的を損なう。
+- [ ] **drug-suggest-false-empty**（MEDIUM, 要追加検証）: `components/features/pharmacy/drug-suggest.tsx` suggestions が isError 無し→マスター検索失敗が「提案0件」に化ける。
+- [ ] **patient-care-team-panel-false-empty**（MEDIUM, 要追加検証）: `patients/[id]/patient-care-team-panel.tsx` 他職種マスター query が isError 無し→失敗が選択肢空に化ける。
+- [ ] **business-holidays-false-empty**（MEDIUM, 要追加検証）: `admin/business-holidays/business-holidays-content.tsx` holidays/sites が isError 無し→失敗が「休日/店舗なし」に化ける（shifts と同型）。
+- 除外: `visits/[id]/capture/capture-content.tsx`（Explore CRITICAL 主張だが既に「患者情報を取得できませんでした」分岐あり＝真の false-empty でない。retry 無しの軽微改善のみ）。
 
 ### inventory-forecast 患者別 run-out/緊急度（2026-06-27, /admin/inventory-forecast P2 #2 の honest follow-up）
 
 - [x] **inventory-forecast-patient-runout-urgency**（owner: Codex backend `ed4a11f4` + Claude FE `c8131d97`, est M, backend+analytics+FE）: done end-to-end。backend/API は `ed4a11f4` で `patientId`、`shortageDrugKeys`、`runOutDateKey`、`runOutBasis`、`urgency`、`shortageDetails[]`、施設バッチ coverage fields（`facilityPatientCount` / `shortagePatientCount` / `dataBackedPatientCount` / detail `affectedPatientCount`）を供給済み。run-out は `PrescriptionLine.end_date` 優先、欠損時は `start_date + days - 1`、`start_date` 欠損時は `unknown` とし、処方日からは捏造しない。FE は `c8131d97` で真の run-out/緊急度(StateBadge/6軸 token、normal はバッジなし、unknown は readonly)、basis honesty（推定/算出不可明記）、施設 coverage「N名中 M名に不足見込み」、不足薬リストを描画。Codex review APPROVED。backend focused Vitest/tsc/no-unused green、FE focused Vitest `1` file / `4` tests + scoped ESLint/Prettier + current-tree `tsc`/no-unused green。evidence: claude consult＋Codex CONSULT_REPLY(2026-06-27)、medical safety review High fix、`src/lib/analytics/inventory-forecast.ts`、`src/app/api/admin/inventory-forecast/route.ts`、`src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx`。
+- [x] **inventory-forecast-code-first-drug-identity（F-20260629-006）**（owner: Codex backend/analytics/FE, reviewer: Claude, est M, **medical-safety/code-first**）: done `51edfa10`（Claude APPROVED 2026-06-29 04:34Z、reviewer-audit subagent クロスチェック・vitest 3 files/38 独立再実行 green、Codex が path-scoped commit）。自動予測マッチングが drug 基底名 join をやめ DrugMaster.id 優先→canonical code identity（`master:<id>`>`code:<yj>`）。route が処方 line drug_code を yj/receipt/hot で解決し receipt/HOT は yj_code+id に canonicalize。missing_code/code_not_found/receipt-HOT ambiguous は自動不足行から除外し `unresolvedDrugs` として UI confirm-state panel「コード未解決の処方需要」(reason/code, requiredQty, affectedPatientCount, 要確認)で surface（anti-false-empty=needed demand を silent drop しない）。**意図的 code-first tightening**（同名・別コード薬剤を分離）で preservation でなく正しく framing 済み。ambiguity は auto-pick せず unresolved 化（F-005 precedence より安全側）。DrugMaster un-org-scoped findMany は真 global ゆえ正（≠ DrugAlertRule hybrid [[careviax-drugalertrule-hybrid-rls-failsafe]]）。response 純加算で後方互換、前スライス urgency/runOut/coverage 不変。
+- [x] **inventory-forecast-resolved-but-unstocked-demand-surface**（owner: Codex backend/analytics/FE, reviewer: Claude, est S/M, **correctness/follow-up**, F-006 監査由来 LOW pre-existing）: done `2503917a`。`src/lib/analytics/inventory-forecast.ts` の `drugs` builder から `stockByDrug.has(key)` 要件を外し、resolved コードで来週需要ありだが採用在庫レコードが無い薬剤も `DrugForecastRow` として残す。行/API/患者明細には required `stockRegistered` と `stockEvidence` を追加し、`stockEvidence: 'missing_adopted_stock_record'` は確認済み在庫不足ではなく「採用在庫台帳未登録」として surface。`summarizeInventoryForecast` は `stockRegistrationReviewCount` を `orderRequiredCount` / `orderCandidateCount` から分離し、登録済み在庫の発注不足と未登録在庫確認を混同しない。UI はテーブルに `未登録` / `未確認` / `登録確認`、患者カードに `在庫登録未確認` を出し、未登録薬を `不足薬` と表示しない。medical_safety_reviewer APPROVED、Claude APPROVED。validation: focused Vitest `3` files / `41` tests、scoped ESLint、scoped Prettier check、focused diff-check、`pnpm typecheck`、`pnpm typecheck:no-unused` green。
 
 ### RUN-20260627-OPDAY 稼働日カレンダー基盤（休日管理派生機能の土台、PLAN=docs/operating-day-calendar-plan.md rev3）
 
