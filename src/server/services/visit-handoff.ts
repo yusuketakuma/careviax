@@ -28,6 +28,37 @@ function readHandoffData(value: unknown): HandoffData | null {
   return handoff as HandoffData | null;
 }
 
+export function normalizeStructuredSoapForVisitRecordSave(
+  structuredSoap: unknown,
+  existingStructuredSoap?: unknown,
+): unknown {
+  const soap = readJsonObject(structuredSoap);
+  if (!soap) return structuredSoap;
+
+  const existingHandoff = readHandoffData(readStructuredSoap(existingStructuredSoap).handoff);
+  if (existingHandoff) {
+    return {
+      ...soap,
+      handoff: existingHandoff,
+    };
+  }
+
+  const handoff = readJsonObject(soap.handoff);
+  if (!handoff) return soap;
+
+  return {
+    ...soap,
+    handoff: {
+      ...handoff,
+      ai_extracted: false,
+      ai_confidence: null,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: null,
+    },
+  };
+}
+
 async function saveHandoffExtractionStatus(
   _db: DbClient,
   args: {

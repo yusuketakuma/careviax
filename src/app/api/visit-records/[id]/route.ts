@@ -37,6 +37,7 @@ import {
   syncVisitRecordLabObservations,
 } from '@/server/services/visit-record-derived-data';
 import { validatePreviousVisitReuseSource } from '@/server/services/visit-record-source-validation';
+import { normalizeStructuredSoapForVisitRecordSave } from '@/server/services/visit-handoff';
 
 function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
   const normalized = normalizeJsonInput(value);
@@ -281,6 +282,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       const schedule = existing.schedule;
       if (existing.version !== version) return 'conflict' as const;
+      const normalizedStructuredSoap =
+        rest.structured_soap !== undefined
+          ? normalizeStructuredSoapForVisitRecordSave(
+              rest.structured_soap,
+              existing.structured_soap,
+            )
+          : undefined;
 
       const residualMedicationCount =
         residual_medications?.length ??
@@ -330,7 +338,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const missingHomeVisit2026Items = getMissingHomeVisit2026CompletionItems({
         outcomeStatus: targetOutcome,
         structuredSoap:
-          (rest.structured_soap as Partial<StructuredSoap> | undefined) ??
+          (normalizedStructuredSoap as Partial<StructuredSoap> | undefined) ??
           (existing.structured_soap as Partial<StructuredSoap> | null),
         visitType: schedule.visit_type ?? null,
         residualMedicationCount,
@@ -344,13 +352,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         };
       }
 
-      if (rest.structured_soap !== undefined) {
+      if (normalizedStructuredSoap !== undefined) {
         const previousVisitReuseValidation = await validatePreviousVisitReuseSource({
           tx,
           orgId: ctx.orgId,
           patientId: existing.patient_id,
           caseId: schedule.case_id,
-          structuredSoap: rest.structured_soap,
+          structuredSoap: normalizedStructuredSoap,
         });
         if (!previousVisitReuseValidation.ok) {
           return {
@@ -387,6 +395,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...(rest.receipt_at !== undefined
             ? { receipt_at: rest.receipt_at === '' ? null : new Date(rest.receipt_at) }
             : {}),
+          ...(normalizedStructuredSoap !== undefined
+            ? { structured_soap: normalizeJsonInput(normalizedStructuredSoap) ?? Prisma.JsonNull }
+            : {}),
           ...(normalizedAttachments
             ? { attachments: normalizeInputJsonArray(normalizedAttachments) }
             : {}),
@@ -404,14 +415,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         await replaceVisitRecordResidualMedications(tx, ctx.orgId, id, residual_medications);
       }
 
-      if (rest.structured_soap !== undefined) {
+      if (normalizedStructuredSoap !== undefined) {
         await syncVisitRecordLabObservations(
           tx,
           ctx.orgId,
           existing.patient_id,
           id,
           visit_date ? new Date(visit_date) : existing.visit_date,
-          rest.structured_soap,
+          normalizedStructuredSoap,
         );
       }
 

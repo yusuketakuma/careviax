@@ -127,10 +127,14 @@ vi.mock('@/server/services/billing-evidence', () => ({
   listBillingEvidenceBlockers: listBillingEvidenceBlockersMock,
 }));
 
-vi.mock('@/server/services/visit-handoff', () => ({
-  processHandoffExtraction: processHandoffExtractionMock,
-  VisitHandoffStaleRecordError: class VisitHandoffStaleRecordError extends Error {},
-}));
+vi.mock('@/server/services/visit-handoff', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/visit-handoff')>();
+  return {
+    ...actual,
+    processHandoffExtraction: processHandoffExtractionMock,
+    VisitHandoffStaleRecordError: class VisitHandoffStaleRecordError extends Error {},
+  };
+});
 
 vi.mock('@/server/services/patient-state-snapshot', () => ({
   buildPatientStateSnapshot: buildPatientStateSnapshotMock,
@@ -2432,6 +2436,62 @@ describe('/api/visit-records POST', () => {
         requestContext: expect.objectContaining({
           userId: 'user_1',
           orgId: 'org_1',
+        }),
+      }),
+    );
+  });
+
+  it('does not accept server-managed handoff metadata from ordinary visit record creation', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: {
+            ...completedVisitStructuredSoap,
+            handoff: {
+              next_check_items: ['眠気確認'],
+              ongoing_monitoring: ['血圧変動'],
+              decision_rationale: '通常保存からの入力',
+              ai_extracted: true,
+              ai_confidence: 0.99,
+              confirmed_by: 'attacker',
+              confirmed_at: '2026-04-01T00:00:00.000Z',
+              extracted_at: '2026-04-01T00:00:00.000Z',
+            },
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    const savedSoap = visitRecordCreateMock.mock.calls[0][0].data.structured_soap as Record<
+      string,
+      unknown
+    >;
+    expect(savedSoap.handoff).toMatchObject({
+      next_check_items: ['眠気確認'],
+      ongoing_monitoring: ['血圧変動'],
+      decision_rationale: '通常保存からの入力',
+      ai_extracted: false,
+      ai_confidence: null,
+      confirmed_by: null,
+      confirmed_at: null,
+      extracted_at: null,
+    });
+    expect(processHandoffExtractionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        structuredSoap: expect.objectContaining({
+          handoff: expect.objectContaining({
+            ai_extracted: false,
+            confirmed_by: null,
+            confirmed_at: null,
+          }),
         }),
       }),
     );

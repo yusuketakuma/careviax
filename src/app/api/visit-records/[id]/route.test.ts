@@ -826,6 +826,102 @@ describe('/api/visit-records/[id]', () => {
     expect(patientLabObservationCreateManyMock.mock.calls[0][0].data).toHaveLength(2);
   });
 
+  it('preserves server-owned handoff metadata when ordinary structured SOAP is patched', async () => {
+    const existingHandoff = {
+      next_check_items: ['既存の確認事項'],
+      ongoing_monitoring: ['既存の観察事項'],
+      decision_rationale: '確認済みの判断根拠',
+      ai_extracted: true,
+      ai_confidence: 0.82,
+      confirmed_by: 'pharmacist_1',
+      confirmed_at: '2026-04-01T00:00:00.000Z',
+      extracted_at: '2026-03-31T23:00:00.000Z',
+    };
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'visit_1',
+        version: 1,
+        patient_id: 'patient_1',
+        visit_date: new Date('2026-03-28T00:00:00.000Z'),
+        outcome_status: 'delivery_only',
+        structured_soap: {
+          subjective: { symptom_checks: [] },
+          objective: {
+            medication_status: 'full_compliance',
+            adherence_score: 4,
+            side_effect_checks: [],
+          },
+          assessment: { problem_checks: [] },
+          plan: { intervention_checks: [] },
+          handoff: existingHandoff,
+        },
+        schedule: {
+          case_id: 'case_1',
+          pharmacist_id: 'user_1',
+          visit_type: 'regular',
+          case_: {
+            primary_pharmacist_id: 'user_primary',
+            backup_pharmacist_id: null,
+            required_visit_support: null,
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'visit_1',
+        version: 2,
+        patient_id: 'patient_1',
+        structured_soap: {},
+      });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        structured_soap: {
+          subjective: { symptom_checks: [] },
+          objective: {
+            medication_status: 'partial_compliance',
+            adherence_score: 3,
+            side_effect_checks: [],
+          },
+          assessment: { problem_checks: [] },
+          plan: { intervention_checks: [] },
+          handoff: {
+            next_check_items: ['不正な上書き'],
+            ongoing_monitoring: [],
+            decision_rationale: '不正な根拠',
+            ai_extracted: true,
+            ai_confidence: 1,
+            confirmed_by: 'attacker',
+            confirmed_at: '2026-04-02T00:00:00.000Z',
+            extracted_at: '2026-04-02T00:00:00.000Z',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          structured_soap: expect.objectContaining({
+            handoff: existingHandoff,
+          }),
+        }),
+      }),
+    );
+    const persistedSoap = visitRecordUpdateManyMock.mock.calls[0][0].data.structured_soap as Record<
+      string,
+      unknown
+    >;
+    expect(JSON.stringify(persistedSoap)).not.toContain('attacker');
+    expect(JSON.stringify(persistedSoap)).not.toContain('不正な上書き');
+  });
+
   it('rejects schedule and patient reassignment on PATCH before updating', async () => {
     const response = await PATCH(
       createRequest({

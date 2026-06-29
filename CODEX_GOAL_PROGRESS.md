@@ -23,6 +23,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Visit Handoff Trust Boundary - 2026-06-30 01:01 JST
+
+- Scope:
+  - Continued the codex2 visit-time / report / interprofessional sharing work after commit `34750899`.
+  - Addressed the privacy reviewer residual risk that generic structured SOAP writes could carry server-owned handoff confirmation fields.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, or destructive operation was performed.
+- Fixed:
+  - Added a shared `normalizeStructuredSoapForVisitRecordSave` helper for ordinary visit record saves.
+  - `POST /api/visit-records` now clears untrusted `handoff.ai_extracted`, `ai_confidence`, `confirmed_by`, `confirmed_at`, and `extracted_at` before persistence and before background handoff extraction.
+  - `PATCH /api/visit-records/[id]` now preserves an existing server-owned handoff over incoming ordinary structured SOAP payloads, preventing forged confirmation or unreviewed handoff content changes from being persisted by the general visit-record form/API.
+  - Existing SOAP validation, previous-visit reuse validation, derived lab sync, and handoff extraction now consume the normalized structured SOAP.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-handoff.test.ts 'src/app/api/visit-records/route.test.ts' 'src/app/api/visit-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `106` tests.
+  - `pnpm exec eslint --max-warnings=0 src/server/services/visit-handoff.ts src/server/services/visit-handoff.test.ts 'src/app/api/visit-records/route.ts' 'src/app/api/visit-records/route.test.ts' 'src/app/api/visit-records/[id]/route.ts' 'src/app/api/visit-records/[id]/route.test.ts'`: passed.
+  - `pnpm exec prettier --check ...handoff/visit-record files...`: passed.
+  - `git diff --check -- ...handoff/visit-record files...`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Send agmsg `PATCH_REVIEW_REQUEST`, address any blocker, then commit the codex2-owned slice.
+
 ### Scheduling P3 Billing Cadence Caps - 2026-06-30 00:58 JST
 
 - Scope:

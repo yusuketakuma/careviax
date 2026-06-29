@@ -42,7 +42,10 @@ import {
   listBillingEvidenceBlockers,
   upsertBillingEvidenceForVisit,
 } from '@/server/services/billing-evidence';
-import { processHandoffExtraction } from '@/server/services/visit-handoff';
+import {
+  normalizeStructuredSoapForVisitRecordSave,
+  processHandoffExtraction,
+} from '@/server/services/visit-handoff';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { buildPatientStateSnapshot } from '@/server/services/patient-state-snapshot';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
@@ -1010,9 +1013,12 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
   const scheduleStatus = scheduleStatusByOutcome[outcome_status];
   const shouldAdvanceVisitWorkflow = cycleCompletionOutcomes.has(outcome_status);
   const reductionCandidates = collectResidualReductionCandidates(residual_medications);
+  const normalizedStructuredSoap = normalizeStructuredSoapForVisitRecordSave(
+    structured_soap,
+  ) as typeof structured_soap;
 
-  const soapTextOverrides: Partial<ReturnType<typeof buildAllSoapTexts>> = structured_soap
-    ? buildAllSoapTexts(structured_soap as StructuredSoap)
+  const soapTextOverrides: Partial<ReturnType<typeof buildAllSoapTexts>> = normalizedStructuredSoap
+    ? buildAllSoapTexts(normalizedStructuredSoap as StructuredSoap)
     : {};
   const soapAssessment =
     typeof soapTextOverrides.soap_assessment === 'string'
@@ -1090,7 +1096,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       orgId: ctx.orgId,
       patientId: careCase.patient_id,
       caseId: schedule.case_id,
-      structuredSoap: structured_soap,
+      structuredSoap: normalizedStructuredSoap,
     });
     if (!previousVisitReuseValidation.ok) {
       return {
@@ -1177,7 +1183,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
 
     const missingHomeVisit2026Items = getMissingHomeVisit2026CompletionItems({
       outcomeStatus: outcome_status,
-      structuredSoap: structured_soap as Partial<StructuredSoap> | null | undefined,
+      structuredSoap: normalizedStructuredSoap as Partial<StructuredSoap> | null | undefined,
       visitType: schedule.visit_type,
       residualMedicationCount: residual_medications?.length ?? 0,
       billingBlockers,
@@ -1251,7 +1257,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
           outcome_status,
           ...soapTextOverrides,
           soap_plan: soapPlan,
-          structured_soap: normalizeOptionalJsonInput(structured_soap),
+          structured_soap: normalizeOptionalJsonInput(normalizedStructuredSoap),
           visit_geo_log: normalizeOptionalJsonInput(visit_geo_log),
           patient_state_snapshot: patientStateSnapshot ?? undefined,
           version: { increment: 1 },
@@ -1285,7 +1291,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
             outcome_status,
             ...soapTextOverrides,
             soap_plan: soapPlan,
-            structured_soap: normalizeOptionalJsonInput(structured_soap),
+            structured_soap: normalizeOptionalJsonInput(normalizedStructuredSoap),
             visit_geo_log: normalizeOptionalJsonInput(visit_geo_log),
             patient_state_snapshot: patientStateSnapshot ?? undefined,
           } as Prisma.VisitRecordUncheckedCreateInput,
@@ -1311,7 +1317,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       careCase.patient_id,
       record.id,
       visitRecordedAt,
-      structured_soap,
+      normalizedStructuredSoap,
     );
 
     if (schedule.visit_type === 'initial' && firstVisitDocumentOutcomes.has(outcome_status)) {
@@ -1649,7 +1655,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     });
 
     let handoffExtraction: VisitRecordHandoffExtractionPayload | null = null;
-    if (structured_soap) {
+    if (normalizedStructuredSoap) {
       const patient = await tx.patient.findFirst({
         where: {
           id: careCase.patient_id,
@@ -1664,7 +1670,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
         handoffExtraction = {
           patientId: careCase.patient_id,
           patientName: patient.name,
-          structuredSoap: structured_soap as StructuredSoap,
+          structuredSoap: normalizedStructuredSoap as StructuredSoap,
           soapAssessment,
           soapPlan,
           expectedVersion: record.version,

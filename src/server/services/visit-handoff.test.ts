@@ -32,6 +32,7 @@ vi.mock('./operational-tasks', () => ({
 import {
   processHandoffExtraction,
   confirmHandoff,
+  normalizeStructuredSoapForVisitRecordSave,
   VISIT_HANDOFF_EXTRACTION_FAILED_MESSAGE,
 } from './visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
@@ -42,6 +43,74 @@ const baseSoap: StructuredSoap = {
   assessment: { problem_checks: [] },
   plan: { intervention_checks: [] },
 };
+
+describe('normalizeStructuredSoapForVisitRecordSave', () => {
+  it('removes server-managed handoff metadata from ordinary visit record saves', () => {
+    const normalized = normalizeStructuredSoapForVisitRecordSave({
+      ...baseSoap,
+      handoff: {
+        next_check_items: ['眠気確認'],
+        ongoing_monitoring: ['血圧'],
+        decision_rationale: '患者入力の根拠',
+        ai_extracted: true,
+        ai_confidence: 0.91,
+        confirmed_by: 'attacker',
+        confirmed_at: '2026-04-01T00:00:00.000Z',
+        extracted_at: '2026-04-01T00:00:00.000Z',
+      },
+    });
+
+    expect(normalized).toMatchObject({
+      handoff: {
+        next_check_items: ['眠気確認'],
+        ongoing_monitoring: ['血圧'],
+        decision_rationale: '患者入力の根拠',
+        ai_extracted: false,
+        ai_confidence: null,
+        confirmed_by: null,
+        confirmed_at: null,
+        extracted_at: null,
+      },
+    });
+  });
+
+  it('preserves the existing server-owned handoff over an ordinary structured SOAP patch', () => {
+    const existingHandoff = {
+      next_check_items: ['既存の確認事項'],
+      ongoing_monitoring: ['既存の観察'],
+      decision_rationale: '確認済みの根拠',
+      ai_extracted: true,
+      ai_confidence: 0.81,
+      confirmed_by: 'pharmacist-1',
+      confirmed_at: '2026-04-02T00:00:00.000Z',
+      extracted_at: '2026-04-01T00:00:00.000Z',
+    };
+
+    const normalized = normalizeStructuredSoapForVisitRecordSave(
+      {
+        ...baseSoap,
+        handoff: {
+          next_check_items: ['上書き要求'],
+          ongoing_monitoring: [],
+          decision_rationale: '上書き根拠',
+          ai_extracted: true,
+          ai_confidence: 1,
+          confirmed_by: 'attacker',
+          confirmed_at: '2026-04-03T00:00:00.000Z',
+          extracted_at: '2026-04-03T00:00:00.000Z',
+        },
+      },
+      {
+        ...baseSoap,
+        handoff: existingHandoff,
+      },
+    );
+
+    expect(normalized).toMatchObject({
+      handoff: existingHandoff,
+    });
+  });
+});
 
 describe('processHandoffExtraction', () => {
   beforeEach(() => {
