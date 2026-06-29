@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0612 JST
+
+- current task: harden admin external-professionals mutation responses so other-profession master create/update/delete endpoints are no-store and unexpected failures use sanitized envelopes.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, `git diff` for the admin external-professionals routes/tests, established no-store/sanitized route patterns in care-team and pharmacist routes, `src/app/api/admin/external-professionals/route.ts`, `src/app/api/admin/external-professionals/route.test.ts`, `src/app/api/admin/external-professionals/[id]/route.ts`, `src/app/api/admin/external-professionals/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/admin/external-professionals/route.ts`, `src/app/api/admin/external-professionals/route.test.ts`, `src/app/api/admin/external-professionals/[id]/route.ts`, `src/app/api/admin/external-professionals/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex-owned visit-schedule WIP.
+- bugs found: `POST /api/admin/external-professionals`, `PATCH /api/admin/external-professionals/[id]`, and `DELETE /api/admin/external-professionals/[id]` returned PHI-adjacent other-profession master mutation responses without the route's sensitive no-store envelope. Unexpected plumbing/handler failures could also fall through to framework 500 behavior instead of a fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced caching and raw-error disclosure risk for other-profession names, organizations, facilities, phone/fax/email/contact preferences, and care-team link counts in admin mutation responses. Auth, permissions, org scoping, facility reference validation, response status/body shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps existing route responses and adds focused assertions.
+- validation commands: `pnpm exec prettier --write src/app/api/admin/external-professionals/route.ts src/app/api/admin/external-professionals/route.test.ts 'src/app/api/admin/external-professionals/[id]/route.ts' 'src/app/api/admin/external-professionals/[id]/route.test.ts'`; `pnpm exec vitest run src/app/api/admin/external-professionals/route.test.ts 'src/app/api/admin/external-professionals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the four admin external-professionals files; scoped `git diff --check` on the four admin external-professionals files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused admin external-professionals Vitest passed `2` files / `27` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm format:check` passed. `pnpm lint` exited `0`; warnings were limited to codex-owned visit-schedule WIP (`src/app/api/visit-schedule-proposals/route.ts`) and codex was notified. Claude returned `PATCH_REVIEW_RESULT: APPROVED` for the revised sanitized-catch patch after reviewing `unstable_rethrow`, no-store coverage, raw name/phone non-leakage, and focused validation.
+- remaining work: explicit-path stage only this admin external-professionals slice plus the admin ledger hunks, commit, and send agmsg FYI.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0556 JST
 
 - current task: add sensitive no-store response headers and sanitized unexpected-error envelopes to `PUT /api/patients/[id]/care-team` without changing care-team replacement semantics.

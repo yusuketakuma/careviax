@@ -1,3 +1,4 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { parseBoundedInteger } from '@/lib/api/pagination';
@@ -175,7 +176,7 @@ export async function GET(
   }
 }
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -221,3 +222,12 @@ export const POST = withAuthContext(
     message: '他職種マスターの更新権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

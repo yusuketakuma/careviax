@@ -69,6 +69,11 @@ function createDeleteRequest(id = 'external_1') {
   } satisfies NextRequestInit);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/admin/external-professionals/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -137,6 +142,7 @@ describe('/api/admin/external-professionals/[id]', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       data: {
         id: 'external_1',
@@ -162,6 +168,7 @@ describe('/api/admin/external-professionals/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(assertFacilityReferenceMock).toHaveBeenCalledWith(
       expect.objectContaining({
         externalProfessional: expect.any(Object),
@@ -200,6 +207,7 @@ describe('/api/admin/external-professionals/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(externalProfessionalUpdateMock).toHaveBeenCalledWith({
       where: { id: 'external_1' },
       data: expect.objectContaining({
@@ -229,6 +237,7 @@ describe('/api/admin/external-professionals/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -248,6 +257,7 @@ describe('/api/admin/external-professionals/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(externalProfessionalFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
@@ -260,6 +270,7 @@ describe('/api/admin/external-professionals/[id]', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -269,14 +280,55 @@ describe('/api/admin/external-professionals/[id]', () => {
     expect(externalProfessionalUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when updates fail unexpectedly', async () => {
+    const rawError = '他職種A 03-1111-2222 external professional update failure';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = (await PATCH(
+      createPatchRequest({
+        name: '訪問 看護',
+        phone: '03-1111-2222',
+      }),
+      {
+        params: Promise.resolve({ id: 'external_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('他職種A');
+    expect(JSON.stringify(body)).not.toContain('03-1111-2222');
+  });
+
   it('deletes an external professional row', async () => {
     const response = (await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'external_1' }),
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(externalProfessionalDeleteMock).toHaveBeenCalledWith({
       where: { id: 'external_1' },
     });
+  });
+
+  it('returns a sanitized no-store 500 when deletes fail unexpectedly', async () => {
+    const rawError = '他職種A 03-1111-2222 external professional delete failure';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = (await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: 'external_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('他職種A');
+    expect(JSON.stringify(body)).not.toContain('03-1111-2222');
   });
 });

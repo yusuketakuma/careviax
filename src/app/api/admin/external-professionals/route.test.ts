@@ -104,6 +104,11 @@ function createExternalProfessionalFixture(id: string, name = '訪問 看護') {
   };
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/admin/external-professionals', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -148,8 +153,7 @@ describe('/api/admin/external-professionals', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
-    expect(response.headers.get('Pragma')).toBe('no-cache');
+    expectSensitiveNoStore(response);
     expect(externalProfessionalFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -388,6 +392,7 @@ describe('/api/admin/external-professionals', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(assertFacilityReferenceMock).toHaveBeenCalledWith(
       expect.objectContaining({
         externalProfessional: expect.any(Object),
@@ -433,6 +438,7 @@ describe('/api/admin/external-professionals', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(externalProfessionalCreateMock).toHaveBeenCalledWith({
       data: {
         org_id: 'org_1',
@@ -471,6 +477,7 @@ describe('/api/admin/external-professionals', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -487,6 +494,7 @@ describe('/api/admin/external-professionals', () => {
     const response = (await POST(createJsonAuthRequest([]), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
     expect(externalProfessionalCreateMock).not.toHaveBeenCalled();
@@ -496,11 +504,34 @@ describe('/api/admin/external-professionals', () => {
     const response = (await POST(createMalformedJsonAuthRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(assertFacilityReferenceMock).not.toHaveBeenCalled();
     expect(externalProfessionalCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when create fails unexpectedly', async () => {
+    const rawError = '他職種A 03-1111-2222 external professional create failure';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = (await POST(
+      createJsonAuthRequest({
+        profession_type: 'care_manager',
+        name: '山田 ケアマネ',
+        phone: '03-1111-2222',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('他職種A');
+    expect(JSON.stringify(body)).not.toContain('03-1111-2222');
   });
 });

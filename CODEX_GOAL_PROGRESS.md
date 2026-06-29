@@ -23,6 +23,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Admin External-Professionals Mutation No-Store / Sanitized Envelope - 2026-06-30 06:12 JST
+
+- Scope:
+  - Continued codex2's other-profession collaboration objective on admin external professional master mutation endpoints.
+  - Focused only on sensitive response cache headers and unexpected-error envelope behavior for `POST /api/admin/external-professionals`, `PATCH /api/admin/external-professionals/[id]`, and `DELETE /api/admin/external-professionals/[id]`.
+  - Preserved codex-owned visit-schedule WIP under `src/app/api/visit-schedule-proposals/route.ts`, `src/app/api/visit-schedule-proposals/route.test.ts`, `src/app/api/visit-schedules/generate/route.ts`, `src/app/api/visit-schedules/generate/route.test.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/lib/validations/visit-schedule.ts`, and `src/server/services/visit-schedule-service.ts`.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Admin external-professionals POST/PATCH/DELETE now wrap authenticated responses with `withSensitiveNoStore`, matching the existing GET response envelope.
+  - Unexpected POST/PATCH/DELETE failures now use the established `unstable_rethrow` + fixed no-store `internalError()` pattern, preventing framework 500 behavior from omitting no-store or exposing raw failure text.
+- Safety:
+  - Reduces PHI-adjacent caching risk for other-profession names, facility links, organization/contact fields, and mutation status envelopes.
+  - Reduces raw unexpected-error disclosure risk for other-profession names and phone/fax/email values while preserving auth/permission behavior, facility reference validation, response body/status shapes, and existing schema validation.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only sets fixed response headers and catches unexpected route exceptions.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/admin/external-professionals/route.ts src/app/api/admin/external-professionals/route.test.ts 'src/app/api/admin/external-professionals/[id]/route.ts' 'src/app/api/admin/external-professionals/[id]/route.test.ts'`: passed.
+  - `pnpm exec vitest run src/app/api/admin/external-professionals/route.test.ts 'src/app/api/admin/external-professionals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `27` tests.
+  - Scoped ESLint on the four admin external-professionals files: passed.
+  - Scoped `git diff --check` on the four admin external-professionals files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: exited `0`; warnings were limited to codex-owned visit-schedule WIP and codex was notified.
+  - `pnpm format:check`: passed.
+- Review:
+  - Initial `PATCH_REVIEW_REQUEST` was sent to Claude and codex with scope and validation evidence.
+  - After self-review found missing outer sanitized catch, the patch was revised and `PATCH_REVIEW_REQUEST_UPDATE` was sent.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` for the revised patch after reviewing the outer catch gap, `unstable_rethrow` control-flow behavior, no-store coverage, raw name/phone non-leakage tests, and focused validation.
+- Remaining:
+  - Stage only explicit codex2-owned files plus the admin ledger hunks and commit while preserving codex visit-schedule WIP.
+
 ### Care-Team PUT No-Store / Sanitized Envelope - 2026-06-30 05:56 JST
 
 - Scope:

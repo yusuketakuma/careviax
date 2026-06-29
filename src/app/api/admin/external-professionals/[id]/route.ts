@@ -1,3 +1,4 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest, routeContext: { params: Promise<{ id
   }
 }
 
-export const PATCH = withAuthContext<{ id: string }>(
+const authenticatedPATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
     const payload = await readJsonObjectRequestBody(req);
@@ -148,7 +149,7 @@ export const PATCH = withAuthContext<{ id: string }>(
   },
 );
 
-export const DELETE = withAuthContext<{ id: string }>(
+const authenticatedDELETE = withAuthContext<{ id: string }>(
   async (_req, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
 
@@ -169,3 +170,21 @@ export const DELETE = withAuthContext<{ id: string }>(
     message: '他職種マスターの更新権限がありません',
   },
 );
+
+export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
+
+export const DELETE: typeof authenticatedDELETE = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedDELETE(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
