@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { parseJsonObjectText } from '@/lib/admin/json-editor';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { ErrorState } from '@/components/ui/error-state';
 
 type ExplorerField = {
   name: string;
@@ -291,34 +292,51 @@ export function DataExplorerContent() {
             </Select>
 
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-              {filteredModels.map((model) => (
-                <button
-                  key={model.tableName}
-                  type="button"
-                  onClick={() => {
-                    setSelectedTable(model.tableName);
-                    setSelectedRowId('');
-                    setRowSearch('');
-                  }}
-                  className={`w-full rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
-                    effectiveSelectedTable === model.tableName
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border bg-card hover:bg-muted/40'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium text-foreground">{model.tableName}</div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">{model.modelName}</div>
+              {modelsQuery.isLoading ? (
+                <div className="text-sm text-muted-foreground">読み込み中...</div>
+              ) : modelsQuery.isError ? (
+                <ErrorState
+                  title="モデル一覧を取得できませんでした"
+                  description="監査対象テーブルの一覧を表示できていません。時間をおいて再読み込みしてください。"
+                  action={{ label: '再読み込み', onClick: () => void modelsQuery.refetch() }}
+                  headingLevel={3}
+                />
+              ) : filteredModels.length ? (
+                filteredModels.map((model) => (
+                  <button
+                    key={model.tableName}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTable(model.tableName);
+                      setSelectedRowId('');
+                      setRowSearch('');
+                    }}
+                    className={`w-full rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
+                      effectiveSelectedTable === model.tableName
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border bg-card hover:bg-muted/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium text-foreground">{model.tableName}</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">
+                          {model.modelName}
+                        </div>
+                      </div>
+                      <Badge variant="outline">{model.rowCount} rows</Badge>
                     </div>
-                    <Badge variant="outline">{model.rowCount} rows</Badge>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                    <Badge variant="secondary">{model.coverageLabel}</Badge>
-                    <Badge variant="outline">{model.editableFieldCount} editable</Badge>
-                  </div>
-                </button>
-              ))}
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                      <Badge variant="secondary">{model.coverageLabel}</Badge>
+                      <Badge variant="outline">{model.editableFieldCount} editable</Badge>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                  一致するモデルがありません。
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -327,9 +345,13 @@ export function DataExplorerContent() {
           <CardHeader>
             <CardTitle>{effectiveSelectedTable || 'テーブル選択待ち'}</CardTitle>
             <CardDescription>
-              {tableData
-                ? `${tableData.coverageLabel} / ${tableData.totalCount} 件`
-                : '左の一覧からテーブルを選択してください。'}
+              {rowsQuery.isError
+                ? 'テーブルデータを取得できませんでした。'
+                : tableData
+                  ? `${tableData.coverageLabel} / ${tableData.totalCount} 件`
+                  : effectiveSelectedTable
+                    ? 'テーブルデータを読み込んでいます。'
+                    : '左の一覧からテーブルを選択してください。'}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex h-full min-h-0 flex-col gap-3">
@@ -348,6 +370,13 @@ export function DataExplorerContent() {
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
               {rowsQuery.isLoading ? (
                 <div className="text-sm text-muted-foreground">読み込み中...</div>
+              ) : rowsQuery.isError ? (
+                <ErrorState
+                  title="テーブルデータを取得できませんでした"
+                  description="レコード一覧を表示できていません。「レコードなし」ではなく取得エラーです。再読み込みしてください。"
+                  action={{ label: '再読み込み', onClick: () => void rowsQuery.refetch() }}
+                  headingLevel={3}
+                />
               ) : tableData?.rows.length ? (
                 tableData.rows.map((row, index) => {
                   const rowId = String(row.id);

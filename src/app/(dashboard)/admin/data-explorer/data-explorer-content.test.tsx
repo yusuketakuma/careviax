@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { DataExplorerContent } from './data-explorer-content';
@@ -10,6 +10,8 @@ setupDomTestEnv();
 const useOrgIdMock = vi.hoisted(() => vi.fn(() => 'org_1'));
 const mutationMutateMock = vi.hoisted(() => vi.fn());
 const queryOptionsMock = vi.hoisted(() => vi.fn());
+const queryErrorKeysMock = vi.hoisted(() => new Set<string>());
+const queryRefetchMocks = vi.hoisted(() => new Map<string, ReturnType<typeof vi.fn>>());
 const rowsPayloadMock = vi.hoisted(() => ({
   value: {
     modelName: 'Patient',
@@ -100,6 +102,22 @@ vi.mock('@tanstack/react-query', () => ({
     queryOptionsMock(options);
     const { queryKey } = options;
     const key = queryKey[0];
+    const queryName = String(key);
+    let refetch = queryRefetchMocks.get(queryName);
+    if (!refetch) {
+      refetch = vi.fn();
+      queryRefetchMocks.set(queryName, refetch);
+    }
+
+    if (queryErrorKeysMock.has(queryName)) {
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        error: new Error('failed'),
+        refetch,
+      };
+    }
 
     if (key === 'admin-data-explorer-models') {
       return {
@@ -118,6 +136,8 @@ vi.mock('@tanstack/react-query', () => ({
           ],
         },
         isLoading: false,
+        isError: false,
+        refetch,
       };
     }
 
@@ -127,10 +147,12 @@ vi.mock('@tanstack/react-query', () => ({
           data: rowsPayloadMock.value,
         },
         isLoading: false,
+        isError: false,
+        refetch,
       };
     }
 
-    return { data: null, isLoading: false };
+    return { data: null, isLoading: false, isError: false, refetch };
   },
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
@@ -147,6 +169,8 @@ vi.mock('sonner', () => ({
 describe('DataExplorerContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    queryErrorKeysMock.clear();
+    queryRefetchMocks.clear();
     useOrgIdMock.mockReturnValue('org_1');
     resetRowsPayload();
   });
@@ -243,5 +267,29 @@ describe('DataExplorerContent', () => {
     expect(saveButton.getAttribute('aria-describedby')).toBe(reason.id);
     expect(resetButton.disabled).toBe(true);
     expect(resetButton.getAttribute('aria-describedby')).toBe(reason.id);
+  });
+
+  it('shows a retryable error instead of an empty model list when models fail to load', () => {
+    queryErrorKeysMock.add('admin-data-explorer-models');
+
+    render(<DataExplorerContent />);
+
+    expect(screen.getByText('モデル一覧を取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('一致するモデルがありません。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(queryRefetchMocks.get('admin-data-explorer-models')).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a retryable error instead of an empty row list when rows fail to load', () => {
+    queryErrorKeysMock.add('admin-data-explorer-rows');
+
+    render(<DataExplorerContent />);
+
+    expect(screen.getByText('テーブルデータを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('一致するレコードがありません。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(queryRefetchMocks.get('admin-data-explorer-rows')).toHaveBeenCalledTimes(1);
   });
 });
