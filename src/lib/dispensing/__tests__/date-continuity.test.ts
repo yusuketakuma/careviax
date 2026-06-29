@@ -6,6 +6,7 @@ import { checkDateContinuity } from '../date-continuity';
 function makeLine(overrides: {
   id: string;
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code?: string | null;
   start_date?: Date | null;
   end_date?: Date | null;
@@ -13,6 +14,7 @@ function makeLine(overrides: {
   return {
     id: overrides.id,
     drug_name: overrides.drug_name,
+    drug_master_id: overrides.drug_master_id ?? null,
     drug_code: overrides.drug_code ?? null,
     start_date: overrides.start_date ?? null,
     end_date: overrides.end_date ?? null,
@@ -244,6 +246,37 @@ describe('checkDateContinuity', () => {
     const warnings = checkDateContinuity(current, prev);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ type: 'gap', gapDays: 4 }); // matched CORRECT_CODE end=3-28, not OTHER_CODE end=3-20
+  });
+
+  it('matches by drug_master_id before drug_code when checking continuity', () => {
+    const prev = [
+      makeLine({
+        id: 'p1',
+        drug_name: '旧表示名',
+        drug_master_id: 'drug_master_1',
+        drug_code: 'YJ_OLD',
+        end_date: new Date('2026-03-28'),
+      }),
+    ];
+    const current = [
+      makeLine({
+        id: 'c1',
+        drug_name: '新表示名',
+        drug_master_id: 'drug_master_1',
+        drug_code: 'YJ_NEW',
+        start_date: new Date('2026-04-01'),
+      }),
+    ];
+
+    const warnings = checkDateContinuity(current, prev);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      lineId: 'c1',
+      drugName: '新表示名',
+      drugCode: 'YJ_NEW',
+      type: 'gap',
+      gapDays: 4,
+    });
   });
 
   it('falls back to drug_name matching when drug_code is null', () => {

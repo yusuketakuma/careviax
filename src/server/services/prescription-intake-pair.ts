@@ -7,6 +7,7 @@ type PrescriptionIntakeReader = {
 
 export type PrescriptionIntakeDiffLine = MedicationDiffLine & {
   id: string;
+  drug_master_id: string | null;
   drug_code: string | null;
   days: number | null;
   start_date: Date | null;
@@ -23,6 +24,7 @@ export type PrescriptionIntakeForDiff = {
 const PRESCRIPTION_INTAKE_DIFF_LINE_SELECT = {
   id: true,
   drug_name: true,
+  drug_master_id: true,
   drug_code: true,
   dose: true,
   frequency: true,

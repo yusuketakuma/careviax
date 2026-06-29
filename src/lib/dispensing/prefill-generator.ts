@@ -85,6 +85,7 @@ export async function generateDispensePrefill(
           id: true,
           line_number: true,
           drug_name: true,
+          drug_master_id: true,
           drug_code: true,
           dose: true,
           frequency: true,

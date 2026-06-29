@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### PrescriptionLine Master-First Identity Cleanup - 2026-06-29 17:56 JST
+
+- Scope:
+  - Honored the user request to commit all current dirty work and return the worktree to a clean state before resuming.
+  - Continued the medication-code roadmap by making downstream `PrescriptionLine` consumers read `drug_master_id` when available, then canonical `drug_code`, then unresolved `drug_name`.
+  - No migration application, backfill, push, deploy, auth/RLS, permission, or destructive DB operation was performed.
+- Fixed:
+  - `medicationIdentityKey()` and `prescriptionLineKey()` now prefer `master:<drug_master_id>` over `code:<drug_code>` for prescription diffing.
+  - Prescription intake duplicate detection and dispensing date-continuity checks now use the same master-first identity path.
+  - Visit preparation, patient prescriptions, dispense workbench, prefill generation, visit brief, patient workspace, and prescription-intake pair projections now select `drug_master_id` so shared diff/continuity logic can avoid falling back to names.
+  - CDS now resolves `PrescriptionLine.drug_master_id` to `DrugMaster.yj_code` before running interaction, duplicate, max-days, expiry, allergy, narcotic, high-risk, elderly, renal, package-insert, monitoring, and DO-prescription checks.
+  - CDS emits a warning data-quality alert when a prescription line's stored `drug_code` conflicts with the resolved `DrugMaster.yj_code`.
+  - Updated `docs/drug-code-master-architecture.md` to record the source-code audit boundary and current master-first downstream follow-up.
+- Validation:
+  - `pnpm exec vitest run src/server/cds/checker.test.ts src/lib/prescription/medication-diff.test.ts src/lib/prescription/intake-validation.test.ts src/lib/dispensing/__tests__/date-continuity.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `57` tests.
+  - `pnpm exec vitest run src/lib/dispensing/__tests__/prefill-generator.test.ts src/server/services/visit-brief.test.ts src/server/services/patient-detail-workspace.test.ts 'src/app/api/patients/[id]/prescriptions/route.test.ts' 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `6` files / `94` tests.
+  - After formatting `src/server/cds/checker.ts`, `pnpm exec vitest run src/server/cds/checker.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `20` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed after formatting.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Worktree should be clean after this cleanup commit.
+  - Next medication-code candidates remain pharmacist resolution UI/API for `review_required`, dry-run backfill for existing `PrescriptionLine.drug_master_id`, and package-unit GS1/GTIN modeling.
+
 ### Deterministic Drug Code Identity Resolver - 2026-06-29 17:01 JST
 
 - Scope:

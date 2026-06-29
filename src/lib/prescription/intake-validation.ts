@@ -3,6 +3,7 @@ import { medicationIdentityKey } from '@/lib/prescription/medication-diff';
 export type IntakeValidationLine = {
   line_number: number;
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code?: string | null;
 };
 

@@ -32,6 +32,33 @@ describe('collectDuplicatePrescriptionLines', () => {
     ]);
   });
 
+  it('groups duplicates by drug_master_id before drug_code differences', () => {
+    expect(
+      collectDuplicatePrescriptionLines([
+        {
+          line_number: 1,
+          drug_name: '旧表示名',
+          drug_master_id: 'drug_master_1',
+          drug_code: 'YJ_OLD',
+        },
+        {
+          line_number: 2,
+          drug_name: '新表示名',
+          drug_master_id: 'drug_master_1',
+          drug_code: 'YJ_NEW',
+        },
+      ]),
+    ).toEqual([
+      {
+        key: 'YJ_OLD',
+        lines: [
+          { line_number: 1, drug_name: '旧表示名' },
+          { line_number: 2, drug_name: '新表示名' },
+        ],
+      },
+    ]);
+  });
+
   it('does not collapse an unresolved drug name that looks like a resolved drug code', () => {
     expect(
       collectDuplicatePrescriptionLines([

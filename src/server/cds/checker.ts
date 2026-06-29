@@ -19,6 +19,7 @@ export type CdsAlert = {
 type PrescriptionLine = {
   id: string;
   drug_name: string;
+  drug_master_id: string | null;
   drug_code: string | null;
   dose: string;
   frequency: string;
@@ -52,6 +53,21 @@ type DrugMasterForCds = {
   is_lasa_risk: boolean;
   lasa_group_key: string | null;
 };
+
+const DRUG_MASTER_FOR_CDS_SELECT = {
+  id: true,
+  yj_code: true,
+  drug_name: true,
+  tall_man_name: true,
+  therapeutic_category: true,
+  max_administration_days: true,
+  transitional_expiry_date: true,
+  is_narcotic: true,
+  is_psychotropic: true,
+  is_high_risk: true,
+  is_lasa_risk: true,
+  lasa_group_key: true,
+} satisfies Prisma.DrugMasterSelect;
 
 type AllergyEntry = {
   drug_name?: string;
@@ -127,6 +143,82 @@ function buildCdsDataQualityAlert(args: {
       recommendation: '薬剤マスター/臨床ルールの取込データを確認してください',
     },
   };
+}
+
+function buildPrescriptionLineDrugIdentityMismatchAlert(
+  line: PrescriptionLine,
+  master: DrugMasterForCds,
+): CdsAlert {
+  return {
+    type: 'cds_data_quality',
+    severity: 'warning',
+    message: `CDS薬剤コード確認: ${line.drug_name}の処方行コードがDrugMasterと一致しません`,
+    details: {
+      source: 'prescription_line_drug_identity',
+      section: '処方行医薬品コード',
+      line_id: line.id,
+      drug_master_id: line.drug_master_id,
+      drug_code: line.drug_code,
+      resolved_drug_code: master.yj_code,
+      drug_display_name: line.drug_name,
+      recommendation: '処方行のdrug_master_id/source_drug_code/drug_codeの整合性を確認してください',
+    },
+  };
+}
+
+function uniqueNonEmpty(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(
+      values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+async function resolvePrescriptionLineDrugIdentitiesForCds(lines: PrescriptionLine[]): Promise<{
+  lines: PrescriptionLine[];
+  drugMasterMap: Map<string, DrugMasterForCds>;
+  dataQualityAlerts: CdsAlert[];
+}> {
+  const drugMasterIds = uniqueNonEmpty(lines.map((line) => line.drug_master_id));
+  const drugCodes = uniqueNonEmpty(lines.map((line) => line.drug_code));
+
+  let where: Prisma.DrugMasterWhereInput | null = null;
+  if (drugMasterIds.length > 0 && drugCodes.length > 0) {
+    where = {
+      OR: [{ id: { in: drugMasterIds } }, { yj_code: { in: drugCodes } }],
+    };
+  } else if (drugMasterIds.length > 0) {
+    where = { id: { in: drugMasterIds } };
+  } else if (drugCodes.length > 0) {
+    where = { yj_code: { in: drugCodes } };
+  }
+
+  const drugMasters = where
+    ? ((await prisma.drugMaster.findMany({
+        where,
+        select: DRUG_MASTER_FOR_CDS_SELECT,
+      })) as DrugMasterForCds[])
+    : [];
+
+  const drugMasterById = new Map(drugMasters.map((drug) => [drug.id, drug]));
+  const drugMasterMap = new Map(drugMasters.map((drug) => [drug.yj_code, drug]));
+  const dataQualityAlerts: CdsAlert[] = [];
+
+  const normalizedLines = lines.map((line) => {
+    if (!line.drug_master_id) return line;
+
+    const master = drugMasterById.get(line.drug_master_id);
+    if (!master) return line;
+
+    const lineDrugCode = line.drug_code?.trim() || null;
+    if (lineDrugCode && lineDrugCode !== master.yj_code) {
+      dataQualityAlerts.push(buildPrescriptionLineDrugIdentityMismatchAlert(line, master));
+    }
+
+    return { ...line, drug_code: master.yj_code };
+  });
+
+  return { lines: normalizedLines, drugMasterMap, dataQualityAlerts };
 }
 
 function readNonEmptyText(value: unknown) {
@@ -377,7 +469,10 @@ async function resolveManagedAlertTypeStates(orgId: string) {
 }
 
 function buildComparableLineKey(
-  line: Pick<PrescriptionLine, 'drug_name' | 'drug_code' | 'dose' | 'frequency' | 'days'>,
+  line: Pick<
+    PrescriptionLine,
+    'drug_name' | 'drug_master_id' | 'drug_code' | 'dose' | 'frequency' | 'days'
+  >,
 ) {
   return [medicationIdentityKey(line), line.dose, line.frequency, String(line.days)].join('::');
 }
@@ -1117,6 +1212,7 @@ async function checkDoPrescriptionRisk(
         select: {
           id: true,
           drug_name: true,
+          drug_master_id: true,
           drug_code: true,
           dose: true,
           frequency: true,
@@ -1143,6 +1239,7 @@ async function checkDoPrescriptionRisk(
         select: {
           id: true,
           drug_name: true,
+          drug_master_id: true,
           drug_code: true,
           dose: true,
           frequency: true,
@@ -1153,30 +1250,23 @@ async function checkDoPrescriptionRisk(
   });
 
   if (!previousIntake || previousIntake.lines.length === 0) return [];
-  if (!isSamePrescriptionContent(currentIntake.lines, previousIntake.lines)) return [];
+  const resolved = await resolvePrescriptionLineDrugIdentitiesForCds([
+    ...currentIntake.lines,
+    ...previousIntake.lines,
+  ]);
+  const currentLines = resolved.lines.slice(0, currentIntake.lines.length);
+  const previousLines = resolved.lines.slice(currentIntake.lines.length);
 
-  const drugCodes = currentIntake.lines
-    .map((line) => line.drug_code)
-    .filter((code): code is string => code !== null);
+  if (!isSamePrescriptionContent(currentLines, previousLines)) return [];
 
-  const prescribedDrugs =
-    drugCodes.length > 0
-      ? await prisma.drugMaster.findMany({
-          where: { yj_code: { in: drugCodes } },
-          select: { id: true, yj_code: true, drug_name: true, therapeutic_category: true },
-        })
-      : [];
-
-  const drugByCode = new Map(prescribedDrugs.map((drug) => [drug.yj_code, drug]));
-
-  const flaggedLines = currentIntake.lines
+  const flaggedLines = currentLines
     .map((line) => {
-      const previousLine = findMatchingPreviousLine(previousIntake.lines, line);
+      const previousLine = findMatchingPreviousLine(previousLines, line);
       if (!previousLine) return null;
 
       const riskProfile = resolveDoPrescriptionRiskProfile(
         line,
-        line.drug_code ? drugByCode.get(line.drug_code) : undefined,
+        line.drug_code ? resolved.drugMasterMap.get(line.drug_code) : undefined,
       );
 
       if (!riskProfile) return null;
@@ -1569,6 +1659,7 @@ export async function checkDispenseAlerts(
     select: {
       id: true,
       drug_name: true,
+      drug_master_id: true,
       drug_code: true,
       dose: true,
       frequency: true,
@@ -1615,66 +1706,46 @@ export async function checkDispenseAlerts(
     select: { birth_date: true, allergy_info: true },
   });
 
-  // Single batch fetch for all drugMaster columns needed across all sub-checks
-  const prescriptionDrugCodes = prescriptionLines
-    .map((l) => l.drug_code)
-    .filter((c): c is string => c !== null);
-  const allDrugMasters =
-    prescriptionDrugCodes.length > 0
-      ? await prisma.drugMaster.findMany({
-          where: { yj_code: { in: prescriptionDrugCodes } },
-          select: {
-            id: true,
-            yj_code: true,
-            drug_name: true,
-            tall_man_name: true,
-            therapeutic_category: true,
-            max_administration_days: true,
-            transitional_expiry_date: true,
-            is_narcotic: true,
-            is_psychotropic: true,
-            is_high_risk: true,
-            is_lasa_risk: true,
-            lasa_group_key: true,
-          },
-        })
-      : [];
-  const drugMasterMap = new Map<string, DrugMasterForCds>(
-    allDrugMasters.map((d) => [d.yj_code, d]),
-  );
+  // Resolve PrescriptionLine identity master-first for all checks.
+  const {
+    lines: cdsPrescriptionLines,
+    drugMasterMap,
+    dataQualityAlerts: prescriptionLineIdentityAlerts,
+  } = await resolvePrescriptionLineDrugIdentitiesForCds(prescriptionLines);
 
   // Run all checks in parallel
   const results = await Promise.all([
+    Promise.resolve(prescriptionLineIdentityAlerts),
     managedAlertStates.get('interaction')
-      ? checkInteractions(prescriptionLines, currentMeds, masterByMedId)
+      ? checkInteractions(cdsPrescriptionLines, currentMeds, masterByMedId)
       : Promise.resolve([]),
     managedAlertStates.get('duplicate')
-      ? checkDuplicates(prescriptionLines, currentMeds, masterByMedId)
+      ? checkDuplicates(cdsPrescriptionLines, currentMeds, masterByMedId)
       : Promise.resolve([]),
     managedAlertStates.get('max_days')
-      ? checkMaxDays(prescriptionLines, drugMasterMap)
+      ? checkMaxDays(cdsPrescriptionLines, drugMasterMap)
       : Promise.resolve([]),
-    checkTransitionalExpiry(prescriptionLines, drugMasterMap),
+    checkTransitionalExpiry(cdsPrescriptionLines, drugMasterMap),
     managedAlertStates.get('allergy_cross')
-      ? checkAllergyReactions(orgId, prescriptionLines, patient, drugMasterMap)
+      ? checkAllergyReactions(orgId, cdsPrescriptionLines, patient, drugMasterMap)
       : Promise.resolve([]),
     managedAlertStates.get('narcotic')
-      ? checkNarcoticFlags(prescriptionLines, drugMasterMap)
+      ? checkNarcoticFlags(cdsPrescriptionLines, drugMasterMap)
       : Promise.resolve([]),
     managedAlertStates.get('high_risk')
-      ? checkHighRiskDrugs(orgId, prescriptionLines, drugMasterMap)
+      ? checkHighRiskDrugs(orgId, cdsPrescriptionLines, drugMasterMap)
       : Promise.resolve([]),
     checkDoPrescriptionRisk(orgId, cycleId, patientId),
     managedAlertStates.get('pim_elderly')
-      ? checkElderlyPIM(orgId, prescriptionLines, patient, drugMasterMap)
+      ? checkElderlyPIM(orgId, cdsPrescriptionLines, patient, drugMasterMap)
       : Promise.resolve([]),
     managedAlertStates.get('renal_dose')
-      ? checkRenalDoseAdjustment(prescriptionLines, patientId, orgId)
+      ? checkRenalDoseAdjustment(cdsPrescriptionLines, patientId, orgId)
       : Promise.resolve([]),
     // Package insert audit — always enabled (regulatory information)
-    checkPackageInsertAudit(prescriptionLines, patient),
+    checkPackageInsertAudit(cdsPrescriptionLines, patient),
     // PT-INR / K monitoring — always enabled
-    checkMonitoringAlerts(prescriptionLines, patientId, orgId, drugMasterMap),
+    checkMonitoringAlerts(cdsPrescriptionLines, patientId, orgId, drugMasterMap),
   ]);
 
   return results.flat();

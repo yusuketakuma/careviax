@@ -3,6 +3,7 @@ import {
   detectMedicationChanges,
   formatDoseFrequency,
   matchMedicationDiffLines,
+  medicationIdentityKey,
   prescriptionLineKey,
 } from '@/lib/prescription/medication-diff';
 
@@ -10,12 +11,14 @@ import {
 
 function makeLine(overrides: {
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code?: string | null;
   dose?: string;
   frequency?: string;
 }) {
   return {
     drug_name: overrides.drug_name,
+    drug_master_id: overrides.drug_master_id ?? null,
     drug_code: overrides.drug_code ?? null,
     dose: overrides.dose ?? '1錠',
     frequency: overrides.frequency ?? '1日1回朝食後',
@@ -25,6 +28,19 @@ function makeLine(overrides: {
 // ── prescriptionLineKey ──
 
 describe('prescriptionLineKey', () => {
+  it('uses drug_master_id before drug_code when present', () => {
+    expect(
+      prescriptionLineKey({
+        drug_name: 'アムロジピン錠5mg',
+        drug_master_id: 'drug_master_1',
+        drug_code: 'YJ001',
+        dose: '1錠',
+        frequency: '朝食後',
+        days: 28,
+      }),
+    ).toBe('master:drug_master_1|1錠|朝食後|28');
+  });
+
   it('returns drug_code when present', () => {
     expect(
       prescriptionLineKey({
@@ -56,6 +72,18 @@ describe('prescriptionLineKey', () => {
 
   it('keeps the legacy empty identity empty when no drug code or name exists', () => {
     expect(prescriptionLineKey({ drug_name: '   ' })).toBe('|||');
+  });
+});
+
+describe('medicationIdentityKey', () => {
+  it('prioritizes master identity over canonical code and display name', () => {
+    expect(
+      medicationIdentityKey({
+        drug_name: '同名薬A',
+        drug_master_id: 'drug_master_same',
+        drug_code: 'YJ_OLD',
+      }),
+    ).toBe('master:drug_master_same');
   });
 });
 
@@ -145,6 +173,53 @@ describe('detectMedicationChanges', () => {
     // YJ002 is new (added), YJ001 is gone (removed)
     expect(changes).toHaveLength(2);
     expect(changes.map((c) => c.change_type).sort()).toEqual(['added', 'removed']);
+  });
+
+  it('uses drug_master_id as the strongest identity even when canonical codes differ', () => {
+    const previous = [
+      makeLine({
+        drug_name: '旧表示名',
+        drug_master_id: 'drug_master_1',
+        drug_code: 'YJ_OLD',
+      }),
+    ];
+    const current = [
+      makeLine({
+        drug_name: '新表示名',
+        drug_master_id: 'drug_master_1',
+        drug_code: 'YJ_NEW',
+        dose: '2錠',
+      }),
+    ];
+    const changes = detectMedicationChanges(current, previous);
+
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({
+      drug_name: '新表示名',
+      drug_code: 'YJ_NEW',
+      change_type: 'dose_changed',
+    });
+  });
+
+  it('treats different drug_master_id values as distinct even when drug_code is the same', () => {
+    const previous = [
+      makeLine({
+        drug_name: '同一コード薬A',
+        drug_master_id: 'drug_master_a',
+        drug_code: 'YJ001',
+      }),
+    ];
+    const current = [
+      makeLine({
+        drug_name: '同一コード薬B',
+        drug_master_id: 'drug_master_b',
+        drug_code: 'YJ001',
+      }),
+    ];
+    const changes = detectMedicationChanges(current, previous);
+
+    expect(changes).toHaveLength(2);
+    expect(changes.map((change) => change.change_type).sort()).toEqual(['added', 'removed']);
   });
 
   it('does not match an unresolved drug_name that happens to equal a resolved drug_code', () => {

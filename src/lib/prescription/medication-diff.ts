@@ -5,6 +5,7 @@
 /** detectMedicationChanges が受け取る最小の処方行。用法(frequency)・日数(days)を含む */
 export interface MedicationDiffLine {
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code?: string | null;
   dose: string;
   frequency: string;
@@ -39,6 +40,7 @@ export interface MedicationDiffLineMatch<
 
 export function prescriptionLineKey(line: {
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code?: string | null;
   dose?: string | null;
   frequency?: string | null;
@@ -54,8 +56,11 @@ export function prescriptionLineKey(line: {
 
 export function medicationIdentityKey(line: {
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code?: string | null;
 }): string {
+  const drugMasterId = line.drug_master_id?.trim();
+  if (drugMasterId) return `master:${drugMasterId}`;
   const drugCode = line.drug_code?.trim();
   if (drugCode) return `code:${drugCode}`;
   const drugName = line.drug_name.trim();

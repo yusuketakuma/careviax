@@ -358,6 +358,7 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
                 line_number: true,
                 updated_at: true,
                 drug_name: true,
+                drug_master_id: true,
                 drug_code: true,
                 dosage_form: true,
                 dose: true,

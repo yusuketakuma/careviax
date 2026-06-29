@@ -20,6 +20,7 @@ export interface DateContinuityWarning {
 interface LineWithDates {
   id: string;
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code: string | null;
   start_date: Date | null;
   end_date: Date | null;

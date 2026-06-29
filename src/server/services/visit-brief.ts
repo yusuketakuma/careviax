@@ -1169,6 +1169,7 @@ export async function getPatientVisitBrief(
           orderBy: [{ line_number: 'asc' }],
           select: {
             drug_name: true,
+            drug_master_id: true,
             drug_code: true,
             dosage_form: true,
             dose: true,

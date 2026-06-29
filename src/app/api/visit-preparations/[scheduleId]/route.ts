@@ -972,6 +972,7 @@ async function authenticatedGET(
           select: {
             id: true,
             drug_name: true,
+            drug_master_id: true,
             drug_code: true,
             dose: true,
             frequency: true,

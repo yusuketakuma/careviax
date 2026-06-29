@@ -174,6 +174,7 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
                   id: true,
                   line_number: true,
                   drug_name: true,
+                  drug_master_id: true,
                   drug_code: true,
                   is_generic: true,
                   dose: true,
