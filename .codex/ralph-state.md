@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0530 JST
+
+- current task: add sensitive no-store response headers to `POST /api/care-reports/reminders` without changing reminder queue semantics.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `gbrain search "CareViaX partner visit care report no-store remaining mutation response"`, local Next.js route-handler docs, `src/app/api/care-reports/reminders/route.ts`, `src/app/api/care-reports/reminders/route.test.ts`, `src/app/api/care-reports/analytics/route.ts`, `src/app/api/care-reports/analytics/route.test.ts`, `src/lib/auth/context.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/care-reports/reminders/route.ts`, `src/app/api/care-reports/reminders/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex-owned `src/app/api/visit-schedule-proposals/route.ts`, `src/app/api/visit-schedule-proposals/route.test.ts`, `src/app/api/visit-schedules/generate/route.test.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/lib/validations/visit-schedule.ts`, and `src/server/services/visit-schedule-service.ts` WIP.
+- bugs found: `POST /api/care-reports/reminders` returned overdue report-response reminder queue metadata, including queued counts and delivery ids, without sensitive no-store headers on success or validation responses.
+- security risks found: reduced PHI-adjacent report-delivery follow-up caching risk. Existing `canSendCareReport` authorization, input validation, org-scoped service call, response body shape, status codes, schema, live DB data, external send, push, deploy, and secret handling were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only sets fixed response headers at the existing route boundary.
+- validation commands: `pnpm exec prettier --write src/app/api/care-reports/reminders/route.ts src/app/api/care-reports/reminders/route.test.ts`; `pnpm exec vitest run src/app/api/care-reports/reminders/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 src/app/api/care-reports/reminders/route.ts src/app/api/care-reports/reminders/route.test.ts`; `git diff --check -- src/app/api/care-reports/reminders/route.ts src/app/api/care-reports/reminders/route.test.ts`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused reminders route Vitest passed `1` file / `3` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Ledger-inclusive Prettier and diff checks passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store coverage, raw-error non-leakage, and queueing semantics non-regression. `PATCH_REVIEW_REQUEST` was also sent to codex; no blocker was received before commit preparation.
+- remaining work: explicit-path stage only codex2-owned files plus ledgers, commit, and send agmsg FYI.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0523 JST
 
 - current task: add sensitive no-store response headers to partner visit record submit/review workflow endpoints without changing submission, confirmation, return, claim-support, audit, or notification semantics.

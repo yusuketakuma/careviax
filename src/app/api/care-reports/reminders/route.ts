@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
 import { queueOverdueReportResponseReminders } from '@/server/services/report-reminders';
 
@@ -9,7 +10,7 @@ const createReminderSchema = z.object({
   overdue_days: z.number().int().min(1).max(90).optional(),
 });
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -32,3 +33,7 @@ export const POST = withAuthContext(
     message: '報告書リマインドの作成権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+};

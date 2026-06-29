@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Care Report Reminder No-Store Envelope - 2026-06-30 05:30 JST
+
+- Scope:
+  - Continued codex2's report / other-profession collaboration objective on `POST /api/care-reports/reminders`.
+  - Focused only on sensitive response cache headers for creating overdue care-report response reminder tasks.
+  - Preserved codex-owned visit-schedule WIP under `src/app/api/visit-schedule-proposals/route.ts`, `src/app/api/visit-schedule-proposals/route.test.ts`, `src/app/api/visit-schedules/generate/route.test.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/lib/validations/visit-schedule.ts`, and `src/server/services/visit-schedule-service.ts`.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - The care-report reminder route now runs through an `authenticatedPOST` helper and wraps all returned responses with `withSensitiveNoStore`.
+  - Reminder creation success and invalid/malformed body validation responses now include `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
+- Safety:
+  - Reduces PHI-adjacent caching risk for reminder queue response metadata, including queued counts and delivery ids tied to overdue physician response follow-up tasks.
+  - Preserves existing `canSendCareReport` authorization, input schema, org-scoped service call, response body shape, status codes, and queueing service contract.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/care-reports/reminders/route.ts src/app/api/care-reports/reminders/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/care-reports/reminders/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `3` tests.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/care-reports/reminders/route.ts src/app/api/care-reports/reminders/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/care-reports/reminders/route.ts src/app/api/care-reports/reminders/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope and validation.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store coverage, raw-error non-leakage, and queueing semantics non-regression.
+- Remaining:
+  - Stage only explicit codex2-owned files plus ledgers and commit while preserving codex visit-schedule WIP.
+
 ### Partner Visit Submit/Review No-Store Envelope - 2026-06-30 05:23 JST
 
 - Scope:

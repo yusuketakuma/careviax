@@ -59,6 +59,11 @@ function createMalformedRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/care-reports/reminders POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,6 +80,7 @@ describe('/api/care-reports/reminders POST', () => {
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');
     expect(ensuredResponse.status).toBe(201);
+    expectSensitiveNoStore(ensuredResponse);
     expect(queueOverdueReportResponseRemindersMock).toHaveBeenCalledWith({ tx: true }, 'org_1', {
       overdueDays: 5,
     });
@@ -95,6 +101,7 @@ describe('/api/care-reports/reminders POST', () => {
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');
     expect(ensuredResponse.status).toBe(400);
+    expectSensitiveNoStore(ensuredResponse);
     await expect(ensuredResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -109,6 +116,7 @@ describe('/api/care-reports/reminders POST', () => {
     const ensuredResponse = response;
     if (!ensuredResponse) throw new Error('response is required');
     expect(ensuredResponse.status).toBe(400);
+    expectSensitiveNoStore(ensuredResponse);
     await expect(ensuredResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
