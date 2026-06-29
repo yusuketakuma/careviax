@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { unstable_rethrow } from 'next/navigation';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { internalError, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -35,5 +36,10 @@ const authenticatedPOST = withAuthContext(
 );
 
 export const POST: typeof authenticatedPOST = async (req, routeContext) => {
-  return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (error) {
+    unstable_rethrow(error);
+    return withSensitiveNoStore(internalError());
+  }
 };

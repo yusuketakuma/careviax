@@ -170,4 +170,52 @@ describe('/api/care-reports/reminders POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(queueOverdueReportResponseRemindersMock).not.toHaveBeenCalled();
   });
+
+  it('returns a sanitized no-store 500 when reminder queueing fails unexpectedly', async () => {
+    queueOverdueReportResponseRemindersMock.mockRejectedValueOnce(
+      new Error('raw care_report_reminder patient 山田花子 token secret response memo'),
+    );
+
+    const response = await POST(createRequest({ overdue_days: 5 }), emptyRouteContext);
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(500);
+    expectSensitiveNoStore(ensuredResponse);
+    const body = await ensuredResponse.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('care_report_reminder');
+    expect(serialized).not.toContain('山田花子');
+    expect(serialized).not.toContain('token secret');
+    expect(serialized).not.toContain('response memo');
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before parsing body', async () => {
+    authFailureResponseMock.mockImplementationOnce(() => {
+      throw new Error('raw auth care_report_reminder patient 山田花子 token secret');
+    });
+
+    const response = await POST(createMalformedRequest(), emptyRouteContext);
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(500);
+    expectSensitiveNoStore(ensuredResponse);
+    const body = await ensuredResponse.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('raw auth');
+    expect(serialized).not.toContain('care_report_reminder');
+    expect(serialized).not.toContain('山田花子');
+    expect(serialized).not.toContain('token secret');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(queueOverdueReportResponseRemindersMock).not.toHaveBeenCalled();
+  });
 });

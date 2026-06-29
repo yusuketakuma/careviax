@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0855 JST
+
+- current task: harden `POST /api/care-reports/reminders` so report reminder queueing failures use fixed no-store sanitized envelopes.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `src/app/api/care-reports/reminders/route.ts`, `src/app/api/care-reports/reminders/route.test.ts`, established no-store wrapper patterns, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/care-reports/reminders/route.ts`, `src/app/api/care-reports/reminders/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `POST /api/care-reports/reminders` wrapped returned responses with sensitive no-store headers, but unexpected auth/plumbing or reminder queueing failures could reject past the exported handler instead of returning the fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced raw-error and PHI/PII disclosure risk for report reminder queue failures containing report/reminder identifiers, patient names, response memo text, or token-like diagnostics. Auth/permission checks, request validation, RLS org scoping, overdue reminder queue semantics, response success/domain-error shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps the existing POST response boundary and adds focused assertions.
+- validation commands: `pnpm exec prettier --write src/app/api/care-reports/reminders/route.ts src/app/api/care-reports/reminders/route.test.ts`; `pnpm exec vitest run src/app/api/care-reports/reminders/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint on the two care-reports reminders files; scoped `git diff --check` on the two files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; full `git diff --check`.
+- validation results: Prettier passed. Focused care-reports reminders Vitest passed `1` file / `7` tests. Scoped ESLint, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and full `git diff --check` passed.
+- remaining work: stage only the two care-reports reminders files plus ledger hunks, commit, send agmsg FYI, and continue remaining visit/report/interprofessional candidates or incoming review interrupts. Claude returned `APPROVED` after independent focused Vitest and review of both catch origins, raw PHI/token non-leakage, side-effect assertions, and queue semantic preservation.
+- next action: explicit-path stage and commit this validated report reminder response-boundary slice.
+
 ### 20260630-0849 JST
 
 - current task: harden `POST /api/partner-visit-records` so interprofessional partner visit draft saves have a fixed no-store outer error boundary.

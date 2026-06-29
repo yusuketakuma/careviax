@@ -23,6 +23,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Care Report Reminders POST No-Store / Sanitized Envelope - 2026-06-30 08:55 JST
+
+- Scope:
+  - Continued codex2's report-feature objective on `POST /api/care-reports/reminders`.
+  - Focused only on the exported POST response boundary for overdue care-report response reminder queueing.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Existing `authenticatedPOST` now remains unchanged, while the exported `POST` applies the established `withSensitiveNoStore` + `unstable_rethrow` + fixed `internalError()` fallback pattern.
+  - Added a sanitized 500 regression for unexpected reminder queueing failures containing reminder/report-like identifiers, patient name text, token-like text, and response memo text.
+  - Added an auth/plumbing failure regression that throws before parsing malformed POST body and proves no RLS transaction or reminder queue side effect occurs.
+- Safety:
+  - Reduces raw-error and PHI/PII disclosure risk for overdue report reminder queueing failures.
+  - Preserves auth/permission behavior, request validation, RLS org scoping, reminder queue semantics, and existing success/domain-error response body shapes.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps the existing POST response boundary and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/care-reports/reminders/route.ts src/app/api/care-reports/reminders/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/care-reports/reminders/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint on the two care-reports reminders files: passed.
+  - Scoped `git diff --check` on the two care-reports reminders files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope and validation.
+  - Claude returned `APPROVED` after independently re-running focused Vitest and checking both catch origins, raw reminder/patient/token/response-memo non-leakage, no RLS/queue side effects on auth-plumbing failure, and authenticatedPOST validation/RLS/queue semantic preservation.
+- Remaining:
+  - Receive review, stage only explicit care-reports reminders files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then continue remaining visit/report/interprofessional API candidates.
+
 ### Partner Visit Records POST No-Store / Sanitized Envelope - 2026-06-30 08:49 JST
 
 - Scope:
