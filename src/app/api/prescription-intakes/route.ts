@@ -67,6 +67,9 @@ type CreatePrescriptionIntakeInput = z.infer<typeof createPrescriptionIntakeSche
 type IntakeInTxResult = Awaited<ReturnType<typeof createPrescriptionIntakeInTx>>;
 type IntakeInTxSuccessResult = Extract<IntakeInTxResult, { kind: 'intake' }>;
 type IntakeInTxErrorResult = Extract<IntakeInTxResult, { kind: 'error' }>;
+type PostCreateHookLine = Parameters<
+  typeof runPrescriptionIntakePostCreateHooks
+>[0]['lines'][number];
 type PrescriptionCareTag = z.infer<typeof prescriptionCareTagSchema>;
 type PrescriptionIntakeQueryName = 'q' | 'status' | 'source_type' | 'care_tags' | 'include_total';
 
@@ -325,6 +328,16 @@ function readDraftLineAt(parsedData: Record<string, unknown> | null | undefined,
   return readJsonObject(line);
 }
 
+function readRequestLineAt(payload: Record<string, unknown> | null | undefined, index: number) {
+  const lines = Array.isArray(payload?.lines) ? payload.lines : [];
+  const line = lines[index];
+  return readJsonObject(line);
+}
+
+function hasRequestLineValue(line: Record<string, unknown> | null | undefined, key: string) {
+  return line ? Object.prototype.hasOwnProperty.call(line, key) && line[key] !== undefined : false;
+}
+
 function readDraftLines(parsedData: Record<string, unknown> | null | undefined) {
   if (!Array.isArray(parsedData?.lines)) return [];
   return parsedData.lines.flatMap((line) => {
@@ -337,6 +350,21 @@ function readString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const text = value.trim();
   return text.length > 0 ? text : undefined;
+}
+
+function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function readPositiveNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function readStringArray(value: unknown): string[] | undefined {
@@ -380,6 +408,7 @@ function normalizeLineComparableValue(value: unknown): string {
 function findQrDraftLineMismatches(
   input: CreatePrescriptionIntakeInput,
   parsedData: Record<string, unknown> | null | undefined,
+  rawInput: Record<string, unknown> | null | undefined,
 ) {
   const draftLines = readDraftLines(parsedData);
   const mismatches: string[] = [];
@@ -391,6 +420,7 @@ function findQrDraftLineMismatches(
   input.lines.forEach((line, index) => {
     const draftLine = draftLines[index];
     if (!draftLine) return;
+    const rawLine = readRequestLineAt(rawInput, index);
 
     const comparisons = [
       {
@@ -403,6 +433,11 @@ function findQrDraftLineMismatches(
         requestValue: line.drug_name,
         draftValue: readString(draftLine.drugName),
       },
+      {
+        key: 'dosage_form',
+        requestValue: line.dosage_form,
+        draftValue: readString(draftLine.dosageForm),
+      },
       { key: 'dose', requestValue: line.dose, draftValue: readString(draftLine.dose) },
       {
         key: 'frequency',
@@ -410,6 +445,13 @@ function findQrDraftLineMismatches(
         draftValue: readString(draftLine.frequency),
       },
       { key: 'days', requestValue: line.days, draftValue: draftLine.days },
+      { key: 'quantity', requestValue: line.quantity, draftValue: draftLine.quantity },
+      { key: 'unit', requestValue: line.unit, draftValue: readString(draftLine.unit) },
+      {
+        key: 'is_generic',
+        requestValue: hasRequestLineValue(rawLine, 'is_generic') ? line.is_generic : undefined,
+        draftValue: readBoolean(draftLine.isGeneric),
+      },
       {
         key: 'packaging_method',
         requestValue: line.packaging_method,
@@ -435,6 +477,12 @@ function findQrDraftLineMismatches(
         requestValue: line.dispensing_method,
         draftValue: readEnumValue(draftLine.dispensingMethod, DISPENSING_METHOD_VALUES),
       },
+      {
+        key: 'start_date',
+        requestValue: line.start_date,
+        draftValue: readString(draftLine.startDate),
+      },
+      { key: 'end_date', requestValue: line.end_date, draftValue: readString(draftLine.endDate) },
       { key: 'notes', requestValue: line.notes, draftValue: readString(draftLine.notes) },
     ];
 
@@ -462,7 +510,8 @@ function collectDrugCodeResolutionReviewDetails(
       draftLine.drugCodeResolutionStatus,
       DRUG_CODE_RESOLUTION_STATUS_VALUES,
     );
-    if (status !== 'review_required' && status !== 'unresolved') return;
+    const drugCode = readString(draftLine.drugCode);
+    if (status === 'resolved' && drugCode) return;
 
     details[`line_${index + 1}_drug_code`] = ['薬剤コードを医薬品マスターコードで確認してください'];
   });
@@ -481,6 +530,7 @@ function buildConfirmedQrParsedData(confirmedIntakeId: string) {
 function enrichQrIntakeInputFromDraft(
   input: CreatePrescriptionIntakeInput,
   parsedData: Record<string, unknown> | null | undefined,
+  rawInput: Record<string, unknown> | null | undefined,
 ): CreatePrescriptionIntakeInput {
   return {
     ...input,
@@ -488,12 +538,17 @@ function enrichQrIntakeInputFromDraft(
       input.prescription_expiry_date ?? readString(parsedData?.prescriptionExpirationDate),
     lines: input.lines.map((line, index) => {
       const draftLine = readDraftLineAt(parsedData, index);
+      const rawLine = readRequestLineAt(rawInput, index);
+      const isGeneric = hasRequestLineValue(rawLine, 'is_generic')
+        ? line.is_generic
+        : (readBoolean(draftLine?.isGeneric) ?? line.is_generic);
       return {
         ...line,
         drug_code: line.drug_code ?? readString(draftLine?.drugCode),
         dosage_form: line.dosage_form ?? readString(draftLine?.dosageForm),
+        quantity: line.quantity ?? readPositiveNumber(draftLine?.quantity),
         unit: line.unit ?? readString(draftLine?.unit),
-        is_generic: line.is_generic || Boolean(draftLine?.isGeneric),
+        is_generic: isGeneric,
         packaging_method:
           line.packaging_method ??
           readEnumValue(draftLine?.packagingMethod, PACKAGING_METHOD_VALUES),
@@ -808,6 +863,7 @@ export const POST = withAuthContext(
             kind: 'created';
             intake: IntakeInTxSuccessResult['intake'];
             cycle: IntakeInTxSuccessResult['cycle'];
+            hookLines: PostCreateHookLine[];
           };
 
       try {
@@ -857,7 +913,7 @@ export const POST = withAuthContext(
             };
           }
 
-          const lineMismatches = findQrDraftLineMismatches(intakeInput, parsedData);
+          const lineMismatches = findQrDraftLineMismatches(intakeInput, parsedData, payload);
           if (lineMismatches.length > 0) {
             return { kind: 'line_mismatch' as const, mismatches: lineMismatches };
           }
@@ -870,7 +926,7 @@ export const POST = withAuthContext(
             };
           }
 
-          intakeInput = enrichQrIntakeInputFromDraft(intakeInput, parsedData);
+          intakeInput = enrichQrIntakeInputFromDraft(intakeInput, parsedData, payload);
           const lineValidationDetails = collectDispensingLineMetadataValidationDetails(
             intakeInput.lines,
           );
@@ -967,6 +1023,7 @@ export const POST = withAuthContext(
             kind: 'created' as const,
             intake: intakeResult.intake,
             cycle: intakeResult.cycle,
+            hookLines: intakeInput.lines,
           };
         });
       } catch (error) {
@@ -1027,7 +1084,7 @@ export const POST = withAuthContext(
         intakeId: qrResult.intake.id,
         patientId: qrResult.cycle.patient_id,
         orgId: ctx.orgId,
-        lines: intakeInput.lines,
+        lines: qrResult.hookLines,
         prescriberName: intakeInput.prescriber_name ?? null,
         sourceType: source_type,
       });

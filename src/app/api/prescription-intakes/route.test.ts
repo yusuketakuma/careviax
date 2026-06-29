@@ -18,6 +18,10 @@ const {
   withOrgContextMock,
   prescriptionIntakeFindManyMock,
   prescriptionIntakeCountMock,
+  drugMasterFindManyMock,
+  medicationProfileFindManyMock,
+  medicationProfileCreateManyMock,
+  medicationProfileUpdateManyMock,
   validateOrgReferencesMock,
   upsertOperationalTaskMock,
   careCaseFindFirstMock,
@@ -45,6 +49,10 @@ const {
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   prescriptionIntakeCountMock: vi.fn().mockResolvedValue(2),
+  drugMasterFindManyMock: vi.fn().mockResolvedValue([]),
+  medicationProfileFindManyMock: vi.fn().mockResolvedValue([]),
+  medicationProfileCreateManyMock: vi.fn().mockResolvedValue({ count: 0 }),
+  medicationProfileUpdateManyMock: vi.fn().mockResolvedValue({ count: 0 }),
   validateOrgReferencesMock: vi.fn().mockResolvedValue({ ok: true }),
   upsertOperationalTaskMock: vi.fn().mockResolvedValue({ id: 'task_operational_1' }),
   careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
@@ -90,11 +98,15 @@ vi.mock('@/lib/db/client', () => ({
       count: prescriptionIntakeCountMock,
       findFirst: vi.fn().mockResolvedValue(null),
     },
+    drugMaster: {
+      findMany: drugMasterFindManyMock,
+    },
     medicationProfile: {
-      findMany: vi.fn().mockResolvedValue([]),
+      findMany: medicationProfileFindManyMock,
       create: vi.fn().mockResolvedValue({}),
       update: vi.fn().mockResolvedValue({}),
-      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      createMany: medicationProfileCreateManyMock,
+      updateMany: medicationProfileUpdateManyMock,
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
@@ -137,9 +149,137 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
+function createQrDraftValidationTransaction(parsedData: unknown) {
+  const qrDraftClaimMock = vi.fn();
+  const intakeCreateMock = vi.fn();
+  return {
+    qrDraftClaimMock,
+    intakeCreateMock,
+    tx: {
+      qrScanDraft: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'draft_qr',
+          status: 'pending',
+          patient_id: 'patient_qr',
+          parsed_data: parsedData,
+        }),
+        updateMany: qrDraftClaimMock,
+        update: vi.fn(),
+      },
+      prescriptionIntake: {
+        create: intakeCreateMock,
+      },
+    },
+  };
+}
+
+function createQrDraftSuccessfulTransaction(parsedData: unknown) {
+  const cycleCreateMock = vi.fn().mockResolvedValue({
+    id: 'cycle_qr',
+    patient_id: 'patient_qr',
+    case_id: 'case_qr',
+    overall_status: 'intake_received',
+    version: 1,
+  });
+  const cycleFindFirstMock = vi
+    .fn()
+    .mockResolvedValueOnce({
+      id: 'cycle_qr',
+      patient_id: 'patient_qr',
+      overall_status: 'intake_received',
+      version: 1,
+    })
+    .mockResolvedValueOnce({
+      id: 'cycle_qr',
+      patient_id: 'patient_qr',
+      overall_status: 'structuring',
+      version: 2,
+    })
+    .mockResolvedValueOnce({
+      id: 'cycle_qr',
+      patient_id: 'patient_qr',
+      overall_status: 'ready_to_dispense',
+      version: 3,
+    })
+    .mockResolvedValueOnce({
+      id: 'cycle_qr',
+      patient_id: 'patient_qr',
+      case_id: 'case_qr',
+    });
+  const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+  const qrDraftClaimMock = vi.fn().mockResolvedValue({ count: 1 });
+  const qrDraftUpdateMock = vi.fn().mockResolvedValue({ id: 'draft_qr', status: 'confirmed' });
+  const intakeCreateMock = vi.fn().mockResolvedValue({ id: 'intake_qr' });
+  const supplementalUpdateManyMock = vi.fn().mockResolvedValue({ count: 0 });
+  const supplementalDeleteManyMock = vi.fn().mockResolvedValue({ count: 0 });
+  const supplementalCreateManyMock = vi.fn().mockResolvedValue({ count: 0 });
+  const medicationIssueFindManyMock = vi.fn().mockResolvedValue([]);
+  const medicationIssueCreateManyMock = vi.fn().mockResolvedValue({ count: 0 });
+
+  return {
+    qrDraftClaimMock,
+    qrDraftUpdateMock,
+    intakeCreateMock,
+    tx: {
+      qrScanDraft: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'draft_qr',
+          status: 'pending',
+          patient_id: 'patient_qr',
+          parsed_data: parsedData,
+        }),
+        updateMany: qrDraftClaimMock,
+        update: qrDraftUpdateMock,
+      },
+      jahisSupplementalRecord: {
+        updateMany: supplementalUpdateManyMock,
+        deleteMany: supplementalDeleteManyMock,
+        createMany: supplementalCreateManyMock,
+      },
+      medicationIssue: {
+        findMany: medicationIssueFindManyMock,
+        createMany: medicationIssueCreateManyMock,
+      },
+      careCase: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'case_qr',
+          patient_id: 'patient_qr',
+          primary_pharmacist_id: 'pharmacist_1',
+        }),
+      },
+      medicationCycle: {
+        create: cycleCreateMock,
+        findFirst: cycleFindFirstMock,
+        updateMany: cycleUpdateManyMock,
+      },
+      cycleTransitionLog: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+      workflowException: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn(),
+      },
+      prescriptionIntake: {
+        create: intakeCreateMock,
+      },
+      inquiryRecord: {
+        count: vi.fn().mockResolvedValue(0),
+      },
+      dispenseTask: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'task_qr' }),
+      },
+    },
+  };
+}
+
 describe('/api/prescription-intakes POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    drugMasterFindManyMock.mockResolvedValue([]);
+    medicationProfileFindManyMock.mockResolvedValue([]);
+    medicationProfileCreateManyMock.mockResolvedValue({ count: 0 });
+    medicationProfileUpdateManyMock.mockResolvedValue({ count: 0 });
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_qr',
       name: '山田 太郎',
@@ -1027,6 +1167,7 @@ describe('/api/prescription-intakes POST', () => {
           {
             drugName: 'アムロジピン錠5mg',
             drugCode: '2149001',
+            drugCodeResolutionStatus: 'resolved',
             dose: '1錠',
             frequency: '1日1回朝食後',
             days: 14,
@@ -1283,6 +1424,8 @@ describe('/api/prescription-intakes POST', () => {
               lines: [
                 {
                   drugName: 'アムロジピン錠5mg',
+                  drugCode: '2149001',
+                  drugCodeResolutionStatus: 'resolved',
                   dose: '1錠',
                   frequency: '1日1回朝食後',
                   days: 14,
@@ -1410,6 +1553,250 @@ describe('/api/prescription-intakes POST', () => {
     expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['missing status', { drugCode: '2149001' }],
+    ['invalid status', { drugCode: '2149001', drugCodeResolutionStatus: 'ambiguous' }],
+    ['resolved status without a code', { drugCodeResolutionStatus: 'resolved' }],
+  ])(
+    'rejects QR draft imports with non-canonical drug code resolution: %s',
+    async (_caseName, drugCodeFields) => {
+      const { tx, qrDraftClaimMock, intakeCreateMock } = createQrDraftValidationTransaction({
+        patientName: '山田 太郎',
+        patientNameKana: 'ヤマダ タロウ',
+        patientBirthdate: '1950-03-15',
+        patientGender: 'male',
+        lines: [
+          {
+            drugName: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            ...drugCodeFields,
+          },
+        ],
+      });
+      withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(tx));
+
+      const response = await POST(
+        createRequest({
+          case_id: 'case_qr',
+          patient_id: 'patient_qr',
+          qr_draft_id: 'draft_qr',
+          source_type: 'qr_scan',
+          prescribed_date: TODAY,
+          lines: [
+            {
+              line_number: 1,
+              drug_name: 'アムロジピン錠5mg',
+              dose: '1錠',
+              frequency: '1日1回朝食後',
+              days: 14,
+            },
+          ],
+        }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          line_1_drug_code: ['薬剤コードを医薬品マスターコードで確認してください'],
+        },
+      });
+      expect(qrDraftClaimMock).not.toHaveBeenCalled();
+      expect(intakeCreateMock).not.toHaveBeenCalled();
+      expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+      expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects QR draft imports when request overrides parsed medication safety fields', async () => {
+    const { tx, qrDraftClaimMock, intakeCreateMock } = createQrDraftValidationTransaction({
+      patientName: '山田 太郎',
+      patientNameKana: 'ヤマダ タロウ',
+      patientBirthdate: '1950-03-15',
+      patientGender: 'male',
+      lines: [
+        {
+          drugName: 'アムロジピン錠5mg',
+          drugCode: '2149001',
+          drugCodeResolutionStatus: 'resolved',
+          dosageForm: '錠剤',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+          days: 14,
+          quantity: '14',
+          unit: '錠',
+          isGeneric: true,
+          startDate: '2026-06-01',
+          endDate: '2026-06-14',
+        },
+      ],
+    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(tx));
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_qr',
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'qr_scan',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dosage_form: 'OD錠',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            quantity: 28,
+            unit: '包',
+            is_generic: false,
+            start_date: '2026-06-02',
+            end_date: '2026-06-15',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'QR下書きの処方明細と送信された処方明細が一致しません',
+      details: {
+        mismatches: expect.arrayContaining([
+          'line_1_dosage_form',
+          'line_1_quantity',
+          'line_1_unit',
+          'line_1_is_generic',
+          'line_1_start_date',
+          'line_1_end_date',
+        ]),
+      },
+    });
+    expect(qrDraftClaimMock).not.toHaveBeenCalled();
+    expect(intakeCreateMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
+  it('uses canonical QR parsed line metadata for intake creation and medication profile hooks', async () => {
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_master_1',
+        yj_code: '2149001',
+        receipt_code: null,
+        hot_code: null,
+      },
+    ]);
+    const { tx, intakeCreateMock } = createQrDraftSuccessfulTransaction({
+      patientName: '山田 太郎',
+      patientNameKana: 'ヤマダ タロウ',
+      patientBirthdate: '1950-03-15',
+      patientGender: 'male',
+      prescriptionExpirationDate: '2026-06-12',
+      lines: [
+        {
+          drugName: 'アムロジピン錠5mg',
+          drugCode: '2149001',
+          drugCodeResolutionStatus: 'resolved',
+          dosageForm: '錠剤',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+          days: 14,
+          quantity: '14',
+          unit: '錠',
+          isGeneric: true,
+          startDate: '2026-06-01',
+          endDate: '2026-06-14',
+        },
+      ],
+    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(tx));
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_qr',
+        patient_id: 'patient_qr',
+        qr_draft_id: 'draft_qr',
+        source_type: 'qr_scan',
+        prescribed_date: TODAY,
+        prescriber_name: '鈴木医師',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(intakeCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        prescription_expiry_date: new Date('2026-06-12T00:00:00.000Z'),
+        lines: {
+          create: [
+            expect.objectContaining({
+              drug_name: 'アムロジピン錠5mg',
+              drug_code: '2149001',
+              dosage_form: '錠剤',
+              dose: '1錠',
+              frequency: '1日1回朝食後',
+              days: 14,
+              quantity: 14,
+              unit: '錠',
+              is_generic: true,
+              start_date: '2026-06-01',
+              end_date: '2026-06-14',
+            }),
+          ],
+        },
+      }),
+    });
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { yj_code: { in: ['2149001'] } },
+          { receipt_code: { in: ['2149001'] } },
+          { hot_code: { in: ['2149001'] } },
+        ],
+      },
+      select: {
+        id: true,
+        yj_code: true,
+        receipt_code: true,
+        hot_code: true,
+      },
+    });
+    expect(medicationProfileCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_qr',
+          drug_name: 'アムロジピン錠5mg',
+          drug_master_id: 'drug_master_1',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+          prescriber: '鈴木医師',
+          start_date: new Date('2026-06-01T00:00:00.000Z'),
+          is_current: true,
+          source: 'qr_scan',
+        }),
+      ],
+    });
+  });
+
   it('rejects QR draft imports when submitted lines do not match the draft lines', async () => {
     const qrDraftClaimMock = vi.fn();
     const intakeCreateMock = vi.fn();
@@ -1431,6 +1818,7 @@ describe('/api/prescription-intakes POST', () => {
                 {
                   drugName: 'アムロジピン錠5mg',
                   drugCode: '2149001',
+                  drugCodeResolutionStatus: 'resolved',
                   dose: '1錠',
                   frequency: '1日1回朝食後',
                   days: 14,
@@ -1840,6 +2228,7 @@ describe('/api/prescription-intakes POST', () => {
                 {
                   drugName: 'アムロジピン錠5mg',
                   drugCode: '2149001',
+                  drugCodeResolutionStatus: 'resolved',
                   dose: '1錠',
                   frequency: '1日1回朝食後',
                   days: 14,
