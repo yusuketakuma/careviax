@@ -35,6 +35,7 @@ vi.mock('@/server/services/export-audit', () => ({
   recordDataExportAudit: recordDataExportAuditMock,
 }));
 
+import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { GET } from './route';
 
 function createRequest() {
@@ -127,7 +128,7 @@ describe('/api/care-reports/[id]/pdf', () => {
   });
 
   it('returns 404 when the care report does not exist', async () => {
-    buildCareReportPdfMock.mockRejectedValue(new Error('報告書が見つかりません'));
+    buildCareReportPdfMock.mockRejectedValue(new PdfNotFoundError('careReport'));
 
     const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'report_1' }),
@@ -135,6 +136,28 @@ describe('/api/care-reports/[id]/pdf', () => {
 
     expect(response.status).toBe(404);
     expectSensitiveNoStore(response);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('does not trust raw not-found-like render error messages', async () => {
+    buildCareReportPdfMock.mockRejectedValue(
+      new Error('報告書が見つかりません: patient 山田 太郎 token secret_report_pdf'),
+    );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'EXTERNAL_PDF_RENDER_FAILED',
+      message: '報告書 PDF を生成できませんでした',
+    });
+    expect(JSON.stringify(body)).not.toContain('山田');
+    expect(JSON.stringify(body)).not.toContain('secret_report_pdf');
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });

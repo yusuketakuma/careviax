@@ -7,6 +7,7 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { recordDataExportAudit } from '@/server/services/export-audit';
+import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { buildVisitRecordPdf } from '@/server/services/pdf-documents';
 
 export const runtime = 'nodejs';
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return withSensitiveNoStore(pdfResponse(rendered.buffer, rendered.fileName));
   } catch (cause) {
     unstable_rethrow(cause);
-    if (cause instanceof Error && cause.message.includes('見つかりません')) {
+    if (cause instanceof PdfNotFoundError) {
       return withSensitiveNoStore(notFound(cause.message));
     }
 

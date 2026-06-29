@@ -23,6 +23,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### PDF Not-Found Error Boundary Hardening - 2026-06-30 05:37 JST
+
+- Scope:
+  - Continued codex2's visit-time / report objective on `GET /api/care-reports/[id]/pdf` and `GET /api/visit-records/[id]/pdf`.
+  - Focused only on PDF not-found error classification and raw error-message disclosure prevention.
+  - Preserved codex-owned visit-schedule WIP under `src/app/api/visit-schedule-proposals/route.ts`, `src/app/api/visit-schedule-proposals/route.test.ts`, `src/app/api/visit-schedules/generate/route.test.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/lib/validations/visit-schedule.ts`, and `src/server/services/visit-schedule-service.ts`.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Care-report PDF and visit-record PDF routes now map 404 only from typed `PdfNotFoundError` instead of trusting any raw `Error.message` containing `見つかりません`.
+  - Hostile raw render errors that look like not-found messages but include patient/secret text now fall through to the existing fixed generic PDF render failure envelope.
+- Safety:
+  - Reduces PHI/secret leakage risk in report/visit PDF export error bodies while preserving legitimate scoped-not-found 404 semantics from the PDF record loaders.
+  - Preserves auth checks, no-store response headers, confirmed-report workflow conflict behavior, audit-before-PDF delivery semantics, PDF response body shape, and generic render failure codes.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/care-reports/[id]/pdf/route.ts' 'src/app/api/care-reports/[id]/pdf/route.test.ts' 'src/app/api/visit-records/[id]/pdf/route.ts' 'src/app/api/visit-records/[id]/pdf/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/care-reports/[id]/pdf/route.test.ts' 'src/app/api/visit-records/[id]/pdf/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `14` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/care-reports/[id]/pdf/route.ts' 'src/app/api/care-reports/[id]/pdf/route.test.ts' 'src/app/api/visit-records/[id]/pdf/route.ts' 'src/app/api/visit-records/[id]/pdf/route.test.ts'`: passed.
+  - `git diff --check -- 'src/app/api/care-reports/[id]/pdf/route.ts' 'src/app/api/care-reports/[id]/pdf/route.test.ts' 'src/app/api/visit-records/[id]/pdf/route.ts' 'src/app/api/visit-records/[id]/pdf/route.test.ts'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope and validation.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and adversarial review of string-match bypass, fixed `PdfNotFoundError` messages, and generic 500 fallback behavior.
+- Remaining:
+  - Stage only explicit codex2-owned files plus ledgers and commit while preserving codex visit-schedule WIP.
+  - Non-blocking reminder-route test hardening follow-up from codex remains separate: add auth-failure and schema-invalid object no-store assertions.
+
 ### Care Report Reminder No-Store Envelope - 2026-06-30 05:30 JST
 
 - Scope:
@@ -48,8 +77,10 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Review:
   - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope and validation.
   - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store coverage, raw-error non-leakage, and queueing semantics non-regression.
+  - codex returned `APPROVED_WITH_LOW_FOLLOWUPS` after the commit, with non-blocking test hardening suggestions for auth-failure and schema-invalid object no-store assertions.
 - Remaining:
-  - Stage only explicit codex2-owned files plus ledgers and commit while preserving codex visit-schedule WIP.
+  - Committed by codex2 as `a66d7c76 No-store care report reminders`; no blocking remaining work for this slice.
+  - Non-blocking follow-up: add route-local no-store assertions for auth failure and schema-invalid object body in a separate test-hardening slice.
 
 ### Partner Visit Submit/Review No-Store Envelope - 2026-06-30 05:23 JST
 
