@@ -72,6 +72,22 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedJsonRequest() {
+  return new NextRequest('http://localhost/api/visit-routes/reorder', {
+    method: 'PATCH',
+    body: '{',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 function expectNoWriteAuditOrNotify() {
   expect(scheduleUpdateManyMock).not.toHaveBeenCalled();
   expect(proposalUpdateManyMock).not.toHaveBeenCalled();
@@ -152,6 +168,7 @@ describe('/api/visit-routes/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '混在ルート順の更新権限がありません',
     });
@@ -166,6 +183,7 @@ describe('/api/visit-routes/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
@@ -207,6 +225,7 @@ describe('/api/visit-routes/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: 'route_order の反映対象が同時に更新されました。再読み込みしてください',
@@ -234,6 +253,7 @@ describe('/api/visit-routes/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(scheduleUpdateManyMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         org_id: 'org_1',
@@ -294,6 +314,48 @@ describe('/api/visit-routes/reorder PATCH', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('returns a sanitized no-store 500 when mixed reorder lookup fails unexpectedly', async () => {
+    const unsafeError = new Error('raw route_order schedule_1 patient 山田 token secret');
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ item_type: 'schedule', id: 'schedule_1', route_order: 1 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('raw route_order');
+    expect(serialized).not.toContain('schedule_1');
+    expect(serialized).not.toContain('山田');
+    expect(serialized).not.toContain('token secret');
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('returns a sanitized no-store 500 when auth plumbing fails before parsing PATCH body', async () => {
+    const unsafeError = new Error('raw auth route_order proposal_1 patient token secret');
+    authMock.mockRejectedValueOnce(unsafeError);
+
+    const response = (await PATCH(createMalformedJsonRequest()))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('raw auth');
+    expect(serialized).not.toContain('proposal_1');
+    expect(serialized).not.toContain('patient token secret');
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expectNoWriteAuditOrNotify();
   });
 

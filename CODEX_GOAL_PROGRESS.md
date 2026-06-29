@@ -23,6 +23,41 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Visit Routes Reorder PATCH No-Store / Sanitized Envelope - 2026-06-30 08:42 JST
+
+- Scope:
+  - Continued codex2's visit-time workflow objective on `PATCH /api/visit-routes/reorder`.
+  - Focused only on response-boundary hardening for mixed schedule/proposal route-order mutations.
+  - Preserved unrelated peer-owned `.codex/config.toml` diff.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Existing `withAuthContext` handler is now preserved as `authenticatedPATCH`, and the exported `PATCH` wrapper applies `withSensitiveNoStore` to all returned responses.
+  - Unexpected outer auth/plumbing failures now use the established `unstable_rethrow` plus fixed no-store `internalError()` pattern.
+  - Added no-store assertions for representative permission, success, validation, and conflict responses.
+  - Added sanitized 500 regressions proving raw route-order/patient/token-like text is not echoed from transaction lookup failures or auth plumbing failures before body parsing.
+- Safety:
+  - Reduces caching and raw-error disclosure risk for visit route-order mutation responses containing schedule/proposal IDs, route-order context, patient-adjacent route metadata, and raw auth/transaction diagnostics.
+  - Preserves auth/permission behavior, RLS org scoping, serializable retry behavior, guarded writes, audit payloads, workflow cache notifications, and existing success/domain-error response body shapes.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/visit-routes/reorder/route.ts src/app/api/visit-routes/reorder/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/visit-routes/reorder/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests; stderr was the expected PHI-safe `route_handler_unhandled_error` log from the sanitized 500 regression.
+  - Scoped ESLint on the two visit-routes reorder files: passed.
+  - Scoped `git diff --check` on the two visit-routes reorder files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+  - After strengthening raw-error seeds with `schedule_1` / `proposal_1`, re-ran test-file Prettier, focused Vitest `13`/`13`, scoped ESLint on the test file, and scoped `git diff --check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope, validation, and unrelated `.codex/config.toml` exclusion note.
+  - Claude returned `APPROVED` after independently re-running focused Vitest and checking no-store coverage, inner/outer catch teeth, raw PHI/token non-leakage, and handler-not-reached side-effect assertions.
+- Remaining:
+  - Stage only explicit visit-routes reorder files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then continue remaining visit/report/interprofessional API candidates.
+
 ### Project-Local Subagent Persona Hardening - 2026-06-30 07:55 JST
 
 - Scope:

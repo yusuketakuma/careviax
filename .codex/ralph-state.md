@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0842 JST
+
+- current task: harden `PATCH /api/visit-routes/reorder` so visit route reorder responses consistently use sensitive no-store headers and sanitized unexpected-error envelopes.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `src/app/api/visit-routes/reorder/route.ts`, `src/app/api/visit-routes/reorder/route.test.ts`, established `visit-routes` and `visit-vehicle-resources` no-store wrapper patterns, `src/lib/auth/context.ts`, `src/lib/api/sensitive-response.ts`, `src/lib/api/response.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/visit-routes/reorder/route.ts`, `src/app/api/visit-routes/reorder/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved unrelated peer-owned `.codex/config.toml` diff.
+- bugs found: mixed visit route reorder PATCH returned permission, validation, conflict, not-found, and success responses without the sensitive no-store envelope. Auth/plumbing failures before handler execution could fall through to framework 500 behavior instead of a fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced caching and raw-error disclosure risk for visit route-order mutation responses containing schedule/proposal IDs, route-order context, patient-adjacent route metadata, or raw auth/transaction failure text. Auth/permission checks, RLS org scoping, serializable retry behavior, guarded schedule/proposal writes, audit payloads, workflow cache notifications, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused assertions.
+- validation commands: `pnpm exec prettier --write src/app/api/visit-routes/reorder/route.ts src/app/api/visit-routes/reorder/route.test.ts`; `pnpm exec vitest run src/app/api/visit-routes/reorder/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint on the two visit-routes reorder files; scoped `git diff --check` on the two files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; full `git diff --check`.
+- validation results: Prettier passed. Focused reorder Vitest passed `1` file / `13` tests; stderr was the expected PHI-safe `route_handler_unhandled_error` log from the sanitized 500 regression. Scoped ESLint, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and full `git diff --check` passed. After strengthening raw-error seeds with `schedule_1` / `proposal_1`, re-ran test-file Prettier, focused Vitest `13`/`13`, scoped ESLint on the test file, and scoped `git diff --check`; all passed.
+- remaining work: stage only the two visit-routes reorder files plus ledger hunks, commit, send agmsg FYI, and continue remaining visit/report/interprofessional candidates or incoming review interrupts.
+- next action: explicit-path stage and commit this validated/approved visit-time reorder response-boundary slice.
+
 ### 20260630-0755 JST
 
 - current task: strengthen CareViaX project-local Codex subagent personas and add medical/privacy specialist agents for PH-OS healthcare workflows.

@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { formatDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -96,7 +98,7 @@ async function withSerializableMixedRouteReorderTransaction<T>(
   throw new MixedRouteReorderRetryLimitError();
 }
 
-export const PATCH = withAuthContext(
+const authenticatedPATCH = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -335,3 +337,15 @@ export const PATCH = withAuthContext(
     message: '混在ルート順の更新権限がありません',
   },
 );
+
+export async function PATCH(
+  req: NextRequest,
+  routeContext: AuthRouteContext<Record<string, string>>,
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+}
