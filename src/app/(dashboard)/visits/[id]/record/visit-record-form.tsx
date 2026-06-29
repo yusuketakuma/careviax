@@ -533,18 +533,22 @@ export function VisitRecordForm({
     queryFn: () => listEvidenceDraftSummariesForSchedule(id),
   });
 
-  const { data: visitPreparationSnapshot, isLoading: visitPreparationLoading } =
-    useQuery<VisitPreparationSnapshot>({
-      queryKey: ['visit-preparation-care-team', id, orgId],
-      queryFn: async () => {
-        const res = await fetch(`/api/visit-preparations/${id}`, {
-          headers: { 'x-org-id': orgId },
-        });
-        if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
-        return res.json();
-      },
-      enabled: !!orgId && !!id,
-    });
+  const {
+    data: visitPreparationSnapshot,
+    isLoading: visitPreparationLoading,
+    isError: visitPreparationError,
+    refetch: refetchVisitPreparation,
+  } = useQuery<VisitPreparationSnapshot>({
+    queryKey: ['visit-preparation-care-team', id, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/visit-preparations/${id}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('訪問準備情報の取得に失敗しました');
+      return res.json();
+    },
+    enabled: !!orgId && !!id,
+  });
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const carryItemsWarning =
@@ -1572,6 +1576,35 @@ export function VisitRecordForm({
               {!visitPreparationLoading ? (
                 <PatientCareTeamSourcePanel contacts={patientCareTeamContacts} compact />
               ) : null}
+
+              {visitPreparationError && (
+                // 取得失敗を「準備情報なし(=処方変更/外薬/前回記録なし)」に潰さない。
+                // 記録入力自体は準備パックを必須としないため notification-only(再読込導線つき)。
+                <Card
+                  className="border-l-4 border-border/70 border-l-state-confirm bg-card"
+                  role="alert"
+                >
+                  <CardHeader className="pb-3">
+                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-state-confirm">
+                      <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+                      訪問準備情報を読み込めませんでした
+                    </h3>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm text-state-confirm">
+                    <p>
+                      処方変更・外薬・前回記録・他職種連携などの準備コンテキストが表示されていない可能性があります。「該当なし」ではなく取得エラーです。
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void refetchVisitPreparation()}
+                    >
+                      再読み込み
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
               {carryItemsWarning && (
                 <Card className="border-l-4 border-border/70 border-l-state-blocked bg-card">

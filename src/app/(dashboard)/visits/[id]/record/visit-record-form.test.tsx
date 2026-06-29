@@ -357,6 +357,41 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     vi.unstubAllGlobals();
   });
 
+  it('surfaces a retryable warning instead of silently dropping the visit-preparation pack on fetch failure', async () => {
+    // 準備パック取得失敗を「処方変更/外薬/前回記録なし」に潰さず、再読込導線つきで明示する。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        fetchUrls.push(url);
+        if (url === '/api/visit-schedules/schedule_partial') {
+          return new Response(
+            JSON.stringify({
+              id: 'schedule_partial',
+              patient_id: 'patient_1',
+              cycle_id: null,
+              scheduled_date: '2026-04-09',
+              schedule_status: 'ready',
+              visit_type: 'regular',
+              carry_items_status: 'ready',
+              recurrence_rule: null,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/visit-preparations/schedule_partial') {
+          return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    renderVisitRecordForm();
+
+    expect(await screen.findByText('訪問準備情報を読み込めませんでした')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
+
   it('syncs offline state on mount and when network status changes', async () => {
     const { rerender } = renderVisitRecordForm();
 
