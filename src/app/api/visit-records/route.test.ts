@@ -6,6 +6,7 @@ const {
   authMock,
   getRequestAuthContextMock,
   loggerErrorMock,
+  loggerWarnMock,
   membershipFindFirstMock,
   patientFindFirstMock,
   queryRawMock,
@@ -51,6 +52,7 @@ const {
   authMock: vi.fn(),
   getRequestAuthContextMock: vi.fn(),
   loggerErrorMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   queryRawMock: vi.fn(),
@@ -143,6 +145,7 @@ vi.mock('@/server/services/patient-state-snapshot', () => ({
 vi.mock('@/lib/utils/logger', () => ({
   logger: {
     error: loggerErrorMock,
+    warn: loggerWarnMock,
   },
 }));
 
@@ -2499,36 +2502,38 @@ describe('/api/visit-records POST', () => {
 
   it('logs only sanitized handoff extraction failure metadata after saving the visit record', async () => {
     const rawError = new Error('patient=田中太郎 SOAP=服薬状況 token=secret');
+    rawError.name = 'Patient Tanaka token=secret';
     processHandoffExtractionMock.mockRejectedValue(rawError);
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    try {
-      const response = await POST(
-        createRequest(
-          {
-            schedule_id: 'schedule_1',
-            patient_id: 'patient_1',
-            visit_date: '2026-03-26',
-            outcome_status: 'completed',
-            structured_soap: completedVisitStructuredSoap,
-          },
-          { 'x-org-id': 'org_1' },
-        ),
-      );
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
 
-      if (!response) throw new Error('response is required');
-      expect(response.status).toBe(201);
-      await Promise.resolve();
-      expect(warnSpy).toHaveBeenCalledWith('[visit-records] handoff extraction failed', {
-        visit_record_id: 'record_1',
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    await Promise.resolve();
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      'visit_records_handoff_extraction_failed',
+      expect.objectContaining({
+        event: 'visit_records_handoff_extraction_failed',
+        route: '/api/visit-records',
+        operation: 'process_handoff_extraction',
+        targetId: 'record_1',
         error_name: 'Error',
-      });
-      expect(warnSpy.mock.calls.some((call) => call.includes(rawError))).toBe(false);
-      expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('田中太郎');
-      expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('SOAP=服薬状況');
-      expect(JSON.stringify(warnSpy.mock.calls)).not.toContain('token=secret');
-    } finally {
-      warnSpy.mockRestore();
-    }
+      }),
+    );
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain('Patient Tanaka');
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain('田中太郎');
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain('SOAP=服薬状況');
+    expect(JSON.stringify(loggerWarnMock.mock.calls)).not.toContain('token=secret');
   });
 });

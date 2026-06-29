@@ -218,8 +218,11 @@ function parseVisitRecordListQuery(searchParams: URLSearchParams) {
 
 function safeHandoffExtractionWarningContext(visitRecordId: string, cause: unknown) {
   return {
-    visit_record_id: visitRecordId,
-    error_name: cause instanceof Error ? cause.name : typeof cause,
+    event: 'visit_records_handoff_extraction_failed',
+    route: ROUTE,
+    operation: 'process_handoff_extraction',
+    targetId: visitRecordId,
+    error_name: safeErrorName(cause),
   };
 }
 
@@ -1775,8 +1778,8 @@ async function authenticatedPOST(req: NextRequest) {
         expectedVersion: result.handoffExtraction.expectedVersion,
         requestContext,
       }).catch((cause) => {
-        console.warn(
-          '[visit-records] handoff extraction failed',
+        logger.warn(
+          'visit_records_handoff_extraction_failed',
           safeHandoffExtractionWarningContext(result.record.id, cause),
         );
       });

@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Visit-Record Handoff Extraction Logging - 2026-06-30 03:46 JST
+
+- Scope:
+  - Continued codex2's visit-time handoff objective on `POST /api/visit-records`.
+  - Preserved concurrent codex-owned report date display WIP in `src/server/services/report-templates.ts`.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Background `processHandoffExtraction()` failures after a successful visit-record save now go through the repository's structured `logger.warn` path instead of `console.warn`.
+  - The warning context uses a fixed event name, route, operation, visit-record id, and safe error name so production observability can identify the failure without serializing the raw exception.
+  - The visit-record save remains nonblocking when extraction fails.
+- Safety:
+  - Reduces PHI/logging risk by ensuring the test covers PHI-like raw error text (`patient=...`, SOAP text, token text) not appearing in warning calls.
+  - A codex review blocker found that `Error.name` is mutable; the patch now uses the existing allowlisted `safeErrorName(cause)` helper and tests a hostile `rawError.name` containing PHI/secret text.
+  - Does not widen the handoff extraction contract, report generation contract, or authorization boundary.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `72` tests.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm exec prettier --check src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+  - `git diff --check -- src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+- Review:
+  - codex returned `CHANGES_REQUESTED` for mutable `Error.name`; fixed by using `safeErrorName(cause)` and extending the regression test. The focused route test, scoped ESLint, scoped diff check, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed after the fix.
+  - Claude approved after independent focused validation. codex was sent the fix update and no further blocker was received before commit preparation.
+- Remaining:
+  - Commit is pending for this slice; codex-owned report-date WIP remains unstaged.
+
 ### Care-Report Japan Date Boundaries - 2026-06-30 03:40 JST
 
 - Scope:

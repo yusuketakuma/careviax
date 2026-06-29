@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0346 JST
+
+- current task: harden visit-record handoff extraction failure observability while preserving nonblocking visit-record saves and concurrent report-date WIP.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `git log --oneline -n 6`, this Ralph state file, `CODEX_GOAL_PROGRESS.md`, local Next.js route-handler docs, `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `src/server/services/visit-handoff.ts`, `src/lib/utils/logger.ts`, and concurrent codex-owned `src/server/services/report-templates.ts` diff for ownership separation.
+- files changed: `src/app/api/visit-records/route.ts`, `src/app/api/visit-records/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: background `processHandoffExtraction()` failures after `POST /api/visit-records` were reported with `console.warn`, which bypassed the repository's structured logger/Sentry path and made production investigation harder even though the save correctly remained nonblocking.
+- security risks found: kept raw handoff extraction exceptions out of logs and asserted that PHI-like error text is not emitted. codex review found that `Error.name` is mutable and could contain PHI/secret text, so the warning context now uses the route's allowlisted `safeErrorName(cause)` helper and the regression mutates `rawError.name` with PHI-like text. No auth/RLS policy, schema, live DB mutation, external send, deploy, push, secret handling, or destructive operation changed.
+- performance issues found: no new DB query, external request, dependency, retry loop, synchronous blocking, or unbounded work was added. The change only routes an existing failure notification through `logger.warn`.
+- validation commands: `pnpm exec prettier --write src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`; `pnpm exec vitest run src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`; `git diff --check -- src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; `pnpm exec prettier --check src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`; `git diff --check -- src/app/api/visit-records/route.ts src/app/api/visit-records/route.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`.
+- validation results: Initial focused/full gates passed. codex then returned `CHANGES_REQUESTED` for mutable `Error.name`; after switching to `safeErrorName(cause)` and adding a hostile `rawError.name` regression, focused visit-record route Vitest passed `1` file / `72` tests, scoped ESLint passed, focused `git diff --check` passed, `pnpm typecheck` passed, `pnpm typecheck:no-unused` passed, `pnpm lint` passed, and `pnpm format:check` passed. Final targeted Prettier check and ledger-inclusive `git diff --check` passed. Claude approved after independent focused validation. codex was notified of the fix and no further blocker was received before commit preparation.
+- remaining work: stage only explicit codex2-owned files and commit this slice, leaving codex-owned report-date WIP unstaged.
+- next action: final status check, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0340 JST
 
 - current task: make care-report list filters and the report today workspace Japan-civil-day safe while prioritizing codex2's external-professional suggestions review request.
