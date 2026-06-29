@@ -629,7 +629,11 @@ export function PrescriptionIntakeForm() {
   ]);
 
   // Fetch patients for search
-  const { data: patientsData } = useQuery({
+  const {
+    data: patientsData,
+    isError: isPatientsError,
+    refetch: refetchPatients,
+  } = useQuery({
     queryKey: ['patients-search', orgId, debouncedPatientSearch],
     queryFn: async () => {
       const params = new URLSearchParams({ view: 'match', limit: '10' });
@@ -666,7 +670,11 @@ export function PrescriptionIntakeForm() {
   });
 
   // Fetch cases for selected patient
-  const { data: casesData } = useQuery({
+  const {
+    data: casesData,
+    isError: isCasesError,
+    refetch: refetchCases,
+  } = useQuery({
     queryKey: ['patient-cases', orgId, selectedPatientId],
     queryFn: async () => {
       return fetchOrgJson<{ data: CaseOption[] }>({
@@ -678,7 +686,11 @@ export function PrescriptionIntakeForm() {
     enabled: !!orgId && !!selectedPatientId,
   });
 
-  const { data: previousPrescriptionsData } = useQuery({
+  const {
+    data: previousPrescriptionsData,
+    isError: isPreviousPrescriptionsError,
+    refetch: refetchPreviousPrescriptions,
+  } = useQuery({
     queryKey: ['patient-prescriptions', orgId, selectedPatientId, selectedCaseId],
     queryFn: async () => {
       return fetchOrgJson<{ data: PreviousPrescriptionIntake[] }>({
@@ -1785,6 +1797,16 @@ export function PrescriptionIntakeForm() {
               前回処方を引用
             </button>
           </div>
+        ) : isPreviousPrescriptionsError ? (
+          <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3">
+            <ErrorState
+              variant="server"
+              size="inline"
+              title="前回処方を取得できませんでした"
+              description="「前回処方なし」ではなく取得エラーです。引用が必要な場合は再読み込みしてください。"
+              action={{ label: '再読み込み', onClick: () => void refetchPreviousPrescriptions() }}
+            />
+          </div>
         ) : null}
 
         {selectedPatientId ? (
@@ -1898,6 +1920,17 @@ export function PrescriptionIntakeForm() {
               ))}
             </ul>
           )}
+          {isPatientsError && !selectedPatientId && debouncedPatientSearch.length >= 1 && (
+            <div className="mt-1">
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="患者検索に失敗しました"
+                description="「該当なし」ではなく取得エラーです。誤った患者で登録しないよう、再読み込みしてください。"
+                action={{ label: '再読み込み', onClick: () => void refetchPatients() }}
+              />
+            </div>
+          )}
         </div>
 
         {selectedPatientId && casesData?.data && (
@@ -1933,6 +1966,18 @@ export function PrescriptionIntakeForm() {
                 ケースを選択してください
               </p>
             )}
+          </div>
+        )}
+
+        {selectedPatientId && isCasesError && (
+          <div>
+            <ErrorState
+              variant="server"
+              size="inline"
+              title="ケースを取得できませんでした"
+              description="この患者の既存ケースを表示できていません。「ケースなし」と取り違えて登録しないよう、再読み込みしてください。"
+              action={{ label: '再読み込み', onClick: () => void refetchCases() }}
+            />
           </div>
         )}
       </fieldset>
