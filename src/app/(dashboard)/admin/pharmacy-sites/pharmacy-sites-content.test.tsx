@@ -390,6 +390,71 @@ describe('PharmacySitesContent', () => {
     expect(deleteCalls).toHaveLength(0);
   });
 
+  it('surfaces a sites fetch error instead of collapsing to a false-empty "no pharmacies" state', async () => {
+    // 薬局一覧 GET だけ 500。空配列に潰れて「薬局情報がありません」と化けないことを検証する。
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === PHARMACY_SITES_API_PATH) {
+        return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    expect(await screen.findByText('薬局情報を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('薬局情報がありません。')).toBeNull();
+
+    const sitesCallsBefore = fetchMock.mock.calls.filter(
+      ([input]) => String(input) === PHARMACY_SITES_API_PATH,
+    ).length;
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    await waitFor(() => {
+      const sitesCallsAfter = fetchMock.mock.calls.filter(
+        ([input]) => String(input) === PHARMACY_SITES_API_PATH,
+      ).length;
+      expect(sitesCallsAfter).toBeGreaterThan(sitesCallsBefore);
+    });
+  });
+
+  it('surfaces an insurance-configs fetch error instead of a false-empty "not registered" state', async () => {
+    // 薬局一覧 GET は 200、保険設定 GET だけ 500。「未登録」に潰れないことを検証する。
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === PHARMACY_SITES_API_PATH) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'site_1',
+                name: '本店',
+                address: '東京都千代田区1-1',
+                phone: '03-1111-2222',
+                fax: '03-1111-2223',
+                is_health_support_pharmacy: false,
+                is_regional_support: false,
+                is_specialized_pharmacy: false,
+                dispensing_fee_category: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes('/insurance-configs')) {
+        return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+      }
+      return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を開く' }));
+
+    expect(await screen.findByText('保険設定を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('保険設定はまだ登録されていません。')).toBeNull();
+  });
+
   it('create insurance config with a dot-segment SITE id fails closed before any POST fetch', async () => {
     // first-segment (siteId) dot guard: a dot site id must fail closed before the
     // mutating POST, not just the second (configId) segment.

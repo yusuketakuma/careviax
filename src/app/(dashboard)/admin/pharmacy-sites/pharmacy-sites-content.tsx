@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dialog';
 import { AlertTriangle } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { ErrorState } from '@/components/ui/error-state';
 import {
   CARE_BOOL_FIELDS,
   getAvailableRevisions,
@@ -170,7 +171,12 @@ export function PharmacySitesContent() {
     targetLabel: string;
   } | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError: isSitesError,
+    refetch: refetchSites,
+  } = useQuery({
     queryKey: ['pharmacy-sites-admin', orgId],
     queryFn: async () => {
       const response = await fetch(PHARMACY_SITES_API_PATH, {
@@ -348,6 +354,17 @@ export function PharmacySitesContent() {
     <div className="space-y-6">
       {isLoading ? (
         <div className="text-sm text-muted-foreground">読み込み中...</div>
+      ) : isSitesError ? (
+        // 取得失敗を「薬局情報がありません」に潰さない。薬局マスタ消失の誤認は業務停止リスク。
+        <ErrorState
+          variant="server"
+          size="inline"
+          headingLevel={2}
+          title="薬局情報を読み込めませんでした"
+          description="「該当なし」ではなく取得エラーです。再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: () => void refetchSites() }}
+          live="assertive"
+        />
       ) : sites.length === 0 ? (
         <Card>
           <CardContent>
@@ -551,7 +568,20 @@ export function PharmacySitesContent() {
                 </Alert>
               )}
 
-            {configs.length === 0 ? (
+            {configsQuery.isPending ? (
+              <div className="text-sm text-muted-foreground">読み込み中...</div>
+            ) : configsQuery.isError ? (
+              // 取得失敗を「未登録」に潰さない。保険設定の見落としは調剤報酬算定に影響する。
+              <ErrorState
+                variant="server"
+                size="inline"
+                headingLevel={3}
+                title="保険設定を読み込めませんでした"
+                description="「未登録」ではなく取得エラーです。再読み込みしてください。"
+                action={{ label: '再読み込み', onClick: () => void configsQuery.refetch() }}
+                live="assertive"
+              />
+            ) : configs.length === 0 ? (
               <div className="text-sm text-muted-foreground">
                 保険設定はまだ登録されていません。
               </div>
