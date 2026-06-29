@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Loading } from '@/components/ui/loading';
+import { ErrorState } from '@/components/ui/error-state';
 import {
   Select,
   SelectContent,
@@ -279,10 +280,20 @@ export default function QrDraftReviewPage() {
   });
 
   // Fetch patient cases (only when patient_id is resolved)
-  const { data: casesData } = useQuery({
+  const {
+    data: casesData,
+    isLoading: isCasesLoading,
+    isError: isCasesError,
+    refetch: refetchCases,
+  } = useQuery({
     queryKey: ['patient-cases', draft?.patient_id, orgId],
     queryFn: async () => {
-      const res = await fetch(`/api/cases?patient_id=${draft!.patient_id}&status=active&limit=20`, {
+      const params = new URLSearchParams({
+        patient_id: draft!.patient_id!,
+        status: 'active',
+        limit: '20',
+      });
+      const res = await fetch(`/api/cases?${params.toString()}`, {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('ケースの取得に失敗しました');
@@ -297,9 +308,18 @@ export default function QrDraftReviewPage() {
   );
   const isCurrentDraftState = draft != null && formState.draftId === draft.id;
   const lines = isCurrentDraftState && formState.lines ? formState.lines : initialLines;
-  const autoSelectedCaseId = casesData?.data.length === 1 ? casesData.data[0].id : '';
+  const cases = casesData?.data ?? [];
+  const isCaseSelectionUnavailable = Boolean(draft?.patient_id) && (isCasesLoading || isCasesError);
+  const autoSelectedCaseId = !isCaseSelectionUnavailable && cases.length === 1 ? cases[0].id : '';
   const caseId =
     isCurrentDraftState && formState.caseId !== null ? formState.caseId : autoSelectedCaseId;
+  const isSelectedCaseActive = !isCaseSelectionUnavailable && cases.some((c) => c.id === caseId);
+  const effectiveCaseId = isSelectedCaseActive ? caseId : '';
+  const isSelectedCaseStale =
+    Boolean(draft?.patient_id) &&
+    Boolean(caseId) &&
+    !isCaseSelectionUnavailable &&
+    !effectiveCaseId;
   const prescriberName =
     isCurrentDraftState && formState.prescriberName !== null
       ? formState.prescriberName
@@ -322,7 +342,7 @@ export default function QrDraftReviewPage() {
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({
           patient_id: draft!.patient_id,
-          case_id: caseId,
+          case_id: effectiveCaseId,
           prescribed_date: prescribedDate,
           prescriber_name: prescriberName || undefined,
           prescriber_institution_id: draft?.parsed_data.prescriberInstitutionId ?? undefined,
@@ -389,7 +409,8 @@ export default function QrDraftReviewPage() {
     lines.every(
       (l) => l.drug_name.trim() !== '' && l.dose.trim() !== '' && l.frequency.trim() !== '',
     ) &&
-    !!caseId &&
+    !isCaseSelectionUnavailable &&
+    !!effectiveCaseId &&
     !!draft?.patient_id &&
     !!prescribedDate;
 
@@ -412,9 +433,14 @@ export default function QrDraftReviewPage() {
       <div className="p-6 text-sm text-muted-foreground">QRスキャン下書きが見つかりません</div>
     );
   }
-  const registrationHref = `/prescriptions/new?qr_draft_id=${draft.id}${
-    draft.patient_id ? `&patient_id=${draft.patient_id}` : ''
-  }${caseId ? `&case_id=${caseId}` : ''}`;
+  const registrationParams = new URLSearchParams({ qr_draft_id: draft.id });
+  if (draft.patient_id) {
+    registrationParams.set('patient_id', draft.patient_id);
+  }
+  if (effectiveCaseId) {
+    registrationParams.set('case_id', effectiveCaseId);
+  }
+  const registrationHref = `/prescriptions/new?${registrationParams.toString()}`;
 
   if (draft.status !== 'pending') {
     return (
@@ -435,7 +461,6 @@ export default function QrDraftReviewPage() {
   }
 
   const pd = draft.parsed_data;
-  const cases = casesData?.data ?? [];
   const hasParseErrors = (draft.parse_errors?.length ?? 0) > 0;
   const supplementalRecords = normalizeJahisSupplementalRecords(
     pd.supplementalRecords,
@@ -676,14 +701,30 @@ export default function QrDraftReviewPage() {
               ケース選択 <span className="text-destructive">*</span>
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            {cases.length === 0 ? (
+          <CardContent className="space-y-3">
+            {isCasesLoading ? (
+              <p className="text-sm text-muted-foreground">ケースを読み込み中です...</p>
+            ) : isCasesError ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                headingLevel={3}
+                title="ケース一覧を読み込めませんでした"
+                description="アクティブなケースがない状態ではなく、ケース一覧の取得に失敗しています。処方を確定するには再読み込みしてください。"
+                action={{
+                  label: '再読み込み',
+                  onClick: () => void refetchCases(),
+                  variant: 'outline',
+                  size: 'sm',
+                }}
+              />
+            ) : cases.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 この患者に紐付くアクティブなケースが見つかりません。
               </p>
             ) : (
               <Select
-                value={caseId}
+                value={effectiveCaseId}
                 onValueChange={(value) =>
                   setFormState((prev) => ({
                     ...prev,
@@ -1005,7 +1046,15 @@ export default function QrDraftReviewPage() {
           <ul className="mt-1 list-disc pl-4 text-xs space-y-0.5">
             {!prescribedDate && <li>処方日</li>}
             {!draft.patient_id && <li>患者の紐付け</li>}
-            {!caseId && draft.patient_id && <li>ケースの選択</li>}
+            {draft.patient_id && isCasesError ? (
+              <li>ケース一覧の再読み込み</li>
+            ) : draft.patient_id && isCasesLoading ? (
+              <li>ケース一覧の取得完了</li>
+            ) : isSelectedCaseStale ? (
+              <li>ケースの再選択</li>
+            ) : !effectiveCaseId && draft.patient_id ? (
+              <li>ケースの選択</li>
+            ) : null}
             {lines.some((l) => l.drug_name.trim() === '') && <li>薬剤名（すべての行）</li>}
             {lines.some((l) => l.dose.trim() === '') && <li>用量（すべての行）</li>}
             {lines.some((l) => l.frequency.trim() === '') && <li>用法（すべての行）</li>}

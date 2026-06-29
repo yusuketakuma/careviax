@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildQrDraftShortcutLinks,
-  QR_DRAFT_CONFIRM_SUCCESS_HREF,
-} from './page.helpers';
+import { buildQrDraftShortcutLinks, QR_DRAFT_CONFIRM_SUCCESS_HREF } from './page.helpers';
 
 describe('qr draft page helpers', () => {
   it('routes confirmation success to an existing workflow surface', () => {
