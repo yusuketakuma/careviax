@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { buildSort } from '@/lib/api/search';
 import {
   canAccessVisitScheduleAssignment,
@@ -9,7 +9,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { SCHEDULE_LIST_INCLUDE } from '@/lib/db/schedule-includes';
 import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { validateOrgReferences } from '@/lib/api/org-reference';
-import { forbiddenResponse, validationError } from '@/lib/api/response';
+import { conflict, forbiddenResponse, validationError } from '@/lib/api/response';
 import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
@@ -18,11 +18,47 @@ import {
   evaluateVisitWorkflowGate,
   formatVisitWorkflowGateIssues,
 } from '@/server/services/management-plans';
+import { validateVisitScheduleBlockingBillingRequirements } from '@/server/services/visit-schedule-billing-guard';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import type { z } from 'zod';
 import type { createVisitScheduleSchema } from '@/lib/validations/visit-schedule';
 
 type CreateScheduleData = z.infer<typeof createVisitScheduleSchema>;
+
+const CREATE_SCHEDULE_SERIALIZABLE_RETRY_LIMIT = 3;
+
+class VisitScheduleCreateRetryLimitError extends Error {
+  constructor() {
+    super('visit schedule creation transaction retry limit exceeded');
+    this.name = 'VisitScheduleCreateRetryLimitError';
+  }
+}
+
+function isSerializableTransactionConflict(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+async function withSerializableScheduleCreateTransaction<T>(
+  orgId: string,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < CREATE_SCHEDULE_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      if (!isSerializableTransactionConflict(cause)) {
+        throw cause;
+      }
+      if (attempt === CREATE_SCHEDULE_SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw new VisitScheduleCreateRetryLimitError();
+      }
+    }
+  }
+
+  throw new VisitScheduleCreateRetryLimitError();
+}
 
 type VisitVehicleResourceValidationArgs = {
   orgId: string;
@@ -228,6 +264,7 @@ export async function createSchedule(
       patient_id: true,
       primary_pharmacist_id: true,
       backup_pharmacist_id: true,
+      required_visit_support: true,
       patient: {
         select: {
           scheduling_preference: true,
@@ -294,7 +331,25 @@ export async function createSchedule(
 
   const facilityUnitId = careCase.patient?.residences[0]?.facility_unit_id ?? null;
 
-  return withOrgContext(orgId, async (tx) => {
+  const result = await withSerializableScheduleCreateTransaction(orgId, async (tx) => {
+    const billingValidation = await validateVisitScheduleBlockingBillingRequirements({
+      db: tx,
+      orgId,
+      caseId: rest.case_id,
+      patientId: careCase.patient_id,
+      pharmacistId: rest.pharmacist_id,
+      visitType: rest.visit_type,
+      proposedDate: scheduledDate,
+      requiredVisitSupport: careCase.required_visit_support,
+      workflowPrevalidated: true,
+    });
+    if (billingValidation.blockingMessages.length > 0) {
+      return {
+        error: 'billing_cap_exceeded' as const,
+        message: billingValidation.blockingMessages.join(' / '),
+      };
+    }
+
     const [routeOrderDraft] = await allocateProposalRouteOrders(tx, {
       orgId,
       drafts: [
@@ -326,7 +381,19 @@ export async function createSchedule(
         ...rest,
       },
     });
+  }).catch((cause: unknown) => {
+    if (cause instanceof VisitScheduleCreateRetryLimitError) {
+      return { error: 'serialization_conflict' as const };
+    }
+    throw cause;
   });
+
+  if ('error' in result) {
+    if (result.error === 'billing_cap_exceeded') return validationError(result.message);
+    return conflict('訪問予定の作成が同時に更新されました。再読み込みしてください');
+  }
+
+  return result;
 }
 
 function readTimeString(value: Date | null | undefined) {

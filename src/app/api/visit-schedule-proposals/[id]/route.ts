@@ -44,6 +44,7 @@ import {
   buildVisitScheduleReproposalNeededTask,
 } from '@/server/services/visit-schedule-communication';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
+import { validateVisitScheduleBlockingBillingRequirements } from '@/server/services/visit-schedule-billing-guard';
 import { buildProposalRejectAuditChanges } from '@/lib/audit-logs/proposal-rejection';
 import {
   omitProposalRejectReason,
@@ -842,6 +843,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         case_: {
           select: {
             patient_id: true,
+            required_visit_support: true,
             patient: {
               select: {
                 residences: {
@@ -1255,6 +1257,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         case_: {
           select: {
             patient_id: true,
+            required_visit_support: true,
             patient: {
               select: {
                 residences: {
@@ -1486,6 +1489,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           overrideReason,
         };
       }
+    }
+
+    const billingValidation = await validateVisitScheduleBlockingBillingRequirements({
+      db: tx,
+      orgId: ctx.orgId,
+      caseId: currentProposal.case_id,
+      patientId: currentProposal.case_.patient_id,
+      pharmacistId: currentProposal.proposed_pharmacist_id,
+      visitType: currentProposal.visit_type,
+      proposedDate: currentProposal.proposed_date,
+      requiredVisitSupport: currentProposal.case_.required_visit_support,
+      excludeProposalId: id,
+      excludeScheduleId: currentProposal.reschedule_source_schedule_id,
+      excludeSupersededProposalScope: {
+        caseId: currentProposal.case_id,
+        rescheduleSourceScheduleId: currentProposal.reschedule_source_schedule_id,
+      },
+      workflowPrevalidated: true,
+    });
+    if (billingValidation.blockingMessages.length > 0) {
+      return {
+        error: 'billing_cap_exceeded' as const,
+        message: billingValidation.blockingMessages.join(' / '),
+      };
     }
 
     const claim = await tx.visitScheduleProposal.updateMany({
@@ -1800,6 +1827,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return validationError(result.message);
     }
     if (result.error === 'operating_day_closed') {
+      return validationError(result.message);
+    }
+    if (result.error === 'billing_cap_exceeded') {
       return validationError(result.message);
     }
   }

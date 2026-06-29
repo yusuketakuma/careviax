@@ -18,6 +18,10 @@ const {
   pharmacyOperatingHoursFindManyMock,
   businessHolidayFindManyMock,
   vehicleResourceFindFirstMock,
+  patientInsuranceFindFirstMock,
+  userFindFirstMock,
+  consentRecordFindFirstMock,
+  managementPlanFindFirstMock,
   contactLogCreateMock,
   contactLogFindFirstMock,
   contactLogUpdateManyMock,
@@ -46,6 +50,10 @@ const {
   pharmacyOperatingHoursFindManyMock: vi.fn(),
   businessHolidayFindManyMock: vi.fn(),
   vehicleResourceFindFirstMock: vi.fn(),
+  patientInsuranceFindFirstMock: vi.fn(),
+  userFindFirstMock: vi.fn(),
+  consentRecordFindFirstMock: vi.fn(),
+  managementPlanFindFirstMock: vi.fn(),
   contactLogCreateMock: vi.fn(),
   contactLogFindFirstMock: vi.fn(),
   contactLogUpdateManyMock: vi.fn(),
@@ -82,6 +90,16 @@ vi.mock('@/lib/db/client', () => ({
     },
     user: {
       findMany: userFindManyMock,
+      findFirst: userFindFirstMock,
+    },
+    patientInsurance: {
+      findFirst: patientInsuranceFindFirstMock,
+    },
+    consentRecord: {
+      findFirst: consentRecordFindFirstMock,
+    },
+    managementPlan: {
+      findFirst: managementPlanFindFirstMock,
     },
   },
 }));
@@ -165,6 +183,7 @@ function buildProposal(overrides?: Record<string, unknown>) {
     reschedule_source_schedule_id: null,
     case_: {
       patient_id: 'patient_1',
+      required_visit_support: null,
       patient: {
         id: 'patient_1',
         name: '患者A',
@@ -209,6 +228,18 @@ function buildTxMock() {
     },
     visitVehicleResource: {
       findFirst: vehicleResourceFindFirstMock,
+    },
+    patientInsurance: {
+      findFirst: patientInsuranceFindFirstMock,
+    },
+    user: {
+      findFirst: userFindFirstMock,
+    },
+    consentRecord: {
+      findFirst: consentRecordFindFirstMock,
+    },
+    managementPlan: {
+      findFirst: managementPlanFindFirstMock,
     },
     visitScheduleProposal: {
       findFirst: proposalFindFirstMock,
@@ -293,6 +324,14 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       site_id: 'site_1',
       label: '社用車A',
       max_stops: 8,
+    });
+    patientInsuranceFindFirstMock.mockResolvedValue(null);
+    userFindFirstMock.mockResolvedValue({ max_weekly_visits: null });
+    consentRecordFindFirstMock.mockResolvedValue({ id: 'consent_1' });
+    managementPlanFindFirstMock.mockResolvedValue({
+      id: 'plan_1',
+      status: 'approved',
+      next_review_date: null,
     });
     contactLogCreateMock.mockResolvedValue({ id: 'contact_log_1' });
     contactLogFindFirstMock.mockResolvedValue(null);
@@ -1701,6 +1740,83 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
+  });
+
+  it('rejects proposal finalization when billing caps are exceeded at confirmation time', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    patientInsuranceFindFirstMock.mockImplementation(async ({ where }) =>
+      where.insurance_type === 'medical' ? { number: 'medical_1' } : null,
+    );
+    scheduleCountMock.mockResolvedValueOnce(4).mockResolvedValue(0);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('月上限4回を超過します'),
+    });
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('does not count sibling proposals that confirmation will supersede against billing caps', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    patientInsuranceFindFirstMock.mockImplementation(async ({ where }) =>
+      where.insurance_type === 'medical' ? { number: 'medical_1' } : null,
+    );
+    scheduleCountMock.mockResolvedValueOnce(3).mockResolvedValue(0);
+    proposalFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'proposal_sibling',
+        case_id: 'case_1',
+        proposal_batch_id: 'batch_1',
+        proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+        proposed_pharmacist_id: 'pharmacist_1',
+        visit_type: 'regular',
+        finalized_schedule_id: null,
+        reschedule_source_schedule_id: null,
+        case_: {
+          patient_id: 'patient_1',
+        },
+      },
+    ]);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(scheduleCreateMock).toHaveBeenCalledTimes(1);
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        id: { not: 'proposal_1' },
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        reschedule_source_schedule_id: null,
+      },
+      data: {
+        proposal_status: 'superseded',
+      },
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects confirmation on a closed operating day when the proposal has no override reason', async () => {

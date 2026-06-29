@@ -59,6 +59,10 @@ export type ValidateBillingRequirementsArgs = {
   proposedDate: Date;
   excludeScheduleId?: string;
   excludeProposalId?: string;
+  excludeSupersededProposalScope?: {
+    caseId: string;
+    rescheduleSourceScheduleId?: string | null;
+  };
   prescriptionCategory?: 'regular' | 'emergency';
   payerBasis: 'medical' | 'care' | 'mixed';
   specialCapEligible?: boolean;
@@ -66,6 +70,41 @@ export type ValidateBillingRequirementsArgs = {
   cadenceScheduleRows?: BillingCadenceScheduleRow[];
   cadenceProposalRows?: BillingCadenceProposalRow[];
   workflowSnapshot?: BillingRequirementWorkflowSnapshot;
+  db?: BillingRequirementDb;
+};
+
+type ConsentRecordDelegate = {
+  findFirst(args: unknown): Promise<{
+    id: string;
+    expiry_date?: Date | null;
+    obtained_date?: Date | null;
+  } | null>;
+};
+
+type ManagementPlanDelegate = {
+  findFirst(args: unknown): Promise<{
+    id: string;
+    status?: string;
+    next_review_date: Date | null;
+    effective_from?: Date | null;
+    version?: number;
+    approved_at?: Date | null;
+  } | null>;
+};
+
+export type BillingRequirementDb = {
+  visitSchedule: {
+    findMany(args: unknown): Promise<unknown[]>;
+    count(args: unknown): Promise<number>;
+  };
+  visitScheduleProposal: {
+    findMany(args: unknown): Promise<unknown[]>;
+  };
+  user: {
+    findFirst(args: unknown): Promise<{ max_weekly_visits: number | null } | null>;
+  };
+  consentRecord: ConsentRecordDelegate;
+  managementPlan: ManagementPlanDelegate;
 };
 
 export type BillingCadenceScheduleRow = {
@@ -78,6 +117,7 @@ export type BillingCadenceScheduleRow = {
 
 export type BillingCadenceProposalRow = {
   id: string;
+  case_id?: string | null;
   patient_id: string;
   proposed_date: Date;
   proposed_pharmacist_id?: string | null;
@@ -149,9 +189,26 @@ function countScheduleRows(
 
 function isCountableProposalRow(
   row: BillingCadenceProposalRow,
-  args: { excludeProposalId?: string; excludeScheduleId?: string },
+  args: {
+    excludeProposalId?: string;
+    excludeScheduleId?: string;
+    excludeSupersededProposalScope?: {
+      caseId: string;
+      rescheduleSourceScheduleId?: string | null;
+    };
+  },
 ) {
   if (args.excludeProposalId && row.id === args.excludeProposalId) return false;
+  const supersededScope = args.excludeSupersededProposalScope;
+  if (
+    supersededScope &&
+    row.case_id === supersededScope.caseId &&
+    (supersededScope.rescheduleSourceScheduleId
+      ? row.reschedule_source_schedule_id === supersededScope.rescheduleSourceScheduleId
+      : row.reschedule_source_schedule_id == null)
+  ) {
+    return false;
+  }
   if (row.finalized_schedule_id) return false;
   if (
     row.reschedule_source_schedule_id &&
@@ -166,7 +223,14 @@ function countProposalRows(
   rows: BillingCadenceProposalRow[],
   predicate: (row: BillingCadenceProposalRow) => boolean,
   bucketKey: (row: BillingCadenceProposalRow) => string,
-  args: { excludeProposalId?: string; excludeScheduleId?: string },
+  args: {
+    excludeProposalId?: string;
+    excludeScheduleId?: string;
+    excludeSupersededProposalScope?: {
+      caseId: string;
+      rescheduleSourceScheduleId?: string | null;
+    };
+  },
 ): number {
   const counted = new Set<string>();
   for (const row of rows) {
@@ -180,13 +244,15 @@ function countProposalRows(
 }
 
 async function loadBillingCadenceProposalRows(args: {
+  db?: BillingRequirementDb;
   orgId: string;
   patientId: string;
   pharmacistId: string;
   dateFrom: Date;
   dateTo: Date;
 }): Promise<BillingCadenceProposalRow[]> {
-  const proposals = await prisma.visitScheduleProposal.findMany({
+  const db = args.db ?? prisma;
+  const proposals = (await db.visitScheduleProposal.findMany({
     where: {
       org_id: args.orgId,
       finalized_schedule_id: null,
@@ -208,6 +274,7 @@ async function loadBillingCadenceProposalRows(args: {
     },
     select: {
       id: true,
+      case_id: true,
       proposal_batch_id: true,
       proposed_date: true,
       proposed_pharmacist_id: true,
@@ -220,10 +287,23 @@ async function loadBillingCadenceProposalRows(args: {
         },
       },
     },
-  });
+  })) as Array<{
+    id: string;
+    case_id: string;
+    proposal_batch_id: string | null;
+    proposed_date: Date;
+    proposed_pharmacist_id: string | null;
+    visit_type: string | null;
+    finalized_schedule_id: string | null;
+    reschedule_source_schedule_id: string | null;
+    case_: {
+      patient_id: string;
+    };
+  }>;
 
   return proposals.map((proposal) => ({
     id: proposal.id,
+    case_id: proposal.case_id,
     patient_id: proposal.case_.patient_id,
     proposed_date: proposal.proposed_date,
     proposed_pharmacist_id: proposal.proposed_pharmacist_id,
@@ -237,6 +317,7 @@ async function loadBillingCadenceProposalRows(args: {
 export async function getBillingCadencePreview(
   args: ValidateBillingRequirementsArgs,
 ): Promise<BillingCadencePreview> {
+  const db = (args.db ?? prisma) as BillingRequirementDb;
   const cadencePolicy = getBillingCadencePolicy();
   const monthlyCap = args.specialCapEligible
     ? cadencePolicy.monthlyCapSpecial
@@ -256,10 +337,10 @@ export async function getBillingCadencePreview(
         row.scheduled_date <= searchEnd,
     ) ??
     (
-      await prisma.visitSchedule.findMany({
+      (await db.visitSchedule.findMany({
         where: {
           org_id: args.orgId,
-          cycle: { patient_id: args.patientId },
+          case_: { patient_id: args.patientId },
           ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
           scheduled_date: {
             gte: monthStart,
@@ -272,7 +353,7 @@ export async function getBillingCadencePreview(
           scheduled_date: true,
         },
         orderBy: [{ scheduled_date: 'asc' }],
-      })
+      })) as Array<{ id: string; scheduled_date: Date }>
     ).map((schedule) => ({
       id: schedule.id,
       patient_id: args.patientId,
@@ -288,6 +369,7 @@ export async function getBillingCadencePreview(
     (args.cadenceScheduleRows
       ? []
       : await loadBillingCadenceProposalRows({
+          db,
           orgId: args.orgId,
           patientId: args.patientId,
           pharmacistId: args.pharmacistId,
@@ -308,6 +390,7 @@ export async function getBillingCadencePreview(
       !isCountableProposalRow(proposal, {
         excludeProposalId: args.excludeProposalId,
         excludeScheduleId: args.excludeScheduleId,
+        excludeSupersededProposalScope: args.excludeSupersededProposalScope,
       })
     ) {
       continue;
@@ -387,6 +470,7 @@ export async function getBillingCadencePreview(
 export async function validateBillingRequirements(
   args: ValidateBillingRequirementsArgs,
 ): Promise<BillingRequirementAlert[]> {
+  const db = (args.db ?? prisma) as BillingRequirementDb;
   const cadencePolicy = getBillingCadencePolicy();
   const asOf = new Date().toISOString();
   const alerts: BillingRequirementAlert[] = [];
@@ -399,6 +483,7 @@ export async function validateBillingRequirements(
     (args.cadenceScheduleRows
       ? Promise.resolve([])
       : loadBillingCadenceProposalRows({
+          db,
           orgId: args.orgId,
           patientId: args.patientId,
           pharmacistId: args.pharmacistId,
@@ -428,10 +513,10 @@ export async function validateBillingRequirements(
             { excludeScheduleId: args.excludeScheduleId },
           ),
         )
-      : prisma.visitSchedule.count({
+      : db.visitSchedule.count({
           where: {
             org_id: args.orgId,
-            cycle: { patient_id: args.patientId },
+            case_: { patient_id: args.patientId },
             ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
             scheduled_date: { gte: monthStart, lte: monthEnd },
             schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
@@ -449,7 +534,7 @@ export async function validateBillingRequirements(
             { excludeScheduleId: args.excludeScheduleId },
           ),
         )
-      : prisma.visitSchedule.count({
+      : db.visitSchedule.count({
           where: {
             org_id: args.orgId,
             pharmacist_id: args.pharmacistId,
@@ -471,10 +556,10 @@ export async function validateBillingRequirements(
               { excludeScheduleId: args.excludeScheduleId },
             ),
           )
-        : prisma.visitSchedule.count({
+        : db.visitSchedule.count({
             where: {
               org_id: args.orgId,
-              cycle: { patient_id: args.patientId },
+              case_: { patient_id: args.patientId },
               ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
               scheduled_date: { gte: weekStart, lte: weekEnd },
               schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
@@ -495,10 +580,10 @@ export async function validateBillingRequirements(
               { excludeScheduleId: args.excludeScheduleId },
             ),
           )
-        : prisma.visitSchedule.count({
+        : db.visitSchedule.count({
             where: {
               org_id: args.orgId,
-              cycle: { patient_id: args.patientId },
+              case_: { patient_id: args.patientId },
               ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
               visit_type: 'regular',
               scheduled_date: { gte: monthStart, lte: monthEnd },
@@ -515,7 +600,7 @@ export async function validateBillingRequirements(
             asOf: args.proposedDate,
           }),
         )
-      : findActiveVisitConsent(prisma, {
+      : findActiveVisitConsent(db, {
           orgId: args.orgId,
           patientId: args.patientId,
         }),
@@ -527,7 +612,7 @@ export async function validateBillingRequirements(
             asOf: args.proposedDate,
           }),
         )
-      : findCurrentManagementPlan(prisma, {
+      : findCurrentManagementPlan(db, {
           orgId: args.orgId,
           caseId: args.caseId,
         }),
@@ -542,6 +627,7 @@ export async function validateBillingRequirements(
     {
       excludeProposalId: args.excludeProposalId,
       excludeScheduleId: args.excludeScheduleId,
+      excludeSupersededProposalScope: args.excludeSupersededProposalScope,
     },
   );
   const weeklyPharmacistProposalCount = countProposalRows(
@@ -554,6 +640,7 @@ export async function validateBillingRequirements(
     {
       excludeProposalId: args.excludeProposalId,
       excludeScheduleId: args.excludeScheduleId,
+      excludeSupersededProposalScope: args.excludeSupersededProposalScope,
     },
   );
   const weeklyPatientProposalCount = args.specialCapEligible
@@ -567,6 +654,7 @@ export async function validateBillingRequirements(
         {
           excludeProposalId: args.excludeProposalId,
           excludeScheduleId: args.excludeScheduleId,
+          excludeSupersededProposalScope: args.excludeSupersededProposalScope,
         },
       )
     : 0;
@@ -583,6 +671,7 @@ export async function validateBillingRequirements(
           {
             excludeProposalId: args.excludeProposalId,
             excludeScheduleId: args.excludeScheduleId,
+            excludeSupersededProposalScope: args.excludeSupersededProposalScope,
           },
         )
       : 0;
@@ -593,7 +682,7 @@ export async function validateBillingRequirements(
 
   const pharmacist =
     args.pharmacistWeeklyCap === undefined
-      ? await prisma.user.findFirst({
+      ? await db.user.findFirst({
           where: { id: args.pharmacistId },
           select: { max_weekly_visits: true },
         })

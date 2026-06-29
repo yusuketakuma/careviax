@@ -11,6 +11,10 @@ const {
   visitScheduleProposalRouteFindManyMock,
   visitScheduleCountMock,
   visitVehicleResourceFindFirstMock,
+  patientInsuranceFindFirstMock,
+  userFindFirstMock,
+  consentRecordFindFirstMock,
+  managementPlanFindFirstMock,
   careCaseFindFirstMock,
   validateOrgReferencesMock,
   evaluateVisitWorkflowGateMock,
@@ -27,6 +31,10 @@ const {
   visitScheduleProposalRouteFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
+  patientInsuranceFindFirstMock: vi.fn(),
+  userFindFirstMock: vi.fn(),
+  consentRecordFindFirstMock: vi.fn(),
+  managementPlanFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
@@ -56,6 +64,18 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
+    },
+    patientInsurance: {
+      findFirst: patientInsuranceFindFirstMock,
+    },
+    user: {
+      findFirst: userFindFirstMock,
+    },
+    consentRecord: {
+      findFirst: consentRecordFindFirstMock,
+    },
+    managementPlan: {
+      findFirst: managementPlanFindFirstMock,
     },
   },
 }));
@@ -173,10 +193,19 @@ describe('/api/visit-schedules', () => {
       label: '社用車A',
       max_stops: 8,
     });
+    patientInsuranceFindFirstMock.mockResolvedValue(null);
+    userFindFirstMock.mockResolvedValue({ max_weekly_visits: null });
+    consentRecordFindFirstMock.mockResolvedValue({ id: 'consent_1' });
+    managementPlanFindFirstMock.mockResolvedValue({
+      id: 'plan_1',
+      status: 'approved',
+      next_review_date: null,
+    });
     careCaseFindFirstMock.mockResolvedValue({
       patient_id: 'patient_1',
       primary_pharmacist_id: 'user_2',
       backup_pharmacist_id: 'user_1',
+      required_visit_support: null,
       patient: {
         scheduling_preference: null,
         residences: [{ facility_unit_id: null, facility: null }],
@@ -193,10 +222,23 @@ describe('/api/visit-schedules', () => {
         visitSchedule: {
           findFirst: visitScheduleFindFirstMock,
           findMany: visitScheduleRouteFindManyMock,
+          count: visitScheduleCountMock,
           create: visitScheduleCreateMock,
         },
         visitScheduleProposal: {
           findMany: visitScheduleProposalRouteFindManyMock,
+        },
+        patientInsurance: {
+          findFirst: patientInsuranceFindFirstMock,
+        },
+        user: {
+          findFirst: userFindFirstMock,
+        },
+        consentRecord: {
+          findFirst: consentRecordFindFirstMock,
+        },
+        managementPlan: {
+          findFirst: managementPlanFindFirstMock,
         },
       }),
     );
@@ -370,6 +412,33 @@ describe('/api/visit-schedules', () => {
     const created = visitScheduleCreateMock.mock.calls[0][0].data;
     expectUtcTimeDate(created.time_window_start, '09:00');
     expectUtcTimeDate(created.time_window_end, '10:00');
+  });
+
+  it('rejects manual schedule creation when existing active schedules fill the monthly billing cap', async () => {
+    patientInsuranceFindFirstMock.mockImplementation(async ({ where }) =>
+      where.insurance_type === 'medical' ? { number: 'medical_1' } : null,
+    );
+    visitScheduleCountMock.mockResolvedValueOnce(4).mockResolvedValue(0);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('月上限4回を超過します'),
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('uses the pharmacist shift site and appends route order when creating a schedule', async () => {

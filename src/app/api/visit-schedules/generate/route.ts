@@ -24,6 +24,11 @@ import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cac
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { buildBillingMonthKey, buildBillingWeekKey } from '@/server/services/billing-cadence';
+import {
+  loadVisitScheduleBillingGuardRows,
+  validateVisitScheduleBlockingBillingRequirements,
+} from '@/server/services/visit-schedule-billing-guard';
+import type { BillingCadenceScheduleRow } from '@/server/services/billing-requirement-validator';
 
 // Insurance visit frequency limits: medical=4/month, care=2/month
 const MONTHLY_LIMITS: Record<string, number> = {
@@ -172,6 +177,12 @@ type ScheduleLimitInsuranceRecord = {
   created_at: Date;
 };
 
+type ScheduleLimitInsuranceDb = {
+  patientInsurance: {
+    findMany(args: unknown): Promise<unknown[]>;
+  };
+};
+
 type GeneratedVisitShift = {
   date: Date;
   site_id: string | null;
@@ -198,6 +209,7 @@ function compareEffectiveInsuranceRecords(
 }
 
 async function resolveScheduleLimitInsuranceTypes(args: {
+  db?: ScheduleLimitInsuranceDb;
   orgId: string;
   patientId: string;
   visitType: string;
@@ -209,7 +221,8 @@ async function resolveScheduleLimitInsuranceTypes(args: {
   const minDate = new Date(Math.min(...normalizedDates.map((date) => date.getTime())));
   const maxDate = new Date(Math.max(...normalizedDates.map((date) => date.getTime())));
 
-  const insuranceRecords = (await prisma.patientInsurance.findMany({
+  const db = args.db ?? prisma;
+  const insuranceRecords = (await db.patientInsurance.findMany({
     where: {
       org_id: args.orgId,
       patient_id: args.patientId,
@@ -393,6 +406,7 @@ export const POST = withAuthContext(
         patient_id: true,
         primary_pharmacist_id: true,
         backup_pharmacist_id: true,
+        required_visit_support: true,
         patient: {
           select: {
             scheduling_preference: true,
@@ -582,7 +596,7 @@ export const POST = withAuthContext(
       if (vehicleValidationError) return vehicleValidationError;
     }
 
-    const scheduleLimitTypes = await resolveScheduleLimitInsuranceTypes({
+    const preflightScheduleLimitTypes = await resolveScheduleLimitInsuranceTypes({
       orgId: ctx.orgId,
       patientId: careCase.patient_id,
       visitType: visit_type,
@@ -592,7 +606,7 @@ export const POST = withAuthContext(
     const monthCounts: Record<string, number> = {};
     const weekCounts: Record<string, number> = {};
     for (const [index, candidateDate] of candidateDates.entries()) {
-      const insuranceType = scheduleLimitTypes[index];
+      const insuranceType = preflightScheduleLimitTypes[index];
       if (!insuranceType) continue;
 
       const monthKey = `${insuranceType}:${buildBillingMonthKey(candidateDate)}`;
@@ -629,6 +643,62 @@ export const POST = withAuthContext(
         return {
           error: 'duplicate_schedule' as const,
         };
+      }
+
+      const transactionScheduleLimitTypes = await resolveScheduleLimitInsuranceTypes({
+        db: tx,
+        orgId: ctx.orgId,
+        patientId: careCase.patient_id,
+        visitType: visit_type,
+        dates: candidateDates,
+      });
+      const billingCandidates = candidateDates
+        .map((candidateDate, index) => ({
+          candidateDate,
+          payerBasis: transactionScheduleLimitTypes[index],
+        }))
+        .filter(
+          (entry): entry is { candidateDate: Date; payerBasis: 'medical' | 'care' } =>
+            entry.payerBasis === 'medical' || entry.payerBasis === 'care',
+        );
+      const billingGuardRows =
+        billingCandidates.length > 0
+          ? await loadVisitScheduleBillingGuardRows({
+              db: tx,
+              orgId: ctx.orgId,
+              patientId: careCase.patient_id,
+              pharmacistId: pharmacist_id,
+              dates: billingCandidates.map((entry) => entry.candidateDate),
+            })
+          : { cadenceScheduleRows: [], cadenceProposalRows: [] };
+      const generatedCadenceRows: BillingCadenceScheduleRow[] = [];
+      for (const { candidateDate, payerBasis } of billingCandidates) {
+        const billingValidation = await validateVisitScheduleBlockingBillingRequirements({
+          db: tx,
+          orgId: ctx.orgId,
+          caseId: case_id,
+          patientId: careCase.patient_id,
+          pharmacistId: pharmacist_id,
+          visitType: visit_type,
+          proposedDate: candidateDate,
+          requiredVisitSupport: careCase.required_visit_support,
+          payerBasis,
+          cadenceScheduleRows: [...billingGuardRows.cadenceScheduleRows, ...generatedCadenceRows],
+          cadenceProposalRows: billingGuardRows.cadenceProposalRows,
+          workflowPrevalidated: true,
+        });
+        if (billingValidation.blockingMessages.length > 0) {
+          return {
+            error: 'billing_cap_exceeded' as const,
+            message: billingValidation.blockingMessages.join(' / '),
+          };
+        }
+        generatedCadenceRows.push({
+          patient_id: careCase.patient_id,
+          scheduled_date: candidateDate,
+          pharmacist_id,
+          visit_type,
+        });
       }
 
       const existingRouteOrders = await tx.visitSchedule.findMany({
@@ -746,6 +816,9 @@ export const POST = withAuthContext(
     if ('error' in result) {
       if (result.error === 'duplicate_schedule') {
         return conflict('同一ケース・同一日付の訪問予定が既に存在します。再読み込みしてください');
+      }
+      if (result.error === 'billing_cap_exceeded') {
+        return validationError(result.message);
       }
       return conflict('訪問予定の生成が同時に更新されました。再読み込みしてください');
     }
