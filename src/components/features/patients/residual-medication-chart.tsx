@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { ErrorState } from '@/components/ui/error-state';
 
 type ResidualRecord = {
   id: string;
@@ -23,7 +24,7 @@ type ChartDataPoint = {
 export function ResidualMedicationChart({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['residual-medications-chart', orgId, patientId],
     queryFn: async () => {
       const params = new URLSearchParams({ patient_id: patientId, limit: '100' });
@@ -62,6 +63,22 @@ export function ResidualMedicationChart({ patientId }: { patientId: string }) {
     return (
       <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
         読み込み中...
+      </div>
+    );
+  }
+
+  if (isError) {
+    // 取得失敗を「残薬データがありません」に潰さない。残薬の有無は医療判断に直結するため、
+    // 失敗を空と取り違えさせず再試行導線を出す。
+    return (
+      <div className="flex h-48 items-center justify-center rounded-md border border-dashed">
+        <ErrorState
+          variant="server"
+          size="inline"
+          title="残薬データを読み込めませんでした"
+          description="「残薬なし」ではなく取得エラーです。再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: () => void refetch() }}
+        />
       </div>
     );
   }

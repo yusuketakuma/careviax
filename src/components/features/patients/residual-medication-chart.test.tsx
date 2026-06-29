@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { ResidualMedicationChart } from './residual-medication-chart';
@@ -55,5 +55,26 @@ describe('ResidualMedicationChart', () => {
       vi.unstubAllGlobals();
       vi.clearAllMocks();
     }
+  });
+
+  it('surfaces a retryable error instead of a false "no residual data" state when the fetch fails', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    const refetch = vi.fn();
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    });
+
+    render(<ResidualMedicationChart patientId="pt_1" />);
+
+    expect(screen.getByText('残薬データを読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('残薬データがありません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalled();
+
+    vi.clearAllMocks();
   });
 });
