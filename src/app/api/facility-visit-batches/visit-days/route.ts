@@ -6,9 +6,10 @@ import { success, validationError } from '@/lib/api/response';
 import { upsertFacilityVisitDaysSchema } from '@/lib/validations/visit-constraints';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 
 function toTimeValue(value?: string | null) {
-  return value ? new Date(`1970-01-01T${value}`) : null;
+  return value ? hhmmToTimeDate(value) : null;
 }
 
 export const POST = withAuthContext(

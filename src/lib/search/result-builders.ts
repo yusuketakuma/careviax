@@ -14,6 +14,7 @@ import {
   CONTACT_STATUS_LABELS,
   PROPOSAL_STATUS_LABELS,
 } from '@/lib/visits/visit-schedule-status-labels';
+import { formatNullableTimeWindowLabel } from '@/lib/visits/route-labels';
 
 // ---------------------------------------------------------------------------
 // カテゴリバッジ色定義
@@ -301,13 +302,11 @@ export function buildContactResult(item: ContactSearchItem): SearchResultRow {
 export function buildScheduleProposalResult(item: ScheduleProposalSearchItem): SearchResultRow {
   const patientName = item.case_?.patient?.name ?? '患者未設定';
   const dateText = formatDateMD(item.proposed_date);
-  const timeText =
-    item.time_window_start && item.time_window_end
-      ? `${formatDateMD(item.time_window_start)} ${format(new Date(item.time_window_start), 'HH:mm')}〜${format(
-          new Date(item.time_window_end),
-          'HH:mm',
-        )}`
-      : dateText;
+  const timeWindowLabel = formatNullableTimeWindowLabel(
+    item.time_window_start,
+    item.time_window_end,
+  );
+  const timeText = timeWindowLabel ? `${dateText} ${timeWindowLabel}` : dateText;
   const proposalStatus =
     PROPOSAL_STATUS_LABELS[item.proposal_status as keyof typeof PROPOSAL_STATUS_LABELS] ??
     item.proposal_status;

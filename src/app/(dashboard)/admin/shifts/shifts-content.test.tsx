@@ -4,6 +4,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { ShiftsContent } from './shifts-content';
+import { toTimeValue } from './shifts-content.shared';
 
 setupDomTestEnv();
 
@@ -157,6 +158,13 @@ describe('ShiftsContent', () => {
       'sm:size-11',
     );
     expect(container.textContent).not.toContain('Pharmacist Operations');
+  });
+
+  it('keeps @db.Time shift reader values on lexical clock time across offsets', () => {
+    expect(toTimeValue('1970-01-01T09:00:00.000Z')).toBe('09:00');
+    expect(toTimeValue('1970-01-01T09:00:00.000+09:00')).toBe('09:00');
+    expect(toTimeValue('1970-01-01T09:00:00.000-08:00')).toBe('09:00');
+    expect(toTimeValue('1970-01-01T09:00:00.000-0800')).toBe('09:00');
   });
 
   it('requires confirmation before deleting a shift template', () => {

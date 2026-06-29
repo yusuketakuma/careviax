@@ -51,9 +51,24 @@ export type ScheduleCreateEditDrawerForm = {
   priority: VisitPriority;
   proposed_date: string;
   time_window_start: string;
+  time_window_end: string;
   proposed_pharmacist_id: string;
   travel_mode: TravelMode;
 };
+
+function normalizeProposalTime(value: string | null | undefined): string {
+  if (!value) return '';
+
+  const timeOfDayMatch = value.match(/^([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d{1,3})?)?$/);
+  if (timeOfDayMatch) return `${timeOfDayMatch[1]}:${timeOfDayMatch[2]}`;
+
+  const sentinelMatch = value.match(
+    /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})?$/,
+  );
+  if (sentinelMatch) return `${sentinelMatch[1]}:${sentinelMatch[2]}`;
+
+  return '';
+}
 
 export function buildScheduleCreateEditDrawerForm(args: {
   defaultDate: string;
@@ -68,7 +83,8 @@ export function buildScheduleCreateEditDrawerForm(args: {
       visit_type: proposal.visit_type,
       priority: proposal.priority,
       proposed_date: proposal.proposed_date.slice(0, 10),
-      time_window_start: proposal.time_window_start?.slice(0, 5) ?? '',
+      time_window_start: normalizeProposalTime(proposal.time_window_start),
+      time_window_end: normalizeProposalTime(proposal.time_window_end),
       proposed_pharmacist_id: proposal.proposed_pharmacist_id,
       travel_mode: (proposal.vehicle_resource?.travel_mode as TravelMode | undefined) ?? 'DRIVE',
     };
@@ -81,6 +97,7 @@ export function buildScheduleCreateEditDrawerForm(args: {
     priority: 'normal',
     proposed_date: defaultDate,
     time_window_start: '',
+    time_window_end: '',
     proposed_pharmacist_id: defaultPharmacistId,
     travel_mode: 'DRIVE',
   };
@@ -88,6 +105,11 @@ export function buildScheduleCreateEditDrawerForm(args: {
 
 export function isScheduleCreateEditDrawerFormValid(form: ScheduleCreateEditDrawerForm): boolean {
   return Boolean(form.case_id && form.proposed_date && form.proposed_pharmacist_id);
+}
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(':').map((part) => Number.parseInt(part, 10));
+  return hours * 60 + minutes;
 }
 
 export function getScheduleCreateEditDrawerSaveBlocker(
@@ -99,8 +121,34 @@ export function getScheduleCreateEditDrawerSaveBlocker(
     form.proposed_pharmacist_id ? null : '担当薬剤師',
   ].filter(Boolean);
 
-  if (missingFields.length === 0) return null;
-  return `保存するには ${missingFields.join('、')} を選択してください。`;
+  if (missingFields.length > 0) {
+    return `保存するには ${missingFields.join('、')} を選択してください。`;
+  }
+  if (form.time_window_start && !form.time_window_end) {
+    return '保存するには 終了時刻も入力してください。';
+  }
+  if (!form.time_window_start && form.time_window_end) {
+    return '保存するには 開始時刻も入力してください。';
+  }
+  if (
+    form.time_window_start &&
+    form.time_window_end &&
+    timeToMinutes(form.time_window_end) <= timeToMinutes(form.time_window_start)
+  ) {
+    return '終了時刻は開始時刻より後にしてください。';
+  }
+  return null;
+}
+
+export function getScheduleCreateEditDrawerContactBlocker(
+  form: ScheduleCreateEditDrawerForm,
+): string | null {
+  const saveBlocker = getScheduleCreateEditDrawerSaveBlocker(form);
+  if (saveBlocker) return saveBlocker;
+  if (!form.time_window_start && !form.time_window_end) {
+    return '確認待ちにするには 開始時刻と終了時刻を入力してください。';
+  }
+  return null;
 }
 
 export function buildScheduleCreateEditDrawerPayload(args: {
@@ -116,6 +164,7 @@ export function buildScheduleCreateEditDrawerPayload(args: {
     priority: form.priority,
     proposed_date: form.proposed_date,
     ...(form.time_window_start ? { time_window_start: form.time_window_start } : {}),
+    ...(form.time_window_end ? { time_window_end: form.time_window_end } : {}),
     proposed_pharmacist_id: form.proposed_pharmacist_id,
     travel_mode: form.travel_mode,
     submit_for_contact: submitForContact,
@@ -209,10 +258,13 @@ export function ScheduleCreateEditDrawer({
     },
   });
 
-  const formValid = isScheduleCreateEditDrawerFormValid(form);
-  const saveBlocker = getScheduleCreateEditDrawerSaveBlocker(form);
-  const disabled = saveMutation.isPending || !formValid;
-  const saveDescriptionId = saveBlocker ? SCHEDULE_DRAWER_SAVE_BLOCKER_ID : undefined;
+  const draftBlocker = getScheduleCreateEditDrawerSaveBlocker(form);
+  const contactBlocker = getScheduleCreateEditDrawerContactBlocker(form);
+  const displayedBlocker = draftBlocker ?? contactBlocker;
+  const draftDisabled = saveMutation.isPending || Boolean(draftBlocker);
+  const contactDisabled = saveMutation.isPending || Boolean(contactBlocker);
+  const draftDescriptionId = draftBlocker ? SCHEDULE_DRAWER_SAVE_BLOCKER_ID : undefined;
+  const contactDescriptionId = contactBlocker ? SCHEDULE_DRAWER_SAVE_BLOCKER_ID : undefined;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -267,7 +319,7 @@ export function ScheduleCreateEditDrawer({
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="drawer-date">候補日</Label>
               <Input
@@ -280,13 +332,24 @@ export function ScheduleCreateEditDrawer({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="drawer-time">候補時刻</Label>
+              <Label htmlFor="drawer-time-start">開始時刻</Label>
               <Input
-                id="drawer-time"
+                id="drawer-time-start"
                 type="time"
                 value={form.time_window_start}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, time_window_start: event.target.value }))
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="drawer-time-end">終了時刻</Label>
+              <Input
+                id="drawer-time-end"
+                type="time"
+                value={form.time_window_end}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, time_window_end: event.target.value }))
                 }
               />
             </div>
@@ -371,9 +434,13 @@ export function ScheduleCreateEditDrawer({
           >
             正式決定前の予定です。患者さんへ確認してから確定してください。
           </div>
-          {saveBlocker ? (
-            <p id={SCHEDULE_DRAWER_SAVE_BLOCKER_ID} className="text-xs text-destructive">
-              {saveBlocker}
+          {displayedBlocker ? (
+            <p
+              id={SCHEDULE_DRAWER_SAVE_BLOCKER_ID}
+              role="alert"
+              className="text-xs text-destructive"
+            >
+              {displayedBlocker}
             </p>
           ) : null}
         </div>
@@ -382,16 +449,16 @@ export function ScheduleCreateEditDrawer({
           <Button
             type="button"
             variant="outline"
-            disabled={disabled}
-            aria-describedby={saveDescriptionId}
+            disabled={draftDisabled}
+            aria-describedby={draftDescriptionId}
             onClick={() => saveMutation.mutate(false)}
           >
             {saveMutation.isPending ? '保存中...' : '下書き保存'}
           </Button>
           <Button
             type="button"
-            disabled={disabled}
-            aria-describedby={saveDescriptionId}
+            disabled={contactDisabled}
+            aria-describedby={contactDescriptionId}
             onClick={() => saveMutation.mutate(true)}
           >
             {saveMutation.isPending ? '送信中...' : '確認待ちにする'}

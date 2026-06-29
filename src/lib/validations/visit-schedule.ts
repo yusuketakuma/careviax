@@ -33,6 +33,24 @@ function validateTimeWindowOrder(data: TimeWindowInput, ctx: z.RefinementCtx) {
   }
 }
 
+function validateCompleteTimeWindow(data: TimeWindowInput, ctx: z.RefinementCtx) {
+  if (data.time_window_start && !data.time_window_end) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['time_window_end'],
+      message: '終了時刻も入力してください',
+    });
+  }
+  if (!data.time_window_start && data.time_window_end) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['time_window_start'],
+      message: '開始時刻も入力してください',
+    });
+  }
+  validateTimeWindowOrder(data, ctx);
+}
+
 export const visitTypeValues = [
   'initial',
   'regular',
@@ -78,8 +96,9 @@ const createVisitScheduleBaseSchema = z.object({
   notes: z.string().optional(),
 });
 
-export const createVisitScheduleSchema =
-  createVisitScheduleBaseSchema.superRefine(validateTimeWindowOrder);
+export const createVisitScheduleSchema = createVisitScheduleBaseSchema.superRefine(
+  validateCompleteTimeWindow,
+);
 
 export const updateVisitScheduleSchema = createVisitScheduleBaseSchema
   .partial()
@@ -109,7 +128,7 @@ export const generateVisitSchedulesSchema = z
       .max(500, '休業日上書き理由は500文字以内で入力してください')
       .optional(),
   })
-  .superRefine(validateTimeWindowOrder);
+  .superRefine(validateCompleteTimeWindow);
 
 export type CreateVisitScheduleInput = z.infer<typeof createVisitScheduleSchema>;
 export type UpdateVisitScheduleInput = z.infer<typeof updateVisitScheduleSchema>;

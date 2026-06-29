@@ -185,7 +185,11 @@ describe('/api/patients/board', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
     // @db.Date 規約どおり UTC 深夜で保存された「今日」の予定
-    patientFindManyMock.mockResolvedValue([buildPatientRow(new Date('2026-06-12T00:00:00.000Z'))]);
+    const patient = buildPatientRow(new Date('2026-06-12T00:00:00.000Z'));
+    (
+      patient.cases[0]!.visit_schedules[0]! as { time_window_start: Date | null }
+    ).time_window_start = new Date(Date.UTC(1970, 0, 1, 9, 0));
+    patientFindManyMock.mockResolvedValue([patient]);
     patientCountMock.mockResolvedValue(1);
 
     const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
@@ -196,6 +200,7 @@ describe('/api/patients/board', () => {
     expect(json.data.cards[0]).toMatchObject({
       attention: 'visit_today',
       next_visit_date: '2026-06-12',
+      next_visit_time: '09:00',
       operation_summary: ['準備未完', '連絡先あり', '駐車場なし', '要介護 3'],
       foundation_summary: {
         status: 'needs_confirmation',

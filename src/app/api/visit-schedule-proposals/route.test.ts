@@ -175,6 +175,20 @@ function buildSerializableConflictError() {
   });
 }
 
+async function withTimezone<T>(timezone: string, run: () => Promise<T>): Promise<T> {
+  const originalTimezone = process.env.TZ;
+  process.env.TZ = timezone;
+  try {
+    return await run();
+  } finally {
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  }
+}
+
 function buildExpectedProposalRequestFingerprint(overrides?: Record<string, unknown>) {
   const material = JSON.stringify({
     case_id: 'case_1',
@@ -1541,6 +1555,7 @@ describe('/api/visit-schedule-proposals', () => {
           priority: 'normal',
           proposed_date: '2026-04-03',
           time_window_start: '09:00',
+          time_window_end: '10:00',
           proposed_pharmacist_id: 'user_2',
           travel_mode: 'DRIVE',
           patient_contact_status: patientContactStatus,
@@ -1567,6 +1582,193 @@ describe('/api/visit-schedule-proposals', () => {
     },
   );
 
+  it.each([
+    {
+      payload: { time_window_start: '09:00' },
+      details: { time_window_end: ['終了時刻も入力してください'] },
+    },
+    {
+      payload: { time_window_end: '10:00' },
+      details: { time_window_start: ['開始時刻も入力してください'] },
+    },
+  ])('rejects incomplete draft drawer time windows before write side effects', async (caseItem) => {
+    const response = (await PUT(
+      createPutRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        ...caseItem.payload,
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: false,
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: caseItem.details,
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('requires a complete time window before moving a drawer proposal to patient contact', async () => {
+    const response = (await PUT(
+      createPutRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        time_window_start: ['確認待ちにするには開始時刻と終了時刻を入力してください'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('creates draft drawer proposals with UTC @db.Time sentinels', async () => {
+    visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
+      Promise.resolve({ id: 'proposal_manual', ...data }),
+    );
+
+    const response = (await PUT(
+      createPutRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: false,
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        proposal_status: 'proposed',
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+        time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0)),
+      }),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'visit_schedule_proposal_draft_created',
+          changes: expect.objectContaining({
+            proposalStatusTo: 'proposed',
+            proposedDateTo: '2026-04-03',
+            timeWindowStartTo: '09:00',
+            timeWindowEndTo: '10:00',
+            pharmacistIdTo: 'user_2',
+            submittedForContact: false,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('records only changed fields when updating a draft drawer proposal', async () => {
+    visitScheduleProposalFindFirstMock.mockResolvedValueOnce({
+      id: 'proposal_1',
+      proposal_status: 'proposed',
+      patient_contact_status: 'pending',
+      finalized_schedule_id: null,
+      case_id: 'case_1',
+      site_id: null,
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+      time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+      time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0)),
+      proposed_pharmacist_id: 'user_2',
+      vehicle_resource_id: null,
+    });
+    visitScheduleProposalUpdateManyMock.mockResolvedValueOnce({ count: 1 });
+    visitScheduleProposalTxFindFirstMock.mockResolvedValueOnce({
+      id: 'proposal_1',
+      proposal_status: 'patient_contact_pending',
+      patient_contact_status: 'pending',
+      finalized_schedule_id: null,
+      case_id: 'case_1',
+      site_id: null,
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: new Date('2026-04-04T00:00:00.000Z'),
+      time_window_start: new Date(Date.UTC(1970, 0, 1, 10, 0)),
+      time_window_end: new Date(Date.UTC(1970, 0, 1, 11, 0)),
+      proposed_pharmacist_id: 'user_2',
+      vehicle_resource_id: null,
+    });
+
+    const response = (await PUT(
+      createPutRequest({
+        id: 'proposal_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-04',
+        time_window_start: '10:00',
+        time_window_end: '11:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    const auditCall = auditLogCreateMock.mock.calls[0]?.[0];
+    if (!auditCall) throw new Error('audit log call is required');
+    expect(auditCall).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'visit_schedule_proposal_draft_updated',
+          target_type: 'VisitScheduleProposal',
+          target_id: 'proposal_1',
+          changes: expect.objectContaining({
+            proposalStatusFrom: 'proposed',
+            proposalStatusTo: 'patient_contact_pending',
+            proposedDateFrom: '2026-04-03',
+            proposedDateTo: '2026-04-04',
+            timeWindowStartFrom: '09:00',
+            timeWindowStartTo: '10:00',
+            timeWindowEndFrom: '10:00',
+            timeWindowEndTo: '11:00',
+            submittedForContact: true,
+          }),
+        }),
+      }),
+    );
+    const auditChanges = auditCall.data.changes as Record<string, unknown>;
+    expect(auditChanges).not.toHaveProperty('caseIdFrom');
+    expect(auditChanges).not.toHaveProperty('caseIdTo');
+    expect(auditChanges).not.toHaveProperty('pharmacistIdFrom');
+    expect(auditChanges).not.toHaveProperty('pharmacistIdTo');
+  });
+
   it('rejects editing a proposal that has already been confirmed by patient contact', async () => {
     visitScheduleProposalFindFirstMock.mockResolvedValueOnce({
       id: 'proposal_1',
@@ -1585,6 +1787,7 @@ describe('/api/visit-schedule-proposals', () => {
         priority: 'normal',
         proposed_date: '2026-04-03',
         time_window_start: '09:00',
+        time_window_end: '10:00',
         proposed_pharmacist_id: 'user_2',
         travel_mode: 'DRIVE',
         submit_for_contact: true,
@@ -1623,6 +1826,7 @@ describe('/api/visit-schedule-proposals', () => {
         priority: 'normal',
         proposed_date: '2026-04-03',
         time_window_start: '09:00',
+        time_window_end: '10:00',
         proposed_pharmacist_id: 'user_2',
         travel_mode: 'DRIVE',
         submit_for_contact: true,
@@ -1659,7 +1863,7 @@ describe('/api/visit-schedule-proposals', () => {
           org_id: 'org_1',
           case_id: 'case_1',
           proposed_pharmacist_id: 'user_2',
-          proposed_date: new Date(2026, 3, 3, 0, 0, 0),
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
           route_order: 1,
         },
       ],
@@ -1748,6 +1952,81 @@ describe('/api/visit-schedule-proposals', () => {
         }),
       }),
     );
+  });
+
+  it('attaches accepted diagnostics to UTC-midnight proposal dates in negative-offset runtimes', async () => {
+    await withTimezone('America/Los_Angeles', async () => {
+      generateVisitScheduleProposalDraftsMock.mockResolvedValueOnce({
+        drafts: [
+          {
+            org_id: 'org_1',
+            case_id: 'case_1',
+            proposed_pharmacist_id: 'user_2',
+            proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+            site_id: 'site_1',
+            route_order: 1,
+          },
+        ],
+        diagnostics: {
+          accepted: [
+            {
+              pharmacist_id: 'user_2',
+              pharmacist_name: '薬剤師A',
+              site_id: 'site_1',
+              site_name: '本店',
+              proposed_date: '2026-04-03',
+              travel_mode: 'DRIVE',
+              route_order: 1,
+              route_distance_score: 12,
+              travel_summary: '実道路移動 約12分',
+              assignment_mode: 'primary',
+              care_relationship: 'primary',
+              score: 8,
+              score_breakdown: {
+                geocodePenalty: 0,
+                facilityBonus: 0,
+                workloadPenalty: 2,
+                slackPenalty: 0,
+                lockPenalty: 0,
+                cadencePenalty: 0,
+              },
+              time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+              time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+            },
+          ],
+          rejected: [],
+        },
+      });
+      visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
+        Promise.resolve({ id: 'proposal_2', ...data }),
+      );
+
+      const response = (await POST(
+        createRequest('http://localhost/api/visit-schedule-proposals', {
+          case_id: 'case_1',
+          visit_type: 'regular',
+          candidate_count: 1,
+        }),
+      ))!;
+
+      expect(response.status).toBe(201);
+      expect(auditLogCreateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            changes: expect.objectContaining({
+              diagnostics: expect.objectContaining({
+                accepted: [
+                  expect.objectContaining({
+                    pharmacist_id: 'user_2',
+                    proposed_date: '2026-04-03',
+                  }),
+                ],
+              }),
+            }),
+          }),
+        }),
+      );
+    });
   });
 
   it('passes locked slot constraints to the planner when provided', async () => {

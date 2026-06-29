@@ -265,6 +265,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
               patient_id: 'patient_1',
               cycle_id: null,
               scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
               schedule_status: 'ready',
               visit_type: 'regular',
               carry_items_status: 'partial',
@@ -371,6 +372,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
               patient_id: 'patient_1',
               cycle_id: null,
               scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
               schedule_status: 'ready',
               visit_type: 'regular',
               carry_items_status: 'ready',
@@ -388,6 +390,8 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
 
     renderVisitRecordForm();
 
+    const visitTimeLabels = await screen.findAllByText(/4\/9 09:00/);
+    expect(visitTimeLabels.length).toBeGreaterThan(0);
     expect(await screen.findByText('訪問準備情報を読み込めませんでした')).toBeTruthy();
     expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
   });
@@ -636,6 +640,7 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
               patient_id: schedulePatientId,
               cycle_id: null,
               scheduled_date: '2026-04-09',
+              time_window_start: '1970-01-01T09:00:00.000Z',
               schedule_status: 'ready',
               visit_type: 'regular',
               carry_items_status: 'partial',

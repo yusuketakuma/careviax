@@ -79,6 +79,25 @@ jobs:
           NEXT_PUBLIC_COGNITO_USER_POOL_ID: 'ap-northeast-1_test'
           NEXT_PUBLIC_COGNITO_CLIENT_ID: 'test-client-id'
 
+      - name: Schedule time timezone regression tests
+        run: |
+          for timezone in Asia/Tokyo UTC America/Los_Angeles; do
+            echo "Running schedule time regression tests with TZ=${timezone}"
+            TZ="${timezone}" pnpm test:schedule-time:tz
+          done
+        env:
+          DATABASE_URL: 'postgresql://test:test@localhost:5432/test'
+          NEXTAUTH_SECRET: 'test-secret-for-ci'
+          NEXTAUTH_URL: 'http://localhost:3000'
+          ENCRYPTION_KEY: 'dGVzdC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzMTIzNDU2'
+          JWT_SIGNING_SECRET: 'test-jwt-secret'
+          NEXT_PUBLIC_APP_URL: 'http://localhost:3000'
+          AWS_REGION: 'ap-northeast-1'
+          AWS_ACCESS_KEY_ID: 'test'
+          AWS_SECRET_ACCESS_KEY: 'test'
+          NEXT_PUBLIC_COGNITO_USER_POOL_ID: 'ap-northeast-1_test'
+          NEXT_PUBLIC_COGNITO_CLIENT_ID: 'test-client-id'
+
       - name: PH-OS deploy artifact proof
         run: pnpm phos:deploy-template:validate:artifact
 

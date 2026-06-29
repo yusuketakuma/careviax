@@ -1,4 +1,4 @@
-import { parseISO } from 'date-fns';
+import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
 import { fetchVisitSchedulesWindow } from './visit-schedule-fetch.helpers';
 
 export type ScheduleStatus =
@@ -98,9 +98,7 @@ export async function fetchCalendarSchedules(args: {
 // ---- Day-view helpers -----------------------------------------------------
 
 export function minutesFromTimestamp(value: string | null, fallback: number) {
-  if (!value) return fallback;
-  const parsed = parseISO(value);
-  return parsed.getHours() * 60 + parsed.getMinutes();
+  return timeIsoToMinutes(value) ?? fallback;
 }
 
 export function roundDownToSlot(value: number, slotMinutes: number) {

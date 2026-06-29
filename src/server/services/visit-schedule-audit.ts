@@ -1,4 +1,5 @@
 import { Prisma, type PatientContactStatus, type VisitSchedule } from '@prisma/client';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 
 type ScheduleSnapshotInput = Pick<
   VisitSchedule,
@@ -30,8 +31,8 @@ export function buildVisitScheduleSnapshot(schedule: ScheduleSnapshotInput) {
     priority: schedule.priority,
     schedule_status: schedule.schedule_status,
     scheduled_date: schedule.scheduled_date.toISOString(),
-    time_window_start: schedule.time_window_start?.toISOString() ?? null,
-    time_window_end: schedule.time_window_end?.toISOString() ?? null,
+    time_window_start: timeDateToString(schedule.time_window_start) ?? null,
+    time_window_end: timeDateToString(schedule.time_window_end) ?? null,
     pharmacist_id: schedule.pharmacist_id,
     assignment_mode: schedule.assignment_mode,
     route_order: schedule.route_order,

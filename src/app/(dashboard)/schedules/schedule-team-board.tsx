@@ -43,6 +43,7 @@ import {
   boardPercent,
   buildScheduleRiskAlert,
   buildStaffLane,
+  formatScheduleTimeIso,
   formatTimeOfDayIso,
   pendingProposalDateLabel,
   staffRowLabel,
@@ -759,7 +760,7 @@ function RouteStaffList({ member, visits }: { member: DayBoardStaff; visits: Day
                 {visit.patient_name}様
               </p>
               <p className="text-xs text-muted-foreground">
-                {visit.time_start ? formatTimeOfDayIso(visit.time_start) : '時間未定'} /{' '}
+                {visit.time_start ? formatScheduleTimeIso(visit.time_start) : '時間未定'} /{' '}
                 {visit.vehicle_label ?? '車両未割当'}
               </p>
               <PreparationSummaryChip
@@ -1028,7 +1029,7 @@ function PendingProposalRow({
   todayKey: string;
 }) {
   const dateLabel = pendingProposalDateLabel(proposal.proposed_date, todayKey);
-  const timeLabel = proposal.time_start ? formatTimeOfDayIso(proposal.time_start) : '時間未定';
+  const timeLabel = proposal.time_start ? formatScheduleTimeIso(proposal.time_start) : '時間未定';
   const pharmacistLabel = proposal.pharmacist_name
     ? `仮枠(${familyName(proposal.pharmacist_name)})`
     : '仮枠';
@@ -1165,13 +1166,13 @@ function operationalTaskContext(
 ) {
   const visit = findTaskVisit(task, board);
   if (visit) {
-    const timeLabel = visit.time_start ? formatTimeOfDayIso(visit.time_start) : '時間未定';
+    const timeLabel = visit.time_start ? formatScheduleTimeIso(visit.time_start) : '時間未定';
     return `${visit.patient_name}様 — ${timeLabel} / ${visit.vehicle_label ?? '車両未割当'}`;
   }
   const proposal = findTaskProposal(task, board);
   if (proposal) {
     const dateLabel = pendingProposalDateLabel(proposal.proposed_date, todayKey);
-    const timeLabel = proposal.time_start ? formatTimeOfDayIso(proposal.time_start) : '時間未定';
+    const timeLabel = proposal.time_start ? formatScheduleTimeIso(proposal.time_start) : '時間未定';
     return `${proposal.patient_name}様 — ${dateLabel} ${timeLabel}`;
   }
   return '対象は現在の表示日外です';
@@ -1318,7 +1319,7 @@ function buildNextAction(
         ? `${auditLabel}を開始 — ${formatTimeOfDayIso(topAudit.due_at)}期限`
         : `${auditLabel}を開始する`,
       description: riskVisit?.time_start
-        ? `${formatTimeOfDayIso(riskVisit.time_start)}訪問(${topAudit.patient_name}様)の持参薬です。完了で午後の予定がすべて確定します。`
+        ? `${formatScheduleTimeIso(riskVisit.time_start)}訪問(${topAudit.patient_name}様)の持参薬です。完了で午後の予定がすべて確定します。`
         : `${topAudit.patient_name}様の${auditLabel}が待ちです。完了で今後の予定が確定します。`,
       actionHref: '/audit',
     };

@@ -10,6 +10,7 @@ import { SCHEDULE_LIST_INCLUDE } from '@/lib/db/schedule-includes';
 import { ACTIVE_VISIT_SCHEDULE_STATUSES } from '@/lib/constants/visit';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { forbiddenResponse, validationError } from '@/lib/api/response';
+import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 import { enrichSchedulesWithHints } from '@/server/services/schedule-enrichment';
@@ -317,10 +318,8 @@ export async function createSchedule(
             ? 'primary'
             : 'fallback',
         scheduled_date: scheduledDate,
-        ...(time_window_start
-          ? { time_window_start: new Date(`1970-01-01T${time_window_start}`) }
-          : {}),
-        ...(time_window_end ? { time_window_end: new Date(`1970-01-01T${time_window_end}`) } : {}),
+        ...(time_window_start ? { time_window_start: hhmmToTimeDate(time_window_start) } : {}),
+        ...(time_window_end ? { time_window_end: hhmmToTimeDate(time_window_end) } : {}),
         confirmed_at: new Date(),
         confirmed_by: userId,
         route_order: routeOrderDraft?.route_order ?? 1,
@@ -385,7 +384,7 @@ export function validateManualSchedulePreferences(args: {
   const preferredWeekdays = normalizeWeekdays(args.schedulingPreference?.preferred_weekdays);
   const facilityWeekdays = normalizeWeekdays(args.facility?.regular_visit_weekdays);
   const effectiveWeekdays = preferredWeekdays.length > 0 ? preferredWeekdays : facilityWeekdays;
-  if (effectiveWeekdays.length > 0 && !effectiveWeekdays.includes(args.scheduledDate.getDay())) {
+  if (effectiveWeekdays.length > 0 && !effectiveWeekdays.includes(args.scheduledDate.getUTCDay())) {
     return '患者または施設の訪問希望曜日と一致しない日付です';
   }
 

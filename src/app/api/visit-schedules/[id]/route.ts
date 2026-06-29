@@ -13,12 +13,13 @@ import {
 } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import {
   VISIT_SCHEDULE_CANCEL_REASON_CODES,
   visitScheduleCancelReasonLabel,
 } from '@/lib/visits/schedule-reason';
-import { formatDateKey } from '@/lib/date-key';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
 import { SCHEDULE_DETAIL_INCLUDE } from '@/lib/db/schedule-includes';
 import {
@@ -64,6 +65,69 @@ class VisitSchedulePatchRetryLimitError extends Error {
 
 function isSerializableTransactionConflict(cause: unknown) {
   return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+function schedulePatchAuditChanges(
+  from: {
+    case_id: string;
+    site_id: string | null;
+    visit_type: string;
+    priority: string;
+    scheduled_date: Date;
+    time_window_start: Date | null;
+    time_window_end: Date | null;
+    pharmacist_id: string;
+    vehicle_resource_id: string | null;
+    schedule_status: string;
+    route_order: number | null;
+    recurrence_rule: string | null;
+  },
+  to: {
+    case_id: string;
+    site_id: string | null;
+    visit_type: string;
+    priority: string;
+    scheduled_date: Date;
+    time_window_start: Date | null;
+    time_window_end: Date | null;
+    pharmacist_id: string;
+    vehicle_resource_id: string | null;
+    schedule_status: string;
+    route_order: number | null;
+    recurrence_rule: string | null;
+  },
+) {
+  const changes: Record<string, string | number | null> = {};
+  const add = (key: string, fromValue: string | number | null, toValue: string | number | null) => {
+    if (fromValue === toValue) return;
+    changes[`${key}From`] = fromValue;
+    changes[`${key}To`] = toValue;
+  };
+
+  add('caseId', from.case_id, to.case_id);
+  add('siteId', from.site_id, to.site_id);
+  add('visitType', from.visit_type, to.visit_type);
+  add('priority', from.priority, to.priority);
+  add('scheduledDate', formatUtcDateKey(from.scheduled_date), formatUtcDateKey(to.scheduled_date));
+  add(
+    'timeWindowStart',
+    timeDateToString(from.time_window_start) ?? null,
+    timeDateToString(to.time_window_start) ?? null,
+  );
+  add(
+    'timeWindowEnd',
+    timeDateToString(from.time_window_end) ?? null,
+    timeDateToString(to.time_window_end) ?? null,
+  );
+  add('pharmacistId', from.pharmacist_id, to.pharmacist_id);
+  add('vehicleResourceId', from.vehicle_resource_id, to.vehicle_resource_id);
+  add('scheduleStatus', from.schedule_status, to.schedule_status);
+  add('routeOrder', from.route_order, to.route_order);
+  add('recurrenceRule', from.recurrence_rule, to.recurrence_rule);
+
+  return {
+    ...changes,
+  };
 }
 
 async function withSerializableVisitSchedulePatchTransaction<T>(
@@ -164,7 +228,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     select: {
       id: true,
       case_id: true,
+      visit_type: true,
+      priority: true,
       schedule_status: true,
+      route_order: true,
+      recurrence_rule: true,
       confirmed_at: true,
       pharmacist_id: true,
       site_id: true,
@@ -197,6 +265,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     ...rest
   } = parsed.data;
   void _notes;
+
+  const changesRouteOrder =
+    rest.route_order !== undefined && rest.route_order !== existing.route_order;
+  if (existing.confirmed_at && changesRouteOrder) {
+    return validationError('電話確定済みの訪問予定は順路を変更できません');
+  }
 
   const changesLockedFields =
     case_id !== undefined ||
@@ -241,6 +315,73 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('ready 系ステータスへ進める更新では訪問日変更を同時に行えません');
   }
 
+  const targetTimeWindowStart =
+    time_window_start !== undefined
+      ? time_window_start || undefined
+      : readPatchTimeString(existing.time_window_start);
+  const targetTimeWindowEnd =
+    time_window_end !== undefined
+      ? time_window_end || undefined
+      : readPatchTimeString(existing.time_window_end);
+  const touchesTimeWindow = time_window_start !== undefined || time_window_end !== undefined;
+  if (touchesTimeWindow) {
+    if (targetTimeWindowStart && !targetTimeWindowEnd) {
+      return validationError('終了時刻も入力してください', {
+        time_window_end: ['終了時刻も入力してください'],
+      });
+    }
+    if (!targetTimeWindowStart && targetTimeWindowEnd) {
+      return validationError('開始時刻も入力してください', {
+        time_window_start: ['開始時刻も入力してください'],
+      });
+    }
+    if (
+      targetTimeWindowStart &&
+      targetTimeWindowEnd &&
+      timeStringToMinutes(targetTimeWindowEnd) <= timeStringToMinutes(targetTimeWindowStart)
+    ) {
+      return validationError('終了時刻は開始時刻より後にしてください', {
+        time_window_end: ['終了時刻は開始時刻より後にしてください'],
+      });
+    }
+  }
+
+  const projectedSchedule = {
+    case_id: case_id ?? existing.case_id,
+    site_id: site_id !== undefined ? site_id || null : existing.site_id,
+    visit_type: rest.visit_type ?? existing.visit_type,
+    priority: rest.priority ?? existing.priority,
+    scheduled_date: scheduled_date ? new Date(scheduled_date) : existing.scheduled_date,
+    time_window_start:
+      time_window_start !== undefined
+        ? time_window_start
+          ? hhmmToTimeDate(time_window_start)
+          : null
+        : existing.time_window_start,
+    time_window_end:
+      time_window_end !== undefined
+        ? time_window_end
+          ? hhmmToTimeDate(time_window_end)
+          : null
+        : existing.time_window_end,
+    pharmacist_id: rest.pharmacist_id ?? existing.pharmacist_id,
+    vehicle_resource_id:
+      vehicle_resource_id !== undefined
+        ? vehicle_resource_id || null
+        : existing.vehicle_resource_id,
+    schedule_status: targetScheduleStatus ?? existing.schedule_status,
+    route_order: rest.route_order !== undefined ? rest.route_order : existing.route_order,
+    recurrence_rule: rest.recurrence_rule ?? existing.recurrence_rule,
+  };
+  const projectedAuditChanges = schedulePatchAuditChanges(existing, projectedSchedule);
+  if (Object.keys(projectedAuditChanges).length === 0) {
+    const currentSchedule = await prisma.visitSchedule.findFirst({
+      where: { id, org_id: ctx.orgId },
+    });
+    if (!currentSchedule) return notFound('訪問予定が見つかりません');
+    return success(currentSchedule);
+  }
+
   const refResult = await validateOrgReferences(ctx.orgId, {
     ...(case_id ? { case_id } : {}),
     ...(site_id ? { site_id } : {}),
@@ -256,15 +397,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (changesScheduleTimingOrAssignment) {
     const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
     const targetPharmacistId = rest.pharmacist_id ?? existing.pharmacist_id;
-    const targetTimeWindowStart =
-      time_window_start !== undefined
-        ? time_window_start || undefined
-        : readPatchTimeString(existing.time_window_start);
-    const targetTimeWindowEnd =
-      time_window_end !== undefined
-        ? time_window_end || undefined
-        : readPatchTimeString(existing.time_window_end);
-
     const shift = await prisma.pharmacistShift.findFirst({
       where: {
         org_id: ctx.orgId,
@@ -378,7 +510,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       cells: [
         {
           pharmacistId: routeOrderTarget.pharmacistId,
-          dateKey: formatDateKey(routeOrderTarget.date),
+          dateKey: formatUtcDateKey(routeOrderTarget.date),
           routeOrder: routeOrderTarget.routeOrder,
         },
       ],
@@ -419,7 +551,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         cells: [
           {
             pharmacistId: routeOrderTarget.pharmacistId,
-            dateKey: formatDateKey(routeOrderTarget.date),
+            dateKey: formatUtcDateKey(routeOrderTarget.date),
             routeOrder: routeOrderTarget.routeOrder,
           },
         ],
@@ -448,14 +580,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...(scheduled_date ? { scheduled_date: new Date(scheduled_date) } : {}),
         ...(time_window_start !== undefined
           ? {
-              time_window_start: time_window_start
-                ? new Date(`1970-01-01T${time_window_start}`)
-                : null,
+              time_window_start: time_window_start ? hhmmToTimeDate(time_window_start) : null,
             }
           : {}),
         ...(time_window_end !== undefined
           ? {
-              time_window_end: time_window_end ? new Date(`1970-01-01T${time_window_end}`) : null,
+              time_window_end: time_window_end ? hhmmToTimeDate(time_window_end) : null,
             }
           : {}),
         ...(targetScheduleStatus && isReadyGatedScheduleStatus(targetScheduleStatus)
@@ -485,6 +615,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         response: conflict('更新後の訪問予定を取得できません。再読み込みしてください'),
       };
     }
+    const auditChanges = schedulePatchAuditChanges(existing, updatedSchedule);
+    if (Object.keys(auditChanges).length > 0) {
+      await createAuditLogEntry(tx, ctx, {
+        action: 'visit_schedule_updated',
+        targetType: 'VisitSchedule',
+        targetId: updatedSchedule.id,
+        changes: auditChanges,
+      });
+    }
     return { ok: true as const, schedule: updatedSchedule };
   };
 
@@ -510,6 +649,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 function readPatchTimeString(value: Date | null | undefined) {
   return timeDateToString(value);
+}
+
+function timeStringToMinutes(value: string) {
+  const [hours, minutes] = value.split(':').map((part) => Number.parseInt(part, 10));
+  return hours * 60 + minutes;
 }
 
 const READY_GATED_SCHEDULE_STATUSES = new Set<ScheduleStatus>([

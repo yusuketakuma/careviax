@@ -12,6 +12,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildOrgHeaders } from '@/lib/api/org-headers';
 import { buildPatientWorkflowPreviewApiPath } from '@/lib/patient/api-paths';
 import { buildPatientHref } from '@/lib/patient/navigation';
+import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { PatientWorkflowPreviewSnapshot } from './patient-detail.types';
 
 const weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
@@ -21,7 +22,7 @@ function labelList(values: string[]) {
 }
 
 function timeValue(value: string | null) {
-  return value ? value.slice(11, 16) : '—';
+  return timeIsoToString(value) ?? '—';
 }
 
 const reportTargetSourceLabels: Record<

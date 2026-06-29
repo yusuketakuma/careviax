@@ -3,6 +3,7 @@ import type { DayBoardStaff, DayBoardVisit } from '@/types/schedule-day-board';
 import { formatTimeOfDay as formatTimeOfDayIso } from '@/lib/datetime/time-of-day';
 import { formatDateKey } from '@/lib/date-key';
 import { familyNameOf } from '@/lib/utils/person-name';
+import { timeIsoToMinutes, timeIsoToString } from '@/lib/visits/time-of-day';
 
 /**
  * new_03_schedule(今日のスケジュール — 全員)の表示計算ヘルパー。
@@ -66,11 +67,14 @@ export function boardPercent(minutes: number): number {
 }
 
 export function minutesOfDayIso(iso: string): number {
-  const date = new Date(iso);
-  return date.getHours() * 60 + date.getMinutes();
+  return timeIsoToMinutes(iso) ?? BOARD_START_MINUTES;
 }
 
 export { formatTimeOfDayIso };
+
+export function formatScheduleTimeIso(iso: string): string {
+  return timeIsoToString(iso) ?? '—';
+}
 
 function clampToBoard(minutes: number): number {
   return Math.min(Math.max(minutes, BOARD_START_MINUTES), BOARD_END_MINUTES);
@@ -490,7 +494,7 @@ export function buildScheduleRiskAlert(args: {
   }
   if (!riskVisit?.time_start) return null;
 
-  const visitTime = formatTimeOfDayIso(riskVisit.time_start);
+  const visitTime = formatScheduleTimeIso(riskVisit.time_start);
   const dueTime = formatTimeOfDayIso(narcoticAudit.due_at as string);
   const visitStartMinutes = minutesOfDayIso(riskVisit.time_start);
   const fallbackHour = Math.floor(visitStartMinutes / 60) + 1;

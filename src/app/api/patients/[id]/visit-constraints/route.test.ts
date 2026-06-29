@@ -322,10 +322,14 @@ describe('/api/patients/[id]/visit-constraints', () => {
         patient_id: 'patient_1',
       },
       create: expect.objectContaining({
+        preferred_time_from: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+        preferred_time_to: new Date(Date.UTC(1970, 0, 1, 12, 0)),
         preferred_contact_name: '長男 山田',
         preferred_contact_phone: '090-1111-2222',
       }),
       update: expect.objectContaining({
+        preferred_time_from: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+        preferred_time_to: new Date(Date.UTC(1970, 0, 1, 12, 0)),
         preferred_contact_name: '長男 山田',
         preferred_contact_phone: '090-1111-2222',
       }),

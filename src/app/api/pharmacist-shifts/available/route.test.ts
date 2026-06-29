@@ -168,13 +168,13 @@ describe('/api/pharmacist-shifts/available GET', () => {
           {
             OR: [
               { available_from: null },
-              { available_from: { lte: new Date('1970-01-01T09:00') } },
+              { available_from: { lte: new Date(Date.UTC(1970, 0, 1, 9, 0)) } },
             ],
           },
           {
             OR: [
               { available_to: null },
-              { available_to: { gte: new Date('1970-01-01T18:00:00') } },
+              { available_to: { gte: new Date(Date.UTC(1970, 0, 1, 18, 0)) } },
             ],
           },
         ],

@@ -7,16 +7,13 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { cn } from '@/lib/utils';
+import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { PatientOverview } from './patient-detail.types';
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
 function formatTime(value: string | null | undefined) {
-  if (!value) return null;
-  if (/^\d{2}:\d{2}$/.test(value)) return value;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(11, 16);
+  return timeIsoToString(value) ?? null;
 }
 
 function StatusItem({

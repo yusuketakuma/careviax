@@ -50,8 +50,8 @@ function expectSensitiveNoStore(response: Response) {
 function buildSchedule(overrides: Record<string, unknown> = {}) {
   return {
     id: 'schedule_1',
-    time_window_start: new Date('2026-06-12T10:00:00+09:00'),
-    time_window_end: new Date('2026-06-12T10:45:00+09:00'),
+    time_window_start: new Date(Date.UTC(1970, 0, 1, 10, 0)),
+    time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 45)),
     route_order: 1,
     pre_visit_checklist_completed: true,
     facility_batch_id: null,
@@ -267,6 +267,7 @@ describe('/api/visits/today-preparation', () => {
         note: '出発前に正本確認: 訪問前連絡先・駐車可否・介護度 ほか1件',
         note_tone: 'warning',
         schedule_id: rawScheduleId,
+        time_label: '10:00',
         visit_mode_href: encodedVisitModeHref,
       }),
     );
@@ -331,6 +332,12 @@ describe('/api/visits/today-preparation', () => {
           state: 'alert',
         }),
       ]),
+    );
+    expect(json.data.cards[0]).toEqual(
+      expect.objectContaining({
+        note: '監査が間に合わない場合: 11:00繰り下げ案を反映できます(スケジュールで調整)',
+        time_label: '10:00',
+      }),
     );
     expect(json.data.cards[0].actions).toEqual([
       { label: '監査へ', href: '/audit' },

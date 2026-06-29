@@ -1,11 +1,66 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createElement } from 'react';
 import {
+  ScheduleCreateEditDrawer,
   buildScheduleCreateEditDrawerForm,
   buildScheduleCreateEditDrawerPayload,
+  getScheduleCreateEditDrawerContactBlocker,
   getScheduleCreateEditDrawerSaveBlocker,
   type ScheduleCreateEditDrawerForm,
 } from './schedule-create-edit-drawer';
-import type { Proposal } from './day-view.shared';
+import type { CaseOption, Pharmacist, Proposal } from './day-view.shared';
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}));
+
+function renderCreateEditDrawer(props?: { editingProposal?: Proposal | null }) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  const cases: CaseOption[] = [
+    {
+      id: 'case_1',
+      status: 'active',
+      primary_pharmacist_id: 'user_1',
+      primary_pharmacist_name: '佐藤薬剤師',
+      patient: {
+        id: 'patient_1',
+        name: '山田花子',
+        residences: [{ address: '東京都千代田区1-1-1' }],
+      },
+    },
+  ];
+  const pharmacists: Pharmacist[] = [
+    { id: 'user_1', name: '佐藤薬剤師', site_id: 'site_1', site_name: '本店' },
+  ];
+
+  return render(
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(ScheduleCreateEditDrawer, {
+        open: true,
+        onOpenChange: () => undefined,
+        orgId: 'org_1',
+        cases,
+        pharmacists,
+        defaultDate: '2026-06-30',
+        editingProposal: props?.editingProposal,
+      }),
+    ),
+  );
+}
 
 describe('schedule create/edit drawer helpers', () => {
   it('keeps patient contact status out of draft drawer payloads', () => {
@@ -15,6 +70,7 @@ describe('schedule create/edit drawer helpers', () => {
       priority: 'normal',
       proposed_date: '2026-06-30',
       time_window_start: '09:30',
+      time_window_end: '10:30',
       proposed_pharmacist_id: 'user_1',
       travel_mode: 'DRIVE',
     };
@@ -32,6 +88,7 @@ describe('schedule create/edit drawer helpers', () => {
       priority: 'normal',
       proposed_date: '2026-06-30',
       time_window_start: '09:30',
+      time_window_end: '10:30',
       proposed_pharmacist_id: 'user_1',
       travel_mode: 'DRIVE',
       submit_for_contact: true,
@@ -45,6 +102,7 @@ describe('schedule create/edit drawer helpers', () => {
       priority: 'urgent',
       proposed_date: '2026-06-30T00:00:00.000Z',
       time_window_start: '09:30',
+      time_window_end: '10:30',
       proposed_pharmacist_id: 'user_1',
       vehicle_resource: { travel_mode: 'DRIVE' },
       patient_contact_status: 'attempted',
@@ -63,8 +121,190 @@ describe('schedule create/edit drawer helpers', () => {
       priority: 'urgent',
       proposed_date: '2026-06-30',
       time_window_start: '09:30',
+      time_window_end: '10:30',
       proposed_pharmacist_id: 'user_1',
       travel_mode: 'DRIVE',
+    });
+  });
+
+  it('normalizes proposal time windows from HH:mm and ISO sentinel values', () => {
+    const proposal = {
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: '2026-06-30T00:00:00.000Z',
+      time_window_start: '1970-01-01T09:00:00.000-08:00',
+      time_window_end: '1970-01-01T10:30:00.000-0800',
+      proposed_pharmacist_id: 'user_1',
+    } as unknown as Proposal;
+
+    expect(
+      buildScheduleCreateEditDrawerForm({
+        defaultDate: '2026-07-01',
+        proposal,
+        cases: [],
+        pharmacists: [],
+      }),
+    ).toMatchObject({
+      time_window_start: '09:00',
+      time_window_end: '10:30',
+    });
+  });
+
+  it('omits empty time window fields from drawer payloads', () => {
+    const form: ScheduleCreateEditDrawerForm = {
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: '2026-06-30',
+      time_window_start: '',
+      time_window_end: '',
+      proposed_pharmacist_id: 'user_1',
+      travel_mode: 'DRIVE',
+    };
+
+    expect(
+      buildScheduleCreateEditDrawerPayload({
+        form,
+        submitForContact: false,
+      }),
+    ).toEqual({
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: '2026-06-30',
+      proposed_pharmacist_id: 'user_1',
+      travel_mode: 'DRIVE',
+      submit_for_contact: false,
+    });
+  });
+
+  it('renders a labeled end-time input in the drawer form', () => {
+    renderCreateEditDrawer();
+
+    expect(screen.getByLabelText('終了時刻').getAttribute('type')).toBe('time');
+  });
+
+  it('blocks incomplete and reversed time windows before saving', () => {
+    const baseForm: ScheduleCreateEditDrawerForm = {
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: '2026-06-30',
+      time_window_start: '09:30',
+      time_window_end: '10:30',
+      proposed_pharmacist_id: 'user_1',
+      travel_mode: 'DRIVE',
+    };
+
+    expect(getScheduleCreateEditDrawerSaveBlocker({ ...baseForm, time_window_end: '' })).toBe(
+      '保存するには 終了時刻も入力してください。',
+    );
+    expect(getScheduleCreateEditDrawerSaveBlocker({ ...baseForm, time_window_start: '' })).toBe(
+      '保存するには 開始時刻も入力してください。',
+    );
+    expect(
+      getScheduleCreateEditDrawerSaveBlocker({
+        ...baseForm,
+        time_window_start: '10:30',
+        time_window_end: '10:30',
+      }),
+    ).toBe('終了時刻は開始時刻より後にしてください。');
+    expect(
+      getScheduleCreateEditDrawerSaveBlocker({
+        ...baseForm,
+        time_window_start: '10:30',
+        time_window_end: '09:30',
+      }),
+    ).toBe('終了時刻は開始時刻より後にしてください。');
+  });
+
+  it('allows draft save without a time window but blocks moving to contact pending', () => {
+    const form: ScheduleCreateEditDrawerForm = {
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: '2026-06-30',
+      time_window_start: '',
+      time_window_end: '',
+      proposed_pharmacist_id: 'user_1',
+      travel_mode: 'DRIVE',
+    };
+
+    expect(getScheduleCreateEditDrawerSaveBlocker(form)).toBeNull();
+    expect(getScheduleCreateEditDrawerContactBlocker(form)).toBe(
+      '確認待ちにするには 開始時刻と終了時刻を入力してください。',
+    );
+  });
+
+  it('keeps draft save enabled but disables contact pending when both times are empty', () => {
+    renderCreateEditDrawer();
+
+    const draftButton = screen.getByRole('button', { name: '下書き保存' });
+    const contactButton = screen.getByRole('button', { name: '確認待ちにする' });
+
+    expect((draftButton as HTMLButtonElement).disabled).toBe(false);
+    expect((contactButton as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('alert').textContent).toBe(
+      '確認待ちにするには 開始時刻と終了時刻を入力してください。',
+    );
+    expect(contactButton.getAttribute('aria-describedby')).toBe('schedule-drawer-save-blocker');
+    expect(draftButton.getAttribute('aria-describedby')).toBeNull();
+  });
+
+  it('sends start and end time values from the drawer UI in the PUT body', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({ data: { id: 'proposal_1' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.change(screen.getByLabelText('開始時刻'), { target: { value: '09:00' } });
+    fireEvent.change(screen.getByLabelText('終了時刻'), { target: { value: '10:30' } });
+    fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedule-proposals',
+        expect.objectContaining({
+          method: 'PUT',
+          body: expect.any(String),
+        }),
+      );
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      time_window_start: '09:00',
+      time_window_end: '10:30',
+      submit_for_contact: false,
+    });
+  });
+
+  it('sends contact-pending intent and time values from the drawer UI in the PUT body', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({ data: { id: 'proposal_1' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCreateEditDrawer();
+    fireEvent.change(screen.getByLabelText('開始時刻'), { target: { value: '09:00' } });
+    fireEvent.change(screen.getByLabelText('終了時刻'), { target: { value: '10:30' } });
+    fireEvent.click(screen.getByRole('button', { name: '確認待ちにする' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedule-proposals',
+        expect.objectContaining({
+          method: 'PUT',
+          body: expect.any(String),
+        }),
+      );
+    });
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      time_window_start: '09:00',
+      time_window_end: '10:30',
+      submit_for_contact: true,
     });
   });
 
@@ -75,6 +315,7 @@ describe('schedule create/edit drawer helpers', () => {
       priority: 'normal',
       proposed_date: '2026-06-30',
       time_window_start: '09:30',
+      time_window_end: '10:30',
       proposed_pharmacist_id: 'user_1',
       travel_mode: 'DRIVE',
     };

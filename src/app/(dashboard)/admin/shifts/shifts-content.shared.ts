@@ -1,4 +1,5 @@
-import { eachDayOfInterval, endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
+import { eachDayOfInterval, endOfMonth, format, startOfMonth } from 'date-fns';
+import { timeIsoToString } from '@/lib/visits/time-of-day';
 
 export type Pharmacist = {
   id: string;
@@ -120,7 +121,7 @@ export function toDateKey(value: string) {
 }
 
 export function toTimeValue(value: string | null) {
-  return value ? format(parseISO(value), 'HH:mm') : '';
+  return timeIsoToString(value) ?? '';
 }
 
 export function cellKey(userId: string, date: string) {

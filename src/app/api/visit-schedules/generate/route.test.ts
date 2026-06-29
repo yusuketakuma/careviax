@@ -1,7 +1,7 @@
-import { format } from 'date-fns';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
+import { formatUtcDateKey } from '@/lib/date-key';
 
 const {
   authMock,
@@ -100,6 +100,10 @@ import { POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+
+function expectUtcTimeDate(value: Date, hhmm: string) {
+  expect(value.toISOString()).toBe(`1970-01-01T${hhmm}:00.000Z`);
+}
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/visit-schedules/generate', {
@@ -255,7 +259,7 @@ describe('/api/visit-schedules/generate POST', () => {
     );
     pharmacistShiftFindManyMock.mockImplementation(async ({ where }) => {
       const dates = Array.isArray(where.date?.in) ? where.date.in : [];
-      return dates.map((date: Date) => buildShift(format(date, 'yyyy-MM-dd')));
+      return dates.map((date: Date) => buildShift(formatUtcDateKey(date)));
     });
     pharmacyOperatingHoursFindManyMock.mockResolvedValue([]);
     businessHolidayFindManyMock.mockResolvedValue([]);
@@ -313,12 +317,12 @@ describe('/api/visit-schedules/generate POST', () => {
     const secondCall = visitScheduleCreateMock.mock.calls[1][0].data;
     expect(firstCall.case_id).toBe('case_1');
     expect(firstCall.cycle_id).toBe('cycle_1');
-    expect(format(firstCall.scheduled_date, 'yyyy-MM-dd')).toBe('2026-04-07');
-    expect(format(firstCall.time_window_start, 'HH:mm')).toBe('11:00');
-    expect(format(firstCall.time_window_end, 'HH:mm')).toBe('12:00');
+    expect(formatUtcDateKey(firstCall.scheduled_date)).toBe('2026-04-07');
+    expectUtcTimeDate(firstCall.time_window_start, '11:00');
+    expectUtcTimeDate(firstCall.time_window_end, '12:00');
     expect(firstCall.assignment_mode).toBe('primary');
     expect(firstCall.route_order).toBe(1);
-    expect(format(secondCall.scheduled_date, 'yyyy-MM-dd')).toBe('2026-04-21');
+    expect(formatUtcDateKey(secondCall.scheduled_date)).toBe('2026-04-21');
     expect(secondCall.route_order).toBe(1);
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -983,6 +987,38 @@ describe('/api/visit-schedules/generate POST', () => {
       details: {
         time_window_end: ['終了時刻は開始時刻より後にしてください'],
       },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      payload: { time_window_start: '12:00' },
+      details: { time_window_end: ['終了時刻も入力してください'] },
+    },
+    {
+      payload: { time_window_end: '13:00' },
+      details: { time_window_start: ['開始時刻も入力してください'] },
+    },
+  ])('rejects incomplete recurring time windows before loading the case', async (caseItem) => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+        ...caseItem.payload,
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: caseItem.details,
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();

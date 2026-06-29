@@ -252,7 +252,9 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
       },
     });
     patientLabObservationFindFirstMock.mockResolvedValue(null);
-    visitScheduleFindFirstMock.mockResolvedValue(null);
+    visitScheduleFindFirstMock.mockResolvedValue({
+      time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+    });
     drugMasterFindManyMock.mockResolvedValue([]);
     batchResolveNamesMock.mockResolvedValue(new Map([['user_2', '担当 薬剤師']]));
     dispenseTaskCountMock.mockResolvedValue(0);
@@ -269,6 +271,7 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
         prescriber_institution: '青葉クリニック',
         prescriber_name: '佐藤 一郎',
       },
+      visit_time_label: '09:00',
       count_rows: [
         {
           line_id: 'line_1',

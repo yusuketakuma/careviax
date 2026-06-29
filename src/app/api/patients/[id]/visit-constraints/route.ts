@@ -9,10 +9,11 @@ import { internalError, success, validationError, notFound } from '@/lib/api/res
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { upsertVisitConstraintsSchema } from '@/lib/validations/visit-constraints';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 function toTimeValue(value?: string) {
-  return value ? new Date(`1970-01-01T${value}`) : null;
+  return value ? hhmmToTimeDate(value) : null;
 }
 
 async function authenticatedGET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

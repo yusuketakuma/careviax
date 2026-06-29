@@ -7,6 +7,7 @@ import { prisma } from '@/lib/db/client';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { getProcessStepKeyForStatus } from '@/lib/prescription/cycle-workspace';
 import { careLevelLabels } from '@/lib/patient/home-visit-intake';
 import {
@@ -447,7 +448,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     safety_tags: safetyTags,
     next_visit_date: nextSchedule ? formatUtcDateKey(nextSchedule.scheduled_date) : null,
     next_visit_time: nextSchedule?.time_window_start
-      ? formatTimeOfDay(nextSchedule.time_window_start)
+      ? (timeDateToString(nextSchedule.time_window_start) ?? null)
       : null,
     next_visit_label: nextSchedule ? null : nextVisitLabel,
     current_step: attention === 'paused' || attention === 'acceptance' ? null : currentStep,

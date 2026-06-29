@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
 import {
@@ -18,6 +17,7 @@ import type {
   SetWorkspaceRow,
 } from '@/lib/dispensing/set-workspace-shared';
 import { deriveRowStatus, deriveSlotMarks } from '@/lib/dispensing/set-derivations';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 
 /**
  * new_09_set(セット準備ワークスペース)用 BFF。
@@ -401,7 +401,7 @@ const authenticatedGET = withAuthContext(
         .map((tag) => HANDLING_TAG_SHORT_LABELS[tag]);
       const pharmacistLabel = schedule ? (userById.get(schedule.pharmacist_id) ?? null) : null;
       const timeLabel = schedule?.time_window_start
-        ? `本日${formatTimeOfDay(schedule.time_window_start)} 持参分`
+        ? `本日${timeDateToString(schedule.time_window_start) ?? '時間未定'} 持参分`
         : '本日 持参分';
       const directSetSentence =
         tagLabels.length > 0 && pharmacistLabel

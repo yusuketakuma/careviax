@@ -113,8 +113,8 @@ describe('/api/pharmacist-shifts', () => {
       where: {
         org_id: 'org_1',
         date: {
-          gte: new Date(2026, 3, 1),
-          lte: new Date(2026, 4, 0),
+          gte: new Date('2026-04-01T00:00:00.000Z'),
+          lte: new Date('2026-04-30T00:00:00.000Z'),
         },
         user_id: 'user_2',
         site_id: 'site_1',
@@ -325,8 +325,8 @@ describe('/api/pharmacist-shifts', () => {
         user_id: ' user_2 ',
         date: ' 2026-04-15 ',
         available: false,
-        available_from: ' 09:00 ',
-        available_to: ' 12:00:00 ',
+        available_from: ' 09:00:30 ',
+        available_to: ' 12:00:15 ',
         note: ' 午前のみ ',
       }),
     ))!;
@@ -348,23 +348,23 @@ describe('/api/pharmacist-shifts', () => {
       where: {
         user_id_date: {
           user_id: 'user_2',
-          date: new Date('2026-04-15'),
+          date: new Date('2026-04-15T00:00:00.000Z'),
         },
       },
       create: {
         org_id: 'org_1',
         site_id: 'site_2',
         user_id: 'user_2',
-        date: new Date('2026-04-15'),
+        date: new Date('2026-04-15T00:00:00.000Z'),
         available: false,
-        available_from: new Date('1970-01-01T09:00'),
-        available_to: new Date('1970-01-01T12:00:00'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 30)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 12, 0, 15)),
         note: '午前のみ',
       },
       update: {
         site_id: 'site_2',
-        available_from: new Date('1970-01-01T09:00'),
-        available_to: new Date('1970-01-01T12:00:00'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 30)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 12, 0, 15)),
         available: false,
         note: '午前のみ',
       },
@@ -390,7 +390,9 @@ describe('/api/pharmacist-shifts', () => {
     });
     expect(pharmacistShiftUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { user_id_date: { user_id: 'user_3', date: new Date('2026-04-16') } },
+        where: {
+          user_id_date: { user_id: 'user_3', date: new Date('2026-04-16T00:00:00.000Z') },
+        },
         create: expect.objectContaining({
           site_id: 'site_3',
           user_id: 'user_3',

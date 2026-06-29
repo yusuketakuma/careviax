@@ -275,10 +275,16 @@ describe('/api/facility-visit-batches/visit-days POST', () => {
         org_id: 'org_1',
         patient_id: 'patient_1',
         preferred_weekdays: [1, 3],
+        preferred_time_from: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+        preferred_time_to: new Date(Date.UTC(1970, 0, 1, 12, 0)),
+        facility_time_from: new Date(Date.UTC(1970, 0, 1, 9, 30)),
+        facility_time_to: new Date(Date.UTC(1970, 0, 1, 15, 30)),
       }),
       update: expect.objectContaining({
-        facility_time_from: new Date('1970-01-01T09:30'),
-        facility_time_to: new Date('1970-01-01T15:30'),
+        preferred_time_from: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+        preferred_time_to: new Date(Date.UTC(1970, 0, 1, 12, 0)),
+        facility_time_from: new Date(Date.UTC(1970, 0, 1, 9, 30)),
+        facility_time_to: new Date(Date.UTC(1970, 0, 1, 15, 30)),
       }),
     });
   });

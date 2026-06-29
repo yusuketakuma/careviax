@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { format } from 'date-fns';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import type {
   TodayOpsBlockedReason,
   TodayOpsNextAction,
@@ -104,7 +105,7 @@ function buildNextAction(
       (item) => item.patient_name === topAudit.patientName && item.time_start != null,
     );
     const description = visit?.time_start
-      ? `${format(visit.time_start, 'HH:mm')}訪問(${familyName(topAudit.patientName)}様)の持参薬です。完了で午後の予定がすべて確定します。`
+      ? `${timeDateToString(visit.time_start) ?? '時間未定'}訪問(${familyName(topAudit.patientName)}様)の持参薬です。完了で午後の予定がすべて確定します。`
       : `${topAudit.patientName} 様の調剤監査が待ちです。完了で次の工程が動き出します。`;
     return { label, description, href: '/audit' };
   }

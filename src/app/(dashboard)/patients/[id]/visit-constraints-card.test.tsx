@@ -43,12 +43,12 @@ const VISIT_CONSTRAINTS_RESPONSE = {
   data: {
     scheduling_preference: {
       preferred_weekdays: [1, 3],
-      preferred_time_from: '2026-06-01T09:00:00.000Z',
-      preferred_time_to: '2026-06-01T11:00:00.000Z',
-      phone_contact_from: '2026-06-01T13:00:00.000Z',
-      phone_contact_to: '2026-06-01T16:00:00.000Z',
-      facility_time_from: '2026-06-01T08:30:00.000Z',
-      facility_time_to: '2026-06-01T12:30:00.000Z',
+      preferred_time_from: '2026-06-01T09:00:00.000-08:00',
+      preferred_time_to: '2026-06-01T11:00:00.000-0800',
+      phone_contact_from: '2026-06-01T13:00:00.000-08:00',
+      phone_contact_to: '2026-06-01T16:00:00.000-0800',
+      facility_time_from: '2026-06-01T08:30:00.000-08:00',
+      facility_time_to: '2026-06-01T12:30:00.000-0800',
       family_presence_required: true,
       visit_buffer_minutes: 15,
       preferred_contact_name: '山田花子',

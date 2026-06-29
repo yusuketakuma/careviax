@@ -1,5 +1,5 @@
 import type { VisitProposalStatus } from '@prisma/client';
-import { formatDateKey } from '@/lib/date-key';
+import { formatUtcDateKey } from '@/lib/date-key';
 
 export const OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES: VisitProposalStatus[] = [
   'proposed',
@@ -36,7 +36,7 @@ type ProposalRouteOrderTx = {
 };
 
 export function buildProposalRouteCellKey(args: { pharmacistId: string; date: Date }) {
-  return `${args.pharmacistId}:${formatDateKey(args.date)}`;
+  return `${args.pharmacistId}:${formatUtcDateKey(args.date)}`;
 }
 
 function toPositiveRouteOrder(value: number | null | undefined) {

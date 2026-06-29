@@ -8,6 +8,7 @@ import type {
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { familyNameOf as sharedFamilyNameOf } from '@/lib/utils/person-name';
+import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
 
@@ -54,12 +55,13 @@ export function buildWorkspaceNextAction(
       cockpit?.today_visits.find(
         (candidate) => candidate.patient_name === topAudit.patient_name && candidate.time_start,
       ) ?? null;
+    const visitTimeLabel = visit?.time_start ? timeIsoToString(visit.time_start) : null;
     return {
       actionLabel: topAudit.due_at
         ? `${auditLabel}を開始 — ${formatTimeOfDay(topAudit.due_at)}期限`
         : `${auditLabel}を開始する`,
-      description: visit?.time_start
-        ? `${formatTimeOfDay(visit.time_start)}訪問(${familyNameOf(topAudit.patient_name)}様)の持参薬です。完了で午後の予定がすべて確定します。`
+      description: visitTimeLabel
+        ? `${visitTimeLabel}訪問(${familyNameOf(topAudit.patient_name)}様)の持参薬です。完了で午後の予定がすべて確定します。`
         : `${topAudit.patient_name} 様の監査待ちです。完了で次の工程が動き出します。`,
       actionHref: '/audit',
     };

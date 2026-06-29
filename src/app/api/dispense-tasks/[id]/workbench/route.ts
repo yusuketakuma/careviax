@@ -20,6 +20,7 @@ import { resolveEffectivePackagingInstructionTags } from '@/lib/dispensing/packa
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { findPreviousPrescriptionIntakeForMedicationDiff } from '@/server/services/prescription-intake-pair';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 /**
@@ -489,7 +490,7 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
     is_self_audit: dispenserIds.includes(ctx.userId),
     has_narcotic: countRows.some((row) => row.is_narcotic),
     visit_time_label: todayVisit?.time_window_start
-      ? format(todayVisit.time_window_start, 'HH:mm')
+      ? (timeDateToString(todayVisit.time_window_start) ?? null)
       : null,
     resolved_inquiry: latestResolvedInquiry
       ? {

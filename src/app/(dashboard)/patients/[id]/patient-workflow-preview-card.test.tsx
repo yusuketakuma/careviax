@@ -68,8 +68,8 @@ describe('PatientWorkflowPreviewCard', () => {
           },
           scheduling_preview: {
             preferred_weekdays: [1, 3],
-            preferred_time_from: '1970-01-01T09:00:00.000Z',
-            preferred_time_to: '1970-01-01T12:00:00.000Z',
+            preferred_time_from: '1970-01-01T09:00:00.000-08:00',
+            preferred_time_to: '1970-01-01T12:00:00.000-0800',
             phone_contact_from: null,
             phone_contact_to: null,
             facility_time_from: null,
@@ -146,6 +146,7 @@ describe('PatientWorkflowPreviewCard', () => {
     expect(screen.getByRole('link', { name: '患者編集' })).toBeTruthy();
     expect(screen.getByRole('link', { name: '同意記録' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'MCS連携' })).toBeTruthy();
+    expect(screen.getByText('09:00 - 12:00')).toBeTruthy();
     expect(screen.getByText('医師向け報告')).toBeTruthy();
     expect(screen.getByText('患者情報')).toBeTruthy();
     expect(screen.getByText(/佐藤医院/)).toBeTruthy();
@@ -163,8 +164,8 @@ describe('PatientWorkflowPreviewCard', () => {
         },
         scheduling_preview: {
           preferred_weekdays: [1, 3],
-          preferred_time_from: '1970-01-01T09:00:00.000Z',
-          preferred_time_to: '1970-01-01T12:00:00.000Z',
+          preferred_time_from: '1970-01-01T09:00:00.000-08:00',
+          preferred_time_to: '1970-01-01T12:00:00.000-0800',
           phone_contact_from: null,
           phone_contact_to: null,
           facility_time_from: null,

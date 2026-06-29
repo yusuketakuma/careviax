@@ -13,9 +13,8 @@ import {
 } from './capacity';
 
 describe('capacity time converters', () => {
-  it('visitTimeToMinutes はローカル時刻として読む', () => {
-    // ローカルコンストラクタで生成 → どの TZ でも 14:30
-    expect(visitTimeToMinutes(new Date(2026, 5, 13, 14, 30))).toBe(14 * 60 + 30);
+  it('visitTimeToMinutes は @db.Time の UTC 時刻部分を読む', () => {
+    expect(visitTimeToMinutes(new Date(Date.UTC(1970, 0, 1, 14, 30)))).toBe(14 * 60 + 30);
     expect(visitTimeToMinutes(null)).toBeNull();
   });
 

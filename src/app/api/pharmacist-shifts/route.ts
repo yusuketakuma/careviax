@@ -15,6 +15,7 @@ import {
   pharmacistShiftQuerySchema,
   toShiftTimeValue,
 } from '@/lib/validations/pharmacist-shift';
+import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 const ROUTE = '/api/pharmacist-shifts';
 const DEFAULT_PHARMACIST_SHIFT_LIMIT = 400;
@@ -32,6 +33,14 @@ const SAFE_ERROR_NAMES = new Set([
 function safeErrorName(err: unknown): string {
   if (!(err instanceof Error)) return 'Error';
   return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+function startOfUtcMonth(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
+}
+
+function endOfUtcMonth(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 0));
 }
 
 async function authenticatedGET(req: NextRequest) {
@@ -71,16 +80,16 @@ async function authenticatedGET(req: NextRequest) {
       return validationError('検索条件が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const monthDate = parsed.data.month ? new Date(parsed.data.month) : null;
+    const monthDate = parsed.data.month ? utcDateFromLocalKey(parsed.data.month) : null;
     const resolvedDateFrom = monthDate
-      ? new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
+      ? startOfUtcMonth(monthDate)
       : parsed.data.date_from
-        ? new Date(parsed.data.date_from)
+        ? utcDateFromLocalKey(parsed.data.date_from)
         : null;
     const resolvedDateTo = monthDate
-      ? new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
+      ? endOfUtcMonth(monthDate)
       : parsed.data.date_to
-        ? new Date(parsed.data.date_to)
+        ? utcDateFromLocalKey(parsed.data.date_to)
         : null;
 
     const shifts = await withOrgContext(
@@ -170,10 +179,10 @@ async function authenticatedPOST(req: NextRequest) {
       ctx.orgId,
       async (tx) => {
         return tx.pharmacistShift.upsert({
-          where: { user_id_date: { user_id: rest.user_id, date: new Date(date) } },
+          where: { user_id_date: { user_id: rest.user_id, date: utcDateFromLocalKey(date) } },
           create: {
             org_id: ctx.orgId,
-            date: new Date(date),
+            date: utcDateFromLocalKey(date),
             ...(availableFromValue !== undefined ? { available_from: availableFromValue } : {}),
             ...(availableToValue !== undefined ? { available_to: availableToValue } : {}),
             ...rest,

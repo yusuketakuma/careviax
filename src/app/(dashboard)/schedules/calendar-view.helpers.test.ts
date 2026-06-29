@@ -3,6 +3,7 @@ import {
   fetchCalendarSchedules,
   formatCalendarTimeRange,
   groupCalendarSchedulesByDate,
+  minutesFromTimestamp,
   sortCalendarSchedules,
   type CalendarVisitSchedule,
 } from './calendar-view.helpers';
@@ -68,6 +69,19 @@ describe('calendar-view.helpers', () => {
         time_window_end: '1970-01-01T10:30:00.000Z',
       }),
     ).toBe('09:00 - 10:30');
+    expect(
+      formatCalendarTimeRange({
+        time_window_start: '1970-01-01T09:00:00.000-08:00',
+        time_window_end: '1970-01-01T10:30:00.000-0800',
+      }),
+    ).toBe('09:00 - 10:30');
+  });
+
+  it('uses UTC clock parts for @db.Time ISO sentinel placement minutes', () => {
+    expect(minutesFromTimestamp('1970-01-01T09:00:00.000Z', 0)).toBe(9 * 60);
+    expect(minutesFromTimestamp('1970-01-01T09:00:00.000-08:00', 0)).toBe(9 * 60);
+    expect(minutesFromTimestamp('1970-01-01T09:00:00.000-0800', 0)).toBe(9 * 60);
+    expect(minutesFromTimestamp(null, 8 * 60)).toBe(8 * 60);
   });
 
   it('groups schedules by date and sorts each day bucket', () => {
@@ -114,9 +128,7 @@ describe('calendar-view.helpers', () => {
       'schedule_1',
       'schedule_2',
     ]);
-    expect(grouped.get('2026-04-01')?.map((schedule) => schedule.id)).toEqual([
-      'schedule_3',
-    ]);
+    expect(grouped.get('2026-04-01')?.map((schedule) => schedule.id)).toEqual(['schedule_3']);
   });
 
   it('follows pagination until all schedules are collected', async () => {

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import {
   applyTimeDateToDate,
   timeDateToClockParts,
   timeDateToMinutes,
+  timeIsoToMinutes,
+  timeIsoToString,
   timeDateToString,
 } from './time-of-day';
 
@@ -36,6 +39,29 @@ describe('time-of-day @db.Time helpers (UTC, tz-safe)', () => {
     expect(timeDateToMinutes(HALF_PAST_SIX_PM)).toBe(18 * 60 + 30);
     expect(timeDateToMinutes(null)).toBeNull();
     expect(timeDateToMinutes(undefined)).toBeNull();
+  });
+
+  it('timeIso helpers read @db.Time ISO sentinels via UTC clock parts', () => {
+    expect(timeIsoToString('1970-01-01T09:00:00.000Z')).toBe('09:00');
+    expect(timeIsoToMinutes('1970-01-01T09:00:00.000Z')).toBe(9 * 60);
+    expect(timeIsoToString('1970-01-01T09:00:00.000+09:00')).toBe('09:00');
+    expect(timeIsoToMinutes('1970-01-01T09:00:00.000+09:00')).toBe(9 * 60);
+    expect(timeIsoToString('1970-01-01T09:00:00.000-08:00')).toBe('09:00');
+    expect(timeIsoToMinutes('1970-01-01T09:00:00.000-08:00')).toBe(9 * 60);
+    expect(timeIsoToString('1970-01-01T09:00:00.000-0800')).toBe('09:00');
+    expect(timeIsoToMinutes('1970-01-01T09:00:00.000-0800')).toBe(9 * 60);
+    expect(timeIsoToString('10:30:15')).toBe('10:30');
+    expect(timeIsoToMinutes('10:30:15')).toBe(10 * 60 + 30);
+    expect(timeIsoToString('not-a-date')).toBeUndefined();
+    expect(timeIsoToMinutes('not-a-date')).toBeNull();
+  });
+
+  it('round-trips the UTC @db.Time writer through the scheduling read helpers', () => {
+    const value = hhmmToTimeDate('09:30');
+    expect(value.toISOString()).toBe('1970-01-01T09:30:00.000Z');
+    expect(timeDateToClockParts(value)).toEqual({ hours: 9, minutes: 30 });
+    expect(timeDateToString(value)).toBe('09:30');
+    expect(timeDateToMinutes(value)).toBe(9 * 60 + 30);
   });
 
   it('applyTimeDateToDate stamps the UTC clock time onto a base date (local fields)', () => {

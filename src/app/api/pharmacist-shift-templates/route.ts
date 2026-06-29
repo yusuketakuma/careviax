@@ -7,6 +7,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { upsertShiftTemplateSchema } from '@/lib/validations/pharmacist-shift-template';
 
 const DEFAULT_SHIFT_TEMPLATE_LIMIT = 100;
@@ -15,7 +16,7 @@ const MAX_SHIFT_TEMPLATE_LIMIT = 200;
 const userIdQuerySchema = z.string().trim().min(1).max(100);
 
 function toTimeValue(value?: string) {
-  return value ? new Date(`1970-01-01T${value}`) : null;
+  return value ? hhmmToTimeDate(value) : null;
 }
 
 export async function GET(req: NextRequest) {

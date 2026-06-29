@@ -12,6 +12,7 @@ import {
   type WorkspaceConditionInput,
 } from '@/server/services/patient-detail-helpers';
 import { findPreviousPrescriptionIntakeForMedicationDiff } from '@/server/services/prescription-intake-pair';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -319,7 +320,9 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
     ...todayVisits.map((visit) => ({
       id: `visit-${visit.id}`,
       tone: 'scheduled' as const,
-      time_label: visit.time_window_start ? format(visit.time_window_start, 'HH:mm') : '時間未定',
+      time_label: visit.time_window_start
+        ? (timeDateToString(visit.time_window_start) ?? '時間未定')
+        : '時間未定',
       label: '訪問',
       href: '/schedules',
       action_label: '訪問へ',

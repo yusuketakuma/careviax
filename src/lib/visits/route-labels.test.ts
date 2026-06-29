@@ -22,12 +22,23 @@ describe('visit route labels', () => {
   it('formats time windows from ISO and HH:mm inputs', () => {
     expect(formatNullableTimeOfDayLabel(null)).toBeNull();
     expect(formatNullableTimeOfDayLabel('2026-04-01T08:45:00')).toBe('08:45');
+    expect(formatNullableTimeOfDayLabel('1970-01-01T09:00:00.000Z')).toBe('09:00');
+    expect(formatNullableTimeOfDayLabel('1970-01-01T09:00:00.000+09:00')).toBe('09:00');
+    expect(formatNullableTimeOfDayLabel('1970-01-01T09:00:00.000-08:00')).toBe('09:00');
+    expect(formatNullableTimeOfDayLabel('1970-01-01T09:00:00.000-0800')).toBe('09:00');
     expect(formatTimeWindowLabel('2026-04-01T09:00:00', '2026-04-01T09:30:00')).toBe(
       '09:00 - 09:30',
     );
+    expect(formatTimeWindowLabel('1970-01-01T09:00:00.000Z', '1970-01-01T10:30:00.000Z')).toBe(
+      '09:00 - 10:30',
+    );
+    expect(
+      formatTimeWindowLabel('1970-01-01T09:00:00.000-08:00', '1970-01-01T10:30:00.000-0800'),
+    ).toBe('09:00 - 10:30');
     expect(formatTimeWindowLabel('10:15', null)).toBe('10:15');
     expect(formatNullableTimeWindowLabel(null, undefined)).toBeNull();
     expect(formatNullableTimeWindowLabel(null, '10:30')).toBe('10:30');
+    expect(formatNullableTimeWindowLabel(null, '1970-01-01T10:30:00.000Z')).toBe('10:30');
     expect(formatNullableTimeWindowLabel('10:15', '10:45')).toBe('10:15 - 10:45');
   });
 

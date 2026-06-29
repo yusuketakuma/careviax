@@ -234,8 +234,8 @@ const COCKPIT: DashboardCockpitResponse = {
       patient_name: '田中 一郎',
       visit_type: 'regular',
       schedule_status: 'planned',
-      time_start: localIso(2026, 5, 11, 14),
-      time_end: localIso(2026, 5, 11, 14, 30),
+      time_start: '14:00',
+      time_end: '14:30',
       facility_batch_id: null,
     },
   ],
@@ -458,6 +458,28 @@ describe('ReportShareWorkspace', () => {
       '/billing/candidates?billing_month=2026-06-01&candidate_id=candidate_1&patient_id=patient_1',
     );
     expect(issueLink.getAttribute('href')).not.toBe('/reports/null');
+  });
+
+  it('renders @db.Time visit clocks without converting ISO offsets', async () => {
+    const workspace = JSON.parse(JSON.stringify(TODAY_WORKSPACE)) as ReportsTodayWorkspaceResponse;
+    workspace.draft_rows = [
+      {
+        ...workspace.draft_rows[0],
+        id: 'offset-row',
+        time_start: '1970-01-01T09:00:00.000-08:00',
+        patient_label: '時刻固定 様',
+      },
+    ];
+    workspace.counts = { ...workspace.counts, to_write: 1 };
+
+    stubFetch(workspace);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-today-drafts')).toBeTruthy();
+    });
+    expect(screen.getByText('09:00')).toBeTruthy();
+    expect(screen.queryByText('18:00')).toBeNull();
   });
 
   it('encodes created-report patient links and keeps unassigned reports as text', async () => {

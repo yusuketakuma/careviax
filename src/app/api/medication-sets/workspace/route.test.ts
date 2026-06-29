@@ -71,7 +71,7 @@ function buildSchedule(args: {
     id: args.id,
     case_id: args.caseId,
     pharmacist_id: args.pharmacistId ?? 'user_yamada',
-    time_window_start: args.time ?? new Date(2026, 5, 11, 15, 30),
+    time_window_start: args.time ?? new Date(Date.UTC(1970, 0, 1, 15, 30)),
     case_: {
       id: args.caseId,
       patient: {
@@ -297,7 +297,7 @@ describe('/api/medication-sets/workspace', () => {
             patientId: 'patient_tanaka',
             patientName: '田中 一郎',
             facility: null,
-            time: new Date(2026, 5, 11, 14, 0),
+            time: new Date(Date.UTC(1970, 0, 1, 14, 0)),
           }),
         ]);
       }
@@ -344,7 +344,7 @@ describe('/api/medication-sets/workspace', () => {
             patientId: 'patient_master_narcotic',
             patientName: '佐藤 二郎',
             facility: null,
-            time: new Date(2026, 5, 11, 16, 15),
+            time: new Date(Date.UTC(1970, 0, 1, 16, 15)),
           }),
         ]);
       }

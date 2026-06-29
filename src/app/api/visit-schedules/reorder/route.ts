@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { formatDateKey } from '@/lib/date-key';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import {
@@ -259,7 +259,7 @@ export const PATCH = withAuthContext(
             if (item.route_order === undefined) return map;
             const schedule = scheduleById.get(item.schedule_id);
             if (!schedule) return map;
-            const targetDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
+            const targetDate = item.scheduled_date ?? formatUtcDateKey(schedule.scheduled_date);
             const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
             const key = `${targetPharmacistId}:${targetDate}:${item.route_order}`;
             const current = map.get(key);
@@ -312,10 +312,10 @@ export const PATCH = withAuthContext(
           const confirmedDateMoves = effectiveUpdates.find((item) => {
             const schedule = scheduleById.get(item.schedule_id);
             if (!schedule?.confirmed_at) return false;
-            const nextDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
+            const nextDate = item.scheduled_date ?? formatUtcDateKey(schedule.scheduled_date);
             const nextPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
             return (
-              nextDate !== formatDateKey(schedule.scheduled_date) ||
+              nextDate !== formatUtcDateKey(schedule.scheduled_date) ||
               nextPharmacistId !== schedule.pharmacist_id
             );
           });
@@ -327,10 +327,10 @@ export const PATCH = withAuthContext(
             .map((item) => {
               const schedule = scheduleById.get(item.schedule_id);
               if (!schedule) return null;
-              const targetDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
+              const targetDate = item.scheduled_date ?? formatUtcDateKey(schedule.scheduled_date);
               const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
               const isMove =
-                targetDate !== formatDateKey(schedule.scheduled_date) ||
+                targetDate !== formatUtcDateKey(schedule.scheduled_date) ||
                 targetPharmacistId !== schedule.pharmacist_id;
               return isMove ? { schedule, targetDate, targetPharmacistId } : null;
             })
@@ -362,7 +362,10 @@ export const PATCH = withAuthContext(
                   },
                 });
           const shiftByTarget = new Map(
-            targetShifts.map((shift) => [`${shift.user_id}:${formatDateKey(shift.date)}`, shift]),
+            targetShifts.map((shift) => [
+              `${shift.user_id}:${formatUtcDateKey(shift.date)}`,
+              shift,
+            ]),
           );
           const shiftConflict = moveTargets.find((item) => {
             const shift =
@@ -442,7 +445,7 @@ export const PATCH = withAuthContext(
               if (item.vehicle_resource_id === undefined) return null;
               const schedule = scheduleById.get(item.schedule_id);
               if (!schedule) return null;
-              const targetDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
+              const targetDate = item.scheduled_date ?? formatUtcDateKey(schedule.scheduled_date);
               const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
               const targetShift = shiftByTarget.get(`${targetPharmacistId}:${targetDate}`) ?? null;
               const targetSiteId = targetShift?.site_id ?? schedule.site_id;
@@ -546,7 +549,7 @@ export const PATCH = withAuthContext(
           const existingAssignedCountByCell = new Map<string, number>();
           for (const row of vehicleCapacityRows) {
             if (!row.vehicle_resource_id) continue;
-            const key = `${row.vehicle_resource_id}:${formatDateKey(row.scheduled_date)}`;
+            const key = `${row.vehicle_resource_id}:${formatUtcDateKey(row.scheduled_date)}`;
             existingAssignedCountByCell.set(key, (existingAssignedCountByCell.get(key) ?? 0) + 1);
           }
 
@@ -565,7 +568,7 @@ export const PATCH = withAuthContext(
               const schedule = scheduleById.get(item.schedule_id);
               const targetDate =
                 item.scheduled_date ??
-                (schedule ? formatDateKey(schedule.scheduled_date) : undefined);
+                (schedule ? formatUtcDateKey(schedule.scheduled_date) : undefined);
               const targetPharmacistId = item.pharmacist_id ?? schedule?.pharmacist_id;
               const targetShift =
                 targetDate && targetPharmacistId

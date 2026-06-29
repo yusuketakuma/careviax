@@ -23,6 +23,66 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Scheduling P0 Datetime Foundation Completion - 2026-06-29 23:15 JST
+
+- Scope:
+  - Completed the Scheduling P0 datetime/timezone foundation and prioritized Claude's date-navigator review requests before final validation.
+  - Claude's date navigator/conflicts/emergency-route/route-compare slice was reviewed, approved, and committed separately as `81103f09`; Codex did not stage those peer-owned paths.
+  - No schema migration, live DB mutation, backfill, push, deploy, auth/RLS policy change, external send, or destructive operation was performed.
+- Fixed:
+  - Normalized scheduling `@db.Time` writers/readers to UTC sentinel clock storage via `hhmmToTimeDate`, `clockStringToTimeDate`, and `timeIsoToString`/`timeIsoToMinutes`.
+  - Converted date-only scheduling logic that touches Prisma `@db.Date` sentinels to UTC date keys where local getters could shift dates under negative-offset runtimes.
+  - Hardened visit schedule PATCH validation so explicit partial time-window edits are rejected, but unrelated updates on legacy one-sided windows are not blocked.
+  - Prevented single-schedule PATCH route-order changes for confirmed visits, matching the batch reorder safety contract.
+  - Skipped no-op schedule PATCH update/audit/notify paths when the normalized diff is empty.
+  - Made proposal diagnostics, batch schedule reorder, and proposal reorder use UTC date keys for route/proposal cells.
+  - Added drawer live-region feedback and a UI test for the `submit_for_contact: true` button path.
+  - Expanded `test:schedule-time:tz` to 23 files and changed CI to run the suite under `Asia/Tokyo`, `UTC`, and `America/Los_Angeles`.
+  - Added a SELECT-only runbook with read-only transaction proof, aggregate-only evidence rules, scoped-column coverage, and a hard release gate for possible legacy local-written `@db.Time` rows.
+- Review:
+  - `reviewer-strict`, `medical_safety_reviewer`, `privacy_compliance_reviewer`, `data_integrity_auditor`, `frontend_reviewer`, and `test-auditor` findings were either addressed in code/tests or documented as the explicit DB release gate.
+  - User concern about UTC vs Japan-only usage was resolved as an internal sentinel convention: business dates remain Japan-domain dates, while `Date` encoding uses UTC to keep clock-only values stable across runtime TZ.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts' 'src/app/api/visit-schedules/[id]/route.test.ts' src/app/api/visit-schedules/route.test.ts src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/reorder/route.test.ts src/app/api/visit-schedule-proposals/reorder/route.test.ts --reporter=dot --testTimeout=30000`: passed, `7` files / `239` tests.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz`: passed, `23` files / `372` tests.
+  - `TZ=UTC pnpm test:schedule-time:tz`: passed, `23` files / `372` tests.
+  - `TZ=America/Los_Angeles pnpm test:schedule-time:tz`: passed, `23` files / `372` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Before any shared/prod release, run the SELECT-only schedule-time compatibility audit. If suspicious legacy rows remain, use an approved bounded backfill or read-side compatibility plan; do not infer or mutate automatically.
+  - Next scheduling order remains P2 recurrence semantics, then P3 capacity/constraints, then P6 route-engine enriched plan and P9 reschedule/cancel endpoint. Claude proposed a FE/BE split for day-board pending proposal undercounting after this P0 commit.
+
+### Scheduling P0 Datetime Foundation - 2026-06-29 21:35 JST
+
+- Scope:
+  - Implemented scheduling P0 datetime/timezone foundation for `@db.Time` writer drift and rrule date construction.
+  - Read local Next.js Route Handler docs before editing route files: `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` and `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`.
+  - No schema migration, live DB mutation, push, deploy, auth/RLS policy change, external request, or destructive operation was performed.
+- Fixed:
+  - Added `clockPartsToTimeDate`, `hhmmToTimeDate`, and `clockStringToTimeDate` in `src/lib/datetime/time-of-day.ts`, using `Date.UTC(1970, 0, 1, hours, minutes, seconds, 0)`.
+  - Replaced production no-Z `new Date('1970-01-01T...' )` scheduling writers with UTC sentinel helpers across visit schedule create/PATCH/generate, manual visit proposals, pharmacist shifts/templates, facility visit-day preferences, and patient visit constraints.
+  - Converted `parseSimpleRruleDates` weekly/monthly iteration and monthly occurrence construction to UTC getters/setters/constructors so date-only occurrences stay at UTC midnight under `TZ=Asia/Tokyo`, `TZ=UTC`, and negative-offset timezones.
+  - Fixed a newly exposed manual proposal bug where new `PUT /api/visit-schedule-proposals` draft creation always returned `409` because a null `existing` proposal was treated as a non-pending existing proposal.
+  - Added/updated tests to assert UTC sentinel instants instead of local formatter output, including `HH:mm:ss` shift preservation and writer/read-helper round trips.
+- Validation:
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/lib/datetime/time-of-day.test.ts src/lib/visits/time-of-day.test.ts src/lib/visits/rrule.test.ts src/server/services/visit-schedule-shift.test.ts src/app/api/visit-schedules/route.test.ts src/app/api/visit-schedules/generate/route.test.ts 'src/app/api/visit-schedules/[id]/route.test.ts' src/app/api/visit-schedule-proposals/route.test.ts src/app/api/pharmacist-shifts/route.test.ts src/app/api/pharmacist-shifts/bulk/route.test.ts src/app/api/pharmacist-shifts/available/route.test.ts src/app/api/pharmacist-shift-templates/route.test.ts src/app/api/facility-visit-batches/visit-days/route.test.ts 'src/app/api/patients/[id]/visit-constraints/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `14` files / `257` tests.
+  - `TZ=UTC` with the same `14` focused files: passed, `14` files / `257` tests.
+  - `TZ=Asia/Tokyo pnpm exec vitest run 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' src/app/api/pharmacist-shift-templates/apply/route.test.ts src/server/services/visit-schedule-planner.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `74` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - Production-code grep for no-Z `1970-01-01T` Date writers under `src/app`, `src/lib`, and `src/server`: no matches.
+  - Post-implementation Codex verifier and medical-safety reviewer reported no blockers. Test auditor required broader focused commands; those are now the recorded gate.
+- Remaining:
+  - Reader/display cleanup remains a follow-up: `src/lib/datetime/time-of-day.ts` `formatTimeOfDay()` is local-time formatting and must not be reused for `@db.Time` sentinel display. Existing scheduling readers should continue using `src/lib/visits/time-of-day.ts`.
+  - P2 still owns recurrence semantics beyond timezone drift: biweekly/multi-BYDAY series anchoring, windowed regeneration phase stability, and invalid BYDAY diagnostics.
+
 ### Medication-Driven Visit Deadline P1 - 2026-06-29 20:58 JST
 
 - Scope:

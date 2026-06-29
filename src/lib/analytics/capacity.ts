@@ -6,6 +6,7 @@
  */
 
 import { familyNameOf } from '@/lib/utils/person-name';
+import { timeDateToMinutes } from '@/lib/visits/time-of-day';
 
 // シフト未登録時の既定勤務枠(cockpit buildTeamCapacity と同じ 9:00-18:00)
 const DEFAULT_WORK_START_MINUTES = 9 * 60;
@@ -28,13 +29,9 @@ const SLOT_HOUR_END = 18;
 // 時刻変換(@db.Time / 実時刻 → その日の経過分)
 // ---------------------------------------------------------------------------
 
-/**
- * VisitSchedule.time_window_*(@db.Time)→ ローカル 0:00 からの分。
- * seed / 画面表示(cockpit minutesOfDay)と同じく「ローカル時刻」として解釈する。
- */
+/** VisitSchedule.time_window_*(@db.Time)→ UTC clock parts の分。 */
 export function visitTimeToMinutes(time: Date | null): number | null {
-  if (!time) return null;
-  return time.getHours() * 60 + time.getMinutes();
+  return timeDateToMinutes(time);
 }
 
 /**

@@ -90,7 +90,7 @@ describe('buildTodayOpsRail', () => {
           tags: ['narcotic'],
         }),
       ],
-      visits: [{ patient_name: '田中 一郎', time_start: new Date(2026, 5, 11, 14, 0) }],
+      visits: [{ patient_name: '田中 一郎', time_start: new Date(Date.UTC(1970, 0, 1, 14, 0)) }],
       exceptions: [
         {
           id: 'exception_consent',

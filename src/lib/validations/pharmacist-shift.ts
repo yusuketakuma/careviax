@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { clockStringToTimeDate } from '@/lib/datetime/time-of-day';
 import { dateKeySchema as createDateKeySchema } from '@/lib/validations/date-key';
 
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
@@ -114,5 +115,5 @@ export const availablePharmacistShiftQuerySchema = z
 export function toShiftTimeValue(value: string | null | undefined) {
   if (value === undefined) return undefined;
   if (value === null) return null;
-  return new Date(`1970-01-01T${value}`);
+  return clockStringToTimeDate(value);
 }

@@ -25,6 +25,7 @@ import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-vis
 import { displayDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { buildReportHref } from '@/lib/reports/navigation';
 import { cn } from '@/lib/utils';
+import { timeIsoToString } from '@/lib/visits/time-of-day';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
   ReportsTodayWorkspaceResponse,
@@ -168,7 +169,9 @@ function TodayDraftsCard({
                   <span className="mr-2 text-xs font-medium text-muted-foreground md:hidden">
                     訪問
                   </span>
-                  <span>{row.time_start ? formatTimeOfDay(row.time_start) : '--:--'}</span>
+                  <span>
+                    {row.time_start ? (timeIsoToString(row.time_start) ?? '--:--') : '--:--'}
+                  </span>
                 </TableCell>
                 <TableCell className="mt-1 block p-0 font-medium text-foreground md:table-cell md:mt-0 md:p-2">
                   {row.patient_label}

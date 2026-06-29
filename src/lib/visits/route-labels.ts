@@ -4,16 +4,20 @@ function parseTimeOfDay(value: string | null | undefined) {
   if (!value) return null;
   const direct = value.match(/^(\d{2}:\d{2})(?::\d{2})?/);
   if (direct) return direct[1];
+  const isoClock = value.match(/T(\d{2}:\d{2})(?::\d{2})?/);
+  if (isoClock) return isoClock[1];
 
   const parsed = parseISO(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return format(parsed, 'HH:mm');
 }
 
-function parseTimeOfDayWithSeconds(value: string | null | undefined) {
+function parseLocalTimeOfDayWithSeconds(value: string | null | undefined) {
   if (!value) return null;
   const direct = value.match(/^(\d{2}:\d{2})(?::(\d{2}))?/);
   if (direct) return `${direct[1]}:${direct[2] ?? '00'}`;
+  const isoClock = value.match(/T(\d{2}:\d{2})(?::(\d{2}))?/);
+  if (isoClock) return `${isoClock[1]}:${isoClock[2] ?? '00'}`;
 
   const parsed = parseISO(value);
   if (Number.isNaN(parsed.getTime())) return null;
@@ -68,7 +72,7 @@ export function formatEtaLabel(
   fallbackTime: string | null,
 ) {
   if (offsetSeconds == null) return fallbackTime ? formatTimeWindowLabel(fallbackTime, null) : null;
-  const normalizedDepartureTime = parseTimeOfDayWithSeconds(departureTime) ?? '09:00:00';
+  const normalizedDepartureTime = parseLocalTimeOfDayWithSeconds(departureTime) ?? '09:00:00';
   const base = parseISO(`${baseDate}T${normalizedDepartureTime}`);
   if (Number.isNaN(base.getTime()))
     return fallbackTime ? formatTimeWindowLabel(fallbackTime, null) : null;

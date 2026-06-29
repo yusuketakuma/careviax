@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { formatYen } from '@/lib/ui/currency-format';
+import { timeIsoToString } from '@/lib/visits/time-of-day';
 import {
   AlertTriangle,
   Paperclip,
@@ -1514,7 +1515,7 @@ export function VisitRecordForm({
   const visitDateTimeLabel = schedule?.scheduled_date
     ? `${format(parseISO(schedule.scheduled_date), 'M/d')}${
         schedule.time_window_start
-          ? ` ${format(parseISO(schedule.time_window_start), 'HH:mm')}`
+          ? ` ${timeIsoToString(schedule.time_window_start) ?? '時間未定'}`
           : ''
       }`
     : null;

@@ -170,15 +170,15 @@ describe('/api/pharmacist-shift-templates', () => {
         site_id: 'site_1',
         weekday: 1,
         available: true,
-        available_from: new Date('1970-01-01T09:00'),
-        available_to: new Date('1970-01-01T18:00'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0)),
         note: null,
       },
       update: {
         site_id: 'site_1',
         available: true,
-        available_from: new Date('1970-01-01T09:00'),
-        available_to: new Date('1970-01-01T18:00'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0)),
         note: null,
       },
     });
@@ -195,6 +195,29 @@ describe('/api/pharmacist-shift-templates', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftTemplateUpsertMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed template availability windows before reference checks', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/pharmacist-shift-templates', {
+        user_id: 'user_2',
+        site_id: 'site_1',
+        weekday: 1,
+        available_from: '18:00',
+        available_to: '09:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        available_to: ['終了時刻は開始時刻以降にしてください'],
+      },
+    });
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(pharmacistShiftTemplateUpsertMock).not.toHaveBeenCalled();

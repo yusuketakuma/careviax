@@ -34,7 +34,7 @@ function buildDb(cycle: unknown) {
       findMany: vi.fn().mockResolvedValue([
         {
           id: 'visit_1',
-          time_window_start: new Date(2026, 5, 12, 13, 30),
+          time_window_start: new Date(Date.UTC(1970, 0, 1, 13, 30)),
         },
       ]),
     },

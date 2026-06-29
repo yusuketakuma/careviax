@@ -143,6 +143,10 @@ function createPatchRequest(
   });
 }
 
+function expectUtcTimeDate(value: Date, hhmm: string) {
+  expect(value.toISOString()).toBe(`1970-01-01T${hhmm}:00.000Z`);
+}
+
 function createMalformedJsonPatchRequest(
   headers: Record<string, string> = { 'x-org-id': 'org_1' },
 ) {
@@ -209,17 +213,36 @@ describe('/api/visit-schedules/[id] GET', () => {
     visitScheduleProposalTxFindFirstMock.mockResolvedValue(null);
     visitScheduleTxFindFirstMock.mockImplementation(async (args) => {
       if (args?.where?.id?.not) return null;
-      return { id: 'schedule_1', schedule_status: 'in_progress', version: 2 };
+      return {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        schedule_status: 'in_progress',
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        route_order: 1,
+        recurrence_rule: null,
+        version: 2,
+        confirmed_at: null,
+        pharmacist_id: 'user_1',
+        vehicle_resource_id: null,
+      };
     });
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
       cycle_id: 'cycle_1',
       visit_type: 'regular',
+      priority: 'normal',
       schedule_status: 'planned',
       scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
       time_window_start: null,
       time_window_end: null,
+      route_order: 1,
+      recurrence_rule: null,
       version: 1,
       confirmed_at: null,
       pharmacist_id: 'user_1',
@@ -330,8 +353,15 @@ describe('/api/visit-schedules/[id] GET', () => {
   it('allows an org-wide pharmacist to patch a schedule regardless of assignment', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
+      case_id: 'case_1',
+      site_id: 'site_1',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
       confirmed_at: null,
       pharmacist_id: 'user_other',
+      vehicle_resource_id: null,
       case_: {
         primary_pharmacist_id: 'user_primary',
         backup_pharmacist_id: null,
@@ -350,8 +380,15 @@ describe('/api/visit-schedules/[id] GET', () => {
   it('evaluates ready blockers for an org-wide pharmacist regardless of assignment', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
+      case_id: 'case_1',
+      site_id: 'site_1',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
       confirmed_at: null,
       pharmacist_id: 'user_other',
+      vehicle_resource_id: null,
       case_: {
         primary_pharmacist_id: 'user_primary',
         backup_pharmacist_id: null,
@@ -385,6 +422,206 @@ describe('/api/visit-schedules/[id] GET', () => {
       }),
     );
     expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('stores patched time windows as UTC @db.Time sentinel dates', async () => {
+    visitScheduleTxFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      site_id: 'site_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 30)),
+      time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 30)),
+      route_order: 1,
+      recurrence_rule: null,
+      version: 2,
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      vehicle_resource_id: null,
+    });
+
+    const response = await PATCH(
+      createPatchRequest({
+        time_window_start: '09:30',
+        time_window_end: '10:30',
+      }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const updated = visitScheduleUpdateManyMock.mock.calls[0][0].data;
+    expectUtcTimeDate(updated.time_window_start, '09:30');
+    expectUtcTimeDate(updated.time_window_end, '10:30');
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_updated',
+        target_type: 'VisitSchedule',
+        target_id: 'schedule_1',
+        changes: expect.objectContaining({
+          timeWindowStartFrom: null,
+          timeWindowStartTo: '09:30',
+          timeWindowEndFrom: null,
+          timeWindowEndTo: '10:30',
+        }),
+      }),
+    });
+  });
+
+  it.each([
+    {
+      payload: { time_window_start: '09:30' },
+      message: '終了時刻も入力してください',
+      details: { time_window_end: ['終了時刻も入力してください'] },
+    },
+    {
+      payload: { time_window_end: '10:30' },
+      message: '開始時刻も入力してください',
+      details: { time_window_start: ['開始時刻も入力してください'] },
+    },
+  ])('rejects target time windows with only one side before mutation', async (caseItem) => {
+    const response = await PATCH(createPatchRequest(caseItem.payload), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: caseItem.message,
+      details: caseItem.details,
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows unrelated status updates on legacy one-sided time windows', async () => {
+    const legacyStart = new Date(Date.UTC(1970, 0, 1, 9, 0));
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: legacyStart,
+      time_window_end: null,
+      route_order: 1,
+      recurrence_rule: null,
+      version: 1,
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      vehicle_resource_id: null,
+      visit_record: null,
+      preparation: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+    visitScheduleTxFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      site_id: 'site_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'in_progress',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: legacyStart,
+      time_window_end: null,
+      route_order: 1,
+      recurrence_rule: null,
+      version: 2,
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      vehicle_resource_id: null,
+    });
+
+    const response = await PATCH(createPatchRequest({ schedule_status: 'in_progress' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalled();
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_updated',
+        changes: {
+          scheduleStatusFrom: 'planned',
+          scheduleStatusTo: 'in_progress',
+        },
+      }),
+    });
+  });
+
+  it('does not update, audit, or notify when a patch has no effective changes', async () => {
+    const response = await PATCH(createPatchRequest({ schedule_status: 'planned' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects target time windows that become reversed after merging existing values', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: new Date(Date.UTC(1970, 0, 1, 11, 0)),
+      time_window_end: new Date(Date.UTC(1970, 0, 1, 12, 0)),
+      route_order: 1,
+      recurrence_rule: null,
+      version: 1,
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      vehicle_resource_id: null,
+      visit_record: null,
+      preparation: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(
+      createPatchRequest({
+        time_window_end: '10:30',
+      }),
+      {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '終了時刻は開始時刻より後にしてください',
+      details: {
+        time_window_end: ['終了時刻は開始時刻より後にしてください'],
+      },
+    });
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('allows ready status only after the server-side readiness gate passes', async () => {
@@ -961,8 +1198,14 @@ describe('/api/visit-schedules/[id] GET', () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
+      site_id: 'site_1',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
       confirmed_at: null,
       pharmacist_id: 'user_1',
+      vehicle_resource_id: null,
       case_: {
         primary_pharmacist_id: 'user_primary',
         backup_pharmacist_id: null,
@@ -1061,6 +1304,49 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects route_order changes for confirmed visits before conflict checks', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
+      route_order: 1,
+      recurrence_rule: null,
+      version: 1,
+      confirmed_at: new Date('2026-03-25T12:00:00.000Z'),
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      vehicle_resource_id: null,
+      visit_record: null,
+      preparation: null,
+      case_: {
+        primary_pharmacist_id: 'user_primary',
+        backup_pharmacist_id: null,
+      },
+    });
+
+    const response = await PATCH(createPatchRequest({ route_order: 2 }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '電話確定済みの訪問予定は順路を変更できません',
+    });
+    expect(visitScheduleProposalFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects route_order changes that conflict within the same pharmacist day', async () => {
     const response = await PATCH(createPatchRequest({ route_order: 2 }), {
       params: Promise.resolve({ id: 'schedule_1' }),
@@ -1095,10 +1381,13 @@ describe('/api/visit-schedules/[id] GET', () => {
         case_id: 'case_1',
         cycle_id: 'cycle_1',
         visit_type: 'regular',
+        priority: 'normal',
         schedule_status: 'planned',
         scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
         time_window_start: null,
         time_window_end: null,
+        route_order: 1,
+        recurrence_rule: null,
         version: 1,
         confirmed_at: null,
         pharmacist_id: 'user_1',
@@ -1244,10 +1533,13 @@ describe('/api/visit-schedules/[id] GET', () => {
         case_id: 'case_1',
         cycle_id: 'cycle_1',
         visit_type: 'regular',
+        priority: 'normal',
         schedule_status: 'planned',
         scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
         time_window_start: null,
         time_window_end: null,
+        route_order: 1,
+        recurrence_rule: null,
         version: 1,
         confirmed_at: null,
         pharmacist_id: 'user_1',
@@ -1342,10 +1634,13 @@ describe('/api/visit-schedules/[id] GET', () => {
         case_id: 'case_1',
         cycle_id: 'cycle_1',
         visit_type: 'regular',
+        priority: 'normal',
         schedule_status: 'planned',
         scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
         time_window_start: null,
         time_window_end: null,
+        route_order: 1,
+        recurrence_rule: null,
         version: 1,
         confirmed_at: null,
         pharmacist_id: 'user_1',
@@ -1359,6 +1654,23 @@ describe('/api/visit-schedules/[id] GET', () => {
         },
       })
       .mockResolvedValueOnce(null);
+    visitScheduleTxFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      site_id: 'site_1',
+      visit_type: 'regular',
+      priority: 'normal',
+      schedule_status: 'planned',
+      scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+      time_window_start: null,
+      time_window_end: null,
+      route_order: 2,
+      recurrence_rule: null,
+      version: 2,
+      confirmed_at: null,
+      pharmacist_id: 'user_1',
+      vehicle_resource_id: null,
+    });
     withOrgContextMock.mockImplementationOnce(async () => {
       throw buildSerializableConflictError();
     });
@@ -1395,6 +1707,15 @@ describe('/api/visit-schedules/[id] GET', () => {
         }),
       }),
     );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_updated',
+        changes: expect.objectContaining({
+          routeOrderFrom: 1,
+          routeOrderTo: 2,
+        }),
+      }),
+    });
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       payload: { source: 'visit_schedules_update', schedule_id: 'schedule_1' },

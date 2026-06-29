@@ -63,8 +63,8 @@ function buildPatient(overrides: Partial<PatientOverview> = {}): PatientOverview
       preferred_time_to: null,
       phone_contact_from: null,
       phone_contact_to: null,
-      facility_time_from: '1970-01-01T09:00:00.000Z',
-      facility_time_to: '1970-01-01T11:00:00.000Z',
+      facility_time_from: '1970-01-01T09:00:00.000-08:00',
+      facility_time_to: '1970-01-01T11:00:00.000-0800',
       family_presence_required: false,
       visit_buffer_minutes: 10,
       preferred_contact_name: null,
@@ -208,6 +208,7 @@ describe('PatientFacilityMultiVisitCard', () => {
     expect(screen.getByText('施設 登録済み')).toBeTruthy();
     expect(screen.getByText('ユニット 登録済み')).toBeTruthy();
     expect(screen.getByText('月・水')).toBeTruthy();
+    expect(screen.getByText('09:00〜11:00 を訪問条件に保持しています。')).toBeTruthy();
     expect(
       screen.getByText(
         'スケジュール画面で同一施設または同一個人宅・同日訪問をひとまとめに表示します。',

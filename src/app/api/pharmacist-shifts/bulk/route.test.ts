@@ -147,16 +147,16 @@ describe('/api/pharmacist-shifts/bulk POST', () => {
       create: {
         org_id: 'org_1',
         date: new Date('2026-04-20'),
-        available_from: new Date('1970-01-01T09:00'),
-        available_to: new Date('1970-01-01T18:00:00'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0)),
         site_id: 'site_1',
         user_id: 'user_1',
         available: true,
       },
       update: {
         site_id: 'site_1',
-        available_from: new Date('1970-01-01T09:00'),
-        available_to: new Date('1970-01-01T18:00:00'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0)),
         available: true,
       },
     });

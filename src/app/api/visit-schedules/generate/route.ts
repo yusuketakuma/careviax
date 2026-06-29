@@ -1,4 +1,3 @@
-import { differenceInCalendarDays, format, startOfWeek } from 'date-fns';
 import { NextRequest } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
@@ -11,6 +10,7 @@ import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-a
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
 import { generateVisitSchedulesSchema } from '@/lib/validations/visit-schedule';
 import { parseSimpleRruleDates } from '@/lib/visits/rrule';
+import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { prisma } from '@/lib/db/client';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
@@ -22,6 +22,7 @@ import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis'
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { formatUtcDateKey } from '@/lib/date-key';
 
 // Insurance visit frequency limits: medical=4/month, care=2/month
 const MONTHLY_LIMITS: Record<string, number> = {
@@ -38,6 +39,7 @@ const MAX_GENERATED_VISIT_SCHEDULE_RANGE_DAYS = 120;
 const MAX_GENERATED_VISIT_SCHEDULE_CANDIDATES = 100;
 const SCHEDULABLE_CYCLE_STATUSES = ['audited', 'setting', 'set_audited', 'visit_ready'] as const;
 const SCHEDULE_GENERATE_SERIALIZABLE_RETRY_LIMIT = 3;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 class VisitScheduleGenerateRetryLimitError extends Error {
   constructor() {
@@ -119,12 +121,23 @@ function intersectTimeWindows(
   return { from, to };
 }
 
+function utcDateOnly(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function differenceInUtcCalendarDays(later: Date, earlier: Date) {
+  return Math.round((utcDateOnly(later).getTime() - utcDateOnly(earlier).getTime()) / DAY_MS);
+}
+
 function buildWeekKey(value: Date) {
-  return format(startOfWeek(value, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+  const weekStart = utcDateOnly(value);
+  const daysSinceMonday = (weekStart.getUTCDay() + 6) % 7;
+  weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceMonday);
+  return formatUtcDateKey(weekStart);
 }
 
 function buildDateKey(value: Date) {
-  return format(value, 'yyyy-MM-dd');
+  return formatUtcDateKey(value);
 }
 
 type LimitInsuranceType = keyof typeof MONTHLY_LIMITS;
@@ -318,14 +331,14 @@ export const POST = withAuthContext(
       operating_day_override_reason,
     } = parsed.data;
 
-    const startDate = new Date(start_date);
-    const endDate = new Date(end_date);
+    const startDate = utcDateFromLocalKey(start_date);
+    const endDate = utcDateFromLocalKey(end_date);
 
     if (startDate > endDate) {
       return validationError('開始日は終了日以前である必要があります');
     }
 
-    if (differenceInCalendarDays(endDate, startDate) > MAX_GENERATED_VISIT_SCHEDULE_RANGE_DAYS) {
+    if (differenceInUtcCalendarDays(endDate, startDate) > MAX_GENERATED_VISIT_SCHEDULE_RANGE_DAYS) {
       return validationError('訪問予定の一括生成期間は120日以内にしてください');
     }
 
@@ -377,7 +390,7 @@ export const POST = withAuthContext(
       if (!gate.ok) {
         const candidateDate = candidateDates[index]!;
         return validationError(
-          `${format(candidateDate, 'yyyy-MM-dd')}: ${formatVisitWorkflowGateIssues(gate.issues)}`,
+          `${buildDateKey(candidateDate)}: ${formatVisitWorkflowGateIssues(gate.issues)}`,
         );
       }
     }
@@ -401,7 +414,7 @@ export const POST = withAuthContext(
     const preferredWeekdays = normalizeWeekdays(schedulingPreference?.preferred_weekdays);
     if (
       preferredWeekdays.length > 0 &&
-      candidateDates.some((date) => !preferredWeekdays.includes(date.getDay()))
+      candidateDates.some((date) => !preferredWeekdays.includes(date.getUTCDay()))
     ) {
       return validationError('患者の希望曜日と一致しない定期訪問日が含まれています');
     }
@@ -550,7 +563,7 @@ export const POST = withAuthContext(
       const insuranceType = scheduleLimitTypes[index];
       if (!insuranceType) continue;
 
-      const monthKey = `${insuranceType}:${candidateDate.getFullYear()}-${candidateDate.getMonth()}`;
+      const monthKey = `${insuranceType}:${candidateDate.getUTCFullYear()}-${candidateDate.getUTCMonth()}`;
       monthCounts[monthKey] = (monthCounts[monthKey] ?? 0) + 1;
       const monthlyLimit = MONTHLY_LIMITS[insuranceType];
       if (monthCounts[monthKey] > monthlyLimit) {
@@ -656,10 +669,10 @@ export const POST = withAuthContext(
               route_order: routeOrder,
               recurrence_rule,
               ...(mergedTimeWindow?.from
-                ? { time_window_start: new Date(`1970-01-01T${mergedTimeWindow.from}`) }
+                ? { time_window_start: hhmmToTimeDate(mergedTimeWindow.from) }
                 : {}),
               ...(mergedTimeWindow?.to
-                ? { time_window_end: new Date(`1970-01-01T${mergedTimeWindow.to}`) }
+                ? { time_window_end: hhmmToTimeDate(mergedTimeWindow.to) }
                 : {}),
               confirmed_at: new Date(),
               confirmed_by: ctx.userId,

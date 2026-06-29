@@ -1,5 +1,3 @@
-import { addDays } from 'date-fns';
-
 const dayNameToIndex: Record<string, number> = {
   SU: 0,
   MO: 1,
@@ -12,19 +10,19 @@ const dayNameToIndex: Record<string, number> = {
 
 function nthWeekdayOfMonth(year: number, month: number, weekday: number, nth: number) {
   if (nth > 0) {
-    const first = new Date(year, month, 1);
-    const diff = (weekday - first.getDay() + 7) % 7;
+    const first = new Date(Date.UTC(year, month, 1));
+    const diff = (weekday - first.getUTCDay() + 7) % 7;
     const day = 1 + diff + (nth - 1) * 7;
-    if (day > new Date(year, month + 1, 0).getDate()) return null;
-    return new Date(year, month, day);
+    if (day > new Date(Date.UTC(year, month + 1, 0)).getUTCDate()) return null;
+    return new Date(Date.UTC(year, month, day));
   }
 
   if (nth < 0) {
-    const last = new Date(year, month + 1, 0);
-    const diff = (last.getDay() - weekday + 7) % 7;
-    const day = last.getDate() - diff + (nth + 1) * 7;
+    const last = new Date(Date.UTC(year, month + 1, 0));
+    const diff = (last.getUTCDay() - weekday + 7) % 7;
+    const day = last.getUTCDate() - diff + (nth + 1) * 7;
     if (day < 1) return null;
-    return new Date(year, month, day);
+    return new Date(Date.UTC(year, month, day));
   }
 
   return null;
@@ -34,17 +32,29 @@ function compareDateAsc(left: Date, right: Date) {
   return left.getTime() - right.getTime();
 }
 
+function utcDateOnly(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
+}
+
+function addUtcDays(value: Date, days: number) {
+  const normalized = utcDateOnly(value);
+  normalized.setUTCDate(normalized.getUTCDate() + days);
+  return normalized;
+}
+
 /**
  * Supports the subset used in PH-OS MVP:
  * - FREQ=WEEKLY;INTERVAL=n;BYDAY=MO,WE
  * - FREQ=MONTHLY;INTERVAL=n;BYDAY=1WE / -1FR / 1TU,3TU
  */
 export function parseSimpleRruleDates(rrule: string, startDate: Date, endDate: Date): Date[] {
+  const startBoundary = utcDateOnly(startDate);
+  const endBoundary = utcDateOnly(endDate);
   const parts = Object.fromEntries(
     rrule.split(';').map((part) => {
       const [key, value] = part.split('=');
       return [key, value];
-    })
+    }),
   );
 
   const freq = parts['FREQ'];
@@ -62,13 +72,15 @@ export function parseSimpleRruleDates(rrule: string, startDate: Date, endDate: D
       .split(',')
       .map((entry) => dayNameToIndex[entry])
       .filter((entry) => entry !== undefined);
-    const current = new Date(startDate);
+    const current = new Date(startBoundary);
 
-    while (current <= endDate) {
-      if (targetDays.includes(current.getDay())) {
-        dates.push(new Date(current));
+    while (current <= endBoundary) {
+      if (targetDays.includes(current.getUTCDay())) {
+        dates.push(
+          new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate())),
+        );
       }
-      current.setDate(current.getDate() + 1);
+      current.setUTCDate(current.getUTCDate() + 1);
     }
 
     if (interval === 1) {
@@ -78,7 +90,7 @@ export function parseSimpleRruleDates(rrule: string, startDate: Date, endDate: D
     const filtered: Date[] = [];
     const countPerDay: Record<number, number> = {};
     for (const date of dates) {
-      const weekday = date.getDay();
+      const weekday = date.getUTCDay();
       countPerDay[weekday] = (countPerDay[weekday] ?? 0) + 1;
       if ((countPerDay[weekday] - 1) % interval === 0) {
         filtered.push(date);
@@ -99,31 +111,35 @@ export function parseSimpleRruleDates(rrule: string, startDate: Date, endDate: D
       }))
       .filter(
         (target): target is { nthOccurrence: number; targetDayIndex: number } =>
-          target.targetDayIndex !== undefined
+          target.targetDayIndex !== undefined,
       );
     if (monthlyTargets.length === 0) return dates;
 
-    let monthCursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-    const endMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    let monthCursor = new Date(
+      Date.UTC(startBoundary.getUTCFullYear(), startBoundary.getUTCMonth(), 1),
+    );
+    const endMonth = new Date(Date.UTC(endBoundary.getUTCFullYear(), endBoundary.getUTCMonth(), 1));
     let monthCount = 0;
 
     while (monthCursor <= endMonth) {
       if (monthCount % interval === 0) {
         for (const target of monthlyTargets) {
           const date = nthWeekdayOfMonth(
-            monthCursor.getFullYear(),
-            monthCursor.getMonth(),
+            monthCursor.getUTCFullYear(),
+            monthCursor.getUTCMonth(),
             target.targetDayIndex,
-            target.nthOccurrence
+            target.nthOccurrence,
           );
-          if (date && date >= startDate && date <= endDate) {
+          if (date && date >= startBoundary && date <= endBoundary) {
             dates.push(date);
           }
         }
       }
 
       monthCount += 1;
-      monthCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1);
+      monthCursor = new Date(
+        Date.UTC(monthCursor.getUTCFullYear(), monthCursor.getUTCMonth() + 1, 1),
+      );
     }
   }
 
@@ -132,18 +148,15 @@ export function parseSimpleRruleDates(rrule: string, startDate: Date, endDate: D
     .filter((date, index, values) => index === 0 || values[index - 1].getTime() !== date.getTime());
 }
 
-export function getNextSimpleRruleOccurrence(
-  rrule: string,
-  baseDate: Date,
-  maxDate?: Date | null
-) {
-  const searchStart = addDays(baseDate, 1);
-  const searchEnd = maxDate ?? addDays(baseDate, 90);
+export function getNextSimpleRruleOccurrence(rrule: string, baseDate: Date, maxDate?: Date | null) {
+  const baseBoundary = utcDateOnly(baseDate);
+  const searchStart = addUtcDays(baseBoundary, 1);
+  const searchEnd = maxDate ? utcDateOnly(maxDate) : addUtcDays(baseBoundary, 90);
 
   if (searchStart > searchEnd) {
     return null;
   }
 
   const dates = parseSimpleRruleDates(rrule, searchStart, searchEnd);
-  return dates.find((date) => date > baseDate) ?? null;
+  return dates.find((date) => date > baseBoundary) ?? null;
 }

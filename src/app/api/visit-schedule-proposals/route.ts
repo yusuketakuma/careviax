@@ -8,8 +8,10 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { prisma } from '@/lib/db/client';
-import { formatDateKey } from '@/lib/date-key';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import {
   buildVisitScheduleProposalAssignmentWhere,
@@ -1006,11 +1008,11 @@ export const POST = withAuthContext(
           plannerDiagnostics?.accepted.find(
             (item) =>
               item.pharmacist_id === draft.proposed_pharmacist_id &&
-              item.proposed_date === formatDateKey(draft.proposed_date),
+              item.proposed_date === formatUtcDateKey(draft.proposed_date),
           )?.pharmacist_name ?? draft.proposed_pharmacist_id,
         site_id: draft.site_id ?? null,
         site_name: null,
-        proposed_date: formatDateKey(draft.proposed_date),
+        proposed_date: formatUtcDateKey(draft.proposed_date),
         travel_mode: effectiveTravelMode,
         reason_code: 'billing_constraint' as const,
         reason_label: '算定制約',
@@ -1044,7 +1046,7 @@ export const POST = withAuthContext(
         validDrafts.some(
           (draft) =>
             draft.proposed_pharmacist_id === item.pharmacist_id &&
-            formatDateKey(draft.proposed_date) === item.proposed_date,
+            formatUtcDateKey(draft.proposed_date) === item.proposed_date,
         ),
       ) ?? [];
     const requestFingerprint = requestFingerprints?.current ?? null;
@@ -1160,7 +1162,7 @@ export const POST = withAuthContext(
               acceptedDiagnostics.find(
                 (item) =>
                   item.pharmacist_id === proposal.proposed_pharmacist_id &&
-                  item.proposed_date === formatDateKey(proposal.proposed_date),
+                  item.proposed_date === formatUtcDateKey(proposal.proposed_date),
               ) ?? null;
 
             return createAuditLogEntry(tx, ctx, {
@@ -1259,14 +1261,37 @@ const upsertDraftProposalSchema = z
     submit_for_contact: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
-    if (data.time_window_start && data.time_window_end) {
-      if (data.time_window_end <= data.time_window_start) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['time_window_end'],
-          message: '終了時刻は開始時刻より後にしてください',
-        });
-      }
+    if (data.time_window_start && !data.time_window_end) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['time_window_end'],
+        message: '終了時刻も入力してください',
+      });
+    }
+    if (!data.time_window_start && data.time_window_end) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['time_window_start'],
+        message: '開始時刻も入力してください',
+      });
+    }
+    if (data.submit_for_contact && (!data.time_window_start || !data.time_window_end)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['time_window_start'],
+        message: '確認待ちにするには開始時刻と終了時刻を入力してください',
+      });
+    }
+    if (
+      data.time_window_start &&
+      data.time_window_end &&
+      data.time_window_end <= data.time_window_start
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['time_window_end'],
+        message: '終了時刻は開始時刻より後にしてください',
+      });
     }
     if (data.patient_contact_status && data.patient_contact_status !== 'pending') {
       ctx.addIssue({
@@ -1279,7 +1304,95 @@ const upsertDraftProposalSchema = z
 
 function toProposalTimeDate(value: string | undefined): Date | null {
   if (!value) return null;
-  return new Date(`1970-01-01T${value}:00`);
+  return hhmmToTimeDate(value);
+}
+
+function proposalDraftAuditChanges(input: {
+  from?: {
+    case_id: string;
+    site_id: string | null;
+    visit_type: string;
+    priority: string;
+    proposal_status: string;
+    proposed_date: Date;
+    time_window_start: Date | null;
+    time_window_end: Date | null;
+    proposed_pharmacist_id: string;
+    vehicle_resource_id: string | null;
+  };
+  to: {
+    case_id: string;
+    site_id: string | null;
+    visit_type: string;
+    priority: string;
+    proposal_status: string;
+    proposed_date: Date;
+    time_window_start: Date | null;
+    time_window_end: Date | null;
+    proposed_pharmacist_id: string;
+    vehicle_resource_id: string | null;
+  };
+  submittedForContact: boolean;
+}) {
+  const toValues = {
+    caseId: input.to.case_id,
+    siteId: input.to.site_id,
+    visitType: input.to.visit_type,
+    priority: input.to.priority,
+    proposalStatus: input.to.proposal_status,
+    proposedDate: formatUtcDateKey(input.to.proposed_date),
+    timeWindowStart: timeDateToString(input.to.time_window_start) ?? null,
+    timeWindowEnd: timeDateToString(input.to.time_window_end) ?? null,
+    pharmacistId: input.to.proposed_pharmacist_id,
+    vehicleResourceId: input.to.vehicle_resource_id,
+  };
+  if (!input.from) {
+    return {
+      caseIdTo: toValues.caseId,
+      siteIdTo: toValues.siteId,
+      visitTypeTo: toValues.visitType,
+      priorityTo: toValues.priority,
+      proposalStatusTo: toValues.proposalStatus,
+      proposedDateTo: toValues.proposedDate,
+      timeWindowStartTo: toValues.timeWindowStart,
+      timeWindowEndTo: toValues.timeWindowEnd,
+      pharmacistIdTo: toValues.pharmacistId,
+      vehicleResourceIdTo: toValues.vehicleResourceId,
+      submittedForContact: input.submittedForContact,
+    };
+  }
+
+  const changes: Record<string, string | null | boolean> = {
+    submittedForContact: input.submittedForContact,
+  };
+  const add = (key: string, fromValue: string | null, toValue: string | null) => {
+    if (fromValue === toValue) return;
+    changes[`${key}From`] = fromValue;
+    changes[`${key}To`] = toValue;
+  };
+
+  add('caseId', input.from.case_id, toValues.caseId);
+  add('siteId', input.from.site_id, toValues.siteId);
+  add('visitType', input.from.visit_type, toValues.visitType);
+  add('priority', input.from.priority, toValues.priority);
+  add('proposalStatus', input.from.proposal_status, toValues.proposalStatus);
+  add('proposedDate', formatUtcDateKey(input.from.proposed_date), toValues.proposedDate);
+  add(
+    'timeWindowStart',
+    timeDateToString(input.from.time_window_start) ?? null,
+    toValues.timeWindowStart,
+  );
+  add(
+    'timeWindowEnd',
+    timeDateToString(input.from.time_window_end) ?? null,
+    toValues.timeWindowEnd,
+  );
+  add('pharmacistId', input.from.proposed_pharmacist_id, toValues.pharmacistId);
+  add('vehicleResourceId', input.from.vehicle_resource_id, toValues.vehicleResourceId);
+
+  return {
+    ...changes,
+  };
 }
 
 /**
@@ -1361,6 +1474,13 @@ export const PUT = withAuthContext(
             finalized_schedule_id: true,
             proposed_pharmacist_id: true,
             proposed_date: true,
+            case_id: true,
+            site_id: true,
+            visit_type: true,
+            priority: true,
+            time_window_start: true,
+            time_window_end: true,
+            vehicle_resource_id: true,
           },
         })
       : null;
@@ -1370,7 +1490,10 @@ export const PUT = withAuthContext(
     if (existing && !['proposed', 'patient_contact_pending'].includes(existing.proposal_status)) {
       return validationError('下書き / 確認待ちの予定のみ編集できます');
     }
-    if (existing?.finalized_schedule_id || existing?.patient_contact_status !== 'pending') {
+    if (
+      existing &&
+      (existing.finalized_schedule_id || existing.patient_contact_status !== 'pending')
+    ) {
       return conflict(
         'この候補はすでに患者連絡が始まっています。候補詳細の患者連絡フローで更新してください',
       );
@@ -1418,9 +1541,11 @@ export const PUT = withAuthContext(
           targetType: 'VisitScheduleProposal',
           targetId: updated.id,
           changes: {
-            proposalStatusFrom: existing.proposal_status,
-            proposalStatusTo: targetStatus,
-            submittedForContact: input.submit_for_contact,
+            ...proposalDraftAuditChanges({
+              from: existing,
+              to: updated,
+              submittedForContact: input.submit_for_contact,
+            }),
           },
         });
 
@@ -1450,8 +1575,10 @@ export const PUT = withAuthContext(
         targetType: 'VisitScheduleProposal',
         targetId: created.id,
         changes: {
-          proposalStatusTo: targetStatus,
-          submittedForContact: input.submit_for_contact,
+          ...proposalDraftAuditChanges({
+            to: created,
+            submittedForContact: input.submit_for_contact,
+          }),
         },
       });
 

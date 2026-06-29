@@ -7,7 +7,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { buildVisitScheduleProposalAssignmentWhere } from '@/lib/auth/visit-schedule-access';
-import { formatDateKey } from '@/lib/date-key';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import {
   findVisitRouteOrderConflict,
@@ -155,7 +155,7 @@ export const PATCH = withAuthContext(
           }
 
           const [first] = proposals;
-          const firstDateKey = formatDateKey(first.proposed_date);
+          const firstDateKey = formatUtcDateKey(first.proposed_date);
           const mismatch = proposals.find((proposal) => {
             if (proposal.proposed_pharmacist_id !== first.proposed_pharmacist_id) return true;
             if (proposal.proposed_date.getTime() !== first.proposed_date.getTime()) return true;

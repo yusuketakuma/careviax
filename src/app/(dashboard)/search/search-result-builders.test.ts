@@ -261,8 +261,8 @@ describe('buildScheduleProposalResult', () => {
       proposal_status: 'patient_contact_pending',
       patient_contact_status: 'pending',
       proposed_date: '2026-06-18',
-      time_window_start: '2026-06-18T09:00:00.000+09:00',
-      time_window_end: '2026-06-18T10:00:00.000+09:00',
+      time_window_start: '1970-01-01T09:00:00.000Z',
+      time_window_end: '1970-01-01T10:00:00.000Z',
       proposed_pharmacist: { name: '佐藤 薬剤師' },
       case_: { patient: { id: 'p1', name: '田中 一郎' } },
     });
@@ -272,6 +272,7 @@ describe('buildScheduleProposalResult', () => {
     expect(row.title).toBe('田中 一郎 様の訪問候補');
     expect(row.subtitle).toContain('架電待ち');
     expect(row.subtitle).toContain('未架電');
+    expect(row.subtitle).toContain('6/18 09:00 - 10:00');
     expect(row.subtitle).toContain('佐藤 薬剤師');
     expect(row.href).toBe('/schedules/proposals?workspace=dashboard&detail=proposal_1');
   });

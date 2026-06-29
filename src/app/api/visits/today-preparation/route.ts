@@ -16,6 +16,7 @@ import {
 import { getHomeVisitIntake, specialProcedureLabels } from '@/lib/patient/home-visit-intake';
 import { buildPatientHref } from '@/lib/patient/navigation';
 import { buildVisitRecordHref } from '@/lib/visits/navigation';
+import { timeDateToString } from '@/lib/visits/time-of-day';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
   VisitPrepBlockedReason,
@@ -304,7 +305,7 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
   let noteTone: VisitPreparationCard['note_tone'] = null;
   if (audit && schedule.time_window_start) {
     const fallback = new Date(schedule.time_window_start.getTime() + 60 * 60_000);
-    note = `監査が間に合わない場合: ${formatTimeOfDay(fallback)}繰り下げ案を反映できます(スケジュールで調整)`;
+    note = `監査が間に合わない場合: ${timeDateToString(fallback) ?? '時間未定'}繰り下げ案を反映できます(スケジュールで調整)`;
     noteTone = 'warning';
   } else if (foundationGapLabels.length > 0) {
     note = `出発前に正本確認: ${foundationGapLabels.slice(0, 3).join('・')}${
@@ -320,7 +321,9 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
   return {
     schedule_id: schedule.id,
     visit_mode_href: buildVisitRecordHref(schedule.id),
-    time_label: schedule.time_window_start ? formatTimeOfDay(schedule.time_window_start) : null,
+    time_label: schedule.time_window_start
+      ? (timeDateToString(schedule.time_window_start) ?? null)
+      : null,
     title: patient.name,
     is_facility: false,
     patient_count: null,
@@ -397,7 +400,7 @@ function deriveFacilityVisitCard(
   return {
     schedule_id: lead.id,
     visit_mode_href: buildVisitRecordHref(lead.id),
-    time_label: lead.time_window_start ? formatTimeOfDay(lead.time_window_start) : null,
+    time_label: lead.time_window_start ? (timeDateToString(lead.time_window_start) ?? null) : null,
     title: name.startsWith('施設') ? name : `施設${name}`,
     is_facility: true,
     patient_count: patientCount,

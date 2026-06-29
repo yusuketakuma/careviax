@@ -17,6 +17,7 @@ import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { formatDateTimeLabel } from '@/lib/ui/date-format';
+import { timeIsoToString } from '@/lib/visits/time-of-day';
 
 type VisitConstraintsResponse = {
   data: {
@@ -96,8 +97,7 @@ const EMPTY_FORM: VisitConstraintsFormState = {
 };
 
 function toTimeValue(value: string | null | undefined) {
-  if (!value) return '';
-  return value.slice(11, 16);
+  return timeIsoToString(value) ?? '';
 }
 
 function toFormState(response?: VisitConstraintsResponse): VisitConstraintsFormState {

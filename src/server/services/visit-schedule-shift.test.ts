@@ -34,17 +34,17 @@ describe('visit-schedule-shift', () => {
     ).toBe('訪問開始時刻が薬剤師シフトの開始前です');
   });
 
-  it('keeps local time semantics for Prisma time Date values', () => {
+  it('keeps UTC @db.Time semantics for Prisma time Date values', () => {
     expect(
       validateScheduleTimeDatesFitShift(
         {
           site_id: 'site_1',
           available: true,
-          available_from: new Date('1970-01-01T09:00:00'),
-          available_to: new Date('1970-01-01T18:00:00'),
+          available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0)),
+          available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0)),
         },
-        new Date('1970-01-01T10:00:00'),
-        new Date('1970-01-01T11:00:00'),
+        new Date(Date.UTC(1970, 0, 1, 10, 0, 0)),
+        new Date(Date.UTC(1970, 0, 1, 11, 0, 0)),
       ),
     ).toBeNull();
   });

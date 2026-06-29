@@ -83,6 +83,10 @@ const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
+function expectUtcTimeDate(value: Date, hhmm: string) {
+  expect(value.toISOString()).toBe(`1970-01-01T${hhmm}:00.000Z`);
+}
+
 function createRequest(url: string, body?: unknown) {
   if (body === undefined) {
     return new NextRequest(url, {
@@ -363,6 +367,9 @@ describe('/api/visit-schedules', () => {
         route_order: 1,
       }),
     });
+    const created = visitScheduleCreateMock.mock.calls[0][0].data;
+    expectUtcTimeDate(created.time_window_start, '09:00');
+    expectUtcTimeDate(created.time_window_end, '10:00');
   });
 
   it('uses the pharmacist shift site and appends route order when creating a schedule', async () => {
@@ -808,6 +815,39 @@ describe('/api/visit-schedules', () => {
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      payload: { time_window_start: '09:00' },
+      details: { time_window_end: ['終了時刻も入力してください'] },
+    },
+    {
+      payload: { time_window_end: '10:00' },
+      details: { time_window_start: ['開始時刻も入力してください'] },
+    },
+  ])(
+    'rejects incomplete visit time windows before service-side schedule creation',
+    async (caseItem) => {
+      const response = (await POST(
+        createRequest('http://localhost/api/visit-schedules', {
+          case_id: 'case_1',
+          visit_type: 'regular',
+          scheduled_date: '2026-03-31',
+          pharmacist_id: 'user_2',
+          ...caseItem.payload,
+        }),
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '入力値が不正です',
+        details: caseItem.details,
+      });
+      expect(pharmacistShiftFindFirstMock).not.toHaveBeenCalled();
+      expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+      expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects invalid calendar scheduled dates before service-side schedule creation', async () => {
     const response = (await POST(
