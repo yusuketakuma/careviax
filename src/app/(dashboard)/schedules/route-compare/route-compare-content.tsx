@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Route } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,10 +12,13 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
+import { timeIsoToMinutes } from '@/lib/visits/time-of-day';
 import type { ScheduleDayBoardResponse } from '@/types/schedule-day-board';
 import type { VisitSchedule } from '../day-view.shared';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
+import { ScheduleDateNavigator } from '../schedule-date-navigator';
 import {
   buildRecommendedRouteDetail,
   buildRouteScenarios,
@@ -61,17 +64,13 @@ async function fetchScheduleDayBoard(args: { orgId: string; date: string }) {
   const res = await fetch(`/api/visit-schedules/day-board?date=${args.date}`, {
     headers: { 'x-org-id': args.orgId },
   });
-  if (!res.ok) throw new Error('本日の車両リソース取得に失敗しました');
+  if (!res.ok) throw new Error('対象日の車両リソース取得に失敗しました');
   const json = (await res.json()) as { data: ScheduleDayBoardResponse };
   return json.data;
 }
 
-/** @db.Time 由来の ISO 文字列を 0 時からの分へ(表示系 timeLabel と同じくローカル時刻で解釈) */
 function isoTimeToMinutes(value: string | null): number | null {
-  if (!value) return null;
-  const parsed = parseISO(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.getHours() * 60 + parsed.getMinutes();
+  return timeIsoToMinutes(value);
 }
 
 function toCompareVisitInput(schedule: VisitSchedule): RouteCompareVisitInput {
@@ -320,10 +319,27 @@ function RecommendedRouteDetail({
 export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
+  const syncSearchParams = useSyncedSearchParams();
   // 比較対象日(既定は本日)。撮影・確認用に ?date=YYYY-MM-DD で差し替え可能
-  const [targetDate] = useState(() => initialDate ?? format(new Date(), 'yyyy-MM-dd'));
+  const [targetDate, setTargetDate] = useState(
+    () => initialDate ?? format(new Date(), 'yyyy-MM-dd'),
+  );
   const [confirmScenario, setConfirmScenario] = useState<RouteScenario | null>(null);
   const [appliedScenarioId, setAppliedScenarioId] = useState<RouteScenarioId | null>(null);
+  const handleSelectDate = (date: string) => {
+    setTargetDate(date);
+    setConfirmScenario(null);
+    setAppliedScenarioId(null);
+    syncSearchParams({ date });
+  };
+  const dateNavigator = (
+    <ScheduleDateNavigator
+      value={targetDate}
+      onSelectDate={handleSelectDate}
+      inputId="route-compare-target-date"
+      ariaLabel="比較する対象日"
+    />
+  );
 
   const schedulesQuery = useQuery({
     queryKey: ['visit-schedules', 'route-compare', orgId, targetDate],
@@ -448,7 +464,7 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
     onSuccess: async (_result, scenario) => {
       setAppliedScenarioId(scenario.id);
       const vehicleSuffix = recommendedVehicle ? ` / ${recommendedVehicle.label}も反映` : '';
-      toast.success(`${scenario.shortLabel}を本日のルートに適用しました${vehicleSuffix}`);
+      toast.success(`${scenario.shortLabel}を対象日のルートに適用しました${vehicleSuffix}`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules'] }),
         queryClient.invalidateQueries({ queryKey: ['visit-route-plan', orgId] }),
@@ -481,7 +497,7 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
         <ErrorState
           variant="server"
           title="ルート案を表示できません"
-          description="本日の訪問予定の取得に失敗しました。再試行してください。"
+          description="対象日の訪問予定の取得に失敗しました。再試行してください。"
           action={{ label: '再試行', onClick: () => void schedulesQuery.refetch() }}
         />
       </div>
@@ -491,10 +507,13 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
   if (compareVisits.length === 0) {
     return (
       <div className="space-y-4" data-testid="route-scenario-compare">
-        <h1 className="text-base font-bold text-foreground">ルート案を比べる</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-base font-bold text-foreground">ルート案を比べる</h1>
+          {dateNavigator}
+        </div>
         <EmptyState
           icon={Route}
-          title={`本日(${targetDate})の個人宅訪問の予定がないため、比較できるルート案がありません。`}
+          title={`${targetDate} の個人宅訪問の予定がないため、比較できるルート案がありません。`}
           action={{ label: 'スケジュールへ戻る', href: '/schedules' }}
         />
       </div>
@@ -503,14 +522,17 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <h1 className="sr-only">ルート最適化</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-base font-bold text-foreground">ルート最適化</h1>
+        {dateNavigator}
+      </div>
 
       {routeDetail ? (
         <div className="flex flex-col gap-4">
           <div>
             <h2 className="text-base font-bold text-foreground">ルート最適化詳細</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              本日({targetDate})の推奨ルート 1 本と、守る条件の充足状況です。
+              {targetDate} の推奨ルート 1 本と、守る条件の充足状況です。
               {recommendedVehicle
                 ? ` 採用時は未割当の訪問に ${recommendedVehicle.label} を同時に反映します。`
                 : ''}
@@ -620,7 +642,7 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
         onOpenChange={(open) => {
           if (!open) setConfirmScenario(null);
         }}
-        title={`${confirmScenario?.label ?? ''}を本日のルートに適用しますか`}
+        title={`${confirmScenario?.label ?? ''}を対象日のルートに適用しますか`}
         description={
           confirmScenario
             ? `${confirmScenario.description} 担当者ごとの訪問順 ${describeScenarioOrder(confirmScenario.stops)} を反映します。施設一括訪問は各担当の末尾に現在の居室順のまま続きます。${

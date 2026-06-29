@@ -11,10 +11,12 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useSyncedSearchParams } from '@/lib/navigation/use-synced-search-params';
 import type { VisitRoutePlan } from '@/types/visit-route';
 import { priorityBadgeClass, PRIORITY_LABELS, type VisitSchedule } from '../day-view.shared';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
+import { ScheduleDateNavigator } from '../schedule-date-navigator';
 
 /**
  * p0_20「緊急処方の割込・ルート再計算」:
@@ -159,9 +161,25 @@ function formatDeltaLabel(minutes: number | null) {
 export function EmergencyRouteContent({ initialDate }: { initialDate?: string }) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const [targetDate] = useState(() => initialDate ?? format(new Date(), 'yyyy-MM-dd'));
+  const syncSearchParams = useSyncedSearchParams();
+  const [targetDate, setTargetDate] = useState(
+    () => initialDate ?? format(new Date(), 'yyyy-MM-dd'),
+  );
   const [recalc, setRecalc] = useState<RecalcResult | null>(null);
   const [confirmApply, setConfirmApply] = useState(false);
+  const handleSelectDate = (date: string) => {
+    setTargetDate(date);
+    setRecalc(null);
+    syncSearchParams({ date });
+  };
+  const dateNavigator = (
+    <ScheduleDateNavigator
+      value={targetDate}
+      onSelectDate={handleSelectDate}
+      inputId="emergency-route-target-date"
+      ariaLabel="緊急ルートの対象日"
+    />
+  );
 
   const schedulesQuery = useQuery({
     queryKey: ['visit-schedules', 'emergency-route', orgId, targetDate],
@@ -294,7 +312,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
       return applyVisitScheduleRouteUpdates({ orgId, updates });
     },
     onSuccess: async () => {
-      toast.success('案1を本日のルートに反映しました');
+      toast.success('案1を対象日のルートに反映しました');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules'] }),
         queryClient.invalidateQueries({ queryKey: ['visit-route-plan', orgId] }),
@@ -326,7 +344,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
         <ErrorState
           variant="server"
           title="緊急ルートを表示できません"
-          description="本日の訪問予定の取得に失敗しました。再試行してください。"
+          description="対象日の訪問予定の取得に失敗しました。再試行してください。"
           action={{ label: '再試行', onClick: () => void schedulesQuery.refetch() }}
         />
       </div>
@@ -339,9 +357,12 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
         className="rounded-xl border border-border/70 bg-card p-6"
         data-testid="emergency-route-empty"
       >
-        <h1 className="text-base font-bold text-foreground">緊急処方の割込・ルート再計算</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-base font-bold text-foreground">緊急処方の割込・ルート再計算</h1>
+          {dateNavigator}
+        </div>
         <p className="mt-2 text-sm text-muted-foreground">
-          本日({targetDate})に割り込ませる緊急/準緊急の個人宅訪問がありません。
+          {targetDate} に割り込ませる緊急/準緊急の個人宅訪問がありません。
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
           <Link href="/schedules" className="font-medium text-primary hover:underline">
@@ -356,149 +377,153 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
   const lockedSet = recalc?.lockedScheduleIds ?? new Set<string>();
 
   return (
-    <div
-      className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)_280px] xl:gap-5"
-      data-testid="emergency-route-recalculation"
-    >
-      <h1 className="sr-only">緊急処方の割込・ルート再計算</h1>
-
-      {/* LEFT: 緊急で追加 + 再計算ボタン */}
-      <section
-        className="flex flex-col gap-5 rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:p-5"
-        aria-label="緊急で追加"
-        data-testid="emergency-route-patient"
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-base font-bold text-foreground">緊急処方の割込・ルート再計算</h1>
+        {dateNavigator}
+      </div>
+      <div
+        className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)_280px] xl:gap-5"
+        data-testid="emergency-route-recalculation"
       >
-        <h2 className="text-[15px] font-bold text-foreground">緊急で追加</h2>
-        <div>
-          <p className="text-lg font-bold text-foreground">{emergencyPatientName} 様</p>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge className={priorityBadgeClass(emergencySchedule.priority)}>
-              {PRIORITY_LABELS[emergencySchedule.priority]}
-            </Badge>
-            <span className="text-sm font-semibold text-state-blocked">本日中にお届け</span>
+        {/* LEFT: 緊急で追加 + 再計算ボタン */}
+        <section
+          className="flex flex-col gap-5 rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:p-5"
+          aria-label="緊急で追加"
+          data-testid="emergency-route-patient"
+        >
+          <h2 className="text-[15px] font-bold text-foreground">緊急で追加</h2>
+          <div>
+            <p className="text-lg font-bold text-foreground">{emergencyPatientName} 様</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Badge className={priorityBadgeClass(emergencySchedule.priority)}>
+                {PRIORITY_LABELS[emergencySchedule.priority]}
+              </Badge>
+              <span className="text-sm font-semibold text-state-blocked">当日中にお届け</span>
+            </div>
           </div>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          システムが現在のルートへ入れる場所を探します。
-        </p>
-        <div>
-          <Button
-            type="button"
-            size="lg"
-            className="w-full sm:h-11"
-            disabled={recalcMutation.isPending}
-            onClick={() => recalcMutation.mutate()}
-            data-testid="emergency-route-recalc-button"
-          >
-            {recalcMutation.isPending ? '再計算中…' : 'ルートを再計算'}
-          </Button>
-        </div>
-      </section>
-
-      {/* CENTER: 再計算後のルート + 案1/案2 比較 */}
-      <section
-        className="flex flex-col gap-5 rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:p-5"
-        aria-label="再計算後のルート"
-        data-testid="emergency-route-scenarios"
-      >
-        <h2 className="text-[15px] font-bold text-foreground">再計算後のルート</h2>
-
-        {recalc ? (
-          <RouteOrderChart
-            scheduleIds={recalc.plan1.plan.orderedScheduleIds}
-            emergencyScheduleId={recalc.emergencyScheduleId}
-            lockedScheduleIds={lockedSet}
-          />
-        ) : (
-          <div className="flex min-h-[200px] items-center justify-center rounded-lg bg-tag-info/5 p-6 text-center text-sm text-muted-foreground">
-            「ルートを再計算」を押すと、確定患者を固定した 2 つの案を表示します。
+          <p className="text-sm text-muted-foreground">
+            システムが現在のルートへ入れる場所を探します。
+          </p>
+          <div>
+            <Button
+              type="button"
+              size="lg"
+              className="w-full sm:h-11"
+              disabled={recalcMutation.isPending}
+              onClick={() => recalcMutation.mutate()}
+              data-testid="emergency-route-recalc-button"
+            >
+              {recalcMutation.isPending ? '再計算中…' : 'ルートを再計算'}
+            </Button>
           </div>
-        )}
+        </section>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div
-            className="rounded-lg border border-border/70 bg-card p-4"
-            data-testid="emergency-route-scenario-1"
-          >
-            <h3 className="text-[15px] font-bold text-foreground">案1</h3>
-            <p className="mt-2 text-sm font-semibold text-state-done">正式決定患者は変更なし</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {recalc ? formatDeltaLabel(recalc.plan1.travelDeltaMinutes) : '移動 —'}
-            </p>
+        {/* CENTER: 再計算後のルート + 案1/案2 比較 */}
+        <section
+          className="flex flex-col gap-5 rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:p-5"
+          aria-label="再計算後のルート"
+          data-testid="emergency-route-scenarios"
+        >
+          <h2 className="text-[15px] font-bold text-foreground">再計算後のルート</h2>
+
+          {recalc ? (
+            <RouteOrderChart
+              scheduleIds={recalc.plan1.plan.orderedScheduleIds}
+              emergencyScheduleId={recalc.emergencyScheduleId}
+              lockedScheduleIds={lockedSet}
+            />
+          ) : (
+            <div className="flex min-h-[200px] items-center justify-center rounded-lg bg-tag-info/5 p-6 text-center text-sm text-muted-foreground">
+              「ルートを再計算」を押すと、確定患者を固定した 2 つの案を表示します。
+            </div>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div
+              className="rounded-lg border border-border/70 bg-card p-4"
+              data-testid="emergency-route-scenario-1"
+            >
+              <h3 className="text-[15px] font-bold text-foreground">案1</h3>
+              <p className="mt-2 text-sm font-semibold text-state-done">正式決定患者は変更なし</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {recalc ? formatDeltaLabel(recalc.plan1.travelDeltaMinutes) : '移動 —'}
+              </p>
+            </div>
+            <div
+              className="rounded-lg border border-border/70 bg-card p-4"
+              data-testid="emergency-route-scenario-2"
+            >
+              <h3 className="text-[15px] font-bold text-foreground">案2</h3>
+              <p className="mt-2 text-sm font-semibold text-state-confirm">1件だけ再確認が必要</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {recalc ? formatDeltaLabel(recalc.plan2.travelDeltaMinutes) : '移動 —'}
+              </p>
+            </div>
           </div>
-          <div
-            className="rounded-lg border border-border/70 bg-card p-4"
-            data-testid="emergency-route-scenario-2"
-          >
-            <h3 className="text-[15px] font-bold text-foreground">案2</h3>
-            <p className="mt-2 text-sm font-semibold text-state-confirm">1件だけ再確認が必要</p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {recalc ? formatDeltaLabel(recalc.plan2.travelDeltaMinutes) : '移動 —'}
-            </p>
+        </section>
+
+        {/* RIGHT: 影響確認チェックリスト + 案1で反映 */}
+        <section
+          className="flex flex-col gap-5 rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:p-5"
+          aria-label="影響確認"
+          data-testid="emergency-route-impact"
+        >
+          <h2 className="text-[15px] font-bold text-foreground">影響確認</h2>
+          <ul className="space-y-3 text-sm text-foreground">
+            <li className="flex items-start gap-2">
+              <span aria-hidden className="mt-0.5 text-state-done">
+                ✓
+              </span>
+              <span>正式決定：変更なし</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span aria-hidden className="mt-0.5 text-state-done">
+                ✓
+              </span>
+              <span>患者確認待ち：{recalc?.releasedScheduleId ? '1件あり' : '0件'}</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span aria-hidden className="mt-0.5 text-state-done">
+                ✓
+              </span>
+              <span>社用車A：使用可</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span aria-hidden className="mt-0.5 text-state-done">
+                ✓
+              </span>
+              <span>薬剤師負荷：許容範囲</span>
+            </li>
+          </ul>
+          <div className="mt-auto">
+            <Button
+              type="button"
+              size="lg"
+              className="w-full sm:h-11"
+              disabled={!recalc || applyMutation.isPending}
+              onClick={() => setConfirmApply(true)}
+              data-testid="emergency-route-apply-button"
+            >
+              {applyMutation.isPending ? '反映中…' : '案1で反映'}
+            </Button>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* RIGHT: 影響確認チェックリスト + 案1で反映 */}
-      <section
-        className="flex flex-col gap-5 rounded-xl border border-border/70 bg-card p-4 shadow-sm sm:p-5"
-        aria-label="影響確認"
-        data-testid="emergency-route-impact"
-      >
-        <h2 className="text-[15px] font-bold text-foreground">影響確認</h2>
-        <ul className="space-y-3 text-sm text-foreground">
-          <li className="flex items-start gap-2">
-            <span aria-hidden className="mt-0.5 text-state-done">
-              ✓
-            </span>
-            <span>正式決定：変更なし</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span aria-hidden className="mt-0.5 text-state-done">
-              ✓
-            </span>
-            <span>患者確認待ち：{recalc?.releasedScheduleId ? '1件あり' : '0件'}</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span aria-hidden className="mt-0.5 text-state-done">
-              ✓
-            </span>
-            <span>社用車A：使用可</span>
-          </li>
-          <li className="flex items-start gap-2">
-            <span aria-hidden className="mt-0.5 text-state-done">
-              ✓
-            </span>
-            <span>薬剤師負荷：許容範囲</span>
-          </li>
-        </ul>
-        <div className="mt-auto">
-          <Button
-            type="button"
-            size="lg"
-            className="w-full sm:h-11"
-            disabled={!recalc || applyMutation.isPending}
-            onClick={() => setConfirmApply(true)}
-            data-testid="emergency-route-apply-button"
-          >
-            {applyMutation.isPending ? '反映中…' : '案1で反映'}
-          </Button>
-        </div>
-      </section>
-
-      <ConfirmDialog
-        open={confirmApply}
-        onOpenChange={(open) => {
-          if (!open) setConfirmApply(false);
-        }}
-        title="案1を本日のルートに反映しますか"
-        description="確定患者の訪問順を保ったまま、緊急処方の訪問を割り込ませた順序で route_order を更新します。施設一括訪問は各担当の末尾に現在の居室順のまま続きます。"
-        confirmLabel="案1で反映"
-        onConfirm={() => {
-          setConfirmApply(false);
-          applyMutation.mutate();
-        }}
-      />
+        <ConfirmDialog
+          open={confirmApply}
+          onOpenChange={(open) => {
+            if (!open) setConfirmApply(false);
+          }}
+          title="案1を対象日のルートに反映しますか"
+          description="確定患者の訪問順を保ったまま、緊急処方の訪問を割り込ませた順序で route_order を更新します。施設一括訪問は各担当の末尾に現在の居室順のまま続きます。"
+          confirmLabel="案1で反映"
+          onConfirm={() => {
+            setConfirmApply(false);
+            applyMutation.mutate();
+          }}
+        />
+      </div>
     </div>
   );
 }
