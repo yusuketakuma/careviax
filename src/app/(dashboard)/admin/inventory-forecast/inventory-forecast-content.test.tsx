@@ -57,6 +57,8 @@ describe('InventoryForecastContent', () => {
                   stockQty: 4,
                   unit: '錠',
                   status: 'order_required',
+                  stockRegistered: true,
+                  stockEvidence: 'registered_stock',
                 },
                 {
                   drugIdentityKey: 'name:酸化Mg',
@@ -66,6 +68,8 @@ describe('InventoryForecastContent', () => {
                   stockQty: 10,
                   unit: '包',
                   status: 'sufficient',
+                  stockRegistered: true,
+                  stockEvidence: 'registered_stock',
                 },
               ],
               patients: [
@@ -91,6 +95,8 @@ describe('InventoryForecastContent', () => {
                       stockQty: 4,
                       unit: '錠',
                       status: 'order_required',
+                      stockRegistered: true,
+                      stockEvidence: 'registered_stock',
                       affectedPatientCount: 1,
                       runOutDateKey: '2026-06-23',
                       runOutBasis: 'line_end_date',
@@ -163,10 +169,10 @@ describe('InventoryForecastContent', () => {
     expect(screen.getByText('至急')).toBeTruthy();
     expect(screen.getByText('薬切れ見込み 06/23')).toBeTruthy();
     expect(screen.getByText('不足薬: アムロジピン')).toBeTruthy();
-    // 施設バッチ: warning=要注意 + 開始日+日数の推定注記 + 「5名中 2名に不足見込み」の被覆明示。
+    // 施設バッチ: warning=要注意 + 開始日+日数の推定注記 + 「5名中 2名に不足/在庫登録確認」の被覆明示。
     expect(screen.getByText('要注意')).toBeTruthy();
     expect(screen.getByText('薬切れ見込み 06/30（処方日数から推定）')).toBeTruthy();
-    expect(screen.getByText(/5名中\s*2名に不足見込み/)).toBeTruthy();
+    expect(screen.getByText(/5名中\s*2名に不足\/在庫登録確認/)).toBeTruthy();
   });
 
   it('does not fabricate a run-out date when basis is unknown', async () => {
@@ -189,6 +195,8 @@ describe('InventoryForecastContent', () => {
                   stockQty: 4,
                   unit: '錠',
                   status: 'order_required',
+                  stockRegistered: true,
+                  stockEvidence: 'registered_stock',
                 },
               ],
               patients: [
@@ -262,5 +270,83 @@ describe('InventoryForecastContent', () => {
     expect(
       screen.getByText('来週の訪問予定と在庫登録から計算できる薬剤がありません。'),
     ).toBeTruthy();
+  });
+
+  it('keeps resolved demand visible when the adopted stock record is missing', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) !== '/api/admin/inventory-forecast') {
+          return new Response('{}', { status: 404 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              week: { start_date: '2026-06-22', end_date: '2026-06-28' },
+              drugs: [
+                {
+                  drugIdentityKey: 'master:drug_no_stock',
+                  drugCode: 'YJ_NO_STOCK',
+                  drugKey: '未採用薬',
+                  requiredQty: 7,
+                  stockQty: 0,
+                  unit: '錠',
+                  status: 'order_required',
+                  stockRegistered: false,
+                  stockEvidence: 'missing_adopted_stock_record',
+                },
+              ],
+              patients: [
+                {
+                  key: 'patient_no_stock',
+                  patientId: 'p-no-stock',
+                  label: '在庫未登録 患者',
+                  firstVisitDateKey: '2026-06-23',
+                  isFacilityBatch: false,
+                  facilityPatientCount: null,
+                  shortagePatientCount: 1,
+                  dataBackedPatientCount: 1,
+                  shortageDrugKeys: ['未採用薬'],
+                  runOutDateKey: '2026-07-07',
+                  runOutBasis: 'line_start_date_plus_days',
+                  urgency: 'normal',
+                  shortageDetails: [
+                    {
+                      drugIdentityKey: 'master:drug_no_stock',
+                      drugCode: 'YJ_NO_STOCK',
+                      drugKey: '未採用薬',
+                      requiredQty: 7,
+                      stockQty: 0,
+                      unit: '錠',
+                      status: 'order_required',
+                      stockRegistered: false,
+                      stockEvidence: 'missing_adopted_stock_record',
+                      affectedPatientCount: 1,
+                      runOutDateKey: '2026-07-07',
+                      runOutBasis: 'line_start_date_plus_days',
+                      urgency: 'normal',
+                    },
+                  ],
+                },
+              ],
+              unresolvedDrugs: [],
+            },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+    renderContent();
+
+    expect((await screen.findAllByText('未採用薬')).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('在庫未登録').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('未登録').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('登録確認').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('未確認').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('在庫登録確認')).toBeTruthy();
+    expect(screen.getByText('未採用薬の在庫登録を確認')).toBeTruthy();
+    expect(screen.getByText('在庫未登録 患者 様')).toBeTruthy();
+    expect(screen.getByText('在庫登録未確認: 未採用薬')).toBeTruthy();
+    expect(screen.queryByText('不足薬: 未採用薬')).toBeNull();
   });
 });

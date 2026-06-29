@@ -26,7 +26,7 @@ import {
 
 /**
  * p1_07「在庫と定期処方の予測」: 来週(翌週月〜日)の訪問予定と定期処方から
- * 薬剤別の必要量見込みを在庫と突合し、不足側の薬剤と影響患者を一覧する。
+ * 薬剤別の必要量見込みを在庫と突合し、不足または在庫登録確認が必要な薬剤と影響患者を一覧する。
  */
 
 type InventoryForecast = {
@@ -93,7 +93,11 @@ function formatWeekLabel(week: InventoryForecast['week']): string {
   return `${format(week.start_date)}(月)〜${format(week.end_date)}(日)`;
 }
 
-function StatusBadge({ status }: { status: DrugForecastStatus }) {
+function StatusBadge({ row }: { row: DrugForecastRow }) {
+  if (!row.stockRegistered) {
+    return <StateBadge role="confirm">登録確認</StateBadge>;
+  }
+  const status = row.status;
   const role = STATUS_ROLE[status];
   if (role === 'neutral') {
     return (
@@ -116,6 +120,10 @@ function UrgencyBadge({ urgency }: { urgency: InventoryForecastUrgency }) {
     );
   }
   return <StateBadge role={role}>{URGENCY_LABEL[urgency]}</StateBadge>;
+}
+
+function forecastStatusLabel(row: DrugForecastRow): string {
+  return row.stockRegistered ? DRUG_FORECAST_STATUS_LABELS[row.status] : '登録確認';
 }
 
 const drugForecastColumns: ColumnDef<DrugForecastRow>[] = [
@@ -146,28 +154,40 @@ const drugForecastColumns: ColumnDef<DrugForecastRow>[] = [
   },
   {
     id: 'stockQty',
-    accessorFn: (row) => `${row.stockQty}${row.unit}`,
+    accessorFn: (row) => (row.stockRegistered ? `${row.stockQty}${row.unit}` : '未登録'),
     header: '在庫',
     cell: ({ row }) => (
-      <span className="tabular-nums">
-        {row.original.stockQty}
-        {row.original.unit}
+      <span className="flex flex-col gap-1">
+        {row.original.stockRegistered ? (
+          <span className="tabular-nums">
+            {row.original.stockQty}
+            {row.original.unit}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">未登録</span>
+        )}
+        {!row.original.stockRegistered ? <StateBadge role="confirm">在庫未登録</StateBadge> : null}
       </span>
     ),
     meta: { label: '在庫' },
   },
   {
     id: 'coverage',
-    accessorFn: (row) => coveragePercent(row),
+    accessorFn: (row) => (row.stockRegistered ? coveragePercent(row) : '未確認'),
     header: '充足率',
-    cell: ({ row }) => <span className="tabular-nums">{coveragePercent(row.original)}%</span>,
+    cell: ({ row }) =>
+      row.original.stockRegistered ? (
+        <span className="tabular-nums">{coveragePercent(row.original)}%</span>
+      ) : (
+        <span className="text-muted-foreground">未確認</span>
+      ),
     meta: { label: '充足率' },
   },
   {
     id: 'status',
-    accessorFn: (row) => DRUG_FORECAST_STATUS_LABELS[row.status],
+    accessorFn: forecastStatusLabel,
     header: '対応',
-    cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    cell: ({ row }) => <StatusBadge row={row.original} />,
     meta: { label: '対応' },
   },
 ];
@@ -222,7 +242,7 @@ export function InventoryForecastContent() {
       {/* SYS-3: 自前 section ヘッダを共通 AdminPageHeader へ。次にすること は supportingContent に。 */}
       <AdminPageHeader
         title="在庫と定期処方の予測"
-        description={`対象期間: ${formatWeekLabel(forecast.week)}。来週の訪問予定と直近の定期処方から、不足側の薬と影響患者を先に確認します。`}
+        description={`対象期間: ${formatWeekLabel(forecast.week)}。来週の訪問予定と直近の定期処方から、不足または在庫登録確認が必要な薬と影響患者を先に確認します。`}
         supportingContent={
           <div className="rounded-md border border-border/70 bg-muted/30 px-4 py-3">
             <p className="text-xs font-medium text-muted-foreground">次にすること</p>
@@ -231,7 +251,14 @@ export function InventoryForecastContent() {
         }
       />
       {/* 共通 StatCard へ統一(card-in-card を避け bare grid)。状態色は意味のある時のみ(0件は中立)。 */}
-      <section aria-label="在庫予測サマリー" className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="在庫予測サマリー" className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <StatCard
+          label="在庫登録確認"
+          value={summary.stockRegistrationReviewCount.toLocaleString('ja-JP')}
+          unit="件"
+          role={summary.stockRegistrationReviewCount > 0 ? 'confirm' : undefined}
+          hint="採用在庫レコード未登録"
+        />
         <StatCard
           label="要発注"
           value={summary.orderRequiredCount.toLocaleString('ja-JP')}
@@ -250,7 +277,7 @@ export function InventoryForecastContent() {
           label="影響患者"
           value={summary.affectedPatientCount.toLocaleString('ja-JP')}
           unit="件"
-          hint="不足側の薬を使う訪問予定"
+          hint="不足または在庫登録確認が必要"
         />
         <StatCard
           label="最優先"
@@ -261,15 +288,19 @@ export function InventoryForecastContent() {
             </span>
           }
           role={
-            summary.priorityDrug?.status === 'order_required'
-              ? 'blocked'
-              : summary.priorityDrug
-                ? 'confirm'
-                : undefined
+            summary.priorityDrug && !summary.priorityDrug.stockRegistered
+              ? 'confirm'
+              : summary.priorityDrug?.status === 'order_required'
+                ? 'blocked'
+                : summary.priorityDrug
+                  ? 'confirm'
+                  : undefined
           }
           hint={
             summary.priorityDrug
-              ? `充足率 ${coveragePercent(summary.priorityDrug)}%`
+              ? summary.priorityDrug.stockRegistered
+                ? `充足率 ${coveragePercent(summary.priorityDrug)}%`
+                : '採用在庫レコード未登録'
               : '現時点では通常確認'
           }
         />
@@ -339,9 +370,7 @@ export function InventoryForecastContent() {
                 data={forecast.drugs}
                 caption="来週必要になりそうな薬"
                 getRowId={(row) => row.drugIdentityKey}
-                getRowA11yLabel={(row) =>
-                  `${row.drugKey} ${DRUG_FORECAST_STATUS_LABELS[row.status]}`
-                }
+                getRowA11yLabel={(row) => `${row.drugKey} ${forecastStatusLabel(row)}`}
                 emptyMessage="来週の訪問予定と在庫登録から計算できる薬剤がありません。"
                 toolbar={{
                   enableGlobalFilter: true,
@@ -365,55 +394,76 @@ export function InventoryForecastContent() {
           </h2>
           {forecast.patients.length === 0 ? (
             <p className="mt-4 text-sm leading-6 text-muted-foreground">
-              不足見込みの薬剤を使う来週訪問予定の患者さんはいません。
+              不足または在庫登録確認が必要な薬剤を使う来週訪問予定の患者さんはいません。
             </p>
           ) : (
             <ul className="mt-4 space-y-3" role="list">
-              {forecast.patients.map((patient) => (
-                <li
-                  key={patient.key}
-                  className={`rounded-lg border border-border/70 bg-background px-4 py-3 ${URGENCY_BORDER[patient.urgency]}`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{patient.label} 様</p>
-                      {/* 施設バッチは「ラベル人数のうち実際に不足見込みと判定できた人数」を明示し、
-                          全員を評価済みと誤認させない。個人カードは処方予定の有無のみ。 */}
-                      {patient.isFacilityBatch && patient.facilityPatientCount != null ? (
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {patient.facilityPatientCount}名中 {patient.shortagePatientCount}
-                          名に不足見込み
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-muted-foreground">次回処方予定あり</p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <UrgencyBadge urgency={patient.urgency} />
-                      <span className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
-                        訪問予定 {formatMonthDay(patient.firstVisitDateKey)}
-                      </span>
-                    </div>
-                  </div>
-                  {/* 薬切れ見込み日は basis(処方終了日 / 開始日+日数推定 / 不明)に忠実。捏造しない。 */}
-                  <p
-                    className={`mt-2 text-xs ${
-                      patient.urgency === 'critical'
-                        ? 'text-state-blocked'
-                        : patient.urgency === 'warning'
-                          ? 'text-state-confirm'
-                          : 'text-muted-foreground'
-                    }`}
+              {forecast.patients.map((patient) => {
+                const detailKeys =
+                  patient.shortageDetails.length > 0
+                    ? patient.shortageDetails
+                    : patient.shortageDrugKeys.map((drugKey) => ({
+                        drugKey,
+                        stockRegistered: true,
+                      }));
+                const registeredShortageKeys = detailKeys
+                  .filter((detail) => detail.stockRegistered)
+                  .map((detail) => detail.drugKey);
+                const unregisteredStockKeys = detailKeys
+                  .filter((detail) => !detail.stockRegistered)
+                  .map((detail) => detail.drugKey);
+
+                return (
+                  <li
+                    key={patient.key}
+                    className={`rounded-lg border border-border/70 bg-background px-4 py-3 ${URGENCY_BORDER[patient.urgency]}`}
                   >
-                    {formatRunOut(patient.runOutDateKey, patient.runOutBasis)}
-                  </p>
-                  {patient.shortageDrugKeys.length > 0 ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      不足薬: {patient.shortageDrugKeys.join('・')}
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{patient.label} 様</p>
+                        {/* 施設バッチは「ラベル人数のうち実際に不足/在庫登録確認と判定できた人数」を明示し、
+                          全員を評価済みと誤認させない。個人カードは処方予定の有無のみ。 */}
+                        {patient.isFacilityBatch && patient.facilityPatientCount != null ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {patient.facilityPatientCount}名中 {patient.shortagePatientCount}
+                            名に不足/在庫登録確認
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-muted-foreground">次回処方予定あり</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <UrgencyBadge urgency={patient.urgency} />
+                        <span className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground">
+                          訪問予定 {formatMonthDay(patient.firstVisitDateKey)}
+                        </span>
+                      </div>
+                    </div>
+                    {/* 薬切れ見込み日は basis(処方終了日 / 開始日+日数推定 / 不明)に忠実。捏造しない。 */}
+                    <p
+                      className={`mt-2 text-xs ${
+                        patient.urgency === 'critical'
+                          ? 'text-state-blocked'
+                          : patient.urgency === 'warning'
+                            ? 'text-state-confirm'
+                            : 'text-muted-foreground'
+                      }`}
+                    >
+                      {formatRunOut(patient.runOutDateKey, patient.runOutBasis)}
                     </p>
-                  ) : null}
-                </li>
-              ))}
+                    {registeredShortageKeys.length > 0 ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        不足薬: {registeredShortageKeys.join('・')}
+                      </p>
+                    ) : null}
+                    {unregisteredStockKeys.length > 0 ? (
+                      <p className="mt-1 text-xs text-state-confirm">
+                        在庫登録未確認: {unregisteredStockKeys.join('・')}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

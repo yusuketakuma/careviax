@@ -210,6 +210,8 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
         stockQty: 20,
         unit: '錠',
         status: 'order_candidate' as const,
+        stockRegistered: true,
+        stockEvidence: 'registered_stock' as const,
       },
       {
         drugIdentityKey: 'code:YJ_TORA',
@@ -219,6 +221,8 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
         stockQty: 3,
         unit: '錠',
         status: 'order_required' as const,
+        stockRegistered: true,
+        stockEvidence: 'registered_stock' as const,
       },
       {
         drugIdentityKey: 'code:YJ_MG',
@@ -228,6 +232,8 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
         stockQty: 112,
         unit: '錠',
         status: 'sufficient' as const,
+        stockRegistered: true,
+        stockEvidence: 'registered_stock' as const,
       },
     ];
 
@@ -257,6 +263,8 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
               stockQty: 3,
               unit: '錠',
               status: 'order_required',
+              stockRegistered: true,
+              stockEvidence: 'registered_stock',
               affectedPatientCount: 1,
               runOutDateKey: '2026-06-28',
               runOutBasis: 'line_start_date_plus_days',
@@ -269,6 +277,7 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
 
     expect(summary.orderRequiredCount).toBe(1);
     expect(summary.orderCandidateCount).toBe(1);
+    expect(summary.stockRegistrationReviewCount).toBe(0);
     expect(summary.shortageDrugCount).toBe(2);
     expect(summary.affectedPatientCount).toBe(1);
     expect(summary.priorityDrug?.drugKey).toBe('トラセミド');
@@ -286,12 +295,15 @@ describe('coveragePercent / summarizeInventoryForecast', () => {
           stockQty: 112,
           unit: '錠',
           status: 'sufficient',
+          stockRegistered: true,
+          stockEvidence: 'registered_stock',
         },
       ],
       patients: [],
     });
 
     expect(summary.priorityDrug).toBeNull();
+    expect(summary.stockRegistrationReviewCount).toBe(0);
     expect(summary.nextAction).toBe('定期処方更新後に再確認');
   });
 });
@@ -457,6 +469,8 @@ describe('buildInventoryForecast', () => {
         stockQty: 18,
         unit: '錠',
         status: 'sufficient',
+        stockRegistered: true,
+        stockEvidence: 'registered_stock',
       },
       // 酸化Mg: 3錠/日 × 7日 = 21 / 在庫112 → 余裕あり
       {
@@ -467,6 +481,8 @@ describe('buildInventoryForecast', () => {
         stockQty: 112,
         unit: '錠',
         status: 'sufficient',
+        stockRegistered: true,
+        stockEvidence: 'registered_stock',
       },
       // トラセミド: (1 + 1) 錠/日 × 7日 = 14 / 在庫3 → 3 < 7 → 要発注
       {
@@ -477,6 +493,8 @@ describe('buildInventoryForecast', () => {
         stockQty: 3,
         unit: '錠',
         status: 'order_required',
+        stockRegistered: true,
+        stockEvidence: 'registered_stock',
       },
     ]);
   });
@@ -553,6 +571,8 @@ describe('buildInventoryForecast', () => {
         stockQty: 10,
         unit: '錠',
         status: 'sufficient',
+        stockRegistered: true,
+        stockEvidence: 'registered_stock',
       },
       {
         drugIdentityKey: 'code:YJ_B',
@@ -562,6 +582,8 @@ describe('buildInventoryForecast', () => {
         stockQty: 3,
         unit: '錠',
         status: 'order_required',
+        stockRegistered: true,
+        stockEvidence: 'registered_stock',
       },
     ]);
     expect(summary.patients.map((card) => card.key)).toEqual(['patient:p-code-b']);
@@ -573,6 +595,93 @@ describe('buildInventoryForecast', () => {
         requiredQty: 14,
       }),
     ]);
+  });
+
+  it('keeps resolved demand visible when no adopted stock record exists', () => {
+    const input = baseInput();
+    input.visits = [
+      {
+        patientId: 'p-no-stock',
+        patientName: '在庫未登録 患者',
+        scheduledDate: new Date('2026-06-15T00:00:00.000Z'),
+        facilityBatch: null,
+      },
+    ];
+    input.intakes = [
+      {
+        patientId: 'p-no-stock',
+        prescribedDate: new Date('2026-06-10T00:00:00.000Z'),
+        createdAt: new Date('2026-06-10T10:00:00.000Z'),
+        lines: [
+          line({
+            drugName: '未採用薬 10mg',
+            drugCode: 'YJ_NO_STOCK',
+            quantity: 28,
+            days: 28,
+            startDate: new Date('2026-06-10T00:00:00.000Z'),
+          }),
+        ],
+      },
+    ];
+    input.stocks = [];
+
+    const summary = buildInventoryForecast(input);
+
+    expect(summary.drugs).toEqual([
+      {
+        drugIdentityKey: 'code:YJ_NO_STOCK',
+        drugCode: 'YJ_NO_STOCK',
+        drugKey: '未採用薬',
+        requiredQty: 7,
+        stockQty: 0,
+        unit: '錠',
+        status: 'order_required',
+        stockRegistered: false,
+        stockEvidence: 'missing_adopted_stock_record',
+      },
+    ]);
+    expect(summary.unresolvedDrugs).toEqual([]);
+    expect(summary.patients).toEqual([
+      {
+        key: 'patient:p-no-stock',
+        patientId: 'p-no-stock',
+        label: '在庫未登録 患者',
+        firstVisitDateKey: '2026-06-15',
+        isFacilityBatch: false,
+        facilityPatientCount: null,
+        shortagePatientCount: 1,
+        dataBackedPatientCount: 1,
+        shortageDrugKeys: ['未採用薬'],
+        runOutDateKey: '2026-07-07',
+        runOutBasis: 'line_start_date_plus_days',
+        urgency: 'normal',
+        shortageDetails: [
+          {
+            drugIdentityKey: 'code:YJ_NO_STOCK',
+            drugCode: 'YJ_NO_STOCK',
+            drugKey: '未採用薬',
+            requiredQty: 7,
+            stockQty: 0,
+            unit: '錠',
+            status: 'order_required',
+            stockRegistered: false,
+            stockEvidence: 'missing_adopted_stock_record',
+            affectedPatientCount: 1,
+            runOutDateKey: '2026-07-07',
+            runOutBasis: 'line_start_date_plus_days',
+            urgency: 'normal',
+          },
+        ],
+      },
+    ]);
+
+    const decision = summarizeInventoryForecast({
+      drugs: summary.drugs,
+      patients: summary.patients,
+    });
+    expect(decision.stockRegistrationReviewCount).toBe(1);
+    expect(decision.orderRequiredCount).toBe(0);
+    expect(decision.nextAction).toBe('未採用薬の在庫登録を確認');
   });
 
   it('keeps unresolved name-only prescription lines out of automatic stock shortage matching', () => {
@@ -715,6 +824,8 @@ describe('buildInventoryForecast', () => {
             stockQty: 10,
             unit: '錠',
             status: 'order_candidate',
+            stockRegistered: true,
+            stockEvidence: 'registered_stock',
             affectedPatientCount: 1,
             runOutDateKey: '2026-07-07',
             runOutBasis: 'line_start_date_plus_days',
@@ -744,6 +855,8 @@ describe('buildInventoryForecast', () => {
             stockQty: 3,
             unit: '錠',
             status: 'order_required',
+            stockRegistered: true,
+            stockEvidence: 'registered_stock',
             affectedPatientCount: 1,
             runOutDateKey: '2026-07-05',
             runOutBasis: 'line_start_date_plus_days',
@@ -773,6 +886,8 @@ describe('buildInventoryForecast', () => {
             stockQty: 3,
             unit: '錠',
             status: 'order_required',
+            stockRegistered: true,
+            stockEvidence: 'registered_stock',
             affectedPatientCount: 1,
             runOutDateKey: '2026-07-05',
             runOutBasis: 'line_start_date_plus_days',
@@ -786,6 +901,8 @@ describe('buildInventoryForecast', () => {
             stockQty: 10,
             unit: '錠',
             status: 'order_candidate',
+            stockRegistered: true,
+            stockEvidence: 'registered_stock',
             affectedPatientCount: 1,
             runOutDateKey: '2026-07-05',
             runOutBasis: 'line_start_date_plus_days',
@@ -833,6 +950,8 @@ describe('buildInventoryForecast', () => {
           stockQty: 3,
           unit: '錠',
           status: 'order_required',
+          stockRegistered: true,
+          stockEvidence: 'registered_stock',
           affectedPatientCount: 2,
           runOutDateKey: '2026-06-17',
           runOutBasis: 'line_end_date',

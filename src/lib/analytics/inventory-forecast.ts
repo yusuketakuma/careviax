@@ -14,6 +14,7 @@ export const FORECAST_DAYS = 7;
 export const ORDER_REQUIRED_STOCK_RATIO = 0.5;
 
 export type DrugForecastStatus = 'order_required' | 'order_candidate' | 'sufficient';
+export type InventoryForecastStockEvidence = 'registered_stock' | 'missing_adopted_stock_record';
 
 export type UnresolvedDrugForecastReason = 'missing_code' | 'code_not_found' | 'ambiguous_code';
 
@@ -82,6 +83,9 @@ export type DrugForecastRow = {
   stockQty: number;
   unit: string;
   status: DrugForecastStatus;
+  /** 採用在庫レコードが存在するか。false は確認済み在庫0ではなく台帳未登録。 */
+  stockRegistered: boolean;
+  stockEvidence: InventoryForecastStockEvidence;
 };
 
 export type UnresolvedDrugForecastRow = {
@@ -109,6 +113,8 @@ export type PatientDrugShortageDetail = {
   stockQty: number;
   unit: string;
   status: Exclude<DrugForecastStatus, 'sufficient'>;
+  stockRegistered: boolean;
+  stockEvidence: InventoryForecastStockEvidence;
   affectedPatientCount: number;
   runOutDateKey: string | null;
   runOutBasis: InventoryForecastRunOutBasis;
@@ -127,13 +133,13 @@ export type AffectedPatientCard = {
   isFacilityBatch: boolean;
   /** 施設バッチ全体の人数。個人カードは null。 */
   facilityPatientCount: number | null;
-  /** このカードで不足薬根拠がある患者数。施設バッチでは全体人数と異なることがある。 */
+  /** このカードで不足または在庫登録確認の根拠がある患者数。施設バッチでは全体人数と異なることがある。 */
   shortagePatientCount: number;
-  /** 直近処方明細を取得でき、このカードの不足判定に使った患者数。 */
+  /** 直近処方明細を取得でき、このカードの不足/在庫登録確認に使った患者数。 */
   dataBackedPatientCount: number;
-  /** 不足側の薬剤ベース名。施設バッチでは対象患者の不足薬を集約する。 */
+  /** 不足または在庫登録確認が必要な薬剤ベース名。施設バッチでは対象患者の薬剤を集約する。 */
   shortageDrugKeys: string[];
-  /** 対象不足薬のうち最も早い服用終了見込み日。施設バッチでは最短値。 */
+  /** 対象薬のうち最も早い服用終了見込み日。施設バッチでは最短値。 */
   runOutDateKey: string | null;
   runOutBasis: InventoryForecastRunOutBasis;
   /** 最短服用終了見込み日と初回訪問日から導く表示用緊急度。 */
@@ -150,6 +156,7 @@ export type InventoryForecastSummary = {
 export type InventoryForecastDecisionSummary = {
   orderRequiredCount: number;
   orderCandidateCount: number;
+  stockRegistrationReviewCount: number;
   shortageDrugCount: number;
   affectedPatientCount: number;
   priorityDrug: DrugForecastRow | null;
@@ -210,11 +217,18 @@ export function summarizeInventoryForecast(args: {
   drugs: DrugForecastRow[];
   patients: AffectedPatientCard[];
 }): InventoryForecastDecisionSummary {
-  const orderRequired = args.drugs.filter((drug) => drug.status === 'order_required');
-  const orderCandidate = args.drugs.filter((drug) => drug.status === 'order_candidate');
-  const shortageDrugs = [...orderRequired, ...orderCandidate];
+  const stockRegistrationReview = args.drugs.filter((drug) => !drug.stockRegistered);
+  const orderRequired = args.drugs.filter(
+    (drug) => drug.stockRegistered && drug.status === 'order_required',
+  );
+  const orderCandidate = args.drugs.filter(
+    (drug) => drug.stockRegistered && drug.status === 'order_candidate',
+  );
+  const shortageDrugs = [...stockRegistrationReview, ...orderRequired, ...orderCandidate];
   const priorityDrug =
     shortageDrugs.sort((left, right) => {
+      const evidencePriority = Number(left.stockRegistered) - Number(right.stockRegistered);
+      if (evidencePriority !== 0) return evidencePriority;
       const statusPriority =
         Number(right.status === 'order_required') - Number(left.status === 'order_required');
       if (statusPriority !== 0) return statusPriority;
@@ -222,7 +236,9 @@ export function summarizeInventoryForecast(args: {
     })[0] ?? null;
 
   let nextAction = '定期処方更新後に再確認';
-  if (priorityDrug?.status === 'order_required') {
+  if (priorityDrug && !priorityDrug.stockRegistered) {
+    nextAction = `${priorityDrug.drugKey}の在庫登録を確認`;
+  } else if (priorityDrug?.status === 'order_required') {
     nextAction = `${priorityDrug.drugKey}を発注確認`;
   } else if (priorityDrug) {
     nextAction = `${priorityDrug.drugKey}の在庫確認`;
@@ -231,6 +247,7 @@ export function summarizeInventoryForecast(args: {
   return {
     orderRequiredCount: orderRequired.length,
     orderCandidateCount: orderCandidate.length,
+    stockRegistrationReviewCount: stockRegistrationReview.length,
     shortageDrugCount: shortageDrugs.length,
     affectedPatientCount: args.patients.length,
     priorityDrug,
@@ -582,20 +599,22 @@ export function buildInventoryForecast(input: {
   }
 
   const drugs: DrugForecastRow[] = [...requiredByDrug.entries()]
-    .filter(([key, entry]) => entry.requiredQty > 0 && stockByDrug.has(key))
+    .filter(([, entry]) => entry.requiredQty > 0)
     .map(([key, entry]) => {
-      const stock = stockByDrug.get(key)!;
+      const stock = stockByDrug.get(key);
       const requiredQty = Math.ceil(entry.requiredQty);
       const row: DrugForecastRow = {
         drugIdentityKey: key,
-        drugCode: entry.drugCode ?? stock.drugCode,
+        drugCode: entry.drugCode ?? stock?.drugCode ?? null,
         drugKey: entry.drugKey,
         requiredQty,
-        stockQty: stock.stockQty,
-        unit: entry.unit ?? stock.unit ?? '錠',
-        status: classifyStockStatus(requiredQty, stock.stockQty),
+        stockQty: stock?.stockQty ?? 0,
+        unit: entry.unit ?? stock?.unit ?? '錠',
+        status: classifyStockStatus(requiredQty, stock?.stockQty ?? 0),
+        stockRegistered: Boolean(stock),
+        stockEvidence: stock ? 'registered_stock' : 'missing_adopted_stock_record',
       };
-      return { sortKana: stock.nameKana ?? key, row };
+      return { sortKana: stock?.nameKana ?? entry.drugKey ?? key, row };
     })
     // 五十音順(カナ名があればカナで)
     .sort((a, b) => a.sortKana.localeCompare(b.sortKana, 'ja'))
@@ -651,6 +670,8 @@ export function buildInventoryForecast(input: {
         stockQty: shortageRow.stockQty,
         unit: line.unit ?? shortageRow.unit,
         status: shortageRow.status,
+        stockRegistered: shortageRow.stockRegistered,
+        stockEvidence: shortageRow.stockEvidence,
         affectedPatientCount: 1,
         runOutDateKey: runOut.runOutDateKey,
         runOutBasis: runOut.basis,

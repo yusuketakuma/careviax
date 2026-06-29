@@ -169,6 +169,8 @@ describe('/api/admin/inventory-forecast', () => {
             stockQty: 4,
             unit: '錠',
             status: 'order_candidate',
+            stockRegistered: true,
+            stockEvidence: 'registered_stock',
           },
           // トラセミド: 1錠/日 × 7 = 7 / 在庫3 → 要発注(3 < 3.5)
           {
@@ -179,6 +181,8 @@ describe('/api/admin/inventory-forecast', () => {
             stockQty: 3,
             unit: '錠',
             status: 'order_required',
+            stockRegistered: true,
+            stockEvidence: 'registered_stock',
           },
         ],
         patients: [
@@ -204,6 +208,8 @@ describe('/api/admin/inventory-forecast', () => {
                 stockQty: 4,
                 unit: '錠',
                 status: 'order_candidate',
+                stockRegistered: true,
+                stockEvidence: 'registered_stock',
                 affectedPatientCount: 1,
                 runOutDateKey: '2026-06-16',
                 runOutBasis: 'line_end_date',
@@ -233,6 +239,8 @@ describe('/api/admin/inventory-forecast', () => {
                 stockQty: 3,
                 unit: '錠',
                 status: 'order_required',
+                stockRegistered: true,
+                stockEvidence: 'registered_stock',
                 affectedPatientCount: 1,
                 runOutDateKey: '2026-07-07',
                 runOutBasis: 'line_start_date_plus_days',
@@ -451,6 +459,85 @@ describe('/api/admin/inventory-forecast', () => {
         },
       }),
     );
+  });
+
+  it('surfaces resolved prescription demand even when no adopted stock row exists', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([
+      visitRow({
+        case_id: 'case_no_stock',
+        case_: { patient: { id: 'pt_no_stock', name: '在庫未登録 患者' } },
+      }),
+    ]);
+    facilityFindManyMock.mockResolvedValue([]);
+    intakeFindManyMock.mockResolvedValue([
+      {
+        prescribed_date: new Date('2026-06-08T00:00:00.000Z'),
+        created_at: new Date('2026-06-08T10:00:00.000Z'),
+        cycle: { patient_id: 'pt_no_stock' },
+        lines: [
+          {
+            drug_name: '未採用薬 10mg',
+            drug_code: 'YJ_NO_STOCK',
+            dose: '1錠',
+            frequency: '朝',
+            days: 28,
+            quantity: 28,
+            unit: '錠',
+            start_date: new Date('2026-06-08T00:00:00.000Z'),
+            end_date: null,
+          },
+        ],
+      },
+    ]);
+    drugMasterFindManyMock.mockResolvedValue([
+      {
+        id: 'drug_no_stock',
+        yj_code: 'YJ_NO_STOCK',
+        receipt_code: null,
+        hot_code: null,
+      },
+    ]);
+    drugStockFindManyMock.mockResolvedValue([]);
+
+    const response = (await routeGET(
+      new NextRequest('http://localhost/api/admin/inventory-forecast'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        drugs: [
+          {
+            drugIdentityKey: 'master:drug_no_stock',
+            drugCode: 'YJ_NO_STOCK',
+            drugKey: '未採用薬',
+            requiredQty: 7,
+            stockQty: 0,
+            unit: '錠',
+            status: 'order_required',
+            stockRegistered: false,
+            stockEvidence: 'missing_adopted_stock_record',
+          },
+        ],
+        patients: [
+          expect.objectContaining({
+            key: 'patient:pt_no_stock',
+            shortageDrugKeys: ['未採用薬'],
+            shortageDetails: [
+              expect.objectContaining({
+                drugIdentityKey: 'master:drug_no_stock',
+                drugCode: 'YJ_NO_STOCK',
+                stockQty: 0,
+                status: 'order_required',
+                stockRegistered: false,
+                stockEvidence: 'missing_adopted_stock_record',
+              }),
+            ],
+          }),
+        ],
+        unresolvedDrugs: [],
+      },
+    });
   });
 
   it('keeps code-not-found prescription demand visible without auto-joining same-name stock', async () => {
