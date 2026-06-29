@@ -9,6 +9,7 @@ const {
   drugInteractionCountMock,
   drugAlertRuleCountMock,
   genericDrugMappingCountMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   drugMasterImportLogFindManyMock: vi.fn(),
@@ -17,6 +18,7 @@ const {
   drugInteractionCountMock: vi.fn(),
   drugAlertRuleCountMock: vi.fn(),
   genericDrugMappingCountMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -46,6 +48,10 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
+}));
+
 import type { DrugMasterImportStatusResponse } from '@/types/drug-master-import-status';
 import { GET } from './route';
 
@@ -67,6 +73,7 @@ const SOURCES = [
 ] satisfies DrugMasterImportSourceStatus['source'][];
 
 async function readStatusPayload(response: Response): Promise<DrugMasterImportStatusResponse> {
+  expectNoStore(response);
   const payload: unknown = await response.json();
 
   expect(payload).toMatchObject({
@@ -83,6 +90,11 @@ async function readStatusPayload(response: Response): Promise<DrugMasterImportSt
   });
 
   return payload as DrugMasterImportStatusResponse;
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function findStatusSource(
@@ -116,6 +128,7 @@ describe('GET /api/drug-master-imports/status', () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(401);
+    expectNoStore(response);
     expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
     expect(drugMasterCountMock).not.toHaveBeenCalled();
   });
@@ -128,6 +141,7 @@ describe('GET /api/drug-master-imports/status', () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(403);
+    expectNoStore(response);
     expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
     expect(drugMasterCountMock).not.toHaveBeenCalled();
     expect(drugPackageInsertCountMock).not.toHaveBeenCalled();
@@ -184,6 +198,9 @@ describe('GET /api/drug-master-imports/status', () => {
         generic_mapping_count: 300,
       },
       checked_at: expect.any(String),
+    });
+    expect(drugAlertRuleCountMock).toHaveBeenCalledWith({
+      where: { is_active: true, org_id: null },
     });
   });
 
@@ -332,9 +349,33 @@ describe('GET /api/drug-master-imports/status', () => {
     expect(body.totals.hot_code_coverage).toBe(0);
   });
 
-  it('returns 500 on database error', async () => {
-    drugMasterImportLogFindManyMock.mockRejectedValue(new Error('DB connection lost'));
+  it('returns a sanitized no-store 500 on database error', async () => {
+    const unsafeError = new Error('DB connection lost with raw import status secret');
+    unsafeError.name = 'DrugImportStatusSecretError';
+    drugMasterImportLogFindManyMock.mockRejectedValue(unsafeError);
 
-    await expect(GET(createRequest())).rejects.toThrow('DB connection lost');
+    const response = await GET(createRequest());
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('import status secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'drug_master_imports_status_get_unhandled_error',
+      undefined,
+      {
+        event: 'drug_master_imports_status_get_unhandled_error',
+        route: '/api/drug-master-imports/status',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('import status secret');
+    expect(logged).not.toContain('DrugImportStatusSecretError');
   });
 });

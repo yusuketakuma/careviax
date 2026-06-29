@@ -1,34 +1,63 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { drugMasterFindUniqueMock } = vi.hoisted(() => ({
+const {
+  authMock,
+  membershipFindFirstMock,
+  auditLogCreateMock,
+  drugMasterFindUniqueMock,
+  loggerErrorMock,
+} = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   drugMasterFindUniqueMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
 }));
 
-vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => unknown) => {
-    return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
-  },
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    auditLog: {
+      create: auditLogCreateMock,
+    },
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
     drugMaster: {
       findUnique: drugMasterFindUniqueMock,
     },
   },
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
+}));
+
 import { GET } from './route';
 
-function createRequest() {
-  return new NextRequest('http://localhost/api/drug-masters/drug_1');
+function createRequest(headers: Record<string, string> = { 'x-org-id': 'org_1' }) {
+  return new NextRequest('http://localhost/api/drug-masters/drug_1', { headers });
+}
+
+function createRouteContext(id: string) {
+  return { params: Promise.resolve({ id }) };
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/drug-masters/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist', site_id: null });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     drugMasterFindUniqueMock.mockResolvedValue({
       id: 'drug_1',
       drug_name: 'アセトアミノフェン',
@@ -38,12 +67,24 @@ describe('/api/drug-masters/[id]', () => {
     });
   });
 
-  it('returns the drug master detail with related safety data', async () => {
-    const response = (await GET(createRequest(), {
-      params: Promise.resolve({ id: '  drug_1  ' }),
-    }))!;
+  it('returns no-store 401 before querying safety data when unauthenticated', async () => {
+    authMock.mockResolvedValueOnce(null);
 
+    const response = await GET(createRequest(), createRouteContext('drug_1'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the drug master detail with related safety data', async () => {
+    const response = await GET(createRequest(), createRouteContext('  drug_1  '));
+
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(drugMasterFindUniqueMock).toHaveBeenCalledWith({
       where: { id: 'drug_1' },
       include: expect.any(Object),
@@ -86,11 +127,11 @@ describe('/api/drug-masters/[id]', () => {
       ],
     });
 
-    const response = (await GET(createRequest(), {
-      params: Promise.resolve({ id: 'drug_1' }),
-    }))!;
+    const response = await GET(createRequest(), createRouteContext('drug_1'));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     const body = await response.json();
     expect(drugMasterFindUniqueMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -120,14 +161,58 @@ describe('/api/drug-masters/[id]', () => {
   });
 
   it('rejects blank drug master ids before querying safety data', async () => {
-    const response = (await GET(createRequest(), {
-      params: Promise.resolve({ id: '   ' }),
-    }))!;
+    const response = await GET(createRequest(), createRouteContext('   '));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '医薬品IDが不正です',
     });
     expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 404 when the drug master is not found', async () => {
+    drugMasterFindUniqueMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest(), createRouteContext('missing_drug'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+    expectNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '医薬品が見つかりません',
+    });
+  });
+
+  it('returns a sanitized no-store 500 when detail lookup fails unexpectedly', async () => {
+    const unsafeError = new Error('raw drug interaction secret');
+    unsafeError.name = 'DrugMasterDetailSecretError';
+    drugMasterFindUniqueMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await GET(createRequest(), createRouteContext('drug_1'));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('interaction secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'drug_masters_detail_get_unhandled_error',
+      undefined,
+      {
+        event: 'drug_masters_detail_get_unhandled_error',
+        route: '/api/drug-masters/[id]',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('interaction secret');
+    expect(logged).not.toContain('DrugMasterDetailSecretError');
   });
 });

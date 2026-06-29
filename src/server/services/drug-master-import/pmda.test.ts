@@ -46,6 +46,19 @@ const sampleXml = `<?xml version="1.0" encoding="UTF-8"?>
   </section>
 </document>`;
 
+const nameOnlyPrimaryXml = `<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <header>
+    <drug_name>サンプル錠５ｍｇ</drug_name>
+    <revision_date>2026/03/01</revision_date>
+    <version>1.0</version>
+  </header>
+  <section>
+    <title>禁忌</title>
+    <item>重篤な肝障害の患者</item>
+  </section>
+</document>`;
+
 describe('parsePmdaPackageInsertArchive', () => {
   it('parses XML ZIP payloads into structured sections', async () => {
     const zipped = zipSync({
@@ -177,11 +190,47 @@ describe('importPmdaPackageInserts', () => {
     });
     expect(db.drugInteraction.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: {
+          drug_a_id_drug_b_id_source: {
+            drug_a_id: 'drug_primary',
+            drug_b_id: 'drug_warfarin',
+            source: 'pmda_xml',
+          },
+        },
         create: expect.objectContaining({
           source: 'pmda_xml',
           severity: 'contraindicated',
         }),
       }),
     );
+    expect(db.drugInteraction.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips name-only primary package inserts instead of selecting DrugMaster by fuzzy name', async () => {
+    const zipped = zipSync({
+      'name-only.xml': Buffer.from(nameOnlyPrimaryXml, 'utf8'),
+    });
+
+    const result = await importPmdaPackageInserts(db, {
+      zipUrl: 'https://www.pmda.go.jp/pmda.zip',
+      fetchImpl: async () =>
+        new Response(toZipBlob(zipped), {
+          status: 200,
+          headers: { 'content-type': 'application/zip' },
+        }),
+    });
+
+    expect(result.importedCount).toBe(0);
+    expect(db.drugPackageInsert.findFirst).not.toHaveBeenCalled();
+    expect(db.drugPackageInsert.create).not.toHaveBeenCalled();
+    expect(db.drugPackageInsert.update).not.toHaveBeenCalled();
+    expect(db.drugInteraction.upsert).not.toHaveBeenCalled();
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: {
+        status: 'completed',
+        record_count: 0,
+      },
+    });
   });
 });

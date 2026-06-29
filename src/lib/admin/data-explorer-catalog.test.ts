@@ -22,4 +22,8 @@ describe('data explorer coverage catalog', () => {
     expect(getCoverageCategory('PatientMcsSummary')).toBe('frontend_api');
     expect(getCoverageCategory('PatientMcsMessage')).toBe('frontend_api');
   });
+
+  it('marks operating-hours settings as frontend-backed', () => {
+    expect(getCoverageCategory('PharmacyOperatingHours')).toBe('frontend_api');
+  });
 });

@@ -164,12 +164,38 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
               org_id: 'org_1',
               patient_id: 'patient_1',
               scanned_by: 'user_scan',
+              qr_payload_hash: 'hash_1',
               parsed_data: {
                 patientName: '山田 太郎',
                 patientNameKana: 'ヤマダ タロウ',
                 patientBirthdate: '1950-03-15',
                 patientGender: 'male',
                 prescriptionExpirationDate: '2026-06-12',
+                lines: [
+                  {
+                    drugName: 'アムロジピン錠5mg',
+                    drugCode: '2149001',
+                    drugCodeResolutionStatus: 'resolved',
+                    drugCodeResolutionSource: 'drug_master_code',
+                    dosageForm: '錠剤',
+                    dose: '1錠',
+                    frequency: '1日1回朝食後',
+                    days: 14,
+                    packagingMethod: 'blister_pack',
+                    packagingInstructions:
+                      'PTP管理 / 混合 / 賦形 / 脱カプセル / 一包化しない / 手撒き',
+                    packagingInstructionTags: [
+                      'ptp',
+                      'mixing',
+                      'excipient',
+                      'decapsulation',
+                      'no_unit_dose',
+                      'manual_ptp',
+                    ],
+                    route: 'internal',
+                    dispensingMethod: 'standard',
+                  },
+                ],
                 supplementalRecords: [
                   {
                     recordType: '421',
@@ -271,6 +297,147 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(broadcastStatusUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects contradictory no-unit-dose packaging metadata before draft lookup', async () => {
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            packaging_method: 'unit_dose',
+            packaging_instruction_tags: ['no_unit_dose'],
+            dispensing_method: 'unit_dose',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects no-unit-dose instruction text that contradicts unit-dose metadata before draft lookup', async () => {
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            packaging_method: 'unit_dose',
+            packaging_instructions: '一包化不可',
+            dispensing_method: 'unit_dose',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects review-required name-fallback drug codes before creating an intake', async () => {
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'draft_1',
+            status: 'pending',
+            org_id: 'org_1',
+            patient_id: 'patient_1',
+            scanned_by: 'user_scan',
+            qr_payload_hash: 'hash_1',
+            parsed_data: {
+              patientName: '山田 太郎',
+              patientNameKana: 'ヤマダ タロウ',
+              patientBirthdate: '1950-03-15',
+              patientGender: 'male',
+              prescriptionExpirationDate: '2026-06-12',
+              lines: [
+                {
+                  drugName: 'アムロジピン錠5mg',
+                  drugCode: null,
+                  drugCodeResolutionStatus: 'review_required',
+                  drugCodeResolutionSource: 'drug_master_name_fallback',
+                  candidateDrugCode: '2149001',
+                  candidateDrugName: 'アムロジピン錠5mg',
+                  dose: '1錠',
+                  frequency: '1日1回朝食後',
+                  days: 14,
+                },
+              ],
+            },
+          }),
+          updateMany: qrScanDraftClaimMock,
+          update: qrScanDraftUpdateMock,
+        },
+        jahisSupplementalRecord: {
+          updateMany: jahisSupplementalRecordUpdateManyMock,
+          deleteMany: jahisSupplementalRecordDeleteManyMock,
+          createMany: jahisSupplementalRecordCreateManyMock,
+        },
+        medicationIssue: {
+          findMany: medicationIssueFindManyMock,
+          createMany: medicationIssueCreateManyMock,
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        line_1_drug_code: ['薬剤コードを医薬品マスターコードで確認してください'],
+      },
+    });
+    expect(qrScanDraftClaimMock).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
+  });
+
   it('creates an intake using patient_id and case_id without pre-resolving an existing cycle', async () => {
     const response = await POST(
       createRequest({
@@ -288,10 +455,17 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
             dose: ' 1錠 ',
             frequency: ' 1日1回朝食後 ',
             days: 14,
-            packaging_instructions: ' 一包化 ',
-            packaging_instruction_tags: ['unit_dose'],
+            packaging_instructions: ' PTP管理 / 混合 / 賦形 / 脱カプセル / 一包化しない / 手撒き ',
+            packaging_instruction_tags: [
+              'ptp',
+              'mixing',
+              'excipient',
+              'decapsulation',
+              'no_unit_dose',
+              'manual_ptp',
+            ],
             route: ' internal ',
-            dispensing_method: ' unit_dose ',
+            dispensing_method: ' standard ',
             notes: ' ',
           },
         ],
@@ -324,12 +498,21 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
           expect.objectContaining({
             drug_name: 'アムロジピン錠5mg',
             drug_code: '2149001',
-            dosage_form: undefined,
+            dosage_form: '錠剤',
             dose: '1錠',
             frequency: '1日1回朝食後',
-            packaging_instructions: '一包化',
+            packaging_method: 'blister_pack',
+            packaging_instructions: 'PTP管理 / 混合 / 賦形 / 脱カプセル / 一包化しない / 手撒き',
+            packaging_instruction_tags: [
+              'ptp',
+              'mixing',
+              'excipient',
+              'decapsulation',
+              'no_unit_dose',
+              'manual_ptp',
+            ],
             route: 'internal',
-            dispensing_method: 'unit_dose',
+            dispensing_method: 'standard',
             notes: undefined,
           }),
         ],
@@ -349,10 +532,11 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
         confirmed_intake_id: 'intake_1',
         raw_qr_texts: [],
         qr_payload_hash: null,
-        parsed_data: expect.objectContaining({
+        parsed_data: {
           confirmed: true,
+          confirmed_at: expect.any(String),
           confirmed_intake_id: 'intake_1',
-        }),
+        },
         expected_qr_count: null,
       }),
     });
@@ -450,7 +634,207 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(JSON.stringify(event)).not.toContain('cycle_1');
   });
 
+  it('rejects QR confirmations that override parsed packaging instructions', async () => {
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        prescriber_name: '鈴木医師',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            packaging_instructions: '一包化',
+            packaging_instruction_tags: ['ptp'],
+            dispensing_method: 'standard',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'QR下書きの処方明細と送信された処方明細が一致しません',
+      details: expect.objectContaining({
+        mismatches: expect.arrayContaining(['line_1_packaging_instructions']),
+      }),
+    });
+    expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
+    expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to expanded packaging tags from QR parsed_data', async () => {
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        prescriber_name: '鈴木医師',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    expect(response.status).toBe(201);
+    expect(createPrescriptionIntakeInTxMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        lines: [
+          expect.objectContaining({
+            drug_code: '2149001',
+            dosage_form: '錠剤',
+            packaging_method: 'blister_pack',
+            packaging_instructions: 'PTP管理 / 混合 / 賦形 / 脱カプセル / 一包化しない / 手撒き',
+            packaging_instruction_tags: [
+              'ptp',
+              'mixing',
+              'excipient',
+              'decapsulation',
+              'no_unit_dose',
+              'manual_ptp',
+            ],
+          }),
+        ],
+      }),
+      'org_1',
+      'user_1',
+      expect.any(Object),
+    );
+  });
+
+  it('rejects QR parsed_data fallback lines with contradictory packaging metadata before claiming the draft', async () => {
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'draft_1',
+            status: 'pending',
+            org_id: 'org_1',
+            patient_id: 'patient_1',
+            scanned_by: 'user_scan',
+            qr_payload_hash: 'hash_1',
+            parsed_data: {
+              patientName: '山田 太郎',
+              patientNameKana: 'ヤマダ タロウ',
+              patientBirthdate: '1950-03-15',
+              patientGender: 'male',
+              lines: [
+                {
+                  drugName: 'アムロジピン錠5mg',
+                  dose: '1錠',
+                  frequency: '1日1回朝食後',
+                  days: 14,
+                  packagingMethod: 'unit_dose',
+                  packagingInstructions: '一包化不可',
+                  packagingInstructionTags: ['no_unit_dose'],
+                  dispensingMethod: 'unit_dose',
+                },
+              ],
+            },
+          }),
+          updateMany: qrScanDraftClaimMock,
+          update: qrScanDraftUpdateMock,
+        },
+        jahisSupplementalRecord: {
+          updateMany: jahisSupplementalRecordUpdateManyMock,
+          deleteMany: jahisSupplementalRecordDeleteManyMock,
+          createMany: jahisSupplementalRecordCreateManyMock,
+        },
+        medicationIssue: {
+          findMany: medicationIssueFindManyMock,
+          createMany: medicationIssueCreateManyMock,
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        prescriber_name: '鈴木医師',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(qrScanDraftClaimMock).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
+    expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
+    expect(runPostCreateHooksMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
   it('returns injectable outpatient eligibility details from intake rollback', async () => {
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'draft_1',
+            status: 'pending',
+            org_id: 'org_1',
+            patient_id: 'patient_1',
+            scanned_by: 'user_scan',
+            qr_payload_hash: 'hash_1',
+            parsed_data: {
+              patientName: '山田 太郎',
+              patientNameKana: 'ヤマダ タロウ',
+              patientBirthdate: '1950-03-15',
+              patientGender: 'male',
+              lines: [
+                {
+                  drugName: '注射薬A',
+                  drugCode: 'INJ001',
+                  dosageForm: '注射液',
+                  dose: '1本',
+                  frequency: '1日1回',
+                  days: 7,
+                  route: 'injection',
+                },
+              ],
+            },
+          }),
+          updateMany: qrScanDraftClaimMock,
+          update: qrScanDraftUpdateMock,
+        },
+        jahisSupplementalRecord: {
+          updateMany: jahisSupplementalRecordUpdateManyMock,
+          deleteMany: jahisSupplementalRecordDeleteManyMock,
+          createMany: jahisSupplementalRecordCreateManyMock,
+        },
+        medicationIssue: {
+          findMany: medicationIssueFindManyMock,
+          createMany: medicationIssueCreateManyMock,
+        },
+      }),
+    );
     createPrescriptionIntakeInTxMock.mockResolvedValue({
       kind: 'error',
       error: 'outpatient_injection_not_eligible',

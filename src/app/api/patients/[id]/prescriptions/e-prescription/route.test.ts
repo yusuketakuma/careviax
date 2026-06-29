@@ -10,6 +10,7 @@ const {
   createEPrescriptionAdapterMock,
   fetchPrescriptionMock,
   createPrescriptionIntakeMock,
+  loggerErrorMock,
 } = vi.hoisted(() => {
   const fetchPrescriptionMock = vi.fn();
   const createEPrescriptionAdapterMock = vi.fn(() => ({
@@ -31,6 +32,7 @@ const {
     createEPrescriptionAdapterMock,
     fetchPrescriptionMock,
     createPrescriptionIntakeMock,
+    loggerErrorMock: vi.fn(),
   };
 });
 
@@ -81,6 +83,10 @@ vi.mock('@/server/services/prescription-intake-service', () => ({
   createPrescriptionIntake: createPrescriptionIntakeMock,
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
+}));
+
 vi.mock('@/lib/auth/visit-schedule-access', () => ({
   applyPatientAssignmentWhere: (base: unknown) => base,
 }));
@@ -106,6 +112,11 @@ function createMalformedJsonRequest() {
     },
     body: '{"prescription_id":',
   });
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 const DEFAULT_CTX = { orgId: 'org_1', userId: 'user_1', role: 'admin' };
@@ -753,6 +764,44 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
       idempotent: true,
     });
     expect(createPrescriptionIntakeMock).toHaveBeenCalledOnce();
+    expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed no-store 500 without leaking unexpected electronic prescription intake failures', async () => {
+    mockAccessiblePatient();
+    mockEPrescription();
+    txMock.medicationCycle.findMany.mockResolvedValue([{ id: 'cycle_1', case_id: 'case_1' }]);
+    const unsafeError = new Error('raw e-prescription secret rx_abc123');
+    unsafeError.name = 'UnsafeElectronicPrescriptionFailure';
+    createPrescriptionIntakeMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw e-prescription secret');
+    expect(bodyText).not.toContain('rx_abc123');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'patient_eprescription_post_unhandled_error',
+      undefined,
+      {
+        event: 'patient_eprescription_post_unhandled_error',
+        route: '/api/patients/[id]/prescriptions/e-prescription',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('raw e-prescription secret');
+    expect(logged).not.toContain('rx_abc123');
     expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();
   });
 });

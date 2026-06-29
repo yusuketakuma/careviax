@@ -186,9 +186,7 @@ export function resolveLatestGenericNameWorkbookUrl(
   return resolveImportSourceUrl(match[1], pageUrl, MHLW_IMPORT_URL_POLICY);
 }
 
-export async function parseMhlwPriceWorkbook(
-  options: ParseMhlwPriceWorkbookOptions = {},
-) {
+export async function parseMhlwPriceWorkbook(options: ParseMhlwPriceWorkbookOptions = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
   let resolvedWorkbookUrl = options.workbookUrl;
   if (!resolvedWorkbookUrl) {
@@ -491,7 +489,7 @@ export async function importGenericNameMappings(
         const normalizedGeneric = master.generic_name?.trim();
         if (normalizedGeneric && normalizedGeneric === entry.generic_name) return true;
 
-        return master.drug_name.includes(entry.generic_name);
+        return false;
       });
 
       const current = grouped.get(entry.generic_name);

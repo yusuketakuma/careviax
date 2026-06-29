@@ -327,7 +327,12 @@ describe('/api/qr-scan-drafts POST', () => {
         {
           line_number: 1,
           drug_name: 'アムロジピン錠5mg',
-          drug_code: '2149001',
+          drug_code: null,
+          drug_code_resolution_status: 'review_required',
+          drug_code_resolution_source: 'drug_master_name_fallback',
+          candidate_drug_master_id: 'drug_1',
+          candidate_drug_code: '2149001',
+          candidate_drug_name: 'アムロジピン錠5mg',
           dosage_form: '錠',
           dose: '1錠',
           frequency: '1日1回朝食後',
@@ -355,7 +360,16 @@ describe('/api/qr-scan-drafts POST', () => {
         { lineIndex: 0, field: 'dosage_form', value: '錠', source: 'drug_master' },
       ],
       unmatchedDrugs: [
-        { lineIndex: 0, drugName: '薬A', drugCode: null, reason: 'no_code_provided' },
+        {
+          lineIndex: 0,
+          drugName: '薬A',
+          drugCode: null,
+          reason: 'no_code_provided',
+          requiresReview: true,
+          suggestedDrugMasterId: 'drug_1',
+          suggestedDrugCode: '2149001',
+          suggestedDrugName: 'アムロジピン錠5mg',
+        },
       ],
       formularyStatus: [
         {
@@ -483,6 +497,12 @@ describe('/api/qr-scan-drafts POST', () => {
             lines: [
               expect.objectContaining({
                 drugName: 'アムロジピン錠5mg',
+                drugCode: null,
+                drugCodeResolutionStatus: 'review_required',
+                drugCodeResolutionSource: 'drug_master_name_fallback',
+                candidateDrugMasterId: 'drug_1',
+                candidateDrugCode: '2149001',
+                candidateDrugName: 'アムロジピン錠5mg',
                 packagingInstructions: '一包化 / 別包',
                 packagingInstructionTags: ['unit_dose', 'separate_pack'],
                 dispensingMethod: 'unit_dose',

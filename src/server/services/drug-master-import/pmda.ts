@@ -319,32 +319,14 @@ function canonicalizePair(aId: string, bId: string) {
 
 function matchCounterpartIds(
   candidate: ParsedPmdaInteractionCandidate,
-  masters: Array<{
-    id: string;
-    yj_code: string;
-    drug_name: string;
-    generic_name: string | null;
-  }>,
+  masterIdByYjCode: Map<string, string>,
 ) {
   const matched = new Map<string, string>();
 
   for (const code of candidate.counterpart_yj_codes) {
-    const master = masters.find((item) => item.yj_code === code);
-    if (master) {
-      matched.set(master.id, master.id);
-    }
-  }
-
-  for (const name of candidate.counterpart_names) {
-    const master = masters.find(
-      (item) =>
-        item.drug_name === name ||
-        item.drug_name.includes(name) ||
-        item.generic_name === name ||
-        name.includes(item.drug_name),
-    );
-    if (master) {
-      matched.set(master.id, master.id);
+    const masterId = masterIdByYjCode.get(code);
+    if (masterId) {
+      matched.set(masterId, masterId);
     }
   }
 
@@ -367,17 +349,11 @@ export async function importPmdaPackageInserts(
     });
 
     let importedCount = 0;
+    const mastersByYjCode = new Map(masters.map((item) => [item.yj_code, item]));
+    const masterIdByYjCode = new Map(masters.map((item) => [item.yj_code, item.id]));
 
     for (const record of parsed.records) {
-      const primary =
-        (record.yj_code ? masters.find((item) => item.yj_code === record.yj_code) : null) ??
-        (record.drug_name
-          ? masters.find(
-              (item) =>
-                item.drug_name === record.drug_name || item.drug_name.includes(record.drug_name!),
-            )
-          : null);
-
+      const primary = record.yj_code ? mastersByYjCode.get(record.yj_code) : null;
       if (!primary) {
         continue;
       }
@@ -415,7 +391,7 @@ export async function importPmdaPackageInserts(
       }
 
       for (const candidate of record.interaction_candidates) {
-        const counterpartIds = matchCounterpartIds(candidate, masters).filter(
+        const counterpartIds = matchCounterpartIds(candidate, masterIdByYjCode).filter(
           (id) => id !== primary.id,
         );
 

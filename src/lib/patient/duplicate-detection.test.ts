@@ -35,18 +35,19 @@ describe('patient duplicate detection', () => {
     expect(findMany).toHaveBeenCalledWith({
       where: expect.objectContaining({
         org_id: 'org_1',
+        name: { contains: '山田 太郎', mode: 'insensitive' },
+        birth_date: new Date('1950-01-01T00:00:00.000Z'),
+        gender: 'male',
         id: { not: 'patient_current' },
         AND: [
           {
-            cases: {
-              some: {
-                OR: [
-                  { primary_pharmacist_id: 'driver_1' },
-                  { backup_pharmacist_id: 'driver_1' },
-                  { visit_schedules: { some: { pharmacist_id: 'driver_1' } } },
-                ],
-              },
-            },
+            OR: [
+              { primary_pharmacist_id: 'driver_1' },
+              { backup_pharmacist_id: 'driver_1' },
+              { primary_staff_id: 'driver_1' },
+              { backup_staff_id: 'driver_1' },
+              { cases: { some: { visit_schedules: { some: { pharmacist_id: 'driver_1' } } } } },
+            ],
           },
         ],
       }),

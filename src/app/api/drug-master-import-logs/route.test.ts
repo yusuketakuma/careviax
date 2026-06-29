@@ -1,72 +1,93 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { denyAuthMock, withAuthContextOptionsMock, drugMasterImportLogFindManyMock } = vi.hoisted(
-  () => ({
-    denyAuthMock: vi.fn(),
-    withAuthContextOptionsMock: vi.fn(),
-    drugMasterImportLogFindManyMock: vi.fn(),
-  }),
-);
+const { authMock, membershipFindFirstMock, auditLogCreateMock, findManyMock, loggerErrorMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    auditLogCreateMock: vi.fn(),
+    findManyMock: vi.fn(),
+    loggerErrorMock: vi.fn(),
+  }));
 
-vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => unknown, options?: unknown) => {
-    withAuthContextOptionsMock(options);
-    return (req: NextRequest) => {
-      if (denyAuthMock()) {
-        return new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 });
-      }
-      return handler(req, { orgId: 'org_1', userId: 'user_1', role: 'admin' });
-    };
-  },
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    auditLog: {
+      create: auditLogCreateMock,
+    },
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
     drugMasterImportLog: {
-      findMany: drugMasterImportLogFindManyMock,
+      findMany: findManyMock,
     },
   },
 }));
 
-import { GET } from './route';
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
+}));
 
-function createRequest(search = '') {
-  return new NextRequest(`http://localhost/api/drug-master-import-logs${search}`);
+import { GET as rawGET } from './route';
+
+const emptyRouteContext = { params: Promise.resolve({}) };
+
+function GET(req: NextRequest) {
+  return rawGET(req, emptyRouteContext);
+}
+
+function createRequest(search = '', headers: Record<string, string> = { 'x-org-id': 'org_1' }) {
+  return new NextRequest(`http://localhost/api/drug-master-import-logs${search}`, { headers });
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/drug-master-import-logs', () => {
   beforeEach(() => {
-    denyAuthMock.mockClear();
-    drugMasterImportLogFindManyMock.mockClear();
-    denyAuthMock.mockReturnValue(false);
-    drugMasterImportLogFindManyMock.mockResolvedValue([
-      { id: 'log_1', source: 'ssk', status: 'success' },
-    ]);
+    vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin', site_id: null });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
+    findManyMock.mockResolvedValue([{ id: 'log_1', source: 'ssk', status: 'completed' }]);
   });
 
-  it('returns 403 before querying import logs when admin permission is denied', async () => {
-    denyAuthMock.mockReturnValue(true);
+  it('returns no-store 401 before querying import logs when unauthenticated', async () => {
+    authMock.mockResolvedValueOnce(null);
 
-    const response = (await GET(createRequest(), {
-      params: Promise.resolve({}),
-    }))!;
+    const response = await GET(createRequest());
 
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(findManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 403 before querying import logs when admin permission is denied', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist', site_id: null });
+
+    const response = await GET(createRequest());
+
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
-    expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
+    expectNoStore(response);
+    expect(findManyMock).not.toHaveBeenCalled();
   });
 
-  it('accepts padded canonical limits and returns latest import logs', async () => {
-    const response = (await GET(createRequest('?limit=%2050%20'), {
-      params: Promise.resolve({}),
-    }))!;
+  it('accepts padded canonical limits and returns latest import logs with no-store headers', async () => {
+    const response = await GET(createRequest('?limit=%2050%20'));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(withAuthContextOptionsMock).toHaveBeenCalledWith({
-      permission: 'canAdmin',
-      message: '医薬品マスター取込履歴の閲覧権限がありません',
-    });
-    expect(drugMasterImportLogFindManyMock).toHaveBeenCalledWith({
+    expectNoStore(response);
+    expect(findManyMock).toHaveBeenCalledWith({
       where: {},
       orderBy: [{ imported_at: 'desc' }, { created_at: 'desc' }],
       take: 50,
@@ -77,26 +98,26 @@ describe('/api/drug-master-import-logs', () => {
   it.each(['', '20abc', '1e1', '10.5', '0', '100'])(
     'rejects malformed limit=%s before querying import logs',
     async (limit) => {
-      const response = (await GET(createRequest(`?limit=${encodeURIComponent(limit)}`), {
-        params: Promise.resolve({}),
-      }))!;
+      const response = await GET(createRequest(`?limit=${encodeURIComponent(limit)}`));
 
+      if (!response) throw new Error('response is required');
       expect(response.status).toBe(400);
+      expectNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         code: 'VALIDATION_ERROR',
         message: '入力値が不正です',
       });
-      expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
+      expect(findManyMock).not.toHaveBeenCalled();
     },
   );
 
   it('filters import logs by valid source and status', async () => {
-    const response = (await GET(createRequest('?source=pmda&status=failed&limit=20'), {
-      params: Promise.resolve({}),
-    }))!;
+    const response = await GET(createRequest('?source=pmda&status=failed&limit=20'));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(drugMasterImportLogFindManyMock).toHaveBeenCalledWith({
+    expectNoStore(response);
+    expect(findManyMock).toHaveBeenCalledWith({
       where: { source: 'pmda', status: 'failed' },
       orderBy: [{ imported_at: 'desc' }, { created_at: 'desc' }],
       take: 20,
@@ -104,29 +125,64 @@ describe('/api/drug-master-import-logs', () => {
     });
   });
 
-  it('returns 400 before querying when the source filter is invalid', async () => {
-    const response = await GET(createRequest('?source=unknown'), { params: Promise.resolve({}) });
+  it('returns no-store 400 before querying when the source filter is invalid', async () => {
+    const response = await GET(createRequest('?source=unknown'));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
         source: ['対応していない取込ソースです'],
       },
     });
-    expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
+    expect(findManyMock).not.toHaveBeenCalled();
   });
 
-  it('returns 400 before querying when the status filter is invalid', async () => {
-    const response = await GET(createRequest('?status=deleted'), { params: Promise.resolve({}) });
+  it('returns no-store 400 before querying when the status filter is invalid', async () => {
+    const response = await GET(createRequest('?status=deleted'));
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
         status: ['対応していない取込ステータスです'],
       },
     });
-    expect(drugMasterImportLogFindManyMock).not.toHaveBeenCalled();
+    expect(findManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when import log lookup fails unexpectedly', async () => {
+    const unsafeError = new Error('raw import log token secret');
+    unsafeError.name = 'DrugMasterImportLogSecretError';
+    findManyMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await GET(createRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('token secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'drug_master_import_logs_get_unhandled_error',
+      undefined,
+      {
+        event: 'drug_master_import_logs_get_unhandled_error',
+        route: '/api/drug-master-import-logs',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('token secret');
+    expect(logged).not.toContain('DrugMasterImportLogSecretError');
   });
 });

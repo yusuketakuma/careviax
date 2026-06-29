@@ -26,6 +26,11 @@ export interface QrIntakeLineInput {
   line_number: number;
   drug_name: string;
   drug_code: string | null;
+  drug_code_resolution_status?: 'resolved' | 'review_required' | 'unresolved';
+  drug_code_resolution_source?: 'drug_master_code' | 'drug_master_name_fallback' | 'none';
+  candidate_drug_master_id?: string | null;
+  candidate_drug_code?: string | null;
+  candidate_drug_name?: string | null;
   dosage_form: string | null;
   dose: string;
   frequency: string;
@@ -67,6 +72,10 @@ export interface UnmatchedDrug {
   drugName: string;
   drugCode: string | null;
   reason: 'code_not_found' | 'name_not_found' | 'no_code_provided';
+  requiresReview?: boolean;
+  suggestedDrugMasterId?: string | null;
+  suggestedDrugCode?: string | null;
+  suggestedDrugName?: string | null;
 }
 
 export interface InstitutionResolution {
@@ -99,11 +108,15 @@ type FormularyStock = Pick<
 };
 
 interface DrugLookupContext {
-  drugMasterByLine: Array<DrugMaster | null>;
+  drugMasterLookupByLine: DrugMasterLookupResult[];
   stockByDrugMasterId: Map<string, FormularyStock>;
   alternativeGenericStockByGenericName: Map<string, FormularyStock>;
   preferredGenericNameById: Map<string, string>;
 }
+
+type DrugMasterLookupResult =
+  | { drugMaster: DrugMaster; matchSource: 'code' | 'name' }
+  | { drugMaster: null; matchSource: null };
 
 // ── Main Function ──
 
@@ -246,7 +259,7 @@ async function buildDrugLookupContext(
 ): Promise<DrugLookupContext> {
   if (medications.length === 0) {
     return {
-      drugMasterByLine: [],
+      drugMasterLookupByLine: [],
       stockByDrugMasterId: new Map(),
       alternativeGenericStockByGenericName: new Map(),
       preferredGenericNameById: new Map(),
@@ -254,7 +267,7 @@ async function buildDrugLookupContext(
   }
 
   const drugMasterCandidates = await fetchDrugMasterCandidates(medications);
-  const drugMasterByLine = medications.map((med) =>
+  const drugMasterLookupByLine = medications.map((med) =>
     lookupDrugMasterFromCandidates(
       med.drugCode,
       med.drugCodeType,
@@ -263,7 +276,9 @@ async function buildDrugLookupContext(
     ),
   );
   const drugMasterIds = uniqueNonNullable(
-    drugMasterByLine.map((drugMaster) => drugMaster?.id ?? null),
+    drugMasterLookupByLine
+      .filter((lookup) => lookup.matchSource === 'code')
+      .map((lookup) => lookup.drugMaster?.id ?? null),
   );
   const stocks = await fetchFormularyStocks(orgId, siteId, drugMasterIds);
   const stockByDrugMasterId = new Map<string, FormularyStock>();
@@ -275,9 +290,14 @@ async function buildDrugLookupContext(
   }
 
   const alternativeGenericNames = uniqueNonNullable(
-    drugMasterByLine
-      .filter((drugMaster) => drugMaster && !stockByDrugMasterId.has(drugMaster.id))
-      .map((drugMaster) => drugMaster?.generic_name ?? null),
+    drugMasterLookupByLine
+      .filter(
+        (lookup) =>
+          lookup.matchSource === 'code' &&
+          lookup.drugMaster &&
+          !stockByDrugMasterId.has(lookup.drugMaster.id),
+      )
+      .map((lookup) => lookup.drugMaster?.generic_name ?? null),
   );
   const alternativeGenericStocks = await fetchAlternativeGenericStocks(
     orgId,
@@ -300,7 +320,7 @@ async function buildDrugLookupContext(
   const preferredGenericNameById = await fetchPreferredGenericNames(preferredGenericIds);
 
   return {
-    drugMasterByLine,
+    drugMasterLookupByLine,
     stockByDrugMasterId,
     alternativeGenericStockByGenericName,
     preferredGenericNameById,
@@ -337,8 +357,10 @@ function buildDrugMasterWhereClauses(medications: JahisMedication[]) {
 
   for (const med of medications) {
     const cleanedCode = med.drugCode?.replace(/\s/g, '') ?? null;
+    const hasUsableDrugCode =
+      cleanedCode != null && cleanedCode.length > 0 && med.drugCodeType !== 1;
 
-    if (cleanedCode && med.drugCodeType && med.drugCodeType !== 1) {
+    if (hasUsableDrugCode && med.drugCodeType) {
       switch (med.drugCodeType) {
         case 2:
           addCodeLookup(whereClauses, seen, 'receipt_code', cleanedCode);
@@ -356,7 +378,7 @@ function buildDrugMasterWhereClauses(medications: JahisMedication[]) {
       }
     }
 
-    if (cleanedCode) {
+    if (hasUsableDrugCode && cleanedCode) {
       addCodeLookup(whereClauses, seen, 'yj_code', cleanedCode);
       addCodeLookup(whereClauses, seen, 'receipt_code', cleanedCode);
     }
@@ -495,8 +517,10 @@ function lookupDrugMasterFromCandidates(
   drugCodeType: number | undefined,
   drugName: string,
   candidates: DrugMaster[],
-) {
-  if (drugCode && drugCodeType && drugCodeType !== 1) {
+): DrugMasterLookupResult {
+  const hasUsableDrugCode = Boolean(drugCode && drugCodeType !== 1);
+
+  if (hasUsableDrugCode && drugCode && drugCodeType) {
     const cleaned = drugCode.replace(/\s/g, '');
 
     switch (drugCodeType) {
@@ -505,17 +529,17 @@ function lookupDrugMasterFromCandidates(
           candidates,
           (candidate) => candidate.receipt_code === cleaned,
         );
-        if (match) return match;
+        if (match) return { drugMaster: match, matchSource: 'code' };
         break;
       }
       case 4: {
         const match = findFirstCandidate(candidates, (candidate) => candidate.yj_code === cleaned);
-        if (match) return match;
+        if (match) return { drugMaster: match, matchSource: 'code' };
         break;
       }
       case 6: {
         const match = findFirstCandidate(candidates, (candidate) => candidate.hot_code === cleaned);
-        if (match) return match;
+        if (match) return { drugMaster: match, matchSource: 'code' };
         break;
       }
       case 3: {
@@ -523,38 +547,39 @@ function lookupDrugMasterFromCandidates(
           candidates,
           (candidate) => candidate.yj_code === cleaned || candidate.receipt_code === cleaned,
         );
-        if (match) return match;
+        if (match) return { drugMaster: match, matchSource: 'code' };
         break;
       }
     }
   }
 
-  if (drugCode) {
+  if (hasUsableDrugCode && drugCode) {
     const cleaned = drugCode.replace(/\s/g, '');
     if (cleaned.length === 12) {
       const match = findFirstCandidate(candidates, (candidate) => candidate.yj_code === cleaned);
-      if (match) return match;
+      if (match) return { drugMaster: match, matchSource: 'code' };
     }
     if (cleaned.length === 9) {
       const match = findFirstCandidate(
         candidates,
         (candidate) => candidate.receipt_code === cleaned,
       );
-      if (match) return match;
+      if (match) return { drugMaster: match, matchSource: 'code' };
     }
 
     const match = findFirstCandidate(
       candidates,
       (candidate) => candidate.yj_code === cleaned || candidate.receipt_code === cleaned,
     );
-    if (match) return match;
+    if (match) return { drugMaster: match, matchSource: 'code' };
   }
 
   if (drugName && drugName !== '不明') {
-    return findFirstCandidate(candidates, (candidate) => candidate.drug_name.includes(drugName));
+    const match = findDrugNameFallbackCandidate(candidates, drugName);
+    if (match) return { drugMaster: match, matchSource: 'name' };
   }
 
-  return null;
+  return { drugMaster: null, matchSource: null };
 }
 
 function findFirstCandidate(
@@ -562,6 +587,17 @@ function findFirstCandidate(
   predicate: (candidate: DrugMaster) => boolean,
 ) {
   return candidates.find(predicate) ?? null;
+}
+
+function findDrugNameFallbackCandidate(candidates: DrugMaster[], drugName: string) {
+  const normalizedDrugName = drugName.trim();
+  if (!normalizedDrugName) return null;
+
+  return (
+    candidates.find((candidate) => candidate.drug_name === normalizedDrugName) ??
+    candidates.find((candidate) => candidate.drug_name.includes(normalizedDrugName)) ??
+    null
+  );
 }
 
 function mapMedicationLine(
@@ -591,7 +627,14 @@ function mapMedicationLine(
   const dose = med.dose ? (med.unit ? `${med.dose}${med.unit}` : med.dose) : '';
 
   // DrugMaster lookup (drugCodeType-aware)
-  const drugMaster = drugLookupContext.drugMasterByLine[index] ?? null;
+  const drugLookup = drugLookupContext.drugMasterLookupByLine[index] ?? {
+    drugMaster: null,
+    matchSource: null,
+  };
+  const suggestedDrugMaster = drugLookup.matchSource === 'name' ? drugLookup.drugMaster : null;
+  const drugMaster = drugLookup.matchSource === 'code' ? drugLookup.drugMaster : null;
+  const hasUsableDrugCode = Boolean(med.drugCode && med.drugCodeType !== 1);
+  const sourceDrugCode = hasUsableDrugCode ? (med.drugCode ?? null) : null;
 
   let dosageForm: string | null = null;
   let isGeneric = false;
@@ -609,19 +652,27 @@ function mapMedicationLine(
     isGeneric = drugMaster.is_generic;
   } else {
     // No DrugMaster match
-    if (!med.drugCode) {
+    if (!sourceDrugCode) {
       unmatched = {
         lineIndex: index,
         drugName: med.drugName,
         drugCode: null,
         reason: 'no_code_provided',
+        requiresReview: true,
+        suggestedDrugMasterId: suggestedDrugMaster?.id ?? null,
+        suggestedDrugCode: suggestedDrugMaster?.yj_code ?? null,
+        suggestedDrugName: suggestedDrugMaster?.drug_name ?? null,
       };
     } else {
       unmatched = {
         lineIndex: index,
         drugName: med.drugName,
-        drugCode: med.drugCode,
+        drugCode: sourceDrugCode,
         reason: 'code_not_found',
+        requiresReview: true,
+        suggestedDrugMasterId: suggestedDrugMaster?.id ?? null,
+        suggestedDrugCode: suggestedDrugMaster?.yj_code ?? null,
+        suggestedDrugName: suggestedDrugMaster?.drug_name ?? null,
       };
     }
   }
@@ -684,7 +735,11 @@ function mapMedicationLine(
   const noteText = detailNotes.length > 0 ? detailNotes.join(' / ') : null;
   const packagingText =
     detailNotes
-      .filter((value) => /一包|粉砕|別包|別袋|分包|PTP|ヒート|冷所|麻薬|ラベル/i.test(value))
+      .filter((value) =>
+        /一包|粉砕|別包|別袋|分包|PTP|ヒート|シート|冷所|麻薬|ラベル|混合|賦形|脱カプ|手撒き|手まき|manual\s*ptp/i.test(
+          value,
+        ),
+      )
       .join(' / ') || null;
   const parsedPackaging = parsePackagingMethod(packagingText);
   const route = inferRoute({
@@ -710,7 +765,20 @@ function mapMedicationLine(
 
   const line: Omit<QrIntakeLineInput, 'line_number'> = {
     drug_name: med.drugName,
-    drug_code: drugMaster?.yj_code ?? med.drugCode ?? null,
+    drug_code: drugMaster?.yj_code ?? sourceDrugCode,
+    drug_code_resolution_status: drugMaster
+      ? 'resolved'
+      : suggestedDrugMaster
+        ? 'review_required'
+        : 'unresolved',
+    drug_code_resolution_source: drugMaster
+      ? 'drug_master_code'
+      : suggestedDrugMaster
+        ? 'drug_master_name_fallback'
+        : 'none',
+    candidate_drug_master_id: suggestedDrugMaster?.id ?? null,
+    candidate_drug_code: suggestedDrugMaster?.yj_code ?? null,
+    candidate_drug_name: suggestedDrugMaster?.drug_name ?? null,
     dosage_form: dosageForm,
     dose,
     frequency: med.usage ?? '',

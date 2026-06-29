@@ -1,9 +1,14 @@
 import { NextRequest } from 'next/server';
-import { withAuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, notFound, validationError } from '@/lib/api/response';
-import { prisma } from '@/lib/db/client';
+import { internalError, success, notFound, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject } from '@/lib/db/json';
+import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
 /**
  * GET /api/drug-masters/:id/package-insert
@@ -11,6 +16,22 @@ import { readJsonObject } from '@/lib/db/json';
  * Returns the latest package insert for a drug, with all sections
  * structured for display. Also returns drug interactions and alert rules.
  */
+
+const ROUTE = '/api/drug-masters/[id]/package-insert';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 export type DrugPackageInsertSectionItem = { text: string; severity?: string; detail?: string };
 
@@ -75,136 +96,164 @@ type DrugPackageInsertSections = NonNullable<
   DrugPackageInsertResponse['package_insert']
 >['sections'];
 
-export const GET = withAuthContext(
-  async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
-    const { id: rawId } = await params;
-    const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('医薬品IDが不正です');
+async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }>) {
+  const authResult = await requireAuthContext(req);
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
 
-    const drug = await prisma.drugMaster.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        yj_code: true,
-        drug_name: true,
-        drug_name_kana: true,
-        generic_name: true,
-        drug_price: true,
-        unit: true,
-        dosage_form: true,
-        therapeutic_category: true,
-        manufacturer: true,
-        is_generic: true,
-        is_narcotic: true,
-        is_psychotropic: true,
-        max_administration_days: true,
-        transitional_expiry_date: true,
+  const { id: rawId } = await params;
+  const id = normalizeRequiredRouteParam(rawId);
+  if (!id) return validationError('医薬品IDが不正です');
+
+  return runWithRequestAuthContext(ctx, async () =>
+    withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const drug = await tx.drugMaster.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            yj_code: true,
+            drug_name: true,
+            drug_name_kana: true,
+            generic_name: true,
+            drug_price: true,
+            unit: true,
+            dosage_form: true,
+            therapeutic_category: true,
+            manufacturer: true,
+            is_generic: true,
+            is_narcotic: true,
+            is_psychotropic: true,
+            max_administration_days: true,
+            transitional_expiry_date: true,
+          },
+        });
+
+        if (!drug) return notFound('医薬品が見つかりません');
+
+        // Fetch all package insert versions (not just latest)
+        const packageInserts = await tx.drugPackageInsert.findMany({
+          where: { drug_master_id: id },
+          orderBy: { revised_at: 'desc' },
+          select: {
+            id: true,
+            contraindications: true,
+            interactions: true,
+            adverse_effects: true,
+            dosage_adjustment_renal: true,
+            precautions_elderly: true,
+            document_version: true,
+            revised_at: true,
+            source_format: true,
+            created_at: true,
+          },
+        });
+
+        // Fetch interactions with this drug
+        const [interactionsAsA, interactionsAsB] = await Promise.all([
+          tx.drugInteraction.findMany({
+            where: { drug_a_id: id },
+            include: { drug_b: { select: { id: true, drug_name: true, yj_code: true } } },
+            orderBy: { severity: 'asc' },
+          }),
+          tx.drugInteraction.findMany({
+            where: { drug_b_id: id },
+            include: { drug_a: { select: { id: true, drug_name: true, yj_code: true } } },
+            orderBy: { severity: 'asc' },
+          }),
+        ]);
+
+        // Merge interactions into unified list
+        const interactions = [
+          ...interactionsAsA.map((ix) => ({
+            id: ix.id,
+            counterpart: ix.drug_b,
+            severity: ix.severity,
+            mechanism: ix.mechanism,
+            clinical_effect: ix.clinical_effect,
+            source: ix.source,
+          })),
+          ...interactionsAsB.map((ix) => ({
+            id: ix.id,
+            counterpart: ix.drug_a,
+            severity: ix.severity,
+            mechanism: ix.mechanism,
+            clinical_effect: ix.clinical_effect,
+            source: ix.source,
+          })),
+        ];
+
+        // Fetch applicable alert rules
+        const alertRules = await tx.drugAlertRule.findMany({
+          where: { is_active: true, OR: [{ org_id: ctx.orgId }, { org_id: null }] },
+        });
+
+        const applicableRules = alertRules
+          .filter((rule) => isApplicableAlertRule(rule.condition, drug))
+          .map((rule) => ({
+            id: rule.id,
+            alert_type: rule.alert_type,
+            severity: rule.severity,
+            message: rule.message,
+          }));
+
+        // Structure the latest package insert into readable sections
+        const latest = packageInserts[0] ?? null;
+        const latestPackageInsert = latest
+          ? {
+              id: latest.id,
+              document_version: latest.document_version,
+              revised_at: latest.revised_at?.toISOString() ?? null,
+              source_format: latest.source_format,
+              sections: {
+                contraindications: formatSection(latest.contraindications),
+                interactions: formatSection(latest.interactions),
+                adverse_effects: formatSection(latest.adverse_effects),
+                dosage_adjustment_renal: formatSection(latest.dosage_adjustment_renal),
+                precautions_elderly: formatSection(latest.precautions_elderly),
+              } satisfies DrugPackageInsertSections,
+            }
+          : null;
+
+        return success({
+          drug: {
+            ...drug,
+            transitional_expiry_date: drug.transitional_expiry_date?.toISOString() ?? null,
+          },
+          package_insert: latestPackageInsert,
+          version_history: packageInserts.map((pi) => ({
+            id: pi.id,
+            document_version: pi.document_version,
+            revised_at: pi.revised_at?.toISOString() ?? null,
+            source_format: pi.source_format,
+          })),
+          interactions,
+          applicable_alert_rules: applicableRules,
+        } satisfies DrugPackageInsertResponse);
       },
-    });
+      { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
+    ),
+  );
+}
 
-    if (!drug) return notFound('医薬品が見つかりません');
-
-    // Fetch all package insert versions (not just latest)
-    const packageInserts = await prisma.drugPackageInsert.findMany({
-      where: { drug_master_id: id },
-      orderBy: { revised_at: 'desc' },
-      select: {
-        id: true,
-        contraindications: true,
-        interactions: true,
-        adverse_effects: true,
-        dosage_adjustment_renal: true,
-        precautions_elderly: true,
-        document_version: true,
-        revised_at: true,
-        source_format: true,
-        created_at: true,
-      },
-    });
-
-    // Fetch interactions with this drug
-    const [interactionsAsA, interactionsAsB] = await Promise.all([
-      prisma.drugInteraction.findMany({
-        where: { drug_a_id: id },
-        include: { drug_b: { select: { id: true, drug_name: true, yj_code: true } } },
-        orderBy: { severity: 'asc' },
-      }),
-      prisma.drugInteraction.findMany({
-        where: { drug_b_id: id },
-        include: { drug_a: { select: { id: true, drug_name: true, yj_code: true } } },
-        orderBy: { severity: 'asc' },
-      }),
-    ]);
-
-    // Merge interactions into unified list
-    const interactions = [
-      ...interactionsAsA.map((ix) => ({
-        id: ix.id,
-        counterpart: ix.drug_b,
-        severity: ix.severity,
-        mechanism: ix.mechanism,
-        clinical_effect: ix.clinical_effect,
-        source: ix.source,
-      })),
-      ...interactionsAsB.map((ix) => ({
-        id: ix.id,
-        counterpart: ix.drug_a,
-        severity: ix.severity,
-        mechanism: ix.mechanism,
-        clinical_effect: ix.clinical_effect,
-        source: ix.source,
-      })),
-    ];
-
-    // Fetch applicable alert rules
-    const alertRules = await prisma.drugAlertRule.findMany({
-      where: { is_active: true, OR: [{ org_id: ctx.orgId }, { org_id: null }] },
-    });
-
-    const applicableRules = alertRules
-      .filter((rule) => isApplicableAlertRule(rule.condition, drug))
-      .map((rule) => ({
-        id: rule.id,
-        alert_type: rule.alert_type,
-        severity: rule.severity,
-        message: rule.message,
-      }));
-
-    // Structure the latest package insert into readable sections
-    const latest = packageInserts[0] ?? null;
-    const latestPackageInsert = latest
-      ? {
-          id: latest.id,
-          document_version: latest.document_version,
-          revised_at: latest.revised_at?.toISOString() ?? null,
-          source_format: latest.source_format,
-          sections: {
-            contraindications: formatSection(latest.contraindications),
-            interactions: formatSection(latest.interactions),
-            adverse_effects: formatSection(latest.adverse_effects),
-            dosage_adjustment_renal: formatSection(latest.dosage_adjustment_renal),
-            precautions_elderly: formatSection(latest.precautions_elderly),
-          } satisfies DrugPackageInsertSections,
-        }
-      : null;
-
-    return success({
-      drug: {
-        ...drug,
-        transitional_expiry_date: drug.transitional_expiry_date?.toISOString() ?? null,
-      },
-      package_insert: latestPackageInsert,
-      version_history: packageInserts.map((pi) => ({
-        id: pi.id,
-        document_version: pi.document_version,
-        revised_at: pi.revised_at?.toISOString() ?? null,
-        source_format: pi.source_format,
-      })),
-      interactions,
-      applicable_alert_rules: applicableRules,
-    } satisfies DrugPackageInsertResponse);
-  },
-);
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req, routeContext.params));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('drug_masters_package_insert_get_unhandled_error', undefined, {
+        event: 'drug_masters_package_insert_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
 
 /**
  * Convert raw JSON field into a displayable array of items.

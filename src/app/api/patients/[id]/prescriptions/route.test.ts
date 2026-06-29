@@ -1,24 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { patientFindFirstMock, careCaseFindManyMock, prescriptionIntakeFindManyMock } = vi.hoisted(
-  () => ({
-    patientFindFirstMock: vi.fn(),
-    careCaseFindManyMock: vi.fn(),
-    prescriptionIntakeFindManyMock: vi.fn(),
-  }),
-);
+const {
+  patientFindFirstMock,
+  careCaseFindManyMock,
+  prescriptionIntakeFindManyMock,
+  requireAuthContextMock,
+  runWithRequestAuthContextMock,
+  withOrgContextMock,
+  withRoutePerformanceMock,
+  loggerErrorMock,
+} = vi.hoisted(() => ({
+  patientFindFirstMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
+  prescriptionIntakeFindManyMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+  runWithRequestAuthContextMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  withRoutePerformanceMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (
-    handler: (
-      req: NextRequest,
-      ctx: { orgId: string; userId: string; role: string },
-      routeContext: { params: Promise<{ id: string }> },
-    ) => Promise<Response>,
-  ) => {
-    return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }, routeContext);
+  requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/request-context', () => ({
+  runWithRequestAuthContext: runWithRequestAuthContextMock,
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/performance', () => ({
+  withRoutePerformance: withRoutePerformanceMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    error: loggerErrorMock,
   },
 }));
 
@@ -52,6 +73,33 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/patients/[id]/prescriptions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    const ctx = {
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'pharmacist',
+      ipAddress: '203.0.113.10',
+      userAgent: 'vitest',
+    };
+    requireAuthContextMock.mockResolvedValue({ ctx });
+    runWithRequestAuthContextMock.mockImplementation(
+      (_ctx: typeof ctx, fn: () => Promise<Response>) => fn(),
+    );
+    withRoutePerformanceMock.mockImplementation((_req: NextRequest, fn: () => Promise<Response>) =>
+      fn(),
+    );
+    withOrgContextMock.mockImplementation((_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+      fn({
+        patient: {
+          findFirst: patientFindFirstMock,
+        },
+        careCase: {
+          findMany: careCaseFindManyMock,
+        },
+        prescriptionIntake: {
+          findMany: prescriptionIntakeFindManyMock,
+        },
+      }),
+    );
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
       name: '山田 太郎',
@@ -101,6 +149,55 @@ describe('/api/patients/[id]/prescriptions', () => {
       hasMore: true,
       nextCursor: expect.any(String),
     });
+  });
+
+  it('uses route-local auth, performance tracking, and explicit RLS request context', async () => {
+    const response = (await GET(createGetRequest('patient_1', 'limit=5'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(withRoutePerformanceMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.any(Function),
+    );
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canVisit',
+      message: '患者処方履歴の閲覧権限がありません',
+    });
+    expect(runWithRequestAuthContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      expect.any(Function),
+    );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+    });
+  });
+
+  it('returns no-store auth failures before reading prescription PHI', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response('forbidden', { status: 403 }),
+    });
+
+    const response = (await GET(createGetRequest('patient_1', 'limit=5'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(runWithRequestAuthContextMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
   });
 
   it('filters previous prescriptions to the requested accessible case', async () => {
@@ -218,6 +315,8 @@ describe('/api/patients/[id]/prescriptions', () => {
     expect(body.diff_review.rows).toEqual([
       expect.objectContaining({
         key: 'line_current_evening',
+        current_drug_code: 'YJ002',
+        previous_drug_code: 'YJ002',
         change_type: 'changed',
         previous_label: '1錠 夕食後 28日',
         current_label: '2錠 夕食後 28日',
@@ -225,12 +324,144 @@ describe('/api/patients/[id]/prescriptions', () => {
       }),
       expect.objectContaining({
         key: 'line_current_morning',
+        current_drug_code: 'YJ002',
+        previous_drug_code: 'YJ002',
         change_type: 'unchanged',
         previous_label: '1錠 朝食後 28日',
         current_label: '同じ',
       }),
     ]);
     expect(body.diff_review.change_count).toBe(1);
+  });
+
+  it('matches diff review rows by drug code when names are identical', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_current',
+        cycle_id: 'cycle_1',
+        prescribed_date: new Date('2026-04-20T00:00:00.000Z'),
+        created_at: new Date('2026-04-20T10:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_current_b',
+            drug_name: '同名薬',
+            drug_code: 'YJ_B',
+            dose: '2錠',
+            frequency: '夕食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+        ],
+      },
+      {
+        id: 'intake_previous',
+        cycle_id: 'cycle_1',
+        prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+        created_at: new Date('2026-04-01T10:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_previous_a',
+            drug_name: '同名薬',
+            drug_code: 'YJ_A',
+            dose: '1錠',
+            frequency: '朝食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+          {
+            id: 'line_previous_b',
+            drug_name: '同名薬',
+            drug_code: 'YJ_B',
+            dose: '1錠',
+            frequency: '夕食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+        ],
+      },
+    ]);
+
+    const response = (await GET(createGetRequest('patient_1', 'limit=5&case_id=case_1'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.diff_review.rows).toContainEqual(
+      expect.objectContaining({
+        key: 'line_current_b',
+        current_drug_code: 'YJ_B',
+        previous_drug_code: 'YJ_B',
+        change_type: 'changed',
+        previous_label: '1錠 夕食後 28日',
+        current_label: '2錠 夕食後 28日',
+      }),
+    );
+    expect(body.diff_review.rows).toContainEqual(
+      expect.objectContaining({
+        key: 'removed-line_previous_a',
+        current_drug_code: null,
+        previous_drug_code: 'YJ_A',
+        change_type: 'removed',
+      }),
+    );
+  });
+
+  it('keeps removed diff review fallback keys bare when a legacy row id is missing', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_current',
+        cycle_id: 'cycle_1',
+        prescribed_date: new Date('2026-04-20T00:00:00.000Z'),
+        created_at: new Date('2026-04-20T10:00:00.000Z'),
+        lines: [],
+      },
+      {
+        id: 'intake_previous',
+        cycle_id: 'cycle_1',
+        prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+        created_at: new Date('2026-04-01T10:00:00.000Z'),
+        lines: [
+          {
+            id: '',
+            drug_name: '中止薬',
+            drug_code: 'YJ_REMOVED',
+            dose: '1錠',
+            frequency: '朝食後',
+            days: 14,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+        ],
+      },
+    ]);
+
+    const response = (await GET(createGetRequest('patient_1', 'limit=5&case_id=case_1'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.diff_review.rows[0]).toEqual(
+      expect.objectContaining({
+        key: 'removed-YJ_REMOVED',
+        current_drug_code: null,
+        previous_drug_code: 'YJ_REMOVED',
+        change_type: 'removed',
+      }),
+    );
+    expect(JSON.stringify(body.diff_review.rows)).not.toContain('code:');
   });
 
   it('returns an empty result for inaccessible case filters without loading prescriptions', async () => {
@@ -280,6 +511,18 @@ describe('/api/patients/[id]/prescriptions', () => {
     const body = await response.json();
     expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
     expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'patient_prescriptions_get_unhandled_error',
+      undefined,
+      {
+        event: 'patient_prescriptions_get_unhandled_error',
+        route: '/api/patients/[id]/prescriptions',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(JSON.stringify(loggerErrorMock.mock.calls)).not.toContain(rawError);
   });
 
   it.each([

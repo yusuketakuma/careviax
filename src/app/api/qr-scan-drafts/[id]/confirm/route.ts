@@ -30,14 +30,32 @@ import { z } from 'zod';
 import { validatePrescriptionDateWindow } from '@/lib/prescription/prescription-date-window';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import {
+  collectDispensingLineMetadataValidationDetails,
+  validatePackagingInstructionConsistency,
+} from '@/lib/validations/dispensing-line';
+import {
   buildQrDraftAssignmentWhere,
   canAccessPrescriptionPatient,
   getAssignedPatientIds,
 } from '@/server/services/prescription-access';
 import { prisma } from '@/lib/db/client';
 import { Prisma } from '@prisma/client';
+import {
+  PACKAGING_INSTRUCTION_TAG_OPTIONS,
+  PACKAGING_METHOD_OPTIONS,
+  type PackagingInstructionTagValue,
+  type PackagingMethodValue,
+} from '@/lib/dispensing/packaging';
 
 const requiredTrimmedStringSchema = z.string().trim().min(1);
+const PACKAGING_METHOD_VALUES = PACKAGING_METHOD_OPTIONS.map((option) => option.value) as [
+  PackagingMethodValue,
+  ...PackagingMethodValue[],
+];
+const PACKAGING_TAG_VALUES = PACKAGING_INSTRUCTION_TAG_OPTIONS.map((option) => option.value) as [
+  PackagingInstructionTagValue,
+  ...PackagingInstructionTagValue[],
+];
 
 const optionalTrimmedStringSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
@@ -66,33 +84,9 @@ const dispensingMethodSchema = z.preprocess(
 );
 const packagingMethodSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim().length === 0 ? undefined : value),
-  z
-    .string()
-    .trim()
-    .pipe(
-      z.enum([
-        'none',
-        'unit_dose',
-        'morning_evening_unit_dose',
-        'medication_box',
-        'calendar_pack',
-        'blister_pack',
-        'crush_and_pack',
-        'other',
-      ]),
-    )
-    .optional(),
+  z.string().trim().pipe(z.enum(PACKAGING_METHOD_VALUES)).optional(),
 );
-const packagingInstructionTagSchema = z.enum([
-  'cold_storage',
-  'narcotic',
-  'half_tablet',
-  'crush_prohibited',
-  'separate_pack',
-  'unit_dose',
-  'staple_required',
-  'label_required',
-]);
+const packagingInstructionTagSchema = z.enum(PACKAGING_TAG_VALUES);
 
 const confirmQrDraftLineSchema = z
   .object({
@@ -122,6 +116,7 @@ const confirmQrDraftLineSchema = z
         message: '終了日は開始日以降にしてください',
       });
     }
+    validatePackagingInstructionConsistency(line, ctx);
   });
 
 const confirmQrDraftSchema = z.object({
@@ -143,6 +138,8 @@ type QrDraftConfirmResult =
   | { kind: 'patient_mismatch' }
   | { kind: 'patient_identity_mismatch'; mismatches: QrPatientIdentityMismatch[] }
   | { kind: 'patient_identity_unverifiable'; missing: QrPatientIdentityMissingField[] }
+  | { kind: 'line_mismatch'; mismatches: string[] }
+  | { kind: 'line_validation_error'; details: Record<string, string[]> }
   | { kind: 'claim_conflict' }
   | {
       kind: 'confirmed';
@@ -219,28 +216,9 @@ function readStringArray(value: unknown) {
     : undefined;
 }
 
-const PACKAGING_METHOD_VALUES = [
-  'none',
-  'unit_dose',
-  'morning_evening_unit_dose',
-  'medication_box',
-  'calendar_pack',
-  'blister_pack',
-  'crush_and_pack',
-  'other',
-] as const;
-const PACKAGING_TAG_VALUES = [
-  'cold_storage',
-  'narcotic',
-  'half_tablet',
-  'crush_prohibited',
-  'separate_pack',
-  'unit_dose',
-  'staple_required',
-  'label_required',
-] as const;
 const ROUTE_VALUES = ['internal', 'external', 'injection', 'other'] as const;
 const DISPENSING_METHOD_VALUES = ['standard', 'unit_dose', 'crushed', 'other'] as const;
+const DRUG_CODE_RESOLUTION_STATUS_VALUES = ['resolved', 'review_required', 'unresolved'] as const;
 
 function readEnumValue<const T extends readonly string[]>(
   value: unknown,
@@ -258,6 +236,126 @@ function readEnumArray<const T extends readonly string[]>(
     (allowed as readonly string[]).includes(item),
   );
   return values && values.length > 0 ? values : undefined;
+}
+
+function readDraftLines(parsedData: Record<string, unknown> | null | undefined) {
+  if (!Array.isArray(parsedData?.lines)) return [];
+  return parsedData.lines.flatMap((line) => {
+    const object = readJsonObject(line);
+    return object ? [object] : [];
+  });
+}
+
+function normalizeLineComparableValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeLineComparableValue(item))
+      .sort()
+      .join(',');
+  }
+  if (value == null) return '';
+  return String(value).trim().replace(/\s+/g, '').toLocaleLowerCase('ja-JP');
+}
+
+function findQrDraftLineMismatches(
+  input: z.infer<typeof confirmQrDraftSchema>,
+  parsedData: Record<string, unknown> | null | undefined,
+) {
+  const draftLines = readDraftLines(parsedData);
+  const mismatches: string[] = [];
+
+  if (draftLines.length !== input.lines.length) {
+    mismatches.push('line_count');
+  }
+
+  input.lines.forEach((line, index) => {
+    const draftLine = draftLines[index];
+    if (!draftLine) return;
+
+    const comparisons = [
+      {
+        key: 'drug_code',
+        requestValue: line.drug_code,
+        draftValue: readString(draftLine.drugCode),
+      },
+      {
+        key: 'drug_name',
+        requestValue: line.drug_name,
+        draftValue: readString(draftLine.drugName),
+      },
+      { key: 'dose', requestValue: line.dose, draftValue: readString(draftLine.dose) },
+      {
+        key: 'frequency',
+        requestValue: line.frequency,
+        draftValue: readString(draftLine.frequency),
+      },
+      { key: 'days', requestValue: line.days, draftValue: draftLine.days },
+      {
+        key: 'packaging_method',
+        requestValue: line.packaging_method,
+        draftValue: readEnumValue(draftLine.packagingMethod, PACKAGING_METHOD_VALUES),
+      },
+      {
+        key: 'packaging_instructions',
+        requestValue: line.packaging_instructions,
+        draftValue: readString(draftLine.packagingInstructions),
+      },
+      {
+        key: 'packaging_instruction_tags',
+        requestValue: line.packaging_instruction_tags,
+        draftValue: readEnumArray(draftLine.packagingInstructionTags, PACKAGING_TAG_VALUES),
+      },
+      {
+        key: 'route',
+        requestValue: line.route,
+        draftValue: readEnumValue(draftLine.route, ROUTE_VALUES),
+      },
+      {
+        key: 'dispensing_method',
+        requestValue: line.dispensing_method,
+        draftValue: readEnumValue(draftLine.dispensingMethod, DISPENSING_METHOD_VALUES),
+      },
+      { key: 'notes', requestValue: line.notes, draftValue: readString(draftLine.notes) },
+    ];
+
+    for (const comparison of comparisons) {
+      if (comparison.requestValue === undefined) continue;
+      const requestValue = normalizeLineComparableValue(comparison.requestValue);
+      const draftValue = normalizeLineComparableValue(comparison.draftValue);
+      if (requestValue !== draftValue) {
+        mismatches.push(`line_${index + 1}_${comparison.key}`);
+      }
+    }
+  });
+
+  return mismatches;
+}
+
+function collectDrugCodeResolutionReviewDetails(
+  parsedData: Record<string, unknown> | null | undefined,
+) {
+  const draftLines = readDraftLines(parsedData);
+  const details: Record<string, string[]> = {};
+
+  draftLines.forEach((draftLine, index) => {
+    const status = readEnumValue(
+      draftLine.drugCodeResolutionStatus,
+      DRUG_CODE_RESOLUTION_STATUS_VALUES,
+    );
+    if (status !== 'review_required' && status !== 'unresolved') return;
+
+    details[`line_${index + 1}_drug_code`] = ['薬剤コードを医薬品マスターコードで確認してください'];
+  });
+
+  return Object.keys(details).length > 0 ? details : null;
+}
+
+function buildConfirmedParsedData(confirmedIntakeId: string) {
+  return {
+    confirmed: true,
+    confirmed_at: new Date().toISOString(),
+    confirmed_intake_id: confirmedIntakeId,
+  };
 }
 
 export const POST = withAuthContext(
@@ -324,6 +422,7 @@ export const POST = withAuthContext(
             org_id: true,
             patient_id: true,
             scanned_by: true,
+            qr_payload_hash: true,
             parsed_data: true,
           },
         });
@@ -358,24 +457,19 @@ export const POST = withAuthContext(
           };
         }
 
-        const claimResult = await tx.qrScanDraft.updateMany({
-          where: {
-            id,
-            org_id: ctx.orgId,
-            status: 'pending',
-            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-          },
-          data: {
-            patient_id,
-            status: 'confirmed',
-          },
-        });
-
-        if (claimResult.count === 0) {
-          return { kind: 'claim_conflict' as const };
+        const lineMismatches = findQrDraftLineMismatches(parsed.data, parsedData);
+        if (lineMismatches.length > 0) {
+          return { kind: 'line_mismatch' as const, mismatches: lineMismatches };
         }
 
-        // Build intake input — data is fully validated by PC review UI
+        const drugCodeResolutionDetails = collectDrugCodeResolutionReviewDetails(parsedData);
+        if (drugCodeResolutionDetails) {
+          return {
+            kind: 'line_validation_error' as const,
+            details: drugCodeResolutionDetails,
+          };
+        }
+
         const intakeInput = {
           case_id,
           patient_id,
@@ -423,6 +517,29 @@ export const POST = withAuthContext(
             })(),
           })),
         };
+        const lineValidationDetails = collectDispensingLineMetadataValidationDetails(
+          intakeInput.lines,
+        );
+        if (lineValidationDetails) {
+          return { kind: 'line_validation_error' as const, details: lineValidationDetails };
+        }
+
+        const claimResult = await tx.qrScanDraft.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            status: 'pending',
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+          },
+          data: {
+            patient_id,
+            status: 'confirmed',
+          },
+        });
+
+        if (claimResult.count === 0) {
+          return { kind: 'claim_conflict' as const };
+        }
 
         const intakeResult = await createPrescriptionIntakeInTx(
           tx,
@@ -486,11 +603,7 @@ export const POST = withAuthContext(
             confirmed_intake_id: intakeResult.intake.id,
             raw_qr_texts: [],
             qr_payload_hash: null,
-            parsed_data: {
-              confirmed: true,
-              confirmed_at: new Date().toISOString(),
-              confirmed_intake_id: intakeResult.intake.id,
-            },
+            parsed_data: buildConfirmedParsedData(intakeResult.intake.id),
             parse_errors: Prisma.JsonNull,
             auto_completed: Prisma.JsonNull,
             expected_qr_count: null,
@@ -543,6 +656,17 @@ export const POST = withAuthContext(
         patient_id: ['QRコードの患者名と生年月日を確認できません'],
         missing_identity: result.missing,
       });
+    }
+
+    if (result.kind === 'line_mismatch') {
+      return validationError('QR下書きの処方明細と送信された処方明細が一致しません', {
+        qr_draft_id: ['QR下書きの処方明細を再読み込みして確認してください'],
+        mismatches: result.mismatches,
+      });
+    }
+
+    if (result.kind === 'line_validation_error') {
+      return validationError('入力値が不正です', result.details);
     }
 
     if (result.kind === 'claim_conflict') {

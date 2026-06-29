@@ -12,6 +12,9 @@ type Tx = {
   patient: {
     findFirst(args: unknown): Promise<{ id: string } | null>;
   };
+  drugMaster?: {
+    findFirst(args: unknown): Promise<{ id: string } | null>;
+  };
   medicationProfile: {
     findFirst(args: unknown): Promise<{ id: string } | null>;
     create(args: unknown): Promise<unknown>;
@@ -20,6 +23,7 @@ type Tx = {
 
 type QrOtcCandidate = {
   drug_name: string;
+  jan_code: string | null;
   start_date: Date | null;
   end_date: Date | null;
 };
@@ -71,6 +75,11 @@ function parseDate(value: string | undefined) {
   return Number.isNaN(date.getTime()) || formatUtcDateKey(date) !== dateKey ? null : date;
 }
 
+function readJanCode(value: string | null | undefined) {
+  const normalized = value?.replace(/[\s-]/g, '') ?? '';
+  return /^(\d{8}|\d{13})$/.test(normalized) ? normalized : null;
+}
+
 function extractLabeledValue(lines: string[], labels: string[]) {
   for (const line of lines) {
     const match = line.match(/^([^:：]+)[:：]\s*(.+)$/);
@@ -82,6 +91,17 @@ function extractLabeledValue(lines: string[], labels: string[]) {
 function extractRawLineField(lines: string[], index: number) {
   const rawLine = lines.find((line) => line.startsWith('3,'));
   return rawLine?.split(',')[index]?.trim() || null;
+}
+
+function extractRawLineJanCode(lines: string[]) {
+  const rawLine = lines.find((line) => line.startsWith('3,'));
+  if (!rawLine) return null;
+  const fields = rawLine.split(',').map((field) => field.trim());
+  const candidates = fields
+    .slice(4)
+    .map(readJanCode)
+    .filter((value): value is string => Boolean(value));
+  return candidates.find((value) => value.length === 13) ?? candidates[0] ?? null;
 }
 
 export function extractQrOtcCandidate(text: string): QrOtcCandidate | null {
@@ -106,7 +126,10 @@ export function extractQrOtcCandidate(text: string): QrOtcCandidate | null {
 
   if (startDate && endDate && endDate.getTime() < startDate.getTime()) return null;
 
-  return { drug_name: drugName, start_date: startDate, end_date: endDate };
+  const janCode =
+    readJanCode(extractLabeledValue(lines, ['JANコード', 'JAN'])) ?? extractRawLineJanCode(lines);
+
+  return { drug_name: drugName, jan_code: janCode, start_date: startDate, end_date: endDate };
 }
 
 export function buildQrOtcMedicationProfileFromIssue(args: {
@@ -141,13 +164,24 @@ export async function promoteResolvedQrOtcIssueToMedicationProfile(
   });
   if (!patient) return { promoted: false as const, reason: 'patient_not_found' as const };
 
+  const drugMaster = candidate.jan_code
+    ? ((await tx.drugMaster?.findFirst({
+        where: { jan_code: candidate.jan_code },
+        select: { id: true },
+      })) ?? null)
+    : null;
+  const drugMasterId = drugMaster?.id ?? null;
+  const duplicateWhere = [
+    ...(drugMasterId ? [{ drug_master_id: drugMasterId }] : []),
+    { drug_master_id: null, drug_name: candidate.drug_name },
+  ];
   const existing = await tx.medicationProfile.findFirst({
     where: {
       org_id: args.orgId,
       patient_id: patient.id,
-      drug_name: candidate.drug_name,
       is_current: true,
       source: 'otc_qr',
+      OR: duplicateWhere,
     },
     select: { id: true },
   });
@@ -158,7 +192,7 @@ export async function promoteResolvedQrOtcIssueToMedicationProfile(
       org_id: args.orgId,
       patient_id: patient.id,
       drug_name: candidate.drug_name,
-      drug_master_id: null,
+      drug_master_id: drugMasterId,
       dose: null,
       frequency: null,
       start_date: candidate.start_date,

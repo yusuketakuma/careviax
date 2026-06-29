@@ -3,6 +3,7 @@ import { success, validationError, conflict } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
+import { collectDispensingLineMetadataValidationDetails } from '@/lib/validations/dispensing-line';
 import { createPrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import {
   MEDICATION_CYCLE_STATUSES,
@@ -43,10 +44,24 @@ import {
   assessQrPatientIdentity,
   readQrPatientIdentityFromDraftParsedData,
 } from '@/lib/pharmacy/qr-patient-match';
+import {
+  PACKAGING_INSTRUCTION_TAG_OPTIONS,
+  PACKAGING_METHOD_OPTIONS,
+  type PackagingInstructionTagValue,
+  type PackagingMethodValue,
+} from '@/lib/dispensing/packaging';
 
 const prescriptionSourceTypeSchema = z.enum(PRESCRIPTION_SOURCE_TYPES);
 const medicationCycleStatusSchema = z.enum(MEDICATION_CYCLE_STATUSES);
-const prescriptionCareTagSchema = z.enum(['cold_storage', 'narcotic']);
+const PACKAGING_METHOD_VALUES = PACKAGING_METHOD_OPTIONS.map((option) => option.value) as [
+  PackagingMethodValue,
+  ...PackagingMethodValue[],
+];
+const PACKAGING_TAG_VALUES = PACKAGING_INSTRUCTION_TAG_OPTIONS.map((option) => option.value) as [
+  PackagingInstructionTagValue,
+  ...PackagingInstructionTagValue[],
+];
+const prescriptionCareTagSchema = z.enum(PACKAGING_TAG_VALUES);
 
 type CreatePrescriptionIntakeInput = z.infer<typeof createPrescriptionIntakeSchema>;
 type IntakeInTxResult = Awaited<ReturnType<typeof createPrescriptionIntakeInTx>>;
@@ -300,28 +315,9 @@ function validateSplitDispense(input: {
   return null;
 }
 
-const PACKAGING_METHOD_VALUES = [
-  'none',
-  'unit_dose',
-  'morning_evening_unit_dose',
-  'medication_box',
-  'calendar_pack',
-  'blister_pack',
-  'crush_and_pack',
-  'other',
-] as const;
-const PACKAGING_TAG_VALUES = [
-  'cold_storage',
-  'narcotic',
-  'half_tablet',
-  'crush_prohibited',
-  'separate_pack',
-  'unit_dose',
-  'staple_required',
-  'label_required',
-] as const;
 const ROUTE_VALUES = ['internal', 'external', 'injection', 'other'] as const;
 const DISPENSING_METHOD_VALUES = ['standard', 'unit_dose', 'crushed', 'other'] as const;
+const DRUG_CODE_RESOLUTION_STATUS_VALUES = ['resolved', 'review_required', 'unresolved'] as const;
 
 function readDraftLineAt(parsedData: Record<string, unknown> | null | undefined, index: number) {
   const lines = Array.isArray(parsedData?.lines) ? parsedData.lines : [];
@@ -370,7 +366,13 @@ function readEnumArray<const T extends readonly string[]>(
   return values && values.length > 0 ? values : undefined;
 }
 
-function normalizeLineComparableValue(value: unknown) {
+function normalizeLineComparableValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => normalizeLineComparableValue(item))
+      .sort()
+      .join(',');
+  }
   if (value == null) return '';
   return String(value).trim().replace(/\s+/g, '').toLocaleLowerCase('ja-JP');
 }
@@ -408,9 +410,36 @@ function findQrDraftLineMismatches(
         draftValue: readString(draftLine.frequency),
       },
       { key: 'days', requestValue: line.days, draftValue: draftLine.days },
+      {
+        key: 'packaging_method',
+        requestValue: line.packaging_method,
+        draftValue: readEnumValue(draftLine.packagingMethod, PACKAGING_METHOD_VALUES),
+      },
+      {
+        key: 'packaging_instructions',
+        requestValue: line.packaging_instructions,
+        draftValue: readString(draftLine.packagingInstructions),
+      },
+      {
+        key: 'packaging_instruction_tags',
+        requestValue: line.packaging_instruction_tags,
+        draftValue: readEnumArray(draftLine.packagingInstructionTags, PACKAGING_TAG_VALUES),
+      },
+      {
+        key: 'route',
+        requestValue: line.route,
+        draftValue: readEnumValue(draftLine.route, ROUTE_VALUES),
+      },
+      {
+        key: 'dispensing_method',
+        requestValue: line.dispensing_method,
+        draftValue: readEnumValue(draftLine.dispensingMethod, DISPENSING_METHOD_VALUES),
+      },
+      { key: 'notes', requestValue: line.notes, draftValue: readString(draftLine.notes) },
     ];
 
     for (const comparison of comparisons) {
+      if (comparison.requestValue === undefined) continue;
       const requestValue = normalizeLineComparableValue(comparison.requestValue);
       const draftValue = normalizeLineComparableValue(comparison.draftValue);
       if (requestValue !== draftValue) {
@@ -420,6 +449,33 @@ function findQrDraftLineMismatches(
   });
 
   return mismatches;
+}
+
+function collectDrugCodeResolutionReviewDetails(
+  parsedData: Record<string, unknown> | null | undefined,
+) {
+  const draftLines = readDraftLines(parsedData);
+  const details: Record<string, string[]> = {};
+
+  draftLines.forEach((draftLine, index) => {
+    const status = readEnumValue(
+      draftLine.drugCodeResolutionStatus,
+      DRUG_CODE_RESOLUTION_STATUS_VALUES,
+    );
+    if (status !== 'review_required' && status !== 'unresolved') return;
+
+    details[`line_${index + 1}_drug_code`] = ['薬剤コードを医薬品マスターコードで確認してください'];
+  });
+
+  return Object.keys(details).length > 0 ? details : null;
+}
+
+function buildConfirmedQrParsedData(confirmedIntakeId: string) {
+  return {
+    confirmed: true,
+    confirmed_at: new Date().toISOString(),
+    confirmed_intake_id: confirmedIntakeId,
+  };
 }
 
 function enrichQrIntakeInputFromDraft(
@@ -746,6 +802,7 @@ export const POST = withAuthContext(
         | { kind: 'patient_identity_mismatch'; mismatches: string[] }
         | { kind: 'patient_identity_unverifiable'; missing: string[] }
         | { kind: 'line_mismatch'; mismatches: string[] }
+        | { kind: 'line_validation_error'; details: Record<string, string[]> }
         | { kind: 'claim_conflict' }
         | {
             kind: 'created';
@@ -765,6 +822,7 @@ export const POST = withAuthContext(
               id: true,
               status: true,
               patient_id: true,
+              qr_payload_hash: true,
               parsed_data: true,
             },
           });
@@ -804,7 +862,21 @@ export const POST = withAuthContext(
             return { kind: 'line_mismatch' as const, mismatches: lineMismatches };
           }
 
+          const drugCodeResolutionDetails = collectDrugCodeResolutionReviewDetails(parsedData);
+          if (drugCodeResolutionDetails) {
+            return {
+              kind: 'line_validation_error' as const,
+              details: drugCodeResolutionDetails,
+            };
+          }
+
           intakeInput = enrichQrIntakeInputFromDraft(intakeInput, parsedData);
+          const lineValidationDetails = collectDispensingLineMetadataValidationDetails(
+            intakeInput.lines,
+          );
+          if (lineValidationDetails) {
+            return { kind: 'line_validation_error' as const, details: lineValidationDetails };
+          }
 
           const claimResult = await tx.qrScanDraft.updateMany({
             where: {
@@ -884,11 +956,7 @@ export const POST = withAuthContext(
               confirmed_intake_id: intakeResult.intake.id,
               raw_qr_texts: [],
               qr_payload_hash: null,
-              parsed_data: {
-                confirmed: true,
-                confirmed_at: new Date().toISOString(),
-                confirmed_intake_id: intakeResult.intake.id,
-              },
+              parsed_data: buildConfirmedQrParsedData(intakeResult.intake.id),
               parse_errors: Prisma.JsonNull,
               auto_completed: Prisma.JsonNull,
               expected_qr_count: null,
@@ -946,6 +1014,9 @@ export const POST = withAuthContext(
           qr_draft_id: ['QR下書きの処方明細を再読み込みして確認してください'],
           mismatches: qrResult.mismatches,
         });
+      }
+      if (qrResult.kind === 'line_validation_error') {
+        return validationError('入力値が不正です', qrResult.details);
       }
       if (qrResult.kind === 'claim_conflict') {
         return conflict('このQRスキャン下書きはすでに処理済みです');

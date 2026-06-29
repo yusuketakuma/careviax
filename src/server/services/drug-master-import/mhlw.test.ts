@@ -202,7 +202,15 @@ describe('importMhlwPriceList', () => {
     const workbook = await workbookBlob({
       ＨＰ用: [
         ['区分', '薬価基準収載医薬品コード', '成分名', '規格', '品名', 'メーカー名', '薬価'],
-        ['内用薬', '1124001F1022', 'エスタゾラム', '１ｍｇ１錠', 'ユーロジン１ｍｇ錠', 'Ｔ’ｓ製薬', '6.30'],
+        [
+          '内用薬',
+          '1124001F1022',
+          'エスタゾラム',
+          '１ｍｇ１錠',
+          'ユーロジン１ｍｇ錠',
+          'Ｔ’ｓ製薬',
+          '6.30',
+        ],
       ],
     });
     const indexHtml = `
@@ -342,6 +350,13 @@ describe('importGenericNameMappings', () => {
         drug_name: 'エスタゾラム錠１ｍｇ「アメル」',
         generic_name: 'エスタゾラム',
         manufacturer: '共和薬品工業',
+      },
+      {
+        id: 'drug_name_only',
+        yj_code: '9999001F1020',
+        drug_name: 'エスタゾラム配合注意薬',
+        generic_name: null,
+        manufacturer: '誤候補製薬',
       },
     ]);
     db.genericDrugMapping.deleteMany.mockResolvedValue({ count: 0 });

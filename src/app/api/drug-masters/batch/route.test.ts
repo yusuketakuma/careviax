@@ -1,23 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { drugMasterFindManyMock } = vi.hoisted(() => ({
-  drugMasterFindManyMock: vi.fn(),
-}));
+const { authMock, membershipFindFirstMock, drugMasterFindManyMock, loggerErrorMock } = vi.hoisted(
+  () => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    drugMasterFindManyMock: vi.fn(),
+    loggerErrorMock: vi.fn(),
+  }),
+);
 
-vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: (handler: (...args: unknown[]) => unknown) => {
-    return (req: NextRequest) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' });
-  },
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    membership: {
+      findFirst: membershipFindFirstMock,
+    },
     drugMaster: {
       findMany: drugMasterFindManyMock,
     },
   },
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
 }));
 
 import { POST } from './route';
@@ -25,7 +34,7 @@ import { POST } from './route';
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/drug-masters/batch', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
     body: JSON.stringify(body),
   });
 }
@@ -33,14 +42,21 @@ function createRequest(body: unknown) {
 function createMalformedJsonRequest() {
   return new NextRequest('http://localhost/api/drug-masters/batch', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
     body: '{',
   });
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/drug-masters/batch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist', site_id: null });
     drugMasterFindManyMock.mockResolvedValue([
       {
         yj_code: '1111111A',
@@ -62,14 +78,14 @@ describe('/api/drug-masters/batch', () => {
   });
 
   it('returns drug master records keyed by yj code', async () => {
-    const response = (await POST(
+    const response = await POST(
       createRequest({
         yj_codes: [' 1111111A ', '1111111A'],
       }),
-      { params: Promise.resolve({}) },
-    ))!;
+    );
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(drugMasterFindManyMock).toHaveBeenCalledWith({
       where: { yj_code: { in: ['1111111A'] } },
       select: expect.any(Object),
@@ -91,18 +107,18 @@ describe('/api/drug-masters/batch', () => {
   });
 
   it('rejects non-object batch payloads before querying drug masters', async () => {
-    const response = (await POST(createRequest([]), { params: Promise.resolve({}) }))!;
+    const response = await POST(createRequest([]));
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(drugMasterFindManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON before querying drug masters', async () => {
-    const response = (await POST(createMalformedJsonRequest(), {
-      params: Promise.resolve({}),
-    }))!;
+    const response = await POST(createMalformedJsonRequest());
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -111,11 +127,51 @@ describe('/api/drug-masters/batch', () => {
   });
 
   it('rejects blank yj codes before querying drug masters', async () => {
-    const response = (await POST(createRequest({ yj_codes: ['1111111A', '   '] }), {
-      params: Promise.resolve({}),
-    }))!;
+    const response = await POST(createRequest({ yj_codes: ['1111111A', '   '] }));
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store 401 before parsing the body when unauthenticated', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = await POST(createRequest({ yj_codes: ['1111111A'] }));
+
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(drugMasterFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when batch lookup fails unexpectedly', async () => {
+    const unsafeError = new Error('raw batch drug code secret');
+    unsafeError.name = 'DrugMasterBatchSecretError';
+    drugMasterFindManyMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await POST(createRequest({ yj_codes: ['1111111A'] }));
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('drug code secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'drug_masters_batch_post_unhandled_error',
+      undefined,
+      {
+        event: 'drug_masters_batch_post_unhandled_error',
+        route: '/api/drug-masters/batch',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('drug code secret');
+    expect(logged).not.toContain('DrugMasterBatchSecretError');
   });
 });

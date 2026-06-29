@@ -543,7 +543,7 @@ describe('mapJahisToIntake', () => {
       );
     });
 
-    it('skips type-specific lookup and falls back to length heuristic when drugCodeType=1 (no code)', async () => {
+    it('treats drugCodeType=1 as no usable code and keeps name matches review-required', async () => {
       prismaMock.drugMaster.findFirst.mockResolvedValueOnce(mockDrugMaster);
       prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
 
@@ -553,16 +553,28 @@ describe('mapJahisToIntake', () => {
         ],
       });
 
-      await mapJahisToIntake(qrData, baseInput);
+      const result = await mapJahisToIntake(qrData, baseInput);
 
-      // drugCodeType=1 means "no code" → should fall through to length-heuristic (12-digit = yj_code)
+      // drugCodeType=1 means "no code"; the apparent code field is not a trusted code identity.
       expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            OR: expect.arrayContaining([{ yj_code: '123456789012' }]),
+            OR: expect.arrayContaining([{ drug_name: { contains: 'アムロジピン錠5mg' } }]),
           }),
         }),
       );
+      expect(result.lines[0]).toMatchObject({
+        drug_code: null,
+        drug_code_resolution_status: 'review_required',
+        drug_code_resolution_source: 'drug_master_name_fallback',
+        candidate_drug_code: '123456789012',
+      });
+      expect(result.unmatchedDrugs[0]).toMatchObject({
+        drugCode: null,
+        reason: 'no_code_provided',
+        requiresReview: true,
+        suggestedDrugCode: '123456789012',
+      });
     });
 
     it('batches DrugMaster and formulary lookups for multiple medication lines', async () => {
@@ -670,7 +682,7 @@ describe('mapJahisToIntake', () => {
   });
 
   describe('DrugMaster lookup — name fallback', () => {
-    it('falls back to name search when no drugCode is provided', async () => {
+    it('uses name search only as a review-required suggestion when no drugCode is provided', async () => {
       prismaMock.drugMaster.findFirst.mockResolvedValueOnce(mockDrugMaster);
       prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
 
@@ -680,7 +692,7 @@ describe('mapJahisToIntake', () => {
         ],
       });
 
-      await mapJahisToIntake(qrData, baseInput);
+      const result = await mapJahisToIntake(qrData, baseInput);
 
       expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -689,6 +701,110 @@ describe('mapJahisToIntake', () => {
           }),
         }),
       );
+      expect(result.lines[0]).toMatchObject({
+        drug_code: null,
+        drug_code_resolution_status: 'review_required',
+        drug_code_resolution_source: 'drug_master_name_fallback',
+        candidate_drug_master_id: 'drug_1',
+        candidate_drug_code: '123456789012',
+        candidate_drug_name: 'アムロジピン錠5mg',
+        dosage_form: null,
+        is_generic: false,
+      });
+      expect(result.autoCompletedFields).toEqual([]);
+      expect(result.unmatchedDrugs).toEqual([
+        expect.objectContaining({
+          lineIndex: 0,
+          drugName: 'アムロジピン錠5mg',
+          drugCode: null,
+          reason: 'no_code_provided',
+          requiresReview: true,
+          suggestedDrugMasterId: 'drug_1',
+          suggestedDrugCode: '123456789012',
+          suggestedDrugName: 'アムロジピン錠5mg',
+        }),
+      ]);
+      expect(result.formularyStatus[0]).toMatchObject({
+        inFormulary: false,
+        warningLevel: 'none',
+        warningReason: null,
+      });
+    });
+
+    it('prefers an exact drug-name suggestion over earlier partial-name candidates', async () => {
+      const partialNameCandidate = {
+        ...mockDrugMaster,
+        id: 'drug_partial',
+        yj_code: '999999999999',
+        drug_name: 'アムロジピン錠5mg「部分一致」',
+      };
+      const exactNameCandidate = {
+        ...mockDrugMaster,
+        id: 'drug_exact',
+        yj_code: '123456789012',
+        drug_name: 'アムロジピン錠5mg',
+      };
+      prismaMock.drugMaster.findMany.mockResolvedValueOnce([
+        partialNameCandidate,
+        exactNameCandidate,
+      ]);
+      prismaMock.pharmacyDrugStock.findMany.mockResolvedValueOnce([]);
+
+      const qrData = makeQrData({
+        medications: [
+          makeMed({ drugCode: undefined, drugName: 'アムロジピン錠5mg', dose: '5', unit: 'mg' }),
+        ],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+
+      expect(result.lines[0]).toMatchObject({
+        drug_code: null,
+        drug_code_resolution_status: 'review_required',
+        drug_code_resolution_source: 'drug_master_name_fallback',
+        candidate_drug_master_id: 'drug_exact',
+        candidate_drug_code: '123456789012',
+        candidate_drug_name: 'アムロジピン錠5mg',
+      });
+      expect(result.unmatchedDrugs[0]).toMatchObject({
+        suggestedDrugMasterId: 'drug_exact',
+        suggestedDrugCode: '123456789012',
+        suggestedDrugName: 'アムロジピン錠5mg',
+      });
+    });
+
+    it('does not resolve a bad code by name fallback even when the drug name matches', async () => {
+      prismaMock.drugMaster.findFirst.mockResolvedValueOnce(mockDrugMaster);
+      prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
+
+      const qrData = makeQrData({
+        medications: [
+          makeMed({ drugCode: 'BADCODE', drugName: 'アムロジピン錠5mg', dose: '5', unit: 'mg' }),
+        ],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+
+      expect(result.lines[0]).toMatchObject({
+        drug_code: 'BADCODE',
+        drug_code_resolution_status: 'review_required',
+        drug_code_resolution_source: 'drug_master_name_fallback',
+        candidate_drug_code: '123456789012',
+        dosage_form: null,
+        is_generic: false,
+      });
+      expect(result.autoCompletedFields).toEqual([]);
+      expect(result.unmatchedDrugs).toEqual([
+        expect.objectContaining({
+          lineIndex: 0,
+          drugName: 'アムロジピン錠5mg',
+          drugCode: 'BADCODE',
+          reason: 'code_not_found',
+          requiresReview: true,
+          suggestedDrugCode: '123456789012',
+          suggestedDrugName: 'アムロジピン錠5mg',
+        }),
+      ]);
     });
 
     it('marks drug as unmatched with reason "no_code_provided" when name fallback also fails', async () => {
@@ -1110,6 +1226,54 @@ describe('mapJahisToIntake', () => {
       expect(result.lines[0].packaging_instructions).toContain('別包');
       expect(result.lines[0].packaging_instruction_tags).toContain('separate_pack');
       expect(result.lines[0].notes).toContain('冷所保管');
+    });
+
+    it('keeps expanded packaging work instructions from QR remarks', async () => {
+      prismaMock.drugMaster.findFirst.mockResolvedValueOnce(mockDrugMaster);
+      prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
+
+      const qrData = makeQrData({
+        medications: [
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            supplements: ['PTPヒート管理', '混合', '賦形', '脱カプセル'],
+            usageNotes: ['一包化しない', '手まき manual PTP'],
+          }),
+        ],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+      expect(result.lines[0].packaging_instructions).toContain('PTPヒート管理');
+      expect(result.lines[0].packaging_instruction_tags).toEqual([
+        'ptp',
+        'mixing',
+        'excipient',
+        'decapsulation',
+        'no_unit_dose',
+        'manual_ptp',
+      ]);
+      expect(result.lines[0].packaging_instruction_tags).not.toContain('unit_dose');
+    });
+
+    it('does not convert no-unit-dose QR remarks into unit-dose instructions', async () => {
+      prismaMock.drugMaster.findFirst.mockResolvedValueOnce(mockDrugMaster);
+      prismaMock.pharmacyDrugStock.findFirst.mockResolvedValueOnce(null);
+
+      const qrData = makeQrData({
+        medications: [
+          makeMed({
+            drugCode: '123456789012',
+            drugName: 'アムロジピン錠5mg',
+            supplements: ['一包化不可', '分包不要'],
+          }),
+        ],
+      });
+
+      const result = await mapJahisToIntake(qrData, baseInput);
+      expect(result.lines[0].packaging_method).toBe('other');
+      expect(result.lines[0].packaging_instruction_tags).toEqual(['no_unit_dose']);
+      expect(result.lines[0].packaging_instruction_tags).not.toContain('unit_dose');
     });
 
     it('maps crushing instructions into packaging and dispensing flags', async () => {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { requireAuthContext } from '@/lib/auth/context';
-import { success, notFound, validationError, error } from '@/lib/api/response';
+import { success, notFound, validationError, error, internalError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -16,12 +18,24 @@ import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import { createPrescriptionIntake } from '@/server/services/prescription-intake-service';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
 const fetchEPrescriptionSchema = z.object({
   prescription_id: z.string().min(1),
   case_id: z.string().trim().min(1).optional(),
 });
 
+const ROUTE = '/api/patients/[id]/prescriptions/e-prescription';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
 const ACCEPTABLE_EPRESCRIPTION_STATUSES = ['issued', 'partially_dispensed'] as const;
 const EPRESCRIPTION_INTAKE_CYCLE_STATUSES = [
   'intake_received',
@@ -30,6 +44,11 @@ const EPRESCRIPTION_INTAKE_CYCLE_STATUSES = [
   'inquiry_resolved',
   'ready_to_dispense',
 ] as const;
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 function normalizeComparablePatientName(value: string | null | undefined) {
   return value?.replace(/\s+/g, '').trim() || null;
@@ -145,7 +164,10 @@ async function findExistingEPrescriptionIntake(args: {
  * 電子処方箋管理サービスから処方箋を取得し、PrescriptionIntake として受付登録する。
  * JAHIS QR 以外の電子処方箋受付パス（処方箋IDを直接指定）。
  */
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPOST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '電子処方箋受付の権限がありません',
@@ -445,4 +467,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
     201,
   );
+}
+
+export async function POST(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('patient_eprescription_post_unhandled_error', undefined, {
+        event: 'patient_eprescription_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
 }

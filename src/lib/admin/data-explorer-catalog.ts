@@ -49,6 +49,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'PharmacyContract',
     'VisitBillingCandidate',
     'PharmacyInvoice',
+    'PharmacyOperatingHours',
   ],
   partial: [
     'BillingCandidate',

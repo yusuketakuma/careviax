@@ -1,9 +1,14 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { forbidden, success, validationError } from '@/lib/api/response';
-import { isAdmin, withAuthContext } from '@/lib/auth/context';
+import { internalError, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 import {
   importGenericNameMappings,
   importMhlwGenericFlags,
@@ -25,10 +30,29 @@ const requestSchema = z.object({
     .optional(),
 });
 
-export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
-  if (!isAdmin(authCtx.role)) {
-    return forbidden('医薬品マスター取込は管理者のみ実行できます');
-  }
+const ROUTE = '/api/drug-master-imports/mhlw-generic';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
+
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAdmin',
+    message: '医薬品マスター取込は管理者のみ実行できます',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
 
   const payload = await readOptionalJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
@@ -38,22 +62,26 @@ export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const result = {
-    flags: null as Awaited<ReturnType<typeof importMhlwGenericFlags>> | null,
-    mappings: null as Awaited<ReturnType<typeof importGenericNameMappings>> | null,
-  };
+  const result = await runWithRequestAuthContext(ctx, async () => {
+    const importResult = {
+      flags: null as Awaited<ReturnType<typeof importMhlwGenericFlags>> | null,
+      mappings: null as Awaited<ReturnType<typeof importGenericNameMappings>> | null,
+    };
 
-  if (parsed.data.mode === 'flags' || parsed.data.mode === 'all') {
-    result.flags = await importMhlwGenericFlags(prisma, {
-      workbookUrl: parsed.data.workbookUrl,
-    });
-  }
+    if (parsed.data.mode === 'flags' || parsed.data.mode === 'all') {
+      importResult.flags = await importMhlwGenericFlags(prisma, {
+        workbookUrl: parsed.data.workbookUrl,
+      });
+    }
 
-  if (parsed.data.mode === 'mappings' || parsed.data.mode === 'all') {
-    result.mappings = await importGenericNameMappings(prisma, {
-      workbookUrl: parsed.data.workbookUrl,
-    });
-  }
+    if (parsed.data.mode === 'mappings' || parsed.data.mode === 'all') {
+      importResult.mappings = await importGenericNameMappings(prisma, {
+        workbookUrl: parsed.data.workbookUrl,
+      });
+    }
+
+    return importResult;
+  });
 
   return success(
     {
@@ -79,4 +107,22 @@ export const POST = withAuthContext(async (req: NextRequest, authCtx) => {
     },
     201,
   );
-});
+}
+
+export async function POST(req: NextRequest) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('drug_master_imports_mhlw_generic_post_unhandled_error', undefined, {
+        event: 'drug_master_imports_mhlw_generic_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

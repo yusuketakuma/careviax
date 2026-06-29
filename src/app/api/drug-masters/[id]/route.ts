@@ -1,8 +1,29 @@
 import { NextRequest } from 'next/server';
-import { withAuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, notFound, validationError } from '@/lib/api/response';
+import { internalError, success, notFound, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
+
+const ROUTE = '/api/drug-masters/[id]';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 const INTERACTION_SEVERITY_PRIORITY: Record<string, number> = {
   contraindicated: 0,
@@ -21,8 +42,12 @@ function sortInteractionsBySafetyPriority<TInteraction extends { severity: strin
   });
 }
 
-export const GET = withAuthContext(
-  async (_req: NextRequest, _ctx, { params }: { params: Promise<{ id: string }> }) => {
+async function authenticatedGET(req: NextRequest, params: Promise<{ id: string }>) {
+  const authResult = await requireAuthContext(req);
+  if ('response' in authResult) return authResult.response;
+  const { ctx } = authResult;
+
+  return runWithRequestAuthContext(ctx, async () => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('医薬品IDが不正です');
@@ -64,5 +89,23 @@ export const GET = withAuthContext(
       interactions_as_a: sortInteractionsBySafetyPriority(drug.interactions_as_a),
       interactions_as_b: sortInteractionsBySafetyPriority(drug.interactions_as_b),
     });
-  },
-);
+  });
+}
+
+export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedGET(req, routeContext.params));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('drug_masters_detail_get_unhandled_error', undefined, {
+        event: 'drug_masters_detail_get_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}

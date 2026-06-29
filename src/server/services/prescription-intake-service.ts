@@ -9,6 +9,7 @@ import {
 import {
   extractPackagingInstructionTags,
   parsePackagingMethod,
+  type PackagingInstructionTagValue,
   type PackagingMethodValue,
 } from '@/lib/dispensing/packaging';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
@@ -45,16 +46,7 @@ export interface CreateIntakeLineInput {
   is_generic_name_prescription?: boolean;
   packaging_method?: PackagingMethodValue;
   packaging_instructions?: string;
-  packaging_instruction_tags?: Array<
-    | 'cold_storage'
-    | 'narcotic'
-    | 'half_tablet'
-    | 'crush_prohibited'
-    | 'separate_pack'
-    | 'unit_dose'
-    | 'staple_required'
-    | 'label_required'
-  >;
+  packaging_instruction_tags?: PackagingInstructionTagValue[];
   notes?: string;
   route?: 'internal' | 'external' | 'injection' | 'other';
   dispensing_method?: 'standard' | 'unit_dose' | 'crushed' | 'other';
@@ -1347,7 +1339,15 @@ function normalizePrescriptionDrugCode(code: string | null | undefined) {
 }
 
 function profileKeys(profile: { drug_master_id?: string | null; drug_name: string }) {
-  return [profile.drug_master_id, profile.drug_name].filter((key): key is string => Boolean(key));
+  const drugMasterId = normalizePrescriptionDrugCode(profile.drug_master_id);
+  if (drugMasterId) {
+    // Some legacy rows stored a prescription drug code in drug_master_id before DrugMaster ids
+    // were consistently synced. Keep that bridge separate from real canonical master identity.
+    return [`master:${drugMasterId}`, `legacy-code:${drugMasterId}`];
+  }
+
+  const drugName = profile.drug_name.trim();
+  return drugName ? [`name:${drugName}`] : [];
 }
 
 function incomingLineKeys(
@@ -1355,9 +1355,16 @@ function incomingLineKeys(
   resolvedDrugMasterId: string | null,
   normalizedDrugCode: string | null,
 ) {
-  return [resolvedDrugMasterId, normalizedDrugCode, line.drug_name].filter((key): key is string =>
-    Boolean(key),
-  );
+  const keys: string[] = [];
+  if (resolvedDrugMasterId) keys.push(`master:${resolvedDrugMasterId}`);
+  if (normalizedDrugCode) {
+    keys.push(`code:${normalizedDrugCode}`);
+    if (resolvedDrugMasterId) keys.push(`legacy-code:${normalizedDrugCode}`);
+  }
+  if (keys.length > 0) return keys;
+
+  const drugName = line.drug_name.trim();
+  return drugName ? [`name:${drugName}`] : [];
 }
 
 async function resolveDrugMasterIdsByPrescriptionCode(lines: MedicationProfileSyncLine[]) {

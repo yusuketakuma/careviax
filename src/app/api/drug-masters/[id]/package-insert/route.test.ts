@@ -3,61 +3,62 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  withOrgContextMock,
   withRoutePerformanceMock,
   drugMasterFindUniqueMock,
   drugPackageInsertFindManyMock,
   drugInteractionFindManyMock,
   drugAlertRuleFindManyMock,
-} = vi.hoisted(() => ({
-  requireAuthContextMock: vi.fn(),
-  withRoutePerformanceMock: vi.fn((_req, fn) => fn()),
-  drugMasterFindUniqueMock: vi.fn(),
-  drugPackageInsertFindManyMock: vi.fn(),
-  drugInteractionFindManyMock: vi.fn(),
-  drugAlertRuleFindManyMock: vi.fn(),
-}));
+  loggerErrorMock,
+} = vi.hoisted(() => {
+  const drugMasterFindUniqueMock = vi.fn();
+  const drugPackageInsertFindManyMock = vi.fn();
+  const drugInteractionFindManyMock = vi.fn();
+  const drugAlertRuleFindManyMock = vi.fn();
+
+  return {
+    requireAuthContextMock: vi.fn(),
+    withOrgContextMock: vi.fn((_orgId, fn) =>
+      fn({
+        drugMaster: { findUnique: drugMasterFindUniqueMock },
+        drugPackageInsert: { findMany: drugPackageInsertFindManyMock },
+        drugInteraction: { findMany: drugInteractionFindManyMock },
+        drugAlertRule: { findMany: drugAlertRuleFindManyMock },
+      }),
+    ),
+    withRoutePerformanceMock: vi.fn((_req, fn) => fn()),
+    drugMasterFindUniqueMock,
+    drugPackageInsertFindManyMock,
+    drugInteractionFindManyMock,
+    drugAlertRuleFindManyMock,
+    loggerErrorMock: vi.fn(),
+  };
+});
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
-  withAuthContext: (
-    handler: (req: NextRequest, ctx: unknown, routeCtx: unknown) => Promise<Response>,
-    options?: unknown,
-  ) => {
-    return async (req: NextRequest, routeCtx: unknown) => {
-      const authResult = await requireAuthContextMock(req, options);
-      if ('response' in authResult) return authResult.response;
-      return handler(req, authResult.ctx, routeCtx);
-    };
-  },
 }));
 
 vi.mock('@/lib/utils/performance', () => ({
   withRoutePerformance: withRoutePerformanceMock,
 }));
 
-vi.mock('@/lib/db/client', () => ({
-  prisma: {
-    drugMaster: {
-      findUnique: drugMasterFindUniqueMock,
-    },
-    drugPackageInsert: {
-      findMany: drugPackageInsertFindManyMock,
-    },
-    drugInteraction: {
-      findMany: drugInteractionFindManyMock,
-    },
-    drugAlertRule: {
-      findMany: drugAlertRuleFindManyMock,
-    },
-  },
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
 }));
 
 import { GET, type DrugPackageInsertResponse } from './route';
 
 type DrugPackageInsert = NonNullable<DrugPackageInsertResponse['package_insert']>;
 
-function createRequest() {
-  return new NextRequest('http://localhost/api/drug-masters/drug_1/package-insert');
+function createRequest(headers: Record<string, string> = { 'x-org-id': 'org_1' }) {
+  return new NextRequest('http://localhost/api/drug-masters/drug_1/package-insert', {
+    headers,
+  });
 }
 
 async function invokeGet(id = 'drug_1') {
@@ -67,6 +68,7 @@ async function invokeGet(id = 'drug_1') {
 }
 
 async function readPackageInsertPayload(response: Response): Promise<DrugPackageInsertResponse> {
+  expectNoStore(response);
   const payload: unknown = await response.json();
 
   expect(payload).toMatchObject({
@@ -81,6 +83,11 @@ async function readPackageInsertPayload(response: Response): Promise<DrugPackage
   });
 
   return payload as DrugPackageInsertResponse;
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 function requirePackageInsert(body: DrugPackageInsertResponse): DrugPackageInsert {
@@ -143,6 +150,9 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     const response = await invokeGet();
 
     expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 when drug is not found', async () => {
@@ -151,6 +161,7 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     const response = await invokeGet('nonexistent');
 
     expect(response.status).toBe(404);
+    expectNoStore(response);
     const body = await response.json();
     expect(body.code).toBe('WORKFLOW_NOT_FOUND');
   });
@@ -160,6 +171,15 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
 
     expect(response.status).toBe(200);
     const body = await readPackageInsertPayload(response);
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        requestContext: { userId: 'user_1', orgId: 'org_1', role: 'pharmacist' },
+        maxWaitMs: 10_000,
+        timeoutMs: 20_000,
+      }),
+    );
     expect(drugMasterFindUniqueMock).toHaveBeenCalledWith({
       where: { id: 'drug_1' },
       select: expect.any(Object),
@@ -182,9 +202,11 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     const response = await invokeGet('   ');
 
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '医薬品IDが不正です',
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(drugMasterFindUniqueMock).not.toHaveBeenCalled();
     expect(drugPackageInsertFindManyMock).not.toHaveBeenCalled();
     expect(drugInteractionFindManyMock).not.toHaveBeenCalled();
@@ -350,6 +372,9 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
     const response = await invokeGet();
 
     const body = await readPackageInsertPayload(response);
+    expect(drugAlertRuleFindManyMock).toHaveBeenCalledWith({
+      where: { is_active: true, OR: [{ org_id: 'org_1' }, { org_id: null }] },
+    });
     expect(body.applicable_alert_rules).toHaveLength(2);
     expect(alertRuleIds(body)).toEqual(['rule_1', 'rule_2']);
   });
@@ -404,5 +429,35 @@ describe('GET /api/drug-masters/[id]/package-insert', () => {
 
     const body = await readPackageInsertPayload(response);
     expect(body.applicable_alert_rules).toHaveLength(0);
+  });
+
+  it('returns a sanitized no-store 500 when package insert lookup fails unexpectedly', async () => {
+    const unsafeError = new Error('raw package insert safety secret');
+    unsafeError.name = 'PackageInsertSecretError';
+    drugPackageInsertFindManyMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await invokeGet();
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('safety secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'drug_masters_package_insert_get_unhandled_error',
+      undefined,
+      {
+        event: 'drug_masters_package_insert_get_unhandled_error',
+        route: '/api/drug-masters/[id]/package-insert',
+        method: 'GET',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('safety secret');
+    expect(logged).not.toContain('PackageInsertSecretError');
   });
 });

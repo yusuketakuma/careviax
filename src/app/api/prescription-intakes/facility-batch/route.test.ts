@@ -7,39 +7,27 @@ const FUTURE_DATE = format(addDays(new Date(), 1), 'yyyy-MM-dd');
 const EXPIRED_DATE = format(subDays(new Date(), 5), 'yyyy-MM-dd');
 
 const {
-  withAuthContextMock,
+  requireAuthContextMock,
   withOrgContextMock,
   prescriptionIntakeFindFirstMock,
   medicationProfileFindManyMock,
   medicationProfileCreateMock,
   medicationProfileUpdateMock,
   medicationProfileUpdateManyMock,
+  loggerErrorMock,
 } = vi.hoisted(() => ({
-  withAuthContextMock: vi.fn(
-    (
-      handler: (
-        req: NextRequest,
-        ctx: { orgId: string; userId: string; role: 'admin' },
-      ) => Promise<Response>,
-    ) => {
-      return (req: NextRequest) =>
-        handler(req, {
-          orgId: 'org_1',
-          userId: 'user_1',
-          role: 'admin',
-        });
-    },
-  ),
+  requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn().mockResolvedValue(null),
   medicationProfileFindManyMock: vi.fn().mockResolvedValue([]),
   medicationProfileCreateMock: vi.fn().mockResolvedValue({}),
   medicationProfileUpdateMock: vi.fn().mockResolvedValue({}),
   medicationProfileUpdateManyMock: vi.fn().mockResolvedValue({ count: 0 }),
+  loggerErrorMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
-  withAuthContext: withAuthContextMock,
+  requireAuthContext: requireAuthContextMock,
 }));
 
 vi.mock('@/lib/db/rls', () => ({
@@ -60,10 +48,13 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
+}));
+
 import { POST as rawPOST } from './route';
 
-const emptyRouteContext = { params: Promise.resolve({}) };
-const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const POST = (req: NextRequest) => rawPOST(req);
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/prescription-intakes/facility-batch', {
@@ -79,6 +70,11 @@ function createMalformedJsonRequest() {
     body: '{"entries":',
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 const PATIENT_1_IDENTITY_SNAPSHOT = {
@@ -136,6 +132,28 @@ function createValidFacilityBatchBody(overrides: Record<string, unknown> = {}) {
 describe('/api/prescription-intakes/facility-batch POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      },
+    });
+  });
+
+  it('returns no-store auth failures before reading facility batch payloads', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json({ code: 'AUTH_UNAUTHENTICATED' }, { status: 401 }),
+    });
+
+    const response = await POST(createMalformedJsonRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects mixed-facility bulk intake requests', async () => {
@@ -217,6 +235,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '施設まとめ処方は同一施設の患者のみ一括登録できます',
       details: {
@@ -271,6 +290,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message:
         '施設まとめ処方の患者同定情報が現在の患者情報と一致しません。患者を再選択してください',
@@ -290,6 +310,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
     expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
@@ -303,6 +324,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -321,6 +343,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '未来日の処方箋は登録できません',
     });
@@ -340,6 +363,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '入力値が不正です',
     });
@@ -358,6 +382,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '処方箋の有効期限が切れています（発行日から4日以内が有効です）',
     });
@@ -503,6 +528,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '施設まとめ処方に外来/在宅自己注射として調剤可否が未確認の注射剤があります',
       details: {
@@ -701,6 +727,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '施設まとめ処方に外来/在宅自己注射として調剤可否が未確認の注射剤があります',
       details: {
@@ -896,6 +923,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       facility_label: 'facility_a',
       patient_count: 2,
@@ -930,5 +958,43 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
         }),
       }),
     );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+    });
+  });
+
+  it('returns a fixed no-store 500 without leaking raw facility batch failures', async () => {
+    const unsafeError = new Error('raw facility batch patient secret');
+    unsafeError.name = 'FacilityBatchPatientSecretError';
+    withOrgContextMock.mockRejectedValueOnce(unsafeError);
+
+    const response = await POST(createRequest(createValidFacilityBatchBody()));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain('raw facility batch patient secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'facility_batch_prescription_intake_unhandled_error',
+      undefined,
+      {
+        event: 'facility_batch_prescription_intake_unhandled_error',
+        route: '/api/prescription-intakes/facility-batch',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('raw facility batch patient secret');
+    expect(logged).not.toContain('FacilityBatchPatientSecretError');
   });
 });
