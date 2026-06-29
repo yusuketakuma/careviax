@@ -1,9 +1,10 @@
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
@@ -347,5 +348,10 @@ const authenticatedPOST = withAuthContext<{ id: string }>(
 );
 
 export const POST: typeof authenticatedPOST = async (req, routeContext) => {
-  return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 };

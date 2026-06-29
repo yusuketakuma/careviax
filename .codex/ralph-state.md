@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0623 JST
+
+- current task: harden partner visit record submit/review responses so interprofessional visit workflow failures use no-store sanitized envelopes.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, `docs/ui-ux-design-guidelines.md` while reviewing Claude's billing-rules interrupt, `src/app/api/partner-visit-records/[id]/submit/route.ts`, `src/app/api/partner-visit-records/[id]/submit/route.test.ts`, `src/app/api/partner-visit-records/[id]/review/route.ts`, `src/app/api/partner-visit-records/[id]/review/route.test.ts`, established no-store/sanitized route patterns, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/partner-visit-records/[id]/submit/route.ts`, `src/app/api/partner-visit-records/[id]/submit/route.test.ts`, `src/app/api/partner-visit-records/[id]/review/route.ts`, `src/app/api/partner-visit-records/[id]/review/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex visit-schedule WIP plus Claude/codex frontend WIP.
+- bugs found: partner visit submit/review POST wrappers added no-store headers to returned responses, but unexpected handler/plumbing failures could still fall through to framework 500 behavior instead of a fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced raw-error and PHI disclosure risk for interprofessional visit record submit/review failures containing patient names, phone numbers, partner pharmacy data, or raw exception text. Auth/permissions, state transitions, optimistic update checks, claim-support note writes, notification/audit side effects, response success/conflict bodies, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps existing route responses and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/partner-visit-records/[id]/submit/route.ts' 'src/app/api/partner-visit-records/[id]/submit/route.test.ts' 'src/app/api/partner-visit-records/[id]/review/route.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts'`; `pnpm exec vitest run 'src/app/api/partner-visit-records/[id]/submit/route.test.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the four partner visit submit/review files; scoped `git diff --check` on the four partner visit submit/review files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused partner visit submit/review Vitest passed `2` files / `9` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after reviewing `unstable_rethrow` control flow, no-store coverage, raw patient/phone non-leakage tests, and workflow semantics non-regression. A codex review request was sent and no blocker arrived before commit preparation.
+- remaining work: explicit-path stage only this partner submit/review slice plus the partner ledger hunks, commit, and send agmsg FYI.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0612 JST
 
 - current task: harden admin external-professionals mutation responses so other-profession master create/update/delete endpoints are no-store and unexpected failures use sanitized envelopes.

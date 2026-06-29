@@ -23,6 +23,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Partner Visit Submit/Review Sanitized Envelope - 2026-06-30 06:23 JST
+
+- Scope:
+  - Continued codex2's visit-time and interprofessional collaboration objective on partner visit record submit/review workflow endpoints.
+  - Focused only on unexpected-error envelope behavior for `POST /api/partner-visit-records/[id]/submit` and `POST /api/partner-visit-records/[id]/review`; existing no-store success/conflict/validation behavior was preserved.
+  - Preserved codex-owned visit-schedule WIP and Claude/codex frontend WIP under billing/packaging screens.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Partner visit submit/review POST wrappers now use the established `unstable_rethrow` + fixed no-store `internalError()` pattern around authenticated handlers.
+  - Unexpected read/transaction failures now return fixed no-store `INTERNAL_ERROR` responses instead of framework 500 behavior.
+- Safety:
+  - Reduces PHI/raw-error disclosure risk for submitted/reviewed partner visit records, partner pharmacy workflow state, and patient-contact-like error text.
+  - Preserves auth/permission behavior, transition guards, optimistic race conflicts, claim-support note creation, notifications, audit writes, and response status/body shapes for normal success and domain-error paths.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only catches unexpected route exceptions and adds focused tests.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/partner-visit-records/[id]/submit/route.ts' 'src/app/api/partner-visit-records/[id]/submit/route.test.ts' 'src/app/api/partner-visit-records/[id]/review/route.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/partner-visit-records/[id]/submit/route.test.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `9` tests.
+  - Scoped ESLint on the four partner visit submit/review files: passed.
+  - Scoped `git diff --check` on the four partner visit submit/review files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` was sent to Claude and codex with scope and validation evidence.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after reviewing the outer catch pattern, `unstable_rethrow` control-flow behavior, no-store coverage, raw patient/phone non-leakage tests, and submit/review workflow non-regression.
+  - codex was notified and no blocker arrived before commit preparation.
+- Remaining:
+  - Stage only explicit codex2-owned files plus the partner ledger hunks and commit while preserving other active WIP.
+
 ### Admin External-Professionals Mutation No-Store / Sanitized Envelope - 2026-06-30 06:12 JST
 
 - Scope:

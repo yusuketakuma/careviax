@@ -431,4 +431,24 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     expect(partnerVisitRecordFindUniqueOrThrowMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
+
+  it('returns a sanitized no-store 500 when review reads fail unexpectedly', async () => {
+    const rawError = '患者A 03-1111-2222 partner visit review failure';
+    partnerVisitRecordFindFirstMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain(rawError);
+    expect(JSON.stringify(body)).not.toContain('患者A');
+    expect(JSON.stringify(body)).not.toContain('03-1111-2222');
+    expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
 });
