@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260629-2058 JST
+
+- current task: finish the P1 medication-driven visit deadline fix requested by Claude and the schedule/route build plan.
+- files inspected: `git status --short --untracked-files=all`, `docs/schedule-route-build-plan.md`, `prisma/schema/visit.prisma`, `prisma/schema/prescription.prisma`, `src/lib/dispensing/outside-med-classification.ts`, `src/lib/dispensing/packaging-group.ts`, `src/lib/utils/date-boundary.ts`, `src/server/services/visit-medication-deadline.ts`, `src/server/services/visit-schedule-planner.ts`, `src/server/jobs/daily/visits.ts`, `src/server/services/visit-schedule-planner.test.ts`, `src/server/jobs/daily.test.ts`, and read-only findings from code mapper, medical safety, DB steward, test architect, data-integrity, and performance subagents.
+- files changed: `src/server/services/visit-medication-deadline.ts`, `src/server/services/visit-medication-deadline.test.ts`, `src/server/services/visit-schedule-planner.ts`, `src/server/services/visit-schedule-planner.test.ts`, `src/server/jobs/daily/visits.ts`, `src/server/jobs/daily.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the checkpoint still used latest/MAX line end dates, subtracted one day from inclusive medication end dates, ignored PRN/as-needed status, skipped `VisitRecord.next_visit_suggestion_date`, allowed held/completed cycles into deadline derivation, and could reject every candidate when a deadline was already overdue.
+- security risks found: reduced medication data-integrity and patient-safety risk by deriving visit deadlines from the earliest continuing non-PRN medication runout plus refill/split/latest visit suggestion candidates, by scoping visit-record queries with both `VisitRecord.org_id` and `VisitSchedule.org_id/case_id`, and by keeping medication-line detail server-side. No auth/RLS policy, PHI logging, schema, migration, live DB mutation, push, deploy, or destructive operation was changed.
+- performance issues found: avoided a new VisitRecord N+1 in the daily job by batch-loading suggestions for the cycle org/case set once and mapping them in memory. Existing per-cycle planner execution remains a broader known performance topic and was not refactored in this correctness slice.
+- validation commands: `pnpm exec prettier --write src/server/services/visit-medication-deadline.ts src/server/services/visit-medication-deadline.test.ts src/server/services/visit-schedule-planner.ts src/server/services/visit-schedule-planner.test.ts src/server/jobs/daily/visits.ts src/server/jobs/daily.test.ts`; `pnpm exec vitest run src/server/services/visit-medication-deadline.test.ts src/server/services/visit-schedule-planner.test.ts src/server/jobs/daily.test.ts --reporter=dot --testTimeout=30000`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; `git diff --check`.
+- validation results: focused Vitest passed `3` files / `64` tests after adding stale-null VisitRecord and daily topical/non-PRN coverage; `pnpm typecheck` passed; `pnpm typecheck:no-unused` passed; `pnpm lint` passed; `pnpm format:check` passed; `git diff --check` passed.
+- remaining work: stage only the explicit P1 deadline files, commit the approved slice, notify Claude with the commit hash, and verify a clean worktree.
+- next action: commit the Claude-approved P1 deadline patch.
+
 ### 20260629-2041 JST
 
 - current task: checkpoint the current visit medication-deadline implementation work, return the worktree to a clean state, then resume with broad Codex subagent coverage.

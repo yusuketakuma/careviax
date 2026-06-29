@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Medication-Driven Visit Deadline P1 - 2026-06-29 20:58 JST
+
+- Scope:
+  - Continued from checkpoint `ce0d70d7` and implemented Claude's `CHANGES_REQUESTED` plus `docs/schedule-route-build-plan.md` P1.
+  - No schema migration, live DB mutation, push, deploy, auth/RLS policy change, or destructive operation was performed.
+- Fixed:
+  - Visit deadline summary now uses the earliest continuing non-PRN medication runout date, not the latest line end date.
+  - Medication `end_date` remains inclusive; the extra `-1` day was removed.
+  - PRN/as-needed lines are excluded using the existing outside-med classification SSOT plus frequency/notes text detection, while non-PRN topical continuing medications still bind deadlines.
+  - Refill, split-dispensing next dispense dates, and latest visit-record `next_visit_suggestion_date` are folded into the same MIN deadline.
+  - Planner cycle selection now excludes `cancelled`, `reported`, `on_hold`, and `visit_completed`.
+  - Daily visit-demand generation no longer includes `visit_completed` cycles.
+  - Overdue deadlines now create urgent ASAP proposal windows instead of rejecting every shift as beyond deadline.
+  - Daily job batch-loads visit-record suggestions for the cycle org/case set once to avoid adding a VisitRecord N+1.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-medication-deadline.test.ts src/server/services/visit-schedule-planner.test.ts src/server/jobs/daily.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `64` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - Pre-implementation Codex subagents covered mapping, medical safety, DB/query shape, test architecture, data integrity, and performance. Their critical blockers were addressed in this patch.
+  - Post-implementation verifier and medical-safety reviewers passed. Strict reviewer found a stale VisitRecord edge case; fixed by selecting the latest VisitRecord even when its `next_visit_suggestion_date` is null and adding planner/daily regression tests.
+  - Claude approved the corrected P1 patch after independently rerunning the helper/planner/daily tests, ESLint, and diff-check.
+- Remaining:
+  - Commit the approved P1 deadline fix, notify Claude with the commit hash, then verify clean worktree.
+
 ### Visit Medication Deadline Checkpoint - 2026-06-29 20:41 JST
 
 - Scope:

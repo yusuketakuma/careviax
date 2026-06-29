@@ -4,7 +4,7 @@ import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-a
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
 import { createRoadTravelEstimator } from './road-routing';
@@ -16,6 +16,7 @@ const DEFAULT_VISIT_DURATION_MINUTES = 60;
 const DEFAULT_SHIFT_START = '09:00';
 const DEFAULT_SHIFT_END = '18:00';
 const MAX_SEARCH_DAYS = 21;
+const OVERDUE_ASAP_SEARCH_DAYS = 3;
 
 type GenerateProposalParams = {
   orgId: string;
@@ -470,6 +471,8 @@ function findAvailableSlot(args: {
 
 function buildReason(args: {
   medicationEndDate: Date | null;
+  visitDeadlineDate: Date | null;
+  deadlineOverdue: boolean;
   routeOrder: number;
   assignmentMode: VisitAssignmentMode;
   careRelationship: 'primary' | 'backup' | 'fallback';
@@ -478,13 +481,14 @@ function buildReason(args: {
   travelSummary: string;
   constraintSummary?: string[];
 }) {
-  const parts = [
-    args.medicationEndDate
-      ? `服薬最終日 ${format(args.medicationEndDate, 'yyyy-MM-dd')} より前に配置`
-      : '服薬期限情報がないため直近日で配置',
-    `ルート順 ${args.routeOrder} を提案`,
-    args.travelSummary,
-  ];
+  const deadlineSummary = args.visitDeadlineDate
+    ? args.deadlineOverdue
+      ? `訪問期限 ${format(args.visitDeadlineDate, 'yyyy-MM-dd')} 超過のため最短候補を配置`
+      : `訪問期限 ${format(args.visitDeadlineDate, 'yyyy-MM-dd')} までに配置`
+    : args.medicationEndDate
+      ? `服薬最終日 ${format(args.medicationEndDate, 'yyyy-MM-dd')} までに配置`
+      : '服薬期限情報がないため直近日で配置';
+  const parts = [deadlineSummary, `ルート順 ${args.routeOrder} を提案`, args.travelSummary];
   if (args.careRelationship === 'primary') {
     parts.push('主担当薬剤師を優先');
   } else if (args.careRelationship === 'backup') {
@@ -812,7 +816,7 @@ export async function generateVisitScheduleProposalDrafts(
     where: {
       org_id: params.orgId,
       case_id: params.caseId,
-      overall_status: { notIn: ['cancelled', 'reported'] },
+      overall_status: { notIn: ['cancelled', 'reported', 'on_hold', 'visit_completed'] },
     },
     orderBy: { updated_at: 'desc' },
     include: {
@@ -820,9 +824,17 @@ export async function generateVisitScheduleProposalDrafts(
         include: {
           lines: {
             select: {
+              drug_name: true,
               end_date: true,
               start_date: true,
               days: true,
+              dosage_form: true,
+              frequency: true,
+              route: true,
+              packaging_instruction_tags: true,
+              packaging_instructions: true,
+              notes: true,
+              unit: true,
             },
           },
         },
@@ -830,19 +842,41 @@ export async function generateVisitScheduleProposalDrafts(
     },
   });
 
-  const medicationDeadlineSummary = resolveMedicationDeadlineSummary(cycle?.prescription_intakes);
+  const latestVisitSuggestion = await prisma.visitRecord.findFirst({
+    where: {
+      org_id: params.orgId,
+      schedule: {
+        org_id: params.orgId,
+        case_id: params.caseId,
+      },
+    },
+    select: {
+      next_visit_suggestion_date: true,
+    },
+    orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+  });
+
+  const medicationDeadlineSummary = resolveMedicationDeadlineSummary(cycle?.prescription_intakes, {
+    nextVisitSuggestionDate: latestVisitSuggestion?.next_visit_suggestion_date ?? null,
+  });
   const medicationEndDate = medicationDeadlineSummary.medicationEndDate;
   const visitDeadlineDate =
-    medicationDeadlineSummary.visitDeadlineDate ?? addDays(planningStart, 14);
+    medicationDeadlineSummary.visitDeadlineDate ?? addUtcDays(planningStart, 14);
+  const deadlineOverdue = visitDeadlineDate < planningStart;
   const planningEnd = lockedDate
     ? lockedDate
-    : addDays(
+    : addUtcDays(
         planningStart,
         Math.min(
           MAX_SEARCH_DAYS,
-          Math.max(0, differenceInCalendarDays(visitDeadlineDate, planningStart)),
+          deadlineOverdue
+            ? OVERDUE_ASAP_SEARCH_DAYS
+            : Math.max(0, differenceInCalendarDays(visitDeadlineDate, planningStart)),
         ),
       );
+  const candidateDeadlineDate = deadlineOverdue ? planningEnd : visitDeadlineDate;
+  const effectivePriority: VisitPriority =
+    deadlineOverdue && params.priority === 'normal' ? 'urgent' : params.priority;
 
   const shifts = await prisma.pharmacistShift.findMany({
     where: {
@@ -1056,13 +1090,13 @@ export async function generateVisitScheduleProposalDrafts(
           }),
         };
       }
-      if (shift.date > visitDeadlineDate) {
+      if (shift.date > candidateDeadlineDate) {
         return {
           kind: 'rejected' as const,
           diagnostic: buildRejectedDiagnostic({
             shift,
             reasonCode: 'beyond_deadline',
-            detail: `訪問期限 ${toDateKey(visitDeadlineDate)} を超えるため候補外です`,
+            detail: `訪問期限 ${toDateKey(candidateDeadlineDate)} を超えるため候補外です`,
           }),
         };
       }
@@ -1076,7 +1110,7 @@ export async function generateVisitScheduleProposalDrafts(
           }),
         };
       }
-      if (params.priority === 'emergency' && !shift.user.can_accept_emergency) {
+      if (effectivePriority === 'emergency' && !shift.user.can_accept_emergency) {
         return {
           kind: 'rejected' as const,
           diagnostic: buildRejectedDiagnostic({
@@ -1248,7 +1282,7 @@ export async function generateVisitScheduleProposalDrafts(
         const preferredPharmacistBonus = params.preferredPharmacistId === shift.user_id ? -8 : 0;
         const datePenalty = differenceInCalendarDays(shift.date, planningStart) * 10;
         const priorityBonus =
-          params.priority === 'emergency' ? -20 : params.priority === 'urgent' ? -10 : 0;
+          effectivePriority === 'emergency' ? -20 : effectivePriority === 'urgent' ? -10 : 0;
         const geocodePenalty =
           primaryResidence?.lat == null || primaryResidence?.lng == null ? 25 : 0;
         const facilityBonus = sameFacilityVisits > 0 ? -Math.min(12, sameFacilityVisits * 4) : 0;
@@ -1264,7 +1298,7 @@ export async function generateVisitScheduleProposalDrafts(
           candidateSlot: slot,
         });
         const slackPenalty =
-          params.priority === 'emergency'
+          effectivePriority === 'emergency'
             ? remainingSlackMinutes < DEFAULT_VISIT_DURATION_MINUTES
               ? 18
               : 0
@@ -1329,7 +1363,7 @@ export async function generateVisitScheduleProposalDrafts(
           vehicleLoad: vehicleSelection.vehicleLoad,
           priorityAwareRouteOrder: resolvePriorityAwareRouteOrder({
             baseRouteOrder: routeInsertion.routeOrder,
-            priority: params.priority,
+            priority: effectivePriority,
             existingSchedules: schedulesForShift,
           }),
         };
@@ -1378,7 +1412,7 @@ export async function generateVisitScheduleProposalDrafts(
     case_id: params.caseId,
     site_id: candidate.shift.site_id,
     visit_type: params.visitType,
-    priority: params.priority,
+    priority: effectivePriority,
     proposal_status: (params.rescheduleSourceScheduleId
       ? 'reschedule_pending'
       : 'proposed') as ProposalDraft['proposal_status'],
@@ -1395,13 +1429,16 @@ export async function generateVisitScheduleProposalDrafts(
     visit_deadline_date: visitDeadlineDate,
     proposal_reason: buildReason({
       medicationEndDate,
+      visitDeadlineDate,
+      deadlineOverdue,
       routeOrder,
       assignmentMode: candidate.assignmentMode,
       careRelationship: candidate.careRelationship,
-      isEmergencyPriority: params.priority === 'emergency',
+      isEmergencyPriority: effectivePriority === 'emergency',
       travelScore: candidate.routeInsertion.travelScore,
       travelSummary: candidate.routeInsertion.travelSummary,
       constraintSummary: [
+        ...(deadlineOverdue ? ['服薬期限超過のため最短候補として評価'] : []),
         ...(mergedVisitWindow?.from || mergedVisitWindow?.to
           ? [
               `患者条件 ${mergedVisitWindow?.from ?? '09:00'}-${mergedVisitWindow?.to ?? '18:00'} 内で配置`,

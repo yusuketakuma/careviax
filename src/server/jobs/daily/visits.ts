@@ -146,7 +146,7 @@ export async function generateVisitDemands() {
 
     const cycles = await prisma.medicationCycle.findMany({
       where: {
-        overall_status: { in: ['set_audited', 'visit_ready', 'visit_completed'] },
+        overall_status: { in: ['set_audited', 'visit_ready'] },
       },
       include: {
         case_: {
@@ -165,9 +165,17 @@ export async function generateVisitDemands() {
           include: {
             lines: {
               select: {
+                drug_name: true,
                 end_date: true,
                 start_date: true,
                 days: true,
+                dosage_form: true,
+                frequency: true,
+                route: true,
+                packaging_instruction_tags: true,
+                packaging_instructions: true,
+                notes: true,
+                unit: true,
               },
             },
           },
@@ -191,6 +199,46 @@ export async function generateVisitDemands() {
       },
     });
 
+    const cycleOrgIds = Array.from(new Set(cycles.map((cycle) => cycle.org_id)));
+    const cycleCaseIds = Array.from(new Set(cycles.map((cycle) => cycle.case_id)));
+    const visitSuggestionRows =
+      cycleOrgIds.length > 0 && cycleCaseIds.length > 0
+        ? await prisma.visitRecord.findMany({
+            where: {
+              org_id: { in: cycleOrgIds },
+              schedule: {
+                org_id: { in: cycleOrgIds },
+                case_id: { in: cycleCaseIds },
+              },
+            },
+            select: {
+              org_id: true,
+              next_visit_suggestion_date: true,
+              visit_date: true,
+              created_at: true,
+              id: true,
+              schedule: {
+                select: {
+                  org_id: true,
+                  case_id: true,
+                },
+              },
+            },
+            orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+          })
+        : [];
+    const latestVisitSuggestionByCase = new Map<string, Date>();
+    const seenVisitRecordCases = new Set<string>();
+    for (const row of visitSuggestionRows) {
+      if (row.org_id !== row.schedule.org_id) continue;
+      const key = `${row.schedule.org_id}:${row.schedule.case_id}`;
+      if (seenVisitRecordCases.has(key)) continue;
+      seenVisitRecordCases.add(key);
+      if (row.next_visit_suggestion_date) {
+        latestVisitSuggestionByCase.set(key, row.next_visit_suggestion_date);
+      }
+    }
+
     let processedCount = 0;
     const errors: string[] = [];
 
@@ -201,6 +249,10 @@ export async function generateVisitDemands() {
 
       const medicationDeadlineSummary = resolveMedicationDeadlineSummary(
         cycle.prescription_intakes,
+        {
+          nextVisitSuggestionDate:
+            latestVisitSuggestionByCase.get(`${cycle.org_id}:${cycle.case_id}`) ?? null,
+        },
       );
       const visitDeadlineDate = medicationDeadlineSummary.visitDeadlineDate;
       if (!visitDeadlineDate || visitDeadlineDate > demandWindow) {
@@ -208,13 +260,17 @@ export async function generateVisitDemands() {
       }
 
       try {
+        const deadlineOverdue = visitDeadlineDate < startOfToday;
+        const proposalStartDate = deadlineOverdue ? startOfToday : addUtcDays(startOfToday, 1);
+        const demandPriority =
+          deadlineOverdue || visitDeadlineDate <= addUtcDays(startOfToday, 3) ? 'urgent' : 'normal';
         const result = await generateVisitScheduleProposalDrafts({
           orgId: cycle.org_id,
           caseId: cycle.case_id,
           visitType: 'regular',
-          priority: visitDeadlineDate <= addUtcDays(startOfToday, 3) ? 'urgent' : 'normal',
+          priority: demandPriority,
           candidateCount: 3,
-          startDate: addUtcDays(startOfToday, 1),
+          startDate: proposalStartDate,
         });
         const drafts = result.drafts;
 
@@ -239,7 +295,7 @@ export async function generateVisitDemands() {
             taskType: 'visit_demand',
             title: '訪問候補の承認が必要です',
             description: '服薬期限前の訪問候補を自動提案しました。',
-            priority: visitDeadlineDate <= addUtcDays(startOfToday, 3) ? 'urgent' : 'high',
+            priority: demandPriority === 'urgent' ? 'urgent' : 'high',
             assignedTo: cycle.case_.primary_pharmacist_id ?? null,
             dueDate: visitDeadlineDate,
             slaDueAt: visitDeadlineDate,

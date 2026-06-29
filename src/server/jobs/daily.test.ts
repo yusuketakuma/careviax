@@ -1379,6 +1379,7 @@ describe('generateVisitDemands', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-08T09:00:00+09:00'));
+    visitRecordFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -1469,6 +1470,13 @@ describe('generateVisitDemands', () => {
     const result = await generateVisitDemands();
 
     expect(result).toEqual({ processedCount: 1 });
+    expect(medicationCycleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          overall_status: { in: ['set_audited', 'visit_ready'] },
+        },
+      }),
+    );
     expect(activeRouteOrderFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -1546,8 +1554,8 @@ describe('generateVisitDemands', () => {
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        dueDate: new Date('2026-06-10T00:00:00.000Z'),
-        slaDueAt: new Date('2026-06-10T00:00:00.000Z'),
+        dueDate: new Date('2026-06-11T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-11T00:00:00.000Z'),
       }),
     );
   });
@@ -1587,8 +1595,8 @@ describe('generateVisitDemands', () => {
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        dueDate: new Date('2026-06-09T00:00:00.000Z'),
-        slaDueAt: new Date('2026-06-09T00:00:00.000Z'),
+        dueDate: new Date('2026-06-10T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-10T00:00:00.000Z'),
       }),
     );
   });
@@ -1634,10 +1642,259 @@ describe('generateVisitDemands', () => {
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        dueDate: new Date('2026-06-09T00:00:00.000Z'),
-        slaDueAt: new Date('2026-06-09T00:00:00.000Z'),
+        dueDate: new Date('2026-06-10T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-10T00:00:00.000Z'),
       }),
     );
+  });
+
+  it('ignores earlier PRN lines when deciding whether to generate demand', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            split_next_dispense_date: null,
+            lines: [
+              {
+                drug_name: '疼痛時薬',
+                frequency: '疼痛時',
+                end_date: new Date('2026-06-10T00:00:00.000Z'),
+                start_date: null,
+                days: 3,
+              },
+              {
+                drug_name: '継続薬',
+                frequency: '朝食後',
+                end_date: new Date('2026-06-20T00:00:00.000Z'),
+                start_date: null,
+                days: 14,
+              },
+            ],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({ processedCount: 0 });
+    expect(generateVisitScheduleProposalDrafts).not.toHaveBeenCalled();
+  });
+
+  it('keeps non-PRN topical continuing medication eligible for visit demand', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            split_next_dispense_date: null,
+            lines: [
+              {
+                drug_name: '貼付剤',
+                route: 'external',
+                dosage_form: '貼付剤',
+                frequency: '1日1回',
+                end_date: new Date('2026-06-10T00:00:00.000Z'),
+                start_date: null,
+                days: 7,
+              },
+            ],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+    mockGeneratedDemandDraft();
+    mockDemandProposalWrite();
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(generateVisitScheduleProposalDrafts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priority: 'urgent',
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        dueDate: new Date('2026-06-10T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-10T00:00:00.000Z'),
+      }),
+    );
+  });
+
+  it('generates urgent ASAP demand from the latest visit-record suggestion', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            split_next_dispense_date: null,
+            lines: [
+              {
+                drug_name: '継続薬',
+                frequency: '朝食後',
+                end_date: new Date('2026-06-30T00:00:00.000Z'),
+                start_date: null,
+                days: 30,
+              },
+            ],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        org_id: 'org_1',
+        next_visit_suggestion_date: new Date('2026-06-07T00:00:00.000Z'),
+        visit_date: new Date('2026-06-01T00:00:00.000Z'),
+        created_at: new Date('2026-06-01T09:00:00.000Z'),
+        id: 'visit_record_1',
+        schedule: {
+          org_id: 'org_1',
+          case_id: 'case_1',
+        },
+      },
+      {
+        org_id: 'org_1',
+        next_visit_suggestion_date: new Date('2026-06-05T00:00:00.000Z'),
+        visit_date: new Date('2026-05-01T00:00:00.000Z'),
+        created_at: new Date('2026-05-01T09:00:00.000Z'),
+        id: 'visit_record_old',
+        schedule: {
+          org_id: 'org_1',
+          case_id: 'case_1',
+        },
+      },
+    ]);
+    mockGeneratedDemandDraft();
+    mockDemandProposalWrite();
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(visitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: { in: ['org_1'] },
+          schedule: expect.objectContaining({
+            org_id: { in: ['org_1'] },
+            case_id: { in: ['case_1'] },
+          }),
+        }),
+        orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(generateVisitScheduleProposalDrafts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priority: 'urgent',
+        startDate: new Date('2026-06-08T00:00:00.000Z'),
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        priority: 'urgent',
+        dueDate: new Date('2026-06-07T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-07T00:00:00.000Z'),
+      }),
+    );
+  });
+
+  it('does not reuse an older visit-record suggestion when the latest visit has none', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            split_next_dispense_date: null,
+            lines: [
+              {
+                drug_name: '継続薬',
+                frequency: '朝食後',
+                end_date: new Date('2026-06-30T00:00:00.000Z'),
+                start_date: null,
+                days: 30,
+              },
+            ],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        org_id: 'org_1',
+        next_visit_suggestion_date: null,
+        visit_date: new Date('2026-06-07T00:00:00.000Z'),
+        created_at: new Date('2026-06-07T09:00:00.000Z'),
+        id: 'visit_record_latest',
+        schedule: {
+          org_id: 'org_1',
+          case_id: 'case_1',
+        },
+      },
+      {
+        org_id: 'org_1',
+        next_visit_suggestion_date: new Date('2026-06-05T00:00:00.000Z'),
+        visit_date: new Date('2026-06-01T00:00:00.000Z'),
+        created_at: new Date('2026-06-01T09:00:00.000Z'),
+        id: 'visit_record_old',
+        schedule: {
+          org_id: 'org_1',
+          case_id: 'case_1',
+        },
+      },
+    ]);
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({ processedCount: 0 });
+    expect(visitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({
+          next_visit_suggestion_date: expect.anything(),
+        }),
+      }),
+    );
+    expect(generateVisitScheduleProposalDrafts).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 });
 

@@ -9,6 +9,7 @@ const {
   businessHolidayFindManyMock,
   visitScheduleFindManyMock,
   visitVehicleResourceFindManyMock,
+  visitRecordFindFirstMock,
   evaluateVisitWorkflowGateMock,
 } = vi.hoisted(() => ({
   careCaseFindFirstMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   businessHolidayFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitVehicleResourceFindManyMock: vi.fn(),
+  visitRecordFindFirstMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
 }));
 
@@ -43,6 +45,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitVehicleResource: {
       findMany: visitVehicleResourceFindManyMock,
+    },
+    visitRecord: {
+      findFirst: visitRecordFindFirstMock,
     },
   },
 }));
@@ -87,6 +92,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
       id: 'cycle_1',
       prescription_intakes: [],
     });
+    visitRecordFindFirstMock.mockResolvedValue(null);
     pharmacistShiftFindManyMock.mockResolvedValue([
       {
         date: new Date('2026-03-28T00:00:00.000Z'),
@@ -829,19 +835,38 @@ describe('generateVisitScheduleProposalDrafts', () => {
     );
   });
 
-  it('rejects visit candidates after the day before the latest medication end date', async () => {
+  it('uses the earliest continuing non-PRN medication end date as an inclusive deadline', async () => {
     medicationCycleFindFirstMock.mockResolvedValueOnce({
       id: 'cycle_1',
       prescription_intakes: [
         {
           refill_next_dispense_date: null,
-          lines: [{ end_date: new Date('2026-03-30T00:00:00.000Z') }],
+          split_next_dispense_date: null,
+          lines: [
+            {
+              drug_name: '疼痛時薬',
+              frequency: '疼痛時',
+              end_date: new Date('2026-03-24T00:00:00.000Z'),
+            },
+            {
+              drug_name: '継続薬A',
+              frequency: '朝食後',
+              end_date: new Date('2026-03-30T00:00:00.000Z'),
+            },
+            {
+              drug_name: '継続薬B',
+              frequency: '夕食後',
+              start_date: new Date('2026-03-20T00:00:00.000Z'),
+              days: 20,
+              end_date: null,
+            },
+          ],
         },
       ],
     });
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
       {
-        date: new Date('2026-03-29T00:00:00.000Z'),
+        date: new Date('2026-03-30T00:00:00.000Z'),
         available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
         available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
@@ -865,7 +890,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
         },
       },
       {
-        date: new Date('2026-03-30T00:00:00.000Z'),
+        date: new Date('2026-03-31T00:00:00.000Z'),
         available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
         available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
@@ -901,15 +926,26 @@ describe('generateVisitScheduleProposalDrafts', () => {
 
     expect(result.drafts[0]).toMatchObject({
       medication_end_date: new Date('2026-03-30T00:00:00.000Z'),
-      visit_deadline_date: new Date('2026-03-29T00:00:00.000Z'),
-      proposed_date: new Date('2026-03-29T00:00:00.000Z'),
+      visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
+      proposed_date: new Date('2026-03-30T00:00:00.000Z'),
     });
+    const cycleQuery = medicationCycleFindFirstMock.mock.calls[0]?.[0];
+    expect(cycleQuery?.where?.overall_status?.notIn).toEqual(
+      expect.arrayContaining(['cancelled', 'reported', 'on_hold', 'visit_completed']),
+    );
+    expect(cycleQuery?.include?.prescription_intakes?.include?.lines?.select).toEqual(
+      expect.objectContaining({
+        frequency: true,
+        route: true,
+        notes: true,
+      }),
+    );
     expect(result.diagnostics.rejected).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           pharmacist_id: 'pharmacist_backup',
           reason_code: 'beyond_deadline',
-          detail: '訪問期限 2026-03-29 を超えるため候補外です',
+          detail: '訪問期限 2026-03-30 を超えるため候補外です',
         }),
       ]),
     );
@@ -944,7 +980,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
 
     expect(result.drafts[0]).toMatchObject({
       medication_end_date: new Date('2026-03-29T00:00:00.000Z'),
-      visit_deadline_date: new Date('2026-03-28T00:00:00.000Z'),
+      visit_deadline_date: new Date('2026-03-29T00:00:00.000Z'),
       proposed_date: new Date('2026-03-28T00:00:00.000Z'),
     });
   });
@@ -962,7 +998,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
     });
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
       {
-        date: new Date('2026-03-29T00:00:00.000Z'),
+        date: new Date('2026-03-30T00:00:00.000Z'),
         available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
         available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
@@ -986,7 +1022,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
         },
       },
       {
-        date: new Date('2026-03-30T00:00:00.000Z'),
+        date: new Date('2026-03-31T00:00:00.000Z'),
         available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
         available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
         available: true,
@@ -1022,15 +1058,15 @@ describe('generateVisitScheduleProposalDrafts', () => {
 
     expect(result.drafts[0]).toMatchObject({
       medication_end_date: null,
-      visit_deadline_date: new Date('2026-03-29T00:00:00.000Z'),
-      proposed_date: new Date('2026-03-29T00:00:00.000Z'),
+      visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
+      proposed_date: new Date('2026-03-30T00:00:00.000Z'),
     });
     expect(result.diagnostics.rejected).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           pharmacist_id: 'pharmacist_backup',
           reason_code: 'beyond_deadline',
-          detail: '訪問期限 2026-03-29 を超えるため候補外です',
+          detail: '訪問期限 2026-03-30 を超えるため候補外です',
         }),
       ]),
     );
@@ -1065,9 +1101,259 @@ describe('generateVisitScheduleProposalDrafts', () => {
 
     expect(result.drafts[0]).toMatchObject({
       medication_end_date: new Date('2026-04-08T00:00:00.000Z'),
-      visit_deadline_date: new Date('2026-03-29T00:00:00.000Z'),
+      visit_deadline_date: new Date('2026-03-30T00:00:00.000Z'),
       proposed_date: new Date('2026-03-28T00:00:00.000Z'),
     });
+  });
+
+  it('uses the latest visit-record suggestion as a deadline candidate', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce({
+      id: 'cycle_1',
+      prescription_intakes: [
+        {
+          refill_next_dispense_date: null,
+          split_next_dispense_date: null,
+          lines: [
+            {
+              drug_name: '継続薬',
+              frequency: '朝食後',
+              start_date: new Date('2026-03-20T00:00:00.000Z'),
+              days: 20,
+              end_date: null,
+            },
+          ],
+        },
+      ],
+    });
+    visitRecordFindFirstMock.mockResolvedValueOnce({
+      next_visit_suggestion_date: new Date('2026-03-31T00:00:00.000Z'),
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-31T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+      {
+        date: new Date('2026-04-01T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_backup',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_backup',
+          name: '副担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(visitRecordFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          schedule: expect.objectContaining({
+            org_id: 'org_1',
+            case_id: 'case_1',
+          }),
+        }),
+        orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    expect(result.drafts[0]).toMatchObject({
+      medication_end_date: new Date('2026-04-08T00:00:00.000Z'),
+      visit_deadline_date: new Date('2026-03-31T00:00:00.000Z'),
+      proposed_date: new Date('2026-03-31T00:00:00.000Z'),
+    });
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pharmacist_id: 'pharmacist_backup',
+          reason_code: 'beyond_deadline',
+        }),
+      ]),
+    );
+  });
+
+  it('does not reuse an older visit-record suggestion when the latest visit has none', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce({
+      id: 'cycle_1',
+      prescription_intakes: [
+        {
+          refill_next_dispense_date: null,
+          split_next_dispense_date: null,
+          lines: [
+            {
+              drug_name: '継続薬',
+              frequency: '朝食後',
+              start_date: new Date('2026-03-20T00:00:00.000Z'),
+              days: 20,
+              end_date: null,
+            },
+          ],
+        },
+      ],
+    });
+    visitRecordFindFirstMock.mockResolvedValueOnce({
+      next_visit_suggestion_date: null,
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-04-01T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(visitRecordFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.not.objectContaining({
+          next_visit_suggestion_date: expect.anything(),
+        }),
+      }),
+    );
+    expect(result.drafts[0]).toMatchObject({
+      medication_end_date: new Date('2026-04-08T00:00:00.000Z'),
+      visit_deadline_date: new Date('2026-04-08T00:00:00.000Z'),
+      proposed_date: new Date('2026-04-01T00:00:00.000Z'),
+    });
+    expect(result.diagnostics.rejected).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason_code: 'beyond_deadline',
+        }),
+      ]),
+    );
+  });
+
+  it('keeps overdue medication deadlines urgent and returns an ASAP candidate', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce({
+      id: 'cycle_1',
+      prescription_intakes: [
+        {
+          refill_next_dispense_date: null,
+          split_next_dispense_date: null,
+          lines: [
+            {
+              drug_name: '継続薬',
+              frequency: '朝食後',
+              end_date: new Date('2026-03-25T00:00:00.000Z'),
+            },
+          ],
+        },
+      ],
+    });
+    pharmacistShiftFindManyMock.mockResolvedValueOnce([
+      {
+        date: new Date('2026-03-27T00:00:00.000Z'),
+        available_from: new Date(Date.UTC(1970, 0, 1, 9, 0, 0, 0)),
+        available_to: new Date(Date.UTC(1970, 0, 1, 18, 0, 0, 0)),
+        available: true,
+        user_id: 'pharmacist_primary',
+        site_id: 'site_1',
+        user: {
+          id: 'pharmacist_primary',
+          name: '主担当薬剤師',
+          max_daily_visits: null,
+          max_weekly_visits: null,
+          max_travel_minutes: null,
+          can_accept_emergency: true,
+          visit_specialties: [],
+        },
+        site: {
+          id: 'site_1',
+          name: '本店',
+          address: '東京都港区2-2-2',
+          lat: 35.01,
+          lng: 139.01,
+        },
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]).toMatchObject({
+      priority: 'urgent',
+      medication_end_date: new Date('2026-03-25T00:00:00.000Z'),
+      visit_deadline_date: new Date('2026-03-25T00:00:00.000Z'),
+      proposed_date: new Date('2026-03-27T00:00:00.000Z'),
+    });
+    expect(result.drafts[0]?.proposal_reason).toContain('訪問期限 2026-03-25 超過');
   });
 
   it('treats a preferred primary pharmacist as a priority, not a hard filter', async () => {
