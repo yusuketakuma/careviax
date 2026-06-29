@@ -12,6 +12,7 @@ import {
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
 const mutateMock = vi.hoisted(() => vi.fn());
+const refetchMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 
@@ -168,5 +169,25 @@ describe('PackagingMethodsContent', () => {
     await expect(latestMutationFn()()).rejects.toThrow(/dot segment/);
     expect(buildPackagingMethodApiPath).toHaveBeenCalledWith('.');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('renders an inline error with retry instead of an empty state when the fetch fails (false-empty fail-close)', () => {
+    // A fetch failure must NOT masquerade as "master is empty" — that would tell the
+    // user to re-register packaging methods that gate the セット工程 and may already exist.
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isError: true,
+      error: new Error('配薬方法マスターの取得に失敗しました'),
+      refetch: refetchMock,
+    });
+    render(<PackagingMethodsContent />);
+
+    expect(screen.getByText('配薬方法マスターを取得できませんでした')).toBeTruthy();
+    expect(screen.getByText('配薬方法マスターの取得に失敗しました')).toBeTruthy();
+    // the "未登録" empty-state copy must be gone so the failure is not read as "no data"
+    expect(screen.queryByText(/配薬方法が未登録です/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 });

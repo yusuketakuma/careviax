@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -175,7 +176,20 @@ export function PackagingMethodsContent() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {methods.length === 0 ? (
+          {methodsQuery.isError ? (
+            <ErrorState
+              variant="server"
+              size="inline"
+              title="配薬方法マスターを取得できませんでした"
+              description={
+                methodsQuery.error instanceof Error
+                  ? methodsQuery.error.message
+                  : '配薬方法マスターの取得に失敗しました'
+              }
+              action={{ label: '再試行', onClick: () => void methodsQuery.refetch() }}
+              live="polite"
+            />
+          ) : methods.length === 0 ? (
             <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm text-state-confirm">
               配薬方法が未登録です。セット作成前に最低1件登録してください。
             </p>
