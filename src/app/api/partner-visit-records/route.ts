@@ -401,5 +401,10 @@ const authenticatedPOST = withAuthContext(
 );
 
 export const POST: typeof authenticatedPOST = async (req, routeContext) => {
-  return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (error) {
+    unstable_rethrow(error);
+    return withSensitiveNoStore(internalError());
+  }
 };

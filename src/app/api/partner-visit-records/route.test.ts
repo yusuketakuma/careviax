@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  authPlumbingFailureRef,
   withOrgContextMock,
   partnerVisitRecordFindManyMock,
   pharmacyVisitRequestFindFirstMock,
@@ -13,6 +14,7 @@ const {
   partnerVisitRecordFindUniqueOrThrowMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
+  authPlumbingFailureRef: { current: null as Error | null },
   withOrgContextMock: vi.fn(),
   partnerVisitRecordFindManyMock: vi.fn(),
   pharmacyVisitRequestFindFirstMock: vi.fn(),
@@ -27,8 +29,11 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
+    return (req: NextRequest, routeContext?: unknown) => {
+      if (authPlumbingFailureRef.current) {
+        throw authPlumbingFailureRef.current;
+      }
+      return handler(
         req,
         {
           orgId: 'org_1',
@@ -37,6 +42,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -62,13 +68,27 @@ function createRequest(body: unknown) {
   });
 }
 
+function createMalformedPostRequest() {
+  return new NextRequest('http://localhost/api/partner-visit-records', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{',
+  });
+}
+
 function createGetRequest(query = '') {
   return new NextRequest(`http://localhost/api/partner-visit-records${query}`);
+}
+
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/partner-visit-records', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authPlumbingFailureRef.current = null;
     pharmacyVisitRequestFindFirstMock.mockResolvedValue({
       id: 'visit_request_1',
       status: 'accepted',
@@ -442,6 +462,59 @@ describe('/api/partner-visit-records', () => {
     expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when partner visit record save fails unexpectedly', async () => {
+    partnerVisitRecordCreateMock.mockRejectedValueOnce(
+      new Error('raw partner_visit_record_1 patient 山田花子 token secret clinical content'),
+    );
+
+    const response = await POST(
+      createRequest({
+        visit_request_id: 'visit_request_1',
+        visit_at: '2026-06-20T01:30:00.000Z',
+        record_content: { medication_adherence: '患者名 山田花子: 飲み忘れあり' },
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('partner_visit_record_1');
+    expect(serialized).not.toContain('山田花子');
+    expect(serialized).not.toContain('token secret');
+    expect(serialized).not.toContain('clinical content');
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when POST auth plumbing fails before parsing body', async () => {
+    authPlumbingFailureRef.current = new Error(
+      'raw auth partner_visit_record_1 patient 山田花子 token secret',
+    );
+
+    const response = await POST(createMalformedPostRequest());
+
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('raw auth');
+    expect(serialized).not.toContain('partner_visit_record_1');
+    expect(serialized).not.toContain('山田花子');
+    expect(serialized).not.toContain('token secret');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });

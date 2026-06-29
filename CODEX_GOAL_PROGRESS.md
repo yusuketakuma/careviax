@@ -23,6 +23,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Partner Visit Records POST No-Store / Sanitized Envelope - 2026-06-30 08:49 JST
+
+- Scope:
+  - Continued codex2's interprofessional collaboration objective on `POST /api/partner-visit-records`.
+  - Focused only on the exported POST response boundary for partner-owned visit draft saves.
+  - Coordinated with codex's concurrent subagent role expansion and waited for `a4c7dec9` before touching ledgers.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Existing `authenticatedPOST` now remains unchanged, while the exported `POST` applies the established `withSensitiveNoStore` + `unstable_rethrow` + fixed `internalError()` fallback pattern.
+  - Added a sanitized 500 regression for unexpected partner visit record save failures containing partner record IDs, patient name text, token-like text, and clinical content.
+  - Added an auth/plumbing failure regression that throws before parsing malformed POST body and proves no RLS transaction, record write, or audit side effect occurs.
+- Safety:
+  - Reduces raw-error and PHI/PII disclosure risk for interprofessional partner visit draft save failures.
+  - Preserves auth/permission behavior, active patient-share/partnership checks, source visit-record patient scoping, draft overwrite rules, visit-request status transitions, audit minimization, and existing success/domain-error response body shapes.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps the existing POST response boundary and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/partner-visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `15` tests.
+  - Scoped ESLint on the two partner-visit-records files: passed.
+  - Scoped `git diff --check` on the two partner-visit-records files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope and validation.
+  - Claude returned `APPROVED` after independently re-running focused Vitest and checking the POST outer boundary, inner save-failure and outer auth-plumbing teeth, raw partner/patient/token/clinical-content non-leakage, no side effects, and authenticatedPOST domain preservation.
+- Remaining:
+  - Receive review, stage only explicit partner-visit-records files plus this ledger and `.codex/ralph-state.md`, commit, send agmsg FYI, then continue remaining visit/report/interprofessional API candidates.
+
 ### Project-Local Subagent Role Expansion - 2026-06-30 08:46 JST
 
 - Scope:

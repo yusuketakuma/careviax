@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0849 JST
+
+- current task: harden `POST /api/partner-visit-records` so interprofessional partner visit draft saves have a fixed no-store outer error boundary.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `src/app/api/partner-visit-records/route.ts`, `src/app/api/partner-visit-records/route.test.ts`, established no-store wrapper patterns in partner/visit routes, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/partner-visit-records/route.ts`, `src/app/api/partner-visit-records/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved codex-owned subagent role expansion WIP until it landed as `a4c7dec9`.
+- bugs found: `POST /api/partner-visit-records` wrapped returned responses with sensitive no-store headers, but unexpected auth/plumbing or handler failures could still reject past the exported handler instead of returning the fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced raw-error and PHI/PII disclosure risk for interprofessional partner visit draft save failures containing partner visit record IDs, patient names, clinical content, or token-like diagnostics. Auth/permission checks, active share-case/partnership checks, source visit-record patient scoping, draft overwrite rules, visit-request status transitions, audit minimization, response success/domain-error shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps the existing POST response boundary and adds focused assertions.
+- validation commands: `pnpm exec prettier --write src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`; `pnpm exec vitest run src/app/api/partner-visit-records/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint on the two partner-visit-records files; scoped `git diff --check` on the two files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; full `git diff --check`.
+- validation results: Prettier passed. Focused partner-visit-records Vitest passed `1` file / `15` tests. Scoped ESLint, scoped `git diff --check`, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and full `git diff --check` passed.
+- remaining work: stage only the two partner-visit-records files plus ledger hunks, commit, send agmsg FYI, and continue remaining visit/report/interprofessional candidates or incoming review interrupts. Claude returned `APPROVED` after independent focused Vitest and review of both catch origins, raw PHI/token non-leakage, side-effect assertions, and domain logic preservation.
+- next action: explicit-path stage and commit this validated interprofessional response-boundary slice.
+
 ### 20260630-0846 JST
 
 - current task: extend CareViaX project-local Codex subagent persona coverage so AGENTS.md-recommended roles can be spawned directly with PH-OS/CareViaX-specific safety boundaries.
