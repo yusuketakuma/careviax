@@ -18,6 +18,7 @@ import { formatDateKey } from '@/lib/date-key';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const JAPAN_TIME_ZONE = 'Asia/Tokyo';
+const JAPAN_TIME_ZONE_OFFSET_MS = 9 * 60 * 60 * 1000;
 const JAPAN_DATE_FORMAT = new Intl.DateTimeFormat('en-US', {
   timeZone: JAPAN_TIME_ZONE,
   year: 'numeric',
@@ -42,9 +43,38 @@ export function japanDateKey(date: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+function parseDateKey(key: string): { year: number; monthIndex: number; day: number } {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!match) throw new RangeError('Invalid date key');
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    throw new RangeError('Invalid date key');
+  }
+  return { year, monthIndex: month - 1, day };
+}
+
+function parseMonthKey(key: string): { year: number; monthIndex: number } {
+  const match = /^(\d{4})-(\d{2})$/.exec(key);
+  if (!match) throw new RangeError('Invalid month key');
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) {
+    throw new RangeError('Invalid month key');
+  }
+  return { year, monthIndex: month - 1 };
+}
+
 /** 日付キー 'YYYY-MM-DD' を @db.Date 比較用の UTC 深夜 Date にする。 */
 export function utcDateFromLocalKey(key: string): Date {
   return new Date(`${key}T00:00:00.000Z`);
+}
+
+/** 日本業務日キー 'YYYY-MM-DD' の開始瞬間(JST 00:00)を UTC DateTime にする。 */
+export function japanDayStartInstantFromDateKey(key: string): Date {
+  const { year, monthIndex, day } = parseDateKey(key);
+  return new Date(Date.UTC(year, monthIndex, day) - JAPAN_TIME_ZONE_OFFSET_MS);
 }
 
 /** nullable / optional な日付キーを @db.Date 更新値へ変換する。 */
@@ -60,10 +90,36 @@ export function addUtcDays(date: Date, days: number): Date {
 }
 
 /**
- * 「今日(ローカル日付)」1 日分の @db.Date 比較レンジ。
+ * DateTime カラム比較用の日本業務日 1 日分の実時刻レンジ。
+ * created_at / updated_at / visit_date 等の瞬間時刻を「日本の今日」で数える時に使う。
+ */
+export function japanDayInstantRange(now: Date = new Date()): { gte: Date; lt: Date } {
+  const gte = japanDayStartInstantFromDateKey(japanDateKey(now));
+  return { gte, lt: addUtcDays(gte, 1) };
+}
+
+/** DateTime カラム比較用の日本業務月 1 か月分の実時刻レンジ。 */
+export function japanMonthInstantRange(monthKey: string): { gte: Date; lt: Date } {
+  const { year, monthIndex } = parseMonthKey(monthKey);
+  const gte = new Date(Date.UTC(year, monthIndex, 1) - JAPAN_TIME_ZONE_OFFSET_MS);
+  const lt = new Date(Date.UTC(year, monthIndex + 1, 1) - JAPAN_TIME_ZONE_OFFSET_MS);
+  return { gte, lt };
+}
+
+/** @db.Date カラム比較用の月 1 か月分の UTC 深夜 sentinel レンジ。 */
+export function utcMonthDateRange(monthKey: string): { gte: Date; lt: Date } {
+  const { year, monthIndex } = parseMonthKey(monthKey);
+  return {
+    gte: new Date(Date.UTC(year, monthIndex, 1)),
+    lt: new Date(Date.UTC(year, monthIndex + 1, 1)),
+  };
+}
+
+/**
+ * 「今日(日本業務日)」1 日分の @db.Date 比較レンジ。
  * Prisma の where にそのまま展開できる({ gte: 当日 UTC 深夜, lt: 翌日 UTC 深夜 })。
  */
 export function todayUtcRange(now: Date = new Date()): { gte: Date; lt: Date } {
-  const gte = utcDateFromLocalKey(localDateKey(now));
+  const gte = utcDateFromLocalKey(japanDateKey(now));
   return { gte, lt: addUtcDays(gte, 1) };
 }

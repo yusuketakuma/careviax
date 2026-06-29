@@ -1,4 +1,5 @@
 import { isExpired, parseGS1Barcode } from '@/lib/pharmacy/barcode';
+import { formatUtcDateKey } from '@/lib/date-key';
 
 export type DispenseBarcodeVerificationLine = {
   id: string;
@@ -28,7 +29,7 @@ export type DispenseBarcodeVerificationEvidence = {
 function normalizeExpiryDate(value: unknown) {
   if (typeof value === 'string') return value;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10);
+    return formatUtcDateKey(value);
   }
   return null;
 }

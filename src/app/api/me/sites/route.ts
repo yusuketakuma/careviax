@@ -2,6 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
 import { parseBoundedInteger } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
+import { todayUtcRange } from '@/lib/utils/date-boundary';
 
 const DEFAULT_ME_SITE_LIMIT = 500;
 const MAX_ME_SITE_LIMIT = 500;
@@ -14,9 +15,7 @@ export const GET = withAuthContext(async (req, ctx) => {
     1,
     MAX_ME_SITE_LIMIT,
   );
-  const today = new Date();
-  const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const tomorrowDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  const todayRange = todayUtcRange();
 
   // Resolve memberships for the current user in the current org
   const memberships = await prisma.membership.findMany({
@@ -52,7 +51,7 @@ export const GET = withAuthContext(async (req, ctx) => {
     where: {
       org_id: ctx.orgId,
       site_id: { in: siteIds },
-      scheduled_date: { gte: todayDate, lt: tomorrowDate },
+      scheduled_date: todayRange,
       schedule_status: { not: 'cancelled' },
     },
     _count: { _all: true },

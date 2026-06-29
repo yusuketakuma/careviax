@@ -150,7 +150,7 @@ describe('/api/dashboard/monthly-stats GET', () => {
 
   it('defaults to the current month when month is omitted', async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 3, 15, 12, 0, 0));
+    vi.setSystemTime(new Date('2026-04-15T03:00:00.000Z')); // 2026-04-15 12:00 JST
     visitRecordGroupByMock.mockResolvedValue([]);
 
     const response = await GET(
@@ -173,14 +173,42 @@ describe('/api/dashboard/monthly-stats GET', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           visit_date: {
-            gte: new Date(2026, 3, 1),
-            lte: new Date(2026, 3, 30, 23, 59, 59, 999),
+            gte: new Date('2026-03-31T15:00:00.000Z'),
+            lt: new Date('2026-04-30T15:00:00.000Z'),
           },
         }),
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
       month: '2026-04',
+      summary: { total_patients: 0 },
+      patient_stats: [],
+    });
+  });
+
+  it('defaults to the Japan business month even when the UTC date is still the previous month', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T15:30:00.000Z')); // 2026-07-01 00:30 JST
+    visitRecordGroupByMock.mockResolvedValue([]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/dashboard/monthly-stats', { 'x-org-id': 'org_1' }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitRecordGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          visit_date: {
+            gte: new Date('2026-06-30T15:00:00.000Z'),
+            lt: new Date('2026-07-31T15:00:00.000Z'),
+          },
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      month: '2026-07',
       summary: { total_patients: 0 },
       patient_stats: [],
     });
@@ -221,15 +249,13 @@ describe('/api/dashboard/monthly-stats GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    const expectedMonthStart = new Date(2026, 2, 1);
-    const expectedMonthEnd = new Date(2026, 2, 31, 23, 59, 59, 999);
     expect(visitRecordGroupByMock).toHaveBeenCalledWith({
       by: ['patient_id'],
       where: {
         org_id: 'org_1',
         visit_date: {
-          gte: expectedMonthStart,
-          lte: expectedMonthEnd,
+          gte: new Date('2026-02-28T15:00:00.000Z'),
+          lt: new Date('2026-03-31T15:00:00.000Z'),
         },
         outcome_status: {
           in: ['completed', 'completed_with_issue', 'delivery_only', 'revisit_needed'],

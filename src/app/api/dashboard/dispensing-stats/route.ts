@@ -5,9 +5,9 @@ import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
+import { japanDayInstantRange } from '@/lib/utils/date-boundary';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
-import { startOfDay, endOfDay } from 'date-fns';
 
 const ROUTE = '/api/dashboard/dispensing-stats';
 const SAFE_ERROR_NAMES = new Set([
@@ -35,8 +35,7 @@ async function authenticatedGET(req: NextRequest) {
 
   return runWithRequestAuthContext(ctx, async () => {
     const now = new Date();
-    const todayStart = startOfDay(now);
-    const todayEnd = endOfDay(now);
+    const todayRange = japanDayInstantRange(now);
 
     const [
       pendingTasks,
@@ -66,7 +65,7 @@ async function authenticatedGET(req: NextRequest) {
         where: {
           org_id: ctx.orgId,
           status: 'completed',
-          updated_at: { gte: todayStart, lte: todayEnd },
+          updated_at: todayRange,
         },
       }),
 

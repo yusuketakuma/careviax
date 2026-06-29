@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { toast } from 'sonner';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
+import { formatDateKey } from '@/lib/date-key';
 import { buildPrescriberInstitutionApiPath } from '@/lib/prescriber-institutions/api-paths';
 
 setupDomTestEnv();
@@ -384,7 +385,7 @@ describe('InstitutionsContent', () => {
   it('does not flag a recently prescribing institution', async () => {
     const recent = new Date();
     recent.setDate(recent.getDate() - 10);
-    const recentDate = recent.toISOString().slice(0, 10);
+    const recentDate = formatDateKey(recent);
     stubFetchWithInstitution({ ...institutionFixture(), last_prescribed_at: recentDate });
     renderContent();
 

@@ -1,16 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  authMock,
-  resolveLocalUserByIdentityMock,
-  visitRecordCountMock,
-  visitScheduleCountMock,
-} = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  resolveLocalUserByIdentityMock: vi.fn(),
-  visitRecordCountMock: vi.fn(),
-  visitScheduleCountMock: vi.fn(),
-}));
+const { authMock, resolveLocalUserByIdentityMock, visitRecordCountMock, visitScheduleCountMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    resolveLocalUserByIdentityMock: vi.fn(),
+    visitRecordCountMock: vi.fn(),
+    visitScheduleCountMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -45,6 +41,10 @@ describe('/api/me/activity-summary GET', () => {
     visitScheduleCountMock.mockResolvedValueOnce(3).mockResolvedValueOnce(9);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns aggregated activity counts for the current user', async () => {
     const response = await GET();
 
@@ -55,6 +55,48 @@ describe('/api/me/activity-summary GET', () => {
         last30DaysVisitCount: 7,
         todayAssignedCount: 3,
         upcomingAssignedCount: 9,
+      },
+    });
+  });
+
+  it('uses Japan business month/day ranges for visit and schedule counts', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T15:30:00.000Z')); // 2026-07-01 00:30 JST
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    expect(visitRecordCountMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        pharmacist_id: 'user_1',
+        visit_date: {
+          gte: new Date('2026-06-30T15:00:00.000Z'),
+          lt: new Date('2026-07-31T15:00:00.000Z'),
+        },
+      },
+    });
+    expect(visitScheduleCountMock).toHaveBeenNthCalledWith(1, {
+      where: {
+        pharmacist_id: 'user_1',
+        scheduled_date: {
+          gte: new Date('2026-07-01T00:00:00.000Z'),
+          lt: new Date('2026-07-02T00:00:00.000Z'),
+        },
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+        },
+      },
+    });
+    expect(visitScheduleCountMock).toHaveBeenNthCalledWith(2, {
+      where: {
+        pharmacist_id: 'user_1',
+        scheduled_date: {
+          gte: new Date('2026-07-02T00:00:00.000Z'),
+          lt: new Date('2026-08-01T00:00:00.000Z'),
+        },
+        schedule_status: {
+          in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
+        },
       },
     });
   });

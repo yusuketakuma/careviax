@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {},
@@ -49,6 +49,10 @@ beforeEach(() => {
   batchResolveNamesMock.mockResolvedValue(new Map([['user_audit', '監査 花子']]));
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('buildPatientWorkspace', () => {
   it('skips cycle fan-out when the patient has no assigned cases', async () => {
     const db = buildDb(null);
@@ -70,6 +74,9 @@ describe('buildPatientWorkspace', () => {
   });
 
   it('builds prescription safety, activity, and same-day task read models', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z')); // 2026-06-12 00:30 JST
+
     const currentLine = {
       id: 'line_current',
       drug_name: 'モルヒネ錠',
@@ -277,6 +284,16 @@ describe('buildPatientWorkspace', () => {
           actor: '監査 花子',
         }),
       ]),
+    );
+    expect(db.visitSchedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduled_date: {
+            gte: new Date('2026-06-12T00:00:00.000Z'),
+            lt: new Date('2026-06-13T00:00:00.000Z'),
+          },
+        }),
+      }),
     );
     expect(result?.today_tasks).toEqual([
       {

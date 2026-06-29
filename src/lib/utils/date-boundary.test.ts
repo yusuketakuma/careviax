@@ -1,10 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   addUtcDays,
+  japanDayInstantRange,
+  japanDayStartInstantFromDateKey,
   japanDateKey,
+  japanMonthInstantRange,
   localDateKey,
   optionalUtcDateFromLocalKey,
   todayUtcRange,
+  utcMonthDateRange,
   utcDateFromLocalKey,
 } from './date-boundary';
 
@@ -93,6 +97,48 @@ describe('date-boundary (JST 前提)', () => {
     });
   });
 
+  describe('japanDayStartInstantFromDateKey', () => {
+    it('日本業務日の JST 00:00 を UTC instant に変換する', () => {
+      expect(japanDayStartInstantFromDateKey('2026-06-12').toISOString()).toBe(
+        '2026-06-11T15:00:00.000Z',
+      );
+    });
+  });
+
+  describe('japanDayInstantRange', () => {
+    it('サーバーTZに依存せず日本業務日の DateTime 半開区間を返す', () => {
+      const previousTz = process.env.TZ;
+      process.env.TZ = 'UTC';
+      try {
+        const range = japanDayInstantRange(new Date('2026-06-11T15:30:00.000Z'));
+        expect(range.gte.toISOString()).toBe('2026-06-11T15:00:00.000Z');
+        expect(range.lt.toISOString()).toBe('2026-06-12T15:00:00.000Z');
+      } finally {
+        if (previousTz === undefined) {
+          delete process.env.TZ;
+        } else {
+          process.env.TZ = previousTz;
+        }
+      }
+    });
+  });
+
+  describe('japanMonthInstantRange', () => {
+    it('日本業務月の DateTime 半開区間を返す', () => {
+      const range = japanMonthInstantRange('2026-03');
+      expect(range.gte.toISOString()).toBe('2026-02-28T15:00:00.000Z');
+      expect(range.lt.toISOString()).toBe('2026-03-31T15:00:00.000Z');
+    });
+  });
+
+  describe('utcMonthDateRange', () => {
+    it('@db.Date の月範囲は UTC 深夜 sentinel の半開区間を返す', () => {
+      const range = utcMonthDateRange('2026-03');
+      expect(range.gte.toISOString()).toBe('2026-03-01T00:00:00.000Z');
+      expect(range.lt.toISOString()).toBe('2026-04-01T00:00:00.000Z');
+    });
+  });
+
   describe('todayUtcRange', () => {
     it('JST 朝 8 時の「今日」は当日 UTC 深夜〜翌日 UTC 深夜のレンジになる', () => {
       const range = todayUtcRange(new Date('2026-06-12T08:00:00+09:00'));
@@ -114,6 +160,22 @@ describe('date-boundary (JST 前提)', () => {
       expect(storedToday >= range.gte && storedToday < range.lt).toBe(true);
       expect(storedYesterday >= range.gte).toBe(false);
       expect(storedTomorrow < range.lt).toBe(false);
+    });
+
+    it('サーバーTZが UTC でも日本業務日の @db.Date レンジを返す', () => {
+      const previousTz = process.env.TZ;
+      process.env.TZ = 'UTC';
+      try {
+        const range = todayUtcRange(new Date('2026-06-11T15:30:00.000Z'));
+        expect(range.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
+        expect(range.lt.toISOString()).toBe('2026-06-13T00:00:00.000Z');
+      } finally {
+        if (previousTz === undefined) {
+          delete process.env.TZ;
+        } else {
+          process.env.TZ = previousTz;
+        }
+      }
     });
 
     it('引数省略時は現在時刻を基準にする', () => {

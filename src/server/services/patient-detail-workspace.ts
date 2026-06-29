@@ -1,8 +1,9 @@
-import { endOfDay, format, startOfDay } from 'date-fns';
+import { format } from 'date-fns';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { getCycleWorkspaceAction } from '@/lib/prescription/cycle-workspace';
 import { detectMedicationChanges } from '@/lib/prescription/medication-diff';
+import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { logger } from '@/lib/utils/logger';
 import {
@@ -153,6 +154,7 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
   if (!cycle) return null;
 
   const now = new Date();
+  const todayRange = todayUtcRange(now);
   const [egfrObservation, todayVisits, actorNameMap] = await Promise.all([
     db.patientLabObservation.findFirst({
       where: {
@@ -171,7 +173,7 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
       where: {
         org_id: args.orgId,
         case_id: { in: args.caseIds },
-        scheduled_date: { gte: startOfDay(now), lte: endOfDay(now) },
+        scheduled_date: todayRange,
         schedule_status: {
           in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
         },

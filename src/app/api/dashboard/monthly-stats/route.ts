@@ -1,4 +1,3 @@
-import { endOfMonth, startOfMonth } from 'date-fns';
 import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
@@ -6,6 +5,7 @@ import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
+import { japanDateKey, japanMonthInstantRange } from '@/lib/utils/date-boundary';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 
@@ -32,27 +32,22 @@ type MonthlyPatientStat = MonthlyBucket & {
   status: 'over_limit' | 'within_limit' | 'under_limit';
 };
 
-function formatMonthLabel(value: Date) {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
-}
-
 function safeErrorName(err: unknown): string {
   if (!(err instanceof Error)) return 'Error';
   return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
 }
 
 type MonthParseResult =
-  | { ok: true; monthStart: Date; monthLabel: string }
+  | { ok: true; monthLabel: string }
   | { ok: false; response: ReturnType<typeof validationError> };
 
 function parseMonthParam(searchParams: URLSearchParams): MonthParseResult {
   const values = searchParams.getAll('month');
   if (values.length === 0) {
-    const monthStart = startOfMonth(new Date());
+    const monthLabel = japanDateKey().slice(0, 7);
     return {
       ok: true,
-      monthStart,
-      monthLabel: formatMonthLabel(monthStart),
+      monthLabel,
     };
   }
   if (values.length > 1) {
@@ -69,17 +64,12 @@ function parseMonthParam(searchParams: URLSearchParams): MonthParseResult {
     return { ok: false, response: validationError('month の形式が不正です（YYYY-MM）') };
   }
 
-  const [year, month] = value.split('-').map(Number);
+  const month = Number(value.slice(5, 7));
   if (month < 1 || month > 12) {
-    return { ok: false, response: validationError('month の形式が不正です（YYYY-MM）') };
-  }
-  const parsed = new Date(year, month - 1, 1);
-  if (Number.isNaN(parsed.getTime())) {
     return { ok: false, response: validationError('month の形式が不正です（YYYY-MM）') };
   }
   return {
     ok: true,
-    monthStart: startOfMonth(parsed),
     monthLabel: value,
   };
 }
@@ -99,16 +89,13 @@ async function authenticatedGET(req: NextRequest) {
       return parsedMonth.response;
     }
 
-    const { monthStart, monthLabel } = parsedMonth;
-    const monthEnd = endOfMonth(monthStart);
+    const { monthLabel } = parsedMonth;
+    const monthRange = japanMonthInstantRange(monthLabel);
     const visitCountsByPatient = await prisma.visitRecord.groupBy({
       by: ['patient_id'],
       where: {
         org_id: ctx.orgId,
-        visit_date: {
-          gte: monthStart,
-          lte: monthEnd,
-        },
+        visit_date: monthRange,
         outcome_status: {
           in: ['completed', 'completed_with_issue', 'delivery_only', 'revisit_needed'],
         },

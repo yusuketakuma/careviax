@@ -2,18 +2,12 @@ import { auth } from '@/lib/auth/config';
 import { prisma } from '@/lib/db/client';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
 import { success, unauthorized } from '@/lib/api/response';
-
-function getMonthRange(baseDate: Date) {
-  const monthStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
-  const monthEnd = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 1);
-  return { monthStart, monthEnd };
-}
-
-function getTodayRange(baseDate: Date) {
-  const dayStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
-  const dayEnd = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate() + 1);
-  return { dayStart, dayEnd };
-}
+import {
+  japanDateKey,
+  japanMonthInstantRange,
+  todayUtcRange,
+  utcMonthDateRange,
+} from '@/lib/utils/date-boundary';
 
 export async function GET() {
   const session = await auth();
@@ -31,18 +25,17 @@ export async function GET() {
   }
 
   const now = new Date();
-  const { monthStart, monthEnd } = getMonthRange(now);
-  const { dayStart, dayEnd } = getTodayRange(now);
+  const currentMonthKey = japanDateKey(now).slice(0, 7);
+  const visitMonthRange = japanMonthInstantRange(currentMonthKey);
+  const scheduleTodayRange = todayUtcRange(now);
+  const scheduleMonthRange = utcMonthDateRange(currentMonthKey);
 
   const [currentMonthVisitCount, last30DaysVisitCount, todayAssignedCount, upcomingAssignedCount] =
     await Promise.all([
       prisma.visitRecord.count({
         where: {
           pharmacist_id: userId,
-          visit_date: {
-            gte: monthStart,
-            lt: monthEnd,
-          },
+          visit_date: visitMonthRange,
         },
       }),
       prisma.visitRecord.count({
@@ -57,10 +50,7 @@ export async function GET() {
       prisma.visitSchedule.count({
         where: {
           pharmacist_id: userId,
-          scheduled_date: {
-            gte: dayStart,
-            lt: dayEnd,
-          },
+          scheduled_date: scheduleTodayRange,
           schedule_status: {
             in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
           },
@@ -70,8 +60,8 @@ export async function GET() {
         where: {
           pharmacist_id: userId,
           scheduled_date: {
-            gte: dayEnd,
-            lt: monthEnd,
+            gte: scheduleTodayRange.lt,
+            lt: scheduleMonthRange.lt,
           },
           schedule_status: {
             in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],

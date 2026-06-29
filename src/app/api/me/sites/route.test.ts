@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -51,7 +51,14 @@ describe('/api/me/sites GET', () => {
     userFindUniqueMock.mockResolvedValue({ default_site_id: 'site_1' });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns site list with visit counts and current flag', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z')); // 2026-06-12 00:30 JST
+
     const response = await GET(new NextRequest('http://localhost/api/me/sites'), routeCtx);
 
     expect(response.status).toBe(200);
@@ -73,6 +80,10 @@ describe('/api/me/sites GET', () => {
         where: expect.objectContaining({
           org_id: 'org_1',
           site_id: { in: ['site_1', 'site_2'] },
+          scheduled_date: {
+            gte: new Date('2026-06-12T00:00:00.000Z'),
+            lt: new Date('2026-06-13T00:00:00.000Z'),
+          },
         }),
       }),
     );

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const {
@@ -75,6 +75,10 @@ describe('/api/dashboard/dispensing-stats', () => {
     medicationCycleCountMock.mockResolvedValueOnce(1);
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('wraps auth failure responses in no-store headers before count reads', async () => {
     requireAuthContextMock.mockResolvedValueOnce({
       response: NextResponse.json({ code: 'AUTH_FORBIDDEN' }, { status: 403 }),
@@ -98,6 +102,9 @@ describe('/api/dashboard/dispensing-stats', () => {
   });
 
   it('returns dispensing dashboard metrics', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z')); // 2026-06-12 00:30 JST
+
     const response = (await GET(createRequest()))!;
 
     expect(response.status).toBe(200);
@@ -141,8 +148,8 @@ describe('/api/dashboard/dispensing-stats', () => {
         org_id: 'org_1',
         status: 'completed',
         updated_at: {
-          gte: expect.any(Date),
-          lte: expect.any(Date),
+          gte: new Date('2026-06-11T15:00:00.000Z'),
+          lt: new Date('2026-06-12T15:00:00.000Z'),
         },
       },
     });

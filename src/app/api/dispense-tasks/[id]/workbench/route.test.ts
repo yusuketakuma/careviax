@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import type { MemberRole } from '@prisma/client';
 
@@ -135,7 +135,13 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
     );
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('allows clerk read-all and returns count rows with line metadata for medication format grouping', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z')); // 2026-06-12 00:30 JST
     authCtx.role = 'clerk';
     dispenseTaskFindFirstMock.mockResolvedValue({
       id: 'task_1',
@@ -264,6 +270,16 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduled_date: {
+            gte: new Date('2026-06-12T00:00:00.000Z'),
+            lt: new Date('2026-06-13T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       intake: {
         id: 'intake_1',

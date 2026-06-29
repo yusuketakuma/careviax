@@ -9,6 +9,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
+import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { matchMedicationDiffLines } from '@/lib/prescription/medication-diff';
 import {
@@ -238,6 +239,7 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
 
   const dispenserIds = Array.from(new Set(task.results.map((result) => result.dispensed_by)));
   const now = new Date();
+  const todayRange = todayUtcRange(now);
 
   const [egfrObservation, todayVisit, narcoticMasters, nameMap, teamAuditTotal, latestStock] =
     await Promise.all([
@@ -250,10 +252,7 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
         where: {
           org_id: ctx.orgId,
           case_id: task.cycle.case_id,
-          scheduled_date: {
-            gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-            lte: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59),
-          },
+          scheduled_date: todayRange,
           schedule_status: {
             in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress'],
           },
