@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { ErrorState } from '@/components/ui/error-state';
 import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
 import {
@@ -418,6 +419,21 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
 
   if (isBootstrappingOrg || overviewQuery.isLoading) {
     return <Loading />;
+  }
+
+  if (overviewQuery.isError) {
+    return (
+      <div className="rounded-lg border border-border/70 bg-card p-4">
+        <ErrorState
+          variant="server"
+          title="共有状況を表示できません"
+          description="共有状況の取得に失敗しました。再試行してください。"
+          detail={overviewQuery.error instanceof Error ? overviewQuery.error.message : undefined}
+          action={{ label: '再試行', onClick: () => void overviewQuery.refetch() }}
+          live="polite"
+        />
+      </div>
+    );
   }
 
   const recentShares = overviewQuery.data?.external_shares ?? [];

@@ -242,4 +242,26 @@ describe('ExternalShareContent', () => {
     expect(params.get('related_entity_id')).toBe(patientId);
     expect(requestListUrl).toContain(`related_entity_id=${encodeURIComponent(patientId)}`);
   });
+
+  it('shows a retryable error instead of a false-empty overview when the fetch fails', () => {
+    const refetch = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('共有状況を取得できませんでした'),
+      refetch,
+    });
+
+    render(<ExternalShareContent patientId="patient_1" />);
+
+    // 取得失敗を「共有実績ゼロ」に化けさせず、エラー＋再試行を提示する。
+    expect(screen.getByText('共有状況を表示できません')).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 2, name: '共有設定' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
 });
