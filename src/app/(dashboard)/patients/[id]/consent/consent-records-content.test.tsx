@@ -389,4 +389,20 @@ describe('ConsentRecordsContent', () => {
       false,
     );
   });
+
+  it('surfaces a retryable error instead of a false-empty table when consent fetch fails', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/consent-records?patient_id=patient_1') {
+        return new Response('error', { status: 500 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderContent();
+
+    // 取得失敗を「同意記録ゼロ件」の空テーブルに化けさせず、エラー＋再読み込みを提示する。
+    expect(await screen.findByText('同意記録を取得できませんでした')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+  });
 });

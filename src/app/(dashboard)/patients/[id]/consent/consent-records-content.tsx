@@ -774,7 +774,7 @@ export function ConsentRecordsContent() {
   const [editTarget, setEditTarget] = useState<ConsentRecord | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ConsentRecord | null>(null);
 
-  const { data, isLoading } = useQuery<ConsentListResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<ConsentListResponse>({
     queryKey: ['consent-records', patientId],
     queryFn: async () => {
       const res = await fetch(`/api/consent-records?patient_id=${patientId}`, {
@@ -805,6 +805,8 @@ export function ConsentRecordsContent() {
         columns={columns}
         data={data?.data ?? []}
         isLoading={isLoading}
+        errorMessage={isError ? '同意記録を取得できませんでした' : undefined}
+        onRetry={() => void refetch()}
         caption="患者の同意記録一覧"
       />
 
