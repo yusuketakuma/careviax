@@ -1,8 +1,14 @@
 import { z } from 'zod';
-import { communicationChannelSchema } from '@/lib/validations/communication-channel';
+import {
+  EXTERNAL_COMMUNICATION_CHANNELS,
+  externalCommunicationChannelSchema,
+} from '@/lib/validations/communication-channel';
+
+export const CARE_REPORT_SEND_CHANNELS = EXTERNAL_COMMUNICATION_CHANNELS;
+export const careReportSendChannelSchema = externalCommunicationChannelSchema;
 
 export type CareReportSendRecipient = {
-  channel: z.infer<typeof communicationChannelSchema>;
+  channel: z.infer<typeof careReportSendChannelSchema>;
   recipient_name: string;
   recipient_contact: string;
   recipient_role: string;
@@ -34,7 +40,7 @@ export function normalizeCareReportRecipientRole(value: string) {
 
 export const careReportRecipientSchema = z
   .object({
-    channel: communicationChannelSchema,
+    channel: careReportSendChannelSchema,
     recipient_name: z.string().trim().min(1, '送付先氏名は必須です'),
     recipient_contact: z.string().trim().min(1, '送付先連絡先は必須です'),
     recipient_role: z

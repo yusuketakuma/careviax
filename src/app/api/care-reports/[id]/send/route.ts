@@ -1063,7 +1063,7 @@ async function markDeliveryBlockedByPartnerVisitSource(
     freshness: PartnerVisitRecordFreshnessFailure;
   },
 ) {
-  await tx.deliveryRecord.updateMany({
+  const updated = await tx.deliveryRecord.updateMany({
     where: {
       id: args.deliveryRecordId,
       org_id: ctx.orgId,
@@ -1074,6 +1074,7 @@ async function markDeliveryBlockedByPartnerVisitSource(
       failure_reason: args.freshness.reason,
     },
   });
+  if (updated.count !== 1) return false;
 
   await createAuditLogEntry(tx, ctx, {
     action: 'care_report_delivery_blocked_by_stale_partner_visit_record',
@@ -1091,15 +1092,21 @@ async function markDeliveryBlockedByPartnerVisitSource(
       },
     },
   });
+  return true;
 }
 
 async function persistDeliveryBlockedByPartnerVisitSource(
   ctx: AuthContext,
   args: Parameters<typeof markDeliveryBlockedByPartnerVisitSource>[2],
 ) {
-  await withOrgContext(ctx.orgId, (tx) => markDeliveryBlockedByPartnerVisitSource(tx, ctx, args), {
-    requestContext: ctx,
-  });
+  const persisted = await withOrgContext(
+    ctx.orgId,
+    (tx) => markDeliveryBlockedByPartnerVisitSource(tx, ctx, args),
+    {
+      requestContext: ctx,
+    },
+  );
+  if (!persisted) throw new DeliveryInProgressConflict();
 }
 
 /**

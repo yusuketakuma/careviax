@@ -843,6 +843,73 @@ describe('/api/care-reports/[id]/send POST', () => {
     });
   });
 
+  it('does not write blocked audit when record-only stale cleanup loses the draft race', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_revision_no: 1,
+          partner_visit_record_updated_at: '2026-06-18T03:10:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+    txMock.partnerVisitRecord.findFirst
+      .mockResolvedValueOnce({
+        revision_no: 1,
+        updated_at: new Date('2026-06-18T03:10:00.000Z'),
+        status: 'confirmed',
+        confirmed_at: new Date('2026-06-18T03:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        revision_no: 1,
+        updated_at: new Date('2026-06-18T03:10:00.000Z'),
+        status: 'returned',
+        confirmed_at: null,
+      });
+    txMock.deliveryRecord.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(txMock.deliveryRecord.create).toHaveBeenCalled();
+    expect(txMock.deliveryRecord.update).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'care_report_delivery_blocked_by_stale_partner_visit_record',
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ送付先への報告書送付が進行中です。送付履歴を確認してください',
+      details: {
+        channel: 'fax',
+      },
+    });
+  });
+
   it('marks email delivery drafts failed when partner visit source becomes stale before external send', async () => {
     careReportFindFirstMock.mockResolvedValue({
       id: 'report_1',
@@ -920,6 +987,73 @@ describe('/api/care-reports/[id]/send POST', () => {
       details: {
         reason: 'source_partner_visit_record_not_confirmed',
         partner_visit_record_id: 'partner_visit_record_1',
+      },
+    });
+  });
+
+  it('does not write blocked audit or send email when email stale cleanup loses the draft race', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_revision_no: 1,
+          partner_visit_record_updated_at: '2026-06-18T03:10:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+    partnerVisitRecordFindFirstMock
+      .mockResolvedValueOnce({
+        revision_no: 1,
+        updated_at: new Date('2026-06-18T03:10:00.000Z'),
+        status: 'confirmed',
+        confirmed_at: new Date('2026-06-18T03:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        revision_no: 1,
+        updated_at: new Date('2026-06-18T03:10:00.000Z'),
+        status: 'returned',
+        confirmed_at: null,
+      });
+    txMock.deliveryRecord.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(txMock.deliveryRecord.create).toHaveBeenCalled();
+    expect(txMock.deliveryRecord.update).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'care_report_delivery_blocked_by_stale_partner_visit_record',
+        }),
+      }),
+    );
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ送付先への報告書送付が進行中です。送付履歴を確認してください',
+      details: {
+        channel: 'email',
       },
     });
   });
@@ -1029,6 +1163,58 @@ describe('/api/care-reports/[id]/send POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: { channel: expect.any(Array) },
+    });
+  });
+
+  it('rejects PH-OS share direct sends before grantless delivery side effects', async () => {
+    const response = await POST(
+      createRequest({
+        channel: 'ph_os_share',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { channel: expect.any(Array) },
+    });
+  });
+
+  it('rejects PH-OS share bulk direct sends before report load or delivery side effects', async () => {
+    const response = await POST(
+      createRequest({
+        recipients: [
+          {
+            channel: 'ph_os_share',
+            recipient_name: '山田 太郎',
+            recipient_contact: 'doctor@example.com',
+            recipient_role: 'physician',
+          },
+        ],
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { recipients: expect.any(Array) },
     });
   });
 

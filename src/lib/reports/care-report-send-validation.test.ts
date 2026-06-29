@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CARE_REPORT_SEND_CHANNELS,
   normalizeCareReportSendPayload,
   validateCareReportSendRecipientForm,
 } from './care-report-send-validation';
@@ -63,5 +64,76 @@ describe('care-report-send-validation', () => {
         recipient_role: undefined,
       },
     });
+  });
+
+  it.each(CARE_REPORT_SEND_CHANNELS)('accepts %s for direct care-report sends', (channel) => {
+    const recipientContact =
+      channel === 'email' || channel === 'ses' ? 'doctor@example.com' : '連絡先';
+
+    expect(
+      normalizeCareReportSendPayload({
+        channel,
+        recipient_name: '山田 医師',
+        recipient_contact: recipientContact,
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-12T00:00:00.000Z',
+        safety_ack: true,
+      }),
+    ).toMatchObject({
+      ok: true,
+      recipients: [
+        {
+          channel,
+          recipient_contact: recipientContact,
+        },
+      ],
+    });
+  });
+
+  it('rejects PH-OS share from the direct care-report send payload', () => {
+    const result = normalizeCareReportSendPayload({
+      channel: 'ph_os_share',
+      recipient_name: '山田 医師',
+      recipient_contact: 'doctor@example.com',
+      recipient_role: 'physician',
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
+      safety_ack: true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('direct send payload should reject PH-OS share');
+    expect(result.details.channel?.[0]).toEqual(expect.any(String));
+  });
+
+  it('rejects PH-OS share inside bulk direct care-report send recipients', () => {
+    const result = normalizeCareReportSendPayload({
+      recipients: [
+        {
+          channel: 'ph_os_share',
+          recipient_name: '山田 医師',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+        },
+      ],
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
+      safety_ack: true,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('bulk direct send payload should reject PH-OS share');
+    expect(result.details.recipients?.[0]).toEqual(expect.any(String));
+  });
+
+  it('rejects PH-OS share from the client-side direct send form', () => {
+    const result = validateCareReportSendRecipientForm({
+      channel: 'ph_os_share',
+      recipient_name: '山田 医師',
+      recipient_contact: 'doctor@example.com',
+      recipient_role: 'physician',
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('direct send form should reject PH-OS share');
+    expect(result.errors.channel).toEqual(expect.any(String));
   });
 });

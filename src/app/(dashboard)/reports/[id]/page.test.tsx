@@ -340,6 +340,89 @@ describe('ReportDetailPage send safety dialog', () => {
     });
   });
 
+  it('does not apply PH-OS share as a direct report send channel from care-team suggestions', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'professional_1',
+                name: '鈴木 医師',
+                profession_type: 'physician',
+                organization_name: '青葉内科',
+                email: 'doctor2@example.com',
+                fax: null,
+                phone: '03-0000-0000',
+                department: null,
+                address: null,
+                preferred_contact_method: 'ph_os_share',
+                preferred_contact_time: null,
+                last_contacted_at: null,
+                last_success_channel: null,
+                recommended_channels: ['ph_os_share', 'email'],
+                is_primary: true,
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            prescriber_institution_suggestion: {
+              id: 'institution_1',
+              name: '青葉内科',
+              phone: null,
+              fax: null,
+              address: null,
+              recommended_channels: ['ph_os_share', 'email'],
+              prescribed_date: '2026-03-28T00:00:00.000Z',
+              prescriber_name: '青葉 医師',
+            },
+            delivery_rule_suggestion: {
+              document_type: 'care_report',
+              target_role: 'physician',
+              channel: 'ph_os_share',
+              fallback_channels: ['email'],
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '送付' }));
+    expect(screen.queryByText('PH-OS共有')).toBeNull();
+    expect(
+      screen.getByText((_, element) => {
+        return element?.textContent === '送達ルール: physician 向けは メール を優先';
+      }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '鈴木 医師' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: '患者、訪問日、報告書種別、送付先氏名、連絡先、送付チャネルを確認しました',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '送付する' }));
+
+    expect(sendMutateMock).toHaveBeenCalledWith({
+      channel: 'email',
+      recipient_name: '鈴木 医師',
+      recipient_contact: 'doctor2@example.com',
+      recipient_role: 'physician',
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
+      safety_ack: true,
+    });
+  });
+
   it('resends failed reports through the same safety-checked delivery flow', () => {
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
       const scope = options.queryKey?.[0];

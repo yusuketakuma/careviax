@@ -71,6 +71,7 @@ import {
   readReportWarnings,
 } from '@/lib/reports/report-content';
 import {
+  CARE_REPORT_SEND_CHANNELS,
   normalizeCareReportRecipientRole,
   validateCareReportSendRecipientForm,
   type CareReportSendFormErrors,
@@ -201,6 +202,14 @@ const PROFESSION_AUDIENCE_LABELS: Record<string, string> = {
 };
 
 type SendFormErrors = CareReportSendFormErrors;
+
+type CareReportDirectSendChannel = (typeof CARE_REPORT_SEND_CHANNELS)[number];
+const CARE_REPORT_SEND_CHANNEL_SET = new Set<string>(CARE_REPORT_SEND_CHANNELS);
+function isCareReportDirectSendChannel(
+  value: string | null | undefined,
+): value is CareReportDirectSendChannel {
+  return typeof value === 'string' && CARE_REPORT_SEND_CHANNEL_SET.has(value);
+}
 
 type ExternalProfessionalSuggestion = {
   id: string;
@@ -387,7 +396,10 @@ function resolveSuggestionDelivery(
     deliveryRule?.channel,
     ...(deliveryRule?.fallback_channels ?? []),
     ...(suggestion.recommended_channels ?? []),
-  ].filter((value): value is string => Boolean(value));
+  ].filter(isCareReportDirectSendChannel);
+  const preferredContactMethod = isCareReportDirectSendChannel(suggestion.preferred_contact_method)
+    ? suggestion.preferred_contact_method
+    : null;
 
   const contactByChannel = (ch: string): string | null => {
     if (ch === 'email' || ch === 'ses') return suggestion.email ?? null;
@@ -406,7 +418,7 @@ function resolveSuggestionDelivery(
   } else {
     resolvedChannel =
       suggestedChannels.find(hasContact) ??
-      suggestion.preferred_contact_method ??
+      preferredContactMethod ??
       (suggestion.email ? 'email' : suggestion.fax ? 'fax' : suggestion.phone ? 'phone' : 'email');
   }
 
@@ -802,6 +814,11 @@ export default function ReportDetailPage() {
         channel: deliveryRuleSuggestion.channel,
         fallback_channels: deliveryRuleSuggestion.fallback_channels,
       }
+    : null;
+  const directSendDeliveryRuleChannel = deliveryRuleSuggestion
+    ? [deliveryRuleSuggestion.channel, ...deliveryRuleSuggestion.fallback_channels].find(
+        isCareReportDirectSendChannel,
+      )
     : null;
   const expectedRecipientRole = inferCareReportTargetRole(report.report_type);
 
@@ -1491,11 +1508,11 @@ export default function ReportDetailPage() {
                   >
                     候補を適用
                   </Button>
-                  {deliveryRuleSuggestion ? (
+                  {deliveryRuleSuggestion && directSendDeliveryRuleChannel ? (
                     <p className="mt-2 text-xs text-tag-info">
                       送達ルール: {deliveryRuleSuggestion.target_role} 向けは{' '}
-                      {CHANNEL_LABELS[deliveryRuleSuggestion.channel] ??
-                        deliveryRuleSuggestion.channel}{' '}
+                      {CHANNEL_LABELS[directSendDeliveryRuleChannel] ??
+                        directSendDeliveryRuleChannel}{' '}
                       を優先
                     </p>
                   ) : null}
@@ -1544,9 +1561,9 @@ export default function ReportDetailPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(CHANNEL_LABELS).map(([key, label]) => (
+                    {CARE_REPORT_SEND_CHANNELS.map((key) => (
                       <SelectItem key={key} value={key}>
-                        {label}
+                        {CHANNEL_LABELS[key] ?? key}
                       </SelectItem>
                     ))}
                   </SelectContent>
