@@ -266,12 +266,16 @@ describe('/api/care-reports GET', () => {
           visit_record_id: 'visit_1',
           report_type: 'physician_report',
           patient_id: { in: ['patient_1'] },
+          created_at: {
+            gte: new Date('2026-02-28T15:00:00.000Z'),
+            lt: new Date('2026-03-31T15:00:00.000Z'),
+          },
           delivery_records: {
             some: expect.objectContaining({
               status: 'response_waiting',
               sent_at: {
-                gte: new Date('2026-03-28T00:00:00.000Z'),
-                lte: new Date('2026-03-29T23:59:59.999Z'),
+                gte: new Date('2026-03-27T15:00:00.000Z'),
+                lt: new Date('2026-03-29T15:00:00.000Z'),
               },
               recipient_name: { contains: '主治医', mode: 'insensitive' },
             }),
@@ -312,6 +316,29 @@ describe('/api/care-reports GET', () => {
       failed_delivery_count: 1,
       by_status: { response_waiting: 1 },
     });
+  });
+
+  it('uses Japan-day half-open upper bounds for report and sent date filters', async () => {
+    const response = await getCareReports(
+      createAuthenticatedRequest(
+        'http://localhost/api/care-reports?date_to=2026-03-29&sent_to=2026-03-29',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const where = careReportFindManyMock.mock.calls[0]?.[0].where;
+    expect(where.created_at).toEqual({
+      lt: new Date('2026-03-29T15:00:00.000Z'),
+    });
+    expect(where.created_at).not.toHaveProperty('lte');
+    expect(where.delivery_records).toEqual({
+      some: {
+        sent_at: {
+          lt: new Date('2026-03-29T15:00:00.000Z'),
+        },
+      },
+    });
+    expect(where.delivery_records.some.sent_at).not.toHaveProperty('lte');
   });
 
   it('returns a sanitized no-store 500 without raw logging when report listing fails unexpectedly', async () => {

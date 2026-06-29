@@ -13,7 +13,7 @@ import { formatDateKey } from '@/lib/date-key';
  * 前日 15:00 になり、lte/gt/equals 比較で当日レコードを取りこぼす/前日を拾う。
  *
  * 注意: created_at 等の実時刻を持つ DateTime カラムとの比較には使わないこと
- * (それらは従来どおりローカル深夜境界が正しい)。
+ * (それらは japanDayInstantRange* / japanMonthInstantRange を使う)。
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,6 +50,14 @@ function parseDateKey(key: string): { year: number; monthIndex: number; day: num
   const month = Number(match[2]);
   const day = Number(match[3]);
   if (month < 1 || month > 12 || day < 1 || day > 31) {
+    throw new RangeError('Invalid date key');
+  }
+  const roundTrip = new Date(Date.UTC(year, month - 1, day));
+  if (
+    roundTrip.getUTCFullYear() !== year ||
+    roundTrip.getUTCMonth() !== month - 1 ||
+    roundTrip.getUTCDate() !== day
+  ) {
     throw new RangeError('Invalid date key');
   }
   return { year, monthIndex: month - 1, day };
@@ -95,6 +103,12 @@ export function addUtcDays(date: Date, days: number): Date {
  */
 export function japanDayInstantRange(now: Date = new Date()): { gte: Date; lt: Date } {
   const gte = japanDayStartInstantFromDateKey(japanDateKey(now));
+  return { gte, lt: addUtcDays(gte, 1) };
+}
+
+/** DateTime カラム比較用の日本業務日キー 'YYYY-MM-DD' 1 日分の実時刻レンジ。 */
+export function japanDayInstantRangeFromDateKey(key: string): { gte: Date; lt: Date } {
+  const gte = japanDayStartInstantFromDateKey(key);
   return { gte, lt: addUtcDays(gte, 1) };
 }
 

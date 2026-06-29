@@ -22,6 +22,7 @@ import {
 import { canOutputCareReport } from '@/server/services/care-report-output-policy';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
+import { japanDayInstantRangeFromDateKey } from '@/lib/utils/date-boundary';
 
 const ROUTE = '/api/care-reports';
 const SAFE_ERROR_NAMES = new Set([
@@ -566,8 +567,13 @@ async function authenticatedGET(req: NextRequest) {
         );
       }
     }
-    const sentFrom = sentFromRaw ? new Date(`${sentFromRaw}T00:00:00.000Z`) : null;
-    const sentTo = sentToRaw ? new Date(`${sentToRaw}T23:59:59.999Z`) : null;
+    const sentAtRange =
+      sentFromRaw || sentToRaw
+        ? {
+            ...(sentFromRaw ? { gte: japanDayInstantRangeFromDateKey(sentFromRaw).gte } : {}),
+            ...(sentToRaw ? { lt: japanDayInstantRangeFromDateKey(sentToRaw).lt } : {}),
+          }
+        : null;
     const canOutputReport = canOutputCareReport(ctx.role);
     if (keyword && !canOutputReport) {
       return withSensitiveNoStore(forbidden('報告書本文検索の権限がありません'));
@@ -661,22 +667,19 @@ async function authenticatedGET(req: NextRequest) {
       ...(dateFrom || dateTo
         ? {
             created_at: {
-              ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-              ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999Z`) } : {}),
+              ...(dateFrom ? { gte: japanDayInstantRangeFromDateKey(dateFrom).gte } : {}),
+              ...(dateTo ? { lt: japanDayInstantRangeFromDateKey(dateTo).lt } : {}),
             },
           }
         : {}),
-      ...(deliveryStatus || recipient || sentFrom || sentTo
+      ...(deliveryStatus || recipient || sentAtRange
         ? {
             delivery_records: {
               some: {
                 ...(deliveryStatus ? { status: deliveryStatus } : {}),
-                ...(sentFrom || sentTo
+                ...(sentAtRange
                   ? {
-                      sent_at: {
-                        ...(sentFrom ? { gte: sentFrom } : {}),
-                        ...(sentTo ? { lte: sentTo } : {}),
-                      },
+                      sent_at: sentAtRange,
                     }
                   : {}),
                 ...(recipient

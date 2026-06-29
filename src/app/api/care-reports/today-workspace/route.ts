@@ -3,7 +3,13 @@ import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { internalError, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
-import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import {
+  addUtcDays,
+  japanDateKey,
+  japanDayInstantRangeFromDateKey,
+  japanMonthInstantRange,
+  utcDateFromLocalKey,
+} from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -405,17 +411,13 @@ const authenticatedGET = withAuthContext(
     }
 
     const now = new Date();
-    const targetKey = parsed.data.date ?? localDateKey(now);
+    const targetKey = parsed.data.date ?? japanDateKey(now);
     // scheduled_date(@db.Date)比較用: 対象日のローカル日付キーを UTC 深夜レンジにする
     const today = utcDateFromLocalKey(targetKey);
     const tomorrow = addUtcDays(today, 1);
-    // responded_at / sent_at(DateTime, 実時刻)比較用: 従来どおりローカル境界
-    const localDayStart = new Date(`${targetKey}T00:00:00`);
-    const localDayEnd = new Date(localDayStart);
-    localDayEnd.setDate(localDayEnd.getDate() + 1);
-    const [targetYear, targetMonth] = targetKey.split('-').map(Number);
-    const monthStart = new Date(targetYear, targetMonth - 1, 1);
-    const nextMonthStart = new Date(targetYear, targetMonth, 1);
+    // responded_at / sent_at(DateTime, 実時刻)比較用: 日本業務日の半開区間
+    const targetDayInstantRange = japanDayInstantRangeFromDateKey(targetKey);
+    const targetMonthInstantRange = japanMonthInstantRange(targetKey.slice(0, 7));
     const billingMonthKey = `${targetKey.slice(0, 7)}-01`;
     const billingMonthStart = utcDateFromLocalKey(billingMonthKey);
     const canManageBilling = hasPermission(ctx.role, 'canManageBilling');
@@ -452,7 +454,7 @@ const authenticatedGET = withAuthContext(
         const resolvedResponsesPromise = tx.communicationResponse.findMany({
           where: {
             org_id: ctx.orgId,
-            responded_at: { gte: localDayStart, lt: localDayEnd },
+            responded_at: targetDayInstantRange,
           },
           orderBy: { responded_at: 'desc' },
           take: RESOLVED_LIMIT,
@@ -496,7 +498,7 @@ const authenticatedGET = withAuthContext(
         const monthlyDeliveryCountPromise = tx.deliveryRecord.count({
           where: {
             org_id: ctx.orgId,
-            sent_at: { gte: monthStart, lt: nextMonthStart },
+            sent_at: targetMonthInstantRange,
           },
         });
 

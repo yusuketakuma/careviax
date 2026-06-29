@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import {
   addUtcDays,
   japanDayInstantRange,
+  japanDayInstantRangeFromDateKey,
   japanDayStartInstantFromDateKey,
   japanDateKey,
   japanMonthInstantRange,
@@ -120,6 +121,18 @@ describe('date-boundary (JST 前提)', () => {
           process.env.TZ = previousTz;
         }
       }
+    });
+  });
+
+  describe('japanDayInstantRangeFromDateKey', () => {
+    it('日付キーの日本業務日 DateTime 半開区間を返す', () => {
+      const range = japanDayInstantRangeFromDateKey('2026-06-12');
+      expect(range.gte.toISOString()).toBe('2026-06-11T15:00:00.000Z');
+      expect(range.lt.toISOString()).toBe('2026-06-12T15:00:00.000Z');
+    });
+
+    it('不可能な日付キーは正規化せず拒否する', () => {
+      expect(() => japanDayInstantRangeFromDateKey('2026-02-31')).toThrow(RangeError);
     });
   });
 

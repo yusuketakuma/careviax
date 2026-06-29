@@ -23,6 +23,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Care-Report Japan Date Boundaries - 2026-06-30 03:40 JST
+
+- Scope:
+  - Continued the backend/API Japan-only timezone hardening for care-report list filters and the report today workspace.
+  - Kept `@db.Date` sentinel comparisons on UTC-midnight date keys while moving `DateTime` query filters to Japan civil-day/month instant ranges.
+  - Interrupted implementation to review codex2's `/api/external-professionals/suggestions` patch first, then resumed this non-overlapping slice.
+- Fixed:
+  - `/api/care-reports` now interprets date-only `date_from/date_to` and `sent_from/sent_to` as Japan civil days for `CareReport.created_at` and `DeliveryRecord.sent_at`.
+  - Upper date-only bounds now use half-open `lt` next-Japan-day-start ranges instead of `lte 23:59:59.999Z`.
+  - `/api/care-reports/today-workspace` now defaults omitted `date` to `japanDateKey(now)` rather than the server-local date.
+  - Today-workspace `CommunicationResponse.responded_at` and monthly delivery `sent_at` filters now use Japan day/month instant ranges, while `VisitSchedule.scheduled_date` and `BillingCandidate.billing_month` stay on `@db.Date` UTC sentinel ranges.
+  - `japanDayInstantRangeFromDateKey()` was added and rejects impossible date keys instead of normalizing them.
+- Safety:
+  - Reduces PHI-bearing report/list/workspace day-boundary leakage where UTC or non-JST runtimes could show the wrong Japanese workday's patients, report sends, or replies.
+  - No response shape, permission, RLS policy, schema, live DB data, external send, push, deploy, secret handling, or destructive operation changed.
+- Validation:
+  - `TZ=UTC pnpm exec vitest run src/lib/utils/date-boundary.test.ts src/app/api/care-reports/route.test.ts src/app/api/care-reports/today-workspace/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `104` tests.
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/lib/utils/date-boundary.test.ts src/app/api/care-reports/route.test.ts src/app/api/care-reports/today-workspace/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `104` tests.
+  - `TZ=America/Los_Angeles pnpm exec vitest run src/lib/utils/date-boundary.test.ts src/app/api/care-reports/route.test.ts src/app/api/care-reports/today-workspace/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `104` tests.
+  - Scoped ESLint on the six touched files: passed.
+  - Scoped `git diff --check` on the six touched files: passed.
+  - `pnpm date-slices:check`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Report template `report_date` / `visit_date` generation and partner-visit draft date display still need a separate Japan civil-date slice.
+
 ### External Professional Suggestions No-Store - 2026-06-30 03:34 JST
 
 - Scope:

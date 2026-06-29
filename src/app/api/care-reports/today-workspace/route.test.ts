@@ -146,6 +146,75 @@ describe('/api/care-reports/today-workspace', () => {
     );
   });
 
+  it('uses Japan business date and instant ranges when date is omitted under UTC runtime', async () => {
+    const tx = mockTx({
+      schedules: [
+        {
+          id: 'sched_jst_midnight',
+          schedule_status: 'planned',
+          time_window_start: new Date('2026-06-12T01:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p_jst', name: '田中 一郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: null,
+        },
+      ],
+      patients: [{ id: 'p_jst', name: '田中 一郎' }],
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z'));
+    try {
+      const req = createRequest('http://localhost/api/care-reports/today-workspace');
+      const res = await GET(req, { params: Promise.resolve({}) });
+
+      expect(res!.status).toBe(200);
+      expect(tx.visitSchedule.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            scheduled_date: {
+              gte: new Date('2026-06-12T00:00:00.000Z'),
+              lt: new Date('2026-06-13T00:00:00.000Z'),
+            },
+          }),
+        }),
+      );
+      expect(tx.communicationResponse.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            responded_at: {
+              gte: new Date('2026-06-11T15:00:00.000Z'),
+              lt: new Date('2026-06-12T15:00:00.000Z'),
+            },
+          }),
+        }),
+      );
+      expect(tx.deliveryRecord.count).toHaveBeenCalledWith({
+        where: {
+          org_id: 'org_1',
+          sent_at: {
+            gte: new Date('2026-05-31T15:00:00.000Z'),
+            lt: new Date('2026-06-30T15:00:00.000Z'),
+          },
+        },
+      });
+      expect(tx.billingCandidate.findMany).toHaveBeenCalled();
+      for (const [args] of tx.billingCandidate.findMany.mock.calls) {
+        expect(args.where.billing_month).toEqual(new Date('2026-06-01T00:00:00.000Z'));
+      }
+      await expect(res!.json()).resolves.toMatchObject({
+        data: {
+          generated_at: '2026-06-11T15:30:00.000Z',
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('builds draft rows with recipient labels, narcotic note and facility batching', async () => {
     mockTx({
       schedules: [
