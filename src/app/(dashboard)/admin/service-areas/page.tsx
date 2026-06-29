@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -211,6 +212,28 @@ export default function ServiceAreasPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {sitesQuery.isError ? (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="flex flex-wrap items-center gap-x-2 text-sm text-destructive"
+                >
+                  <span>
+                    {sitesQuery.error instanceof Error
+                      ? sitesQuery.error.message
+                      : '拠点一覧の取得に失敗しました'}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-sm"
+                    onClick={() => void sitesQuery.refetch()}
+                  >
+                    再試行
+                  </Button>
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">
@@ -308,7 +331,20 @@ export default function ServiceAreasPage() {
             <CardTitle className="text-base">登録済みエリア</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {serviceAreas.length === 0 ? (
+            {areasQuery.isError ? (
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="訪問エリアを取得できませんでした"
+                description={
+                  areasQuery.error instanceof Error
+                    ? areasQuery.error.message
+                    : '訪問エリアの取得に失敗しました'
+                }
+                action={{ label: '再試行', onClick: () => void areasQuery.refetch() }}
+                live="polite"
+              />
+            ) : serviceAreas.length === 0 ? (
               <p className="text-sm text-muted-foreground">まだ訪問エリアはありません。</p>
             ) : (
               serviceAreas.map((area) => (

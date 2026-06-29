@@ -411,4 +411,68 @@ describe('ServiceAreasPage', () => {
     );
     expect(deleteCalls).toHaveLength(0);
   });
+
+  it('fails closed with a retryable error instead of a silently empty 拠点 selector when the sites fetch fails', async () => {
+    // A failed sites fetch must not leave the 拠点 selector silently empty (no options,
+    // save blocked with no explanation) — surface the error with a retry instead.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+        }
+        if (url === '/api/service-areas' && !init?.method) {
+          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }),
+    );
+    renderPage();
+
+    const retry = await screen.findByRole('button', { name: '再試行' });
+    expect(screen.getByText('拠点一覧の取得に失敗しました')).toBeTruthy();
+
+    fireEvent.click(retry);
+    await waitFor(() => {
+      const siteCalls = vi
+        .mocked(global.fetch)
+        .mock.calls.filter(([u]) => String(u) === '/api/pharmacy-sites');
+      expect(siteCalls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it('fails closed with a retryable error instead of an empty-state when the areas fetch fails', async () => {
+    // A failed areas fetch must not render the "まだ訪問エリアはありません" empty-state — that
+    // false-empty reads as "no service areas" rather than "the fetch failed."
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/pharmacy-sites') {
+          return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+            status: 200,
+          });
+        }
+        if (url === '/api/service-areas' && !init?.method) {
+          return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText('訪問エリアを取得できませんでした')).toBeTruthy();
+    expect(screen.queryByText('まだ訪問エリアはありません。')).toBeNull();
+
+    fireEvent.click(await screen.findByRole('button', { name: '再試行' }));
+    await waitFor(() => {
+      const areaCalls = vi
+        .mocked(global.fetch)
+        .mock.calls.filter(
+          ([u, i]) => String(u) === '/api/service-areas' && !(i as RequestInit | undefined)?.method,
+        );
+      expect(areaCalls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
 });
