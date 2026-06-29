@@ -362,6 +362,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -439,6 +440,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
@@ -464,6 +466,7 @@ describe('/api/patients/[id]/mcs GET', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });

@@ -1,6 +1,14 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { conflict, error, forbidden, validationError, success } from '@/lib/api/response';
+import {
+  conflict,
+  error,
+  forbidden,
+  internalError,
+  validationError,
+  success,
+} from '@/lib/api/response';
 import { syncPatientMcsSchema } from '@/lib/validations/patient-mcs';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -8,10 +16,14 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { PatientMcsSyncError, syncPatientMcsTimeline } from '@/server/services/patient-mcs';
 import { canViewSensitivePatientData } from '@/lib/patient/sensitive';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 export const runtime = 'nodejs';
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPOST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: 'MCS 連携の同期権限がありません',
@@ -57,7 +69,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    const message = cause instanceof Error ? cause.message : 'MCS 同期に失敗しました';
-    return error('PATIENT_MCS_SYNC_FAILED', message, 502);
+    return error('PATIENT_MCS_SYNC_FAILED', 'MCS 同期に失敗しました', 502);
   }
 }
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

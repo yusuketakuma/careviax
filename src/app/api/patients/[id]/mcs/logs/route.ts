@@ -1,7 +1,8 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
-import { forbidden, notFound, success, validationError } from '@/lib/api/response';
+import { forbidden, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
@@ -13,6 +14,7 @@ import { readJsonObject } from '@/lib/db/json';
 import { PATIENT_MCS_PROFILE_TASK_TYPE } from '@/server/services/patient-mcs';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 
 const mcsLogCategoryLabels: Record<string, string> = {
   report: '報告確認',
@@ -67,7 +69,10 @@ function buildUpdatedMcsProfileMetadata(metadata: unknown, lastCheckedAt: string
   };
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPOST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: 'MCS 連携ログの作成権限がありません',
@@ -181,3 +186,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   return success({ data: event }, 201);
 }
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};

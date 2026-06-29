@@ -23,6 +23,35 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### MCS Mutation Response Hardening - 2026-06-30 05:03 JST
+
+- Scope:
+  - Continued codex2's other-profession collaboration objective on Medical Care Station mutation surfaces.
+  - Hardened `PATCH /api/patients/[id]/mcs`, `POST /api/patients/[id]/mcs-sync`, and `POST /api/patients/[id]/mcs/logs`.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - MCS profile PATCH, MCS timeline sync POST, and manual MCS log POST now wrap all authenticated responses with `withSensitiveNoStore`.
+  - MCS mutation success, validation, permission, not-found, conflict, and sanitized internal-error responses now include `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
+  - External or unknown MCS sync failures now return fixed `PATIENT_MCS_SYNC_FAILED` / `MCS 同期に失敗しました` 502 responses instead of echoing raw upstream/runtime `Error.message`.
+- Safety:
+  - Reduces PHI-adjacent caching risk for MCS profile/log/sync response payloads and reduces raw error disclosure risk from patient names, MCS text, browser/session details, or token-like strings in sync failures.
+  - Preserves existing authorization, sensitive-role checks, writable-patient checks, patient assignment checks, audit writes, operational-task sidecars, safe MCS URL normalization, and response status semantics.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/mcs/route.ts' 'src/app/api/patients/[id]/mcs/route.test.ts' 'src/app/api/patients/[id]/mcs-sync/route.ts' 'src/app/api/patients/[id]/mcs-sync/route.test.ts' 'src/app/api/patients/[id]/mcs/logs/route.ts' 'src/app/api/patients/[id]/mcs/logs/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/mcs/route.test.ts' 'src/app/api/patients/[id]/mcs-sync/route.test.ts' 'src/app/api/patients/[id]/mcs/logs/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `32` tests.
+  - Scoped ESLint on the six MCS route/test files: passed.
+  - Scoped `git diff --check` on the six MCS route/test files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and adversarial review of no-store plus raw sync error leakage.
+  - Claude noted a non-blocking follow-up candidate: controlled `PatientMcsSyncError` validation/conflict messages can intentionally include wrong-patient names; no-store now covers them, and raw/uncontrolled exceptions are fixed-message sanitized.
+  - codex ACKed the lock, preserved the MCS files while committing `2a70c552`, and was sent the same `PATCH_REVIEW_REQUEST`.
+- Remaining:
+  - Stage only explicit codex2-owned files plus ledgers and commit.
+
 ### Patient Board Japan Business-Day Today - 2026-06-30 05:00 JST
 
 - Scope:
@@ -80,7 +109,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm format:check`: passed.
 - Review:
   - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store/error semantics.
-  - codex ACKed the lock, preserved the partner-visit-records files while committing `5b6a7994`, and was sent the same `PATCH_REVIEW_REQUEST`.
+  - codex returned `PATCH_REVIEW_RESULT: APPROVED` after focused Vitest, scoped ESLint, scoped diff-check, API-contract review, and privacy review.
 - Remaining:
   - Committed by codex2 as `0353f010 No-store partner visit record saves`; no remaining work for this slice.
 

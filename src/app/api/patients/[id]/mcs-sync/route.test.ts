@@ -65,6 +65,11 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/[id]/mcs-sync POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -95,6 +100,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -111,6 +117,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -127,6 +134,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
@@ -148,6 +156,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(syncPatientMcsTimelineMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       patientId: 'patient_1',
@@ -181,6 +190,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
   });
 
@@ -203,6 +213,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
   });
 
@@ -219,6 +230,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
   });
 
@@ -236,6 +248,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
   });
 
@@ -253,6 +266,7 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
   });
 
@@ -277,12 +291,13 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
   });
 
-  it('maps external sync failures to 502', async () => {
+  it('maps external sync failures to a sanitized no-store 502', async () => {
     syncPatientMcsTimelineMock.mockRejectedValue(
       new PatientMcsSyncErrorMock(
-        'Medical Care Station にログイン済みの Chrome セッションが見つかりません',
+        '患者 青葉花子 MCS raw Chrome session token=secret was not found',
         'external',
       ),
     );
@@ -295,5 +310,14 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     }
 
     expect(response.status).toBe(502);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'PATIENT_MCS_SYNC_FAILED',
+      message: 'MCS 同期に失敗しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('青葉花子');
+    expect(JSON.stringify(body)).not.toContain('Chrome session');
+    expect(JSON.stringify(body)).not.toContain('token=secret');
   });
 });

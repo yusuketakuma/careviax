@@ -71,6 +71,11 @@ function createMalformedJsonRequest() {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/[id]/mcs/logs POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -127,6 +132,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         id: 'patient_1',
@@ -221,6 +227,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(communicationEventCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         counterpart_contact: 'https://www.medical-care.net/patients/2463520',
@@ -249,6 +256,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(taskUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({
@@ -274,6 +282,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     expect(communicationEventCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         counterpart_contact: null,
@@ -292,6 +301,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
   });
@@ -303,6 +313,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
   });
@@ -314,6 +325,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
   });
@@ -327,6 +339,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
   });
 
@@ -342,6 +355,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
     expect(taskUpsertMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();

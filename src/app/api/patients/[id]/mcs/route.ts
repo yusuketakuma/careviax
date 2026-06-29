@@ -123,7 +123,10 @@ export const GET: typeof authenticatedGET = async (req, routeContext) => {
   }
 };
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authorized = await authorizeMcsRequest(req, params, 'MCS 連携の更新権限がありません');
   if ('response' in authorized) return authorized.response;
   const { ctx, id } = authorized;
@@ -178,3 +181,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
   });
 }
+
+export const PATCH: typeof authenticatedPATCH = async (req, routeContext) => {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+};
