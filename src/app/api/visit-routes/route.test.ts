@@ -218,6 +218,30 @@ describe('/api/visit-routes POST', () => {
     expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
   });
 
+  it('returns a sanitized no-store 500 when auth plumbing fails before the handler', async () => {
+    const rawError = '患者A visit-route auth token=secret failed before handler';
+    authMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['schedule_1'],
+        travel_mode: 'DRIVE',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain(rawError);
+    expect(body).not.toContain('患者A');
+    expect(body).not.toContain('token=secret');
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+  });
+
   it('returns 404 without route calculation when a selected schedule is not found in-org', async () => {
     mockRouteContext();
     scheduleFindManyMock.mockResolvedValue([]);

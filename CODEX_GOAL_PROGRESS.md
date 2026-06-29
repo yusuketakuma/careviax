@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Visit Routes Outer Plumbing Regression - 2026-06-30 07:53 JST
+
+- Scope:
+  - Followed up on Claude's non-blocking review note for `POST /api/visit-routes`.
+  - Focused only on test coverage for exported wrapper failures before the `withAuthContext` handler runs.
+  - Preserved Claude-owned patient detail a11y WIP and unrelated `.codex` agent/config WIP.
+- Fixed:
+  - Added a regression where `authMock` rejects before handler execution.
+  - The test proves the exported POST wrapper returns fixed no-store `INTERNAL_ERROR` without raw patient/token leakage and without membership lookup, RLS, or route calculation side effects.
+- Safety:
+  - Strengthens coverage for visit-route auth/plumbing failures; no runtime behavior changed.
+- Performance:
+  - Test-only change. No runtime query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/visit-routes/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/visit-routes/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `17` tests; stderr was the existing expected handler-internal sanitized 500 log.
+  - Scoped ESLint on `src/app/api/visit-routes/route.test.ts`: passed.
+  - Scoped `git diff --check` on the test file: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` and a follow-up nudge were sent to Claude and codex with scope and validation evidence.
+  - No blocker arrived before commit preparation.
+- Remaining:
+  - Stage only explicit codex2-owned visit-routes test file plus the follow-up ledger hunks, commit, and send agmsg FYI.
+
 ### Patient Billing Profile PATCH No-Store / Sanitized Envelope - 2026-06-30 07:43 JST
 
 - Scope:

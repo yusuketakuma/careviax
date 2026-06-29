@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0753 JST
+
+- current task: add outer-plumbing regression coverage for `POST /api/visit-routes` so the exported wrapper catch path is directly proven.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, `src/app/api/visit-routes/route.ts`, `src/app/api/visit-routes/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/visit-routes/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved Claude-owned patient detail a11y WIP and unrelated `.codex` agent/config WIP.
+- bugs found: no production bug was changed in this follow-up; Claude's review noted the previous visit-routes raw-failure regression exercised the inner `withAuthContext` handler catch, not the exported wrapper catch for auth/plumbing failures before handler execution.
+- security risks found: strengthened regression coverage proving pre-handler auth/plumbing failures return fixed no-store `INTERNAL_ERROR` responses without patient/token leakage or membership, RLS, or route-calculation side effects. Runtime code, auth behavior, route planning behavior, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no runtime code changed. Test-only coverage adds one focused unit case.
+- validation commands: `pnpm exec prettier --write src/app/api/visit-routes/route.test.ts`; `pnpm exec vitest run src/app/api/visit-routes/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint on `src/app/api/visit-routes/route.test.ts`; scoped `git diff --check` on the test file; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused visit-routes Vitest passed `1` file / `17` tests; stderr was limited to the existing expected `route_handler_unhandled_error` log from the handler-internal sanitized 500 regression. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. `PATCH_REVIEW_REQUEST` and a nudge were sent to Claude and codex; no blocker arrived before commit preparation.
+- remaining work: explicit-path stage only this visit-routes test follow-up plus ledger hunks, commit, send agmsg FYI, then continue remaining visit/report/interprofessional API candidates or incoming review interrupts.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0743 JST
 
 - current task: harden `PATCH /api/patients/[id]/billing-profile` so patient billing payment-profile responses consistently use sensitive no-store headers and sanitized unexpected-error envelopes.
