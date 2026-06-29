@@ -7,6 +7,7 @@ const {
   prescriptionIntakeFindFirstMock,
   prescriptionIntakeFindManyMock,
   visitScheduleFindManyMock,
+  visitScheduleProposalFindManyMock,
   visitScheduleCountMock,
   userFindFirstMock,
   userFindManyMock,
@@ -26,6 +27,7 @@ const {
   prescriptionIntakeFindFirstMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
+  visitScheduleProposalFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   userFindFirstMock: vi.fn(),
   userFindManyMock: vi.fn(),
@@ -57,6 +59,9 @@ vi.mock('@/lib/db/client', () => ({
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
       count: visitScheduleCountMock,
+    },
+    visitScheduleProposal: {
+      findMany: visitScheduleProposalFindManyMock,
     },
     user: {
       findFirst: userFindFirstMock,
@@ -187,6 +192,7 @@ describe('buildVisitScheduleBillingPreview', () => {
     );
     patientInsuranceFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([{ id: 'pharm_1', max_weekly_visits: 24 }]);
     consentRecordFindManyMock.mockResolvedValue([]);
     managementPlanFindManyMock.mockResolvedValue([]);
@@ -671,6 +677,7 @@ describe('buildVisitScheduleBillingPreview', () => {
   it('prefetches cadence schedules once for batch previews', async () => {
     visitScheduleFindManyMock.mockResolvedValue([
       {
+        id: 'schedule_1',
         cycle: {
           patient_id: 'patient_1',
         },
@@ -679,6 +686,7 @@ describe('buildVisitScheduleBillingPreview', () => {
         visit_type: 'regular',
       },
       {
+        id: 'schedule_2',
         cycle: {
           patient_id: 'patient_2',
         },
@@ -743,6 +751,7 @@ describe('buildVisitScheduleBillingPreview', () => {
           },
         }),
         select: {
+          id: true,
           cycle: {
             select: {
               patient_id: true,
@@ -754,19 +763,49 @@ describe('buildVisitScheduleBillingPreview', () => {
         },
       }),
     );
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          finalized_schedule_id: null,
+          proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+          case_: {
+            patient_id: { in: ['patient_1', 'patient_2'] },
+          },
+        }),
+        select: {
+          id: true,
+          proposal_batch_id: true,
+          proposed_date: true,
+          proposed_pharmacist_id: true,
+          visit_type: true,
+          finalized_schedule_id: true,
+          reschedule_source_schedule_id: true,
+          case_: {
+            select: {
+              patient_id: true,
+            },
+          },
+        },
+      }),
+    );
     expect(getBillingCadencePreviewMock).toHaveBeenCalledTimes(2);
     expect(getBillingCadencePreviewMock).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
         patientId: 'patient_1',
+        cadenceProposalRows: [],
         cadenceScheduleRows: [
           {
+            id: 'schedule_1',
             patient_id: 'patient_1',
             scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
             pharmacist_id: 'pharm_1',
             visit_type: 'regular',
           },
           {
+            id: 'schedule_2',
             patient_id: 'patient_2',
             scheduled_date: new Date('2026-04-08T00:00:00.000Z'),
             pharmacist_id: 'pharm_2',

@@ -763,6 +763,42 @@ describe('/api/visit-schedules/generate POST', () => {
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 
+  it('treats Sunday and Saturday as the same billing week for insurance weekly limits', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        patient: {
+          scheduling_preference: {
+            preferred_weekdays: [0, 6],
+            preferred_time_from: null,
+            preferred_time_to: null,
+            facility_time_from: null,
+            facility_time_to: null,
+          },
+        },
+      }),
+    );
+    mockPatientInsuranceTypes(['medical']);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=SU,SA',
+        start_date: '2026-04-12',
+        end_date: '2026-04-18',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '週次訪問回数の上限を超えています（医療保険: 週1回まで）',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
   it('resolves visit-limit insurance with one range query for recurring candidates', async () => {
     careCaseFindFirstMock.mockResolvedValue(
       buildCareCase({

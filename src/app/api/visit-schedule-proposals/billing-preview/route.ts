@@ -18,6 +18,8 @@ const authenticatedGET = withAuthContext(
     const pharmacistId = searchParams.get('pharmacist_id');
     const siteId = searchParams.get('site_id');
     const visitTypeParam = searchParams.get('visit_type');
+    const excludeScheduleId = searchParams.get('exclude_schedule_id');
+    const excludeProposalId = searchParams.get('exclude_proposal_id');
 
     if (!caseId || !proposedDate) {
       return validationError('case_id と proposed_date が必要です');
@@ -47,6 +49,8 @@ const authenticatedGET = withAuthContext(
       pharmacistId,
       siteId,
       visitType: visitTypeParam,
+      excludeScheduleId,
+      excludeProposalId,
     });
     if (!preview) return notFound('ケースが見つかりません');
 

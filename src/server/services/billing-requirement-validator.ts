@@ -6,17 +6,27 @@
  * severity: 'error' のアラートは既存の validateProposalBillingExclusions が
  * ブロック判定に使用する。
  *
- * Count basis: VisitSchedule rows（BillingCandidate ではない）。
- * これは意図的な移行 — BillingCandidate は訪問後の会計レコードであり、
- * 提案作成時には存在しない場合がある。
+ * Count basis: VisitSchedule rows plus open VisitScheduleProposal occupancy
+ * reservations（BillingCandidate ではない）。これは意図的な移行 —
+ * BillingCandidate は訪問後の会計レコードであり、提案作成時には存在しない場合がある。
  */
 
-import type { ScheduleStatus } from '@prisma/client';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
-import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { addUtcDays } from '@/lib/utils/date-boundary';
 import { findActiveVisitConsent, findCurrentManagementPlan } from './management-plans';
 import { getBillingCadencePolicy } from './billing-runtime-context';
+import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
+import {
+  ACTIVE_BILLING_SCHEDULE_STATUSES,
+  buildBillingMonthKey,
+  buildBillingWeekKey,
+  endOfBillingMonth,
+  endOfBillingWeek,
+  startOfBillingDay,
+  startOfBillingMonth,
+  startOfBillingWeek,
+} from './billing-cadence';
 
 // ── Types ──
 
@@ -47,19 +57,34 @@ export type ValidateBillingRequirementsArgs = {
   pharmacistId: string;
   visitType: string;
   proposedDate: Date;
+  excludeScheduleId?: string;
+  excludeProposalId?: string;
   prescriptionCategory?: 'regular' | 'emergency';
   payerBasis: 'medical' | 'care' | 'mixed';
   specialCapEligible?: boolean;
   pharmacistWeeklyCap?: number | null;
   cadenceScheduleRows?: BillingCadenceScheduleRow[];
+  cadenceProposalRows?: BillingCadenceProposalRow[];
   workflowSnapshot?: BillingRequirementWorkflowSnapshot;
 };
 
 export type BillingCadenceScheduleRow = {
+  id?: string | null;
   patient_id: string;
   scheduled_date: Date;
   pharmacist_id?: string | null;
   visit_type?: string | null;
+};
+
+export type BillingCadenceProposalRow = {
+  id: string;
+  patient_id: string;
+  proposed_date: Date;
+  proposed_pharmacist_id?: string | null;
+  visit_type?: string | null;
+  proposal_batch_id?: string | null;
+  finalized_schedule_id?: string | null;
+  reschedule_source_schedule_id?: string | null;
 };
 
 export type BillingRequirementConsentSnapshot = {
@@ -99,24 +124,7 @@ export type BillingCadencePreview = {
 
 const PHARMACIST_CAP_THRESHOLD = 0.95;
 
-const ACTIVE_SCHEDULE_STATUSES: ScheduleStatus[] = [
-  'planned',
-  'in_preparation',
-  'ready',
-  'departed',
-  'in_progress',
-  'completed',
-];
-
 const NEXT_DATE_SEARCH_DAYS = 120;
-
-function startOfWeekMonday(value: Date) {
-  return startOfWeek(value, { weekStartsOn: 1 });
-}
-
-function endOfWeekMonday(value: Date) {
-  return endOfWeek(value, { weekStartsOn: 1 });
-}
 
 function dateBucketKey(value: Date): number {
   return value.getTime();
@@ -129,12 +137,101 @@ function incrementCount(counts: Map<number, number>, key: number): void {
 function countScheduleRows(
   rows: BillingCadenceScheduleRow[],
   predicate: (row: BillingCadenceScheduleRow) => boolean,
+  args?: { excludeScheduleId?: string },
 ): number {
   let count = 0;
   for (const row of rows) {
+    if (args?.excludeScheduleId && row.id === args.excludeScheduleId) continue;
     if (predicate(row)) count += 1;
   }
   return count;
+}
+
+function isCountableProposalRow(
+  row: BillingCadenceProposalRow,
+  args: { excludeProposalId?: string; excludeScheduleId?: string },
+) {
+  if (args.excludeProposalId && row.id === args.excludeProposalId) return false;
+  if (row.finalized_schedule_id) return false;
+  if (
+    row.reschedule_source_schedule_id &&
+    row.reschedule_source_schedule_id !== args.excludeScheduleId
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function countProposalRows(
+  rows: BillingCadenceProposalRow[],
+  predicate: (row: BillingCadenceProposalRow) => boolean,
+  bucketKey: (row: BillingCadenceProposalRow) => string,
+  args: { excludeProposalId?: string; excludeScheduleId?: string },
+): number {
+  const counted = new Set<string>();
+  for (const row of rows) {
+    if (!isCountableProposalRow(row, args) || !predicate(row)) continue;
+    const key = row.proposal_batch_id
+      ? `batch:${row.proposal_batch_id}:${bucketKey(row)}`
+      : `proposal:${row.id}`;
+    counted.add(key);
+  }
+  return counted.size;
+}
+
+async function loadBillingCadenceProposalRows(args: {
+  orgId: string;
+  patientId: string;
+  pharmacistId: string;
+  dateFrom: Date;
+  dateTo: Date;
+}): Promise<BillingCadenceProposalRow[]> {
+  const proposals = await prisma.visitScheduleProposal.findMany({
+    where: {
+      org_id: args.orgId,
+      finalized_schedule_id: null,
+      proposal_status: { in: OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES },
+      proposed_date: {
+        gte: args.dateFrom,
+        lte: args.dateTo,
+      },
+      OR: [
+        {
+          case_: {
+            patient_id: args.patientId,
+          },
+        },
+        {
+          proposed_pharmacist_id: args.pharmacistId,
+        },
+      ],
+    },
+    select: {
+      id: true,
+      proposal_batch_id: true,
+      proposed_date: true,
+      proposed_pharmacist_id: true,
+      visit_type: true,
+      finalized_schedule_id: true,
+      reschedule_source_schedule_id: true,
+      case_: {
+        select: {
+          patient_id: true,
+        },
+      },
+    },
+  });
+
+  return proposals.map((proposal) => ({
+    id: proposal.id,
+    patient_id: proposal.case_.patient_id,
+    proposed_date: proposal.proposed_date,
+    proposed_pharmacist_id: proposal.proposed_pharmacist_id,
+    visit_type: proposal.visit_type,
+    proposal_batch_id: proposal.proposal_batch_id,
+    finalized_schedule_id: proposal.finalized_schedule_id,
+    reschedule_source_schedule_id: proposal.reschedule_source_schedule_id,
+  }));
 }
 
 export async function getBillingCadencePreview(
@@ -145,14 +242,15 @@ export async function getBillingCadencePreview(
     ? cadencePolicy.monthlyCapSpecial
     : cadencePolicy.monthlyCapDefault;
   const weeklyCap = args.specialCapEligible ? cadencePolicy.specialWeeklyCap : null;
-  const monthStart = startOfMonth(args.proposedDate);
-  const monthEnd = endOfMonth(args.proposedDate);
-  const searchEnd = new Date(args.proposedDate);
-  searchEnd.setDate(searchEnd.getDate() + NEXT_DATE_SEARCH_DAYS);
+  const monthStart = startOfBillingMonth(args.proposedDate);
+  const monthEnd = endOfBillingMonth(args.proposedDate);
+  const proposedBillingDay = startOfBillingDay(args.proposedDate);
+  const searchEnd = addUtcDays(proposedBillingDay, NEXT_DATE_SEARCH_DAYS);
 
   const schedules =
     args.cadenceScheduleRows?.filter(
       (row) =>
+        (!args.excludeScheduleId || row.id !== args.excludeScheduleId) &&
         row.patient_id === args.patientId &&
         row.scheduled_date >= monthStart &&
         row.scheduled_date <= searchEnd,
@@ -162,27 +260,75 @@ export async function getBillingCadencePreview(
         where: {
           org_id: args.orgId,
           cycle: { patient_id: args.patientId },
+          ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
           scheduled_date: {
             gte: monthStart,
             lte: searchEnd,
           },
-          schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
+          schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
         },
         select: {
+          id: true,
           scheduled_date: true,
         },
         orderBy: [{ scheduled_date: 'asc' }],
       })
     ).map((schedule) => ({
+      id: schedule.id,
       patient_id: args.patientId,
       scheduled_date: schedule.scheduled_date,
     }));
+  const proposalRows =
+    args.cadenceProposalRows?.filter(
+      (row) =>
+        row.patient_id === args.patientId &&
+        row.proposed_date >= monthStart &&
+        row.proposed_date <= searchEnd,
+    ) ??
+    (args.cadenceScheduleRows
+      ? []
+      : await loadBillingCadenceProposalRows({
+          orgId: args.orgId,
+          patientId: args.patientId,
+          pharmacistId: args.pharmacistId,
+          dateFrom: monthStart,
+          dateTo: searchEnd,
+        }));
 
   const monthCountByStart = new Map<number, number>();
   const weekCountByStart = new Map<number, number>();
   for (const schedule of schedules) {
-    incrementCount(monthCountByStart, dateBucketKey(startOfMonth(schedule.scheduled_date)));
-    incrementCount(weekCountByStart, dateBucketKey(startOfWeekMonday(schedule.scheduled_date)));
+    incrementCount(monthCountByStart, dateBucketKey(startOfBillingMonth(schedule.scheduled_date)));
+    incrementCount(weekCountByStart, dateBucketKey(startOfBillingWeek(schedule.scheduled_date)));
+  }
+  const countedProposalMonthKeys = new Set<string>();
+  const countedProposalWeekKeys = new Set<string>();
+  for (const proposal of proposalRows) {
+    if (
+      !isCountableProposalRow(proposal, {
+        excludeProposalId: args.excludeProposalId,
+        excludeScheduleId: args.excludeScheduleId,
+      })
+    ) {
+      continue;
+    }
+    const monthStartKey = dateBucketKey(startOfBillingMonth(proposal.proposed_date));
+    const monthDedupeKey = proposal.proposal_batch_id
+      ? `batch:${proposal.proposal_batch_id}:${monthStartKey}`
+      : `proposal:${proposal.id}`;
+    if (!countedProposalMonthKeys.has(monthDedupeKey)) {
+      countedProposalMonthKeys.add(monthDedupeKey);
+      incrementCount(monthCountByStart, monthStartKey);
+    }
+
+    const weekStartKey = dateBucketKey(startOfBillingWeek(proposal.proposed_date));
+    const weekDedupeKey = proposal.proposal_batch_id
+      ? `batch:${proposal.proposal_batch_id}:${weekStartKey}`
+      : `proposal:${proposal.id}`;
+    if (!countedProposalWeekKeys.has(weekDedupeKey)) {
+      countedProposalWeekKeys.add(weekDedupeKey);
+      incrementCount(weekCountByStart, weekStartKey);
+    }
   }
 
   const scheduledDatesCurrentMonth = schedules
@@ -192,20 +338,19 @@ export async function getBillingCadencePreview(
     .map((schedule) => formatUtcDateKey(schedule.scheduled_date));
 
   const currentMonthCount = monthCountByStart.get(dateBucketKey(monthStart)) ?? 0;
-  const currentWeekStart = startOfWeekMonday(args.proposedDate);
+  const currentWeekStart = startOfBillingWeek(args.proposedDate);
   const currentWeekCount = weekCountByStart.get(dateBucketKey(currentWeekStart)) ?? 0;
 
   let nextBillableDate: Date | null = null;
   const suggestedDates: string[] = [];
   for (let offset = 0; offset <= NEXT_DATE_SEARCH_DAYS; offset += 1) {
-    const candidate = new Date(args.proposedDate);
-    candidate.setDate(candidate.getDate() + offset);
-    const candidateMonthStart = startOfMonth(candidate);
+    const candidate = addUtcDays(proposedBillingDay, offset);
+    const candidateMonthStart = startOfBillingMonth(candidate);
     const monthCount = monthCountByStart.get(dateBucketKey(candidateMonthStart)) ?? 0;
     const candidateWeekCount =
       weeklyCap == null
         ? 0
-        : (weekCountByStart.get(dateBucketKey(startOfWeekMonday(candidate))) ?? 0);
+        : (weekCountByStart.get(dateBucketKey(startOfBillingWeek(candidate))) ?? 0);
 
     const monthlyAvailable = monthCount < monthlyCap;
     const weeklyAvailable = weeklyCap == null || candidateWeekCount < weeklyCap;
@@ -220,7 +365,7 @@ export async function getBillingCadencePreview(
   const reason =
     nextBillableDate == null
       ? '120日以内に算定可能日を提案できませんでした'
-      : nextBillableDate.toDateString() === args.proposedDate.toDateString()
+      : formatUtcDateKey(nextBillableDate) === formatUtcDateKey(proposedBillingDay)
         ? '本日以降で算定可能です'
         : `次回算定可能日は ${formatUtcDateKey(nextBillableDate)} です`;
 
@@ -245,10 +390,21 @@ export async function validateBillingRequirements(
   const cadencePolicy = getBillingCadencePolicy();
   const asOf = new Date().toISOString();
   const alerts: BillingRequirementAlert[] = [];
-  const monthStart = startOfMonth(args.proposedDate);
-  const monthEnd = endOfMonth(args.proposedDate);
-  const weekStart = startOfWeekMonday(args.proposedDate);
-  const weekEnd = endOfWeekMonday(args.proposedDate);
+  const monthStart = startOfBillingMonth(args.proposedDate);
+  const monthEnd = endOfBillingMonth(args.proposedDate);
+  const weekStart = startOfBillingWeek(args.proposedDate);
+  const weekEnd = endOfBillingWeek(args.proposedDate);
+  const cadenceProposalRows =
+    args.cadenceProposalRows ??
+    (args.cadenceScheduleRows
+      ? Promise.resolve([])
+      : loadBillingCadenceProposalRows({
+          orgId: args.orgId,
+          patientId: args.patientId,
+          pharmacistId: args.pharmacistId,
+          dateFrom: new Date(Math.min(monthStart.getTime(), weekStart.getTime())),
+          dateTo: new Date(Math.max(monthEnd.getTime(), weekEnd.getTime())),
+        }));
 
   // Parallel data fetches
   const [
@@ -256,6 +412,7 @@ export async function validateBillingRequirements(
     weeklyPharmacistCount,
     weeklyPatientCount,
     existingRegularInMonth,
+    proposalRows,
     consent,
     managementPlan,
   ] = await Promise.all([
@@ -268,14 +425,16 @@ export async function validateBillingRequirements(
               row.patient_id === args.patientId &&
               row.scheduled_date >= monthStart &&
               row.scheduled_date <= monthEnd,
+            { excludeScheduleId: args.excludeScheduleId },
           ),
         )
       : prisma.visitSchedule.count({
           where: {
             org_id: args.orgId,
             cycle: { patient_id: args.patientId },
+            ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
             scheduled_date: { gte: monthStart, lte: monthEnd },
-            schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
+            schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
           },
         }),
     // Weekly visit count for pharmacist
@@ -287,14 +446,16 @@ export async function validateBillingRequirements(
               row.pharmacist_id === args.pharmacistId &&
               row.scheduled_date >= weekStart &&
               row.scheduled_date <= weekEnd,
+            { excludeScheduleId: args.excludeScheduleId },
           ),
         )
       : prisma.visitSchedule.count({
           where: {
             org_id: args.orgId,
             pharmacist_id: args.pharmacistId,
+            ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
             scheduled_date: { gte: weekStart, lte: weekEnd },
-            schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
+            schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
           },
         }),
     // Weekly visit count for patient (special cap check)
@@ -307,14 +468,16 @@ export async function validateBillingRequirements(
                 row.patient_id === args.patientId &&
                 row.scheduled_date >= weekStart &&
                 row.scheduled_date <= weekEnd,
+              { excludeScheduleId: args.excludeScheduleId },
             ),
           )
         : prisma.visitSchedule.count({
             where: {
               org_id: args.orgId,
               cycle: { patient_id: args.patientId },
+              ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
               scheduled_date: { gte: weekStart, lte: weekEnd },
-              schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
+              schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
             },
           })
       : Promise.resolve(0),
@@ -329,18 +492,21 @@ export async function validateBillingRequirements(
                 row.visit_type === 'regular' &&
                 row.scheduled_date >= monthStart &&
                 row.scheduled_date <= monthEnd,
+              { excludeScheduleId: args.excludeScheduleId },
             ),
           )
         : prisma.visitSchedule.count({
             where: {
               org_id: args.orgId,
               cycle: { patient_id: args.patientId },
+              ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
               visit_type: 'regular',
               scheduled_date: { gte: monthStart, lte: monthEnd },
-              schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
+              schedule_status: { in: ACTIVE_BILLING_SCHEDULE_STATUSES },
             },
           })
       : Promise.resolve(0),
+    cadenceProposalRows,
     // Consent check
     args.workflowSnapshot
       ? Promise.resolve(
@@ -366,6 +532,64 @@ export async function validateBillingRequirements(
           caseId: args.caseId,
         }),
   ]);
+  const monthlyProposalCount = countProposalRows(
+    proposalRows,
+    (row) =>
+      row.patient_id === args.patientId &&
+      row.proposed_date >= monthStart &&
+      row.proposed_date <= monthEnd,
+    (row) => `${row.patient_id}:${buildBillingMonthKey(row.proposed_date)}`,
+    {
+      excludeProposalId: args.excludeProposalId,
+      excludeScheduleId: args.excludeScheduleId,
+    },
+  );
+  const weeklyPharmacistProposalCount = countProposalRows(
+    proposalRows,
+    (row) =>
+      row.proposed_pharmacist_id === args.pharmacistId &&
+      row.proposed_date >= weekStart &&
+      row.proposed_date <= weekEnd,
+    (row) => `${row.proposed_pharmacist_id ?? ''}:${buildBillingWeekKey(row.proposed_date)}`,
+    {
+      excludeProposalId: args.excludeProposalId,
+      excludeScheduleId: args.excludeScheduleId,
+    },
+  );
+  const weeklyPatientProposalCount = args.specialCapEligible
+    ? countProposalRows(
+        proposalRows,
+        (row) =>
+          row.patient_id === args.patientId &&
+          row.proposed_date >= weekStart &&
+          row.proposed_date <= weekEnd,
+        (row) => `${row.patient_id}:${buildBillingWeekKey(row.proposed_date)}`,
+        {
+          excludeProposalId: args.excludeProposalId,
+          excludeScheduleId: args.excludeScheduleId,
+        },
+      )
+    : 0;
+  const existingRegularProposalInMonth =
+    args.visitType === 'emergency'
+      ? countProposalRows(
+          proposalRows,
+          (row) =>
+            row.patient_id === args.patientId &&
+            row.visit_type === 'regular' &&
+            row.proposed_date >= monthStart &&
+            row.proposed_date <= monthEnd,
+          (row) => `${row.patient_id}:regular:${buildBillingMonthKey(row.proposed_date)}`,
+          {
+            excludeProposalId: args.excludeProposalId,
+            excludeScheduleId: args.excludeScheduleId,
+          },
+        )
+      : 0;
+  const monthlyVisitCount = monthlyScheduleCount + monthlyProposalCount;
+  const weeklyPharmacistVisitCount = weeklyPharmacistCount + weeklyPharmacistProposalCount;
+  const weeklyPatientVisitCount = weeklyPatientCount + weeklyPatientProposalCount;
+  const existingRegularVisitInMonth = existingRegularInMonth + existingRegularProposalInMonth;
 
   const pharmacist =
     args.pharmacistWeeklyCap === undefined
@@ -384,15 +608,15 @@ export async function validateBillingRequirements(
   const monthlyCap = args.specialCapEligible
     ? cadencePolicy.monthlyCapSpecial
     : cadencePolicy.monthlyCapDefault;
-  const projectedMonthly = monthlyScheduleCount + 1; // +1 for new proposal
+  const projectedMonthly = monthlyVisitCount + 1; // +1 for new proposal
 
   if (projectedMonthly > monthlyCap) {
     alerts.push({
       type: 'monthly_cap_exceeded',
       severity: 'error',
-      message: `この患者は今月既に${monthlyScheduleCount}回の訪問が予定されています。月上限${monthlyCap}回を超過します`,
+      message: `この患者は今月既に${monthlyVisitCount}回の訪問が予定されています。月上限${monthlyCap}回を超過します`,
       details: {
-        current_count: monthlyScheduleCount,
+        current_count: monthlyVisitCount,
         projected_count: projectedMonthly,
         cap: monthlyCap,
         special_cap_eligible: args.specialCapEligible ?? false,
@@ -402,16 +626,16 @@ export async function validateBillingRequirements(
   }
 
   // ── Alert #2: Pharmacist weekly capacity ──
-  const projectedWeeklyPharmacist = weeklyPharmacistCount + 1;
+  const projectedWeeklyPharmacist = weeklyPharmacistVisitCount + 1;
   const capacityRatio = projectedWeeklyPharmacist / pharmacistWeeklyCap;
 
   if (capacityRatio >= PHARMACIST_CAP_THRESHOLD) {
     alerts.push({
       type: 'pharmacist_weekly_capacity',
       severity: 'warning',
-      message: `この薬剤師は今週${weeklyPharmacistCount}件の訪問が予定されています。週上限${pharmacistWeeklyCap}件の${Math.round(capacityRatio * 100)}%です`,
+      message: `この薬剤師は今週${weeklyPharmacistVisitCount}件の訪問が予定されています。週上限${pharmacistWeeklyCap}件の${Math.round(capacityRatio * 100)}%です`,
       details: {
-        current_count: weeklyPharmacistCount,
+        current_count: weeklyPharmacistVisitCount,
         projected_count: projectedWeeklyPharmacist,
         cap: pharmacistWeeklyCap,
         ratio: capacityRatio,
@@ -421,13 +645,13 @@ export async function validateBillingRequirements(
   }
 
   // ── Alert #3: Emergency/regular concurrent billing ──
-  if (args.visitType === 'emergency' && existingRegularInMonth > 0) {
+  if (args.visitType === 'emergency' && existingRegularVisitInMonth > 0) {
     alerts.push({
       type: 'emergency_regular_concurrent',
       severity: 'warning',
-      message: `この患者は今月${existingRegularInMonth}回の定期訪問が予定されています。緊急訪問指導料との並算定制限にご注意ください`,
+      message: `この患者は今月${existingRegularVisitInMonth}回の定期訪問が予定されています。緊急訪問指導料との並算定制限にご注意ください`,
       details: {
-        regular_count: existingRegularInMonth,
+        regular_count: existingRegularVisitInMonth,
         payer_basis: args.payerBasis,
       },
       as_of: asOf,
@@ -495,15 +719,15 @@ export async function validateBillingRequirements(
 
   // ── Alert #6: Special patient weekly cap ──
   if (args.specialCapEligible) {
-    const projectedWeeklyPatient = weeklyPatientCount + 1;
+    const projectedWeeklyPatient = weeklyPatientVisitCount + 1;
 
     if (projectedWeeklyPatient > cadencePolicy.specialWeeklyCap) {
       alerts.push({
         type: 'special_patient_weekly_cap',
         severity: 'warning',
-        message: `特別対象患者です。今週既に${weeklyPatientCount}回の訪問が予定されています（週上限${cadencePolicy.specialWeeklyCap}回）`,
+        message: `特別対象患者です。今週既に${weeklyPatientVisitCount}回の訪問が予定されています（週上限${cadencePolicy.specialWeeklyCap}回）`,
         details: {
-          current_count: weeklyPatientCount,
+          current_count: weeklyPatientVisitCount,
           projected_count: projectedWeeklyPatient,
           cap: cadencePolicy.specialWeeklyCap,
         },

@@ -109,6 +109,8 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
       pharmacistId: null,
       siteId: null,
       visitType: null,
+      excludeScheduleId: null,
+      excludeProposalId: null,
     });
     await expect(response.json()).resolves.toMatchObject({
       suggested_schedule_slot_count: 3,
@@ -119,6 +121,24 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
         next_billable_date: '2026-04-03',
       }),
     });
+  });
+
+  it('passes exclude ids through to avoid counting the row under edit', async () => {
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-04-03&exclude_schedule_id=schedule_1&exclude_proposal_id=proposal_1',
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(buildVisitScheduleBillingPreviewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        excludeScheduleId: 'schedule_1',
+        excludeProposalId: 'proposal_1',
+      }),
+    );
   });
 
   it('denies unassigned preview requests before calling the billing-preview service', async () => {

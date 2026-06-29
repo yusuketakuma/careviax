@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Scheduling P3 Billing Cadence Caps - 2026-06-30 00:58 JST
+
+- Scope:
+  - Implemented the schema-free P3 caps/billing-validator slice from `docs/schedule-route-build-plan.md`.
+  - Preserved Japan domestic business semantics: billing days, months, and Sun-Sat weeks are derived from `Asia/Tokyo` business date keys; UTC remains only the Prisma `@db.Date` sentinel representation and TZ regression check, not the business timezone.
+  - Prioritized Claude/codex2 interrupts before continuing: approved Claude's workbench false-empty fail-close patch and codex2 commit `34750899`, then returned to P3.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, or destructive operation was performed.
+- Fixed:
+  - Added shared `billing-cadence` helpers for active billing schedule statuses, JST business-day normalization, Sun-Sat billing weeks, and billing month/week keys.
+  - Aligned planner and billing validator active schedule status sets so postponed/no-show style non-active rows no longer drift between modules.
+  - Added `excludeScheduleId` / `excludeProposalId` through validator, preview service, and billing-preview GET/batch API contracts so edit previews do not double-count the row under evaluation.
+  - Counted open unfinalized `VisitScheduleProposal` rows toward monthly, weekly pharmacist, weekly special-patient, and emergency-regular concurrency projections, with proposal-batch dedupe and reschedule-source double-count protection.
+  - Updated batch billing preview prefetch to load cadence schedules and open proposal occupancy once, then pass both into per-item validation/preview.
+  - Switched generate-route insurance month/week request counting to shared billing cadence keys and added a Sunday/Saturday weekly-limit regression.
+  - Fixed a prefetched-row regression found by tests: missing schedule ids are no longer excluded when no `excludeScheduleId` is supplied.
+- Validation:
+  - `pnpm exec vitest run src/server/services/billing-cadence.test.ts src/server/services/billing-requirement-validator.test.ts src/server/services/visit-schedule-billing-preview.test.ts src/app/api/visit-schedule-proposals/billing-preview/route.test.ts src/app/api/visit-schedule-proposals/billing-preview-batch/route.test.ts src/app/api/visit-schedules/generate/route.test.ts --reporter=dot --testTimeout=30000`: passed, `6` files / `97` tests.
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/server/services/billing-cadence.test.ts src/server/services/billing-requirement-validator.test.ts src/server/services/visit-schedule-billing-preview.test.ts src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedules/generate/route.test.ts --reporter=dot --testTimeout=30000`: passed, `5` files / `105` tests.
+  - `TZ=UTC pnpm exec vitest run src/server/services/billing-cadence.test.ts src/server/services/billing-requirement-validator.test.ts src/server/services/visit-schedule-billing-preview.test.ts src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedules/generate/route.test.ts --reporter=dot --testTimeout=30000`: passed, `5` files / `105` tests.
+  - Review-interrupt validation: Claude workbench adapter Vitest passed `1` file / `21` tests; codex2 handoff/report focused Vitest passed `4` files / `47` tests; scoped ESLint passed for reviewed files.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Confirm-time proposal finalization and direct schedule creation still need transaction-time cap revalidation.
+  - Manual proposal `PUT` duplicate-open-proposal prevention and generate-route cumulative existing-schedule cap checks remain follow-up hardening from the data-integrity review.
+  - Preserve unrelated dirty visit-record/visit-handoff structured-SOAP normalization WIP when committing this P3 slice.
+
 ### Visit Handoff / Reports / Interprofessional Sharing - 2026-06-30 00:47 JST
 
 - Scope:

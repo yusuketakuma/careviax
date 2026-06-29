@@ -1,4 +1,4 @@
-import { addDays, differenceInCalendarDays, format, getDay, startOfWeek } from 'date-fns';
+import { addDays, differenceInCalendarDays, format, getDay } from 'date-fns';
 import type { VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
 import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
@@ -11,6 +11,12 @@ import { createRoadTravelEstimator } from './road-routing';
 import { evaluateVisitWorkflowGate } from './management-plans';
 import { resolveMedicationDeadlineSummary } from './visit-medication-deadline';
 import type { VisitRouteTravelMode } from './visit-route-engine';
+import {
+  ACTIVE_BILLING_SCHEDULE_STATUSES,
+  buildBillingWeekKey,
+  endOfBillingMonth,
+  startOfBillingMonth,
+} from './billing-cadence';
 
 const DEFAULT_VISIT_DURATION_MINUTES = 60;
 const DEFAULT_SHIFT_START = '09:00';
@@ -237,15 +243,15 @@ function scheduleVisitBufferMinutes(
 }
 
 function buildWeekKey(value: Date) {
-  return format(startOfWeek(value, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+  return buildBillingWeekKey(value);
 }
 
 function startOfMonthDate(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth(), 1);
+  return startOfBillingMonth(value);
 }
 
 function endOfMonthDate(value: Date) {
-  return new Date(value.getFullYear(), value.getMonth() + 1, 0, 23, 59, 59, 999);
+  return endOfBillingMonth(value);
 }
 
 function readTimeString(value: Date | null | undefined) {
@@ -992,7 +998,7 @@ export async function generateVisitScheduleProposalDrafts(
         lte: planningEnd,
       },
       schedule_status: {
-        notIn: ['cancelled', 'rescheduled'],
+        in: ACTIVE_BILLING_SCHEDULE_STATUSES,
       },
     },
     include: {

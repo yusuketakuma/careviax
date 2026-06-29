@@ -22,6 +22,8 @@ const batchPreviewSchema = z.object({
         pharmacist_id: z.string().optional(),
         site_id: z.string().optional(),
         visit_type: z.string().optional(),
+        exclude_schedule_id: z.string().optional(),
+        exclude_proposal_id: z.string().optional(),
       }),
     )
     .min(1)
@@ -98,6 +100,8 @@ const authenticatedPOST = withAuthContext(
           pharmacistId: item.pharmacist_id,
           siteId: item.site_id,
           visitType: item.visit_type,
+          excludeScheduleId: item.exclude_schedule_id,
+          excludeProposalId: item.exclude_proposal_id,
         })),
         ctx.orgId,
       ),

@@ -9,6 +9,9 @@ const { findActiveVisitConsentMock, findCurrentManagementPlanMock, prismaMock } 
         findMany: vi.fn(),
         count: vi.fn(),
       },
+      visitScheduleProposal: {
+        findMany: vi.fn(),
+      },
       user: {
         findFirst: vi.fn(),
       },
@@ -49,11 +52,13 @@ const baseArgs: ValidateBillingRequirementsArgs = {
 describe('validateBillingRequirements', () => {
   beforeEach(() => {
     prismaMock.visitSchedule.count.mockReset();
+    prismaMock.visitScheduleProposal.findMany.mockReset();
     prismaMock.user.findFirst.mockReset();
     findActiveVisitConsentMock.mockReset();
     findCurrentManagementPlanMock.mockReset();
     // Default: no existing schedules, valid consent, approved plan
     prismaMock.visitSchedule.count.mockResolvedValue(0);
+    prismaMock.visitScheduleProposal.findMany.mockResolvedValue([]);
     prismaMock.user.findFirst.mockResolvedValue({ max_weekly_visits: 40 });
     findActiveVisitConsentMock.mockResolvedValue({
       id: 'consent_1',
@@ -230,6 +235,7 @@ describe('validateBillingRequirements', () => {
     });
 
     expect(prismaMock.visitSchedule.count).not.toHaveBeenCalled();
+    expect(prismaMock.visitScheduleProposal.findMany).not.toHaveBeenCalled();
     expect(prismaMock.user.findFirst).not.toHaveBeenCalled();
     expect(alerts.map((alert) => alert.type)).toEqual(
       expect.arrayContaining([
@@ -239,6 +245,113 @@ describe('validateBillingRequirements', () => {
         'special_patient_weekly_cap',
       ]),
     );
+  });
+
+  it('counts special weekly caps on Sunday-to-Saturday billing weeks', async () => {
+    const alerts = await validateBillingRequirements({
+      ...baseArgs,
+      proposedDate: new Date('2026-04-18T00:00:00.000Z'),
+      specialCapEligible: true,
+      pharmacistWeeklyCap: 40,
+      cadenceScheduleRows: [
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_1',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-12T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_2',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-17T00:00:00.000Z'),
+        },
+      ],
+      cadenceProposalRows: [],
+    });
+
+    const weeklyAlert = alerts.find((alert) => alert.type === 'special_patient_weekly_cap');
+    expect(weeklyAlert).toBeDefined();
+    expect(weeklyAlert!.details.current_count).toBe(2);
+    expect(weeklyAlert!.details.projected_count).toBe(3);
+    expect(prismaMock.visitSchedule.count).not.toHaveBeenCalled();
+  });
+
+  it('excludes the schedule under evaluation from monthly caps', async () => {
+    const cadenceScheduleRows = [
+      {
+        id: 'schedule_current',
+        patient_id: 'patient_1',
+        pharmacist_id: 'pharmacist_1',
+        visit_type: 'regular',
+        scheduled_date: new Date('2026-04-15T00:00:00.000Z'),
+      },
+      ...['2026-04-01', '2026-04-08', '2026-04-22'].map((date, index) => ({
+        id: `schedule_other_${index}`,
+        patient_id: 'patient_1',
+        pharmacist_id: 'pharmacist_1',
+        visit_type: 'regular',
+        scheduled_date: new Date(`${date}T00:00:00.000Z`),
+      })),
+    ];
+
+    const excludedAlerts = await validateBillingRequirements({
+      ...baseArgs,
+      cadenceScheduleRows,
+      cadenceProposalRows: [],
+      excludeScheduleId: 'schedule_current',
+    });
+    expect(excludedAlerts.find((alert) => alert.type === 'monthly_cap_exceeded')).toBeUndefined();
+
+    const includedAlerts = await validateBillingRequirements({
+      ...baseArgs,
+      cadenceScheduleRows,
+      cadenceProposalRows: [],
+    });
+    const monthlyAlert = includedAlerts.find((alert) => alert.type === 'monthly_cap_exceeded');
+    expect(monthlyAlert).toBeDefined();
+    expect(monthlyAlert!.details.current_count).toBe(4);
+    expect(monthlyAlert!.details.projected_count).toBe(5);
+  });
+
+  it('counts open proposal occupancy with batch dedupe before monthly cap validation', async () => {
+    const alerts = await validateBillingRequirements({
+      ...baseArgs,
+      cadenceScheduleRows: ['2026-04-01', '2026-04-08', '2026-04-15'].map((date, index) => ({
+        id: `schedule_${index}`,
+        patient_id: 'patient_1',
+        pharmacist_id: 'pharmacist_1',
+        visit_type: 'regular',
+        scheduled_date: new Date(`${date}T00:00:00.000Z`),
+      })),
+      cadenceProposalRows: [
+        {
+          id: 'proposal_1',
+          patient_id: 'patient_1',
+          proposed_date: new Date('2026-04-20T00:00:00.000Z'),
+          proposed_pharmacist_id: 'pharmacist_1',
+          visit_type: 'regular',
+          proposal_batch_id: 'batch_1',
+          finalized_schedule_id: null,
+          reschedule_source_schedule_id: null,
+        },
+        {
+          id: 'proposal_2',
+          patient_id: 'patient_1',
+          proposed_date: new Date('2026-04-21T00:00:00.000Z'),
+          proposed_pharmacist_id: 'pharmacist_1',
+          visit_type: 'regular',
+          proposal_batch_id: 'batch_1',
+          finalized_schedule_id: null,
+          reschedule_source_schedule_id: null,
+        },
+      ],
+    });
+
+    const monthlyAlert = alerts.find((alert) => alert.type === 'monthly_cap_exceeded');
+    expect(monthlyAlert).toBeDefined();
+    expect(monthlyAlert!.details.current_count).toBe(4);
+    expect(monthlyAlert!.details.projected_count).toBe(5);
   });
 
   it('uses prefetched workflow snapshot without loading consent or management plan rows', async () => {
@@ -463,6 +576,8 @@ describe('validateBillingRequirements', () => {
 describe('getBillingCadencePreview', () => {
   beforeEach(() => {
     prismaMock.visitSchedule.findMany.mockReset();
+    prismaMock.visitScheduleProposal.findMany.mockReset();
+    prismaMock.visitScheduleProposal.findMany.mockResolvedValue([]);
   });
 
   it('returns correct monthly counts and cap for regular patient', async () => {
@@ -561,9 +676,9 @@ describe('getBillingCadencePreview', () => {
   });
 
   it('returns correct week count for proposed date', async () => {
-    // Monday 2026-04-13 to Sunday 2026-04-19
+    // Sunday 2026-04-12 to Saturday 2026-04-18
     const scheduled = [
-      { scheduled_date: new Date('2026-04-13') },
+      { scheduled_date: new Date('2026-04-12') },
       { scheduled_date: new Date('2026-04-14') },
       { scheduled_date: new Date('2026-04-16') },
     ];
@@ -571,27 +686,61 @@ describe('getBillingCadencePreview', () => {
 
     const preview = await getBillingCadencePreview({
       ...baseArgs,
-      proposedDate: new Date('2026-04-15'), // Wednesday in same week
+      proposedDate: new Date('2026-04-18'), // Saturday in same billing week
     });
     expect(preview.current_week_count).toBe(3);
   });
 
   it('uses weekly buckets when suggesting dates for special patients', async () => {
-    prismaMock.visitSchedule.findMany.mockResolvedValue([
-      { scheduled_date: new Date('2026-04-13') },
-      { scheduled_date: new Date('2026-04-14') },
-      { scheduled_date: new Date('2026-04-21') },
-    ]);
-
     const preview = await getBillingCadencePreview({
       ...baseArgs,
-      proposedDate: new Date('2026-04-15'),
+      proposedDate: new Date('2026-04-18T00:00:00.000Z'),
       specialCapEligible: true,
+      cadenceScheduleRows: [
+        {
+          patient_id: 'patient_1',
+          scheduled_date: new Date('2026-04-12T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          scheduled_date: new Date('2026-04-17T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          scheduled_date: new Date('2026-04-21T00:00:00.000Z'),
+        },
+      ],
+      cadenceProposalRows: [],
     });
 
-    expect(prismaMock.visitSchedule.findMany).toHaveBeenCalledTimes(1);
+    expect(prismaMock.visitSchedule.findMany).not.toHaveBeenCalled();
     expect(preview.current_week_count).toBe(2);
-    expect(preview.next_billable_date).toBe('2026-04-20');
-    expect(preview.suggested_dates[0]).toBe('2026-04-20');
+    expect(preview.next_billable_date).toBe('2026-04-19');
+    expect(preview.suggested_dates[0]).toBe('2026-04-19');
+  });
+
+  it('includes open proposal occupancy in monthly preview counts', async () => {
+    const preview = await getBillingCadencePreview({
+      ...baseArgs,
+      cadenceScheduleRows: ['2026-04-01', '2026-04-08', '2026-04-15'].map((date) => ({
+        patient_id: 'patient_1',
+        scheduled_date: new Date(`${date}T00:00:00.000Z`),
+      })),
+      cadenceProposalRows: [
+        {
+          id: 'proposal_1',
+          patient_id: 'patient_1',
+          proposed_date: new Date('2026-04-20T00:00:00.000Z'),
+          proposed_pharmacist_id: 'pharmacist_1',
+          visit_type: 'regular',
+          proposal_batch_id: null,
+          finalized_schedule_id: null,
+          reschedule_source_schedule_id: null,
+        },
+      ],
+    });
+
+    expect(preview.current_month_count).toBe(4);
+    expect(preview.remaining_month_count).toBe(0);
   });
 });

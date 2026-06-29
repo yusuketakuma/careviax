@@ -4,6 +4,7 @@ import {
   getBillingCadencePreview,
   validateBillingRequirements,
   type BillingCadencePreview,
+  type BillingCadenceProposalRow,
   type BillingCadenceScheduleRow,
   type BillingRequirementAlert,
   type BillingRequirementWorkflowSnapshot,
@@ -21,8 +22,9 @@ import type {
 } from './billing-runtime-context';
 import { resolveBillingRuntimeContext } from './billing-runtime-context';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
-import { startOfMonth } from 'date-fns';
+import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
+import { ACTIVE_BILLING_SCHEDULE_STATUSES, startOfBillingMonth } from './billing-cadence';
 
 export type VisitScheduleBillingPreview = {
   alerts: BillingRequirementAlert[];
@@ -114,6 +116,7 @@ type BillingPreviewInsurancePrefetch = {
 type BillingPreviewRuntimeContextCache = Map<string, Promise<BillingRuntimeContextResult>>;
 type BillingPreviewPharmacistWeeklyCapById = Map<string, number | null>;
 type BillingPreviewCadenceScheduleRows = BillingCadenceScheduleRow[];
+type BillingPreviewCadenceProposalRows = BillingCadenceProposalRow[];
 type BillingPreviewConsentRecord = {
   id: string;
   patient_id: string;
@@ -536,9 +539,11 @@ async function prefetchBillingPreviewCadenceSchedules(args: {
   const proposedDates = args.proposedDates
     .map((date) => new Date(date))
     .sort((left, right) => left.getTime() - right.getTime());
-  const minDate = startOfMonth(proposedDates[0]!);
-  const maxDate = new Date(proposedDates[proposedDates.length - 1]!);
-  maxDate.setDate(maxDate.getDate() + BILLING_PREVIEW_CADENCE_SEARCH_DAYS);
+  const minDate = startOfBillingMonth(proposedDates[0]!);
+  const maxDate = addUtcDays(
+    proposedDates[proposedDates.length - 1]!,
+    BILLING_PREVIEW_CADENCE_SEARCH_DAYS,
+  );
 
   const schedules = await prisma.visitSchedule.findMany({
     where: {
@@ -551,10 +556,11 @@ async function prefetchBillingPreviewCadenceSchedules(args: {
         lte: maxDate,
       },
       schedule_status: {
-        in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress', 'completed'],
+        in: ACTIVE_BILLING_SCHEDULE_STATUSES,
       },
     },
     select: {
+      id: true,
       cycle: {
         select: {
           patient_id: true,
@@ -571,6 +577,7 @@ async function prefetchBillingPreviewCadenceSchedules(args: {
     schedule.cycle
       ? [
           {
+            id: schedule.id,
             patient_id: schedule.cycle.patient_id,
             scheduled_date: schedule.scheduled_date,
             pharmacist_id: schedule.pharmacist_id,
@@ -579,6 +586,65 @@ async function prefetchBillingPreviewCadenceSchedules(args: {
         ]
       : [],
   );
+}
+
+async function prefetchBillingPreviewCadenceProposals(args: {
+  orgId: string;
+  careCases: BillingPreviewCareCase[];
+  proposedDates: string[];
+}): Promise<BillingPreviewCadenceProposalRows> {
+  const patientIds = [...new Set(args.careCases.map((careCase) => careCase.patient_id))];
+  if (patientIds.length === 0 || args.proposedDates.length === 0) return [];
+
+  const proposedDates = args.proposedDates
+    .map((date) => new Date(date))
+    .sort((left, right) => left.getTime() - right.getTime());
+  const minDate = startOfBillingMonth(proposedDates[0]!);
+  const maxDate = addUtcDays(
+    proposedDates[proposedDates.length - 1]!,
+    BILLING_PREVIEW_CADENCE_SEARCH_DAYS,
+  );
+
+  const proposals = await prisma.visitScheduleProposal.findMany({
+    where: {
+      org_id: args.orgId,
+      finalized_schedule_id: null,
+      proposal_status: { in: OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES },
+      case_: {
+        patient_id: { in: patientIds },
+      },
+      proposed_date: {
+        gte: minDate,
+        lte: maxDate,
+      },
+    },
+    select: {
+      id: true,
+      proposal_batch_id: true,
+      proposed_date: true,
+      proposed_pharmacist_id: true,
+      visit_type: true,
+      finalized_schedule_id: true,
+      reschedule_source_schedule_id: true,
+      case_: {
+        select: {
+          patient_id: true,
+        },
+      },
+    },
+    orderBy: [{ proposed_date: 'asc' }],
+  });
+
+  return proposals.map((proposal) => ({
+    id: proposal.id,
+    patient_id: proposal.case_.patient_id,
+    proposed_date: proposal.proposed_date,
+    proposed_pharmacist_id: proposal.proposed_pharmacist_id,
+    visit_type: proposal.visit_type,
+    proposal_batch_id: proposal.proposal_batch_id,
+    finalized_schedule_id: proposal.finalized_schedule_id,
+    reschedule_source_schedule_id: proposal.reschedule_source_schedule_id,
+  }));
 }
 
 async function findPendingPublicSubsidyInsurance(args: {
@@ -677,6 +743,8 @@ export async function buildVisitScheduleBillingPreview(args: {
   pharmacistId?: string | null;
   siteId?: string | null;
   visitType?: string | null;
+  excludeScheduleId?: string | null;
+  excludeProposalId?: string | null;
 }): Promise<VisitScheduleBillingPreview | null> {
   if (
     typeof prisma.careCase?.findFirst !== 'function' ||
@@ -711,11 +779,14 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     pharmacistId?: string | null;
     siteId?: string | null;
     visitType?: string | null;
+    excludeScheduleId?: string | null;
+    excludeProposalId?: string | null;
     latestIntake?: LatestPrescriptionIntakeClassification;
     insurancePrefetch?: BillingPreviewInsurancePrefetch;
     runtimeContextCache?: BillingPreviewRuntimeContextCache;
     pharmacistWeeklyCapById?: BillingPreviewPharmacistWeeklyCapById;
     cadenceScheduleRows?: BillingPreviewCadenceScheduleRows;
+    cadenceProposalRows?: BillingPreviewCadenceProposalRows;
     workflowSnapshot?: BillingRequirementWorkflowSnapshot;
   },
   careCase: BillingPreviewCareCase,
@@ -802,7 +873,10 @@ async function buildVisitScheduleBillingPreviewForCareCase(
       latestIntake?.prescription_category === 'emergency' ? 'emergency' : 'regular',
     payerBasis: payerBasis === 'self_pay' ? 'medical' : payerBasis,
     specialCapEligible,
+    ...(args.excludeScheduleId ? { excludeScheduleId: args.excludeScheduleId } : {}),
+    ...(args.excludeProposalId ? { excludeProposalId: args.excludeProposalId } : {}),
     ...(args.cadenceScheduleRows ? { cadenceScheduleRows: args.cadenceScheduleRows } : {}),
+    ...(args.cadenceProposalRows ? { cadenceProposalRows: args.cadenceProposalRows } : {}),
     ...(args.workflowSnapshot ? { workflowSnapshot: args.workflowSnapshot } : {}),
   } as const;
 
@@ -857,6 +931,8 @@ export async function buildVisitScheduleBillingPreviewBatch(
     pharmacistId?: string | null;
     siteId?: string | null;
     visitType?: string | null;
+    excludeScheduleId?: string | null;
+    excludeProposalId?: string | null;
   }[],
   orgId: string,
 ) {
@@ -904,6 +980,11 @@ export async function buildVisitScheduleBillingPreviewBatch(
     careCases,
     proposedDates: args.map((item) => item.proposedDate),
   });
+  const cadenceProposalRows = await prefetchBillingPreviewCadenceProposals({
+    orgId,
+    careCases,
+    proposedDates: args.map((item) => item.proposedDate),
+  });
   const workflowSnapshot = await prefetchBillingPreviewWorkflowSnapshot({
     orgId,
     careCases,
@@ -921,6 +1002,8 @@ export async function buildVisitScheduleBillingPreviewBatch(
         item.pharmacistId ?? null,
         item.siteId ?? null,
         item.visitType ?? null,
+        item.excludeScheduleId ?? null,
+        item.excludeProposalId ?? null,
       ]);
       let preview = previewByInput.get(inputKey);
       if (!preview) {
@@ -934,11 +1017,14 @@ export async function buildVisitScheduleBillingPreviewBatch(
                 pharmacistId: item.pharmacistId,
                 siteId: item.siteId,
                 visitType: item.visitType,
+                excludeScheduleId: item.excludeScheduleId,
+                excludeProposalId: item.excludeProposalId,
                 latestIntake: latestIntakeByCaseId.get(item.caseId) ?? null,
                 insurancePrefetch,
                 runtimeContextCache,
                 pharmacistWeeklyCapById,
                 cadenceScheduleRows,
+                cadenceProposalRows,
                 workflowSnapshot,
               },
               careCase,

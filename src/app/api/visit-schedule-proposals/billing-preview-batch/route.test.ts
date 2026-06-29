@@ -144,6 +144,8 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
           pharmacistId: undefined,
           siteId: undefined,
           visitType: undefined,
+          excludeScheduleId: undefined,
+          excludeProposalId: undefined,
         },
         {
           key: 'schedule_1',
@@ -152,6 +154,8 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
           pharmacistId: undefined,
           siteId: undefined,
           visitType: 'regular',
+          excludeScheduleId: undefined,
+          excludeProposalId: undefined,
         },
       ],
       'org_1',
@@ -170,6 +174,36 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
         }),
       },
     });
+  });
+
+  it('passes exclude ids through for batch edit previews', async () => {
+    const response = await POST(
+      createPostRequest({
+        items: [
+          {
+            key: 'proposal_1',
+            case_id: 'case_1',
+            proposed_date: '2026-04-03',
+            exclude_schedule_id: 'schedule_1',
+            exclude_proposal_id: 'proposal_1',
+          },
+        ],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(buildVisitScheduleBillingPreviewBatchMock).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          key: 'proposal_1',
+          excludeScheduleId: 'schedule_1',
+          excludeProposalId: 'proposal_1',
+        }),
+      ],
+      'org_1',
+    );
   });
 
   it('rejects non-object batch preview payloads before case lookup', async () => {

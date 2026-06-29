@@ -23,6 +23,7 @@ import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-sch
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { formatUtcDateKey } from '@/lib/date-key';
+import { buildBillingMonthKey, buildBillingWeekKey } from '@/server/services/billing-cadence';
 
 // Insurance visit frequency limits: medical=4/month, care=2/month
 const MONTHLY_LIMITS: Record<string, number> = {
@@ -134,10 +135,7 @@ function differenceInUtcCalendarDays(later: Date, earlier: Date) {
 }
 
 function buildWeekKey(value: Date) {
-  const weekStart = utcDateOnly(value);
-  const daysSinceMonday = (weekStart.getUTCDay() + 6) % 7;
-  weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceMonday);
-  return formatUtcDateKey(weekStart);
+  return buildBillingWeekKey(value);
 }
 
 function buildDateKey(value: Date) {
@@ -597,7 +595,7 @@ export const POST = withAuthContext(
       const insuranceType = scheduleLimitTypes[index];
       if (!insuranceType) continue;
 
-      const monthKey = `${insuranceType}:${candidateDate.getUTCFullYear()}-${candidateDate.getUTCMonth()}`;
+      const monthKey = `${insuranceType}:${buildBillingMonthKey(candidateDate)}`;
       monthCounts[monthKey] = (monthCounts[monthKey] ?? 0) + 1;
       const monthlyLimit = MONTHLY_LIMITS[insuranceType];
       if (monthCounts[monthKey] > monthlyLimit) {
