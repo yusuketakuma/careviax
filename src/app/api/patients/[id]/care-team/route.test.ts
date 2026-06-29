@@ -777,6 +777,40 @@ describe('/api/patients/[id]/care-team', () => {
     });
   });
 
+  it('rejects non-strict master professions impersonating strict care-team roles', async () => {
+    externalProfessionalFindManyMock.mockResolvedValue([
+      { id: 'external_home_helper', profession_type: 'home_helper' },
+    ]);
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [
+            {
+              external_professional_id: 'external_home_helper',
+              role: 'physician',
+              name: 'ヘルパーを医師として登録',
+              is_primary: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      message: '他職種マスターの職種とケアチーム上の役割が一致しません',
+    });
+  });
+
   it('GET returns 404 when patient is not assigned to the requesting user', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 

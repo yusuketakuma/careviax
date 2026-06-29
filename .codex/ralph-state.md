@@ -10750,3 +10750,16 @@ Backup directory:
 - validation results: Prettier write/check passed. Focused care-team route tests passed `1` file / `17` tests. Scoped ESLint and scoped diff-check passed. Full `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. agmsg review: codex returned `PATCH_REVIEW_RESULT: APPROVED` with no findings after checking route/test diff, patient validation role enum, care-team role normalization, and workflow-preview role consumers.
 - remaining work: commit only the approved owned care-team route/test and ledgers. Preserve unrelated scheduling/billing dirty paths.
 - next action: stage the four owned paths, commit the approved strict profession/role guard slice, send agmsg FYI, and re-check dirty tree.
+
+### 20260630-0131 JST
+
+- current task: address Claude's fix-forward review on care-team profession/role guard by making strict role validation bidirectional.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `src/app/api/patients/[id]/care-team/route.ts`, `src/app/api/patients/[id]/care-team/route.test.ts`, and the just-committed `2157c014` scope.
+- files changed: `src/app/api/patients/[id]/care-team/route.ts`, `src/app/api/patients/[id]/care-team/route.test.ts`, this Ralph state file, and `CODEX_GOAL_PROGRESS.md`.
+- bugs found: `2157c014` rejected strict profession-to-role mismatches, but non-strict external professions such as `home_helper` could still be linked under strict care-team roles such as `physician`. Downstream role consumers would treat that row as a physician recipient.
+- security risks found: strengthened data-integrity/impersonation guard for interprofessional report/workflow routing. The check still happens after org-scoped externalProfessional lookup and before delete/create/audit, so invalid payloads leave the case unchanged.
+- performance issues found: no new query. The existing in-memory profession/role check now covers both directions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patients/[id]/care-team/route.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`; `pnpm exec prettier --check 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`; scoped `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier write/check passed. Focused care-team route tests passed `1` file / `18` tests. Scoped ESLint and scoped diff-check passed. Full `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. agmsg review: Claude returned `PATCH_REVIEW_RESULT: APPROVED`, confirmed the medium-low finding is fully closed, and independently checked the bidirectional truth table plus reverse impersonation test.
+- remaining work: commit only the approved owned care-team route/test and ledgers. Preserve unrelated scheduling/billing dirty paths.
+- next action: stage the four owned paths, commit the approved bidirectional strict-role guard slice, send agmsg FYI, and re-check dirty tree.

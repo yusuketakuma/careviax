@@ -58,6 +58,17 @@ function strictCareTeamRoleForProfession(professionType: string | null | undefin
   }
 }
 
+const STRICT_CARE_TEAM_ROLES = new Set(['physician', 'nurse', 'care_manager']);
+
+function hasStrictCareTeamRoleMismatch(args: {
+  professionType: string | null | undefined;
+  role: string;
+}) {
+  const strictRole = strictCareTeamRoleForProfession(args.professionType);
+  if (strictRole != null) return args.role !== strictRole;
+  return STRICT_CARE_TEAM_ROLES.has(args.role);
+}
+
 type CareTeamLinkAuditSubject = {
   id?: string | null;
   external_professional_id?: string | null;
@@ -254,8 +265,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           const hasRoleMismatch = normalizedLinks.some((link) => {
             if (!link.external_professional_id) return false;
             const professional = externalProfessionalById.get(link.external_professional_id);
-            const strictRole = strictCareTeamRoleForProfession(professional?.profession_type);
-            return strictRole != null && link.role !== strictRole;
+            return hasStrictCareTeamRoleMismatch({
+              professionType: professional?.profession_type,
+              role: link.role,
+            });
           });
           if (hasRoleMismatch) {
             throw new Error('EXTERNAL_PROFESSIONAL_ROLE_MISMATCH');

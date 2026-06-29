@@ -19437,3 +19437,28 @@ Next loop:
 - Remaining:
   - Commit only the care-team route/test plus ledgers.
   - Preserve unrelated scheduling/billing dirty paths.
+
+### Care-Team Bidirectional Strict Role Guard Slice — 2026-06-30 01:31 JST
+
+- Scope:
+  - Addressed Claude's fix-forward review on `2157c014`.
+  - Kept scope to `/api/patients/[id]/care-team` backend validation and route tests.
+- Fixed:
+  - Strict validation is now bidirectional: a strict master profession (`physician`, `nurse`, `care_manager`) must keep the same care-team role, and a strict care-team role must be backed by the matching master profession when `external_professional_id` is present.
+  - Non-strict external professions can no longer impersonate physician/nurse/care-manager roles through direct API submission.
+  - Invalid payloads still fail before delete/create/audit, preserving the current case link set.
+- Review:
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED`, confirmed the medium-low finding is fully closed, and independently checked the bidirectional truth table plus the reverse impersonation regression test.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/care-team/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `18` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Commit only the care-team route/test plus ledgers.
+  - Preserve unrelated scheduling/billing dirty paths.
