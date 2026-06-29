@@ -5,7 +5,7 @@ import { internalError, success } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 const authenticatedGET = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
@@ -51,7 +51,7 @@ const authenticatedGET = withAuthContext(
     }
 
     // shift / holiday の date(@db.Date)は UTC 深夜で保存されるため UTC 深夜の今日で比較する
-    const todayUtc = utcDateFromLocalKey(localDateKey());
+    const todayUtc = utcDateFromLocalKey(japanDateKey());
     const sites = await prisma.pharmacySite.findMany({
       where: {
         org_id: ctx.orgId,

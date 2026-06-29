@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Pharmacist / Pharmacy-Site Japan Business-Day Windows - 2026-06-30 04:48 JST
+
+- Scope:
+  - Prioritized codex2's `POST /api/care-reports/generate-from-visit` no-store review interrupt first, then continued the Japan-only operational date cleanup on a non-overlapping API slice.
+  - Changed only `GET /api/pharmacists` monthly visit counts and `GET /api/pharmacy-sites?view=resource_map` future shift/holiday windows.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `GET /api/pharmacists` now builds monthly `VisitSchedule.scheduled_date` count windows from `japanDateKey()` instead of runtime/server-local `localDateKey()`.
+  - `GET /api/pharmacy-sites?view=resource_map` now starts future shift and holiday `@db.Date` filters from the Japan business date.
+  - `test:schedule-time:tz` now includes pharmacist and pharmacy-site route tests so these regressions run under the existing multi-timezone gate.
+- Safety:
+  - Reduces wrong-month/wrong-day staff count and resource-map exposure when the server runs in UTC or a negative-offset timezone during Japan early morning.
+  - Preserves auth/RLS, no-store headers, response shapes, query scopes, and UTC midnight `@db.Date` sentinel comparisons.
+- Validation:
+  - Review interrupt for codex2: related generate-from-visit route+generator Vitest passed `2` files / `36` tests; scoped ESLint and scoped `git diff --check` passed; API contract and privacy compliance reviewers found no blockers; codex sent `PATCH_REVIEW_RESULT: APPROVED`.
+  - `pnpm exec vitest run src/app/api/pharmacists/route.test.ts src/app/api/pharmacy-sites/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `28` tests.
+  - `pnpm exec eslint src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts src/app/api/pharmacy-sites/route.ts src/app/api/pharmacy-sites/route.test.ts`: passed.
+  - `git diff --check -- package.json src/app/api/pharmacists/route.ts src/app/api/pharmacists/route.test.ts src/app/api/pharmacy-sites/route.ts src/app/api/pharmacy-sites/route.test.ts`: passed.
+  - `pnpm format:check`: passed.
+  - `TZ=UTC pnpm test:schedule-time:tz`: passed, `29` files / `443` tests.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz`: passed, `29` files / `443` tests.
+  - `TZ=America/Los_Angeles pnpm test:schedule-time:tz`: passed, `29` files / `443` tests.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+- Review:
+  - `test_architect` confirmed the two added boundary tests are the minimal useful regression coverage for `2026-06-30T15:30:00.000Z` (JST `2026-07-01`).
+- Remaining:
+  - Explicit-path commit and FYI notification are pending for this slice.
+
 ### Care Report Generate-From-Visit No-Store - 2026-06-30 04:39 JST
 
 - Scope:
@@ -51,7 +81,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation and adversarial review of success/error/unknown-throw response coverage.
   - codex returned `PATCH_REVIEW_RESULT: APPROVED` after related Vitest, scoped ESLint, scoped diff-check, and API/privacy review.
 - Remaining:
-  - Explicit-path commit and FYI notification are pending for this slice.
+  - Committed by codex2 as `6edbaaf4 No-store visit report generation`; no remaining work for this slice.
 
 ### Japan Business-Day API Defaults - 2026-06-30 04:24 JST
 

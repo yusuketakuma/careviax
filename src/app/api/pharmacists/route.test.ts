@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
@@ -108,6 +108,10 @@ function expectNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('/api/pharmacists GET', () => {
   beforeEach(() => {
@@ -302,6 +306,26 @@ describe('/api/pharmacists GET', () => {
         }),
       ],
     });
+  });
+
+  it('uses the Japan business month for monthly visit counts near UTC day boundaries', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T15:30:00.000Z'));
+
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitScheduleGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          scheduled_date: {
+            gte: new Date('2026-07-01T00:00:00.000Z'),
+            lt: new Date('2026-08-01T00:00:00.000Z'),
+          },
+        }),
+      }),
+    );
   });
 
   it('dedupes collaborator rows by user id', async () => {

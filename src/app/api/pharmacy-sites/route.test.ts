@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const { pharmacySiteFindManyMock } = vi.hoisted(() => ({
@@ -35,6 +35,10 @@ function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('Pragma')).toBe('no-cache');
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('/api/pharmacy-sites', () => {
   beforeEach(() => {
@@ -120,6 +124,39 @@ describe('/api/pharmacy-sites', () => {
         total_sites: 1,
       }),
     });
+  });
+
+  it('uses the Japan business date for resource-map shift and holiday windows', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T15:30:00.000Z'));
+    pharmacySiteFindManyMock.mockResolvedValue([]);
+
+    const response = (await routeGET(
+      new NextRequest('http://localhost/api/pharmacy-sites?view=resource_map'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(pharmacySiteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          pharmacist_shifts: expect.objectContaining({
+            where: {
+              date: {
+                gte: new Date('2026-07-01T00:00:00.000Z'),
+              },
+            },
+          }),
+          business_holidays: expect.objectContaining({
+            where: {
+              is_closed: true,
+              date: {
+                gte: new Date('2026-07-01T00:00:00.000Z'),
+              },
+            },
+          }),
+        }),
+      }),
+    );
   });
 
   it('matches holiday emergency coverage by local calendar date', async () => {

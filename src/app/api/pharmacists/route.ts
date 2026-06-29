@@ -17,7 +17,7 @@ import { phosRoleFromMemberRole } from '@/lib/auth/phos-role';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
-import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { createPharmacistSchema } from '@/lib/validations/pharmacist';
@@ -78,7 +78,7 @@ async function authenticatedGET(req: NextRequest) {
     if (includeCollaborators && ctx.role !== 'owner' && ctx.role !== 'admin') {
       return forbiddenResponse('スタッフ管理一覧の閲覧権限がありません');
     }
-    const [currentYear, currentMonth] = localDateKey().split('-').map(Number);
+    const [currentYear, currentMonth] = japanDateKey().split('-').map(Number);
     const monthStart = utcDateFromLocalKey(
       `${currentYear}-${`${currentMonth}`.padStart(2, '0')}-01`,
     );
