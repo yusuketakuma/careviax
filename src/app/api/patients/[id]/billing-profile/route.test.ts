@@ -37,6 +37,8 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 
 import { PATCH } from './route';
 
+const SENSITIVE_NO_STORE = 'private, no-store, max-age=0';
+
 function createRequest(body: unknown, patientId = 'patient_1') {
   return new NextRequest(`http://localhost/api/patients/${patientId}/billing-profile`, {
     method: 'PATCH',
@@ -46,6 +48,11 @@ function createRequest(body: unknown, patientId = 'patient_1') {
     },
     body: JSON.stringify(body),
   });
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe(SENSITIVE_NO_STORE);
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/patients/[id]/billing-profile PATCH', () => {
@@ -93,6 +100,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.anything(), {
       permission: 'canManageBilling',
       message: '支払設定の更新権限がありません',
@@ -153,6 +161,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
@@ -175,6 +184,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: {
         payer_name: expect.arrayContaining(['本人以外の支払者では支払者名が必須です']),
@@ -202,6 +212,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: {
         billing_address: expect.arrayContaining(['患者住所と異なる請求先では請求先住所が必須です']),
@@ -228,6 +239,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: {
         note: expect.arrayContaining(['個別の未収許容条件は備考に記録してください']),
@@ -260,7 +272,68 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('returns auth rejections with sensitive no-store headers before write checks', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: Response.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await PATCH(
+      createRequest({
+        payer_type: 'self',
+        payment_method: 'cash',
+        collection_timing: 'per_visit',
+        receipt_issue: 'paper',
+        invoice_issue: 'no',
+        unpaid_tolerance: 'none',
+      }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(requireWritablePatientMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('returns sanitized no-store 500 responses for unexpected payment profile failures', async () => {
+    const rawErrorMessage =
+      'payment profile failed for 患者A payer=山田花子 address=東京都千代田区 token=secret';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+
+    const response = await PATCH(
+      createRequest({
+        payer_type: 'family',
+        payer_name: '山田 花子',
+        payer_relation: '長女',
+        billing_address_mode: 'same_as_patient',
+        payment_method: 'bank_transfer',
+        collection_timing: 'month_end',
+        receipt_issue: 'paper',
+        invoice_issue: 'yes',
+        unpaid_tolerance: 'one_month',
+        note: '月末に長女へ請求',
+      }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain(rawErrorMessage);
+    expect(bodyText).not.toContain('山田花子');
+    expect(bodyText).not.toContain('東京都千代田区');
+    expect(bodyText).not.toContain('secret');
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects archived patients before writing payment profiles', async () => {
@@ -285,6 +358,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();

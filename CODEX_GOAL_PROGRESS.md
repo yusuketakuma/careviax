@@ -23,6 +23,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient Billing Profile PATCH No-Store / Sanitized Envelope - 2026-06-30 07:43 JST
+
+- Scope:
+  - Continued P1 backend hardening from security subagent findings on patient billing and financial PHI responses.
+  - Focused only on `PATCH /api/patients/[id]/billing-profile`.
+  - Preserved peer-owned UI and visit-route WIP.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `PATCH /api/patients/[id]/billing-profile` now delegates to `authenticatedPATCH`, and the exported handler wraps all returned responses with `withSensitiveNoStore`.
+  - Unexpected payment-profile failures now use `unstable_rethrow` plus fixed no-store `internalError()`.
+  - Added no-store coverage for success, auth rejection, validation variants, not-found, and writable-patient conflict responses.
+  - Added raw-error coverage proving payer-name, billing-address, and token-like text is not echoed from unexpected failures.
+- Safety:
+  - Reduces cache and raw-error disclosure risk for payer names, payer relations, billing addresses, payment methods, unpaid tolerance settings, notes, billing profile metadata, and token/provider-like diagnostics.
+  - Preserves auth/permission behavior, request validation, writable-patient guard, scoped patient lookup, operational-task sidecar writes, audit writes, and existing response body/status shapes for handled branches.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/billing-profile/route.ts' 'src/app/api/patients/[id]/billing-profile/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/billing-profile/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `9` tests.
+  - Scoped ESLint on the two billing-profile files: passed.
+  - Scoped `git diff --check` on the two billing-profile files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - Backend and privacy compliance subagents returned `APPROVED`.
+  - A test-architect subagent could not be spawned because the thread limit was reached, so test coverage was manually checked against the branch matrix and validated with focused Vitest.
+- Remaining:
+  - Stage only explicit billing-profile files plus this ledger and `.codex/ralph-state.md`, commit, and send agmsg FYI.
+  - Continue next high-priority backend candidates from subagent findings, especially patient insurance/qualification and prescription/QR intake write paths.
+
 ### Visit Routes POST No-Store / Sanitized Envelope - 2026-06-30 07:42 JST
 
 - Scope:

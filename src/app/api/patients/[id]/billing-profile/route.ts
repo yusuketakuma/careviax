@@ -1,9 +1,11 @@
 import { Prisma } from '@prisma/client';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { billingPaymentProfileSchema } from '@/lib/validations/billing-collection';
@@ -19,7 +21,10 @@ function normalizeNullableText(value: string | null | undefined) {
   return trimmed ? trimmed : null;
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
   const authResult = await requireAuthContext(req, {
     permission: 'canManageBilling',
     message: '支払設定の更新権限がありません',
@@ -96,4 +101,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!result) return notFound('患者が見つかりません');
 
   return success({ data: { profile: result } });
+}
+
+export async function PATCH(
+  req: NextRequest,
+  routeContext: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

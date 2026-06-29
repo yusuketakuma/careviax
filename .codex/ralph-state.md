@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0743 JST
+
+- current task: harden `PATCH /api/patients/[id]/billing-profile` so patient billing payment-profile responses consistently use sensitive no-store headers and sanitized unexpected-error envelopes.
+- files inspected: agmsg inbox for `phos/codex`, `git status --short --untracked-files=all`, local Next.js route handler and `unstable_rethrow` docs read earlier this turn, `src/app/api/patients/[id]/billing-profile/route.ts`, `src/app/api/patients/[id]/billing-profile/route.test.ts`, `src/lib/api/sensitive-response.ts`, `src/lib/api/response.ts`, subagent P1 finding for patient billing/financial PHI routes, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/patients/[id]/billing-profile/route.ts`, `src/app/api/patients/[id]/billing-profile/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved peer-owned UI and visit-route WIP.
+- bugs found: patient billing-profile PATCH returned success, auth rejection, validation, not-found, writable-patient conflict, and PHI-bearing payment-profile responses without the route's sensitive no-store envelope. Unexpected payment-profile failures could fall through to framework 500 behavior instead of a fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced cache and raw-error disclosure risk for payer names, payer relations, billing addresses, payment methods, unpaid tolerance settings, notes, billing profile metadata, and token/provider-like diagnostics. Auth/permission checks, request validation, writable-patient guard, scoped patient lookup, operational-task sidecar writes, audit writes, response success/domain-error body shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/patients/[id]/billing-profile/route.ts' 'src/app/api/patients/[id]/billing-profile/route.test.ts'`; `pnpm exec vitest run 'src/app/api/patients/[id]/billing-profile/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two billing-profile files; scoped `git diff --check` on the two billing-profile files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused billing-profile Vitest passed `1` file / `9` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Backend and privacy compliance subagents returned `APPROVED`; test-architect subagent could not be spawned because the thread limit was reached, so test coverage was manually checked against the branch matrix and validated with focused Vitest.
+- remaining work: explicit-path stage only this billing-profile PATCH slice plus the billing-profile ledger hunks, commit, send agmsg FYI, then continue with remaining patient insurance/qualification and prescription/QR intake write-path candidates or incoming review interrupts.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0742 JST
 
 - current task: harden `POST /api/visit-routes` so visit route planning responses use sensitive no-store envelopes and sanitized unexpected-error bodies.
