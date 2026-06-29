@@ -9,7 +9,7 @@ import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-acce
 import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
 import { resolveOperatingState } from '@/lib/calendar/operating-day';
 import { generateVisitSchedulesSchema } from '@/lib/validations/visit-schedule';
-import { parseSimpleRruleDates } from '@/lib/visits/rrule';
+import { parseSimpleRruleDatesWithDiagnostics } from '@/lib/visits/rrule';
 import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { prisma } from '@/lib/db/client';
@@ -40,6 +40,10 @@ const MAX_GENERATED_VISIT_SCHEDULE_CANDIDATES = 100;
 const SCHEDULABLE_CYCLE_STATUSES = ['audited', 'setting', 'set_audited', 'visit_ready'] as const;
 const SCHEDULE_GENERATE_SERIALIZABLE_RETRY_LIMIT = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const RRULE_BYDAY_SUPPORTED_FORMATS = [
+  'WEEKLY: SU,MO,TU,WE,TH,FR,SA',
+  'MONTHLY: 1MO,-1FR',
+] as const;
 
 class VisitScheduleGenerateRetryLimitError extends Error {
   constructor() {
@@ -138,6 +142,18 @@ function buildWeekKey(value: Date) {
 
 function buildDateKey(value: Date) {
   return formatUtcDateKey(value);
+}
+
+function invalidBydayValidationDetails(invalidTokens: string[]) {
+  return {
+    recurrence_rule: [`BYDAYに無効な指定があります: ${invalidTokens.join(', ')}`],
+    rrule: {
+      code: 'RRULE_INVALID_BYDAY',
+      part: 'BYDAY',
+      invalidTokens,
+      supportedFormats: [...RRULE_BYDAY_SUPPORTED_FORMATS],
+    },
+  };
 }
 
 type LimitInsuranceType = keyof typeof MONTHLY_LIMITS;
@@ -323,6 +339,7 @@ export const POST = withAuthContext(
       visit_type,
       pharmacist_id,
       recurrence_rule,
+      series_anchor_date,
       start_date,
       end_date,
       time_window_start,
@@ -333,6 +350,7 @@ export const POST = withAuthContext(
 
     const startDate = utcDateFromLocalKey(start_date);
     const endDate = utcDateFromLocalKey(end_date);
+    const seriesAnchorDate = series_anchor_date ? utcDateFromLocalKey(series_anchor_date) : null;
 
     if (startDate > endDate) {
       return validationError('開始日は終了日以前である必要があります');
@@ -342,7 +360,23 @@ export const POST = withAuthContext(
       return validationError('訪問予定の一括生成期間は120日以内にしてください');
     }
 
-    const candidateDates = parseSimpleRruleDates(recurrence_rule, startDate, endDate);
+    const recurrenceResult = parseSimpleRruleDatesWithDiagnostics(
+      recurrence_rule,
+      startDate,
+      endDate,
+      {
+        seriesAnchorDate,
+      },
+    );
+
+    if (recurrenceResult.diagnostics.invalidBydayTokens.length > 0) {
+      return validationError(
+        'RRULEのBYDAYに無効な指定があります',
+        invalidBydayValidationDetails(recurrenceResult.diagnostics.invalidBydayTokens),
+      );
+    }
+
+    const candidateDates = recurrenceResult.dates;
 
     if (candidateDates.length === 0) {
       return validationError('指定されたRRULEから日程を生成できませんでした');

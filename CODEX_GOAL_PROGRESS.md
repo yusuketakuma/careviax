@@ -54,6 +54,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Remaining:
   - Product/UI polish can still tune the exact “未確定 N件 +他N件” wording if Claude's frontend review wants a different display, but the false-empty/undercounting safety issue is fixed.
 
+### Scheduling P2 Recurrence Anchoring - 2026-06-30 00:21 JST
+
+- Scope:
+  - Implemented the next backend scheduling correctness slice for RRULE interval anchoring, windowed regeneration, invalid BYDAY diagnostics, and visit-record next-suggestion anchoring.
+  - Preserved Japan domestic business semantics: visit days and generated schedule days are `Asia/Tokyo` domain `YYYY-MM-DD` dates. UTC is used only as the existing Prisma `@db.Date` date-only sentinel (`YYYY-MM-DDT00:00:00.000Z`) and as a runtime-TZ regression check, not as the UI or business-day basis.
+  - No schema migration, live DB mutation, push, deploy, auth/RLS policy change, external send, or destructive operation was performed.
+- Fixed:
+  - Replaced the previous per-weekday weekly interval counter with UTC ISO-week phase calculation anchored to the original series date.
+  - Replaced monthly window-local interval counting with absolute UTC month-index phase calculation anchored to the original series date.
+  - Kept the legacy `parseSimpleRruleDates(): Date[]` wrapper compatible while adding diagnostic parsing for invalid weekly/monthly BYDAY tokens.
+  - Added optional `series_anchor_date` to schedule generation so regenerated windows keep the original weekly/monthly phase instead of restarting from the current window.
+  - Made schedule generation reject invalid BYDAY tokens before loading care-case or shift data, avoiding partial silent generation.
+  - Anchored visit-record auto next-suggestion dates to `VisitSchedule.scheduled_date` so delayed visit recording does not shift a biweekly series.
+- Validation:
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/lib/visits/rrule.test.ts src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `119` tests.
+  - `TZ=UTC pnpm exec vitest run src/lib/visits/rrule.test.ts src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `119` tests.
+  - `TZ=America/Los_Angeles pnpm exec vitest run src/lib/visits/rrule.test.ts src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `119` tests.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz`: passed, `23` files / `381` tests; stderr was limited to the existing expected sanitized-500 visit-schedules route test.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - Pre-implementation subagents covered code mapping, API contract, test architecture, backend review, and medical safety. Their P2 blockers were addressed in this patch.
+  - Post-implementation verifier passed the three-runtime focused tests and `pnpm typecheck` on the dirty tree without file edits.
+- Remaining:
+  - Monthly `series_anchor_date` is covered at parser level; a route-level monthly regeneration test can be added in a later slice if we expand the generate-route matrix.
+  - Unsupported/unknown RRULE parts, duplicate parts, and malformed `INTERVAL` diagnostics remain a separate hardening topic. The current slice fixes the patient-safety phase and invalid BYDAY issues identified for P2.
+
 ### Scheduling P0 Datetime Foundation Completion - 2026-06-29 23:15 JST
 
 - Scope:

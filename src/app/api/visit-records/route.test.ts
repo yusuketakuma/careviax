@@ -880,6 +880,7 @@ describe('/api/visit-records POST', () => {
       schedule_status: 'ready',
       carry_items_status: 'ready',
       recurrence_rule: null,
+      scheduled_date: new Date('2026-03-25T00:00:00.000Z'),
       cycle_id: 'cycle_1',
       visit_type: 'regular',
       pharmacist_id: 'user_1',
@@ -1808,6 +1809,7 @@ describe('/api/visit-records POST', () => {
       case_id: 'case_1',
       schedule_status: 'ready',
       recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=WE',
+      scheduled_date: new Date('2026-03-25T00:00:00.000Z'),
       cycle_id: 'cycle_1',
       visit_type: 'regular',
       pharmacist_id: 'user_1',
@@ -1854,12 +1856,62 @@ describe('/api/visit-records POST', () => {
     });
   });
 
+  it('keeps auto-suggested biweekly visits anchored to the original scheduled date', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=WE',
+      scheduled_date: new Date('2026-07-01T00:00:00.000Z'),
+      cycle_id: 'cycle_1',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: new Date('2026-07-31T00:00:00.000Z'),
+      visit_deadline_date: null,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-07-08',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitRecordCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          next_visit_suggestion_date: new Date('2026-07-15T00:00:00.000Z'),
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      suggestedSchedule: {
+        suggested_date: '2026-07-15',
+        auto_generated: true,
+        interval_days: 7,
+      },
+    });
+  });
+
   it('returns auto-suggested visit dates by the local pharmacy calendar day', async () => {
     visitScheduleFindFirstMock.mockResolvedValue({
       id: 'schedule_1',
       case_id: 'case_1',
       schedule_status: 'ready',
       recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=FR',
+      scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
       cycle_id: 'cycle_1',
       visit_type: 'regular',
       pharmacist_id: 'user_1',

@@ -115,6 +115,7 @@ export const generateVisitSchedulesSchema = z
     visit_type: z.enum(visitTypeValues),
     pharmacist_id: z.string().min(1, '薬剤師IDは必須です'),
     recurrence_rule: z.string().min(1, 'RRULEは必須です'),
+    series_anchor_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
     insurance_type: z.enum(['medical', 'care']).optional(),
     start_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
     end_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）'),

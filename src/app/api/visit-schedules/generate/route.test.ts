@@ -329,6 +329,58 @@ describe('/api/visit-schedules/generate POST', () => {
     });
   });
 
+  it('keeps windowed biweekly generation anchored to the original series date', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        patient: {
+          scheduling_preference: {
+            preferred_weekdays: [1, 3],
+            preferred_time_from: null,
+            preferred_time_to: null,
+            facility_time_from: null,
+            facility_time_to: null,
+          },
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE',
+        series_anchor_date: '2026-01-05',
+        start_date: '2026-05-01',
+        end_date: '2026-05-31',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    const expectedDateKeys = ['2026-05-11', '2026-05-13', '2026-05-25', '2026-05-27'];
+    expect(visitScheduleCreateMock).toHaveBeenCalledTimes(4);
+    expect(
+      visitScheduleCreateMock.mock.calls.map((call) =>
+        formatUtcDateKey(call[0].data.scheduled_date),
+      ),
+    ).toEqual(expectedDateKeys);
+    expect(evaluateVisitWorkflowGatesMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        asOfDates: expectedDateKeys.map((dateKey) => new Date(`${dateKey}T00:00:00.000Z`)),
+      }),
+    );
+    expect(
+      pharmacistShiftFindManyMock.mock.calls[0]?.[0].where.date.in.map((date: Date) =>
+        formatUtcDateKey(date),
+      ),
+    ).toEqual(expectedDateKeys);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
+
   it('assigns route order after the existing schedule order for the same pharmacist and date', async () => {
     careCaseFindFirstMock.mockResolvedValue(
       buildCareCase({
@@ -1045,6 +1097,40 @@ describe('/api/visit-schedules/generate POST', () => {
       },
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects recurrence rules with invalid BYDAY tokens before loading the case', async () => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,XX,WE',
+        start_date: '2026-03-30',
+        end_date: '2026-04-01',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'RRULEのBYDAYに無効な指定があります',
+      details: {
+        recurrence_rule: ['BYDAYに無効な指定があります: XX'],
+        rrule: {
+          code: 'RRULE_INVALID_BYDAY',
+          part: 'BYDAY',
+          invalidTokens: ['XX'],
+        },
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGatesMock).not.toHaveBeenCalled();
     expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();

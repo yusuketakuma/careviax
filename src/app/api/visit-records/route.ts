@@ -546,6 +546,7 @@ async function upsertFirstVisitDocument(args: {
 function getNextVisitSuggestionDate(args: {
   explicitSuggestion: string | undefined;
   recurrenceRule: string | null;
+  recurrenceAnchorDate?: Date | null;
   visitRecordedAt: Date;
   medicationEndDate: Date | null;
   visitDeadlineDate: Date | null;
@@ -566,7 +567,9 @@ function getNextVisitSuggestionDate(args: {
       ? new Date(Math.min(...cutoffCandidates.map((value) => value.getTime())))
       : addDays(args.visitRecordedAt, 90);
 
-  return getNextSimpleRruleOccurrence(args.recurrenceRule, args.visitRecordedAt, cutoff);
+  return getNextSimpleRruleOccurrence(args.recurrenceRule, args.visitRecordedAt, cutoff, {
+    seriesAnchorDate: args.recurrenceAnchorDate ?? args.visitRecordedAt,
+  });
 }
 
 type VisitRecordListItem = {
@@ -1029,6 +1032,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
         schedule_status: true,
         carry_items_status: true,
         recurrence_rule: true,
+        scheduled_date: true,
         cycle_id: true,
         visit_type: true,
         pharmacist_id: true,
@@ -1055,6 +1059,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     const suggestedNextVisitDate = getNextVisitSuggestionDate({
       explicitSuggestion: next_visit_suggestion_date,
       recurrenceRule: schedule.recurrence_rule,
+      recurrenceAnchorDate: schedule.scheduled_date,
       visitRecordedAt,
       medicationEndDate: schedule.medication_end_date,
       visitDeadlineDate: schedule.visit_deadline_date,

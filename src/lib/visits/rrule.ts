@@ -8,6 +8,22 @@ const dayNameToIndex: Record<string, number> = {
   SA: 6,
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEK_MS = 7 * DAY_MS;
+
+export type SimpleRruleParseDiagnostics = {
+  invalidBydayTokens: string[];
+};
+
+export type SimpleRruleParseOptions = {
+  seriesAnchorDate?: Date | null;
+};
+
+export type SimpleRruleParseResult = {
+  dates: Date[];
+  diagnostics: SimpleRruleParseDiagnostics;
+};
+
 function nthWeekdayOfMonth(year: number, month: number, weekday: number, nth: number) {
   if (nth > 0) {
     const first = new Date(Date.UTC(year, month, 1));
@@ -36,10 +52,75 @@ function utcDateOnly(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 }
 
+function startOfUtcIsoWeek(value: Date) {
+  const weekStart = utcDateOnly(value);
+  const daysSinceMonday = (weekStart.getUTCDay() + 6) % 7;
+  weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceMonday);
+  return weekStart;
+}
+
+function utcIsoWeekOffset(date: Date, anchorDate: Date) {
+  return Math.floor(
+    (startOfUtcIsoWeek(date).getTime() - startOfUtcIsoWeek(anchorDate).getTime()) / WEEK_MS,
+  );
+}
+
+function utcMonthIndex(value: Date) {
+  return value.getUTCFullYear() * 12 + value.getUTCMonth();
+}
+
 function addUtcDays(value: Date, days: number) {
   const normalized = utcDateOnly(value);
   normalized.setUTCDate(normalized.getUTCDate() + days);
   return normalized;
+}
+
+function parseWeeklyByday(byday: string) {
+  const invalidBydayTokens: string[] = [];
+  const targetDays = new Set<number>();
+
+  for (const rawEntry of byday.split(',')) {
+    const entry = rawEntry.trim().toUpperCase();
+    const dayIndex = dayNameToIndex[entry];
+    if (entry.length === 0 || dayIndex === undefined) {
+      invalidBydayTokens.push(entry || rawEntry);
+      continue;
+    }
+    targetDays.add(dayIndex);
+  }
+
+  return { targetDays, invalidBydayTokens };
+}
+
+function parseMonthlyByday(byday: string) {
+  const invalidBydayTokens: string[] = [];
+  const monthlyTargets: Array<{ nthOccurrence: number; targetDayIndex: number }> = [];
+
+  for (const rawEntry of byday.split(',')) {
+    const entry = rawEntry.trim().toUpperCase();
+    const match = entry.match(/^(-?\d)([A-Z]{2})$/);
+    const nthOccurrence = match ? Number.parseInt(match[1], 10) : 0;
+    const targetDayIndex = match ? dayNameToIndex[match[2]] : undefined;
+    if (!match || nthOccurrence === 0 || targetDayIndex === undefined) {
+      invalidBydayTokens.push(entry || rawEntry);
+      continue;
+    }
+    monthlyTargets.push({ nthOccurrence, targetDayIndex });
+  }
+
+  return { monthlyTargets, invalidBydayTokens };
+}
+
+function parseRruleParts(rrule: string) {
+  const parts: Record<string, string> = {};
+
+  for (const part of rrule.split(';')) {
+    const [rawKey, ...rawValueParts] = part.split('=');
+    if (!rawKey || rawValueParts.length === 0) continue;
+    parts[rawKey.trim().toUpperCase()] = rawValueParts.join('=').trim();
+  }
+
+  return parts;
 }
 
 /**
@@ -47,35 +128,38 @@ function addUtcDays(value: Date, days: number) {
  * - FREQ=WEEKLY;INTERVAL=n;BYDAY=MO,WE
  * - FREQ=MONTHLY;INTERVAL=n;BYDAY=1WE / -1FR / 1TU,3TU
  */
-export function parseSimpleRruleDates(rrule: string, startDate: Date, endDate: Date): Date[] {
+export function parseSimpleRruleDatesWithDiagnostics(
+  rrule: string,
+  startDate: Date,
+  endDate: Date,
+  options: SimpleRruleParseOptions = {},
+): SimpleRruleParseResult {
   const startBoundary = utcDateOnly(startDate);
   const endBoundary = utcDateOnly(endDate);
-  const parts = Object.fromEntries(
-    rrule.split(';').map((part) => {
-      const [key, value] = part.split('=');
-      return [key, value];
-    }),
-  );
+  const seriesAnchorBoundary = utcDateOnly(options.seriesAnchorDate ?? startBoundary);
+  const parts = parseRruleParts(rrule);
 
   const freq = parts['FREQ'];
   const interval = Number.parseInt(parts['INTERVAL'] ?? '1', 10);
   const byday = parts['BYDAY'];
+  const diagnostics: SimpleRruleParseDiagnostics = { invalidBydayTokens: [] };
 
   if (!freq || !byday || Number.isNaN(interval) || interval <= 0) {
-    return [];
+    return { dates: [], diagnostics };
   }
 
   const dates: Date[] = [];
 
   if (freq === 'WEEKLY') {
-    const targetDays = byday
-      .split(',')
-      .map((entry) => dayNameToIndex[entry])
-      .filter((entry) => entry !== undefined);
+    const { targetDays, invalidBydayTokens } = parseWeeklyByday(byday);
+    diagnostics.invalidBydayTokens.push(...invalidBydayTokens);
+    if (targetDays.size === 0) return { dates, diagnostics };
+
     const current = new Date(startBoundary);
 
     while (current <= endBoundary) {
-      if (targetDays.includes(current.getUTCDay())) {
+      const weekOffset = utcIsoWeekOffset(current, seriesAnchorBoundary);
+      if (weekOffset >= 0 && weekOffset % interval === 0 && targetDays.has(current.getUTCDay())) {
         dates.push(
           new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate())),
         );
@@ -83,46 +167,23 @@ export function parseSimpleRruleDates(rrule: string, startDate: Date, endDate: D
       current.setUTCDate(current.getUTCDate() + 1);
     }
 
-    if (interval === 1) {
-      return dates;
-    }
-
-    const filtered: Date[] = [];
-    const countPerDay: Record<number, number> = {};
-    for (const date of dates) {
-      const weekday = date.getUTCDay();
-      countPerDay[weekday] = (countPerDay[weekday] ?? 0) + 1;
-      if ((countPerDay[weekday] - 1) % interval === 0) {
-        filtered.push(date);
-      }
-    }
-    return filtered;
+    return { dates, diagnostics };
   }
 
   if (freq === 'MONTHLY') {
-    const monthlyTargets = byday
-      .split(',')
-      .map((entry) => entry.trim())
-      .map((entry) => entry.match(/^(-?\d)([A-Z]{2})$/))
-      .filter((match): match is RegExpMatchArray => match != null)
-      .map((match) => ({
-        nthOccurrence: Number.parseInt(match[1], 10),
-        targetDayIndex: dayNameToIndex[match[2]],
-      }))
-      .filter(
-        (target): target is { nthOccurrence: number; targetDayIndex: number } =>
-          target.targetDayIndex !== undefined,
-      );
-    if (monthlyTargets.length === 0) return dates;
+    const { monthlyTargets, invalidBydayTokens } = parseMonthlyByday(byday);
+    diagnostics.invalidBydayTokens.push(...invalidBydayTokens);
+    if (monthlyTargets.length === 0) return { dates, diagnostics };
 
     let monthCursor = new Date(
       Date.UTC(startBoundary.getUTCFullYear(), startBoundary.getUTCMonth(), 1),
     );
     const endMonth = new Date(Date.UTC(endBoundary.getUTCFullYear(), endBoundary.getUTCMonth(), 1));
-    let monthCount = 0;
+    const anchorMonthIndex = utcMonthIndex(seriesAnchorBoundary);
 
     while (monthCursor <= endMonth) {
-      if (monthCount % interval === 0) {
+      const monthOffset = utcMonthIndex(monthCursor) - anchorMonthIndex;
+      if (monthOffset >= 0 && monthOffset % interval === 0) {
         for (const target of monthlyTargets) {
           const date = nthWeekdayOfMonth(
             monthCursor.getUTCFullYear(),
@@ -136,19 +197,37 @@ export function parseSimpleRruleDates(rrule: string, startDate: Date, endDate: D
         }
       }
 
-      monthCount += 1;
       monthCursor = new Date(
         Date.UTC(monthCursor.getUTCFullYear(), monthCursor.getUTCMonth() + 1, 1),
       );
     }
   }
 
-  return dates
-    .sort(compareDateAsc)
-    .filter((date, index, values) => index === 0 || values[index - 1].getTime() !== date.getTime());
+  return {
+    dates: dates
+      .sort(compareDateAsc)
+      .filter(
+        (date, index, values) => index === 0 || values[index - 1].getTime() !== date.getTime(),
+      ),
+    diagnostics,
+  };
 }
 
-export function getNextSimpleRruleOccurrence(rrule: string, baseDate: Date, maxDate?: Date | null) {
+export function parseSimpleRruleDates(
+  rrule: string,
+  startDate: Date,
+  endDate: Date,
+  options: SimpleRruleParseOptions = {},
+): Date[] {
+  return parseSimpleRruleDatesWithDiagnostics(rrule, startDate, endDate, options).dates;
+}
+
+export function getNextSimpleRruleOccurrence(
+  rrule: string,
+  baseDate: Date,
+  maxDate?: Date | null,
+  options: SimpleRruleParseOptions = {},
+) {
   const baseBoundary = utcDateOnly(baseDate);
   const searchStart = addUtcDays(baseBoundary, 1);
   const searchEnd = maxDate ? utcDateOnly(maxDate) : addUtcDays(baseBoundary, 90);
@@ -157,6 +236,8 @@ export function getNextSimpleRruleOccurrence(rrule: string, baseDate: Date, maxD
     return null;
   }
 
-  const dates = parseSimpleRruleDates(rrule, searchStart, searchEnd);
+  const dates = parseSimpleRruleDates(rrule, searchStart, searchEnd, {
+    seriesAnchorDate: options.seriesAnchorDate ?? baseBoundary,
+  });
   return dates.find((date) => date > baseBoundary) ?? null;
 }
