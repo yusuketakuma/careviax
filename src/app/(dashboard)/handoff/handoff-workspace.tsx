@@ -522,12 +522,17 @@ function TransferDialog({
 function HandoffCommentFeed({
   comments,
   isLoading,
+  isError,
+  onRetry,
 }: {
   comments: RecentComment[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
 }) {
   // 自分が関与したコメントが無ければ section ごと出さない(ノイズを足さない)。
-  if (!isLoading && comments.length === 0) return null;
+  // ただし取得失敗時は「関与なし」と区別できないため隠さず error+再読み込みを出す(false-empty 回避)。
+  if (!isLoading && !isError && comments.length === 0) return null;
 
   return (
     <section
@@ -548,6 +553,14 @@ function HandoffCommentFeed({
           <Skeleton className="h-12 w-full" />
           <Skeleton className="h-12 w-full" />
         </div>
+      ) : isError ? (
+        <ErrorState
+          variant="server"
+          size="inline"
+          description="やり取りを読み込めませんでした。あなた宛のコメントが表示されていない可能性があります。再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: onRetry }}
+          className="mt-3"
+        />
       ) : (
         <ul className="mt-3 space-y-2" role="list">
           {comments.map((comment) => (
@@ -1540,6 +1553,8 @@ export function HandoffWorkspace() {
               <HandoffCommentFeed
                 comments={commentsQuery.data ?? []}
                 isLoading={commentsQuery.isLoading}
+                isError={commentsQuery.isError}
+                onRetry={() => void commentsQuery.refetch()}
               />
 
               <ConsultWorkspace

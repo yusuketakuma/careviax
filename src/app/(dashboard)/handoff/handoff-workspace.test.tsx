@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -144,8 +144,14 @@ const COCKPIT: DashboardCockpitResponse = {
 
 function stubFetch(
   board: HandoffBoardResponse = BOARD,
-  options: { handoffTasks?: Array<Record<string, unknown>> } = {},
+  options: {
+    handoffTasks?: Array<Record<string, unknown>>;
+    recentCommentsStatus?: number;
+    recentComments?: Array<Record<string, unknown>>;
+  } = {},
 ) {
+  const recentCommentsStatus = options.recentCommentsStatus ?? 200;
+  const recentComments = options.recentComments ?? [];
   const handoffTasks = options.handoffTasks ?? [
     {
       id: 'task_handoff_1',
@@ -179,6 +185,14 @@ function stubFetch(
     }
     if (url.includes('/api/tasks')) {
       return new Response(JSON.stringify({ data: handoffTasks }), { status: 200 });
+    }
+    if (url.includes('/api/comments/recent')) {
+      if (recentCommentsStatus !== 200) {
+        return new Response(JSON.stringify({ message: 'やり取りの取得に失敗しました' }), {
+          status: recentCommentsStatus,
+        });
+      }
+      return new Response(JSON.stringify({ data: recentComments }), { status: 200 });
     }
     if (url.includes('/api/visit-records/visit_record_1/handoff')) {
       if (init?.method === 'PUT') {
@@ -602,6 +616,52 @@ describe('HandoffWorkspace', () => {
 
     expect(useRealtimeEventsMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a recent-comments fetch failure with retry instead of silently hiding the やり取り feed', async () => {
+    // 取得失敗を「あなた宛コメント無し」と区別できないと連携記録が無言で消える false-empty。
+    const fetchMock = stubFetch(BOARD, { recentCommentsStatus: 500 });
+
+    renderWorkspace();
+
+    const feed = await screen.findByTestId('handoff-comment-feed');
+    expect(within(feed).getByText(/やり取りを読み込めませんでした/)).toBeTruthy();
+    const retry = within(feed).getByRole('button', { name: '再読み込み' });
+
+    const commentCallsBefore = fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes('/api/comments/recent'),
+    ).length;
+    fireEvent.click(retry);
+    await waitFor(() => {
+      const commentCallsAfter = fetchMock.mock.calls.filter(([input]) =>
+        String(input).includes('/api/comments/recent'),
+      ).length;
+      expect(commentCallsAfter).toBeGreaterThan(commentCallsBefore);
+    });
+  });
+
+  it('renders the やり取り feed with recent comments and no error on a successful load', async () => {
+    stubFetch(BOARD, {
+      recentComments: [
+        {
+          id: 'comment_1',
+          entity_type: 'care_report',
+          entity_id: 'report_1',
+          author_name: '佐藤 太郎',
+          content: '次回訪問で残薬を確認してください',
+          mentions_me: true,
+          created_at: '2026-06-11T02:00:00.000Z',
+        },
+      ],
+    });
+
+    renderWorkspace();
+
+    const feed = await screen.findByTestId('handoff-comment-feed');
+    expect(within(feed).getByText('次回訪問で残薬を確認してください')).toBeTruthy();
+    // a successful (non-empty) load must not show the error affordance
+    expect(within(feed).queryByText(/やり取りを読み込めませんでした/)).toBeNull();
+    expect(within(feed).queryByRole('button', { name: '再読み込み' })).toBeNull();
   });
 });
 
