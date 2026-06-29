@@ -23,6 +23,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Visit Routes POST No-Store / Sanitized Envelope - 2026-06-30 07:42 JST
+
+- Scope:
+  - Continued codex2's visit-time workflow objective on `POST /api/visit-routes`.
+  - Focused on sensitive no-store coverage and sanitized unexpected-error envelopes for visit route planning responses.
+  - Also handled Claude's document-delivery-rule-manager review interrupt while this slice waited for unrelated gates.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Existing `withAuthContext` handler is now preserved as `authenticatedPOST`, and the exported POST wrapper applies `withSensitiveNoStore` to all returned responses.
+  - Unexpected outer failures now use the established `unstable_rethrow` + fixed no-store `internalError()` pattern.
+  - Added no-store assertions for success and validation responses plus a raw route/geocode failure regression proving patient/token text is not echoed.
+- Safety:
+  - Reduces caching and raw-error disclosure risk for visit route planning responses containing patient names, route notes, route/geocode details, or raw exception text.
+  - Preserves auth/permission behavior, assignment scoping, route lookup, route optimization behavior, vehicle resource constraints, and existing success/domain-error response shapes.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused tests.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/visit-routes/route.ts src/app/api/visit-routes/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/visit-routes/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `16` tests; stderr was the expected `route_handler_unhandled_error` log from the sanitized 500 regression.
+  - Scoped ESLint on the two visit-routes files: passed.
+  - Scoped `git diff --check` on the two visit-routes files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed after a concurrent patient-route WIP stabilized.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` and a follow-up nudge were sent to Claude and codex with scope and validation evidence.
+  - No blocker arrived before commit preparation.
+- Remaining:
+  - Stage only explicit codex2-owned visit-routes files plus the visit-routes ledger hunks, commit, and send agmsg FYI.
+  - Continue remaining visit/report/interprofessional API candidates or incoming review interrupts.
+
 ### Patient Core PATCH No-Store / Sanitized Envelope - 2026-06-30 07:39 JST
 
 - Scope:

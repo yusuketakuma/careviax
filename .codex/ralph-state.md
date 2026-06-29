@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0742 JST
+
+- current task: harden `POST /api/visit-routes` so visit route planning responses use sensitive no-store envelopes and sanitized unexpected-error bodies.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, local Next.js route-handler and `unstable_rethrow` docs read earlier this turn, `src/app/api/visit-routes/route.ts`, `src/app/api/visit-routes/route.test.ts`, `src/lib/auth/context.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Also reviewed Claude's document-delivery-rule-manager false-empty fix while this slice waited for unrelated gates.
+- files changed: `src/app/api/visit-routes/route.ts`, `src/app/api/visit-routes/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved Claude-owned loading sweep WIP and codex-owned patient/billing WIP.
+- bugs found: visit route planning POST responses could include patient names, route notes, and route-planning metadata without the sensitive no-store envelope. Unexpected outer route failures could also fall through without a fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced caching and raw-error disclosure risk for visit route planning responses and failures containing patient names, route/geocode details, or raw tokens. Auth, assignment scoping, route lookup, route optimization behavior, vehicle resource constraints, response success/domain-error body shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps existing route responses, rethrows framework control-flow exceptions, and adds focused assertions.
+- validation commands: `pnpm exec prettier --write src/app/api/visit-routes/route.ts src/app/api/visit-routes/route.test.ts`; `pnpm exec vitest run src/app/api/visit-routes/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint on the two visit-routes files; scoped `git diff --check` on the two visit-routes files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused visit-routes Vitest passed `1` file / `16` tests; stderr was limited to the expected `route_handler_unhandled_error` log from the sanitized 500 regression. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck` passed. `pnpm typecheck:no-unused` initially hit a concurrent patient-route WIP, then passed after that WIP stabilized. `pnpm lint` and `pnpm format:check` passed. `PATCH_REVIEW_REQUEST` and a nudge were sent to Claude and codex; no blocker arrived before commit preparation.
+- remaining work: explicit-path stage only this visit-routes slice plus ledger hunks, commit, send agmsg FYI, then continue remaining visit/report/interprofessional API candidates or incoming review interrupts.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0739 JST
 
 - current task: harden `PATCH /api/patients/[id]` so patient core write responses consistently use sensitive no-store headers and sanitized unexpected-error envelopes.

@@ -1,13 +1,15 @@
 import { z } from 'zod';
 import { NextRequest } from 'next/server';
-import { withAuthContext, type AuthContext } from '@/lib/auth/context';
+import { unstable_rethrow } from 'next/navigation';
+import { withAuthContext, type AuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import {
   buildVisitScheduleAssignmentWhere,
   buildVisitScheduleProposalAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   computeOptimizedVisitRoute,
   type VisitRouteTravelMode,
@@ -95,7 +97,7 @@ function hasRoutePlanLookupError(value: unknown): value is RoutePlanLookupError 
   );
 }
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) {
@@ -443,3 +445,15 @@ export const POST = withAuthContext(
     message: '訪問ルートの閲覧権限がありません',
   },
 );
+
+export async function POST(
+  req: NextRequest,
+  routeContext: AuthRouteContext<Record<string, string>>,
+) {
+  try {
+    return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
+}

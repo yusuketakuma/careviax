@@ -82,6 +82,11 @@ function mockRouteContext() {
   );
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-routes POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -153,6 +158,7 @@ describe('/api/visit-routes POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       status: 'ok',
       orderedScheduleIds: ['schedule_2', 'schedule_1'],
@@ -172,6 +178,7 @@ describe('/api/visit-routes POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(scheduleFindManyMock).not.toHaveBeenCalled();
     expect(proposalFindManyMock).not.toHaveBeenCalled();
@@ -186,6 +193,28 @@ describe('/api/visit-routes POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(scheduleFindManyMock).not.toHaveBeenCalled();
     expect(proposalFindManyMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when route lookup fails unexpectedly', async () => {
+    const rawError = '患者A visit-route raw geocode token=secret failed';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await POST(
+      createRequest({
+        schedule_ids: ['schedule_1'],
+        travel_mode: 'DRIVE',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain(rawError);
+    expect(body).not.toContain('患者A');
+    expect(body).not.toContain('token=secret');
     expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
   });
 
