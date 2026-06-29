@@ -22,6 +22,14 @@ const useMutationMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
 const buildOrgHeadersMock = vi.hoisted(() => vi.fn());
 const buildOrgJsonHeadersMock = vi.hoisted(() => vi.fn());
+const toastErrorMock = vi.hoisted(() => vi.fn());
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: toastErrorMock,
+    success: vi.fn(),
+  },
+}));
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
@@ -562,6 +570,7 @@ describe('ScheduleTeamBoard', () => {
     useMutationMock.mockReset();
     buildOrgHeadersMock.mockReset();
     buildOrgJsonHeadersMock.mockReset();
+    toastErrorMock.mockReset();
     useMutationMock.mockReturnValue({
       mutate: vi.fn(),
       isPending: false,
@@ -699,6 +708,41 @@ describe('ScheduleTeamBoard', () => {
     ).rejects.toThrow(RangeError);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(buildOrgJsonHeadersMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a toast instead of silently swallowing mutation failures', async () => {
+    type MutationConfigWithHandlers = MutationConfig & {
+      onError?: (error: unknown) => void;
+    };
+    const mutationConfigs: MutationConfigWithHandlers[] = [];
+    useMutationMock.mockImplementation((config: MutationConfigWithHandlers) => {
+      mutationConfigs.push(config);
+      return { mutate: vi.fn(), isPending: false, variables: undefined };
+    });
+    mockQueries();
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    // statusMutation, taskStatusMutation, and applyRecommendedVehicleMutation all expose onError.
+    const [statusMutation, taskStatusMutation, vehicleMutation] = mutationConfigs;
+    expect(statusMutation?.onError).toBeTypeOf('function');
+    expect(taskStatusMutation?.onError).toBeTypeOf('function');
+    expect(vehicleMutation?.onError).toBeTypeOf('function');
+
+    // Propagate thrown Error messages to the toast instead of silently swallowing failures.
+    statusMutation!.onError!(new Error('訪問予定の更新に失敗しました'));
+    expect(toastErrorMock).toHaveBeenLastCalledWith('訪問予定の更新に失敗しました');
+
+    taskStatusMutation!.onError!(new Error('運用タスクの更新に失敗しました'));
+    expect(toastErrorMock).toHaveBeenLastCalledWith('運用タスクの更新に失敗しました');
+
+    vehicleMutation!.onError!(new Error('boom'));
+    expect(toastErrorMock).toHaveBeenLastCalledWith('boom');
+
+    // Non-Error values use the fallback message.
+    vehicleMutation!.onError!('not-an-error');
+    expect(toastErrorMock).toHaveBeenLastCalledWith('車両の割り当てに失敗しました');
+
+    expect(toastErrorMock).toHaveBeenCalledTimes(4);
   });
 
   it('renders the new schedule board composition with rail and a single primary action', () => {
