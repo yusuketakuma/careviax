@@ -35,10 +35,16 @@ vi.mock('@/server/services/export-audit', () => ({
   recordDataExportAudit: recordDataExportAuditMock,
 }));
 
+import { PdfNotFoundError } from '@/server/services/pdf-errors';
 import { GET } from './route';
 
 function createRequest() {
   return new NextRequest('http://localhost/api/tracing-reports/report_1/pdf');
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/tracing-reports/[id]/pdf', () => {
@@ -57,6 +63,7 @@ describe('/api/tracing-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'トレーシングレポートIDが不正です',
@@ -77,6 +84,7 @@ describe('/api/tracing-reports/[id]/pdf', () => {
     }))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(buildTracingReportPdfMock).toHaveBeenCalledWith('org_1', 'report_1', {
       userId: 'user_1',
       role: 'pharmacist',
@@ -93,13 +101,51 @@ describe('/api/tracing-reports/[id]/pdf', () => {
   });
 
   it('returns 404 without rendering or audit when the tracing report is not accessible', async () => {
-    buildTracingReportPdfMock.mockRejectedValue(new Error('トレーシングレポートが見つかりません'));
+    buildTracingReportPdfMock.mockRejectedValue(new PdfNotFoundError('tracingReport'));
 
     const response = (await GET(createRequest(), {
       params: Promise.resolve({ id: 'report_1' }),
     }))!;
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('adds no-store headers to auth rejection responses', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 }),
+    });
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(buildTracingReportPdfMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('does not treat raw not-found-like render errors as safe 404 messages', async () => {
+    buildTracingReportPdfMock.mockRejectedValue(
+      new Error('患者A 03-1111-2222 のトレーシングレポートが見つかりません: storage key raw_pdf_1'),
+    );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('EXTERNAL_PDF_RENDER_FAILED');
+    expect(body).toContain('トレーシングレポート PDF を生成できませんでした');
+    expect(body).not.toContain('患者A');
+    expect(body).not.toContain('03-1111-2222');
+    expect(body).not.toContain('raw_pdf_1');
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });

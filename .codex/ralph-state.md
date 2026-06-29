@@ -20,6 +20,21 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0654 JST
+
+- current task: harden report-related PDF routes so tracing reports, management plans, conference notes, and billing documents use typed not-found boundaries and sensitive no-store envelopes where missing.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, `docs/ui-ux-design-guidelines.md` while reviewing Claude's signal-tuning interrupt, local Next.js route-handler and `unstable_rethrow` docs, `src/app/api/tracing-reports/[id]/pdf/route.ts`, `src/app/api/tracing-reports/[id]/pdf/route.test.ts`, `src/app/api/management-plans/[id]/pdf/route.ts`, `src/app/api/management-plans/[id]/pdf/route.test.ts`, `src/app/api/conference-notes/[id]/pdf/route.ts`, `src/app/api/conference-notes/[id]/pdf/route.test.ts`, `src/app/api/billing-candidates/[id]/documents/pdf/route.ts`, `src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts`, `src/server/services/pdf-errors.ts`, PDF record services for tracing/management/conference/billing, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/tracing-reports/[id]/pdf/route.ts`, `src/app/api/tracing-reports/[id]/pdf/route.test.ts`, `src/app/api/management-plans/[id]/pdf/route.ts`, `src/app/api/management-plans/[id]/pdf/route.test.ts`, `src/app/api/conference-notes/[id]/pdf/route.ts`, `src/app/api/conference-notes/[id]/pdf/route.test.ts`, `src/app/api/billing-candidates/[id]/documents/pdf/route.ts`, `src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: four report-related PDF routes treated raw messages containing `見つかりません` as safe 404 responses. Tracing-report and management-plan PDF routes also returned auth rejection, validation, success, 404, and 500 responses without the sensitive no-store envelope and lacked `unstable_rethrow` in their broad catch blocks.
+- security risks found: reduced PHI/secret leakage risk in tracing report, management plan, conference note, and billing-document PDF error bodies by requiring typed `PdfNotFoundError` for 404 mapping and sending raw not-found-like failures to fixed generic PDF render failure envelopes. Reduced caching risk for tracing/management PDF responses by wrapping all route returns with `withSensitiveNoStore`. Auth/permission checks, scoped lookups, billing unissued conflict handling, PDF response bodies, export audit success behavior, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only sets fixed headers, rethrows Next control-flow exceptions, changes constant-time error classification, and adds focused tests.
+- validation commands: `pnpm exec prettier --write` on the eight report PDF route/test files; `pnpm exec vitest run` on the four report PDF route test files; scoped ESLint on the eight report PDF files; scoped `git diff --check` on the eight report PDF files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused report PDF Vitest passed `4` files / `24` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed after this report PDF edit. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after verifying service-layer `PdfNotFoundError` origins, 404 semantic preservation, raw patient/phone/storage-key non-leakage, no-store coverage, and `unstable_rethrow` placement. codex was sent the same review request and no blocker arrived before commit preparation.
+- remaining work: explicit-path stage only this report PDF slice plus the report PDF ledger hunks, commit, send agmsg FYI, then continue with any incoming review interrupts or remaining visit/report/interprofessional candidates.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
+
+
 ### 20260630-0649 JST
 
 - current task: harden patient-scoped PDF exports so medication, medication-calendar, and patient visit-record list routes only map typed PDF not-found errors to 404 and never echo hostile raw not-found-like messages.

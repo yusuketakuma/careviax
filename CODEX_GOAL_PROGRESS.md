@@ -23,6 +23,41 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Report PDF Boundary Hardening - 2026-06-30 06:54 JST
+
+- Scope:
+  - Continued codex2's report workflow objective on tracing-report, management-plan, conference-note, and billing-document PDF export routes.
+  - Focused on typed PDF not-found boundaries, raw-error non-leakage, and missing sensitive no-store envelopes in tracing/management PDF routes.
+  - Preserved codex-owned visit-schedule WIP and Claude-owned frontend false-empty WIP.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `GET /api/tracing-reports/[id]/pdf`, `GET /api/management-plans/[id]/pdf`, `GET /api/conference-notes/[id]/pdf`, and `GET /api/billing-candidates/[id]/documents/pdf` now map 404 only from typed `PdfNotFoundError`.
+  - Hostile raw render errors that include `見つかりません` plus patient/phone/storage-key text now fall through to fixed generic PDF render failure envelopes.
+  - Tracing-report and management-plan PDF routes now wrap auth rejection, validation, success, 404, and 500 responses with `withSensitiveNoStore` and rethrow Next control-flow exceptions with `unstable_rethrow`.
+- Safety:
+  - Reduces PHI/secret leakage risk in report-related PDF export error bodies and response caching risk for tracing/management PDF exports.
+  - Preserves legitimate scoped-not-found 404 semantics from typed PDF record services, billing `BILLING_DOCUMENT_NOT_ISSUED` conflict handling, PDF success bodies, and export audit success behavior.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only sets fixed headers, rethrows framework control-flow errors, changes constant-time error classification, and adds focused tests.
+- Validation:
+  - `pnpm exec prettier --write` on the eight report PDF route/test files: passed.
+  - `pnpm exec vitest run 'src/app/api/tracing-reports/[id]/pdf/route.test.ts' 'src/app/api/management-plans/[id]/pdf/route.test.ts' 'src/app/api/conference-notes/[id]/pdf/route.test.ts' 'src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `4` files / `24` tests.
+  - Scoped ESLint on the eight report PDF files: passed.
+  - Scoped `git diff --check` on the eight report PDF files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` was sent to Claude and codex with scope and validation evidence.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after verifying `PdfNotFoundError` origins, no 404-to-500 regression, no-store coverage, raw patient/phone/storage-key non-leakage, `unstable_rethrow` placement, and billing unissued conflict preservation.
+  - codex was sent the same review request; no blocker arrived before commit preparation.
+- Remaining:
+  - Stage only explicit codex2-owned report PDF files plus the report PDF ledger hunks, commit, and send agmsg FYI.
+  - Continue with incoming review interrupts or remaining visit/report/interprofessional candidates.
+
+
 ### Patient PDF Typed Not-Found Hardening - 2026-06-30 06:49 JST
 
 - Scope:
