@@ -124,6 +124,7 @@ type CreatedIntake = {
 
 type MedicationProfileSyncLine = {
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code?: string | null;
   dose: string;
   frequency: string;
@@ -1386,6 +1387,7 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
   orgId: string;
   lines: Array<{
     drug_name: string;
+    drug_master_id?: string | null;
     drug_code?: string | null;
     dose: string;
     frequency: string;
@@ -1483,7 +1485,9 @@ async function syncMedicationProfiles(
   // 新規処方の各行を upsert
   for (const line of intakeLines) {
     const drugCode = normalizePrescriptionDrugCode(line.drug_code);
-    const resolvedDrugMasterId = drugCode ? (drugMasterIdByCode.get(drugCode) ?? null) : null;
+    const explicitDrugMasterId = normalizePrescriptionLineDrugMasterId(line.drug_master_id);
+    const resolvedDrugMasterId =
+      explicitDrugMasterId ?? (drugCode ? (drugMasterIdByCode.get(drugCode) ?? null) : null);
     const keys = incomingLineKeys(line, resolvedDrugMasterId, drugCode);
     keys.forEach((key) => incomingKeys.add(key));
 
@@ -1602,6 +1606,7 @@ async function resolveDrugMasterIdsByPrescriptionCode(lines: MedicationProfileSy
   const codes = Array.from(
     new Set(
       lines
+        .filter((line) => !normalizePrescriptionLineDrugMasterId(line.drug_master_id))
         .map((line) => normalizePrescriptionDrugCode(line.drug_code))
         .filter((code): code is string => Boolean(code)),
     ),

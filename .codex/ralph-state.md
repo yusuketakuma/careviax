@@ -10568,3 +10568,16 @@ Backup directory:
 - validation results: Prettier passed. Focused tests passed `3` files / `34` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed. Medical reviewer medium finding was addressed with pairwise master/code/name fallback logic and a mixed-resolution regression test.
 - remaining work: commit the current cleanly scoped slice, send agmsg FYI, then resume backend drug-code follow-up work from a clean tree.
 - next action: stage only the four owned paths, commit, notify via agmsg, confirm `git status --short --untracked-files=all` is clean, then resume.
+
+### 20260629-1930 JST
+
+- current task: continue from the clean tree by tightening MedicationProfile sync to use persisted DrugMaster identity from created prescription lines.
+- files inspected: agmsg inbox/send for `phos/codex`, `git status --short --untracked-files=all`, `docs/drug-code-master-architecture.md`, `src/server/services/prescription-intake-service.ts`, `src/server/services/prescription-intake-service.test.ts`, `src/app/api/prescription-intakes/route.ts`, `src/app/api/prescription-intakes/facility-batch/route.ts`, `src/app/api/qr-scan-drafts/[id]/confirm/route.ts`, this Ralph state file, and `CODEX_GOAL_PROGRESS.md`.
+- files changed: `src/server/services/prescription-intake-service.ts`, `src/server/services/prescription-intake-service.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this file.
+- bugs found: MedicationProfile post-create sync accepted created intake lines with `drug_master_id` but did not read that field, causing needless code re-resolution and making the persisted master identity unavailable to the profile matching/upgrading path.
+- security risks found: no auth/RLS/PHI boundary changed. Patient-safety/data-integrity risk is reduced by using the DrugMaster ID that was already validated and persisted during intake creation. Residual risk: future callers of exported `runPrescriptionIntakePostCreateHooks` must keep passing persisted/validated lines, not raw user payload.
+- performance issues found: reduced redundant `DrugMaster.findMany` work for lines that already carry a persisted `drug_master_id`; no new database query or unbounded path.
+- validation commands: `pnpm exec prettier --write src/server/services/prescription-intake-service.ts src/server/services/prescription-intake-service.test.ts`; `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts --reporter=dot --testTimeout=30000`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check && git diff --check`; subagent review by `medical_safety_reviewer`.
+- validation results: Prettier passed. Focused service tests passed `1` file / `34` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `git diff --check` passed. Medical safety review reported no blockers.
+- remaining work: commit this validated slice, send agmsg FYI, confirm clean status, then resume the next backend drug-code cleanup.
+- next action: stage only the four owned paths, commit, notify Claude via agmsg, and re-check clean tree.

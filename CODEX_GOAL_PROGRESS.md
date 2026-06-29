@@ -19059,3 +19059,25 @@ Next loop:
 - Remaining:
   - Continue backend drug-code slices from a clean tree after this commit.
   - Likely next candidates: residual prescription follow-up dedupe, MedicationProfile name fallback cleanup, and QR/DrugMaster candidate safety review.
+
+### MedicationProfile Persisted Master Sync Slice — 2026-06-29 19:30 JST
+
+- Scope:
+  - Updated post-create MedicationProfile sync to use the already persisted `PrescriptionLine.drug_master_id` from `createPrescriptionIntakeInTx` results before attempting code-based DrugMaster re-resolution.
+  - Kept route/API response shapes and database schema unchanged.
+- Fixed:
+  - MedicationProfile sync no longer ignores an already validated DrugMaster ID on created intake lines.
+  - Lines that already carry `drug_master_id` skip redundant `DrugMaster.findMany` code re-resolution.
+  - Legacy MedicationProfile rows that historically stored a drug code in `drug_master_id` can be upgraded to the resolved master when the incoming persisted line has the same canonical code.
+- Review:
+  - `medical_safety_reviewer` found no blockers.
+  - Residual risk noted: exported `runPrescriptionIntakePostCreateHooks` must continue to be called with persisted/validated intake lines, not raw user payload. Current production callers pass `createPrescriptionIntakeInTx` results.
+- Validation:
+  - `pnpm exec prettier --write src/server/services/prescription-intake-service.ts src/server/services/prescription-intake-service.test.ts`: passed.
+  - `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `34` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check && git diff --check`: passed.
+- Remaining:
+  - Commit this validated slice and resume the next backend drug-code cleanup from a clean tree.
