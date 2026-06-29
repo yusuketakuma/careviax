@@ -20,6 +20,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { ErrorState } from '@/components/ui/error-state';
 import { Card, CardAction, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
 import { HelpPopover } from '@/components/ui/help-popover';
@@ -678,7 +679,12 @@ export function MedicationsContent({
   const [qrDialogOpen, setQrDialogOpen] = useState(false);
   const [qrState, setQrState] = useState<QrExportState | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError: isProfilesError,
+    refetch: refetchProfiles,
+  } = useQuery({
     queryKey: ['medication-profiles', orgId, patientId],
     queryFn: async () => {
       const response = await fetch(
@@ -948,6 +954,13 @@ export function MedicationsContent({
 
         {isLoading ? (
           <div className="py-8 text-center text-sm text-muted-foreground">読み込み中...</div>
+        ) : isProfilesError ? (
+          <ErrorState
+            variant="server"
+            size="inline"
+            description="服薬中薬剤を読み込めませんでした。現在の処方が表示されていない可能性があります。再読み込みしてください。"
+            action={{ label: '再読み込み', onClick: () => void refetchProfiles() }}
+          />
         ) : profiles.length === 0 ? (
           <EmptyState
             icon={Pill}
@@ -1076,18 +1089,39 @@ export function MedicationsContent({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Badge variant={openIssues.length > 0 ? 'default' : 'secondary'}>
-                未解決課題 {openIssues.length}
+              <Badge
+                variant={
+                  issuesQuery.isError ? 'outline' : openIssues.length > 0 ? 'default' : 'secondary'
+                }
+              >
+                未解決課題 {issuesQuery.isError ? '—' : openIssues.length}
               </Badge>
-              <Badge variant={inquiryBacklog.length > 0 ? 'default' : 'secondary'}>
-                回答待ち照会 {inquiryBacklog.length}
+              <Badge
+                variant={
+                  inquiryQuery.isError
+                    ? 'outline'
+                    : inquiryBacklog.length > 0
+                      ? 'default'
+                      : 'secondary'
+                }
+              >
+                回答待ち照会 {inquiryQuery.isError ? '—' : inquiryBacklog.length}
               </Badge>
-              <Badge variant="outline">副作用歴 {sideEffectHistory.length}</Badge>
+              <Badge variant="outline">
+                副作用歴 {issuesQuery.isError ? '—' : sideEffectHistory.length}
+              </Badge>
             </div>
 
             <div className="space-y-3">
               {issuesQuery.isLoading ? (
                 <p className="text-sm text-muted-foreground">課題を読み込み中...</p>
+              ) : issuesQuery.isError ? (
+                <ErrorState
+                  variant="server"
+                  size="inline"
+                  description="薬学的課題を読み込めませんでした。未解決の課題が隠れている可能性があります。再読み込みしてください。"
+                  action={{ label: '再読み込み', onClick: () => void issuesQuery.refetch() }}
+                />
               ) : issues.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
                   課題はまだ登録されていません。服薬アドヒアランス、副作用、重複投与などを登録できます。
@@ -1188,6 +1222,13 @@ export function MedicationsContent({
               <div className="mt-3 space-y-2">
                 {inquiryQuery.isLoading ? (
                   <p className="text-sm text-muted-foreground">疑義照会を読み込み中...</p>
+                ) : inquiryQuery.isError ? (
+                  <ErrorState
+                    variant="server"
+                    size="inline"
+                    description="疑義照会の記録を読み込めませんでした。回答待ちの照会が隠れている可能性があります。再読み込みしてください。"
+                    action={{ label: '再読み込み', onClick: () => void inquiryQuery.refetch() }}
+                  />
                 ) : inquiries.length === 0 ? (
                   <p className="text-sm text-muted-foreground">疑義照会の記録はありません。</p>
                 ) : (
@@ -1269,7 +1310,14 @@ export function MedicationsContent({
               <div>
                 <p className="text-xs font-medium text-muted-foreground">副作用履歴</p>
                 <div className="mt-2 space-y-2">
-                  {sideEffectHistory.length > 0 ? (
+                  {issuesQuery.isError ? (
+                    <ErrorState
+                      variant="server"
+                      size="inline"
+                      description="副作用歴を読み込めませんでした。登録済みの副作用が表示されていない可能性があります。再読み込みしてください。"
+                      action={{ label: '再読み込み', onClick: () => void issuesQuery.refetch() }}
+                    />
+                  ) : sideEffectHistory.length > 0 ? (
                     sideEffectHistory.map((item) => (
                       <div key={item.id} className="rounded-lg border border-border/70 p-3">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1317,6 +1365,13 @@ export function MedicationsContent({
               <div className="space-y-2">
                 {residualQuery.isLoading ? (
                   <p className="text-sm text-muted-foreground">残薬提案を読み込み中...</p>
+                ) : residualQuery.isError ? (
+                  <ErrorState
+                    variant="server"
+                    size="inline"
+                    description="残薬提案を読み込めませんでした。減数禁止薬や余剰の注意が隠れている可能性があります。再読み込みしてください。"
+                    action={{ label: '再読み込み', onClick: () => void residualQuery.refetch() }}
+                  />
                 ) : residualSuggestions.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
                     7日超の余剰や減数禁止薬の注意はまだありません。
