@@ -34,7 +34,7 @@ describe('prescriptionLineKey', () => {
         frequency: '朝食後',
         days: 28,
       }),
-    ).toBe('YJ001|1錠|朝食後|28');
+    ).toBe('code:YJ001|1錠|朝食後|28');
   });
 
   it('falls back to drug_name when drug_code is null', () => {
@@ -45,11 +45,17 @@ describe('prescriptionLineKey', () => {
         dose: '1錠',
         frequency: '朝食後',
       }),
-    ).toBe('アムロジピン錠5mg|1錠|朝食後|');
+    ).toBe('name:アムロジピン錠5mg|1錠|朝食後|');
   });
 
   it('falls back to drug_name when drug_code is undefined', () => {
-    expect(prescriptionLineKey({ drug_name: 'アムロジピン錠5mg' })).toBe('アムロジピン錠5mg|||');
+    expect(prescriptionLineKey({ drug_name: 'アムロジピン錠5mg' })).toBe(
+      'name:アムロジピン錠5mg|||',
+    );
+  });
+
+  it('keeps the legacy empty identity empty when no drug code or name exists', () => {
+    expect(prescriptionLineKey({ drug_name: '   ' })).toBe('|||');
   });
 });
 
@@ -139,6 +145,28 @@ describe('detectMedicationChanges', () => {
     // YJ002 is new (added), YJ001 is gone (removed)
     expect(changes).toHaveLength(2);
     expect(changes.map((c) => c.change_type).sort()).toEqual(['added', 'removed']);
+  });
+
+  it('does not match an unresolved drug_name that happens to equal a resolved drug_code', () => {
+    const previous = [makeLine({ drug_name: '2149001', drug_code: null })];
+    const current = [makeLine({ drug_name: '別薬', drug_code: '2149001' })];
+    const changes = detectMedicationChanges(current, previous);
+
+    expect(changes).toHaveLength(2);
+    expect(changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          drug_name: '別薬',
+          drug_code: '2149001',
+          change_type: 'added',
+        }),
+        expect.objectContaining({
+          drug_name: '2149001',
+          drug_code: null,
+          change_type: 'removed',
+        }),
+      ]),
+    );
   });
 
   it('does not collapse same drug code rows with different frequency', () => {

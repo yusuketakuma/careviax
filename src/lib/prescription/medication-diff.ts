@@ -14,6 +14,7 @@ export interface MedicationDiffLine {
 
 export interface MedicationChange {
   drug_name: string;
+  drug_code: string | null;
   change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | 'days_changed';
   /** dose / frequency をまとめたラベル(既存互換) */
   previous: string | null;
@@ -44,15 +45,25 @@ export function prescriptionLineKey(line: {
   days?: number | null;
 }): string {
   return [
-    line.drug_code?.trim() || line.drug_name.trim(),
+    medicationIdentityKey(line),
     line.dose?.trim() ?? '',
     line.frequency?.trim() ?? '',
     line.days ?? '',
   ].join('|');
 }
 
-function medicationIdentityKey(line: { drug_name: string; drug_code?: string | null }): string {
-  return line.drug_code?.trim() || line.drug_name.trim();
+export function medicationIdentityKey(line: {
+  drug_name: string;
+  drug_code?: string | null;
+}): string {
+  const drugCode = line.drug_code?.trim();
+  if (drugCode) return `code:${drugCode}`;
+  const drugName = line.drug_name.trim();
+  return drugName ? `name:${drugName}` : '';
+}
+
+function medicationChangeDrugCode(line: { drug_code?: string | null }): string | null {
+  return line.drug_code?.trim() || null;
 }
 
 export function formatDoseFrequency(line: { dose: string; frequency: string }): string {
@@ -146,6 +157,7 @@ export function detectMedicationChanges(
     if (line && !prev) {
       changes.push({
         drug_name: line.drug_name,
+        drug_code: medicationChangeDrugCode(line),
         change_type: 'added',
         previous: null,
         current: formatDoseFrequency(line),
@@ -160,6 +172,7 @@ export function detectMedicationChanges(
     if (!line && prev) {
       changes.push({
         drug_name: prev.drug_name,
+        drug_code: medicationChangeDrugCode(prev),
         change_type: 'removed',
         previous: formatDoseFrequency(prev),
         current: null,
@@ -180,6 +193,7 @@ export function detectMedicationChanges(
     if (prev.dose !== line.dose) {
       changes.push({
         drug_name: line.drug_name,
+        drug_code: medicationChangeDrugCode(line),
         change_type: 'dose_changed',
         previous: formatDoseFrequency(prev),
         current: formatDoseFrequency(line),
@@ -191,6 +205,7 @@ export function detectMedicationChanges(
     } else if (prev.frequency !== line.frequency) {
       changes.push({
         drug_name: line.drug_name,
+        drug_code: medicationChangeDrugCode(line),
         change_type: 'frequency_changed',
         previous: formatDoseFrequency(prev),
         current: formatDoseFrequency(line),
@@ -203,6 +218,7 @@ export function detectMedicationChanges(
       // 用量・用法は同一で投与日数のみ変化(セット数量に影響するため検出する)。
       changes.push({
         drug_name: line.drug_name,
+        drug_code: medicationChangeDrugCode(line),
         change_type: 'days_changed',
         previous: formatDoseFrequency(prev),
         current: formatDoseFrequency(line),

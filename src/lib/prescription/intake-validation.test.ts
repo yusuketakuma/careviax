@@ -31,6 +31,15 @@ describe('collectDuplicatePrescriptionLines', () => {
       },
     ]);
   });
+
+  it('does not collapse an unresolved drug name that looks like a resolved drug code', () => {
+    expect(
+      collectDuplicatePrescriptionLines([
+        { line_number: 1, drug_name: '2149001', drug_code: undefined },
+        { line_number: 2, drug_name: '別名薬', drug_code: '2149001' },
+      ]),
+    ).toEqual([]);
+  });
 });
 
 describe('collectStructuringBlockedLines', () => {
