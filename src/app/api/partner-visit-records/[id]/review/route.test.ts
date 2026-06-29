@@ -67,6 +67,11 @@ function createRequest(body: unknown, recordId = 'partner_visit_record_1') {
   );
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/partner-visit-records/[id]/review POST', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -164,6 +169,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'visit_request_1',
@@ -297,6 +303,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(claimCooperationNoteUpsertMock).toHaveBeenCalledWith(
       expect.objectContaining({
         create: expect.objectContaining({
@@ -331,6 +338,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -401,6 +409,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
@@ -414,6 +423,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalled();
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalled();
     expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();

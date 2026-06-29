@@ -63,6 +63,11 @@ function createRequest(recordId = 'partner_visit_record_1') {
   );
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/partner-visit-records/[id]/submit POST', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -157,6 +162,7 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
     const response = await rawPOST(createRequest(rawRecordId), createRouteContext(rawRecordId));
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: rawRecordId,
@@ -261,6 +267,7 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
     const response = await rawPOST(createRequest(), routeContext);
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
