@@ -345,6 +345,71 @@ describe('PrescriptionHistoryContent', () => {
     expect(confirmBadges.some((el) => el.textContent?.includes('取消'))).toBe(false);
   });
 
+  it('shows drug names and human-readable codes in diff review rows', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [],
+          diff_review: {
+            rows: [
+              {
+                key: 'row_amlo',
+                drug_name: 'アムロジピン錠5mg',
+                current_drug_master_id: 'drug_master_new',
+                current_drug_code: 'YJ_NEW',
+                previous_drug_master_id: 'drug_master_old',
+                previous_drug_code: 'YJ_OLD',
+                change_type: 'changed',
+                change_label: '変更',
+                previous_label: '5mg 朝食後 28日',
+                current_label: '10mg 朝食後 28日',
+                pharmacist_memo: null,
+              },
+              {
+                key: 'row_rosu',
+                drug_name: 'ロスバスタチン錠2.5mg',
+                current_drug_master_id: 'drug_master_rosu',
+                current_drug_code: 'YJ_ROSU',
+                previous_drug_master_id: null,
+                previous_drug_code: null,
+                change_type: 'added',
+                change_label: '追加',
+                previous_label: 'なし',
+                current_label: '2.5mg 夕食後 28日',
+                pharmacist_memo: '眠前へ変更予定',
+              },
+            ],
+            set_impacts: [],
+            patient_checks: [],
+            change_count: 2,
+          },
+          diff_meta: {
+            previous: { id: 'old', prescribed_date: '2026-06-01' },
+            current: { id: 'new', prescribed_date: '2026-06-02' },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    expect(screen.getByRole('columnheader', { name: '薬剤' })).toBeTruthy();
+    expect(screen.getByText('アムロジピン錠5mg')).toBeTruthy();
+    expect(screen.getByText('今回 YJ_NEW / 前回 YJ_OLD')).toBeTruthy();
+    expect(screen.getByText('別マスターとして判定')).toBeTruthy();
+    expect(screen.getByText('ロスバスタチン錠2.5mg')).toBeTruthy();
+    expect(screen.getByText('コード YJ_ROSU')).toBeTruthy();
+  });
+
   it('uses 6-axis state tokens for change-type badges (added=info, changed=confirm)', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'patient_1' });
@@ -484,6 +549,213 @@ describe('PrescriptionHistoryContent', () => {
     expect(html).not.toMatch(/bg-gray-200|bg-red-200/);
   });
 
+  it('does not mark same-code different-master prescriptions as Do or unchanged', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    const line = (id: string, drugMasterId: string) => ({
+      id,
+      line_number: 1,
+      drug_name: '同一コード薬',
+      drug_master_id: drugMasterId,
+      drug_code: 'YJ_SHARED',
+      dosage_form: '錠',
+      dose: '1錠',
+      frequency: '夕食後',
+      days: 28,
+      quantity: 28,
+      unit: '錠',
+      is_generic: false,
+      packaging_instructions: null,
+      notes: null,
+      route: 'internal',
+      dispensing_method: null,
+      start_date: null,
+      end_date: null,
+    });
+    const intake = (id: string, date: string, drugMasterId: string) => ({
+      id,
+      cycle_id: `cycle_${id}`,
+      source_type: 'manual',
+      prescribed_date: date,
+      prescriber_name: '佐藤医師',
+      prescriber_institution: '青空クリニック',
+      prescription_expiry_date: null,
+      original_document_url: null,
+      original_collected_at: null,
+      original_collected_by: null,
+      refill_remaining_count: null,
+      refill_next_dispense_date: null,
+      split_dispense_total: null,
+      split_dispense_current: null,
+      split_next_dispense_date: null,
+      created_at: `${date}T00:00:00.000Z`,
+      cycle: { overall_status: 'active' },
+      lines: [line(`line_${id}`, drugMasterId)],
+    });
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            intake('new', '2026-06-02', 'drug_master_b'),
+            intake('old', '2026-06-01', 'drug_master_a'),
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    expect(screen.queryByText('Do')).toBeNull();
+    expect(screen.getAllByText('新規').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('前回から中止:').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('treats same-master prescriptions as Do even when display name and YJ code drift', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    const line = (id: string, drugName: string, drugCode: string) => ({
+      id,
+      line_number: 1,
+      drug_name: drugName,
+      drug_master_id: 'drug_master_same',
+      drug_code: drugCode,
+      dosage_form: '錠',
+      dose: '1錠',
+      frequency: '夕食後',
+      days: 28,
+      quantity: 28,
+      unit: '錠',
+      is_generic: false,
+      packaging_instructions: null,
+      notes: null,
+      route: 'internal',
+      dispensing_method: null,
+      start_date: null,
+      end_date: null,
+    });
+    const intake = (id: string, date: string, drugName: string, drugCode: string) => ({
+      id,
+      cycle_id: `cycle_${id}`,
+      source_type: 'manual',
+      prescribed_date: date,
+      prescriber_name: '佐藤医師',
+      prescriber_institution: '青空クリニック',
+      prescription_expiry_date: null,
+      original_document_url: null,
+      original_collected_at: null,
+      original_collected_by: null,
+      refill_remaining_count: null,
+      refill_next_dispense_date: null,
+      split_dispense_total: null,
+      split_dispense_current: null,
+      split_next_dispense_date: null,
+      created_at: `${date}T00:00:00.000Z`,
+      cycle: { overall_status: 'active' },
+      lines: [line(`line_${id}`, drugName, drugCode)],
+    });
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            intake('new', '2026-06-02', '新表示名', 'YJ_NEW'),
+            intake('old', '2026-06-01', '旧表示名', 'YJ_OLD'),
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    expect(screen.getAllByText('Do').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('前回から中止:')).toBeNull();
+  });
+
+  it('does not mark unresolved blank-identity prescriptions as Do or unchanged', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    const line = (id: string) => ({
+      id,
+      line_number: 1,
+      drug_name: '   ',
+      drug_master_id: null,
+      drug_code: null,
+      dosage_form: '錠',
+      dose: '1錠',
+      frequency: '夕食後',
+      days: 28,
+      quantity: 28,
+      unit: '錠',
+      is_generic: false,
+      packaging_instructions: null,
+      notes: null,
+      route: 'internal',
+      dispensing_method: null,
+      start_date: null,
+      end_date: null,
+    });
+    const intake = (id: string, date: string) => ({
+      id,
+      cycle_id: `cycle_${id}`,
+      source_type: 'manual',
+      prescribed_date: date,
+      prescriber_name: '佐藤医師',
+      prescriber_institution: '青空クリニック',
+      prescription_expiry_date: null,
+      original_document_url: null,
+      original_collected_at: null,
+      original_collected_by: null,
+      refill_remaining_count: null,
+      refill_next_dispense_date: null,
+      split_dispense_total: null,
+      split_dispense_current: null,
+      split_next_dispense_date: null,
+      created_at: `${date}T00:00:00.000Z`,
+      cycle: { overall_status: 'active' },
+      lines: [line(`line_${id}`)],
+    });
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [intake('new', '2026-06-02'), intake('old', '2026-06-01')],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    expect(screen.queryByText('Do')).toBeNull();
+    expect(screen.queryByText('変化なし')).toBeNull();
+    expect(screen.getAllByText('新規').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('前回から中止:').length).toBeGreaterThanOrEqual(1);
+  });
+
   it('renders the 後発 (generic) badge without state color (classification value)', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'patient_1' });
@@ -554,6 +826,7 @@ describe('PrescriptionHistoryContent url/header convergence', () => {
       id: 'line_1',
       line_number: 1,
       drug_name: 'アムロジピン錠5mg',
+      drug_master_id: null,
       drug_code: drugCode,
       dosage_form: '錠',
       dose: '1錠',

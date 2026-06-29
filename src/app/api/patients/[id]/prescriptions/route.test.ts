@@ -249,6 +249,7 @@ describe('/api/patients/[id]/prescriptions', () => {
           {
             id: 'line_current_morning',
             drug_name: 'メトホルミン錠500mg',
+            drug_master_id: 'drug_master_metformin',
             drug_code: 'YJ002',
             dose: '1錠',
             frequency: '朝食後',
@@ -261,6 +262,7 @@ describe('/api/patients/[id]/prescriptions', () => {
           {
             id: 'line_current_evening',
             drug_name: 'メトホルミン錠500mg',
+            drug_master_id: 'drug_master_metformin',
             drug_code: 'YJ002',
             dose: '2錠',
             frequency: '夕食後',
@@ -281,6 +283,7 @@ describe('/api/patients/[id]/prescriptions', () => {
           {
             id: 'line_previous_morning',
             drug_name: 'メトホルミン錠500mg',
+            drug_master_id: 'drug_master_metformin',
             drug_code: 'YJ002',
             dose: '1錠',
             frequency: '朝食後',
@@ -293,6 +296,7 @@ describe('/api/patients/[id]/prescriptions', () => {
           {
             id: 'line_previous_evening',
             drug_name: 'メトホルミン錠500mg',
+            drug_master_id: 'drug_master_metformin',
             drug_code: 'YJ002',
             dose: '1錠',
             frequency: '夕食後',
@@ -315,7 +319,9 @@ describe('/api/patients/[id]/prescriptions', () => {
     expect(body.diff_review.rows).toEqual([
       expect.objectContaining({
         key: 'line_current_evening',
+        current_drug_master_id: 'drug_master_metformin',
         current_drug_code: 'YJ002',
+        previous_drug_master_id: 'drug_master_metformin',
         previous_drug_code: 'YJ002',
         change_type: 'changed',
         previous_label: '1錠 夕食後 28日',
@@ -324,7 +330,9 @@ describe('/api/patients/[id]/prescriptions', () => {
       }),
       expect.objectContaining({
         key: 'line_current_morning',
+        current_drug_master_id: 'drug_master_metformin',
         current_drug_code: 'YJ002',
+        previous_drug_master_id: 'drug_master_metformin',
         previous_drug_code: 'YJ002',
         change_type: 'unchanged',
         previous_label: '1錠 朝食後 28日',
@@ -416,6 +424,80 @@ describe('/api/patients/[id]/prescriptions', () => {
     );
   });
 
+  it('keeps diff review master-scoped when drug codes are identical but drug masters differ', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_current',
+        cycle_id: 'cycle_1',
+        prescribed_date: new Date('2026-04-20T00:00:00.000Z'),
+        created_at: new Date('2026-04-20T10:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_current_master_b',
+            drug_name: '同一コード薬B',
+            drug_master_id: 'drug_master_b',
+            drug_code: 'YJ_SHARED',
+            dose: '1錠',
+            frequency: '夕食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+        ],
+      },
+      {
+        id: 'intake_previous',
+        cycle_id: 'cycle_1',
+        prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+        created_at: new Date('2026-04-01T10:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_previous_master_a',
+            drug_name: '同一コード薬A',
+            drug_master_id: 'drug_master_a',
+            drug_code: 'YJ_SHARED',
+            dose: '1錠',
+            frequency: '夕食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+        ],
+      },
+    ]);
+
+    const response = (await GET(createGetRequest('patient_1', 'limit=5&case_id=case_1'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.diff_review.rows).toContainEqual(
+      expect.objectContaining({
+        key: 'line_current_master_b',
+        current_drug_master_id: 'drug_master_b',
+        current_drug_code: 'YJ_SHARED',
+        previous_drug_master_id: null,
+        previous_drug_code: null,
+        change_type: 'added',
+      }),
+    );
+    expect(body.diff_review.rows).toContainEqual(
+      expect.objectContaining({
+        key: 'removed-line_previous_master_a',
+        current_drug_master_id: null,
+        current_drug_code: null,
+        previous_drug_master_id: 'drug_master_a',
+        previous_drug_code: 'YJ_SHARED',
+        change_type: 'removed',
+      }),
+    );
+  });
+
   it('keeps removed diff review fallback keys bare when a legacy row id is missing', async () => {
     prescriptionIntakeFindManyMock.mockResolvedValue([
       {
@@ -434,6 +516,7 @@ describe('/api/patients/[id]/prescriptions', () => {
           {
             id: '',
             drug_name: '中止薬',
+            drug_master_id: null,
             drug_code: 'YJ_REMOVED',
             dose: '1錠',
             frequency: '朝食後',
@@ -456,7 +539,9 @@ describe('/api/patients/[id]/prescriptions', () => {
     expect(body.diff_review.rows[0]).toEqual(
       expect.objectContaining({
         key: 'removed-YJ_REMOVED',
+        current_drug_master_id: null,
         current_drug_code: null,
+        previous_drug_master_id: null,
         previous_drug_code: 'YJ_REMOVED',
         change_type: 'removed',
       }),

@@ -222,6 +222,16 @@ describe('detectMedicationChanges', () => {
     expect(changes.map((change) => change.change_type).sort()).toEqual(['added', 'removed']);
   });
 
+  it('does not treat unresolved blank identity rows as unchanged', () => {
+    const previous = [makeLine({ drug_name: '   ', drug_code: null })];
+    const current = [makeLine({ drug_name: '   ', drug_code: null })];
+
+    const changes = detectMedicationChanges(current, previous);
+
+    expect(changes).toHaveLength(2);
+    expect(changes.map((change) => change.change_type).sort()).toEqual(['added', 'removed']);
+  });
+
   it('does not match an unresolved drug_name that happens to equal a resolved drug_code', () => {
     const previous = [makeLine({ drug_name: '2149001', drug_code: null })];
     const current = [makeLine({ drug_name: '別薬', drug_code: '2149001' })];
@@ -321,6 +331,21 @@ describe('detectMedicationChanges', () => {
 });
 
 describe('matchMedicationDiffLines', () => {
+  it('keeps unresolved blank identity rows unmatched even when dose and frequency are equal', () => {
+    const previous = [makeLine({ drug_name: '   ', drug_code: null })];
+    const current = [makeLine({ drug_name: '   ', drug_code: null })];
+
+    const matches = matchMedicationDiffLines(current, previous);
+
+    expect(matches).toHaveLength(2);
+    expect(matches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ current_index: 0, previous_index: null }),
+        expect.objectContaining({ current_index: null, previous_index: 0 }),
+      ]),
+    );
+  });
+
   it('matches duplicate drug rows by exact line first without collapsing by drug name', () => {
     const previous = [
       makeLine({

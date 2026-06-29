@@ -86,13 +86,15 @@ export function matchMedicationDiffLines<
   const matchedPrevious = new Set<number>();
 
   const findPreviousIndex = (line: TCurrent) => {
+    const identity = medicationIdentityKey(line);
+    if (!identity) return -1;
+
     const exactIndex = previousLines.findIndex(
       (previous, index) =>
         !matchedPrevious.has(index) && prescriptionLineKey(previous) === prescriptionLineKey(line),
     );
     if (exactIndex >= 0) return exactIndex;
 
-    const identity = medicationIdentityKey(line);
     const sameFrequencyIndex = previousLines.findIndex(
       (previous, index) =>
         !matchedPrevious.has(index) &&

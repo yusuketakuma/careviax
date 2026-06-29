@@ -35,6 +35,7 @@ const SAFE_ERROR_NAMES = new Set([
 type DiffReviewLine = {
   id: string;
   drug_name: string;
+  drug_master_id: string | null;
   drug_code: string | null;
   dose: string;
   frequency: string;
@@ -49,11 +50,15 @@ type DiffReviewLine = {
 type DiffReviewChangeType = 'added' | 'removed' | 'changed' | 'unchanged';
 
 type DiffReviewRow = {
-  /** 安定キー(drug_code 優先、なければ drug_name) */
+  /** 安定キー(drug_master_id 優先、なければ drug_code、最後に未解決 drug_name) */
   key: string;
   drug_name: string;
+  /** 今回行の医薬品マスターID。中止行では null */
+  current_drug_master_id: string | null;
   /** 今回行の医薬品コード。中止行では null */
   current_drug_code: string | null;
+  /** 前回行の医薬品マスターID。追加行では null */
+  previous_drug_master_id: string | null;
   /** 前回行の医薬品コード。追加行では null */
   previous_drug_code: string | null;
   /** added | removed | changed | unchanged */
@@ -137,7 +142,7 @@ function hasDiffReviewLineChange(line: DiffReviewLine, previous: DiffReviewLine)
 }
 
 function diffReviewRowKey(line: DiffReviewLine): string {
-  return line.id || line.drug_code || line.drug_name;
+  return line.id || line.drug_master_id || line.drug_code || line.drug_name;
 }
 
 /**
@@ -174,7 +179,9 @@ function buildDiffReview(latest: DiffReviewLine[], previous: DiffReviewLine[]) {
     rows.push({
       key: line ? diffReviewRowKey(line) : `removed-${diffReviewRowKey(rowSource)}`,
       drug_name: rowSource.drug_name,
+      current_drug_master_id: line?.drug_master_id ?? null,
       current_drug_code: line?.drug_code ?? null,
+      previous_drug_master_id: prev?.drug_master_id ?? null,
       previous_drug_code: prev?.drug_code ?? null,
       change_type: changeType,
       change_label: CHANGE_LABELS[changeType],

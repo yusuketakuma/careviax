@@ -46,6 +46,7 @@ import { buildPatientApiPath } from '@/lib/patient/api-paths';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildPrescriptionIntakeApiPath } from '@/lib/prescriptions/api-paths';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
+import { medicationIdentityKey, prescriptionLineKey } from '@/lib/prescription/medication-diff';
 import { Loading } from '@/components/ui/loading';
 import { ErrorState } from '@/components/ui/error-state';
 import { toast } from 'sonner';
@@ -56,6 +57,7 @@ type PrescriptionLine = {
   id: string;
   line_number: number;
   drug_name: string;
+  drug_master_id?: string | null;
   drug_code: string | null;
   dosage_form: string | null;
   dose: string;
@@ -102,6 +104,10 @@ type DiffReviewChangeType = 'added' | 'removed' | 'changed' | 'unchanged';
 type DiffReviewRow = {
   key: string;
   drug_name: string;
+  current_drug_master_id: string | null;
+  current_drug_code: string | null;
+  previous_drug_master_id: string | null;
+  previous_drug_code: string | null;
   change_type: DiffReviewChangeType;
   change_label: string;
   previous_label: string | null;
@@ -274,6 +280,27 @@ function routeLabel(route: string | null) {
   return ROUTE_CONFIG[route]?.label ?? ROUTE_CONFIG.other.label;
 }
 
+function sameMedicationIdentity(a: PrescriptionLine, b: PrescriptionLine): boolean {
+  const identity = medicationIdentityKey(a);
+  return Boolean(identity) && identity === medicationIdentityKey(b);
+}
+
+function formatDiffReviewDrugCode(row: DiffReviewRow): string | null {
+  const currentCode = row.current_drug_code?.trim() || null;
+  const previousCode = row.previous_drug_code?.trim() || null;
+  if (!currentCode && !previousCode) return null;
+  if (currentCode && previousCode && currentCode !== previousCode) {
+    return `今回 ${currentCode} / 前回 ${previousCode}`;
+  }
+  return `コード ${currentCode ?? previousCode}`;
+}
+
+function isDifferentDrugMaster(row: DiffReviewRow): boolean {
+  const currentMasterId = row.current_drug_master_id?.trim();
+  const previousMasterId = row.previous_drug_master_id?.trim();
+  return Boolean(currentMasterId && previousMasterId && currentMasterId !== previousMasterId);
+}
+
 /** Group lines by frequency+days+route into Rp groups (レセコン方式) */
 function groupByFrequency(lines: PrescriptionLine[]): RpGroup[] {
   const map = new Map<string, RpGroup>();
@@ -296,11 +323,9 @@ function detectChange(
   currentLine: PrescriptionLine,
 ): ChangeType {
   if (!prevLines) return 'added';
-  const prev = prevLines.find(
-    (p) =>
-      p.drug_name === currentLine.drug_name ||
-      (p.drug_code && p.drug_code === currentLine.drug_code),
-  );
+  const currentIdentity = medicationIdentityKey(currentLine);
+  if (!currentIdentity) return 'added';
+  const prev = prevLines.find((p) => sameMedicationIdentity(p, currentLine));
   if (!prev) return 'added';
   if (prev.dose !== currentLine.dose) return 'dose_changed';
   if (prev.frequency !== currentLine.frequency) return 'frequency_changed';
@@ -311,16 +336,16 @@ function detectChange(
 function isDoPrescription(current: PrescriptionIntake, prev: PrescriptionIntake | null): boolean {
   if (!prev) return false;
   if (current.lines.length !== prev.lines.length) return false;
-  const sortedCurr = [...current.lines].sort((a, b) => a.drug_name.localeCompare(b.drug_name));
-  const sortedPrev = [...prev.lines].sort((a, b) => a.drug_name.localeCompare(b.drug_name));
+  if ([...current.lines, ...prev.lines].some((line) => !medicationIdentityKey(line))) return false;
+  const sortedCurr = [...current.lines].sort((a, b) =>
+    prescriptionLineKey(a).localeCompare(prescriptionLineKey(b)),
+  );
+  const sortedPrev = [...prev.lines].sort((a, b) =>
+    prescriptionLineKey(a).localeCompare(prescriptionLineKey(b)),
+  );
   return sortedCurr.every((c, i) => {
     const p = sortedPrev[i];
-    return (
-      c.drug_name === p.drug_name &&
-      c.dose === p.dose &&
-      c.frequency === p.frequency &&
-      c.days === p.days
-    );
+    return prescriptionLineKey(c) === prescriptionLineKey(p);
   });
 }
 
@@ -328,8 +353,7 @@ function buildOverlapSet(allIntakes: PrescriptionIntake[]): Set<string> {
   const overlaps = new Set<string>();
   const periods: Array<{
     lineId: string;
-    drugName: string;
-    drugCode: string | null;
+    drugIdentity: string;
     start: number;
     end: number;
     intakeId: string;
@@ -340,10 +364,11 @@ function buildOverlapSet(allIntakes: PrescriptionIntake[]): Set<string> {
       const startStr = line.start_date ?? intake.prescribed_date;
       const endStr = computeEndDate(line, intake.prescribed_date);
       if (!startStr || !endStr) continue;
+      const drugIdentity = medicationIdentityKey(line);
+      if (!drugIdentity) continue;
       periods.push({
         lineId: line.id,
-        drugName: line.drug_name,
-        drugCode: line.drug_code,
+        drugIdentity,
         start: new Date(startStr).getTime(),
         end: new Date(endStr).getTime(),
         intakeId: intake.id,
@@ -356,9 +381,7 @@ function buildOverlapSet(allIntakes: PrescriptionIntake[]): Set<string> {
       const a = periods[i];
       const b = periods[j];
       if (a.intakeId === b.intakeId) continue;
-      const sameDrug =
-        a.drugName === b.drugName || (a.drugCode != null && a.drugCode === b.drugCode);
-      if (!sameDrug) continue;
+      if (a.drugIdentity !== b.drugIdentity) continue;
       if (a.start <= b.end && b.start <= a.end) {
         overlaps.add(a.lineId);
         overlaps.add(b.lineId);
@@ -459,11 +482,7 @@ function buildLatestChangeSummary(
   }
 
   for (const line of previousLines) {
-    const exists = current.lines.some(
-      (currentLine) =>
-        currentLine.drug_name === line.drug_name ||
-        (currentLine.drug_code && currentLine.drug_code === line.drug_code),
-    );
+    const exists = current.lines.some((currentLine) => sameMedicationIdentity(currentLine, line));
     if (exists) continue;
     items.push({
       drugName: line.drug_name,
@@ -807,12 +826,7 @@ function PrescriptionIntakeCard({
   // Detect removed drugs (in prev but not in current)
   const removedDrugs = useMemo(() => {
     if (!prevLines) return [];
-    return prevLines.filter(
-      (p) =>
-        !intake.lines.some(
-          (c) => c.drug_name === p.drug_name || (c.drug_code && c.drug_code === p.drug_code),
-        ),
-    );
+    return prevLines.filter((p) => !intake.lines.some((c) => sameMedicationIdentity(c, p)));
   }, [prevLines, intake.lines]);
 
   // Group by route → then by frequency
@@ -1066,13 +1080,14 @@ function DiffReviewView({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
-        {/* 4 列テーブル: 変化 / 前回 / 今回 / 薬剤師メモ */}
+        {/* 5 列テーブル: 変化 / 薬剤 / 前回 / 今回 / 薬剤師メモ */}
         <Card className="border-border shadow-sm">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-24">変化</TableHead>
+                  <TableHead className="min-w-48">薬剤</TableHead>
                   <TableHead>前回</TableHead>
                   <TableHead>今回</TableHead>
                   <TableHead>薬剤師メモ</TableHead>
@@ -1083,6 +1098,21 @@ function DiffReviewView({
                   <TableRow key={row.key}>
                     <TableCell className={`font-medium ${DIFF_CHANGE_TEXT_COLOR[row.change_type]}`}>
                       {row.change_label}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <div className="font-medium text-foreground">
+                        {row.drug_name.trim() || '薬剤名未確認'}
+                      </div>
+                      {formatDiffReviewDrugCode(row) && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {formatDiffReviewDrugCode(row)}
+                        </div>
+                      )}
+                      {isDifferentDrugMaster(row) && (
+                        <div className="mt-1 text-xs font-medium text-state-confirm">
+                          別マスターとして判定
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {row.previous_label ?? 'なし'}
