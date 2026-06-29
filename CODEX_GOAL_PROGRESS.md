@@ -23,6 +23,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Patient PDF Typed Not-Found Hardening - 2026-06-30 06:49 JST
+
+- Scope:
+  - Continued codex2's visit-time and report workflow objective on patient-scoped PDF exports.
+  - Focused on `GET /api/patients/[id]/visit-records/pdf`, `GET /api/patients/[id]/medications/pdf`, and `GET /api/patients/[id]/medication-calendar/pdf`.
+  - Preserved codex-owned visit-schedule WIP, Claude-owned frontend false-empty WIP, and the separate report PDF boundary hardening WIP.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - The three patient PDF routes now map 404 only from typed `PdfNotFoundError` instead of trusting any raw `Error.message` containing `見つかりません`.
+  - Hostile raw render errors that look like not-found messages but include patient/phone/storage-key text now fall through to the fixed generic PDF render failure envelope.
+- Safety:
+  - Reduces PHI/secret leakage risk in medication-history, medication-calendar, and patient visit-record-list PDF export error bodies.
+  - Preserves legitimate scoped-not-found 404 semantics from `PdfNotFoundError('patient')`, auth checks, no-store response headers, PDF success bodies, and export audit success behavior.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only changes constant-time error classification and focused tests.
+- Validation:
+  - `pnpm exec prettier --write` on the six patient PDF route/test files: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/visit-records/pdf/route.test.ts' 'src/app/api/patients/[id]/medications/pdf/route.test.ts' 'src/app/api/patients/[id]/medication-calendar/pdf/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `22` tests.
+  - Scoped ESLint on the six patient PDF files: passed.
+  - Scoped `git diff --check` on the six patient PDF files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` was sent to Claude and codex with scope and validation evidence.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after verifying `PdfNotFoundError` fixed-message safety, service-layer typed not-found origins, raw patient/phone/storage-key non-leakage tests, and 404 semantic preservation.
+  - codex was sent the same review request; no blocker arrived before commit preparation.
+- Remaining:
+  - Stage only explicit codex2-owned patient PDF files plus the patient PDF ledger hunks, commit, and send agmsg FYI.
+  - Continue the separate report PDF boundary hardening WIP after this slice lands.
+
+
 ### Care Reports Generate From Visit Sanitized Envelope - 2026-06-30 06:37 JST
 
 - Scope:

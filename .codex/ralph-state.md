@@ -20,6 +20,21 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0649 JST
+
+- current task: harden patient-scoped PDF exports so medication, medication-calendar, and patient visit-record list routes only map typed PDF not-found errors to 404 and never echo hostile raw not-found-like messages.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, local Next.js route-handler and `unstable_rethrow` docs, `src/app/api/patients/[id]/visit-records/pdf/route.ts`, `src/app/api/patients/[id]/visit-records/pdf/route.test.ts`, `src/app/api/patients/[id]/medications/pdf/route.ts`, `src/app/api/patients/[id]/medications/pdf/route.test.ts`, `src/app/api/patients/[id]/medication-calendar/pdf/route.ts`, `src/app/api/patients/[id]/medication-calendar/pdf/route.test.ts`, `src/server/services/pdf-errors.ts`, `src/server/services/pdf-medication-record.ts`, `src/server/services/pdf-visit-record.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/patients/[id]/visit-records/pdf/route.ts`, `src/app/api/patients/[id]/visit-records/pdf/route.test.ts`, `src/app/api/patients/[id]/medications/pdf/route.ts`, `src/app/api/patients/[id]/medications/pdf/route.test.ts`, `src/app/api/patients/[id]/medication-calendar/pdf/route.ts`, `src/app/api/patients/[id]/medication-calendar/pdf/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: three patient PDF routes treated any thrown `Error.message` containing `見つかりません` as a 404 response and echoed that raw message body, so hostile renderer/service errors containing patient names, phone numbers, storage keys, or raw identifiers could be reflected as not-found responses.
+- security risks found: reduced PHI/secret leakage risk in patient medication-history, medication-calendar, and visit-record-list PDF export error bodies by requiring typed `PdfNotFoundError` for 404 mapping and sending raw not-found-like failures to fixed generic PDF render failure envelopes. Auth, permission checks, scoped lookups, no-store headers, PDF response bodies, export audit success behavior, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only changes constant-time error classification and focused tests.
+- validation commands: `pnpm exec prettier --write` on the six patient PDF route/test files; `pnpm exec vitest run` on the three patient PDF route test files; scoped ESLint on the six patient PDF files; scoped `git diff --check` on the six patient PDF files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused patient PDF Vitest passed `3` files / `22` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independently verifying typed not-found semantic preservation, hostile raw patient/phone/storage-key non-leakage, no-store coverage, and service-layer `PdfNotFoundError` origins. codex was sent the same review request and no blocker arrived before commit preparation.
+- remaining work: explicit-path stage only this patient PDF slice plus the patient PDF ledger hunks, commit, send agmsg FYI, then continue the separate report PDF boundary hardening WIP.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
+
+
 ### 20260630-0637 JST
 
 - current task: harden `POST /api/care-reports/generate-from-visit` unexpected failures so visit-derived report generation uses the repository's no-store sanitized envelope.
