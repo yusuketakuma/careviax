@@ -20870,3 +20870,35 @@ Next loop:
   - `pnpm format:check`: passed.
 - Remaining:
   - Request agmsg peer review, address any finding, then commit only the six route/test files plus ledgers.
+
+### Patient Share Link And Pharmacy Visit Decision Response Boundary Slice — 2026-06-30 08:34 JST
+
+- Scope:
+  - Continued codex2's interprofessional/visit request scope after the conference-notes slice landed as `15a317a0`.
+  - Kept patient-link transition logic, pharmacy visit request transition logic, audit payloads, and response data shape unchanged.
+- Fixed:
+  - `/api/patient-share-cases/[id]/patient-link` now wraps every PATCH response in `withSensitiveNoStore` and converts exported-route plumbing failures to fixed `INTERNAL_ERROR`.
+  - Patient-link route tests now assert no-store on success, validation, and conflict paths, plus sanitized 500 responses for both handler/RLS failures and auth plumbing failures before DB side effects.
+  - `/api/pharmacy-visit-requests/[id]/decision` now applies the same no-store and fixed-error boundary.
+  - Pharmacy decision tests now assert no-store on success, validation, and conflict paths, plus sanitized 500 responses for handler/RLS and auth plumbing failures.
+- Safety:
+  - Reduces cache leakage risk for patient share link approvals/declines, identity mismatch responses, pharmacy visit request acceptance/decline decisions, and partner pharmacy/request identifiers.
+  - No raw patient names, share-case IDs, visit request IDs, partner pharmacy IDs, or raw thrown messages are returned in unexpected 500 bodies.
+  - No database migration, live data operation, external send, or destructive command was run.
+- Review:
+  - Claude approved patient-link, then confirmed commit `2d2a7764` matched the reviewed two-file scope.
+  - codex requested a missing 400 no-store validation assertion for pharmacy decision; the test was added.
+  - Claude approved the final pharmacy decision route/test slice. codex and Claude were notified of commit `eb3415c1`.
+  - codex2 also reviewed Claude's `1fbd4189` comment-thread false-empty fix and returned `APPROVED`.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `9` tests.
+  - `pnpm exec vitest run 'src/app/api/pharmacy-visit-requests/[id]/decision/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - Scoped ESLint and scoped `git diff --check` on both route/test pairs: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - Full `git diff --check`: passed.
+  - `pnpm exec vitest run src/components/features/comments/comment-thread.test.tsx --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests, for read-only review of `1fbd4189`.
+- Remaining:
+  - Commit this ledger-only update and continue to the next non-overlapping visit/report/interprofessional candidate.
