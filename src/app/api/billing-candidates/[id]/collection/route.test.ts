@@ -1,6 +1,6 @@
 import { createHash, createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 const {
   requireAuthContextMock,
@@ -34,6 +34,7 @@ import { PATCH } from './route';
 
 const CURRENT_UPDATED_AT = '2026-06-01T00:00:00.000Z';
 const LOCAL_AUTH_SECRET = 'ph-os-local-auth-secret';
+const SENSITIVE_NO_STORE = 'private, no-store, max-age=0';
 
 function createRequest(body: unknown, headers: Record<string, string> = {}) {
   const requestBody =
@@ -90,6 +91,11 @@ function buildRequestFingerprint(body: Record<string, unknown>) {
     unpaid_reason: body.unpaid_reason ?? null,
     note: body.note ?? null,
   })}`;
+}
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe(SENSITIVE_NO_STORE);
+  expect(response.headers.get('Pragma')).toBe('no-cache');
 }
 
 describe('/api/billing-candidates/[id]/collection PATCH', () => {
@@ -175,6 +181,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(Object), {
       permission: 'canManageBilling',
       message: '集金記録の更新権限がありません',
@@ -244,6 +251,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(findFirstMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -294,6 +302,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
       );
 
       expect(response.status).toBe(400);
+      expectSensitiveNoStore(response);
       await expect(response.json()).resolves.toMatchObject({
         message: '請求候補IDが不正です',
       });
@@ -317,6 +326,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     const idempotencyKeyHash = buildIdempotencyKeyHash('collection-key-1');
     const requestFingerprint = buildRequestFingerprint({
       expected_updated_at: CURRENT_UPDATED_AT,
@@ -381,6 +391,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(findUniqueMock).toHaveBeenCalledWith({ where: { id: 'candidate_1' } });
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(taskFindFirstMock).not.toHaveBeenCalled();
@@ -420,6 +431,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'Idempotency-Keyが別の集金記録リクエストで使用されています',
       details: { reason: 'key_reused_with_different_request' },
@@ -440,6 +452,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(updateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: {
@@ -469,6 +482,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '領収証番号と発行状態を入力してください',
       details: {
@@ -508,6 +522,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '領収証番号と発行状態を入力してください',
     });
@@ -534,6 +549,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '請求書の発行状態を入力してください',
       details: {
@@ -563,6 +579,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(taskFindFirstMock).not.toHaveBeenCalled();
     expect(updateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -586,6 +603,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(updateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: {
@@ -613,6 +631,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
@@ -628,6 +647,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: {
         collected_amount: expect.arrayContaining(['集金済では入金額を請求額と一致させてください']),
@@ -647,6 +667,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: { collected_at: expect.arrayContaining(['集金済では入金日時が必須です']) },
     });
@@ -665,6 +686,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: {
         collected_amount: expect.arrayContaining(['一部入金では入金額を請求額未満にしてください']),
@@ -684,6 +706,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: { expected_updated_at: expect.any(Array) },
     });
@@ -703,6 +726,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: 'Idempotency-Keyが不正です',
     });
@@ -720,6 +744,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: { scheduled_collection_at: expect.arrayContaining(['集金予定日は必須です']) },
     });
@@ -734,6 +759,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     });
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(updateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -749,6 +775,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     );
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(taskFindFirstMock).not.toHaveBeenCalled();
     expect(updateManyMock).not.toHaveBeenCalled();
@@ -763,6 +790,43 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     });
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns auth rejections with sensitive no-store headers', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: NextResponse.json(
+        { code: 'AUTH_FORBIDDEN', message: '権限がありません' },
+        { status: 403 },
+      ),
+    });
+
+    const response = await PATCH(createRequest({ status: 'billed', billed_amount: 3240 }), {
+      params: Promise.resolve({ id: 'candidate_1' }),
+    });
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns sanitized no-store 500 responses for unexpected failures without leaking raw billing context', async () => {
+    const rawErrorMessage =
+      'DB failure for 患者A 支払者=長女 領収証番号=R20260616-001 storage_key=secret/path.pdf';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawErrorMessage));
+
+    const response = await PATCH(createRequest({ status: 'billed', billed_amount: 3240 }), {
+      params: Promise.resolve({ id: 'candidate_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const bodyText = await response.text();
+    expect(bodyText).toContain('INTERNAL_ERROR');
+    expect(bodyText).not.toContain(rawErrorMessage);
+    expect(bodyText).not.toContain('患者A');
+    expect(bodyText).not.toContain('R20260616-001');
+    expect(bodyText).not.toContain('secret/path.pdf');
   });
 });

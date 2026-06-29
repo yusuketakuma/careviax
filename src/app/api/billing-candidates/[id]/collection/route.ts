@@ -1,11 +1,13 @@
 import { createHash, createHmac } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest, type NextResponse } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { conflict, internalError, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { requireAuthContext } from '@/lib/auth/context';
 import { getAuthSecret } from '@/lib/auth/secret';
 import { readJsonObject } from '@/lib/db/json';
@@ -166,7 +168,7 @@ function isInvoiceManagedBilling(input: {
   );
 }
 
-export async function PATCH(
+async function authenticatedPATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
@@ -417,4 +419,16 @@ export async function PATCH(
   if (!result) return notFound('請求候補が見つかりません');
 
   return success({ data: result });
+}
+
+export async function PATCH(
+  req: NextRequest,
+  routeContext: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }

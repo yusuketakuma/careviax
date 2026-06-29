@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0721 JST
+
+- current task: harden `PATCH /api/billing-candidates/[id]/collection` so billing collection mutation responses consistently use sensitive no-store headers and sanitized unexpected-error envelopes.
+- files inspected: agmsg inbox for `phos/codex`, `git status --short --untracked-files=all`, local Next.js route handler and `unstable_rethrow` docs, `src/app/api/billing-candidates/[id]/collection/route.ts`, `src/app/api/billing-candidates/[id]/collection/route.test.ts`, `src/lib/api/sensitive-response.ts`, `src/lib/api/response.ts`, `docs/ui-ux-design-guidelines.md` from the earlier backend safety review flow, subagent findings from code mapper, API contract, security, backend, privacy, and test reviewers, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/billing-candidates/[id]/collection/route.ts`, `src/app/api/billing-candidates/[id]/collection/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved Claude-owned document-delivery-rule-manager WIP.
+- bugs found: billing collection PATCH returned success, validation, not-found, conflict, idempotency replay/conflict, auth rejection, and PHI-bearing billing update responses without the route's sensitive no-store envelope. Unexpected billing collection failures could fall through to framework 500 behavior instead of a fixed no-store `INTERNAL_ERROR` envelope.
+- security risks found: reduced cache and raw-error disclosure risk for payer names, receipt numbers, unpaid reasons, notes, billing document PDF URLs, and storage/provider detail in billing collection responses. Auth/permission checks, writable-patient guard, receipt/invoice requirements, idempotency replay/conflict behavior, optimistic concurrency conflicts, audit redaction, response success/domain-error body shapes, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/billing-candidates/[id]/collection/route.ts' 'src/app/api/billing-candidates/[id]/collection/route.test.ts'`; `pnpm exec vitest run 'src/app/api/billing-candidates/[id]/collection/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two billing collection files; scoped `git diff --check` on the two billing collection files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused billing collection Vitest passed `1` file / `25` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Backend, privacy compliance, and test-architect subagents returned `APPROVED` after reviewing route-handler typing, no-store coverage, fixed 500 envelope behavior, PHI non-leakage, idempotency/replay semantics, and test quality.
+- remaining work: explicit-path stage only this billing collection slice plus the billing collection ledger hunks, commit, send agmsg FYI, then continue with remaining patient/billing/prescription/cache/count metadata candidates or incoming review interrupts.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0718 JST
 
 - current task: harden patient MCS sync conflict responses so interprofessional MCS patient-name mismatch details are not echoed to clients.

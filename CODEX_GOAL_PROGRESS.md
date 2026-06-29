@@ -23,6 +23,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Billing Collection PATCH No-Store / Sanitized Envelope - 2026-06-30 07:21 JST
+
+- Scope:
+  - Continued backend/API hardening from subagent findings on billing mutation response cacheability.
+  - Focused only on `PATCH /api/billing-candidates/[id]/collection`.
+  - Preserved Claude-owned document-delivery-rule-manager WIP.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `PATCH /api/billing-candidates/[id]/collection` now delegates to `authenticatedPATCH`, and the exported handler wraps all returned responses with `withSensitiveNoStore`.
+  - Unexpected failures now use the established `unstable_rethrow` + fixed no-store `internalError()` pattern.
+  - Added regression coverage for no-store headers on success, validation, conflict, not-found, idempotency replay/conflict, auth rejection, and unexpected 500 responses.
+  - Added a raw-error regression proving patient/billing/storage-like text is not echoed from unexpected failures.
+- Safety:
+  - Reduces cache and raw-error disclosure risk for payer names, receipt numbers, unpaid reasons, notes, billing PDF URLs, and storage/provider details.
+  - Preserves auth/permission behavior, writable-patient guard, receipt/invoice requirements, idempotency replay/conflict behavior, optimistic concurrency conflicts, audit redaction, and existing response status/body shapes for handled domain paths.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused assertions.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/billing-candidates/[id]/collection/route.ts' 'src/app/api/billing-candidates/[id]/collection/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/billing-candidates/[id]/collection/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `25` tests.
+  - Scoped ESLint on the two billing collection files: passed.
+  - Scoped `git diff --check` on the two billing collection files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - Backend, privacy compliance, and test-architect subagents returned `APPROVED` for the billing collection diff.
+  - Review coverage included route-handler typing, no-store coverage, fixed 500 envelope behavior, PHI non-leakage, idempotency/replay semantics, and test quality.
+- Remaining:
+  - Stage only explicit billing collection files plus this ledger and `.codex/ralph-state.md`, commit, and send agmsg FYI.
+  - Continue next high-priority backend candidates from subagent findings, especially patient core write responses, patient billing/insurance/qualification routes, billing candidate item/close routes, and counted-list dashboard metadata gaps.
+
 ### Patient MCS Sync Conflict Message Hardening - 2026-06-30 07:18 JST
 
 - Scope:
