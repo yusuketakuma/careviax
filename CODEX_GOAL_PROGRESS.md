@@ -18747,3 +18747,28 @@ Next loop:
 - Remaining:
   - Review Claude's prescription-intake false-empty patch when it arrives.
   - Commit downstream drug-code files only after confirming their approval scope and revalidating.
+
+### QR Draft Case Lookup False-Empty Committed — 2026-06-29 15:25 JST
+
+- Scope:
+  - Prioritized Claude agmsg traffic first: approved Claude's schedules billing-preview false-empty patch, ACKed commit `135cf1f6`, then completed Codex-owned QR draft cases dropdown false-empty.
+  - Touched only the QR draft review page/test files; existing broad dirty backend/agent-loop files were preserved.
+- Fixed:
+  - `patient-cases` now tracks loading/error/refetch state instead of treating failed lookup data as an empty active-case list.
+  - Case selector renders loading, retryable `ErrorState`, true empty, and select states separately.
+  - Confirmation payload and the prescription registration deep-link use only `effectiveCaseId`, which is valid only when the selected case is present in the latest active options.
+  - Stale selected cases are shown as `ケースの再選択` and cannot be confirmed.
+  - `/api/cases` lookup and `/prescriptions/new` deep-link construction now use `URLSearchParams`, closing patient/case query-parameter injection risk.
+- Review:
+  - Privacy reviewer found stale selected case carry-forward; fixed with active-option membership check and regression test.
+  - Medical safety reviewer found raw URL interpolation; fixed with `URLSearchParams` and hostile-ID regression test.
+  - Claude approved the final QR patch with no blockers.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.test.tsx' 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.accessibility.test.ts' 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.helpers.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `7` tests.
+  - Scoped ESLint, scoped Prettier check, tracked diff-check, and normalized no-index diff-check for the new test file passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused` passed.
+- Commit:
+  - `d276cd6a` — `Surface QR draft case lookup failures`
+- Remaining:
+  - Claude reported the false-empty campaign slice set is complete.
+  - `.agent-loop/FEATURE_QUEUE.md` remains dirty from pre-existing shared work and was not staged in this QR commit.
