@@ -13,6 +13,7 @@ import {
   type GeneratedTaskSpec,
 } from '../daily-helpers';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
+import { resolveMedicationDeadlineSummary } from '@/server/services/visit-medication-deadline';
 import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 import {
   formatVisitWorkflowGateIssues,
@@ -165,6 +166,8 @@ export async function generateVisitDemands() {
             lines: {
               select: {
                 end_date: true,
+                start_date: true,
+                days: true,
               },
             },
           },
@@ -196,17 +199,11 @@ export async function generateVisitDemands() {
         continue;
       }
 
-      const deadlines = cycle.prescription_intakes.flatMap((intake) => [
-        ...intake.lines
-          .map((line) => line.end_date)
-          .filter((value): value is Date => value != null),
-        ...(intake.refill_next_dispense_date ? [intake.refill_next_dispense_date] : []),
-      ]);
-      const visitDeadline =
-        deadlines.length > 0
-          ? new Date(Math.max(...deadlines.map((deadline) => deadline.getTime())))
-          : null;
-      if (!visitDeadline || visitDeadline > demandWindow) {
+      const medicationDeadlineSummary = resolveMedicationDeadlineSummary(
+        cycle.prescription_intakes,
+      );
+      const visitDeadlineDate = medicationDeadlineSummary.visitDeadlineDate;
+      if (!visitDeadlineDate || visitDeadlineDate > demandWindow) {
         continue;
       }
 
@@ -215,7 +212,7 @@ export async function generateVisitDemands() {
           orgId: cycle.org_id,
           caseId: cycle.case_id,
           visitType: 'regular',
-          priority: visitDeadline <= addUtcDays(startOfToday, 3) ? 'urgent' : 'normal',
+          priority: visitDeadlineDate <= addUtcDays(startOfToday, 3) ? 'urgent' : 'normal',
           candidateCount: 3,
           startDate: addUtcDays(startOfToday, 1),
         });
@@ -242,10 +239,10 @@ export async function generateVisitDemands() {
             taskType: 'visit_demand',
             title: '訪問候補の承認が必要です',
             description: '服薬期限前の訪問候補を自動提案しました。',
-            priority: visitDeadline <= addUtcDays(startOfToday, 3) ? 'urgent' : 'high',
+            priority: visitDeadlineDate <= addUtcDays(startOfToday, 3) ? 'urgent' : 'high',
             assignedTo: cycle.case_.primary_pharmacist_id ?? null,
-            dueDate: visitDeadline,
-            slaDueAt: visitDeadline,
+            dueDate: visitDeadlineDate,
+            slaDueAt: visitDeadlineDate,
             relatedEntityType: 'cycle',
             relatedEntityId: cycle.id,
             dedupeKey: buildVisitDemandTaskKey(cycle.id),
@@ -287,8 +284,8 @@ export async function generateVisitDemands() {
               description: formatVisitWorkflowGateIssues(issues),
               priority: 'high',
               assignedTo: cycle.case_.primary_pharmacist_id ?? null,
-              dueDate: visitDeadline,
-              slaDueAt: visitDeadline,
+              dueDate: visitDeadlineDate,
+              slaDueAt: visitDeadlineDate,
               relatedEntityType: 'cycle',
               relatedEntityId: cycle.id,
               dedupeKey: buildVisitDemandTaskKey(cycle.id),

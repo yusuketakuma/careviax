@@ -1323,6 +1323,58 @@ describe('daily job local date keys', () => {
 });
 
 describe('generateVisitDemands', () => {
+  function mockGeneratedDemandDraft() {
+    vi.mocked(generateVisitScheduleProposalDrafts).mockResolvedValue({
+      diagnostics: {
+        accepted: [],
+        rejected: [],
+      },
+      drafts: [
+        {
+          org_id: 'org_1',
+          cycle_id: 'cycle_1',
+          case_id: 'case_1',
+          site_id: 'site_1',
+          visit_type: 'regular',
+          priority: 'urgent',
+          proposal_status: 'proposed',
+          patient_contact_status: 'pending',
+          proposed_date: new Date('2026-06-09T00:00:00.000Z'),
+          time_window_start: null,
+          time_window_end: null,
+          proposed_pharmacist_id: 'pharmacist_1',
+          assignment_mode: 'primary',
+          route_order: 1,
+          route_distance_score: 0,
+          medication_end_date: null,
+          visit_deadline_date: new Date('2026-06-10T00:00:00.000Z'),
+          proposal_reason: 'daily demand',
+          escalation_reason: null,
+          reschedule_source_schedule_id: null,
+        },
+      ],
+    });
+  }
+
+  function mockDemandProposalWrite() {
+    const visitScheduleProposalCreateMock = vi.fn().mockResolvedValue({});
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        visitSchedule: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        visitScheduleProposal: {
+          findMany: vi.fn().mockResolvedValue([]),
+          create: visitScheduleProposalCreateMock,
+        },
+        task: {
+          upsert: vi.fn(),
+        },
+      }),
+    );
+    return visitScheduleProposalCreateMock;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
@@ -1450,6 +1502,142 @@ describe('generateVisitDemands', () => {
         route_order: 6,
       }),
     });
+  });
+
+  it('generates visit demand when line end date must be derived from start date and days', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            split_next_dispense_date: null,
+            lines: [
+              {
+                end_date: null,
+                start_date: new Date('2026-06-05T00:00:00.000Z'),
+                days: 7,
+              },
+            ],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+    mockGeneratedDemandDraft();
+    mockDemandProposalWrite();
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(generateVisitScheduleProposalDrafts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priority: 'urgent',
+        startDate: new Date('2026-06-09T00:00:00.000Z'),
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        dueDate: new Date('2026-06-10T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-10T00:00:00.000Z'),
+      }),
+    );
+  });
+
+  it('generates visit demand from split dispensing next dispense dates', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            split_next_dispense_date: new Date('2026-06-10T00:00:00.000Z'),
+            lines: [{ end_date: null, start_date: null, days: 14 }],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+    mockGeneratedDemandDraft();
+    mockDemandProposalWrite();
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(generateVisitScheduleProposalDrafts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priority: 'urgent',
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        dueDate: new Date('2026-06-09T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-09T00:00:00.000Z'),
+      }),
+    );
+  });
+
+  it('generates visit demand from earlier split dispensing dates even when line supply lasts longer', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        case_: {
+          primary_pharmacist_id: 'pharmacist_1',
+        },
+        prescription_intakes: [
+          {
+            refill_next_dispense_date: null,
+            split_next_dispense_date: new Date('2026-06-10T00:00:00.000Z'),
+            lines: [
+              {
+                end_date: null,
+                start_date: new Date('2026-06-01T00:00:00.000Z'),
+                days: 30,
+              },
+            ],
+          },
+        ],
+        visit_schedules: [],
+        visit_schedule_proposals: [],
+      },
+    ]);
+    mockGeneratedDemandDraft();
+    mockDemandProposalWrite();
+
+    const result = await generateVisitDemands();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(generateVisitScheduleProposalDrafts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        priority: 'urgent',
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        dueDate: new Date('2026-06-09T00:00:00.000Z'),
+        slaDueAt: new Date('2026-06-09T00:00:00.000Z'),
+      }),
+    );
   });
 });
 

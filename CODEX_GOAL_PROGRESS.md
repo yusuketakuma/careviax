@@ -23,6 +23,23 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Visit Medication Deadline Checkpoint - 2026-06-29 20:41 JST
+
+- Scope:
+  - Honored the user request to commit all current changes and return to a clean worktree before resuming implementation.
+  - Checkpointed the in-flight backend work for medication-driven visit scheduling deadlines.
+  - No schema migration, live DB mutation, push, deploy, auth/RLS change, or destructive operation was performed.
+- Implemented so far:
+  - Added shared `visit-medication-deadline` helper logic for deriving line medication end dates from stored `end_date` or `start_date + days - 1`.
+  - Started applying the helper to schedule proposal generation and daily visit demand generation.
+  - Added split-dispensing next-dispense dates to deadline derivation and regression coverage for planner/daily job paths.
+- Validation:
+  - `git diff --check`: passed.
+  - `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/server/jobs/daily.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `54` tests.
+- Remaining:
+  - This is a checkpoint, not the final schedule/route P1 deadline implementation.
+  - Resume with broad Codex subagents and align the code with `docs/schedule-route-build-plan.md`: inclusive deadline semantics, earliest continuing non-PRN medication deadline, latest `VisitRecord.next_visit_suggestion_date`, overdue ASAP behavior, cycle-status exclusions, and full focused/static validation.
+
 ### PrescriptionLine Pharmacist DrugMaster Confirmation API - 2026-06-29 18:46 JST
 
 - Scope:

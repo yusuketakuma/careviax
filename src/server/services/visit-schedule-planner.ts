@@ -9,6 +9,7 @@ import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-i
 import { applyTimeDateToDate, timeDateToString } from '@/lib/visits/time-of-day';
 import { createRoadTravelEstimator } from './road-routing';
 import { evaluateVisitWorkflowGate } from './management-plans';
+import { resolveMedicationDeadlineSummary } from './visit-medication-deadline';
 import type { VisitRouteTravelMode } from './visit-route-engine';
 
 const DEFAULT_VISIT_DURATION_MINUTES = 60;
@@ -820,6 +821,8 @@ export async function generateVisitScheduleProposalDrafts(
           lines: {
             select: {
               end_date: true,
+              start_date: true,
+              days: true,
             },
           },
         },
@@ -827,18 +830,10 @@ export async function generateVisitScheduleProposalDrafts(
     },
   });
 
-  const medicationEndDates =
-    cycle?.prescription_intakes.flatMap((intake) => [
-      ...intake.lines.map((line) => line.end_date).filter((value): value is Date => value != null),
-      ...(intake.refill_next_dispense_date ? [intake.refill_next_dispense_date] : []),
-    ]) ?? [];
-  const medicationEndDate =
-    medicationEndDates.length > 0
-      ? new Date(Math.max(...medicationEndDates.map((value) => value.getTime())))
-      : null;
-  const visitDeadlineDate = medicationEndDate
-    ? addDays(medicationEndDate, -1)
-    : addDays(planningStart, 14);
+  const medicationDeadlineSummary = resolveMedicationDeadlineSummary(cycle?.prescription_intakes);
+  const medicationEndDate = medicationDeadlineSummary.medicationEndDate;
+  const visitDeadlineDate =
+    medicationDeadlineSummary.visitDeadlineDate ?? addDays(planningStart, 14);
   const planningEnd = lockedDate
     ? lockedDate
     : addDays(

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260629-2041 JST
+
+- current task: checkpoint the current visit medication-deadline implementation work, return the worktree to a clean state, then resume with broad Codex subagent coverage.
+- files inspected: `git status --short --untracked-files=all`, `git diff --stat`, `git log --oneline -5`, `git diff -- src/server/services/visit-schedule-planner.ts src/server/jobs/daily/visits.ts`, `src/server/services/visit-medication-deadline.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/server/services/visit-medication-deadline.ts`, `src/server/services/visit-schedule-planner.ts`, `src/server/services/visit-schedule-planner.test.ts`, `src/server/jobs/daily/visits.ts`, `src/server/jobs/daily.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: visit demand/proposal deadline derivation was still limited to stored line `end_date` and refill dates. The checkpoint adds shared derivation for missing `end_date` from `start_date + days - 1` and starts incorporating split-dispensing next-dispense dates so schedule proposals and daily demand generation do not miss medication-driven visit windows.
+- security risks found: reduced medication scheduling data-integrity risk by moving deadline derivation into a shared server helper and adding regression coverage. No auth/RLS, PHI projection, logging surface, schema, migration, live DB mutation, push, deploy, or destructive operation was changed.
+- performance issues found: no new dependency, external request, broad DB scan, N+1 path, or unbounded loop was added. The current changes only expand existing select fields and reuse already-loaded prescription intake data.
+- validation commands: `git diff --check`; `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/server/jobs/daily.test.ts --reporter=dot --testTimeout=30000`.
+- validation results: `git diff --check` passed; focused Vitest passed `2` files / `54` tests.
+- remaining work: this is a checkpoint, not the final P1 scheduling implementation. Resume by aligning the helper and planner with the committed schedule/route build plan: earliest continuing non-PRN medication deadline, inclusive deadline semantics, latest `VisitRecord.next_visit_suggestion_date`, overdue ASAP window behavior, cycle-status exclusions, and full validation.
+- next action: commit the checkpoint, send agmsg FYI, verify clean worktree, then spawn Codex subagents for implementation, medical safety, data integrity, DB/API review, and verification.
+
 ### 20260629-1846 JST
 
 - current task: add a safe backend contract for pharmacist confirmation of unresolved `PrescriptionLine` drug master identity.
