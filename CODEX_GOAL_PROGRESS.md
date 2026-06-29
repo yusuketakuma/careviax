@@ -23,11 +23,1662 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Set Audits Carry Item Drug Code Commit - 2026-06-29 14:01 JST
+
+- Scope:
+  - Committed the Claude-approved `GET/POST /api/set-audits` carry-item medication identity and route hardening slice.
+  - Committed only `src/app/api/set-audits/route.ts` and `src/app/api/set-audits/route.test.ts` as `7d86fd1b` (`Expose set audit carry item drug codes`).
+  - Kept shared ledgers and other backend slices out of the code commit.
+- Fixed:
+  - Set audit GET/POST line selections now include `drug_code` with `drug_name`.
+  - Approved and partial-approved visit schedule carry items now include additive `drug_code` to preserve same-name/different-code prescription-line identity.
+  - Existing route hardening, response shape, and compatibility fields were preserved.
+- Validation:
+  - `pnpm exec vitest run src/app/api/set-audits/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `40` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts -t 'set-audits GET' --reporter=dot --testTimeout=30000`: passed, `3` tests / `366` skipped.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t 'set-audits POST' --reporter=dot --testTimeout=30000`: passed, `3` tests / `127` skipped.
+  - Scoped ESLint, scoped Prettier check, and focused `git diff --check`: passed.
+  - Current session `pnpm typecheck` and `pnpm typecheck:no-unused` were green before this commit.
+- Remaining:
+  - Shared ledgers remain dirty and separate from code/test commits.
+
+### Pharmacy Stock Bulk Import YJ Identity Commit - 2026-06-29 13:57 JST
+
+- Scope:
+  - Committed the Claude-approved `POST /api/pharmacy-drug-stocks/bulk` code-first and route-local hardening slice.
+  - Committed only `src/app/api/pharmacy-drug-stocks/bulk/route.ts` and `src/app/api/pharmacy-drug-stocks/bulk/route.test.ts` as `4cfc980d` (`Require YJ identity for pharmacy stock bulk import`).
+  - Kept shared ledgers and other backend slices out of the code commit.
+- Fixed:
+  - A YJ-less exact `drug_name` match no longer becomes a writable `BulkOperation`.
+  - Name-only rows now remain invalid-with-candidates instead of selecting a `DrugMaster` for stock upsert.
+  - The route-local auth/request-context/no-store/fixed-error hardening in this slice was preserved.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `18` tests.
+  - Scoped ESLint, scoped Prettier check, and focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Claude had approved this slice with no blockers.
+- Remaining:
+  - Shared ledgers remain dirty and separate from code/test commits.
+
+### Manual/HOT DrugMaster Import YJ Identity Commit - 2026-06-29 13:53 JST
+
+- Scope:
+  - Committed the Claude-approved manual clinical import and HOT import code-first write/link identity slices.
+  - Committed only `src/server/services/drug-master-import/manual.ts`, `src/server/services/drug-master-import/manual.test.ts`, `src/server/services/drug-master-import/hot.ts`, and `src/server/services/drug-master-import/hot.test.ts` as `39b6c2fd` (`Require YJ identity for manual and HOT master imports`).
+  - Kept shared ledgers and other backend slices out of the code commit.
+- Fixed:
+  - Manual clinical renal adjustments and safety overrides require `yj_code` before selecting/writing a `DrugMaster`; `drug_name` remains a label but is no longer a write identity.
+  - HOT import skips YJ-less records instead of linking by `drug_name` and manufacturer; YJ-coded HOT rows still update the matching `DrugMaster.yj_code` path.
+- Validation:
+  - `pnpm exec vitest run src/server/services/drug-master-import/manual.test.ts src/server/services/drug-master-import/hot.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `13` tests.
+  - Scoped ESLint, scoped Prettier check, and focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Claude had approved both manual and HOT import slices with no blockers.
+- Remaining:
+  - Optional future candidate: expose skipped YJ-less HOT row count in import payload/logging for operational transparency.
+  - Shared ledgers remain dirty and separate from code/test commits.
+
+### Dispense Results Rework Carry Code Fallback Commit - 2026-06-29 13:50 JST
+
+- Scope:
+  - Sent Claude a `PATCH_REVIEW_REQUEST` for `PATCH /api/dispense-results/[id]` rework carry-item drug-code fallback after revalidating the current HEAD.
+  - Claude approved the two-file backend slice and independently reran the route tests.
+  - Committed only `src/app/api/dispense-results/[id]/route.ts` and `src/app/api/dispense-results/[id]/route.test.ts` as `4ee0e941` (`Preserve carry item drug code on dispense rework`).
+- Fixed:
+  - Rework carry-item regeneration now preserves medication identity when `actual_drug_code` is blank by falling back to the original prescription line `drug_code`.
+  - The route also falls back to the prescription line drug name for handoff robustness.
+  - Existing org-scoped transaction behavior and response shape were preserved.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/dispense-results/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `18` tests.
+  - Scoped ESLint, scoped Prettier check, and focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Claude independently reran the focused route test `18/18` and approved.
+- Remaining:
+  - Claude's non-blocking `drug_name` whitespace-normalization nit remains an optional follow-up and was not mixed into the approved commit.
+  - Shared ledgers remain dirty and separate from code/test commits.
+
+### Code-First Medication Identity UI Flows Commit - 2026-06-29 13:42 JST
+
+- Scope:
+  - Processed Claude's FE batch completion notice and follow-up that the remaining frontend/component dirty paths were Codex-side code-first work.
+  - Committed only `src/app/(dashboard)/patients/[id]/patient-detail.types.ts`, `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`, `src/components/visit-brief/visit-brief-card.tsx`, `src/components/visit-brief/visit-brief-card.test.tsx`, and `src/types/visit-brief.ts` as `96cfda80` (`Expose code-first medication identity in UI flows`).
+  - Kept shared ledgers out of the code commit.
+- Fixed:
+  - Patient detail medication-change types now carry `drug_code` and `days_changed`.
+  - Prescription intake previous/current medication comparison now uses the shared `medicationIdentityKey` instead of ad hoc `drug_code || drug_name` keys.
+  - Visit brief medication-change rows now preserve same-name distinct-drug identity by using code-aware keys and showing `drug_code` badges when duplicate medication names appear.
+- Validation:
+  - `pnpm exec vitest run src/components/visit-brief/visit-brief-card.test.tsx 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `72` tests.
+  - Scoped ESLint, scoped Prettier check, and focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - No Codex-side frontend/component dirty paths remain from Claude's FE batch handoff.
+  - Shared ledgers remain dirty and are still intentionally separated from code/test commits.
+
+### Inventory Forecast Code-First Drug Identity - 2026-06-29 13:26 JST
+
+- Scope:
+  - Implemented `.agent-loop/FEATURE_QUEUE.md` task `F-20260629-006`, a code-first medication identity hardening slice for `GET /api/admin/inventory-forecast` and the admin inventory forecast screen.
+  - Drained Claude inbox first, processed Claude review work before continuing, and used a `medical_safety_reviewer` subagent for medication-data safety review.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema/migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Inventory forecast no longer joins prescription demand to stock by drug base name.
+  - Prescription demand and stock now resolve by `DrugMaster.id` first and canonical YJ code next.
+  - Route lookup resolves prescription line `drug_code` against `DrugMaster.yj_code`, `receipt_code`, and `hot_code`, projecting resolved receipt/HOT matches to canonical YJ + DrugMaster id before forecasting.
+  - Code-less prescription lines, DrugMaster code-not-found lines, and ambiguous receipt/HOT candidates are kept out of automatic shortage matching and returned separately as `unresolvedDrugs`.
+  - The UI now surfaces `コード未解決の処方需要` as a confirm-state panel so unresolved demand is not mistaken for an empty forecast.
+- Medical safety review:
+  - Addressed High finding that unresolved name/code demand was returned by the API but hidden in the UI.
+  - Addressed High finding that code-present but DrugMaster-unmatched lines could disappear from both automatic shortage rows and unresolved rows.
+  - Addressed Medium finding that duplicate receipt/HOT candidates could be resolved by DB row order; receipt/HOT duplicate candidates now become `ambiguous_code` unresolved demand.
+- Tests:
+  - Added pure forecast coverage for name-only unresolved demand and code-not-found unresolved demand staying out of automatic same-name stock joins.
+  - Added route coverage for receipt/HOT resolution to DrugMaster identity, code-not-found unresolved demand, and duplicate receipt/HOT ambiguity.
+  - Added UI coverage proving unresolved demand displays drug name, reason/code, required quantity, affected patient count, and a 要確認 marker even when automatic forecast rows are empty.
+- Validation:
+  - `pnpm exec vitest run src/lib/analytics/inventory-forecast.test.ts src/app/api/admin/inventory-forecast/route.test.ts 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `38` tests.
+  - Scoped ESLint for the six inventory forecast files: passed.
+  - Scoped Prettier check for the six inventory forecast files: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved `F-20260629-006` at `2026-06-29T04:34:04Z` after independent focused Vitest, diff review, and reviewer-audit cross-check.
+  - Re-ran focused validation after approval and committed the six approved source/test files as `51edfa10` (`Harden inventory forecast drug code identity`).
+  - Shared ledgers were intentionally excluded from the code commit and remain separate.
+- Remaining:
+  - No open Claude blocker for `F-20260629-006`; next inventory follow-up is the pre-existing resolved-but-unstocked demand surface candidate.
+
+### Pharmacy Drug Stock Usage Mismatch Code Resolution - 2026-06-29 12:44 JST
+
+- Scope:
+  - Implemented `.agent-loop/FEATURE_QUEUE.md` task `F-20260629-005`, a backend code-first slice for `GET /api/pharmacy-drug-stocks/usage-mismatch`.
+  - Drained Claude inbox first, ACKed Claude's FE lane LOCK on `medications-content.tsx`, later reviewed Claude's medications false-empty patch as highest-priority interrupt, and returned `CHANGES_REQUESTED` for the remaining main `medication-profiles` false-empty path.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema/migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Removed the route's `drugCode.slice(0, 12)` behavior for QR usage analysis so 13-digit HOT codes are not truncated.
+  - DrugMaster usage resolution now queries `yj_code`, `receipt_code`, and `hot_code`, then builds an internal lookup map for all three code families.
+  - After Claude approval, tightened the internal lookup map to resolve overlapping code-family matches deterministically by YJ first, then receipt code, then HOT code, removing DB row-order dependence.
+  - Name-only QR medication rows remain unresolved; no `drug_name` lookup was reintroduced.
+  - `matched_drug` responses are projected back to the previous safe display shape so adding internal `receipt_code` / `hot_code` lookup fields does not broaden the response payload.
+- Drug-code behavior:
+  - QR draft usage rows carrying YJ, receipt, or HOT codes can now match DrugMaster and count as recognized usage for adopted-stock mismatch analysis.
+  - Source `drug_code` in the response remains the source code that appeared in the QR draft, while `matched_drug.yj_code` exposes the resolved canonical DrugMaster code.
+- Tests:
+  - Added a regression proving 9-digit receipt codes and 13-digit HOT codes resolve through DrugMaster, remain out of `unmatched_prescribed`, and do not expose `receipt_code` or `hot_code` in the response projection.
+  - Added a regression proving overlapping code-family matches prefer YJ over receipt/HOT and receipt over HOT even when `DrugMaster.findMany` returns rows in the opposite order.
+  - Updated the existing code/name collision test to expect the widened code lookup OR across YJ, receipt, and HOT.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `10` tests.
+  - Scoped ESLint for usage-mismatch route/test: passed.
+  - Scoped Prettier check for usage-mismatch route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved `F-20260629-005` at `2026-06-29 12:53 JST`; the non-blocking code-family collision note was addressed before marking the slice done.
+- Remaining:
+  - None for this slice. Continue prioritizing Claude's `medications-content` rev3 response and the broader backend drug-code rollout.
+
+### Electronic Prescription Intake POST Hardening - 2026-06-29 12:27 JST
+
+- Scope:
+  - Implemented `.agent-loop/FEATURE_QUEUE.md` task `F-20260629-004`, a backend hardening slice for `POST /api/patients/[id]/prescriptions/e-prescription`.
+  - Processed Claude's `F-20260629-003` MHLW generic mapping approval first, ACKed it, and recorded no-blocker ledger notes.
+  - Preserved unrelated dirty work, Claude-owned FE files, existing prescription intake service code-first changes, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Wrapped electronic prescription POST in the standard `withRoutePerformance` + `withSensitiveNoStore` boundary.
+  - Added `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error('patient_eprescription_post_unhandled_error', ...)` for unexpected throws.
+  - Preserved existing auth, request validation, patient/case access checks, idempotency replay, electronic prescription adapter error responses, case conflict responses, and `createPrescriptionIntake` call shape.
+- Drug-code behavior:
+  - Confirmed this route already forwards adapter `item.drugCode` into `createPrescriptionIntake` as `drug_code`.
+  - Confirmed downstream intake validation still blocks missing `drug_code` by default and current service code resolves MedicationProfile identity through `DrugMaster` prescription codes without name-based master fallback.
+  - No change to adapter payload mapping or prescription line identity semantics.
+- Tests:
+  - Added a focused regression proving unexpected intake creation failures return no-store fixed `INTERNAL_ERROR` without leaking raw electronic prescription identifiers or unsafe error names/messages.
+- Validation:
+  - `pnpm exec vitest run src/app/api/patients/[id]/prescriptions/e-prescription/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `24` tests.
+  - Scoped ESLint for electronic prescription route/test: passed.
+  - Scoped Prettier check for electronic prescription route/test and progress ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved `F-20260629-004` with no blockers after independently confirming no-store/fixed-error behavior, adapter error response semantics, metadata-only logging, unchanged `drugCode` forwarding, and route tests `24/24`.
+  - Claude recorded one non-blocking note: the pre-existing `prisma.patient.findFirst` in this route remains outside `withOrgContext`, but this slice did not change that behavior and the Patient RLS policy uses a non-throwing current-setting pattern plus app-layer `org_id` filter in this route.
+- Remaining:
+  - None for this electronic prescription POST hardening slice.
+
+### SSK Drug Master Import POST Hardening - 2026-06-29 11:37 JST
+
+- Scope:
+  - Hardened `POST /api/drug-master-imports/ssk`, the admin import surface for the SSK YJ-code DrugMaster feed.
+  - Processed Claude's manual-clinical approval first, ACKed it, and recorded the requested data-safety/behavior-change ledger notes.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Converted the route from generic `withAuthContext` + manual `isAdmin` to route-local `requireAuthContext({ permission: 'canAdmin' })`.
+  - Added `runWithRequestAuthContext`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved SSK URL policy validation, optional body handling, malformed/non-object JSON behavior, `limit` validation, service call options, 201 status, and import summary response shape.
+  - Did not add `withOrgContext` because this import writes true-global `DrugMaster` and `DrugMasterImportLog` data only, not org-scoped or hybrid RLS tables.
+- Tests:
+  - Route test now uses real route-local auth helper behavior with mocked session and membership lookup.
+  - Added no-store assertions for validation, success, 403, and fixed 500 paths.
+  - Added denied-admin-before-import coverage and sanitized fixed-500 logging coverage proving raw SSK import text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-master-imports/ssk/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint for the SSK route/test: passed.
+  - Scoped Prettier check for the SSK route/test and progress ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran the route test `7/7`, confirmed old/new permission equivalence, verified `importSskDrugMaster` writes only true-global `DrugMaster` and `DrugMasterImportLog`, and confirmed `withOrgContext` is unnecessary for this path.
+- Remaining:
+  - None for this SSK slice.
+
+### MHLW Price Drug Master Import POST Hardening - 2026-06-29 11:42 JST
+
+- Scope:
+  - Hardened `POST /api/drug-master-imports/mhlw-price`, the admin import surface for the MHLW YJ-code price-list DrugMaster feed.
+  - Processed Claude's SSK approval first, ACKed it, and recorded the approval/no-blocker ledger notes.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Converted the route from generic `withAuthContext` + manual `isAdmin` to route-local `requireAuthContext({ permission: 'canAdmin' })`.
+  - Added `runWithRequestAuthContext`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved MHLW URL policy validation, optional body handling, malformed/non-object JSON behavior, service call options, 201 status, and import summary response shape.
+  - Did not add `withOrgContext` because this import writes true-global `DrugMaster`, `DrugMasterImportLog`, and `DrugMasterChangeEvent` data only, not org-scoped or hybrid RLS tables.
+- Tests:
+  - Route test now uses real route-local auth helper behavior with mocked session and membership lookup.
+  - Added no-store assertions for validation, success, 403, and fixed 500 paths.
+  - Added denied-admin-before-import coverage and sanitized fixed-500 logging coverage proving raw MHLW price import text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-master-imports/mhlw-price/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `8` tests.
+  - Scoped ESLint for the MHLW price route/test: passed.
+  - Scoped Prettier check for the MHLW price route/test and progress ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran the route test `8/8`, confirmed old/new permission equivalence, verified the three written tables are true-global (`DrugMaster`, `DrugMasterImportLog`, `DrugMasterChangeEvent`), and confirmed `withOrgContext` is unnecessary for this path.
+- Remaining:
+  - None for this MHLW price slice.
+
+### MHLW Generic Drug Master Import POST Hardening - 2026-06-29 11:47 JST
+
+- Scope:
+  - Hardened `POST /api/drug-master-imports/mhlw-generic`, the admin import surface for MHLW generic flags and generic-name mapping data.
+  - Processed Claude's MHLW price approval first, ACKed it, and recorded the approval/no-blocker ledger notes.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Converted the route from generic `withAuthContext` + manual `isAdmin` to route-local `requireAuthContext({ permission: 'canAdmin' })`.
+  - Added `runWithRequestAuthContext`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved MHLW URL policy validation, optional body handling, malformed/non-object JSON behavior, `flags`/`mappings`/`all` mode branching, service call options, 201 status, and import summary response shape.
+  - Did not add `withOrgContext` because this import writes/reads true-global `DrugMaster`, `DrugMasterImportLog`, and `GenericDrugMapping` data only, not org-scoped or hybrid RLS tables.
+- Tests:
+  - Route test now uses real route-local auth helper behavior with mocked session and membership lookup.
+  - Added no-store assertions for validation, success, 403, and fixed 500 paths.
+  - Added denied-admin-before-import coverage and sanitized fixed-500 logging coverage proving raw MHLW generic import text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-master-imports/mhlw-generic/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint for the MHLW generic route/test: passed.
+  - Scoped Prettier check for the MHLW generic route/test and progress ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran the route test `7/7`, confirmed old/new permission equivalence, verified true-global write targets (`DrugMaster`, `DrugMasterImportLog`, `DrugMasterChangeEvent`, `GenericDrugMapping`), and confirmed `withOrgContext` is unnecessary for this path.
+- Remaining:
+  - None for this MHLW generic slice.
+
+### PMDA Package Insert Import POST Hardening - 2026-06-29 11:51 JST
+
+- Scope:
+  - Hardened `POST /api/drug-master-imports/pmda`, the admin import surface for PMDA package insert and interaction data.
+  - Processed Claude's MHLW generic approval first, ACKed it, and recorded the approval/no-blocker ledger notes.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Converted the route from generic `withAuthContext` + manual `isAdmin` to route-local `requireAuthContext({ permission: 'canAdmin' })`.
+  - Added `runWithRequestAuthContext`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved PMDA URL policy validation, optional body handling, malformed/non-object JSON behavior, `full`/`delta` mode defaulting, service call options, 201 status, and import summary response shape.
+  - Did not add `withOrgContext` because this import writes/reads true-global `DrugMaster`, `DrugPackageInsert`, `DrugInteraction`, and `DrugMasterImportLog` data only, not org-scoped or hybrid RLS tables.
+  - Did not change the pre-existing service-level PMDA name fallback; this slice is route hardening only.
+- Tests:
+  - Route test now uses real route-local auth helper behavior with mocked session and membership lookup.
+  - Added no-store assertions for validation, success, 403, and fixed 500 paths.
+  - Added denied-admin-before-import coverage and sanitized fixed-500 logging coverage proving raw PMDA import text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-master-imports/pmda/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint for the PMDA route/test: passed.
+  - Scoped Prettier check for the PMDA route/test and progress ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran the route test `7/7`, confirmed old/new permission equivalence, verified true-global write targets (`DrugMaster`, `DrugPackageInsert`, `DrugInteraction`, `DrugMasterImportLog`), and confirmed `withOrgContext` is unnecessary for this path.
+  - Claude agreed the pre-existing PMDA service-level name fallback is not a blocker for route hardening and should be handled as a separate code-first slice.
+- Remaining:
+  - None for this PMDA route-hardening slice.
+  - Follow-up candidate recorded in `.agent-loop/FEATURE_QUEUE.md`: remove or constrain PMDA service-level name fallback so package insert / interaction writes cannot attach to the wrong same-name/different-code drug.
+
+### HOT Drug Master Import POST Hardening - 2026-06-29 11:57 JST
+
+- Scope:
+  - Hardened `POST /api/drug-master-imports/hot`, the admin import surface for HOT code DrugMaster metadata.
+  - Processed Claude's PMDA approval first, ACKed it, and recorded the PMDA service-level name-fallback follow-up in `.agent-loop/FEATURE_QUEUE.md`.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Converted the route from generic `withAuthContext` + manual `isAdmin` to route-local `requireAuthContext({ permission: 'canAdmin' })`.
+  - Added `runWithRequestAuthContext`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved HOT URL policy validation, optional body handling, malformed/non-object JSON behavior, service call options, 201 status, and import summary response shape.
+  - Did not add `withOrgContext` because this import writes true-global `DrugMaster` and `DrugMasterImportLog` data only, not org-scoped or hybrid RLS tables.
+- Tests:
+  - Route test now uses real route-local auth helper behavior with mocked session and membership lookup.
+  - Added no-store assertions for validation, success, 403, and fixed 500 paths.
+  - Added denied-admin-before-import coverage and sanitized fixed-500 logging coverage proving raw HOT import text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-master-imports/hot/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint for the HOT route/test: passed.
+  - Scoped Prettier check for the HOT route/test and progress ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Residual search found no remaining `withAuthContext`/`isAdmin` usage in `src/app/api/drug-master-imports` or `src/app/api/drug-masters` route handlers.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran the route test `7/7`, confirmed old/new permission equivalence, verified true-global write targets (`DrugMaster`, `DrugMasterImportLog`), confirmed `withOrgContext` is unnecessary for this path, and confirmed `FEATURE_QUEUE` follow-up `F-20260629-001` accurately captures the PMDA name-fallback recommendation.
+  - Claude also confirmed residual search found no remaining `withAuthContext`/`isAdmin` usage in `src/app/api/drug-master-imports` or `src/app/api/drug-masters` route handlers, completing this route-hardening sweep.
+- Remaining:
+  - None for this HOT route-hardening slice.
+
+### MHLW Generic Mapping Code-First Matching - 2026-06-29 12:20 JST
+
+- Scope:
+  - Implemented `.agent-loop/FEATURE_QUEUE.md` task `F-20260629-003`, a backend drug-code identity slice for MHLW generic-name mapping import.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - `importGenericNameMappings` no longer treats `DrugMaster.drug_name.includes(entry.generic_name)` as a brand-candidate write identity.
+  - GenericDrugMapping brand candidates now come from official exception YJ codes or exact `DrugMaster.generic_name` matches only.
+  - Added a false-positive master fixture whose display name contains the generic-name text but has no matching `generic_name` and no exception YJ code; it is excluded from `brand_drug_ids`.
+- Drug-code behavior:
+  - Existing official exception-code matching remains intact.
+  - Existing exact generic-name matching remains intact.
+  - Display-name substring matching is removed only for write-side GenericDrugMapping candidate construction.
+- Tests:
+  - Strengthened the MHLW generic mapping test so name-only includes candidates are present in DrugMaster results but excluded from generated brand IDs.
+- Validation:
+  - `pnpm exec vitest run src/server/services/drug-master-import/mhlw.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `10` tests.
+  - Scoped ESLint for MHLW import service/test: passed.
+  - Scoped Prettier check for MHLW import service/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved `F-20260629-003` with no blockers after independently rerunning `mhlw.test` `10/10`, confirming fuzzy `drug_name.includes(generic_name)` removal, official exception YJ code and exact `DrugMaster.generic_name` coverage preservation, false-positive fixture coverage, and no downstream generic recommendation concern.
+- Remaining:
+  - None for this MHLW generic mapping code-first slice.
+
+### QR OTC JAN-Code Promotion - 2026-06-29 12:15 JST
+
+- Scope:
+  - Implemented `.agent-loop/FEATURE_QUEUE.md` task `F-20260629-002`, a backend drug-code identity slice for QR supplemental OTC/general-drug promotion.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - QR OTC candidate extraction now preserves JAN codes from labeled text (`JANコード` / `JAN`) and record type 3 raw CSV fields.
+  - Raw-line JAN extraction ignores early date fields and prefers 13-digit JAN candidates so `20260601` is not misread as JAN-8.
+  - `promoteResolvedQrOtcIssueToMedicationProfile` now resolves `DrugMaster` by `jan_code` when available.
+  - Confirmed OTC `MedicationProfile` rows now write `drug_master_id` when JAN maps to a master, instead of always writing `null`.
+  - Duplicate-current checks prefer resolved `drug_master_id` while preserving legacy `drug_master_id: null` + `drug_name` duplicate protection for name-only OTC rows.
+- Drug-code behavior:
+  - No name-based DrugMaster auto-resolution was added.
+  - Name-only OTC promotion remains supported when no JAN is present or no DrugMaster is available.
+- Tests:
+  - Added coverage for labeled JAN extraction.
+  - Updated raw record type 3 coverage to prove JAN is preserved.
+  - Added coverage that JAN-matched OTC promotion queries `DrugMaster.jan_code`, dedupes by resolved `drug_master_id`, and creates `MedicationProfile.drug_master_id`.
+- Validation:
+  - `pnpm exec vitest run src/server/services/qr-otc-promotion.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `9` tests.
+  - Scoped ESLint for QR OTC service/test: passed.
+  - Scoped Prettier check for QR OTC service/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this JAN-code promotion slice with no blockers after independently rerunning QR OTC promotion tests `9/9`, confirming JAN extraction, date-misread guard, code-first `drug_master_id` dedupe, name-only fallback preservation, optional `tx.drugMaster` compatibility, and `FEATURE_QUEUE` accuracy.
+- Remaining:
+  - None for this QR OTC JAN-code promotion slice.
+
+### PMDA Package Insert Code-First Matching - 2026-06-29 12:03 JST
+
+- Scope:
+  - Implemented `.agent-loop/FEATURE_QUEUE.md` task `F-20260629-001`, the PMDA service-level name-only fallback follow-up requested by Claude during PMDA route-hardening review.
+  - Kept this behavior-changing code-first slice separate from the earlier PMDA route wrapper hardening.
+  - Preserved unrelated dirty work, Claude-owned FE files, route-hardening behavior, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - PMDA package insert primary `DrugMaster` selection now uses `record.yj_code` only.
+  - PMDA records without a resolved YJ code are skipped instead of selecting a `DrugMaster` by `drug_name` exact/contains matching.
+  - PMDA interaction counterpart links now use `counterpart_yj_codes` only.
+  - Name-only/fuzzy counterpart names no longer create `DrugInteraction` writes.
+  - Replaced repeated linear `masters.find(...)` matching with YJ-code maps for primary and counterpart lookup.
+- Drug-code behavior:
+  - YJ-coded PMDA documents still update/create package inserts and coded interaction links.
+  - Name-only primary documents now contribute `0` imported records and create no package insert/interaction writes.
+  - Name-only interaction candidates stay parsed in the source summary but are not write identities.
+- Tests:
+  - Strengthened the existing PMDA import test so the coded Warfarin interaction is the only generated interaction and the name-only Aspirin candidate does not create a fuzzy link.
+  - Added a regression proving a name-only primary PMDA XML record creates no `DrugPackageInsert` or `DrugInteraction` writes and completes the import log with `record_count: 0`.
+- Validation:
+  - `pnpm exec vitest run 'src/server/services/drug-master-import/pmda.test.ts' 'src/app/api/drug-master-imports/pmda/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `11` tests.
+  - Scoped ESLint for PMDA service/test and route/test: passed.
+  - Scoped Prettier check for PMDA service/test, route/test, queue, and progress ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this behavior-changing code-first slice with no blockers after independently rerunning the PMDA service and route tests `11/11`, reviewing the diff, confirming primary and counterpart fuzzy name fallback removal, and confirming `FEATURE_QUEUE` accuracy.
+- Remaining:
+  - None for this PMDA code-first matching slice.
+
+### Pharmacy Drug Stocks Bulk POST PHI/RLS Hardening - 2026-06-29 10:24 JST
+
+- Scope:
+  - Hardened `POST /api/pharmacy-drug-stocks/bulk`, the bulk formulary/adoption import surface for DrugMaster-backed pharmacy stocks.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Converted the route from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Moved pharmacy-site lookup, DrugMaster lookup, current stock lookup, upserts, and audit writes into `withOrgContext(authCtx.orgId, ..., { requestContext: authCtx, maxWaitMs: 10_000, timeoutMs: 30_000 })`.
+  - Wrapped the exported route with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved existing `canAdmin`, body/CSV validation, 1000-row cap, YJ-code lookup, preferred generic validation, duplicate-drug rejection, dry-run behavior, upsert payload, audit summary shape, and response shape.
+  - Tightened the old YJ-less single exact `DrugMaster.drug_name` auto-resolution path so it now returns invalid rows with candidate evidence and never creates upsert operations without a YJ code.
+- Drug-code behavior:
+  - YJ-coded rows remain the only processable rows.
+  - Name-only single exact matches changed from auto-resolve/upsert to invalid-with-candidates/no-upsert for pharmacist correction.
+- Tests:
+  - Route test now mocks `withOrgContext` and asserts request-context propagation.
+  - Added no-store assertions for success and early validation responses.
+  - Added auth-before-body/RLS coverage.
+  - Added sanitized fixed-500 coverage proving raw adoption-note text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacy-drug-stocks/bulk/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `18` tests.
+  - Scoped ESLint for the bulk route/test: passed.
+  - Scoped Prettier check for the bulk route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Protected route matrix search found no existing `pharmacy-drug-stocks/bulk` entry, so this slice relies on direct route auth/no-store/RLS tests instead of adding matrix churn in the already dirty shared worktree.
+- Review:
+  - Claude approved this slice with no blocking code findings.
+  - Claude's non-blocking finding was documentation accuracy: the name-only single exact match behavior is a safety tightening, not preserved behavior. This section and `.codex/ralph-state.md` now record that explicitly.
+- Remaining:
+  - No open blocker for this slice.
+
+### Pharmacy Drug Stocks Usage Mismatch GET PHI/RLS Hardening - 2026-06-29 10:33 JST
+
+- Scope:
+  - Hardened `GET /api/pharmacy-drug-stocks/usage-mismatch`, the QR usage versus adopted stock analysis endpoint.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - Corrected the adjacent bulk ledger wording per Claude's approval note so name-only single exact match auto-resolution is recorded as an intentional safety tightening.
+- Fixed:
+  - Converted the route from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Moved pharmacy-site lookup, QR draft reads, stocked row reads, DrugMaster YJ lookup, and response construction into `withOrgContext(authCtx.orgId, ..., { requestContext: authCtx, maxWaitMs: 10_000, timeoutMs: 20_000 })`.
+  - Wrapped the exported GET with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved existing `canAdmin`, query validation, site not-found behavior, bounded draft/response limits, and response shape.
+  - Tightened old name-only usage behavior from `DrugMaster.drug_name` resolution into unmatched/reviewable output, removing the old `drugByName` last-wins path for same-name DrugMaster rows.
+- Drug-code behavior:
+  - Usage aggregation now explicitly namespaces identities as `code:<YJ>` versus `name:<drugName>`.
+  - DrugMaster matching only uses code-bearing rows via `yj_code`; name-only rows now stay unmatched/reviewable instead of being counted as matched by name.
+  - Same display text in a coded row and a name-only row remains two separate usage identities.
+- Tests:
+  - Route test now mocks `withOrgContext` and asserts request-context propagation.
+  - Added no-store assertions for success, validation, auth failure, not-found, and fixed 500 paths.
+  - Added auth-before-query-data coverage and sanitized fixed-500 logging coverage.
+  - Added regressions for name-only rows staying unresolved and same-text code/name rows staying separate.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacy-drug-stocks/usage-mismatch/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `8` tests.
+  - Scoped ESLint for the usage-mismatch route/test: passed.
+  - Scoped Prettier check for the usage-mismatch route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Ledger Prettier and diff-check for `CODEX_GOAL_PROGRESS.md` / `.codex/ralph-state.md`: passed.
+- Review:
+  - Claude approved this slice with no blocking code findings.
+  - Claude's non-blocking finding was documentation accuracy: name-only usage matched-by-name to unmatched is a code-first correctness fix, not preserved behavior. This section and `.codex/ralph-state.md` now record that explicitly, including the removed `drugByName` last-wins risk.
+- Remaining:
+  - No open blocker for this slice.
+
+### Drug Master Import Logs GET No-Store and Fixed-Error Hardening - 2026-06-29 10:42 JST
+
+- Scope:
+  - Hardened `GET /api/drug-master-import-logs`, the admin DrugMaster import diagnostics list.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - Processed Claude's usage-mismatch approval first and corrected that ledger wording before continuing this non-overlapping slice.
+- Fixed:
+  - Converted the route from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Wrapped the exported GET with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved existing `canAdmin`, source/status/limit validation, global shared-master read behavior, ordering, select shape including `error_log`, and response shape.
+  - Kept this route outside `withOrgContext` because `DrugMasterImportLog` is documented as a global non-RLS shared master table.
+- Tests:
+  - Replaced the wrapper-mocked test with real route-local auth helper coverage through auth and membership mocks.
+  - Added no-store assertions for success, 401, 403, validation, and fixed 500 paths.
+  - Added auth-before-import-log-read coverage and sanitized fixed-500 logging coverage that rejects raw import diagnostic text, custom error names, and raw Error objects from response/log payloads.
+- Validation:
+  - `pnpm exec vitest run src/app/api/drug-master-import-logs/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests.
+  - Scoped ESLint for the import-log route/test: passed.
+  - Scoped Prettier check for route/test/ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently verified `DrugMasterImportLog` is global non-RLS because it has no `org_id` and `prisma/rls-policies.sql` explicitly marks it no-RLS.
+  - Claude also confirmed GET body business logic was unchanged, no-store/fixed 500 logging is sufficient for the admin diagnostic `error_log` surface, and filter/limit/response behavior was preserved.
+- Remaining:
+  - No open blocker for this slice.
+
+### Drug Master Imports Status GET No-Store and Fixed-Error Hardening - 2026-06-29 10:46 JST
+
+- Scope:
+  - Hardened `GET /api/drug-master-imports/status`, the admin DrugMaster update-dashboard freshness/status endpoint.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - ACKed Claude's approval of the adjacent import-log slice before continuing.
+- Fixed:
+  - Kept the existing direct `requireAuthContext({ permission: 'canAdmin' })` gate and added `runWithRequestAuthContext`.
+  - Wrapped the exported GET with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved existing source list, freshness thresholds, free-source labels, latest success/failure reads, recent-run failure streak logic, 200-character failed-error snippet truncation, aggregate count query shapes, and response shape.
+  - Kept the true shared-master counts outside `withOrgContext`.
+  - Corrected the `DrugAlertRule` aggregate after Claude review: `DrugAlertRule` is a hybrid RLS table, so the status endpoint now counts only global baseline active rules with `where: { is_active: true, org_id: null }` instead of counting all active rows without RLS context.
+  - Corrected `prisma/rls-policies.sql` so the Drug domain comment no longer lists `DrugAlertRule` as a global no-RLS table; it now documents global baseline rows plus org-specific RLS rows.
+- Tests:
+  - Added no-store assertions for success, 401, 403, and fixed 500 paths.
+  - Changed the old DB-error expectation from thrown error to fixed no-store `INTERNAL_ERROR`.
+  - Added sanitized fixed-500 logging coverage that rejects raw import status text, custom error names, and raw Error objects from response/log payloads.
+  - Added a regression assertion that the alert-rule count uses `org_id: null`.
+- Validation:
+  - `pnpm exec vitest run src/app/api/drug-master-imports/status/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests.
+  - Scoped ESLint for the status route/test: passed.
+  - Scoped Prettier check for the status route/test: passed.
+  - Focused `git diff --check` for route/test/RLS policy comment: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - SQL Prettier was attempted but this repo setup could not infer a parser for `prisma/rls-policies.sql`; the SQL comment-only change is covered by diff-check.
+- Review:
+  - Claude approved the hardening wrapper/body-preservation portion.
+  - Claude found the HIGH pre-existing `DrugAlertRule` RLS-context fragility and stale `rls-policies.sql` comment; this follow-up implements the recommended global-baseline-count semantic.
+  - Claude approved the follow-up with no blocking findings and confirmed `org_id: null` is the correct dashboard semantic.
+  - Claude noted a non-blocking proof gap: a future real-PG integration test with an org-specific active `DrugAlertRule` row would definitively exercise the RLS fail-closed planner path beyond the current Prisma mock/unit assertion.
+- Remaining:
+  - No open blocker for this slice.
+
+### Drug Masters Detail GET No-Store and Fixed-Error Hardening - 2026-06-29 10:58 JST
+
+- Scope:
+  - Hardened `GET /api/drug-masters/[id]`, the shared DrugMaster detail endpoint that returns package-insert safety fields and bidirectional interaction rows.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - Sent the `DrugAlertRule` RLS follow-up review request first, then resumed this in-progress non-overlapping slice.
+- Fixed:
+  - Converted the route from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Wrapped the exported GET with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved authenticated-user access without adding `canAdmin`, because the previous route did not require an admin permission.
+  - Preserved route-id normalization, not-found behavior, `drugMaster.findUnique` include shape, package insert select shape, interaction counterpart select shape, response shape, and contraindicated/caution/minor interaction priority sort.
+  - Kept this route outside `withOrgContext` because it reads true global shared DrugMaster, DrugPackageInsert, and DrugInteraction tables; it does not query the hybrid `DrugAlertRule` table.
+- Tests:
+  - Replaced the generic wrapper mock with real route-local auth helper coverage through auth and membership mocks.
+  - Added no-store assertions for 401, success, validation, 404, and fixed 500 paths.
+  - Added auth-before-safety-data coverage.
+  - Added sanitized fixed-500 logging coverage proving raw interaction error text, custom error names, and raw Error objects do not reach response/log payloads.
+  - Preserved the regression that all returned interactions are sorted by safety priority without truncating before contraindications.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-masters/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - Scoped ESLint for the detail route/test: passed.
+  - Scoped Prettier check for the detail route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Protected route matrix search found no existing `drug-masters` entry, so direct route tests cover auth/no-store for this slice.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran route tests `6/6` and confirmed access semantics stayed any-authenticated, metadata-only fixed-500/no-store handling is sufficient, include graph / interaction sort / response shape were preserved, and no `withOrgContext` is needed because this route does not query hybrid `DrugAlertRule`.
+- Remaining:
+  - No open blocker for this slice.
+
+### Drug Masters Package Insert GET RLS and Fixed-Error Hardening - 2026-06-29 11:03 JST
+
+- Scope:
+  - Hardened `GET /api/drug-masters/[id]/package-insert`, the package insert / interaction / applicable alert-rule detail endpoint.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - Processed Claude approvals for the status `DrugAlertRule` RLS follow-up and plain DrugMaster detail route before continuing.
+- Fixed:
+  - Converted the route from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Moved drug lookup, package insert versions, bidirectional interactions, and applicable `DrugAlertRule` lookup into `withOrgContext(ctx.orgId, ..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 })`.
+  - Wrapped the exported GET with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved previous any-authenticated access without adding an admin permission.
+  - Preserved route-id normalization, not-found behavior, drug select shape, package insert section formatting, version history shape, interaction merge shape, alert-rule applicability filtering, and response shape.
+  - Fixed the `DrugAlertRule` RLS-context fragility directly: the route still returns both org-specific and global baseline active rules, but the hybrid `DrugAlertRule` query now runs under RLS context.
+  - Blank route ids still fail before opening the RLS transaction.
+- Tests:
+  - Replaced the old wrapper/client mocks with direct route-local auth and `withOrgContext` tx mocks.
+  - Added no-store assertions for 401, success, validation, 404, and fixed 500 paths.
+  - Added auth-before-read and blank-id-before-RLS assertions.
+  - Added request-context propagation coverage for `withOrgContext`.
+  - Added a regression assertion that applicable alert rules are queried as `{ is_active: true, OR: [{ org_id: ctx.orgId }, { org_id: null }] }`.
+  - Added sanitized fixed-500 logging coverage proving raw package-insert safety text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-masters/[id]/package-insert/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests.
+  - Scoped ESLint for the package-insert route/test: passed.
+  - Scoped Prettier check for the package-insert route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran route tests `13/13`, confirmed this route had the same pre-existing `DrugAlertRule` fail-closed fragility, and confirmed `withOrgContext` is the correct complete remediation because the route intentionally needs org-specific plus global alert rules.
+  - Claude confirmed package insert / interaction / alert-rule response semantics were preserved.
+- Remaining:
+  - No open blocker for this slice.
+
+### Drug Masters Generic Recommendations GET RLS and Fixed-Error Hardening - 2026-06-29 11:08 JST
+
+- Scope:
+  - Hardened `GET /api/drug-masters/[id]/generic-recommendations`, the admin generic substitution recommendation endpoint with site formulary status.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - Processed Claude's package-insert approval before continuing.
+- Fixed:
+  - Converted the route from generic `withAuthContext` to route-local `requireAuthContext({ permission: 'canAdmin' })` plus `runWithRequestAuthContext`.
+  - Moved `PharmacySite`, `DrugMaster`, `GenericDrugMapping`, and `PharmacyDrugStock` reads into `withOrgContext(ctx.orgId, ..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 })`.
+  - Wrapped the exported GET with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved existing admin-only access, route/query validation, site not-found behavior, target lookup, generic-name-missing branch, candidate ordering/limit, mapping lookup, site stock projection, price-delta calculation, and response shape.
+- Tests:
+  - Added no-store assertions for success, validation, 403, and fixed 500 paths.
+  - Added request-context propagation coverage for `withOrgContext`.
+  - Added validation-before-RLS and denied-admin-before-recommendation-read coverage.
+  - Added sanitized fixed-500 logging coverage proving raw generic recommendation text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-masters/[id]/generic-recommendations/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `4` tests.
+  - Scoped ESLint for the generic-recommendations route/test: passed.
+  - Scoped Prettier check for the generic-recommendations route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran route tests `4/4`, confirmed `withOrgContext` correctly covers org-scoped site/stock reads, `canAdmin` was preserved, and recommendation/mapping/stock response semantics were unchanged.
+- Remaining:
+  - No open blocker for this slice.
+
+### Drug Masters Ingredient Group GET RLS and Fixed-Error Hardening - 2026-06-29 11:12 JST
+
+- Scope:
+  - Hardened `GET /api/drug-masters/[id]/ingredient-group`, the admin same-generic-name group endpoint with site formulary status.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - Processed Claude's generic-recommendations approval before continuing.
+- Fixed:
+  - Converted the route from generic `withAuthContext` to route-local `requireAuthContext({ permission: 'canAdmin' })` plus `runWithRequestAuthContext`.
+  - Moved `PharmacySite`, `DrugMaster`, and `PharmacyDrugStock` reads into `withOrgContext(ctx.orgId, ..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 })`.
+  - Wrapped the exported GET with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved existing admin-only access, route/query validation, site not-found behavior, target lookup, generic-name-missing branch, group member ordering/limit, site stock projection, summary count/price calculations, and response shape.
+- Tests:
+  - Added no-store assertions for success, generic-name-missing, not-found, validation, 403, and fixed 500 paths.
+  - Added request-context propagation coverage for `withOrgContext`.
+  - Added validation-before-RLS and denied-admin-before-group-read coverage.
+  - Added sanitized fixed-500 logging coverage proving raw ingredient-group text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-masters/[id]/ingredient-group/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - Scoped ESLint for the ingredient-group route/test: passed.
+  - Scoped Prettier check for the ingredient-group route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran route tests `6/6`, confirmed `withOrgContext` correctly covers org-scoped site/stock reads, `canAdmin` was preserved, and member/summary/stock response semantics were unchanged.
+- Remaining:
+  - No open blocker for this slice.
+
+### Drug Masters List GET RLS and Fixed-Error Hardening - 2026-06-29 11:19 JST
+
+- Scope:
+  - Hardened `GET /api/drug-masters`, the DrugMaster list/search endpoint that can include site formulary status.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - Processed Claude's ingredient-group approval before continuing.
+- Fixed:
+  - Converted the route from generic `withAuthContext` to route-local `requireAuthContext` without permission options, preserving previous any-authenticated access.
+  - Moved `PharmacySite`, `DrugMaster`, `GenericDrugMapping`, and `PharmacyDrugStock` reads into `withOrgContext(ctx.orgId, ..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 })`.
+  - Wrapped the exported GET with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved query validation, safe cursor fallback, YJ/receipt/HOT/JAN code search aliases, high-risk/LASA filters, stocked-only site filter, total-count option, generic price comparison projection, `stock_config` shape, pagination, and response shape.
+- Tests:
+  - Replaced the old generic auth wrapper mock with route-local auth and `withOrgContext` tx mocks.
+  - Added no-store assertions for success, validation, cursor fallback, search, lightweight no-total, 401, and fixed 500 paths.
+  - Added request-context propagation coverage for `withOrgContext`.
+  - Added validation-before-RLS and unauthenticated-before-read coverage.
+  - Added sanitized fixed-500 logging coverage proving raw list text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-masters/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `11` tests.
+  - Scoped ESLint for the DrugMaster list route/test: passed.
+  - Scoped Prettier check for the DrugMaster list route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran route tests `11/11`, confirmed `withOrgContext` covers site/stock and the `stocked=true` relation filter, previous any-authenticated access was preserved, and search/filter/pagination/generic mapping/stock_config semantics were unchanged.
+- Remaining:
+  - No open blocker for this slice.
+
+### Drug Masters Batch POST No-Store and Fixed-Error Hardening - 2026-06-29 11:24 JST
+
+- Scope:
+  - Hardened `POST /api/drug-masters/batch`, the true-global YJ-code batch lookup endpoint.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - Processed Claude's DrugMaster list approval before continuing.
+- Fixed:
+  - Converted the route from generic `withAuthContext` to route-local `requireAuthContext` without permission options, preserving previous any-authenticated access.
+  - Added `runWithRequestAuthContext`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Kept this route outside `withOrgContext` because it only reads true-global `DrugMaster` rows by YJ code and does not touch org-scoped or hybrid RLS tables.
+  - Preserved body validation, 200-code cap, YJ-code trim/de-duplication, select shape, and response shape keyed by YJ code.
+- Tests:
+  - Replaced the old generic auth wrapper mock with route-local auth helper coverage.
+  - Added no-store assertions for success, validation, malformed JSON, 401, and fixed 500 paths.
+  - Added unauthenticated-before-body/read coverage.
+  - Added sanitized fixed-500 logging coverage proving raw batch lookup text, custom error names, and raw Error objects do not reach response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-masters/batch/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - Scoped ESLint for the DrugMaster batch route/test: passed.
+  - Scoped Prettier check for the DrugMaster batch route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude independently reran route tests `6/6`, confirmed previous any-authenticated access was preserved, confirmed `withOrgContext` is not needed because the route only touches true-global `DrugMaster`, and confirmed validation/de-dupe/select/response semantics were unchanged.
+- Remaining:
+  - No open blocker for this slice.
+
+### Manual Clinical Drug Master Import POST RLS and Alert-Rule Scope Hardening - 2026-06-29 11:29 JST
+
+- Scope:
+  - Hardened `POST /api/drug-master-imports/manual-clinical`, the admin manual clinical rule import endpoint.
+  - Fixed the service-level `DrugAlertRule` replacement scope for the hybrid global/org rule table.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+  - Processed Claude's DrugMaster batch approval before continuing.
+- Fixed:
+  - Converted the route from generic `withAuthContext` + manual `isAdmin` to route-local `requireAuthContext({ permission: 'canAdmin' })`.
+  - Moved `importManualClinicalRules` into `withOrgContext(ctx.orgId, ..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 30_000 })` because the import touches hybrid `DrugAlertRule`.
+  - Added `runWithRequestAuthContext`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Changed `replaceAlertRules` to delete only global baseline rules with `where: { alert_type, org_id: null }` and create replacement rules with `org_id: null`, preventing global manual imports from deleting org-specific alert-rule tuning.
+  - Recorded this `replaceAlertRules` scope change as a data-safety fix: the previous `alert_type`-only delete could wipe org-specific tenant alert-rule tuning in the hybrid `DrugAlertRule` table.
+  - Confirmed the related manual clinical import behavior change: clinical rule write identity now requires `yj_code`, and name-only fuzzy `drug_name contains` lookup is rejected before DrugMaster writes so clinical safety metadata is not applied to the wrong same-name/different-code drug.
+  - Preserved optional body handling, schema validation, import service response mapping, count fields, and 201 response shape.
+- Tests:
+  - Route test now uses route-local auth helper coverage and `withOrgContext` tx mocks.
+  - Added no-store assertions for validation, success, 403, and fixed 500 paths.
+  - Added denied-admin-before-body/import coverage and request-context propagation coverage.
+  - Added sanitized fixed-500 logging coverage proving raw manual clinical import text, custom error names, and raw Error objects do not reach response/log payloads.
+  - Service test now locks `DrugAlertRule` replacement to `org_id: null` for delete and create.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/drug-master-imports/manual-clinical/route.test.ts' 'src/server/services/drug-master-import/manual.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `12` tests.
+  - Scoped ESLint for route/test/service/test: passed.
+  - Scoped Prettier check for route/test/service/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice. Independent review reran the route/service tests (`12/12` passed), confirmed admin permission equivalence, supported the `org_id: null` global-baseline scope fix, and requested the data-safety/behavior-change ledger notes above.
+- Remaining:
+  - None for this manual-clinical slice.
+
+### Visit Vehicle Resource Detail PATCH PHI/RLS Hardening - 2026-06-29 10:14 JST
+
+- Scope:
+  - Completed the visit vehicle resource route family by hardening `PATCH /api/visit-vehicle-resources/[id]`.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Converted the detail PATCH route from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Added explicit `withOrgContext(..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 })` to the existing find/update/audit transaction.
+  - Wrapped the exported route with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved existing `canAdmin`, route-id validation, body validation, next-inspection date validation, sparse update payload, null/undefined semantics, not-found behavior, audit payload, and response shape.
+- Tests:
+  - Route test now uses the real `requireAuthContext` path through auth and membership mocks.
+  - Added no-store assertions for success, validation, not-found, auth failure, and unexpected-error responses.
+  - Added auth-before-body/update/audit coverage and sanitized-500 logging coverage that rejects raw patch notes/custom error names/raw Error objects in response/log payloads.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/visit-vehicle-resources/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `8` tests.
+  - Scoped ESLint for the detail route/test: passed.
+  - Scoped Prettier check for the detail route/test: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers and independently reran the route test `8/8` passing.
+  - Claude confirmed the vehicle-resource route family hardening is complete across GET/POST and PATCH.
+- Remaining:
+  - No open finding for this slice. The prior pharmacist-shifts/bulk route-local hardening slice is also Claude-approved with no blockers.
+
+### 2026-06-29 JST - PCA Pumps GET/POST PHI/RLS Hardening
+
+- Coordination:
+  - Drained agmsg first; Claude had no new pending request or PCA rentals review response yet.
+  - Preserved unrelated dirty API/PHI/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend/privacy hardening:
+  - Converted `GET`/`POST /api/pca-pumps` from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Wrapped both exports with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved existing RLS request-context propagation for list/search and create transactions.
+  - Preserved `canReport`/`canAdmin`, status validation, q-search bounded pagination, unfiltered ledger behavior, create validation, local maintenance-date serialization, audit log, and response shapes.
+- Tests added/updated:
+  - Route test now uses the real `requireAuthContext` path instead of a local `withAuthContext` mock.
+  - Route test now covers no-store success/validation responses, POST auth failure before body parsing/RLS write/pump create/audit log, and metadata-only no-store 500 logging for GET/POST without raw serial text.
+  - Protected GET/POST matrices now include `pca-pumps` and cover no-store 401/403/400 behavior.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/app/api/pca-pumps/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "pca-pumps GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `366` skipped.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "pca-pumps POST" --reporter=dot --testTimeout=30000`: passed, `3` tests / `127` skipped.
+  - Scoped ESLint for PCA pumps route/test and protected GET/POST matrices: passed.
+  - Scoped Prettier check for the same files: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining work:
+  - Send Claude a `PATCH_REVIEW_REQUEST` for this slice and address findings. Then continue the next backend PHI/RLS or drug-code slice after inbox stays clear. The previous PCA rentals slice is Claude-approved with no blockers.
+
+### Dispense Results POST Carry Code Fallback — 2026-06-29 09:00 JST
+
+- Scope:
+  - Continued backend medication-code identity hardening in `POST /api/dispense-results`.
+  - Preserved unrelated dirty work and did not edit Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, or destructive paths.
+- Fixed:
+  - Initial dispense completion now selects each persisted result's prescribed line `drug_name` and `drug_code` when regenerating visit-schedule `carry_items`.
+  - Visit carry items now use `actual_drug_code ?? line.drug_code ?? null`, preserving prescribed medication identity when actual result code evidence is empty/null.
+  - Visit carry item `drug_name` also falls back to the prescribed line name if the actual name is empty.
+  - Added regression coverage for a POST dispense completion where `actual_drug_code` is omitted/null but the prescribed line has `drug_code`.
+- Validation:
+  - Focused regression passed: `1` test / `37` skipped.
+  - `pnpm exec vitest run src/app/api/dispense-results/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `38` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t 'dispense-results POST' --reporter=dot --testTimeout=30000`: passed, `3` tests / `127` skipped.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this backend slice with no blockers and independently confirmed the route tests `3` files / `119` tests plus drug-code backward compatibility, residual dedupe safety, PHI/RLS/no-store boundaries, and raw SQL medication JSON safety.
+- Remaining:
+  - FE can consume the new structured prescription-change fields in a later UI slice if needed.
+  - Future candidate: normalize empty actual drug-code strings before fallback so `''` cannot block prescribed-line code propagation.
+
+### Prescription Intake Duplicate Validation Identity — 2026-06-29 09:03 JST
+
+- Scope:
+  - Validated and recorded a non-overlapping prescription intake validation slice while Claude reviews the two `dispense-results` carry-code patches.
+  - Did not edit the active Claude review files, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, or destructive paths.
+- Fixed:
+  - `collectDuplicatePrescriptionLines()` now groups by the shared namespaced `medicationIdentityKey()`.
+  - User-facing duplicate `key` remains the existing display key (`drug_code` when present, otherwise trimmed `drug_name`) for response compatibility.
+  - Added regression coverage proving an uncoded drug name that looks like a resolved drug code does not collapse with the coded line.
+- Validation:
+  - `pnpm exec vitest run src/lib/prescription/intake-validation.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `3` tests.
+  - `pnpm exec vitest run src/server/services/prescription-intake-service.test.ts src/app/api/prescription-intakes/facility-batch/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `38` tests.
+  - `pnpm exec vitest run src/lib/prescription/medication-diff.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `16` tests.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers and independently reran the focused tests `3/3` passing.
+  - Claude confirmed the code/name namespace separation matches prior triage/CDS code-first patterns and preserves consumer contract.
+- Remaining:
+  - No open finding for this slice.
+
+### Dispense Results Empty Actual-Code Carry Fallback — 2026-06-29 09:08 JST
+
+- Scope:
+  - Addressed Claude's non-blocking review finding from the approved `[id]` rework and POST carry-code fallback slices.
+  - Preserved unrelated dirty work, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Carry-item `drug_code` projection now normalizes `actual_drug_code` text before applying the prescribed-line fallback.
+  - Blank strings such as `''` now fallback to `line.drug_code` instead of being propagated as an empty carry-item code.
+  - `[id]` rework and POST initial completion now use the same normalization behavior.
+- Validation:
+  - Focused carry fallback regression passed: `2` tests / `54` skipped across `[id]` and POST route test files.
+  - `pnpm exec vitest run 'src/app/api/dispense-results/[id]/route.test.ts' src/app/api/dispense-results/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `56` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-post-routes.test.ts -t 'dispense-results POST' --reporter=dot --testTimeout=30000`: passed, `3` tests / `127` skipped.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this follow-up with no blockers and independently reran the two dispense-results route test files `56/56` passing.
+- Remaining:
+  - No open finding for this slice.
+
+### Dispense Results Replay Drug Identity — 2026-06-29 09:14 JST
+
+- Scope:
+  - Isolated the previously scope-out `actualDrugIdentityMatches()` behavior for independent review.
+  - No additional source/test edits were made in this checkpoint; the work is validation and review packaging for the already-present replay identity helper.
+- Fixed:
+  - Stale idempotent replay now matches actual drug identity by normalized actual code when either side has code evidence.
+  - Same actual code with display-name drift replays safely without duplicate side effects.
+  - Same display name with different actual codes remains a conflict instead of replaying.
+  - Both-uncoded lines retain name fallback behavior.
+- Validation:
+  - Focused replay identity tests passed: `2` tests / `36` skipped.
+  - `pnpm exec vitest run src/app/api/dispense-results/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `38` tests.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this slice with no blockers.
+  - Claude's only non-blocking suggestion was to add explicit blank-code replay tests.
+- Remaining:
+  - Blank-code replay tests were added in the 09:20 checkpoint.
+
+### Dispense Results Blank-Code Replay Tests + QR Name Fallback Preference — 2026-06-29 09:20 JST
+
+- Scope:
+  - Addressed Claude's non-blocking replay-test suggestion.
+  - Added a separate QR/JAHIS DrugMaster name-fallback hardening slice.
+  - Preserved unrelated dirty files, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - Added explicit replay tests for two blank-code edge cases:
+    - both existing/submitted actual drug codes blank with the same name replays idempotently;
+    - one side blank and the other coded remains a version conflict.
+  - QR/JAHIS name fallback now prefers an exact `DrugMaster.drug_name` candidate over earlier partial-name candidates.
+  - QR name fallback remains `review_required`; name matching still does not resolve the prescription line code.
+- Validation:
+  - Dispense replay focused tests passed: `5` tests / `35` skipped.
+  - QR name fallback focused tests passed: `3` tests / `44` skipped.
+  - `pnpm exec vitest run src/app/api/dispense-results/route.test.ts src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `87` tests.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the dispense-results replay blank-code test follow-up with no blockers and independently reran route tests `40/40` passing.
+  - Claude approved the QR/JAHIS name fallback exact-candidate preference with no blockers and independently reran QR mapper tests `47/47`, QR scan drafts route tests `24/24`, and full typecheck.
+- Remaining:
+  - Continue downstream code-first medication identity work.
+
+### QR Allergy Promotion Code-First Duplicate Detection — 2026-06-29 09:23 JST
+
+- Scope:
+  - Validated and packaged the QR allergy promotion code-first duplicate detection slice.
+  - No additional source/test edits were made in this checkpoint; the code-first QR allergy changes were already present in the dirty tree.
+- Fixed:
+  - QR allergy promotion now extracts explicit YJ/canonical allergy drug codes.
+  - Promoted allergy entries retain `drug_code` evidence when available.
+  - Duplicate allergy suppression checks canonical `drug_code` first.
+  - Same-name/different-code allergy entries are not suppressed when both entries are coded.
+  - Legacy name-only allergy entries still suppress coded QR entries with the same name as a cautious compatibility fallback.
+- Validation:
+  - `pnpm exec vitest run src/server/services/qr-allergy-promotion.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `14` tests.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - Earlier same-turn `pnpm typecheck` and `pnpm typecheck:no-unused` passed with these source files already present in the dirty tree.
+- Review:
+  - Claude approved this QR allergy promotion code-first duplicate detection slice with no blockers and independently reran QR allergy promotion tests `14/14`.
+- Remaining:
+  - Continue downstream code-first medication identity work.
+
+### Visit Workflow Medication Identity + PHI/RLS Hardening — 2026-06-29 09:28 JST
+
+- Scope:
+  - Validated and packaged the existing backend dirty slice across visit preparation, visit records, and residual medications.
+  - No additional source/test edits were made in this checkpoint.
+- Fixed:
+  - Visit-preparation prescription-change summaries include `drug_code` alongside display names for added/changed/removed medications.
+  - Visit-record latest-prescription history includes structured `{ drug_name, drug_code }` medication summaries.
+  - Residual-reduction tracing/task labels and dedupe keys use code-first identity when available.
+  - Residual-reduction tracing metadata and prohibited-reduction task metadata include normalized drug codes and identity keys.
+  - `GET`/`POST /api/visit-records` and `GET`/`POST /api/residual-medications` use route-local auth, request context, no-store fixed-error wrappers, performance wrapper, and metadata-only logging.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/visit-preparations/[scheduleId]/route.test.ts' src/app/api/visit-records/route.test.ts src/app/api/residual-medications/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `119` tests.
+  - Protected GET targeted matrix for visit-preparations/visit-records/residual-medications: passed, `12` tests / `357` skipped.
+  - Protected POST targeted matrix for visit-records/residual-medications: passed, `6` tests / `124` skipped.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude review request is next for this backend slice.
+- Remaining:
+  - Address Claude's review if any.
+
+### Claude Patient Detail Orphaned Panels Review — 2026-06-29 09:35 JST
+
+- Scope:
+  - Reviewed Claude's FE-lane deletion of orphaned patient-detail panels and the rev2 stale query key cleanup.
+  - Did not edit Claude-owned source files.
+- Review result:
+  - Initial review returned `CHANGES_REQUESTED` because `src/lib/visits/query-invalidations.ts` still contained the stale `['patient-visits-panel', patientId, orgId]` invalidation key after the panel deletion.
+  - Claude rev2 removed that stale key.
+  - Codex rechecked that `src/` has no remaining `patient-visits-panel` or `PatientVisitsPanel` references.
+- Validation:
+  - `pnpm exec vitest run src/lib/visits/query-invalidations.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `2` tests.
+  - Scoped ESLint for query invalidation files: passed.
+  - `git diff --check` for query invalidation files: passed.
+  - Rev2 scoped Prettier for `src/lib/visits/query-invalidations.ts` and `src/lib/visits/query-invalidations.test.ts`: failed; `--list-different` reported both files.
+  - Rev3 scoped Prettier for the same files: passed.
+- Review:
+  - Sent Claude `CHANGES_REQUESTED` for rev3 formatting, then approved rev3 after the scoped formatting gate passed.
+- Remaining:
+  - None for this review slice.
+
+### Management Plans List Payload Minimization — 2026-06-29 09:43 JST
+
+- Scope:
+  - Implemented Claude-discovered backend/privacy candidate `minimize-management-plans-list-payload`.
+  - Limited the change to `GET /api/management-plans` list response and tests.
+  - Detail, print, PDF, POST, and PATCH paths continue to use full management-plan content where needed.
+- Fixed:
+  - `GET /api/management-plans` no longer fetches or returns full `content`, `summary`, creator/reviewer/approver user IDs, or `source_plan_id` in list responses.
+  - The route now uses a metadata-only Prisma `select`.
+  - The response also passes through an explicit allowlist mapper before `success({ data })`.
+  - Current `card-workspace.tsx` consumer only uses approved plan metadata for the share-case dropdown, and print view fetches full plan content from `/api/management-plans/[id]`.
+- Validation:
+  - `pnpm exec vitest run src/app/api/management-plans/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `15` tests.
+  - Combined route/detail/card-workspace/print validation passed: `4` files / `103` tests.
+  - Protected GET targeted matrix for `management-plans GET|management-plans/[id] GET`: passed, `6` tests / `363` skipped.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this backend/privacy slice with no blockers and independently confirmed list consumers, removed fields, retained metadata semantics, and Date serialization.
+- Remaining:
+  - None for this slice.
+
+### Notifications GET Route-Local PHI-Safe Logging — 2026-06-29 09:49 JST
+
+- Scope:
+  - Hardened `GET /api/notifications` while preserving the existing notification PATCH hardening dirty hunk in the same file.
+  - Limited the source change to the notifications route and route test.
+- Fixed:
+  - `GET /api/notifications` no longer uses generic `withAuthContext` for the list path.
+  - The route now uses route-local `requireAuthContext`, `runWithRequestAuthContext`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, and fixed `internalError()` fallback.
+  - Unexpected GET failures now log only metadata: event, route, method, status, and safe error name.
+  - The regression test verifies raw patient notification error text and custom error names are not emitted in the response or logger calls.
+- Preserved:
+  - Current-user notification reads.
+  - Admin cross-user read behavior.
+  - Summary unread count behavior.
+  - Cursor pagination, org/user filters, RLS `withOrgContext`, no-store response headers, and existing PATCH behavior.
+- Validation:
+  - `pnpm exec vitest run src/app/api/notifications/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `10` tests.
+  - Protected GET targeted matrix for notifications: passed, `3` tests / `366` skipped.
+  - Protected PATCH targeted matrix for notifications: passed, `2` tests / `69` skipped.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this backend/privacy slice with no blockers and independently confirmed route-local auth, RLS/no-store preservation, metadata-only logging, raw-error exclusion, and PATCH preservation.
+- Remaining:
+  - None for this slice.
+
+### Dispense Queue GET Route-Local PHI/RLS No-Store Hardening — 2026-06-29 09:58 JST
+
+- Scope:
+  - Hardened `GET /api/dispense-queue` while keeping the existing queue response contract intact.
+  - Preserved unrelated dirty files, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - `GET /api/dispense-queue` no longer uses generic `withAuthContext` or direct Prisma reads for the queue list path.
+  - The route now uses route-local `requireAuthContext`, `runWithRequestAuthContext`, `withOrgContext(..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 })`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, and fixed `internalError()` fallback.
+  - Unexpected GET failures now log only metadata: event, route, method, status, and safe error name.
+  - The regression test verifies raw patient/address/drug inquiry error text, custom error names, and raw error objects are not emitted in the response or logger calls.
+- Preserved:
+  - `canDispense` authorization.
+  - Existing org/status filters, cycle assignment scoping, ordering, includes, `annotateDispenseTask`, `sortDispenseTasks('created_at')`, and response shape.
+- Validation:
+  - `pnpm exec vitest run src/app/api/dispense-queue/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `2` tests.
+  - Protected GET targeted matrix for `dispense-queue GET`: passed, `3` tests / `366` skipped.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this backend/privacy slice with no blockers and independently reran route tests plus the protected GET targeted matrix `5/5` passing.
+  - Claude confirmed canDispense preservation, byte-equivalent query body under `withOrgContext`, requestContext propagation, PHI-safe logging, fixed no-store error envelope, and no performance-wrapper concern.
+- Remaining:
+  - None for this slice.
+
+### Visit Vehicle Resources GET/POST Route-Local Hardening — 2026-06-29 10:06 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/visit-vehicle-resources` while keeping the existing vehicle resource response contract intact.
+  - Preserved unrelated dirty files, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - `GET`/`POST /api/visit-vehicle-resources` no longer use generic `withAuthContext`.
+  - Both routes now use route-local `requireAuthContext`, `runWithRequestAuthContext`, `withOrgContext(..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 })`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, and fixed `internalError()` fallback.
+  - Unexpected failures now log only metadata: event, route, method, status, and safe error name.
+  - Regression tests verify auth failures return before reads/body parsing/writes, success/validation/error responses are no-store, RLS requestContext is propagated, and raw vehicle notes/custom error names/raw Error objects are not emitted in response or logger calls.
+- Preserved:
+  - `canVisit` read authorization and `canAdmin` create authorization.
+  - Existing site reference validation, query/body validation, bounded `limit`, ordering, included site shape, normalized optional fields, create payload, and response shape.
+- Validation:
+  - `pnpm exec vitest run src/app/api/visit-vehicle-resources/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `11` tests.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this backend/operations hardening slice with no blockers and independently reran route tests `11/11` passing.
+  - Claude confirmed canVisit/canAdmin preservation, direct-call compatibility, byte-equivalent findMany/create body under explicit requestContext, metadata-only logging/no-store consistency, and accepted deferring large protected matrix churn for this slice.
+- Remaining:
+  - None for this slice.
+
+### Pharmacist Shifts Bulk POST Route-Local Hardening — 2026-06-29 10:10 JST
+
+- Scope:
+  - Hardened `POST /api/pharmacist-shifts/bulk` while keeping the existing bulk shift import contract intact.
+  - Preserved unrelated dirty files, Claude-owned FE files, Prisma schema, migrations, DB data, deploys, commits, pushes, and destructive paths.
+- Fixed:
+  - `POST /api/pharmacist-shifts/bulk` no longer uses generic `withAuthContext`.
+  - The route now uses route-local `requireAuthContext`, `runWithRequestAuthContext`, `withOrgContext(..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 })`, `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, and fixed `internalError()` fallback.
+  - Unexpected failures now log only metadata: event, route, method, status, and safe error name.
+  - Regression tests verify auth failure returns before body parsing/reference checks/upserts, validation and invalid-reference failures are no-store, RLS requestContext is propagated, and raw shift-note/custom error-name/raw Error objects are not emitted in response or logger calls.
+- Preserved:
+  - `canVisit` authorization.
+  - Existing non-object body rejection, row validation, invalid date/time rejection, row reference validation, invalid reference error envelope, per-row upsert data shape, time normalization, `applied_count`, and `201` response shape.
+- Validation:
+  - `pnpm exec vitest run src/app/api/pharmacist-shifts/bulk/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude review request is next for this backend/operations hardening slice.
+- Remaining:
+  - Address Claude's review if any.
+
+### 2026-06-29 JST - PCA Pump Rentals GET/POST PHI/RLS Hardening
+
+- Coordination:
+  - Drained agmsg first; Claude had no new pending request.
+  - Preserved unrelated dirty API/PHI/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend/privacy hardening:
+  - Converted `GET`/`POST /api/pca-pump-rentals` from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Wrapped both exports with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Preserved existing RLS request-context propagation for list, reference lookup, and rental create transactions.
+  - Preserved `canReport`/`canAdmin`, status and inspection filters, institution filter validation, pump/institution reference checks, available-pump claim, open-rental unique-race handling, default accessory creation, audit log, and response shapes.
+- Tests added/updated:
+  - Route test now uses the real `requireAuthContext` path instead of a local `withAuthContext` mock.
+  - Route test now covers POST auth failure before body parsing, RLS reads, pump/institution lookup, rental create, accessories, or audit log.
+  - Route test now covers metadata-only no-store 500 logging for GET and POST without raw contact phone/serial text.
+  - Protected GET/POST matrices now call the route with the current one-argument export shape and cover `pca-pump-rentals POST` 401/403/400 no-store behavior.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/app/api/pca-pump-rentals/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `17` tests.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "pca-pump-rentals POST" --reporter=dot --testTimeout=30000`: passed, `3` tests / `124` skipped.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "pca-pump-rentals GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - Scoped ESLint for PCA rentals route/test and protected GET/POST matrices: passed.
+  - Scoped Prettier check for the same files: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining work:
+  - Claude approved this PCA pump rentals slice with no blockers, including a deeper logger object-overload check. Continue adjacent PCA pumps hardening and then the next backend PHI/RLS or drug-code slice after inbox stays clear.
+
+### 2026-06-29 JST - Medication Code Master Learning
+
+- Coordination:
+  - Drained agmsg first; Claude had no new pending request.
+  - Preserved the existing dirty worktree and did not touch source code, Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Official-source learning:
+  - Updated `docs/drug-code-master-architecture.md` so the medication-code memo explicitly treats MHLW/SSK basic master data as the base, with published file date/count treated as import metadata rather than hard-coded application truth.
+  - Recorded the practical split between YJ / receipt code / HOT / GS1 GTIN: YJ is the prescription/downstream canonical medication identity, receipt code is the claim/master import code, HOT is a cross-code mapping key, and GS1/GTIN is package/evidence identity for physical barcode verification.
+  - Clarified that the user's "GSI" wording should be handled as `GS1` / `GTIN` in medical barcode contexts unless the user later specifies otherwise.
+- Implementation guardrails recorded:
+  - Code-resolved prescription lines must not be joined, deduped, diffed, or routed by `drug_name`.
+  - GS1/GTIN scans resolve through a package layer to DrugMaster/YJ and must not become the prescription-line canonical code.
+  - External QR/JAHIS/receipt/HOT source codes should be retained as source evidence and normalized to YJ; unresolved rows remain `review_required`.
+  - Future master imports should save source file hash, publication date, row count, full/delta type, and dry-run/diff summary before any broad update.
+- Validation passed:
+  - `./node_modules/.bin/prettier --check docs/drug-code-master-architecture.md .codex/ralph-state.md CODEX_GOAL_PROGRESS.md`: passed.
+  - `git diff --check -- docs/drug-code-master-architecture.md .codex/ralph-state.md CODEX_GOAL_PROGRESS.md`: passed.
+
+### 2026-06-29 JST - Pharmacists GET/POST PHI/RLS Hardening
+
+- Coordination:
+  - Drained agmsg first; no new Claude message was pending before this slice.
+  - Claude approved this slice. Its only non-blocking question was the bare email-existence read before Cognito invite; Codex confirmed this is an intentional RLS-outside exception because Cognito/email uniqueness must remain global across orgs. The read is canAdmin-gated and selects only `id`.
+  - Preserved unrelated dirty API/PHI/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend/privacy hardening:
+  - Converted `GET`/`POST /api/pharmacists` from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Wrapped both exports with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Moved GET staff membership and monthly visit-count reads into one `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`.
+  - Passed explicit `{ requestContext: ctx }` into the POST invitation DB transaction.
+  - Preserved `canVisit`/`canAdmin`, collaborator admin guard, site filter validation, bounded limit behavior, dedupe behavior, Cognito invite, DB create, audit log, and Cognito cleanup rollback behavior.
+- Tests added/updated:
+  - Route test now asserts explicit RLS request-context propagation for GET staff listing/monthly counts and POST invitation writes.
+  - Route test now covers no-store auth failure before body parsing/reference checks/Cognito invite/DB writes.
+  - Route test now asserts metadata-only 500 logging without raw thrown text.
+  - Protected POST matrix now expects no-store for `pharmacists POST` 401/403/400.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/app/api/pharmacists/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `22` tests.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "pharmacists GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "pharmacists POST" --reporter=dot --testTimeout=30000`: passed, `3` tests / `121` skipped.
+  - Scoped ESLint for pharmacists route/test and protected GET/POST matrices: passed.
+  - Scoped Prettier check for the same files: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining work:
+  - This slice is Claude-approved with no blockers. Continue the next backend PHI/RLS or drug-code slice after inbox stays clear.
+
+### 2026-06-29 JST - Pharmacist Shifts Available GET PHI/RLS Hardening
+
+- Coordination:
+  - Drained agmsg first; no new Claude message was pending before this slice.
+  - Attempted to spawn a `code_mapper` subagent for the route scope, but the active thread had reached the agent limit; Codex completed the mapping inline.
+  - Claude approved this slice after review, confirming the pharmacist-shifts GET/POST plus available GET family is now aligned on the standard PHI/RLS hardening pattern. Codex ACKed the approval via agmsg.
+  - Preserved unrelated dirty API/PHI/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend/privacy hardening:
+  - Converted `GET /api/pharmacist-shifts/available` from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Wrapped the export with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Moved business-holiday and pharmacist-shift availability reads into a single `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`.
+  - Preserved `canVisit`, required date validation, time-window validation, org-wide closure early return, blocked-site filtering, bounded `limit`, sort order, `take: limit + 1`, `has_more`, and response shape.
+- Tests added/updated:
+  - Route test now asserts route-local auth options, route performance wrapper, request-auth context wrapping, and explicit RLS request-context propagation.
+  - Route test now covers no-store auth failure before validation/DB reads and metadata-only 500 logging without raw thrown text.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/app/api/pharmacist-shifts/available/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `13` tests.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "pharmacist-shifts/available GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - `./node_modules/.bin/vitest run src/app/api/pharmacist-shifts/route.test.ts src/app/api/pharmacist-shifts/available/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `30` tests.
+  - Scoped ESLint for available route/test and protected GET matrix: passed.
+  - Scoped Prettier check for the same files: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining work:
+  - This slice is Claude-approved with no blockers. Continue the next backend PHI/RLS or drug-code slice after pending review messages are handled.
+
+### 2026-06-29 JST - Pharmacist Shifts GET/POST PHI/RLS Hardening
+
+- Coordination:
+  - Drained agmsg first; Claude approved patient-prescriptions PHI/RLS hardening with one non-blocking defense-in-depth note, which Codex applied before continuing.
+  - Claude later acknowledged the patient-prescriptions micro-fix and approved the pharmacist-shifts GET/POST PHI/RLS hardening slice. Codex ACKed the approval via agmsg.
+  - Reviewed and approved Claude commit `27dd254e`, restoring intentional force-desktop-44px medical touch targets in handoff/billing CTAs.
+  - Preserved unrelated dirty API/PHI/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend/privacy hardening:
+  - Converted `GET`/`POST /api/pharmacist-shifts` from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Wrapped both exports with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Moved GET shift reads into `withOrgContext(ctx.orgId, ..., { requestContext: ctx })`.
+  - Passed explicit `{ requestContext: ctx }` into the POST shift upsert transaction.
+  - Preserved `canVisit`, query validation, bounded limits, org reference validation, shift upsert create/update shape, and response shapes.
+- Patient-prescriptions follow-up:
+  - Replaced the unreachable removed-row `DiffReviewRow.key` fallback from namespaced `prescriptionLineKey()` to bare `id || drug_code || drug_name`.
+  - Added a regression proving the fallback emits `removed-YJ_REMOVED`, not a `code:` key.
+- Validation passed:
+  - `./node_modules/.bin/vitest run 'src/app/api/patients/[id]/prescriptions/route.test.ts' src/app/api/pharmacist-shifts/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `32` tests.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "patients/\\[id\\]/prescriptions GET|pharmacist-shifts GET" --reporter=dot --testTimeout=30000`: passed, `6` tests / `360` skipped.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "pharmacist-shifts POST" --reporter=dot --testTimeout=30000`: passed, `3` tests / `121` skipped.
+  - Scoped ESLint for patient-prescriptions/pharmacist-shifts route/test/protected files: passed.
+  - Scoped Prettier check for the same files plus ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining work:
+  - Patient-prescriptions micro-fix and pharmacist-shifts GET/POST hardening are now Claude-approved. Continue the next backend PHI/RLS or drug-code slice only after inbox stays clear.
+
+### 2026-06-29 JST - Patient Prescriptions GET PHI/RLS Hardening
+
+- Coordination:
+  - Drained agmsg first; Claude approved the inventory forecast code-first identity slice and Codex ACKed it.
+  - Attempted to spawn a code-mapper subagent for residual medication-code identity risks, but the active thread had reached the subagent limit; Codex completed the route inspection inline.
+  - Preserved unrelated dirty API/PHI/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend/privacy hardening:
+  - Converted `GET /api/patients/[id]/prescriptions` from generic `withAuthContext` to route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Wrapped the export with `withRoutePerformance`, `withSensitiveNoStore`, `unstable_rethrow`, fixed `internalError()`, and metadata-only `logger.error`.
+  - Moved patient, care-case, and prescription-intake reads into `withOrgContext(ctx.orgId, ..., { requestContext: ctx })` so RLS/audit session context is explicit on this prescription-history PHI read path.
+  - Preserved `canVisit`, patient assignment scoping, case filtering, keyset pagination, response shape, diff review construction, and code-first medication matching behavior.
+- Tests added/updated:
+  - Route test now asserts route-local auth options, route performance wrapper, request-auth context wrapping, and explicit RLS request-context propagation.
+  - Route test now covers no-store auth failure before prescription PHI reads and metadata-only 500 logging without raw thrown text.
+- Validation passed:
+  - `./node_modules/.bin/vitest run 'src/app/api/patients/[id]/prescriptions/route.test.ts' --reporter=dot --testTimeout=30000`: initially passed, `1` file / `14` tests.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "patients/\\[id\\]/prescriptions GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - Scoped ESLint for route/test/protected matrix file: passed.
+  - Scoped Prettier check for the same files: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the slice. The only note was a non-blocking latent removed-row key fallback that could theoretically use a namespaced identity if a DB row lacked an id; Codex fixed it in the pharmacist-shifts iteration.
+
+### 2026-06-29 JST - Inventory Forecast Code-First Drug Identity
+
+- Coordination:
+  - Drained agmsg first; no new Claude messages were pending before this slice.
+  - Preserved unrelated dirty API/PHI/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend/data-integrity fix:
+  - Updated `src/lib/analytics/inventory-forecast.ts` so weekly demand, stock, shortage rows, and affected-patient details use `code:<YJ>` identity when a medication code is available.
+  - Kept `drugKey` as the existing display/base-name field and added `drugIdentityKey` plus `drugCode` to forecast rows/details.
+  - Name fallback remains `name:<base>` only when code is unavailable.
+  - `GET /api/admin/inventory-forecast` now selects `PrescriptionLine.drug_code` and stocked `DrugMaster.yj_code` and passes them into the pure forecast builder.
+  - The inventory forecast table uses `drugIdentityKey` as its row id and shows the YJ code as secondary text, preventing duplicate-row id collisions for same-name/different-code drugs.
+- Tests added/updated:
+  - Regression coverage proves same base-name/different-code drugs are not merged and only the shortage code affects the correct patient card.
+  - Route test now asserts `drug_code` / `yj_code` projection and code-bearing DTO output.
+  - UI test now covers code-bearing rows and secondary YJ code display.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/lib/analytics/inventory-forecast.test.ts src/app/api/admin/inventory-forecast/route.test.ts 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `32` tests.
+  - Scoped ESLint for the six inventory forecast files: passed.
+  - Scoped Prettier check for the six inventory forecast files plus docs/ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the slice, confirmed namespaced `drugIdentityKey` remains an intentional row identity field, visible labels stay bare `drugKey`/`drugCode`, API additions are non-breaking, and same-name/different-code aggregation is correctly separated.
+
+### 2026-06-29 JST - Dispense Result Discrepancy Code-First Drug Diff
+
+- Coordination:
+  - Drained agmsg first; no new Claude messages were pending before this slice.
+  - Preserved unrelated dirty API/PHI/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend safety fix:
+  - Updated `src/lib/dispensing/dispense-result-validation.ts` so discrepancy-reason drug-difference detection compares medication codes first.
+  - If either the submitted actual drug or prescribed line has a code, drug difference is now determined by normalized code equality only.
+  - Matching codes no longer require a discrepancy reason just because the actual and prescribed display names differ.
+  - Missing or different codes remain reason-required, and name fallback remains only when both sides have no medication code.
+- Tests added:
+  - Matching codes with different display names produce no discrepancy-reason error.
+  - Missing/different codes still require a discrepancy reason.
+  - Both-unresolved lines still use the existing name fallback.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/lib/dispensing/dispense-result-validation.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `3` tests.
+  - `./node_modules/.bin/vitest run src/app/api/dispense-results/route.test.ts 'src/app/api/dispense-results/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `53` tests.
+  - Scoped ESLint for the helper and new test: passed.
+  - Scoped Prettier check for helper/test/docs/ledgers: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining work:
+  - Send Claude a `PATCH_REVIEW_REQUEST` for this code-first discrepancy slice and address findings.
+
+### 2026-06-29 JST - CDS Duplicate Medication Code-First Check
+
+- Coordination:
+  - Drained agmsg first; no new Claude messages were pending before this slice.
+  - Preserved unrelated dirty API/PHI/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend safety fix:
+  - Updated `src/server/cds/checker.ts` duplicate medication logic so a prescription line with `drug_code` only checks duplicate current medications by resolved current-med DrugMaster `yj_code`.
+  - Removed the unsafe fallback where a code-resolved prescription line could still match a current medication by `drug_name` after code mismatch.
+  - Kept legacy name fallback only for unresolved prescription lines and unresolved current medication profiles without a resolved DrugMaster.
+- Tests added:
+  - Same `drug_name` / different resolved YJ code does not produce a duplicate alert.
+  - Both unresolved sides still produce the existing duplicate-name warning.
+  - Claude fast-follow recommendation covered the remaining regression paths:
+    same YJ code produces a duplicate warning, prescription-resolved/current-unresolved same-name rows do not warn, and prescription-unresolved/current-resolved same-name rows do not warn.
+  - CDS test mock now covers the batch `drugInteraction.findMany` path reached when current med masters are present.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/server/cds/checker.test.ts --reporter=dot --testTimeout=30000`: initially passed `1` file / `10` tests; after Claude fast-follow tests passed `1` file / `13` tests.
+  - `./node_modules/.bin/vitest run src/server/cds/checker.test.ts src/app/api/cds/check/route.test.ts --reporter=dot --testTimeout=30000`: initially passed `2` files / `14` tests; after Claude fast-follow tests passed `2` files / `17` tests.
+  - Scoped ESLint, scoped Prettier check, and focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining work:
+  - Continue code-first rollout in other clinical decision paths where drug-name fallback is still intentionally display/search-only.
+
+### 2026-06-29 JST - Prescription Drug Identity Downstream Code-First Follow-up
+
+- Coordination:
+  - Drained agmsg first; Claude approved the visit-records residual-reduction code-first identity slice and Codex ACKed it.
+  - Attempted to spawn a medical-safety subagent for this drug-identity diff, but the active thread had reached the subagent limit; Codex performed the patient-safety/data-integrity review inline and did not block progress.
+  - Preserved unrelated dirty PHI/RLS/UI files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend/data-integrity changes:
+  - Exported shared `medicationIdentityKey` from `src/lib/prescription/medication-diff.ts` and made shared prescription-line keys namespaced as `code:<drug_code>` / `name:<drug_name>`.
+  - Kept empty unresolved identities as the legacy empty key instead of producing `name:`, preserving caller skip semantics for blank rows.
+  - Moved prescription intake duplicate detection and date-continuity checks onto the same namespaced identity, preventing unresolved drug names that look like codes from matching real resolved codes.
+  - Updated patient workspace medication-change projection to use `MedicationChange.drug_code`, `current_frequency`, and `current_days` from the code-first match result instead of a `drug_name` keyed current-line map.
+  - Updated the prescription registration UI previous-prescription diff keys to use the shared identity helper so frontend diffing follows the backend contract.
+  - Tightened MedicationProfile sync so master-linked profiles are matched by `master:<drug_master_id>` and unresolved profiles only by `name:<drug_name>`. Legacy rows that stored a source drug code in `drug_master_id` remain upgradeable only through `legacy-code:<drug_code>` when the incoming code resolves to a DrugMaster; unresolved source codes cannot keep a master-linked profile current by accident.
+- Safety behavior preserved:
+  - Existing legacy unresolved-name fallback still works only when both the incoming line and existing profile are unresolved.
+  - Existing old-code-in-`drug_master_id` MedicationProfile rows can still be upgraded to the real DrugMaster id after a code-resolved prescription line arrives.
+  - User-visible labels do not expose internal namespaced keys; the new keys stay internal to matching/dedupe logic.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/lib/prescription/medication-diff.test.ts src/lib/prescription/intake-validation.test.ts src/lib/dispensing/__tests__/date-continuity.test.ts src/lib/dispensing/__tests__/prefill-generator.test.ts src/server/services/prescription-intake-service.test.ts src/server/services/patient-detail-workspace.test.ts 'src/app/api/patients/[id]/prescriptions/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `7` files / `97` tests.
+  - Scoped ESLint for the drug-identity implementation/test files and prescription registration caller: passed.
+  - Scoped Prettier check for the same files: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining work:
+  - Send Claude a `PATCH_REVIEW_REQUEST` for this downstream drug-identity slice and handle any findings.
+  - Continue the larger drug-code roadmap: `PrescriptionLine.drug_master_id` expand/contract migration, pharmacist review UI/API for QR `review_required` candidates, and package-unit GS1/GTIN modeling.
+
+### 2026-06-29 JST - Set Batches Detail PHI/RLS Edit-Delete Hardening
+
+- Coordination:
+  - Drained agmsg first; no new Claude requests were pending before or after this slice.
+  - Used a read-only code mapper to scope the route, tests, protected matrix, and medication safety invariants.
+  - Preserved unrelated dirty files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend hardening:
+  - Replaced generic `withAuthContext` on `GET`/`PATCH`/`DELETE /api/set-batches/[id]` with route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Moved GET detail reads from direct `prisma.setBatch.findFirst` into `withOrgContext(..., { requestContext: ctx })`.
+  - Moved DELETE pre-read and delete into one `withOrgContext(..., { requestContext: ctx })` transaction.
+  - Added explicit exported no-store/fixed-error boundaries with `withSensitiveNoStore`, `withRoutePerformance`, `unstable_rethrow`, and metadata-only `logger.error`.
+  - Added protected PATCH/DELETE matrix coverage for `set-batches/[id] PATCH` and `set-batches/[id] DELETE`.
+- Safety fix from review:
+  - Medical-safety reviewer found a High auditability bug: DELETE inserted `manual_delete` change log after deleting the parent batch while still setting relational `batch_id`, which can violate the FK in real PostgreSQL.
+  - Fixed by omitting relational `batch_id` for delete logs and keeping the deleted batch id inside `before_snapshot`; notification still receives `plan_id` and `batch_id`.
+- Semantics preserved:
+  - `canSet`, id/org scoping, assignment scoping, line detail projection, PATCH JSON/schema validation, version OCC, setting-only guard, updateMany/deleteMany claims, `manual_update` / `manual_delete`, DELETE version requirement, and `notifyWorkflowMutation` payloads.
+- Validation passed:
+  - `./node_modules/.bin/vitest run 'src/app/api/set-batches/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `15` tests.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "set-batches/\\[id\\] GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-patch-delete-routes.test.ts -t "set-batches/\\[id\\]" --reporter=dot --testTimeout=30000`: passed, `6` tests / `56` skipped.
+  - Scoped ESLint, scoped Prettier check, focused `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Medical-safety reviewer confirmed the High DELETE audit-log finding resolved.
+- Remaining work:
+  - Send Claude the `PATCH_REVIEW_REQUEST` for this slice and handle any findings.
+  - Continue remaining backend PHI/RLS/no-store route hardening after Claude inbox drain.
+
+### 2026-06-29 JST - Set Batches PHI/RLS Batch-Creation Hardening
+
+- Coordination:
+  - Drained agmsg first because the user explicitly prioritized Claude requests.
+  - No new Claude messages were pending before this slice was finalized.
+  - Preserved unrelated dirty files and did not touch Prisma schema, migrations, DB data, deploys, or destructive operations.
+- Backend hardening:
+  - Replaced generic `withAuthContext` on `GET`/`POST /api/set-batches` with route-local `requireAuthContext` plus `runWithRequestAuthContext`.
+  - Moved GET list reads from direct `prisma.setBatch.findMany` into `withOrgContext(..., { requestContext: ctx })`.
+  - Kept POST manual batch creation inside the existing Serializable `withOrgContext(..., { requestContext: ctx, isolationLevel: Serializable })` transaction.
+  - Added explicit exported no-store/fixed-error boundaries with `withSensitiveNoStore`, `withRoutePerformance`, `unstable_rethrow`, and metadata-only `logger.error`.
+  - Added protected POST matrix coverage for `set-batches POST`.
+- Semantics preserved:
+  - `canSet`, `plan_id` validation, assignment scoping, plan version claim, setting-only cycle guard, latest intake/line ownership, audited dispense result requirement, duplicate guard, quantity ceiling against audited actual quantity, packaging decision/profile/master-narcotic tag logic, unique conflict/retry behavior, set-batch change log, and `notifyWorkflowMutation`.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/app/api/set-batches/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `20` tests.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "set-batches GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-post-routes.test.ts -t "set-batches POST" --reporter=dot --testTimeout=30000`: passed, `3` tests / `118` skipped.
+  - Scoped ESLint, scoped Prettier check, focused `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Medical-safety reviewer reported no findings for the scoped set-batches diff.
+- Remaining work:
+  - Send Claude the `PATCH_REVIEW_REQUEST` for this slice and handle any findings.
+  - `set-batches/[id]` remains a separate future route-hardening slice.
+
+### 2026-06-29 JST - Drug Code Master Learning And Workbench Code-First Comparison
+
+- Coordination:
+  - Drained agmsg first because the user explicitly prioritized Claude requests.
+  - ACKed Claude's `PATCH_REVIEW_RESULT` approval for the inquiry-records + notifications PHI/no-store slice.
+  - Rechecked agmsg after the ACK and during validation; no new Claude messages remained.
+- Drug-code learning:
+  - Added `docs/drug-code-master-architecture.md` as the working SSOT for medicine code layers.
+  - Confirmed the architecture distinction:
+    - `receipt_code`: claims/basic master layer from the reimbursement master.
+    - `yj_code`: canonical prescription/dispensing drug identity currently represented by `PrescriptionLine.drug_code`.
+    - `hot_code`: crosswalk layer across drug-code systems.
+    - `JAN` / `GS1 GTIN`: package/physical barcode layer for package-unit verification, not the prescription-line identity.
+  - Recorded official reference URLs from MHLW, SSK, PMDA, GS1 Japan, and MEDIS.
+- Backend fix:
+  - Updated `GET /api/dispense-tasks/[id]/workbench` comparison projection.
+  - Removed the name-keyed `changeQueuesByName` path.
+  - Derived `change_type` directly from the code-first `matchMedicationDiffLines` current/previous pair.
+  - Added `current_drug_code` and `previous_drug_code` to comparison rows so UI/API consumers can distinguish same-name/different-code medications.
+  - Added a same `drug_name` / different `drug_code` regression test proving the unchanged row stays `change_type: null` while the changed YJ row gets `dose_changed`.
+- Review:
+  - Medical-safety subagent confirmed the main name-queue fix, then found a Medium response-shape gap because comparison rows still exposed only names. Codex fixed that gap by returning current/previous drug codes and asserting them in tests.
+  - The reviewer also noted the wider nullable `PrescriptionLine.drug_code` policy gap. That remains a separate migration/intake slice because legacy/import flows still allow missing codes.
+- Validation passed:
+  - `./node_modules/.bin/vitest run 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' src/lib/prescription/medication-diff.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `23` tests.
+  - `pnpm exec eslint 'src/app/api/dispense-tasks/[id]/workbench/route.ts' 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/api/dispense-tasks/[id]/workbench/route.ts' 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' docs/drug-code-master-architecture.md`: passed.
+  - `git diff --check -- 'src/app/api/dispense-tasks/[id]/workbench/route.ts' 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' docs/drug-code-master-architecture.md`: passed.
+  - `pnpm typecheck`: passed.
+- Remaining work:
+  - Design an expand/contract migration for `PrescriptionLine.drug_master_id`, `source_drug_code`, `source_drug_code_type`, and `drug_resolution_status`.
+  - Make QR/JAHIS name fallback explicitly unresolved/review-required instead of resolved.
+  - Add package-unit modeling for GS1/JAN/GTIN so physical scan verification does not depend on a single `DrugMaster.jan_code` field.
+
+### 2026-06-29 JST - QR/JAHIS Name-Fallback Drug Code Review Gate
+
+- Coordination:
+  - Prioritized Claude inbox while this backend slice was in progress.
+  - Reviewed and approved Claude Wave1 cluster1 `f9f9a957` focus-visible ring patch after reading `docs/ui-ux-design-guidelines.md`, checking the diff, running scoped ESLint/Prettier/diff-check, and getting a no-blocker accessibility subagent review.
+  - Reviewed and approved Claude Wave1 cluster2 `35b861e8` tabular-nums patch after diff review and scoped ESLint/Prettier/diff-check on the actual commit paths.
+- Safety issue:
+  - QR/JAHIS mapping previously let a no-code or bad-code medication fall through to DrugMaster name matching.
+  - That name match was then treated like a resolved DrugMaster, causing `drugMaster.yj_code` to be copied into `line.drug_code`.
+  - QR draft confirm/import paths can run with `skipStructuringCheck`, so the guessed code could become a registered prescription line code.
+- Backend changes:
+  - Split DrugMaster lookup results into `matchSource: 'code' | 'name' | null`.
+  - Only code-source matches set canonical `line.drug_code` from `DrugMaster.yj_code`.
+  - `drugCodeType=1` is now treated as no usable code, not as a length-heuristic YJ candidate.
+  - Name fallback now returns review-required candidate metadata only:
+    - `drug_code_resolution_status: 'review_required'`
+    - `drug_code_resolution_source: 'drug_master_name_fallback'`
+    - `candidate_drug_master_id`
+    - `candidate_drug_code`
+    - `candidate_drug_name`
+    - `unmatchedDrugs[].requiresReview` and `suggestedDrug*`
+  - `POST /api/qr-scan-drafts` persists these fields into `parsed_data.lines[]`.
+  - `POST /api/qr-scan-drafts/[id]/confirm` and `POST /api/prescription-intakes` with `qr_draft_id` now reject `review_required` / `unresolved` draft lines before claiming the draft or creating the intake.
+- Tests added/updated:
+  - Mapper tests for no-code + name candidate, bad-code + name candidate, and `drugCodeType=1`.
+  - QR draft parsed-data persistence test for resolution status/source/candidate fields.
+  - QR draft confirm rejection test for review-required name fallback.
+  - Prescription-intakes QR draft import rejection test for review-required name fallback.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts src/app/api/qr-scan-drafts/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' src/app/api/prescription-intakes/route.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `152` tests.
+  - Scoped ESLint on the eight QR/intake files: passed.
+  - Scoped Prettier check on the eight QR/intake files and drug-code design doc: passed.
+  - Focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - API contract and medical-safety subagents both identified the High name-fallback risk before implementation; the final patch follows their recommendation.
+- Remaining work:
+  - Add the pharmacist review UI/API that lets a user explicitly convert a review-required candidate into a confirmed `drug_code` / future `drug_master_id`.
+  - Continue the longer migration plan for `PrescriptionLine.drug_master_id`, `source_drug_code`, `source_drug_code_type`, and `drug_resolution_status`.
+
+### 2026-06-28 JST - Idle Assistance Delegation Mechanism
+
+- Added `.agent-loop/scripts/idle-assist.sh`.
+  - `idle-assist.sh request <claude|codex>` sends a `REQUEST_DELEGATE` envelope when the local supervisor has spare capacity after draining agmsg.
+  - `idle-assist.sh delegate <from> <to> <task_id> <summary> <locked_paths> [forbidden_paths] [validation]` sends a scoped `DELEGATE` envelope from the busy peer to the idle supervisor.
+  - `idle-assist.sh envelope ...` prints the same envelopes without sending, for dry-run review.
+- Updated `.agent-loop/MESSAGE_PROTOCOL.md` with `REQUEST_DELEGATE`, `DELEGATE`, `DELEGATE_ACCEPT`, and `DELEGATE_DECLINE`.
+- Updated `.agent-loop/README.md`, `.agent-loop/LOOP_POLICY.md`, `.agent-loop/CONTROL_PLANE_CONFIG.yml`, and both supervisor prompts so idle supervisors use this helper before passively waiting.
+- Safety boundary:
+  - The helper does not grant locks, edit files, run validation, or bypass maker/checker review.
+  - The receiver must ACK or decline, claim exact paths via LOCK before editing, preserve forbidden paths, and run normal validation before review/done.
+  - Auth, billing, security-policy, destructive migration, production deploy, external-send, and other human-gated work remain blocked without explicit current approval.
+- Validation passed:
+  - `bash -n .agent-loop/scripts/idle-assist.sh`: passed.
+  - `.agent-loop/scripts/idle-assist.sh envelope request codex "Idle after review; can take one bounded backend task."`: passed and produced a valid `REQUEST_DELEGATE` envelope.
+  - `.agent-loop/scripts/idle-assist.sh envelope delegate claude codex F-20260628-901 "Harden one bounded backend/API route" "src/app/api/example/route.ts,src/app/api/example/route.test.ts" "src/components/**,prisma/**" "focused vitest + scoped eslint + prettier + typecheck"`: passed and produced a valid `DELEGATE` envelope.
+  - `pnpm exec prettier --check .agent-loop/README.md .agent-loop/MESSAGE_PROTOCOL.md .agent-loop/LOOP_POLICY.md .agent-loop/CONTROL_PLANE_CONFIG.yml .agent-loop/prompts/codex-lead.md .agent-loop/prompts/claude-lead.md`: passed.
+  - `git diff --check -- .agent-loop/scripts/idle-assist.sh .agent-loop/README.md .agent-loop/MESSAGE_PROTOCOL.md .agent-loop/LOOP_POLICY.md .agent-loop/CONTROL_PLANE_CONFIG.yml .agent-loop/prompts/codex-lead.md .agent-loop/prompts/claude-lead.md`: passed.
+- Coordination:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for the docs/script slice.
+  - Claude ACKed receipt and started review while its S0 gate bundle runs. Final verdict is pending.
+
+### 2026-06-28 JST - Claude S0 ConfirmDialog Gating Review
+
+- Priority:
+  - User explicitly reiterated that Claude instructions and requests are the highest priority.
+  - Codex paused backend continuation and reviewed Claude's S0 commit `b7ecb705` for irreversible dispensing workbench sign-off ConfirmDialog gating.
+- Review action:
+  - Ran focused validation: `./node_modules/.bin/vitest run src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`.
+  - Result: passed, `2` files / `73` tests.
+  - Spawned read-only strict, medical safety, and accessibility/UX Codex reviewers for independent review. No DB mutation, migration, deploy, external send, or S0 product-file edit was performed by Codex.
+- Findings sent to Claude:
+  - `CHANGES_REQUESTED`: real-data `setp` primary currently returns `null` instead of transitioning to `seta` because it enters the real-data confirm branch but is not one of `dispense | audit | seta`.
+  - `CHANGES_REQUESTED`: pending ConfirmDialog only blocks phase/next F-keys; F3/F4/F5/F7 can still change patient/workbench state while `commitPrimary` re-snaps current store.
+  - Additional strict finding: set-audit NG/reject hand-back is still an immediate terminal `set-audits` mutation without confirmation, even though rejected set audit is terminal and creates workflow consequences.
+  - Additional strict finding: confirm activation lacks a synchronous re-entry latch, so double Enter/click can call `commitPrimary` twice before React pending state catches up.
+  - Non-blocking concern: confirm-button initial focus for non-narcotic irreversible sign-offs is a speed-vs-mistake-prevention tradeoff that should be explicit.
+- Coordination result:
+  - Claude ACKed the first two S1 findings as valid and said it would fix them first, adding descriptor anchors and broader F-key blocking.
+  - Codex then sent `PATCH_REVIEW_UPDATE_CORRECTION` with the strict review's additional set-audit reject and double-confirm findings.
+- Remaining work:
+  - Wait for Claude's revised S0 PATCH_REVIEW_UPDATE/commit, then re-review the corrected S0 diff.
+
+### 2026-06-28 JST - Facility Batch Prescription Intake Response Hardening
+
+- Coordination:
+  - Drained agmsg first because the user made Claude instructions and requests the highest priority.
+  - No new Claude messages were pending while this backend slice was finalized.
+  - Preserved Claude-owned S0 dispensing workbench WIP files and did not edit S0 frontend code.
+  - No Prisma schema, migration application, DB data mutation outside tests/mocks, external send, deploy, or destructive operation was introduced.
+- Hardened `POST /api/prescription-intakes/facility-batch`:
+  - Replaced the common `withAuthContext` export wrapper with explicit `requireAuthContext({ permission: 'canVisit', message: '施設まとめ処方の作成権限がありません' })`.
+  - Auth failures now short-circuit before request-body parsing.
+  - Wrapped the business logic in `runWithRequestAuthContext(ctx, ...)`.
+  - Passed `{ requestContext: ctx }` into `withOrgContext` for explicit RLS/audit actor context propagation.
+  - Wrapped exported responses in `withSensitiveNoStore` so auth, validation, success, and handled 500 responses carry sensitive no-store headers.
+  - Preserved Next.js control-flow exceptions via `unstable_rethrow(err)`.
+  - Converted ordinary unexpected failures to fixed `internalError()` responses with PHI-safe structured logging and no raw error object/message/name in logger metadata.
+  - Preserved existing facility, patient identity, duplicate line, structuring, outpatient-injection, creation hook, and success response behavior.
+- Security/privacy risk reduced:
+  - Facility-batch patient/facility response paths are consistently no-store.
+  - Auth failure cannot parse or inspect malformed patient payloads.
+  - Unexpected failures no longer expose raw patient/facility/SQL/error details through response bodies or log metadata.
+  - RLS request context is explicitly propagated.
+- Validation passed:
+  - `./node_modules/.bin/vitest run src/app/api/prescription-intakes/facility-batch/route.test.ts src/app/api/__tests__/protected-post-routes.test.ts -t "facility-batch|prescription-intakes/facility-batch POST" --reporter=dot --testTimeout=30000`: passed, `2` files / `15` tests with `100` skipped.
+  - `./node_modules/.bin/eslint src/app/api/prescription-intakes/facility-batch/route.ts src/app/api/prescription-intakes/facility-batch/route.test.ts src/app/api/__tests__/protected-post-routes.test.ts`: passed.
+  - `./node_modules/.bin/prettier --check src/app/api/prescription-intakes/facility-batch/route.ts src/app/api/prescription-intakes/facility-batch/route.test.ts src/app/api/__tests__/protected-post-routes.test.ts`: passed.
+  - `git diff --check -- src/app/api/prescription-intakes/facility-batch/route.ts src/app/api/prescription-intakes/facility-batch/route.test.ts src/app/api/__tests__/protected-post-routes.test.ts`: passed.
+  - Privacy reviewer: no findings.
+  - Medical safety reviewer: requested PHI-safe route-local logging after removing `withAuthContext`; fixed with safe logger metadata and regression tests.
+  - Security reviewer: requested auth-before-body and RLS request-context test coverage; fixed with malformed-JSON auth short-circuit coverage and `withOrgContext(..., { requestContext: ctx })` assertions.
+- Remaining work:
+  - Send Claude a `PATCH_REVIEW_REQUEST` for this backend slice.
+  - Full `pnpm typecheck` should be rerun after Claude's S0 round-4 WIP stabilizes; Codex did not touch the S0 files.
+
+### 2026-06-28 JST - S0 Round-4 Review And QR Packaging Data Integrity Hardening
+
+- Claude S0 support:
+  - Received Claude `PATCH_REVIEW_UPDATE` for commit `61193de5`, which moved force set-batch regeneration into the drift-safe ConfirmDialog model.
+  - Reviewed S0 read-only and sent Claude `PATCH_REVIEW_RESULT: APPROVED`.
+  - Verified `pendingForceRegen` descriptor replaces the old boolean force confirm flag.
+  - Verified request-time capture includes patientId, planId, and expectedUpdatedAt, and request does not mutate.
+  - Verified F-key dispatch blocks all actions while `pendingForceRegen` is open.
+  - Verified `commitForceRegen` aborts on patient, plan, or version drift before mutating.
+  - Verified force regeneration dialog description includes patient name, DOB, and set-plan period.
+  - Verified old `onGenerateBatches(true/false)` force path is removed; non-force generation is initial-only.
+  - Verified double-confirm latch protects force regeneration confirm.
+- S0 validation passed:
+  - `./node_modules/.bin/vitest run src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx src/components/features/dispense-workbench/dispensing-workbench.confirm.test.tsx src/components/features/dispense-workbench/medication-calendar-grid.test.tsx --reporter=dot --testTimeout=30000`: passed, `3` files / `92` tests.
+  - `./node_modules/.bin/vitest run src/components/features/dispense-workbench/dispensing-workbench.fkey.test.ts src/components/ui/confirm-dialog.test.tsx src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx src/components/features/dispense-workbench/dispensing-workbench.confirm.test.tsx src/components/features/dispense-workbench/medication-calendar-grid.test.tsx --reporter=dot --testTimeout=30000`: passed, `5` files / `118` tests.
+  - Scoped S0 ESLint, Prettier check, and diff whitespace check passed.
+  - Strict S0 subagent review reported no findings. Residual non-blocking note: a dedicated planId-only drift unit test could close the matrix further, but production code checks planId alongside patient/version.
+- QR/prescription packaging-data-integrity hardening:
+  - Expanded the packaging instruction tag SSOT with `ptp`, `mixing`, `excipient`, `decapsulation`, `no_unit_dose`, and `manual_ptp`.
+  - Reused shared packaging option values in prescription intake, QR confirm, and dispense line PATCH validation instead of local enum copies.
+  - Expanded no-unit-dose negative vocabulary: `一包化しない`, `一包化不可`, `一包化不要`, `一包化なし`, `分包しない`, `分包不可`, `分包不要`, `分包なし`.
+  - Ensured negative one-dose-packaging text is not interpreted as `unit_dose`.
+  - Updated QR intake mapping to preserve PTP/heat-sheet, mixing, excipient, decapsulation, no-unit-dose, and manual PTP preparation instructions from QR remarks.
+  - Added shared packaging consistency validation that infers effective tags from `packaging_instructions` as well as explicit tags, rejects duplicates, and rejects `no_unit_dose` with unit-dose method/tags.
+  - Revalidated QR draft fallback-enriched lines before claiming/updating QR drafts in both prescription-intakes QR import and direct QR confirm routes.
+  - Preserved `qr_payload_hash` and existing parsed_data while adding confirmed markers.
+  - Extended QR line mismatch checks to include packaging method, instructions, tags, route, dispensing method, and notes.
+  - Hardened `PATCH /api/dispense-tasks/[id]/lines` to validate the effective existing+patch packaging metadata before any write, closing partial-update contradictions.
+- Reviewer findings fixed:
+  - API contract reviewer High: partial PATCH could combine existing unit-dose metadata with new no-unit-dose tags, or existing no-unit-dose tags with new unit-dose method. Fixed with effective-state validation and three route regression tests.
+  - Medical safety High: instruction text such as `一包化しない` / `一包化不可` without explicit tags could bypass validation and later generate contradictory tags. Fixed by deriving effective tags from instruction text during validation and adding route tests.
+  - Medical safety High: QR draft parsed_data fallback metadata was not revalidated after enrichment. Fixed by final-line validation before QR draft claim/update in both QR paths.
+  - Medical safety Medium: no-unit-dose negative vocabulary was too narrow. Fixed by expanding patterns and adding packaging/QR mapper tests.
+- QR/packaging validation passed:
+  - `./node_modules/.bin/vitest run src/lib/dispensing/packaging.test.ts src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts src/app/api/prescription-intakes/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' 'src/app/api/dispense-tasks/[id]/lines/route.test.ts' src/app/api/__tests__/workflow-prescription-to-report.test.ts src/app/api/__tests__/workflow-full-cycle.test.ts --reporter=dot --testTimeout=30000`: passed, `7` files / `155` tests. Expected sanitized stderr from existing webhook/handoff error-path tests was observed.
+  - Scoped ESLint on the QR/packaging implementation and tests: passed.
+  - Scoped Prettier check on the QR/packaging implementation and tests: passed.
+  - Focused `git diff --check` on the QR/packaging implementation and tests: passed.
+  - `pnpm typecheck`: passed after fixing helper typing.
+- Claude review addendum fixed:
+  - Claude found a commit-before-merge medical-safety reversal where whitespace or shorthand no-unit-dose text (`一包化 しない`, `一包化　しない`, `一包化せず`, `一包化中止`) could still infer `unit_dose`.
+  - Fixed by evaluating no-unit-dose detection on whitespace-stripped instruction text, expanding shorthand/cancel vocabulary, and guarding affirmative `unit_dose` inference with that compact negation check.
+  - Added regression coverage for spaced and shorthand no-unit-dose instructions.
+  - Revalidation passed: packaging helper Vitest `1` file / `9` tests, full QR/packaging focused set `7` files / `156` tests, scoped ESLint, scoped Prettier check, focused `git diff --check`, and `pnpm typecheck`.
+- Remaining work:
+  - Privacy reviewer for QR/packaging is still pending at the time of this ledger update.
+  - Send Claude a `PATCH_REVIEW_REQUEST` for the QR/packaging backend slice after final inbox/privacy check.
+
+### 2026-06-28 JST - Inquiry/Notification PATCH PHI Response Hardening
+
+- Coordination:
+  - Drained Claude inbox first; no new messages were pending.
+  - Kept Claude-owned S0/frontend files untouched and stayed in backend/API response-hardening scope.
+- Hardened:
+  - `PATCH /api/inquiry-records/[id]` now exports through a `withSensitiveNoStore` wrapper and returns fixed `INTERNAL_ERROR` responses for ordinary unexpected failures after `unstable_rethrow`.
+  - Inquiry PATCH logging now uses safe structured metadata only; raw error objects, custom error names, messages, and PHI are not logged.
+  - Inquiry PATCH now passes explicit `{ requestContext: ctx }` into `withOrgContext`, preserving RLS/audit actor, role, site, IP, and user-agent session context.
+  - `PATCH /api/notifications` now uses explicit `requireAuthContext` + `runWithRequestAuthContext`, keeps `org_id + user_id` update scoping, and exports through the same sensitive no-store/fixed-error envelope.
+- Reviewer findings fixed:
+  - Privacy reviewer Medium and medical-safety reviewer Medium: inquiry PATCH lacked explicit RLS request context. Fixed and covered with a `withOrgContext` options assertion.
+  - Privacy reviewer Low: 403 no-store was not locked for inquiry PATCH. Added route-specific inquiry 403 no-store coverage. Notifications PATCH has no permission-based 403 contract, so its existing 401/400/200/500 no-store coverage remains.
+  - A broad matrix experiment showed older protected PATCH/DELETE routes still lack 403 no-store; this was recorded as a wider follow-up rather than mixed into this slice.
+- Validation passed:
+  - `./node_modules/.bin/vitest run 'src/app/api/inquiry-records/[id]/route.test.ts' src/app/api/notifications/route.test.ts src/app/api/__tests__/protected-patch-delete-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `75` tests.
+  - Scoped ESLint on the five route/test files: passed.
+  - Scoped Prettier check on the five route/test files: passed.
+  - Focused `git diff --check` on the five route/test files: passed.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Send Claude `PATCH_REVIEW_REQUEST` for this backend PHI/no-store slice.
+  - Schedule the wider protected PATCH/DELETE 403 no-store sweep separately.
+
 ### 2026-06-28 JST - Dispensing Decision Packaging Tags Fallback And Workbench Projection Alignment
 
 - Coordination:
   - Continued backend-first調剤/監査/セット連動 after the approved tracing-report lifecycle hardening slice.
   - Sent Claude a checker review request for this BE slice after focused validation passed.
+  - After Claude's full-vitest sweep, fixed the one confirmed Codex-caused regression before commit: `workflow-prescription-to-report.test.ts` mocked `@/lib/dispensing/packaging` without the newly consumed `PACKAGING_METHOD_OPTIONS` and `PACKAGING_INSTRUCTION_TAG_OPTIONS` exports.
   - No frontend source, DB schema, migration, external send, deploy, or DB mutation command was introduced.
 - Bug fixed:
   - `DispensingDecision.packaging_instruction_tags` defaults to `[]`, and decisions created from `dispense-results` currently do not persist tags.
@@ -38,6 +1689,11 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Workbench safety handling tags and count rows use effective tags.
   - Count rows now align group precedence with downstream set generation by using `decision.packaging_group_id ?? line.packaging_group_id`.
 - Validation passed:
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/workflow-prescription-to-report.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests after the mock export fix. Expected sanitized stderr from existing webhook/handoff error-path tests was observed.
+  - `./node_modules/.bin/vitest run src/lib/dispensing/packaging.test.ts src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts src/app/api/prescription-intakes/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' 'src/app/api/dispense-tasks/[id]/lines/route.test.ts' src/app/api/__tests__/workflow-prescription-to-report.test.ts --reporter=dot --testTimeout=30000`: passed, `6` files / `143` tests after the mock export fix. Expected sanitized stderr from existing webhook/handoff error-path tests was observed.
+  - `./node_modules/.bin/eslint src/app/api/__tests__/workflow-prescription-to-report.test.ts`: passed.
+  - `./node_modules/.bin/prettier --check src/app/api/__tests__/workflow-prescription-to-report.test.ts`: passed.
+  - `git diff --check -- src/app/api/__tests__/workflow-prescription-to-report.test.ts`: passed.
   - `pnpm exec vitest run 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' src/app/api/set-batches/route.test.ts 'src/app/api/set-plans/[id]/generate-batches/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `46` tests. Expected sanitized stderr from an existing set-batches 500-path test was observed.
   - `pnpm exec eslint src/lib/dispensing/packaging.ts 'src/app/api/dispense-tasks/[id]/workbench/route.ts' 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' src/app/api/set-batches/route.ts src/app/api/set-batches/route.test.ts 'src/app/api/set-plans/[id]/generate-batches/route.ts' 'src/app/api/set-plans/[id]/generate-batches/route.test.ts'`: passed.
   - `pnpm exec prettier --check src/lib/dispensing/packaging.ts 'src/app/api/dispense-tasks/[id]/workbench/route.ts' 'src/app/api/dispense-tasks/[id]/workbench/route.test.ts' src/app/api/set-batches/route.ts src/app/api/set-batches/route.test.ts 'src/app/api/set-plans/[id]/generate-batches/route.ts' 'src/app/api/set-plans/[id]/generate-batches/route.test.ts'`: passed.
@@ -15564,3 +17220,1470 @@ Next loop:
 - Remaining:
   - Send Claude an updated `PATCH_REVIEW_REQUEST` for the post-review safety tightening; commit only after updated approval.
   - FE scanner UI and UX wiring remain Claude-owned.
+
+### Packaging Instruction Tags — Backend Vocabulary Expansion
+
+- Scope:
+  - Backend-only dispensing/prescription intake vocabulary expansion for packaging work instructions.
+  - Preserved Claude-owned dirty frontend files under `src/components/features/dispense-workbench/**`, golden/audit files, `.codex/hooks.json`, and the workbench replacement doc.
+- Implemented by Codex:
+  - Added additive `PackagingInstructionTag` enum values: `ptp`, `mixing`, `excipient`, `decapsulation`, `no_unit_dose`, and `manual_ptp`.
+  - Added migration file `prisma/migrations/20260628201000_expand_packaging_instruction_tags/migration.sql`; migration was not applied.
+  - Expanded `src/lib/dispensing/packaging.ts` options, labels, and extraction patterns for PTP/ヒート/シート, 混合, 賦形, 脱カプセル, 一包化しない/分包しない, and 手撒き/manual PTP.
+  - Kept existing tag order stable and appended the new tags after the existing eight tags.
+  - Refactored duplicated packaging method/tag allowlists in prescription intake, QR confirm, and dispensing-line validation to derive from `PACKAGING_*_OPTIONS`.
+  - Expanded QR intake note filtering so QR remarks carrying the new work instructions are preserved into packaging instructions/tags.
+  - Added status label roles for all new tags as `info`.
+- Safety/data-boundary notes:
+  - Unknown tag rejection remains through zod enum validation derived from the SSOT option list.
+  - QR parsed-data fallback filters still only preserve allowed enum values.
+  - No auth, authorization, RLS/org scoping, DB writes beyond normal existing routes, external sends, secret handling, or PHI logging behavior changed.
+- Validation:
+  - `pnpm db:generate`: passed; Prisma Client regenerated locally. DB migration was not applied.
+  - `pnpm exec vitest run src/lib/dispensing/packaging.test.ts src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `52` tests.
+  - `pnpm exec vitest run src/app/api/prescription-intakes/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' src/app/api/qr-scan-drafts/route.test.ts 'src/app/api/dispense-tasks/[id]/lines/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `4` files / `103` tests.
+  - Scoped ESLint for touched TS files: passed.
+  - Scoped Prettier check for touched TS files: passed. Prisma/SQL were excluded from Prettier check because this repo's Prettier config has no parser for `.prisma`/`.sql`; Prisma schema syntax was checked by `pnpm db:generate`.
+  - `git diff --check` for touched Prisma/SQL/TS files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Main Codex/coordinator review and final commit remain pending by user instruction.
+  - DB migration still needs normal review/application flow; it was intentionally not applied locally.
+
+### Packaging Instruction Tags — Safety Review Addendum
+
+- Review loop:
+  - Codex backend reviewer found no backend blocker.
+  - Codex DB reviewer found a P2 duplicate-tag validation gap on prescription intake / QR confirm paths.
+  - Codex medical-safety reviewer found two P1 QR safety gaps: confirmed QR drafts lost `qr_payload_hash` / parsed source evidence, and QR-derived packaging/route/dispensing values could be silently overridden during confirmation.
+- Additional fixes:
+  - Added shared packaging metadata consistency validation in `src/lib/validations/dispensing-line.ts`.
+  - Rejects duplicate `packaging_instruction_tags` on prescription intake, QR confirm, and dispense line PATCH paths.
+  - Rejects `no_unit_dose` together with `unit_dose` tag, unit-dose packaging methods, or `dispensing_method: "unit_dose"`.
+  - QR confirm and prescription-intake QR import now compare explicit request values for packaging method, packaging instructions, packaging tags, route, dispensing method, and notes against QR parsed_data before claiming/creating.
+  - Confirmed QR drafts now clear raw QR text but preserve the non-reversible payload hash and sanitized parsed source data with confirmation metadata.
+- Additional validation:
+  - `pnpm exec vitest run src/app/api/prescription-intakes/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' 'src/app/api/dispense-tasks/[id]/lines/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `84` tests.
+  - `pnpm exec vitest run src/lib/dispensing/packaging.test.ts src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts src/app/api/prescription-intakes/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' 'src/app/api/dispense-tasks/[id]/lines/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `5` files / `136` tests.
+  - Scoped ESLint, scoped Prettier check, and `git diff --check` passed for the backend slice.
+  - `pnpm typecheck`: passed after Claude removed the S0 duplicate `ConfirmDialog` import.
+  - `pnpm typecheck:no-unused`: passed.
+- Remaining:
+  - Send Claude a backend `PATCH_REVIEW_REQUEST` for this expanded PackagingInstructionTag slice.
+
+### Claude Priority Drain + Backend Validation Refresh — 2026-06-28 22:10 JST
+
+- Priority handling:
+  - Drained `phos/codex` agmsg after the user's instruction to prioritize Claude requests. Inbox returned `No new messages`.
+  - Kept Claude-owned active S0 frontend/workbench files untouched while Claude works through the ConfirmDialog/change-request fixes.
+  - Used the Compass read-only map to confirm the safe non-overlap candidate was the existing PackagingInstructionTag backend/API dirty slice.
+  - Sent Claude a `FYI` with the no-new-message drain result, S0 non-touch guarantee, backend validation refresh, and DB migration non-application note.
+- Validation refresh:
+  - `./node_modules/.bin/vitest run src/lib/dispensing/packaging.test.ts src/lib/pharmacy/__tests__/qr-intake-mapper.test.ts 'src/app/api/dispense-tasks/[id]/lines/route.test.ts' src/app/api/prescription-intakes/route.test.ts 'src/app/api/qr-scan-drafts/[id]/confirm/route.test.ts' src/app/api/__tests__/workflow-prescription-to-report.test.ts --reporter=dot --testTimeout=30000`: passed, `6` files / `143` tests.
+  - Scoped ESLint for touched backend route/helper/service files: passed.
+  - `git diff --check` for backend TS/Prisma/SQL touched files: passed.
+  - Initial Prettier check including `.prisma`/`.sql` failed because this repo has no parser configured for those extensions. Corrected TS-only Prettier check passed.
+- Remaining:
+  - Continue checking agmsg before new work. Claude S0 revised patch/review request remains the highest-priority interrupt.
+  - DB migration application remains intentionally not run.
+
+### Backend Polish — Data Explorer Catalog + Notification PATCH Privacy Envelope
+
+- Coordination:
+  - Drained agmsg before and during work; no new Claude S0 request was pending.
+  - Avoided all Claude-owned S0/workbench files and all Prisma/migration application.
+  - Used a read-only mapper subagent for non-overlap backend candidates, then a privacy reviewer for the notification PATCH diff.
+- Fixed:
+  - Added `PharmacyOperatingHours` to the data explorer coverage catalog as `frontend_api`, matching the real `/admin/operating-hours` screen and `/api/pharmacy-operating-hours` route.
+  - Added a focused catalog test asserting operating-hours settings are frontend-backed.
+  - Wrapped `PATCH /api/notifications` in the same exported `withSensitiveNoStore` + `unstable_rethrow` + fixed `internalError()` envelope used by `GET`.
+  - Added route-local and protected-matrix assertions that notification PATCH success, validation failures, malformed JSON, auth failure, and unexpected update failure return no-store responses; unexpected failures return fixed bodies without the raw sentinel error.
+- Validation:
+  - `./node_modules/.bin/vitest run src/lib/admin/data-explorer-catalog.test.ts src/server/services/data-explorer.test.ts src/app/api/admin/data-explorer/models/route.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `29` tests.
+  - `./node_modules/.bin/vitest run src/app/api/notifications/route.test.ts src/app/api/__tests__/protected-patch-delete-routes.test.ts -t "notifications PATCH|/api/notifications" --reporter=dot --testTimeout=30000`: passed, `2` files / `12` tests / `45` skipped.
+  - Scoped ESLint, Prettier check, and `git diff --check` passed for the changed files.
+  - Privacy reviewer reported no scoped findings.
+- Review:
+  - Sent Claude a non-urgent `PATCH_REVIEW_REQUEST` for this backend polish slice, with S0 explicitly preserved as higher priority.
+- Remaining:
+  - Claude's revised S0 ConfirmDialog patch remains the highest-priority interrupt.
+  - Wait for Claude review on this backend slice before any commit decision.
+  - No full goal completion claim; this is one backend polish slice.
+
+### Backend Polish — Rate-Limit Catalog Sync For Operating Hours
+
+- Coordination:
+  - Drained agmsg first. Claude approved the previous data-explorer + notification PATCH privacy slice and noted the remaining pre-existing baseline reds.
+  - Kept S0/workbench/frontend files untouched while Claude's S0 round-2 build/review loop continues.
+- Fixed:
+  - Reproduced the known `rate-limit` catalog sync failure: `API_ROUTE_TEMPLATES` had 360 entries while the App Router API file scan had 361.
+  - Root cause was the real static `/api/pharmacy-operating-hours` route missing from `API_ROUTE_TEMPLATES`.
+  - Added `/api/pharmacy-operating-hours` to the template catalog and a canonicalization assertion so the route gets its own bounded quota bucket instead of falling through to `/api/__unknown__`.
+- Validation:
+  - `./node_modules/.bin/vitest run src/lib/api/rate-limit.test.ts src/lib/api/route-catalog.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `37` tests.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "pharmacy-operating-hours GET" --reporter=dot --testTimeout=30000`: passed, `3` tests / `363` skipped.
+  - Scoped ESLint, Prettier check, and `git diff --check` passed.
+  - Security reviewer reported no route ambiguity or quota-bypass findings.
+- Review:
+  - Sent Claude a `PATCH_REVIEW_REQUEST` for the rate-limit slice. Awaiting verdict.
+- Remaining:
+  - Claude's revised S0 ConfirmDialog patch remains the highest-priority interrupt.
+  - Remaining known baseline reds include duplicate-detection and set-plan calendar/workflow-full-cycle gaps.
+
+### Backend Polish — Duplicate Detection Assignment Scope Test Sync
+
+- Coordination:
+  - Continued only after draining agmsg; no S0 update was pending.
+  - Kept S0/workbench/frontend files untouched.
+- Fixed:
+  - Reproduced the known `src/lib/patient/duplicate-detection.test.ts` red.
+  - Root cause was a stale test expectation: it expected assignment scope under `cases.some.OR`, while the current shared `applyPatientAssignmentWhere` SSOT appends a patient-level `AND` predicate covering direct primary/backup pharmacist, direct primary/backup staff, and case->visit_schedules pharmacist assignment.
+  - Updated the test expectation only. Production duplicate-detection code was already aligned with the shared access helper.
+  - The updated assertion now explicitly checks `org_id`, `name`, `birth_date`, `gender`, `excludePatientId`, assignment scope, `select`, and `take`.
+- Validation:
+  - `./node_modules/.bin/vitest run src/lib/patient/duplicate-detection.test.ts src/app/api/patients/check-duplicate/route.test.ts src/lib/auth/__tests__/visit-schedule-access.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `29` tests.
+  - `./node_modules/.bin/vitest run src/lib/api/rate-limit.test.ts src/lib/api/route-catalog.test.ts src/lib/patient/duplicate-detection.test.ts src/app/api/patients/check-duplicate/route.test.ts src/lib/auth/__tests__/visit-schedule-access.test.ts --reporter=dot --testTimeout=30000`: passed, `5` files / `66` tests.
+  - Scoped ESLint, Prettier check, and `git diff --check` passed.
+  - Data-integrity reviewer reported no patient-access weakening or excess data selection findings.
+- Review:
+  - Sent Claude a `PATCH_REVIEW_REQUEST` for the duplicate-detection test-sync slice. Awaiting verdict.
+- Remaining:
+  - Claude's revised S0 ConfirmDialog patch remains the highest-priority interrupt.
+  - Remaining known baseline reds are now mainly set-plan calendar/workflow-full-cycle failures.
+
+### Claude S0 Round-2 Review — 2026-06-28 22:36 JST
+
+- Review target:
+  - Claude commit `1c7cd769` (`Harden S0 confirm gate: drift abort, full F-key block, reject gating, commit latch`).
+  - Scope was S0/workbench frontend review only; Codex made no S0 product/test edits.
+- What improved:
+  - `setp` real-data navigation now returns `seta` without confirm/mutation.
+  - Production `runAction` now blocks all F-key actions while `pendingPrimary` or `pendingReject` is open.
+  - Set-audit reject now goes through a ConfirmDialog gate instead of immediate terminal mutation.
+  - Synchronous `commitLatchRef` prevents same-dialog double confirm.
+  - Primary sign-off descriptors now abort on patient/task/cycle/plan drift before mutation.
+- Validation run by Codex:
+  - `./node_modules/.bin/vitest run src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, `2` files / `82` tests.
+  - `./node_modules/.bin/vitest run src/components/features/dispense-workbench src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, `14` files / `272` tests.
+  - `./node_modules/.bin/vitest run src/components/features/dispense-workbench/use-workbench-mutations.test.tsx src/components/features/dispense-workbench/use-workbench-write-handlers.test.ts src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, `4` files / `105` tests.
+  - Scoped ESLint, Prettier check, and `git diff --check` passed for S0 files.
+- Verdict:
+  - Sent Claude `PATCH_REVIEW_RESULT: CHANGES_REQUESTED`.
+  - Blocking S1: `commitSetAuditReject` can still submit a different NG reason or cell batch/version than the `PendingSetAuditReject` descriptor the operator confirmed, because commit checks only patient/plan and then re-resolves current `CellMeta` and current `s.ng[key]`.
+  - Recommended fix: build the rejected mutation from descriptor meta/reason and rely on expected-version OCC, or compare current reason/meta against descriptor and abort before `applyCell`/`mutate`.
+  - Added S1/S2 UX safety note: irreversible dialogs should include more unique evidence than patient name only; reject confirm should include patient identity, target cell, and NG label.
+  - Added S3 test gap: full F-key guard is production-verified but only indirectly tested.
+- Related backend review status:
+  - Claude approved the rate-limit catalog sync slice.
+  - Claude approved the duplicate-detection assignment-scope test-sync slice.
+- Remaining:
+  - S0 is not approved until reject descriptor drift is closed.
+  - Claude ACKed the round-3 fix plan: descriptor-vs-current reject drift abort, patient+DOB/reject target evidence, and direct F-key guard testing.
+  - Await Claude round-3 S0 update before further S0 verdict.
+
+### Backend/Test Baseline Cleanup — Set-Plan Calendar + Workflow Full-Cycle Fixtures
+
+- Coordination:
+  - Drained `phos/codex` agmsg before and after the slice. No new Claude messages were pending.
+  - Kept Claude-owned S0/workbench/frontend files untouched while Claude prepares S0 round-3.
+- Fixed:
+  - Reproduced the remaining protected GET calendar red: `set-plans/[id]/calendar GET returns 200 when role has permission` returned 500 because the success fixture omitted `updated_at`, while the route now builds generation metadata from `plan.updated_at`.
+  - Reproduced the workflow full-cycle red: patient registration -> schedule generation crashed on `prisma.pharmacyOperatingHours.findMany` because the test-level Prisma mock had not been updated after operating-calendar validation was added to visit schedule generation.
+  - Updated only test fixtures/mocks: added `updated_at` to the protected GET set-plan calendar fixture, and added empty `pharmacyOperatingHours.findMany` / `businessHoliday.findMany` mocks to workflow full-cycle Prisma fixtures.
+- Validation:
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/protected-get-routes.test.ts -t "set-plans/\\[id\\]/calendar GET returns 200 when role has permission" --reporter=dot --testTimeout=30000`: passed, `1` test / `365` skipped.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/workflow-full-cycle.test.ts -t "patient registration" --reporter=dot --testTimeout=30000`: passed, `1` test / `1` skipped.
+  - `./node_modules/.bin/vitest run src/app/api/__tests__/workflow-full-cycle.test.ts src/app/api/__tests__/protected-get-routes.test.ts 'src/app/api/set-plans/[id]/calendar/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `378` tests.
+  - Scoped ESLint, Prettier check, and `git diff --check` passed for the touched test files.
+- Remaining:
+  - S0 round-3 from Claude remains the highest-priority interrupt.
+  - This was test-only fixture synchronization; no production code, DB migration, commit, push, or deploy was performed.
+
+### Claude S0 Round-3 Review — 2026-06-28 23:05 JST
+
+- Review target:
+  - Claude commit `8d54bd88` (`Close S0 reject confirm drift gap and harden irreversible dialogs`) against `1c7cd769`.
+  - Scope was S0/workbench frontend review only; Codex made no S0 product/test edits.
+- Confirmed fixed from round-2:
+  - `commitSetAuditReject` now aborts before mutate when the confirmed descriptor drifts from current NG classification or current cell batch/version.
+  - The rejected set-audit payload is built from the confirmed descriptor (`planId`, `meta`, `ngLabel`) rather than mutable current store values.
+  - Primary/reject irreversible dialog descriptions now include patient name + DOB where available; reject also includes day/slot and NG reason.
+  - Direct `dispatchFKeyAction` table tests cover all current `FKeyAction` values for pending primary/reject confirms.
+- Validation run by Codex:
+  - `./node_modules/.bin/vitest run src/components/features/dispense-workbench/dispensing-workbench.fkey.test.ts src/components/features/dispense-workbench/use-workbench-write-handlers.rollback.test.tsx src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, `3` files / `102` tests.
+  - `./node_modules/.bin/vitest run src/components/features/dispense-workbench src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, `15` files / `292` tests.
+  - Scoped ESLint, Prettier check, and `git diff --check 1c7cd769..8d54bd88` passed for the five S0 changed files.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Verifier subagent independently passed focused S0 tests/lint/format/diff-check. Medical-safety reviewer reported no findings for the reject-confirm drift fix.
+- Verdict:
+  - Sent Claude `PATCH_REVIEW_RESULT: CHANGES_REQUESTED`.
+  - Remaining S1: force set-batch regeneration confirm remains outside the pending-confirm safety model. `runAction` blocks F-keys only for `pendingPrimary || pendingReject`, but the destructive `forceConfirmOpen` dialog can remain open while F-key patient/phase navigation dispatches. Confirm then calls live `writeHandlers.onGenerateBatches(true)`, which reads current store state instead of a captured descriptor.
+  - Required fix direction: treat force regeneration like the other irreversible confirms: capture a descriptor with `patientId`, `planId`, `expected_updated_at`, and display patient/plan evidence; include the pending force confirm in the F-key block; on confirm, re-check current patient/plan/version against descriptor and submit from the descriptor, aborting on drift.
+- Remaining:
+  - S0 is not approved until the force-regeneration confirm drift hole is closed.
+  - Await Claude's next S0 update and prioritize it immediately.
+
+### Claude Wave1 Cluster3 Review — 2026-06-29 00:24 JST
+
+- Review target:
+  - Claude commit `2d49a1f4` (`Use state-blocked token for critical/error states (Wave1 semantic)`).
+  - Scope was seven FE className-only semantic token replacements; Codex made no product/test edits in those files.
+- Confirmed:
+  - `state-blocked` is defined in `src/app/globals.css` and already used for stopped/blocked clinical workflow state.
+  - The changed sites are the critical/error branch of existing state ladders where warning/done/info already use semantic state tokens.
+  - Legitimate `text-destructive` usage remains for validation, required markers, destructive controls, auth/error surfaces, and offline/error states.
+- Validation run by Codex:
+  - Scoped ESLint: passed for the seven changed files.
+  - Scoped Prettier check: passed for the seven changed files.
+  - `git show --check 2d49a1f4 -- ...`: passed.
+  - Focused related Vitest: passed, `6` files / `46` tests.
+- Verdict:
+  - No blockers or findings.
+  - Sending Claude `PATCH_REVIEW_RESULT: APPROVED` for Wave1 cluster3.
+
+### Claude Interrupts + Drug-Code Identity Backend Slice — 2026-06-29 00:42 JST
+
+- Coordination:
+  - Drained agmsg and received Claude QR/JAHIS `CHANGES_REQUESTED` plus Wave1 cluster4 pattern ratification request.
+  - Sent ACK and paused the in-progress backend drug-code identity slice until Claude requests were handled.
+- Wave1 cluster4:
+  - Reviewed commit `742869da` against `docs/ui-ux-design-guidelines.md`.
+  - Ratified the recipe: state tile backgrounds remain `bg-card`; state is shown by `border-l-4 border-l-state-*` plus label `text-state-*`.
+  - Guardrails: preserve rounded-full badges/pills, StateBadge internals, chart/quantity encoding fills, object constants until classified, and protected workbench surfaces.
+- QR/JAHIS rev2:
+  - Restored confirmed QR draft PHI minimization.
+  - `qr_payload_hash` is cleared to `null` after confirmation/import.
+  - confirmed `parsed_data` now keeps only `{ confirmed, confirmed_at, confirmed_intake_id }`; patient identity and medication lines are not retained in the draft after canonical intake creation.
+  - Name-fallback safety remains: name-only DrugMaster match stays candidate/review-only and cannot promote `candidate_drug_code` into `line.drug_code`.
+- Scope split:
+  - The packaging-tag expansion and facility-batch auth/no-store refactor are being declared as separate review scopes, not hidden inside the QR/JAHIS name-fallback request.
+  - No DB migration was applied.
+- Drug-code identity backend slice:
+  - `MedicationChange` now carries `drug_code`.
+  - shared medication diff identity is namespaced as `code:<code>` or `name:<name>` to prevent a raw unresolved drug name from colliding with a real drug code.
+  - patient workspace no longer re-joins changes through a `drug_name` map; it uses diff-owned `drug_code`, `current_frequency`, and `current_days`.
+  - MedicationProfile sync keys are separated into `master:`, `code:`, and unresolved `name:`. Name fallback is kept only when both existing profile and incoming line are unresolved.
+  - visit brief rule/AI payloads and same-name display preserve drug-code identity; duplicate same-name changes show the code as a secondary identifier.
+- Validation:
+  - Wave1 cluster4 scoped ESLint, Prettier, and `git show --check`: passed.
+  - QR/JAHIS core: `4` files / `152` tests passed.
+  - Packaging/facility-batch split: `7` files / `169` tests passed, with existing expected stderr from workflow mocks.
+  - Drug-code identity: `5` files / `57` tests passed.
+  - Scoped ESLint, Prettier, and diff-check: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Verifier subagent found no scoped blockers; full `pnpm format:check` still fails on unrelated untracked `.agent-loop/plans/GATEB_STATE_FILE_AUDIT.md`.
+- Remaining:
+  - Send Claude separate review requests for QR/JAHIS rev2, packaging/facility-batch split, and the drug-code identity backend slice.
+  - Await Claude verdicts before any commit decision.
+
+### Claude Review Follow-Up + Drug-Code Raw-Key Cleanup — 2026-06-29 00:55 JST
+
+- Coordination:
+  - Approved Claude Wave1 cluster4 bg-fill batch1 (`51bfb537`) after SSOT review and focused validation.
+  - Received Claude approvals for QR/JAHIS rev2 and packaging/facility-batch split.
+  - Accepted Claude's corrected C finding: internal `code:` duplicate grouping leaked into public duplicate error details.
+- Fixed:
+  - `collectDuplicatePrescriptionLines` now uses `medicationIdentityKey()` only for internal grouping and returns public `duplicates[].key` as bare `drug_code` / trimmed `drug_name`.
+  - `date-continuity` now matches previous/current lines by namespaced identity, preventing unresolved `drug_name: "2149001"` from matching resolved `drug_code: "2149001"`.
+  - prescription intake previous-diff UI now uses the same namespaced identity.
+  - `pharmacy-drug-stocks/usage-mismatch` now resolves only code-bearing QR medication rows by `DrugMaster.yj_code`; name-only rows stay unmatched/reviewable.
+  - Added usage-mismatch regression for `name:2149001` and `code:2149001` coexisting without collapse.
+- Validation:
+  - Wave1 batch1 related tests passed `3` files / `23` tests; scoped ESLint, Prettier, and `git show --check` passed.
+  - C rev2 API tests passed `4` files / `97` tests, including the previously failing prescription-intakes duplicate-key contract.
+  - Raw-key follow-up tests passed `4` files / `37` tests.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+  - medical-safety reviewer reported no scoped findings; verifier reported gates passed and the identified usage-mismatch coexist gap was fixed.
+- Remaining:
+  - Await Claude C rev2/follow-up verdict before any commit decision.
+  - Keep shared-file commit boundaries careful because QR, packaging, and C hunks are physically interleaved.
+
+### Medication Profiles POST PHI Hardening + Wave1 Batch2 Review — 2026-06-29 01:07 JST
+
+- Coordination:
+  - Received Claude approval for C rev2/raw-key follow-up; all A/B/C slices are now approved.
+  - Reviewed and approved Claude Wave1 cluster4 bg-fill batch2 (`8dab1167`) for `card-workspace.tsx`.
+- Fixed:
+  - `POST /api/medication-profiles` now uses route-local `requireAuthContext` + `runWithRequestAuthContext` instead of generic `withAuthContext`.
+  - All POST responses now receive sensitive no-store headers.
+  - unexpected POST failures now log only allowlisted metadata with `logger.error(..., undefined, { event, route, method, status, error_name })` and return fixed `INTERNAL_ERROR`.
+  - Protected POST matrix now asserts no-store for `medication-profiles POST` 401/403/400.
+- Validation:
+  - Wave1 batch2: `card-workspace.test.tsx` passed `1` file / `53` tests; scoped ESLint/Prettier and `git show --check` passed.
+  - Medication profiles route tests passed `1` file / `16` tests.
+  - Protected POST medication-profiles target passed `3` tests / `100` skipped.
+  - Combined targeted run passed `2` files / `19` tests / `100` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+  - medical-safety reviewer reported no scoped findings; privacy reviewer findings were fixed and privacy re-review reported no remaining scoped findings.
+- Remaining:
+  - Await Claude review verdict for the medication-profiles POST hardening slice before any commit decision.
+
+### Medication Profiles GET Follow-Up PHI Hardening — 2026-06-29 01:20 JST
+
+- Coordination:
+  - Received Claude approval for the medication-profiles POST slice.
+  - Accepted Claude's follow-up finding that the same route's GET path still used generic `withAuthContext` raw-error logging.
+  - Paused the residual-medications slice and handled the Claude follow-up first.
+- Fixed:
+  - `GET /api/medication-profiles` now uses route-local `requireAuthContext` + `runWithRequestAuthContext`, matching POST.
+  - GET unexpected failures now return fixed no-store `INTERNAL_ERROR` and log metadata only via `logger.error(..., undefined, { event, route, method, status, error_name })`.
+  - The old `withRoutePerformance` observability behavior is preserved explicitly around both GET and POST without logging PHI, query params, raw errors, or response bodies.
+  - Tests now assert GET auth wrapper use, no-store headers, fixed 500 body, raw secret absence from response/logs, and performance wrapper preservation.
+- Validation:
+  - `src/app/api/medication-profiles/route.test.ts`: passed `1` file / `16` tests.
+  - Protected GET medication-profiles target: passed `3` tests / `363` skipped.
+  - Protected POST medication-profiles target: passed `3` tests / `100` skipped.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - medical-safety and privacy reviewers reported no findings, including re-check after restoring `withRoutePerformance`.
+- Remaining:
+  - Send Claude a follow-up review request for the GET/POST route-local PHI hardening.
+  - Resume residual-medications PHI hardening only after another agmsg drain shows no higher-priority Claude request.
+
+### Claude Wave1 Batch4 Review + Medication Profiles Approval — 2026-06-29 01:23 JST
+
+- Coordination:
+  - Reviewed Claude Wave1 cluster4 bg-fill batch4 schedules commit `11ab0d8e` immediately after it arrived.
+  - Received Claude approval for the medication-profiles GET follow-up PHI hardening.
+- Wave1 batch4 review:
+  - Confirmed 15 schedules-area status tile/note/banner conversions follow the ratified `bg-card` + left state accent recipe.
+  - Guarded surfaces remained untouched: schedule board/gantt/vehicle visuals, constants/maps, rounded pills, Badge/StateBadge, hover/drag transient states, shadcn Alert/error surfaces, `text-destructive`, and subtle `bg-*/5` areas.
+- Validation:
+  - Wave1 batch4 `git show --check`, scoped ESLint, scoped Prettier, and commit diff-check: passed.
+  - Related schedules tests passed `8` files / `79` tests.
+  - Sent Claude `PATCH_REVIEW_RESULT: APPROVED` for batch4.
+- Medication profiles status:
+  - Claude approved the GET follow-up and confirmed the previous raw-error logging path is closed.
+  - `GET`/`POST /api/medication-profiles` are now route-local, PHI-safe, no-store, and performance-tracked.
+- Remaining:
+  - No pending Claude inbox messages after the final drain.
+  - Resume residual-medications PHI/no-store hardening next, and pause again immediately if Claude sends another request.
+
+### Wave1 Batch5 Review + Residual Medications PHI Hardening — 2026-06-29 01:29 JST
+
+- Coordination:
+  - Reviewed Claude Wave1 cluster4 bg-fill batch5 handoff commit `da549612` immediately after it arrived.
+  - Paused and then resumed residual-medications hardening after the Claude inbox drained.
+- Wave1 batch5 review:
+  - Approved 4 handoff status tile/callout conversions as className-only and recipe-compliant.
+  - Returned policy guidance that shadcn `Alert` info banners should remain out of this bg-fill purge until a separate Alert-specific recipe exists.
+  - Handoff validation passed: `git show --check`, scoped ESLint, scoped Prettier, commit diff-check, and `handoff-workspace.test.tsx` `1` file / `16` tests. Existing React `act(...)` warnings were noted as unrelated.
+- Residual medications fixed:
+  - `GET`/`POST /api/residual-medications` now use route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Both exports preserve `withRoutePerformance` and use PHI-safe fixed-error handling.
+  - Unexpected failures return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Protected GET/POST matrices now assert no-store for residual-medications auth/body failure paths.
+- Validation:
+  - Residual route tests passed `1` file / `18` tests.
+  - Protected GET residual target passed `3` tests / `363` skipped.
+  - Protected POST residual target passed `3` tests / `100` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - medical-safety and privacy reviewers reported no findings.
+- Remaining:
+  - Send Claude a residual-medications review request.
+  - Await Claude verdict before any commit decision.
+
+### Claude Wave1 Batch6 Reports Review — 2026-06-29 01:31 JST
+
+- Coordination:
+  - Reviewed Claude Wave1 cluster4 bg-fill batch6 reports commit `ec3792a6` after sending the residual-medications review request.
+- Review:
+  - Approved 12 report-area status/info tile conversions as className-only and recipe-compliant.
+  - Confirmed direct JSX interprofessional warning divs were in-scope amber status tiles.
+  - Confirmed shadcn `Alert`, Badge/StateBadge, constants/maps, hover/subtle fills, and `text-destructive` validation/error surfaces were preserved.
+- Validation:
+  - `git show --check`, scoped ESLint, scoped Prettier, and commit diff-check: passed.
+  - Related reports tests passed `6` files / `86` tests.
+  - Sent Claude `PATCH_REVIEW_RESULT: APPROVED` for batch6.
+- Remaining:
+  - Await Claude verdict for residual-medications PHI/no-store hardening.
+  - No pending Claude inbox messages after the final drain.
+
+### Residual Medications Approval — 2026-06-29 01:32 JST
+
+- Coordination:
+  - Received Claude approval for residual-medications GET/POST PHI no-store/fixed-error hardening.
+  - Sent ACK back to Claude.
+- Status:
+  - Claude confirmed `withAuthContext` is fully removed from residual-medications.
+  - GET/POST now match the medication-profiles route-local pattern and retain `withRoutePerformance`.
+  - Claude found no blockers and marked the slice commit OK.
+- Commit:
+  - No commit performed in this turn because the worktree contains many interleaved approved and unrelated dirty hunks; staging should be done in a deliberate safe grouping pass.
+- Remaining:
+  - Continue Claude-first inbox handling.
+  - If inbox stays clear, next backend candidate is scanning remaining PHI GET/POST routes that still use generic `withAuthContext` raw-error logging.
+
+### Claude Wave1 Batch7 Patient Subroutes Review — 2026-06-29 01:34 JST
+
+- Coordination:
+  - Reviewed Claude Wave1 cluster4 bg-fill batch7 patient-subroute commit `f176c158`.
+- Review:
+  - Approved 2 className-only conversions: MCS sync-error note and medication-calendar hand-rolled fetch-error tile.
+  - Confirmed destructive error surfaces, retry hover, calendar grid cells, Badge usage, and ternary/selection surfaces were preserved.
+- Validation:
+  - `git show --check`, scoped ESLint, scoped Prettier, and commit diff-check: passed.
+  - Related patient-subroute tests passed `3` files / `16` tests.
+  - Sent Claude `PATCH_REVIEW_RESULT: APPROVED` for batch7.
+- Remaining:
+  - No pending Claude inbox messages after final drain.
+  - Resume backend cross-route PHI hardening scan next.
+
+### Claude Wave1 Batch8 Admin/Settings Review — 2026-06-29 01:40 JST
+
+- Coordination:
+  - Reviewed Claude Wave1 cluster4 bg-fill batch8 admin/settings commit `69dafca6`.
+  - Paused the Codex-owned `/api/inquiry-records` PHI hardening work-in-progress when the Claude request arrived.
+- Review:
+  - Approved 13 admin/settings status/info/KPI tile conversions as className-only and recipe-compliant.
+  - Confirmed destructive emergency-impact tiles, tag-hazard panel, state-selecting ternaries, constants, Badge/pill usage, DataTable internals, `bg-*/5` tints, and SSE status banner behavior were preserved.
+  - Found no auth, billing, permission, privacy, PHI, data-flow, or performance changes in the commit.
+- Validation:
+  - `git show --check`, scoped ESLint, scoped Prettier, and commit diff-check: passed.
+  - Related admin/settings tests passed `9` files / `58` tests.
+  - Sent Claude `PATCH_REVIEW_RESULT: APPROVED` for batch8.
+- Remaining:
+  - Drain agmsg again, then resume and validate the paused Codex-owned `GET`/`POST /api/inquiry-records` route-local PHI/no-store hardening unless Claude sends another request.
+
+### Inquiry Records PHI Hardening — 2026-06-29 01:42 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/inquiry-records` after Claude batch8 was approved and inbox drained.
+- Fixed:
+  - Removed generic `withAuthContext` from inquiry-records GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canVisit`, org/cycle assignment scoping, patient/cycle/status filters, limit behavior, cycle/line/issue validation, transaction side effects, audit log, operational task creation, and RLS writes.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected errors now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized GET/POST unexpected failures, no raw logger leakage, no-store clinical/validation/create responses, and auth/performance wrapper calls.
+  - Added protected GET/POST matrix no-store coverage for inquiry-records.
+- Validation:
+  - Inquiry-records route tests passed `1` file / `19` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `100` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for PHI/privacy/patient-safety review before commit grouping.
+- Remaining:
+  - Await Claude verdict. If Claude sends Wave1 batch9 or feedback first, handle that before new backend work.
+
+### Inquiry Records Approval — 2026-06-29 01:44 JST
+
+- Coordination:
+  - Received Claude approval for inquiry-records GET/POST PHI no-store/fixed-error hardening.
+  - Sent ACK back to Claude.
+- Status:
+  - Claude confirmed `withAuthContext` is fully removed from inquiry-records.
+  - GET/POST now match the established route-local auth, PHI-safe logging, no-store, and performance-tracked pattern.
+  - Claude found no blockers and marked the slice commit OK.
+- Commit:
+  - No commit performed because the shared worktree contains many interleaved approved and unrelated dirty hunks; staging should be done in a deliberate safe grouping pass.
+- Remaining:
+  - Continue Claude-first inbox handling.
+  - If inbox stays clear, choose the next non-overlapping PHI route still using generic `withAuthContext`.
+
+### Incident Reports PHI Hardening — 2026-06-29 01:48 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/incident-reports` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from incident-reports GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canViewDashboard` permission/messages, status validation, create validation, and `listIncidentReports` / `createIncidentReport` service calls.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected service failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized GET safety-narrative failures, sanitized POST create failures, no raw logger leakage, no-store POST success/validation, and auth/performance wrapper calls.
+  - Added protected POST matrix no-store coverage for incident-reports. Protected GET already covered incident-reports no-store.
+- Validation:
+  - Incident-reports route tests passed `1` file / `6` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `103` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety review before commit grouping.
+- Remaining:
+  - Await Claude verdict. If Claude sends Wave1 batch9 or feedback first, handle that before new backend work.
+
+### Incident Reports Approval + Claude Wave1 Batch9 Final Sweep Review — 2026-06-29 01:52 JST
+
+- Coordination:
+  - Received Claude approval for incident-reports GET/POST PHI/safety-narrative no-store/fixed-error hardening.
+  - Sent ACK back to Claude.
+  - Reviewed Claude Wave1 cluster4 bg-fill batch9 final sweep commit `9533f0e7`.
+- Incident reports status:
+  - Claude confirmed `withAuthContext` is fully removed from incident-reports.
+  - GET/POST now match the established route-local auth, PHI-safe logging, no-store, and performance-tracked pattern.
+  - Claude found no blockers and marked the slice commit OK.
+- Batch9 review:
+  - Approved 13 prescriptions/auth/billing/shared-viewer status/info tile conversions as className-only and recipe-compliant.
+  - Confirmed shadcn `Alert`, rounded-full pills/Badge, destructive/tag-hazard out-of-map fills, ternaries, `/5` tints, and unlabeled tiles were preserved.
+  - Confirmed `prescription-intake-form.tsx` was correctly deferred to avoid mixing Codex's uncommitted medication identity work.
+- Validation:
+  - Batch9 `git show --check`, scoped ESLint, scoped Prettier, and commit diff-check: passed.
+  - Related auth/billing/prescription/shared tests passed `8` files / `44` tests.
+  - Sent Claude `PATCH_REVIEW_RESULT: APPROVED` for batch9.
+- Remaining:
+  - Continue Claude-first inbox handling.
+  - If inbox stays clear, resume backend PHI route scan and select the next non-overlapping route still using generic `withAuthContext`.
+
+### Patient Self Reports PHI Hardening — 2026-06-29 01:57 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/patient-self-reports` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from patient-self-reports GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canReport`, assignment filtering, status/patient query validation, pagination, clerk privacy masking, patient access check, create validation, `withOrgContext` create, audit log minimization, and response shapes.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized GET listing failures, sanitized POST create failures, no raw logger leakage, wrapper calls, audit IP/user-agent propagation, and no raw self-report fields in audit `changes`.
+  - Added protected POST matrix no-store coverage for patient-self-reports. Protected GET already covered patient-self-reports no-store.
+- Validation:
+  - Patient-self-reports route tests passed `1` file / `16` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `103` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/audit minimization review before commit grouping.
+- Remaining:
+  - Await Claude verdict. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Patient Self Reports Approval — 2026-06-29 01:59 JST
+
+- Coordination:
+  - Received Claude approval for patient-self-reports GET/POST PHI no-store/fixed-error hardening.
+  - Sent ACK back to Claude.
+- Status:
+  - Claude confirmed `withAuthContext` is fully removed from patient-self-reports.
+  - GET/POST now match the established route-local auth, PHI-safe logging, no-store, and performance-tracked pattern.
+  - Claude found no blockers and marked the slice commit OK.
+- Commit:
+  - No commit performed because the shared worktree contains many interleaved approved and unrelated dirty hunks; staging should be done in a deliberate safe grouping pass.
+- Remaining:
+  - Continue Claude-first inbox handling.
+  - If inbox stays clear, proceed to the mapper's next small PHI route candidate: `src/app/api/communication-requests/[id]/responses/route.ts`.
+
+### Communication Request Responses PHI Hardening — 2026-06-29 02:05 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/communication-requests/[id]/responses` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from communication request responses GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canReport`, request lookup, patient/care-report access checks, care-report send permissions, closed/cancelled/expired validation, optimistic concurrency, idempotent response upsert, audit digest/minimization, and response shapes.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized GET listing failures, sanitized POST create failures, no raw logger leakage, wrapper calls, success no-store, and audit failure short-circuit behavior.
+  - Added protected POST matrix no-store coverage for communication request responses. Protected GET already covered communication request responses no-store.
+- Validation:
+  - Communication request responses route tests passed `1` file / `24` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `106` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/auth review before commit grouping.
+- Remaining:
+  - Await Claude verdict. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Communication Responses Approval + Claude Wave1 EmptyState Review — 2026-06-29 02:08 JST
+
+- Coordination:
+  - Received Claude approval for communication request responses GET/POST PHI no-store/fixed-error hardening.
+  - Sent ACK back to Claude.
+  - Reviewed Claude Wave1 EmptyState commit `6dcaa0d1`.
+- Communication responses status:
+  - Claude confirmed `withAuthContext` is fully removed from communication request responses.
+  - GET/POST now match the established route-local auth, PHI-safe logging, no-store, and performance-tracked pattern.
+  - Claude found no blockers and marked the slice commit OK.
+- EmptyState review:
+  - Approved six primary/full-area empty-state conversions to shared `EmptyState`.
+  - Confirmed dense-context/DataTable/subsection empties remain untouched.
+  - Confirmed `route-compare` keeps the `route-scenario-compare` wrapper and `h1`, while preserving return navigation through the shared EmptyState action.
+  - Confirmed literal titles and behavior are preserved.
+- Validation:
+  - EmptyState `git show --check`, scoped ESLint, scoped Prettier, and commit diff-check: passed.
+  - Related UI/scheduling/patient/conference tests passed `15` files / `166` tests.
+  - `pnpm typecheck`: passed.
+  - Sent Claude `PATCH_REVIEW_RESULT: APPROVED` for commit `6dcaa0d1`.
+- Remaining:
+  - Continue Claude-first inbox handling.
+  - If inbox stays clear, proceed to the next non-overlapping backend PHI route candidate from the mapper list.
+
+### Medication Issues PHI Hardening — 2026-06-29 02:13 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/medication-issues` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from medication-issues GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canVisit`, patient/case/status query validation, org reference validation, assignment filtering, patient/care-case access checks, create schema, `withOrgContext` create data shape, and response shapes.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized GET listing failures, sanitized POST create failures, no raw logger leakage, wrapper calls, and no-store success/validation/not-found paths.
+  - Added protected POST matrix no-store coverage for medication-issues and aligned the no-param route calls in protected GET/POST matrices.
+- Validation:
+  - Medication-issues route tests passed `1` file / `19` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `106` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/auth/data-scope review before commit grouping.
+- Remaining:
+  - Await Claude verdict. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Consent Records PHI Document-URL Hardening — 2026-06-29 02:18 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/consent-records` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from consent-records GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canVisit`, `patient_id`/`consent_type`/`is_active` filters, assignment access checks, document file validation, audited document URL normalization/redaction, duplicate/template checks, `withOrgContext` create, and view/create audit fail-closed behavior.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for metadata-only sanitized GET/POST audit failure logging, no raw document URL leakage, wrapper calls, and no-store success/validation/not-found paths.
+  - Added protected POST matrix coverage for consent-records and aligned protected GET call shape for the no-param route.
+- Validation:
+  - Consent-records route tests passed `1` file / `13` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `109` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/audit/document-URL/auth review before commit grouping.
+- Remaining:
+  - Await Claude verdicts for medication-issues and consent-records. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Comments PHI Hardening — 2026-06-29 02:24 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/comments` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from comments GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canViewDashboard`, per-entity authorization, comment ordering/author mapping, mention recipient validation, notification link encoding, `withOrgContext` create, notification dispatch, and realtime refresh behavior.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized GET listing failures, sanitized POST create failures, no raw logger leakage, wrapper calls, and no-store success/validation/not-found paths.
+  - Added protected POST matrix coverage for comments and aligned protected GET call shape for the no-param route.
+- Validation:
+  - Comments route tests passed `1` file / `25` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `112` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/collaboration/auth review before commit grouping.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, and comments. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### CDS Check Patient-Safety Hardening — 2026-06-29 02:28 JST
+
+- Scope:
+  - Hardened `POST /api/cds/check` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from cds/check POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canVisit`, strict payload validation, org-owned medication-cycle lookup, and the security rule that `patient_id` comes from the cycle rather than client input before `checkDispenseAlerts`.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized CDS checker failures, no raw logger leakage, wrapper calls, and no-store success/validation paths.
+  - Added protected POST matrix no-store coverage for cds/check.
+- Validation:
+  - CDS check route tests passed `1` file / `4` tests.
+  - Protected POST target passed `3` tests / `112` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/CDS/auth review before commit grouping.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, and cds/check. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### First Visit Documents PHI Document Hardening — 2026-06-29 02:35 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/first-visit-documents` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from first-visit-documents GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canVisit`, patient/case filter validation, assignment scope, writable-patient guard, emergency contact derivation, template selection, document URL validation, audit log payload, and safe mutation response minimization.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized document listing failures, sanitized document creation failures, no raw logger leakage, wrapper calls, and no-store success/validation/not-found/conflict paths.
+  - Added protected POST matrix no-store coverage for first-visit-documents and aligned protected GET call shape for the no-param route.
+- Validation:
+  - First-visit-documents route tests passed `1` file / `26` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `115` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/document/audit/auth review before commit grouping.
+  - Rechecked agmsg history and confirmed the review request was sent; inbox had no new messages at `2026-06-29 02:35 JST`.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, cds/check, and first-visit-documents. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### First Visit Documents ID PATCH PHI Document Hardening — 2026-06-29 02:40 JST
+
+- Scope:
+  - Hardened `PATCH /api/first-visit-documents/[id]` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from first-visit-documents `[id]` PATCH.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canVisit`, route id validation, document URL validation, assignment scope via `canAccessCareCase`, writable-patient guard, optimistic update conflict handling, print readiness block, server-side print batch id generation, audit log payload, and safe mutation response minimization.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized document lookup failures, no raw logger leakage, wrapper calls, and no-store success/validation/not-found/conflict paths.
+  - Added protected PATCH matrix coverage for first-visit-documents `[id]` and explicit no-store checks for 401/403/200.
+- Validation:
+  - First-visit-documents `[id]` route tests passed `1` file / `19` tests.
+  - Protected PATCH target passed `6` tests / `50` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/document/audit/auth review before commit grouping.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, cds/check, first-visit-documents, and first-visit-documents `[id]`. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### First Visit Documents Print Batch PHI Document Hardening — 2026-06-29 02:45 JST
+
+- Scope:
+  - Hardened `POST /api/first-visit-documents/print-batch` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from first-visit-documents print-batch POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canVisit`, payload validation, document dedupe, org/patient document selection, `canAccessCareCase` scope checks, print readiness block, latest document action lookup, server-side print batch id generation, optional print-copy URL update, optimistic conflict handling, batch audit payload, and response shape.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized transaction failures, no raw logger leakage, wrapper calls, and no-store success/validation/not-found/conflict paths.
+  - Added protected POST matrix no-store coverage for first-visit-documents print-batch and aligned the call shape for the no-param route.
+- Validation:
+  - First-visit-documents print-batch route tests passed `1` file / `6` tests.
+  - Protected POST target passed `3` tests / `115` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/document/audit/auth review before commit grouping.
+  - Mapper subagent returned the remaining `withAuthContext` risk map and recommended splitting the next large backend PHI candidate, starting with `visit-records/route.ts`.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, cds/check, first-visit-documents, first-visit-documents `[id]`, and first-visit-documents print-batch. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Visit Records PHI Patient-Safety Hardening — 2026-06-29 02:54 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/visit-records` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from visit-records GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canVisit`, GET org/assignment/date/filter/cursor/evidence-gallery/history-summary behavior, POST validation/saveVisitRecord business logic, schedule/case/patient safety checks, carry-item and home-visit readiness checks, conflict handling, derived data, audit/task/billing/handoff flows, and response shapes.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Fixed privacy reviewer High finding by replacing raw `console.warn` for patient-state snapshot build failures with metadata-only `logger.error`.
+  - Added route tests for sanitized GET listing failures, sanitized POST creation failures, sanitized snapshot failure logging, no raw logger/console leakage, and no-store behavior.
+  - Added protected GET/POST matrix no-store coverage for visit-records and aligned workflow tests with the new no-param export shape.
+- Validation:
+  - Visit-records route tests passed `1` file / `68` tests.
+  - Protected GET target passed `6` tests / `360` skipped.
+  - Protected POST target passed `3` tests / `115` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Privacy reviewer found one High raw-log issue; fixed before Claude review request.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/auth/business-behavior review before commit grouping.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, cds/check, first-visit-documents, first-visit-documents `[id]`, first-visit-documents print-batch, and visit-records. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Care Reports PHI Report-Content Hardening — 2026-06-29 03:05 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/care-reports` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from care-reports GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Preserved `canReport`, `canAuthorReport`, org/access-scope filters, palette/keyword/cursor/delivery-summary behavior, `canOutputCareReport` content/PDF redaction, patient/case/visit source validation, duplicate handling, baseline/recipient prefill, prescriber suggestion enrichment, `withOrgContext` create behavior, and response shapes.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for sanitized GET listing failures, sanitized POST creation failures, no raw logger leakage, wrapper calls, and explicit no-store on POST success and duplicate-conflict responses.
+  - Added protected GET/POST matrix no-store coverage for care-reports and aligned workflow tests with the new no-param export shape.
+- Validation:
+  - Care-reports route tests passed `1` file / `59` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `115` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Privacy reviewer reported no blockers; explicit no-store assertions for POST success/conflict were added before the final focused gate rerun.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/auth/output-permission/business-behavior review before commit grouping.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, cds/check, first-visit-documents, first-visit-documents `[id]`, first-visit-documents print-batch, visit-records, and care-reports. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Dispense Results PHI Patient-Safety Hardening — 2026-06-29 03:15 JST
+
+- Scope:
+  - Hardened `POST /api/dispense-results` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from dispense-results POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Added explicit `withOrgContext(..., { requestContext: ctx })` for RLS/audit context propagation.
+  - Preserved `canDispense`, body validation order after auth, assignment scoping, OCC/idempotent replay, inquiry blocks, quantity/unit/discrepancy validation, packaging group validation, safety checklist, barcode verification, CDS unavailable handling, cycle transitions, result upsert/create behavior, audit log, partial dispense exceptions, visit carry-items projection, notifications, webhooks, and response shapes.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Added route tests for auth short-circuit before malformed JSON, sanitized unexpected transaction failures, no raw logger leakage, RLS request context, and no-store on validation/conflict/idempotent/success/error paths.
+  - Added protected POST matrix no-store coverage for dispense-results and aligned workflow tests with the new no-param export shape.
+- Validation:
+  - Dispense-results route tests passed `1` file / `36` tests.
+  - Protected POST target passed `3` tests / `115` skipped.
+  - Workflow full-cycle passed `1` file / `2` tests with expected sanitized visit-record handoff stderr.
+  - Combined focused Vitest passed `2` files / `38` tests.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Medical-safety reviewer initially flagged stale mocks/calls/no-store gaps while the patch was mid-flight; those were fixed before final validation.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/auth/RLS/audit/business-behavior review before commit grouping.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, cds/check, first-visit-documents, first-visit-documents `[id]`, first-visit-documents print-batch, visit-records, care-reports, and dispense-results. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Dispense Audits PHI Audit Hardening — 2026-06-29 03:30 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/dispense-audits` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from dispense-audits GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Added explicit `withOrgContext(..., { requestContext: ctx })` for POST mutations and GET badge/list reads.
+  - Preserved GET queue/badge behavior, sort/filtering, `canAuditDispense`, rejected/hold/approved/emergency-approved semantics, self-audit exception rules, expected-version conflict, approved idempotent replay, narcotic double-count validation, transition preflight/rollback, workflow exception create/resolve, rejected-audit notifications, `notifyWorkflowMutation`, and response shapes.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/status/error_name`.
+  - Fixed medical-safety reviewer High blocker by moving GET direct `prisma.dispenseTask.count/findMany` reads into RLS-scoped `withOrgContext`.
+  - Added route tests for auth short-circuit before malformed JSON, sanitized GET/POST unexpected failures, no raw logger leakage, GET list/badge RLS request context, POST RLS request context, and representative no-store paths.
+  - Added protected GET/POST matrix no-store coverage and aligned workflow tests with the new no-param export shape/auth mocks.
+- Validation:
+  - Dispense-audits route tests passed `1` file / `27` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `115` skipped.
+  - Workflow full-cycle plus prescription-to-report passed `2` files / `9` tests with expected sanitized stderr.
+  - Combined focused route/workflow Vitest passed `3` files / `36` tests.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Medical-safety reviewer initially flagged GET RLS/auditability; that blocker was fixed before final validation.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/auth/RLS/audit/business-behavior review before commit grouping.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, cds/check, first-visit-documents, first-visit-documents `[id]`, first-visit-documents print-batch, visit-records, care-reports, dispense-results, and dispense-audits. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Set Audits PHI/RLS Audit Hardening — 2026-06-29 03:42 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/set-audits` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from set-audits GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Moved GET set-plan queue reads from direct Prisma to `withOrgContext(..., { requestContext: ctx })`.
+  - Added explicit `withOrgContext(..., { requestContext: ctx })` for POST transaction work.
+  - Preserved `canAuditSet`, GET queue `setting`/`plan_id` filters, assignment scoping, `cell_summary` response shape, six-checklist and carry-packet requirements, structured rejection code requirement, duplicate/NG cell validation, per-cell OCC, terminal audit conflict/idempotent replay, self-audit admin exception, audit logs, cycle transitions, visit carry-item updates, rework task/exception side effects, `notifyWorkflowMutation`, and server-owned audit actor/time.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/error_name`.
+  - Added route tests for auth short-circuit before malformed JSON, sanitized GET/POST unexpected failures, no raw body leakage, GET/POST RLS request context propagation, and representative no-store paths.
+  - Added protected POST matrix no-store coverage for set-audits and aligned protected GET/POST call shapes with the new no-param export.
+- Validation:
+  - Set-audits route tests passed `1` file / `40` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `115` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Medical-safety reviewer reported no findings for auth/RLS/OCC/self-audit/workflow semantics.
+- Review:
+  - Claude `PATCH_REVIEW_REQUEST` is the next action before moving to the next backend slice.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, cds/check, first-visit-documents, first-visit-documents `[id]`, first-visit-documents print-batch, visit-records, care-reports, dispense-results, dispense-audits, and set-audits. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Set Plans PHI/RLS Planning Hardening — 2026-06-29 03:48 JST
+
+- Scope:
+  - Hardened `GET`/`POST /api/set-plans` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from set-plans GET/POST.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Moved GET set-plan listing from direct Prisma to `withOrgContext(..., { requestContext: ctx })`.
+  - Added explicit `withOrgContext(..., { requestContext: ctx })` for POST set-plan creation/transition work.
+  - Preserved `canSet`, query validation, assignment scoping, response shape, create validation, duplicate/idempotent replay, unique-constraint race convergence, audited-only state guard, packaging method lookup, packaging summary snapshot, cycle transition to `setting`, transition conflict handling, and `notifyWorkflowMutation`.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/error_name`.
+  - Added route tests for auth short-circuit before malformed JSON, sanitized GET/POST unexpected failures, no raw PHI in responses, GET/POST RLS request context propagation, and representative no-store paths.
+  - Added protected POST matrix no-store coverage for set-plans and aligned protected GET/POST call shapes with the new no-param export.
+- Validation:
+  - Set-plans route tests passed `1` file / `23` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected POST target passed `3` tests / `115` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Medical-safety reviewer reported no findings for auth/RLS request-context propagation, cycle state transitions, duplicate/idempotent replay, packaging summary behavior, and protected-route test coverage.
+- Review:
+  - Sent Claude `PATCH_REVIEW_REQUEST` for privacy/patient-safety/auth/RLS/audit/business-behavior review before commit grouping.
+- Remaining:
+  - Await Claude verdicts for medication-issues, consent-records, comments, cds/check, first-visit-documents, first-visit-documents `[id]`, first-visit-documents print-batch, visit-records, care-reports, dispense-results, dispense-audits, set-audits, and set-plans. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Set Plans Detail PHI/RLS Planning Hardening — 2026-06-29 04:30 JST
+
+- Scope:
+  - Hardened `GET`/`PATCH /api/set-plans/[id]` after Claude inbox stayed clear.
+- Fixed:
+  - Removed generic `withAuthContext` from set-plans detail GET/PATCH.
+  - Added route-local `requireAuthContext` + `runWithRequestAuthContext`.
+  - Moved GET set-plan detail reads from direct Prisma to `withOrgContext(..., { requestContext: ctx })`.
+  - Added explicit `withOrgContext(..., { requestContext: ctx })` for PATCH transaction work.
+  - Preserved `canSet`, assignment-scoped detail lookup, stale line calculation, strict PATCH body validation, `expected_updated_at` OCC, period ordering and 35-day limit, active packaging method selection, packaging summary recompute, `updateMany` write-claim, and `notifyWorkflowMutation`.
+  - Reapplied assignment scoping to PATCH `updateMany` and post-update read.
+  - Blocked stale inactive packaging methods from being re-snapshotted during unrelated metadata updates.
+  - Preserved route metrics with `withRoutePerformance`.
+  - Unexpected failures now return no-store `INTERNAL_ERROR` and log only `event/route/method/error_name`.
+  - Added route tests for sanitized GET/PATCH unexpected failures, no raw PHI leakage, GET/PATCH RLS request context propagation, no-store on success/error/validation/conflict paths, assignment-scoped write/read claims, active packaging method snapshot refresh, and inactive packaging method rejection.
+  - Added protected PATCH matrix no-store coverage for set-plans `[id]`.
+- Validation:
+  - Set-plans `[id]` route tests passed `1` file / `17` tests.
+  - Protected GET target passed `3` tests / `363` skipped.
+  - Protected PATCH target passed `3` tests / `62` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Privacy reviewer found only low no-store assertion gaps; fixed before final validation.
+  - Medical-safety reviewer found assignment write-scope and inactive packaging method blockers; both were fixed with regression tests before final validation.
+- Review:
+  - Claude `PATCH_REVIEW_REQUEST` is the next action before moving to the next backend slice.
+- Remaining:
+  - Await Claude verdicts for accumulated backend hardening slices including set-plans detail. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Set Batch Generation PHI/RLS Safety Hardening — 2026-06-29 04:51 JST
+
+- Scope:
+  - Hardened `POST /api/set-plans/[id]/generate-batches` after processing Claude's higher-priority Wave1 eyebrow review request.
+- Fixed:
+  - Kept route-local `requireAuthContext` + `runWithRequestAuthContext`, no-store sensitive responses, fixed `INTERNAL_ERROR`, allowlisted error metadata, and route performance wrapper.
+  - Moved set-plan read, OCC/status checks, latest intake read, validation, stale reuse checks, generation, and change-log writes into the same serializable `withOrgContext(..., { requestContext: ctx, isolationLevel: Serializable })` retry boundary.
+  - Included `setPlan.updated_at` in latest input timestamp detection so existing or concurrently-created batch reuse rejects after plan changes.
+  - Preserved `canSet`, assignment scoping on plan read and write claim, forced-regeneration `expected_updated_at`, set-audited regeneration block, packaging summary snapshot, dispense-result/decision inputs, narcotic master handling, change-log snapshots, idempotent reuse, and `notifyWorkflowMutation`.
+  - Removed drug names from missing-frequency, missing audited-result, and uncalculable-quantity 400 response bodies.
+  - Added regression tests for plan-updated stale reuse, concurrently-created stale reuse, retry reloading latest intake after P2034, and no drug-name leakage in validation bodies.
+- Validation:
+  - Generate-batches route tests passed `1` file / `27` tests.
+  - Protected POST target passed `3` tests / `121` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Sent Claude `PATCH_REVIEW_RESULT: CHANGES_REQUESTED` for Wave1 eyebrow commit `a2f80de9` because removing the explicit `AdminPageHeader` eyebrow prop still renders the default `Admin Console` eyebrow.
+  - Re-reviewed Claude fix commit `90d1c20b`; residual checks, pharmacy-cooperation test, scoped ESLint, scoped Prettier, and fix-commit diff-check passed. Sent `PATCH_REVIEW_RESULT: APPROVED`.
+  - Sent Claude `PATCH_REVIEW_REQUEST` for generate-batches hardening after validation passed.
+- Remaining:
+  - Await Claude verdicts for accumulated backend hardening slices including generate-batches. If Claude sends a higher-priority request first, handle that before new backend work.
+
+### Visit Residual Reduction Code-First Identity — 2026-06-29 04:59 JST
+
+- Scope:
+  - Continued the drug-code master direction in backend visit-record residual reduction follow-up generation.
+- Fixed:
+  - Added residual-reduction drug identity helpers that prefer normalized `code:<drug_code>` and fall back to `name:<drug_name>` only for unresolved medications.
+  - Stopped looking up generated `MedicationIssue` records by name-only residual reduction titles when a drug code exists.
+  - Added code-disambiguated labels to generated residual reduction issue titles/descriptions, tracing-report communication subject/content, prohibited-reduction exception descriptions, and residual-reduction task titles/descriptions.
+  - Added `drug_code` and `drug_identity_key` to generated task metadata.
+- Validation:
+  - Focused residual-reduction test passed `1` test / `67` skipped.
+  - Full visit-records route tests passed `1` file / `68` tests.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this code-first backend slice.
+- Remaining:
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, and replacement of remaining downstream name-only identity paths.
+
+### PCA Pumps Detail PHI/RLS Hardening — 2026-06-29 06:42 JST
+
+- Scope:
+  - Processed Claude's approval for PCA Pumps GET/POST first, then hardened `PATCH`/`DELETE /api/pca-pumps/[id]`.
+- Fixed:
+  - Bound PATCH/DELETE work to the authenticated request context with `runWithRequestAuthContext`.
+  - Preserved `canAdmin`, org-scoped pump lookup, open-rental status-change block, pending-return-inspection block, maintenance event creation, delete-with-rental-history block, and audit log behavior.
+  - Preserved `withOrgContext(..., { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 })` around pump reads/writes/deletes.
+  - Added `withRoutePerformance` on PATCH/DELETE.
+  - Forced sensitive no-store headers on auth failures, validation errors, success responses, and unexpected-error fallbacks.
+  - Unexpected failures now return fixed no-store `INTERNAL_ERROR` and log only `event/route/method` plus sanitized logger error metadata.
+  - Added route tests for auth-before-body behavior, no-store success/validation/error paths, sanitized PATCH/DELETE 500s without raw serial details, delete-without-history audit behavior, and delete-with-history rejection.
+  - Added protected PATCH/DELETE matrix coverage for PCA pump detail routes and no-store expectations.
+- Validation:
+  - PCA pump `[id]` route tests passed `1` file / `10` tests.
+  - Protected PATCH/DELETE targeted matrix passed `6` tests / `65` skipped.
+  - Full protected PATCH/DELETE matrix passed `71` tests.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the preceding PCA Pumps GET/POST slice; Codex ACKed before continuing.
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this PCA pump detail hardening slice.
+- Remaining:
+  - Continue Claude-first handling and preserve the current no-commit posture unless the user explicitly changes it.
+
+### PCA Pump Delete TOCTOU Follow-up + Allergy Code Identity — 2026-06-29 06:53 JST
+
+- Scope:
+  - Processed Claude's approval for PCA pump detail hardening first, then addressed its non-blocking DELETE TOCTOU observation.
+  - Continued the drug-code master direction in QR allergy promotion and CDS allergy checks.
+- Fixed:
+  - Moved PCA pump DELETE existence/history check, delete, and audit into one `withOrgContext(..., { requestContext: ctx })` callback.
+  - Added DELETE test assertions that the check/delete/audit path uses one RLS transaction wrapper.
+  - Added optional `drug_code` to `AllergyEntry`.
+  - QR allergy promotion now extracts only explicit YJ/canonical allergy drug codes, stores them on the allergy entry, dedupes coded entries by code first, and falls back to drug-name dedupe only for uncoded entries.
+  - CDS allergy direct checks now raise exact allergy alerts by matching `allergy.drug_code` to prescription `drug_code`, and avoid direct name alerts when both sides have different codes. Existing uncoded name fallback and therapeutic-category checks remain.
+- Validation:
+  - QR allergy promotion tests passed `1` file / `13` tests.
+  - CDS allergy targeted tests passed `2` tests / `13` skipped.
+  - Full CDS checker tests passed `1` file / `15` tests.
+  - Patient allergy schema/patient master/card/CDS/QR combined validation passed `4` files / `41` tests.
+  - PCA pump `[id]` route tests passed `1` file / `10` tests.
+  - Protected PCA pump `[id]` targeted matrix passed `6` tests / `65` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the PCA pump detail slice and identified DELETE TOCTOU as non-blocking.
+  - Subagent spawn for medical safety review was attempted but blocked by `agent thread limit reached`; inline medical-safety review was used instead.
+  - Claude review requests are the next action for both the PCA TOCTOU follow-up and QR allergy/CDS code-first slice.
+- Remaining:
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, and replacement of remaining downstream name-only identity paths.
+
+### Patient Prescriptions Diff Review Drug-Code Exposure — 2026-06-29 07:00 JST
+
+- Scope:
+  - Processed Claude's PCA DELETE TOCTOU follow-up approval first, then continued the drug-code master direction in `GET /api/patients/[id]/prescriptions` diff-review rows.
+- Fixed:
+  - Added `current_drug_code` and `previous_drug_code` to every `diff_review.rows` entry.
+  - Preserved the existing bare `key` response contract, including legacy removed-row fallback keys such as `removed-YJ_REMOVED`.
+  - Added regression coverage that same-name/different-code medications match and expose the correct code pair, not a name-derived pairing.
+  - Added regression coverage that unchanged/changed same-code rows and removed legacy rows include current/previous code fields.
+- Validation:
+  - Patient prescriptions route tests passed `1` file / `16` tests.
+  - Protected GET targeted matrix passed `3` tests / `366` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the PCA DELETE TOCTOU follow-up before this slice began.
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this patient prescriptions code exposure slice.
+- Remaining:
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, and replacement of remaining downstream name-only identity paths.
+
+### QR/CDS Allergy Code Identity Follow-up — 2026-06-29 07:05 JST
+
+- Scope:
+  - Addressed Claude's `CHANGES_REQUESTED` on the allergy direct-match suppression semantics.
+- Fixed:
+  - Added normalized YJ ingredient-prefix helpers for first-7-character comparison.
+  - Kept exact full-code allergy alerts as the primary path.
+  - Restored direct name allergy alerts when both sides are coded but share the same YJ ingredient prefix, preventing same-active-ingredient/different-formulation misses for QR-promoted coded allergy entries without `therapeutic_category`.
+  - Preserved suppression for different-prefix coded name matches to avoid same-name/different-drug false positives.
+  - Added a regression test for `1141001F1020` allergy vs `1141001A1020` prescription with matching name stem and no category backstop.
+- Validation:
+  - CDS allergy targeted tests passed `3` tests / `13` skipped.
+  - Full CDS checker tests passed `1` file / `16` tests.
+  - QR allergy promotion tests passed `1` file / `13` tests.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude response/re-review request sent for this allergy prefix follow-up.
+  - Claude approved the patient prescriptions diff-review drug-code exposure slice at `2026-06-29 07:04 JST`; Codex ACKed the approval.
+- Remaining:
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, and replacement of remaining downstream name-only identity paths.
+
+### Dispense Results Code-First Replay Identity — 2026-06-29 07:12 JST
+
+- Scope:
+  - Continued backend drug-code identity hardening in `POST /api/dispense-results` idempotent stale replay.
+- Fixed:
+  - Added an actual-drug identity helper for replay comparison.
+  - When either existing or submitted actual drug code is present, replay identity now requires matching normalized `actual_drug_code`.
+  - `actual_drug_name` is used only when both sides are uncoded.
+  - Added regression coverage that same actual drug code with display-name drift replays idempotently without duplicate side effects.
+  - Added regression coverage that same name with different actual drug codes remains a stale workflow conflict.
+- Validation:
+  - Focused replay tests passed `2` tests / `35` skipped.
+  - Full dispense-results route tests passed `1` file / `37` tests.
+  - Protected POST targeted matrix passed `3` tests / `127` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this dispense-results code-first replay slice.
+- Remaining:
+  - Allergy prefix follow-up re-review remains pending.
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, and replacement of remaining downstream name-only identity paths.
+
+### QR Allergy Legacy Name-Only Duplicate Follow-Up — 2026-06-29 07:17 JST
+
+- Scope:
+  - Continued the approved QR/CDS allergy code-first follow-up by closing the duplicate-promotion gap for existing legacy/manual name-only allergy entries.
+- Fixed:
+  - Replaced the single name-only duplicate helper with a duplicate-reason helper that understands both coded and uncoded existing allergy entries.
+  - For coded QR allergy entries, exact existing `drug_code` matches still return `duplicate_drug_code`.
+  - If the existing entry has no code but the normalized `drug_name` matches the coded QR entry, promotion now returns `duplicate_drug_name` instead of appending a duplicate allergy.
+  - If both entries are coded with different codes, the same display name is not treated as a duplicate, preserving same-name/different-drug separation.
+  - Added regression coverage for the legacy name-only duplicate path.
+- Validation:
+  - QR allergy promotion tests passed `1` file / `14` tests.
+  - CDS allergy targeted tests passed `3` tests / `13` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the dispense-results code-first replay identity slice at `2026-06-29 07:14 JST`; Codex ACK/review follow-up is now incorporated into this progress checkpoint.
+  - Claude approved this QR allergy legacy duplicate slice at `2026-06-29 07:20 JST`; no blockers.
+- Remaining:
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, visit-record patient history code exposure, and replacement of remaining downstream name-only identity paths.
+
+### Visit Records Latest Prescription Medication Identity — 2026-06-29 07:24 JST
+
+- Scope:
+  - Continued backend drug-code identity hardening in `GET /api/visit-records?include_history_summary=true`.
+  - Used code-mapper and medical-safety subagents to confirm the affected response shape and safety boundary before patching.
+- Fixed:
+  - Kept existing `latest_prescription.drug_names` unchanged for backward compatibility.
+  - Added additive `latest_prescription.medications: Array<{ drug_name, drug_code }>` so consumers can preserve line-level name/code pairing.
+  - Extended the existing latest-prescription top-3 lateral query to select `PrescriptionLine.drug_code`.
+  - Aggregated ordered JSON objects from the same limited line set rather than adding a new query.
+  - Added regression coverage for same display name with explicit code and an uncoded same-name line, preserving order and null code values.
+- Validation:
+  - Focused visit-history summary test passed `1` test / `67` skipped.
+  - Full visit-records route tests passed `1` file / `68` tests.
+  - Protected GET targeted matrix passed `6` tests / `363` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved this visit-record patient-history medication identity slice at `2026-06-29 07:28 JST`; no blockers.
+  - Claude noted a non-blocking residual-adjustment title-migration risk: pre-existing open MedicationIssue rows with the old code-less title can be duplicated once after the code-in-title dedupe change.
+  - QR allergy legacy duplicate review is approved.
+- Remaining:
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, UI consumption of visit-history `medications`, and replacement of remaining downstream name-only identity paths.
+
+### Visit Preparations Prescription Change Medication Identity — 2026-06-29 07:32 JST
+
+- Scope:
+  - Continued backend drug-code identity hardening in `GET /api/visit-preparations/[scheduleId]`.
+  - Used code-mapper subagent output to select a non-overlapping backend slice after visit-records review was approved.
+- Fixed:
+  - Kept existing `prescription_changes.added`, `changed`, and `removed` display fields for backward compatibility.
+  - Added `added_medications` and `removed_medications` arrays with `{ drug_name, drug_code }`.
+  - Added `drug_code`, `previous_drug_name`, and `previous_drug_code` to each `changed` entry.
+  - Initial-prescription summaries now return `added_medications`, including explicit `null` for uncoded lines.
+  - Existing code-aware `matchMedicationDiffLines` remains the matching source; this slice exposes its identity evidence in the response.
+- Validation:
+  - Focused prescription-change summary tests passed `2` tests / `31` skipped.
+  - Full visit-preparations route tests passed `1` file / `33` tests.
+  - Protected GET targeted matrix passed `3` tests / `366` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude `PATCH_REVIEW_REQUEST` was sent for this visit-preparations medication identity slice; review is pending.
+- Remaining:
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, UI consumption of additive code fields, and replacement of remaining downstream name-only identity paths.
+
+### Claude Inbox + Dispense Workbench Count Row Medication Identity — 2026-06-29 07:42 JST
+
+- Scope:
+  - Prioritized Claude inbox before continuing backend work.
+  - Reviewed Claude's external-viewer false-empty fetch-error FE patch without editing that lane.
+  - Closed the visit-preparations review interrupt and continued code-first identity hardening in `GET /api/dispense-tasks/[id]/workbench`.
+- Fixed:
+  - Sent Claude an APPROVED verdict for the external-viewer false-empty patch after verifying it separates loading/error/empty/data states and keeps summary counts fail-closed on fetch errors.
+  - ACKed Claude's approval of the visit-preparations medication identity slice.
+  - Count rows now expose medication identity as explicit prescribed/actual pairs:
+    - `drug_code` remains a prescribed-code compatibility alias.
+    - `prescribed_drug_name` / `prescribed_drug_code` identify the prescription line.
+    - `actual_drug_name` / `actual_drug_code` identify the dispensed result when present.
+    - legacy `drug_name` remains the display name (`actual_drug_name ?? prescribed_drug_name`) for compatibility.
+  - Updated shared workbench response typing so consumers can read the additive code fields safely.
+- Validation:
+  - External-viewer component test passed `1` file / `6` tests; scoped ESLint and `git diff --check` passed.
+  - Dispense workbench focused route tests passed `2` tests / `7` skipped.
+  - Shared/adapter workbench tests passed `2` files / `63` tests.
+  - Full dispense workbench route tests passed `1` file / `9` tests.
+  - Protected GET targeted matrix passed `3` tests / `366` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the visit-preparations medication identity slice at `2026-06-29 07:39 JST`; no blockers.
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this dispense workbench count-row prescribed/actual identity slice.
+- Remaining:
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, UI consumption of additive code fields, and replacement of remaining downstream name-only identity paths.
+
+### Dispense Task Detail + Triage Duplicate Code-First Identity — 2026-06-29 07:50 JST
+
+- Scope:
+  - Continued backend drug-code identity hardening after Claude inbox was clear.
+  - Used a code-mapper subagent to rank remaining backend name-only paths; selected prescription-intake triage duplicate detection as the highest-value next slice, plus the adjacent dispense-task detail identity exposure.
+- Fixed:
+  - `GET /api/dispense-tasks/[id]` stock guidance now includes `prescribed_drug_name` and `prescribed_drug_code` for each guided line, so consumers do not have to infer prescribed identity from display names.
+  - Dispense-task inquiry line projection now selects `drug_code`, preserving medication identity evidence where line-level inquiry data is returned.
+  - `GET /api/prescription-intakes/triage` duplicate suspicion now builds Rp signatures with `drug_code` first (`code:<drug_code>`), falling back to `name:<trimmed drug_name>` only when code is absent.
+  - Added regression coverage that same-name different-code prescriptions are not flagged as duplicates, while same-code display-name drift remains duplicate-suspected.
+  - Claude approved the previous dispense workbench prescribed/actual identity slice; Codex ACKed the optional-nullable migration boundary and compatibility alias decision.
+- Validation:
+  - Dispense task detail route tests passed `1` file / `9` tests.
+  - Protected GET targeted matrix for `dispense-tasks/[id] GET` passed `3` tests / `366` skipped.
+  - Triage route tests passed `1` file / `7` tests.
+  - Protected GET targeted matrix for `prescription-intakes/triage GET` passed `3` tests / `366` skipped.
+  - Scoped ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed for both slices.
+- Review:
+  - Claude approved the previous dispense workbench count-row identity slice at `2026-06-29 07:46 JST`; no blockers.
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this dispense-task detail + triage duplicate code-first slice.
+- Remaining:
+  - Code-mapper next candidates remain CDS comparable line key code-first matching and stricter pharmacy stock bulk import name-only resolution.
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, UI consumption of additive code fields, and replacement of remaining downstream name-only identity paths.
+
+### Claude Consent Review + CDS Comparable-Line Code-First Identity — 2026-06-29 07:58 JST
+
+- Scope:
+  - Prioritized Claude's consent-records FE review request and the new external-share FE lock.
+  - Continued backend CDS drug-code identity hardening after medical-safety subagent review.
+- Fixed:
+  - Sent Claude an APPROVED verdict for the consent-records false-empty patch after verifying it routes fetch errors through the existing `DataTable` `errorMessage`/`onRetry` branch.
+  - ACKed Claude's `patients/[id]/share/external-share-content.tsx` FE lock and did not edit that lane.
+  - CDS `buildComparableLineKey()` now uses shared `medicationIdentityKey()` so prescription identity is `code:<drug_code>` when coded and `name:<trimmed drug_name>` only when uncoded.
+  - This fixes DO-prescription continuation detection when the same YJ/drug code has display-name drift, while preserving same-name/different-code separation and uncoded legacy fallback.
+  - Added regression coverage for same-code display-name drift, same-name different-code, identical uncoded names, and coded-vs-uncoded same-name non-match.
+- Validation:
+  - Consent component test passed `1` file / `7` tests; scoped ESLint and `git diff --check` passed. The test run still emits a React act warning from an existing inline validation test.
+  - CDS focused tests passed `6` tests / `14` skipped.
+  - Full CDS tests passed `1` file / `20` tests.
+  - Scoped CDS ESLint, Prettier, `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the previous dispense-task detail + triage duplicate code-first slice at `2026-06-29 07:55 JST`; Codex accepted the non-blocking P3 note about coded-vs-uncoded triage false negatives as future canonical-identity work.
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this CDS comparable-line identity slice.
+- Remaining:
+  - Code-mapper next candidate remains stricter pharmacy stock bulk import name-only resolution.
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, canonical coded-vs-uncoded intake identity reconciliation, UI consumption of additive code fields, and replacement of remaining downstream name-only identity paths.
+
+### Claude External Share Review + Pharmacy Stock Bulk Name-Only Hardening — 2026-06-29 08:05 JST
+
+- Scope:
+  - Prioritized Claude's external-share FE review request and CDS comparable-line review result.
+  - Continued backend drug-master identity hardening in `POST /api/pharmacy-drug-stocks/bulk`.
+  - Used a data-integrity subagent read-only review to confirm the minimal compatible patch shape before editing.
+- Fixed:
+  - Sent Claude an APPROVED verdict for the external-share false-empty patch after verifying it uses the existing ErrorState pattern for the overview query's fetch error and does not render the empty sharing UI on failure.
+  - ACKed Claude's approval of the CDS comparable-line medication identity slice.
+  - Pharmacy stock bulk import no longer turns a YJ-less `drug_name` exact single match into a writable `BulkOperation`.
+  - Name-only exact matches now return `invalidRows` and preview rows with `status: 'invalid'`, a YJ-required reason, and existing `candidates` evidence.
+  - Dry-run remains mutation-free. Apply mode still partially imports valid YJ-coded rows while recording name-only invalid rows in the summary audit with `drug_master_id: null`.
+  - Existing response union is preserved; no `review_required` status or new top-level field was added.
+- Validation:
+  - External-share focused test passed `1` file / `4` tests.
+  - Scoped external-share ESLint, Prettier, and `git diff --check`: passed.
+  - Pharmacy bulk route tests passed `1` file / `16` tests.
+  - Scoped bulk-route ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the CDS comparable-line identity slice at `2026-06-29 08:02 JST`; no blockers.
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this pharmacy stock bulk import name-only resolution hardening slice.
+- Remaining:
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, canonical coded-vs-uncoded reconciliation, UI consumption of additive code fields, and replacement of remaining downstream name-only identity paths.
+
+### Set Audits Carry-Item Medication Identity — 2026-06-29 08:12 JST
+
+- Scope:
+  - Processed Claude's approval for the pharmacy stock bulk name-only hardening slice.
+  - ACKed Claude's high-frequency-page lane split request: Claude owns patient list/detail FE; Codex keeps dashboard backend/data-contract support and minimal dashboard glue.
+  - Continued backend code-first identity hardening in `GET/POST /api/set-audits`.
+- Fixed:
+  - Set audit GET batch line selections now include `drug_code` next to `drug_name`.
+  - Set audit POST batch line selections now include `drug_code`.
+  - Approved and partial-approved carry items written to visit schedules now include additive `drug_code`, preserving line identity across carry packet / visit handoff data.
+  - Existing `drug_name` fields and response/write shapes are preserved for compatibility.
+  - The same files already contained pre-existing PHI/RLS/no-store hardening hunks; this slice did not change those behaviors beyond preserving them through validation.
+- Validation:
+  - Set-audits route tests passed `1` file / `40` tests.
+  - Protected GET targeted matrix for `set-audits GET` passed `3` tests / `366` skipped.
+  - Protected POST targeted matrix for `set-audits POST` passed `3` tests / `127` skipped.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude approved the pharmacy stock bulk name-only hardening slice at `2026-06-29 08:08 JST`; no blockers.
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this set-audits carry-item medication identity slice.
+  - A medical-safety subagent spawn for this slice was attempted but blocked by `agent thread limit reached`; review was performed inline.
+- Remaining:
+  - Pivot next to dashboard backend/data-contract triage unless Claude sends a higher-priority request.
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, canonical coded-vs-uncoded reconciliation, UI consumption of additive code fields, and replacement of remaining downstream name-only identity paths.
+
+### Dashboard Cockpit Stale Refetch Warning — 2026-06-29 08:18 JST
+
+- Scope:
+  - Processed Claude's approval for the set-audits carry-item medication identity slice first.
+  - Kept the agreed dashboard lane split: Codex touched only the dashboard cockpit glue, not Claude-owned patient list/detail FE files.
+- Fixed:
+  - Dashboard cockpit now keeps stale cockpit data visible when a background refetch fails.
+  - The full error state remains for initial/no-data failures.
+  - A non-blocking warning states that refresh failed and the displayed information is from the previous successful fetch.
+  - The warning includes a retry button wired to the existing `refetch` callback.
+  - Added regression coverage that stale data, warning text, and retry behavior are present while the full error state is not shown.
+- Validation:
+  - Dashboard cockpit component tests passed `1` file / `15` tests.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused`: passed.
+  - Authenticated headless browser smoke against `http://localhost:3012/dashboard`: passed. The page rendered `dashboard-cockpit` and the `ダッシュボード` heading, screenshot captured at `/tmp/careviax-dashboard-cockpit-0818.png`, and no console errors were recorded.
+- Review:
+  - Claude approved the set-audits carry-item drug-code exposure at `2026-06-29 08:16 JST`; Codex ACKed.
+  - Claude approved this dashboard cockpit stale-refetch warning slice at `2026-06-29 08:24 JST`; no blockers.
+- Remaining:
+  - Continue Claude-first handling before selecting any new backend/data-contract slice.
+
+### Manual Clinical Import YJ-Required Write Identity — 2026-06-29 08:28 JST
+
+- Scope:
+  - Processed Claude's dashboard cockpit approval first.
+  - Reviewed Claude's patient-list stale-refetch/skeleton FE slice read-only and ACKed the patient-detail FE lock.
+  - Continued backend drug-code identity hardening in manual clinical DrugMaster updates.
+- Fixed:
+  - Manual renal adjustment entries now require `yj_code` before they can select a `DrugMaster`.
+  - Manual safety override entries now require `yj_code` before they can update `DrugMaster` safety flags.
+  - Removed `drug_name contains` as a write-side DrugMaster selector for these manual clinical import paths.
+  - `drug_name` remains available as a human label in the payload shape, but it no longer acts as a resolved medication identity.
+  - Added regression coverage that drug-name-only renal adjustments and safety overrides fail before any DrugMaster lookup/write.
+- Validation:
+  - Manual clinical import tests passed `1` file / `6` tests.
+  - Scoped backend ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused`: passed.
+  - Patient-list read-only review validation passed: focused tests `1` file / `20` tests, scoped ESLint, Prettier, and `git diff --check`.
+- Review:
+  - Sent Claude `CHANGES_REQUESTED` for the patient-list FE slice because the stale-warning retry button used only compact `buttonVariants(size=sm)`, collapsing to desktop `sm:h-7 sm:min-h-0` instead of matching the approved dashboard recovery action height.
+  - Claude `PATCH_REVIEW_REQUEST` is the next action for this manual clinical import YJ-required write identity slice.
+- Remaining:
+  - Await Claude's patient-list follow-up and manual import backend review.
+  - Broader migration remains: durable `drug_master_id` / resolution status on prescription lines, packaging-unit GS1/JAN modeling, canonical coded-vs-uncoded reconciliation, UI consumption of additive code fields, and replacement of remaining downstream name-only identity paths.
+
+### HOT Import YJ-Required Link Identity — 2026-06-29 08:33 JST
+
+- Scope:
+  - Continued backend DrugMaster import identity hardening after sending the manual clinical import review request.
+  - Stayed out of Claude-owned patient list/detail FE lanes.
+- Fixed:
+  - HOT master import no longer links YJ-less records to DrugMaster by `drug_name` and optional `manufacturer`.
+  - YJ-coded HOT records still upsert by `DrugMaster.yj_code` and write `hot_code` as before.
+  - YJ-less HOT records are skipped instead of using display-name/manufacturer as a write identity.
+  - Added regression coverage that a HOT row without YJ does not call `drugMaster.upsert`, `findFirst`, or `update`.
+- Validation:
+  - HOT import tests passed `1` file / `7` tests.
+  - Scoped HOT ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused`: attempted, but currently fail in Claude-owned locked `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx:767` due a `PatientHomeOperationsSnapshot` fixture missing required `items`. Codex notified Claude and did not edit the locked file.
+- Review:
+  - Claude review request is pending for the manual clinical import slice.
+  - HOT import review request is pending full typecheck/no-unused rerun after Claude fixes the patient-detail test fixture.
+- Remaining:
+  - Rerun full typecheck/no-unused after Claude's patient-detail fixture fix.
+  - Continue Claude-first handling before selecting any new backend/data-contract slice.
+
+### Claude Patient-List Rev2 Approval + Gate Blocker — 2026-06-29 08:38 JST
+
+- Scope:
+  - Prioritized Claude follow-up handling before continuing backend drug-code work.
+  - Reviewed Claude's patient-list rev2 after the previous `CHANGES_REQUESTED` on retry-button target height.
+- Fixed/Reviewed:
+  - Patient-list stale-refetch warning now preserves stale cards, shows the warning, and keeps the retry action at an explicit minimum height.
+  - Loading skeleton remains aligned with the actual card grid layout.
+  - Codex did not edit Claude-owned patient-list/detail FE files.
+- Validation:
+  - Patient-list focused tests passed `1` file / `20` tests.
+  - Scoped patient-list ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm typecheck`: still blocked in Claude-owned locked `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx:767` because the fixture is missing required `PatientHomeOperationsSnapshot.items`.
+- Review:
+  - Sent Claude `APPROVED` for the patient-list FE rev2.
+  - Sent Claude another FYI for the patient-detail typecheck blocker; Codex did not edit that locked file.
+- Remaining:
+  - Await Claude's manual clinical import backend review.
+  - Await Claude's patient-detail fixture fix, then rerun `pnpm typecheck`.
+  - HOT import review request remains pending full gate rerun.
+
+### HOT Import Full Gate Cleared — 2026-06-29 08:42 JST
+
+- Scope:
+  - Resumed HOT import validation after Claude reported the patient-detail fixture fix.
+  - Avoided concurrent Next/tsc gates while Claude's check was still active; reran locally after the gate was clear.
+- Validation:
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - HOT targeted tests and scoped HOT ESLint, Prettier, and `git diff --check` had already passed in the 08:33 checkpoint.
+- Review:
+  - HOT import review request is now ready to send to Claude with full validation green.
+- Remaining:
+  - Await Claude review for manual clinical import YJ-required write identity.
+  - Await Claude review for HOT import YJ-required link identity after sending the request.
+
+### Claude Patient-Detail FE Review — 2026-06-29 08:46 JST
+
+- Scope:
+  - Prioritized Claude's patient-detail `CardWorkspace` review request over backend continuation.
+  - Reviewed the false not-found split, cached-data refetch-error behavior, and 12px safety warning update.
+- Review:
+  - Logic is correct: initial fetch failure without patient data now shows retryable `ErrorState`, true no-data/no-error remains not-found, and cached patient data stays visible on background refetch error.
+  - `ErrorState` usage matches existing PH-OS false-empty recovery patterns.
+  - `text-xs` for the safety summary warning aligns with the UI/UX SSOT's 12px minimum label guidance.
+- Validation:
+  - `card-workspace.test.tsx` passed `1` file / `56` tests.
+  - Scoped ESLint and `git diff --check`: passed.
+  - Scoped Prettier: failed on `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`; the new long `mockPatientQuery(...)` calls need wrapping.
+- Result:
+  - Sent Claude `CHANGES_REQUESTED` for formatting only.
+  - Codex did not edit Claude-owned FE files.
+- Remaining:
+  - Await patient-detail rev2 formatting fix, then rerun scoped validation and approve if green.
+  - Await manual clinical import and HOT import backend review results.
+
+### Manual/HOT Import Backend Reviews Approved — 2026-06-29 08:47 JST
+
+- Scope:
+  - Processed Claude's review result for the two backend drug-master import hardening slices.
+- Review:
+  - Manual clinical import YJ-required write identity: APPROVED, no blockers.
+  - HOT import YJ-required link identity: APPROVED, no blockers.
+  - Claude independently reran the focused import tests: manual `6` + HOT `7`, total `13/13` passed.
+- Notes:
+  - Claude agreed both changes match the fail-closed code-first write-identity pattern already used for pharmacy stock bulk import.
+  - Non-blocking future candidate: expose skipped YJ-less HOT row count in import payload/logging for operational transparency.
+- Remaining:
+  - Await patient-detail rev2 formatting fix from Claude.
+  - Continue backend drug-code migration when Claude requests are clear.
+
+### Patient-Detail Approved + Dispense Rework Carry Code Fallback — 2026-06-29 08:51 JST
+
+- Scope:
+  - Revalidated Claude's patient-detail `CardWorkspace` rev2 and sent `APPROVED`.
+  - Continued backend code-first medication identity hardening in `PATCH /api/dispense-results/[id]`.
+- Fixed:
+  - Reworked dispense result carry-item regeneration now selects the prescribed line's `drug_name` and `drug_code`.
+  - Visit schedule `carry_items` now use `actual_drug_code ?? line.drug_code ?? null`, preserving available medication identity when the actual result code is empty.
+  - `drug_name` now also has a line-name fallback for handoff robustness.
+  - Added regression coverage for a rework where `actual_drug_code` is null but the prescribed line has `drug_code`.
+- Validation:
+  - Patient-detail rev2: Prettier, focused tests `56/56`, scoped ESLint, and `git diff --check` passed.
+  - Dispense-results `[id]` route tests passed `1` file / `18` tests.
+  - Scoped backend ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck` and `pnpm typecheck:no-unused`: passed.
+  - Attempted protected PATCH matrix target for this route, but the matrix has no registered `dispense-results/[id] PATCH` entry; the run skipped all tests and was not counted as coverage.
+- Review:
+  - Claude review request is next for this backend slice.
+- Remaining:
+  - Send Claude review request.
+  - Continue backend drug-code migration after Claude requests are clear.
+
+### Visit-Record Detail False-Empty Rev2 Approved — 2026-06-29 14:08 JST
+
+- Scope:
+  - Prioritized Claude's `visit-record-detail` false-empty workflow rev2 review request.
+  - Reviewed the FE diff plus new component test without editing Claude-owned files.
+- Review:
+  - `reportsError` now suppresses `generate_report`, `open_report`, and secondary generation until the report list is reliable.
+  - `handleGenerateReport` guards menu error flips and closes the menu with an error toast instead of generating from stale/empty report state.
+  - `billingCandidatesError` now suppresses `generate_billing_candidates` and falls back to the non-destructive billing-candidates review link.
+  - Residual medication fetch failure now throws, sets `isError`, and surfaces a retry warning instead of silently reading as zero residual medications.
+- Validation:
+  - Focused tests passed: `pnpm exec vitest run src/lib/visits/visit-workflow-projection.test.ts 'src/app/(dashboard)/visits/[id]/visit-record-detail.test.tsx' --reporter=dot --testTimeout=30000` (`2` files / `17` tests).
+  - Scoped ESLint, Prettier, tracked/untracked whitespace checks, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed.
+- Result:
+  - Sent Claude `PATCH_REVIEW_RESULT ... rev2 = APPROVED`.
+  - Noted that `src/app/(dashboard)/visits/[id]/visit-record-detail.test.tsx` is untracked locally and must be staged with the FE slice.
+- Remaining:
+  - Wait for Claude to commit or hand off the approved FE slice.
+  - Continue backend code-first slice work only after agmsg remains clear.
+
+### QR Allergy Promotion Code-First Identity Committed — 2026-06-29 14:12 JST
+
+- Scope:
+  - Processed Claude's visit-detail commit notice first and ACKed the released LOCK.
+  - Committed the Claude-approved QR allergy promotion code-first duplicate detection slice.
+- Fixed:
+  - Patient allergy entries promoted from QR-derived allergy issues now preserve explicit YJ/canonical `drug_code` when present.
+  - Duplicate suppression checks coded allergies by `drug_code` before falling back to name-only matching.
+  - Coded QR entries that duplicate an existing legacy name-only allergy are skipped, while same display names with different explicit codes remain distinct.
+- Validation:
+  - `pnpm exec vitest run src/server/services/qr-allergy-promotion.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `14` tests.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - Claude had approved this QR allergy slice with no blockers.
+- Commit:
+  - `38b792ca` — `Preserve QR allergy drug code identity`
+  - Included only `src/lib/validations/patient-allergy.ts` and `src/server/services/qr-allergy-promotion.{ts,test.ts}`.
+- Remaining:
+  - CDS checker code-first slices, visit workflow route hardening, and other backend dirty files remain separate and need approval-scope confirmation before commit.
+  - Claude plans to work on prescription-intake secondary lookup false-empty; Codex will not touch that FE file unless handed off.
