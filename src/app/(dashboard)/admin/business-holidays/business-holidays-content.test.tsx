@@ -119,6 +119,40 @@ function stubFetchWithHoliday(holiday = holidayFixture()) {
   return fetchMock;
 }
 
+function stubFetchWithHolidaysError() {
+  // 休日 GET だけ 500、店舗一覧は 200。false-empty(休日数0/カレンダー空白)に潰れないことを検証する。
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/pharmacy-sites') {
+      return new Response(JSON.stringify({ data: [{ id: 'site_1', name: '本店' }] }), {
+        status: 200,
+      });
+    }
+    if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`)) {
+      return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+    }
+    return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+function stubFetchWithSitesError(holiday = holidayFixture()) {
+  // 店舗一覧だけ 500。休日 GET は 200。店舗フィルタ欠落を明示することを検証する。
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === '/api/pharmacy-sites') {
+      return new Response(JSON.stringify({ message: 'boom' }), { status: 500 });
+    }
+    if (url.startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`)) {
+      return new Response(JSON.stringify({ data: [holiday] }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
 describe('BusinessHolidaysContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -393,5 +427,45 @@ describe('BusinessHolidaysContent', () => {
     expect(bulkType?.textContent).toContain('薬局休業日');
     expect(bulkType?.textContent).not.toContain('site_closure');
     bulk.unmount();
+  });
+
+  it('surfaces a holidays fetch error instead of collapsing to a false-empty/zero state', async () => {
+    const fetchMock = stubFetchWithHolidaysError();
+    renderContent();
+
+    // 取得失敗は明示エラーとして出る(「該当なし」に化けない)。
+    expect(await screen.findByText('休日設定を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('この月の休日設定はありません。')).toBeNull();
+    expect(
+      screen.getByText('休日一覧を取得できませんでした。上部の再読み込みからやり直してください。'),
+    ).toBeTruthy();
+
+    // SummaryCard は 0 件ではなく「—」を表示する(誤った休日数での営業判断を防ぐ)。
+    const summaryLabel = screen.getByText('今月の休日数');
+    const summaryCard = summaryLabel.parentElement as HTMLElement;
+    expect(summaryCard.textContent).toContain('—');
+    expect(summaryCard.textContent).not.toContain('0');
+
+    // 再読み込みで休日 GET が再発行される。
+    const holidaysCallsBefore = fetchMock.mock.calls.filter(([input]) =>
+      String(input).startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`),
+    ).length;
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    await waitFor(() => {
+      const holidaysCallsAfter = fetchMock.mock.calls.filter(([input]) =>
+        String(input).startsWith(`${BUSINESS_HOLIDAYS_API_PATH}?`),
+      ).length;
+      expect(holidaysCallsAfter).toBeGreaterThan(holidaysCallsBefore);
+    });
+  });
+
+  it('surfaces a sites fetch error so the missing store filter is not silent', async () => {
+    stubFetchWithSitesError();
+    renderContent();
+
+    expect(await screen.findByText('店舗一覧を読み込めませんでした')).toBeTruthy();
+    // 休日データ自体は取得できているので休日エラーは出ない。
+    expect(screen.queryByText('休日設定を読み込めませんでした')).toBeNull();
+    expect(await screen.findByText('年始休業')).toBeTruthy();
   });
 });

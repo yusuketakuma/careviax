@@ -25,6 +25,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ErrorState } from '@/components/ui/error-state';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
 import {
@@ -117,7 +118,12 @@ export function BusinessHolidaysContent() {
   const dateToYear = viewMonth === 11 ? viewYear + 1 : viewYear;
   const dateTo = `${dateToYear}-${String(dateToMonth + 1).padStart(2, '0')}-01`;
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError: isHolidaysError,
+    refetch: refetchHolidays,
+  } = useQuery({
     queryKey: ['business-holidays', orgId, dateFrom, dateTo, filterSiteId],
     queryFn: async () => {
       const params = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
@@ -145,6 +151,7 @@ export function BusinessHolidaysContent() {
 
   const holidays = data?.data ?? EMPTY_HOLIDAYS;
   const sites = sitesQuery.data?.data ?? EMPTY_SITES;
+  const isSitesError = sitesQuery.isError;
 
   const holidayMap = useMemo(() => {
     const map = new Map<string, Holiday[]>();
@@ -288,6 +295,29 @@ export function BusinessHolidaysContent() {
 
   return (
     <div className="space-y-6">
+      {isHolidaysError && (
+        // 取得失敗をカレンダー空白・休日数0に潰さない。誤った「休日なし」での営業判断を防ぐ。
+        <ErrorState
+          variant="server"
+          size="inline"
+          headingLevel={2}
+          title="休日設定を読み込めませんでした"
+          description="休日一覧・カレンダー・集計は最新ではありません。「該当なし」ではなく取得エラーです。再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: () => void refetchHolidays() }}
+          live="assertive"
+        />
+      )}
+      {isSitesError && (
+        // 店舗一覧の取得失敗で店舗フィルタ・対象店舗の選択肢が欠落することを明示。
+        <ErrorState
+          variant="server"
+          size="inline"
+          headingLevel={2}
+          title="店舗一覧を読み込めませんでした"
+          description="店舗フィルタと対象店舗の選択肢が表示されない場合があります。再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: () => void sitesQuery.refetch() }}
+        />
+      )}
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -508,7 +538,12 @@ export function BusinessHolidaysContent() {
           <CardTitle className="text-base">休日一覧</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {holidays.length === 0 ? (
+          {isHolidaysError ? (
+            // 取得失敗を「この月の休日設定はありません」に潰さない。
+            <div className="text-sm text-state-confirm">
+              休日一覧を取得できませんでした。上部の再読み込みからやり直してください。
+            </div>
+          ) : holidays.length === 0 ? (
             <div className="text-sm text-muted-foreground">この月の休日設定はありません。</div>
           ) : (
             holidays.map((h) => (
@@ -555,9 +590,16 @@ export function BusinessHolidaysContent() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <SummaryCard label="今月の休日数" value={holidays.length} />
-        <SummaryCard label="休業日" value={holidays.filter((h) => h.is_closed).length} />
-        <SummaryCard label="営業日" value={holidays.filter((h) => !h.is_closed).length} />
+        {/* 取得失敗時は 0 件を表示せず「—」。誤った休日数での判断を防ぐ。 */}
+        <SummaryCard label="今月の休日数" value={isHolidaysError ? '—' : holidays.length} />
+        <SummaryCard
+          label="休業日"
+          value={isHolidaysError ? '—' : holidays.filter((h) => h.is_closed).length}
+        />
+        <SummaryCard
+          label="営業日"
+          value={isHolidaysError ? '—' : holidays.filter((h) => !h.is_closed).length}
+        />
       </div>
 
       {/* Add/Edit Form Sheet */}
@@ -682,7 +724,7 @@ export function BusinessHolidaysContent() {
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: number }) {
+function SummaryCard({ label, value }: { label: string; value: number | string }) {
   return (
     <Card>
       <CardContent>
