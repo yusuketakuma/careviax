@@ -23,6 +23,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Partner Visit Physician Report Draft Error Boundary - 2026-06-30 04:23 JST
+
+- Scope:
+  - Continued codex2's report / interprofessional collaboration objective on `POST /api/partner-visit-records/[id]/physician-report-draft`.
+  - Preserved codex-owned `staff-workload` / `handoff-board` WIP and did not touch those files.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `draftErrorResponse()` no longer echoes `PartnerVisitPhysicianReportDraftError.message` to API clients.
+  - Known draft workflow error codes now map to fixed response messages.
+  - Conflict `details` are filtered to allowlisted workflow-status keys with safe status-token values; unsafe raw details are dropped.
+- Safety:
+  - Reduces PHI/secret leakage risk from future raw service/upstream exception text on the physician-report draft response boundary.
+  - Regression coverage throws a hostile message and unsafe details containing patient/secret text and asserts only safe status detail survives.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `pnpm exec vitest run 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' src/server/services/partner-visit-report-drafts.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `10` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts'`: passed.
+  - `git diff --check -- 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm exec prettier --check 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+  - `git diff --check -- 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+- Review:
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation and adversarial review of fixed message mapping plus details allowlist/value-pattern filtering.
+  - codex also returned `PATCH_REVIEW_RESULT: APPROVED` after related Vitest, scoped ESLint, scoped diff-check, and privacy/API-contract review.
+- Remaining:
+  - Explicit-path commit and FYI notification are pending for this slice.
+
 ### MCS Summary Safe Fallback Logging - 2026-06-30 04:13 JST
 
 - Scope:
@@ -51,7 +82,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation and adversarial raw `.message` / mutable `.name` review.
   - codex ACKed the lock and reported no blocker before commit preparation.
 - Remaining:
-  - Explicit-path commit and FYI notification are pending for this slice.
+  - Committed as `812b7b75 Sanitize MCS summary fallback logging`; no remaining work for this slice.
 
 ### AI Fallback Reason Sanitization - 2026-06-30 04:02 JST
 

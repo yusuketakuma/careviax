@@ -159,4 +159,36 @@ describe('/api/partner-visit-records/[id]/physician-report-draft POST', () => {
       message: '確認済みの協力訪問記録のみ医師向け報告書を作成できます',
     });
   });
+
+  it('does not echo raw draft error messages or unsafe details', async () => {
+    createPartnerVisitPhysicianReportDraftMock.mockRejectedValue(
+      new MockPartnerVisitPhysicianReportDraftError(
+        'PARTNER_VISIT_SOURCE_INACTIVE',
+        'patient 山田太郎 source inactive token=secret',
+        {
+          share_case_status: 'inactive',
+          visit_request_status: 'patient 山田太郎 token=secret',
+          raw_message: 'SOAP patient 山田太郎',
+        },
+      ),
+    );
+
+    const response = await rawPOST(createRequest(), routeContext());
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(payload).toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '有効な患者共有ケースと確認済み協力訪問のみ医師向け報告書を作成できます',
+      details: {
+        share_case_status: 'inactive',
+      },
+    });
+    const serializedPayload = JSON.stringify(payload);
+    expect(serializedPayload).not.toContain('山田太郎');
+    expect(serializedPayload).not.toContain('token=secret');
+    expect(serializedPayload).not.toContain('raw_message');
+    expect(serializedPayload).not.toContain('visit_request_status');
+  });
 });
