@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260629-1701 JST
+
+- current task: continue backend-first medication code identity hardening after cleanup, with Claude support and subagent review.
+- files inspected: agmsg inbox/send for `phos/codex`, `git status --short --untracked-files=all`, `.agent-loop/FEATURE_QUEUE.md`, `CODEX_GOAL_PROGRESS.md`, `docs/drug-code-master-architecture.md`, `prisma/schema/prescription.prisma`, `prisma/schema/drug.prisma`, `src/server/services/prescription-intake-service.ts`, `src/server/services/prescription-intake-service.test.ts`, `src/app/api/admin/inventory-forecast/route.ts`, and subagent outputs from code mapper, migration planner, medical-safety reviewer, verifier, and Claude.
+- files changed: `src/lib/pharmacy/drug-identity-resolution.ts`, `src/lib/pharmacy/drug-identity-resolution.test.ts`, `src/server/services/prescription-intake-service.ts`, `src/server/services/prescription-intake-service.test.ts`, `src/app/api/admin/inventory-forecast/route.ts`, `docs/drug-code-master-architecture.md`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry. Source/doc implementation committed as `40b10686`.
+- bugs found: MedicationProfile sync still used a local `DrugMaster.findMany` resolver that could master-link duplicate receipt/HOT source codes by DB row order. Inventory forecast had a separate local resolver with the same business rule duplicated from the intended medication identity foundation.
+- security risks found: reduced medication data-integrity and patient-safety risk by centralizing prescription drug-code resolution: YJ is canonical, receipt/HOT resolve only when one DrugMaster candidate exists, duplicate receipt/HOT become `ambiguous_code`, and JAN/GTIN is excluded from prescription-line identity unless explicitly enabled. No auth, RLS, PHI projection/logging, schema, migration, DB mutation, deploy, or permission surface was changed.
+- performance issues found: no new query, dependency, network request, unbounded loop, or N+1 path was added. MedicationProfile sync and inventory forecast keep their existing batched DrugMaster lookup shape and only replace local in-memory classification logic.
+- validation commands: `pnpm exec vitest run src/lib/pharmacy/drug-identity-resolution.test.ts src/server/services/prescription-intake-service.test.ts src/app/api/prescription-intakes/route.test.ts src/app/api/admin/inventory-forecast/route.test.ts --reporter=dot --testTimeout=30000`; scoped ESLint for changed source/tests and prescription-intakes route test; scoped Prettier check including `docs/drug-code-master-architecture.md`; focused `git diff --check`; `pnpm typecheck`; `pnpm typecheck:no-unused`.
+- validation results: focused Vitest passed `4` files / `105` tests after adding explicit duplicate HOT coverage; scoped ESLint, scoped Prettier check, focused diff-check, `pnpm typecheck`, and `pnpm typecheck:no-unused` passed. Verifier independently reran the same focused/static/type gates and passed. Medical-safety reviewer found no blocking/high/medium issues. Claude approved after independent `5` file / `133` test focused run plus typecheck.
+- remaining work: no open blocker for this resolver foundation. Next backend medication-code candidates remain: expand/contract `PrescriptionLine` durable identity columns using this resolver, pharmacist review UI/API for QR `review_required` candidates, and package-unit GS1/GTIN modeling. Continue draining Claude requests first.
+- next action: commit this progress-ledger slice, notify Claude with implementation and ledger commit hashes, verify clean worktree, then resume the next highest-value backend code-first slice when inbox is clear.
+
 ### 20260629-1643 JST
 
 - current task: commit all current dirty work and return the worktree to a clean state before resuming.

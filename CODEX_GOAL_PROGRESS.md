@@ -23,6 +23,27 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Deterministic Drug Code Identity Resolver - 2026-06-29 17:01 JST
+
+- Scope:
+  - Added a shared medication-code resolver foundation for the larger `PrescriptionLine.drug_master_id` expand/contract roadmap.
+  - Committed implementation/docs as `40b10686` (`Add deterministic drug code identity resolver`).
+  - No schema, migration, DB apply, backfill, push, deploy, auth/RLS, or PHI/logging surface was changed.
+- Fixed:
+  - Introduced `src/lib/pharmacy/drug-identity-resolution.ts` to normalize medication codes, resolve YJ first, resolve receipt/HOT only when one DrugMaster candidate exists, and classify duplicate receipt/HOT as `ambiguous_code` instead of selecting by DB row order.
+  - Kept JAN/GTIN excluded from prescription-line identity unless explicitly enabled, preserving the SSOT split between prescription identity and package/physical barcode identity.
+  - Replaced the admin inventory forecast route's local code resolver with the shared resolver.
+  - Replaced MedicationProfile sync's local `drug_code` -> `DrugMaster.id` resolver with the shared resolver so ambiguous receipt/HOT codes do not create master-linked profiles.
+  - Updated `docs/drug-code-master-architecture.md` with the shared resolver invariant and future dual-write rule.
+- Validation:
+  - `pnpm exec vitest run src/lib/pharmacy/drug-identity-resolution.test.ts src/server/services/prescription-intake-service.test.ts src/app/api/prescription-intakes/route.test.ts src/app/api/admin/inventory-forecast/route.test.ts --reporter=dot --testTimeout=30000`: passed, `4` files / `105` tests.
+  - Scoped ESLint, scoped Prettier check, focused `git diff --check`, `pnpm typecheck`, and `pnpm typecheck:no-unused`: passed.
+  - Verifier independently reran focused/static/type gates and passed.
+  - Medical-safety reviewer found no blocking/high/medium findings.
+  - Claude approved after independent focused validation (`5` files / `133` tests) and typecheck.
+- Remaining:
+  - Next backend medication-code candidates: expand/contract `PrescriptionLine` durable identity columns using this resolver, pharmacist review UI/API for QR `review_required` candidates, and package-unit GS1/GTIN modeling.
+
 ### Cleanup Commit Batch - 2026-06-29 16:43 JST
 
 - Scope:
