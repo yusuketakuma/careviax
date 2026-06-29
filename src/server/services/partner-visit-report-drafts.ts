@@ -1,12 +1,12 @@
 import { Prisma } from '@prisma/client';
 import type { AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { formatNullableUtcDateKey } from '@/lib/date-key';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type { BaselineContext, PhysicianReportContent } from '@/types/care-report-content';
 import { resolvePharmacyVisitRequestTransition } from '@/server/services/pharmacy-partnerships';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 export type PartnerVisitPhysicianReportDraftErrorCode =
   | 'PARTNER_VISIT_RECORD_NOT_FOUND'
@@ -119,7 +119,7 @@ export type CreatePartnerVisitPhysicianReportDraftResult = {
 };
 
 function toDateKey(value: Date | null | undefined) {
-  return formatNullableUtcDateKey(value) ?? '';
+  return value ? japanDateKey(value) : '';
 }
 
 function trimString(value: unknown) {

@@ -59,11 +59,11 @@ describe('report template builders', () => {
 
   it('emits ISO date keys so generated drafts render consistently in views and PDFs', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 5, 15, 10, 0, 0));
+    vi.setSystemTime(new Date('2026-06-15T01:00:00.000Z'));
 
     const physician = buildPhysicianReport({
-      patient: { name: '田中 一郎', birth_date: new Date(1940, 0, 1), gender: 'male' },
-      visitRecord: { visited_at: new Date(2026, 5, 14, 9, 30, 0) },
+      patient: { name: '田中 一郎', birth_date: '1940-01-01', gender: 'male' },
+      visitRecord: { visited_at: '2026-06-14T00:30:00.000Z' },
       structuredSoap: baseSoap,
       prescriptionLines,
       residualMedications,
@@ -82,8 +82,8 @@ describe('report template builders', () => {
     });
 
     const nurse = buildVisitingNurseReport({
-      patient: { name: '田中 一郎', birth_date: new Date(1940, 0, 1) },
-      visitRecord: { visited_at: new Date(2026, 5, 14, 9, 30, 0) },
+      patient: { name: '田中 一郎', birth_date: '1940-01-01' },
+      visitRecord: { visited_at: '2026-06-14T00:30:00.000Z' },
       structuredSoap: baseSoap,
       prescriptionLines,
       residualMedications,
@@ -103,6 +103,54 @@ describe('report template builders', () => {
       expect(report.report_date).toBe('2026-06-15');
       expect(report.visit_date).toBe('2026-06-14');
       expect(report.patient.birth_date).toBe('1940-01-01');
+    }
+  });
+
+  it('renders DateTime instants as Japan business date keys across runtime timezones', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z'));
+
+    const physician = buildPhysicianReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01', gender: 'male' },
+      visitRecord: { visited_at: '2026-06-11T15:30:00.000Z' },
+      structuredSoap: baseSoap,
+      prescriptionLines,
+      residualMedications,
+      prescriber: { name: '佐藤 医師', organization_name: '在宅クリニック' },
+      pharmacistName: '鈴木 薬剤師',
+    });
+
+    const careManager = buildCareManagerReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01' },
+      visitRecord: { visited_at: '2026-06-11T15:30:00.000Z' },
+      structuredSoap: baseSoap,
+      prescriptionLines,
+      residualMedications,
+      careManager: { name: '高橋 ケアマネ', organization_name: '居宅介護支援事業所' },
+      pharmacistName: '鈴木 薬剤師',
+    });
+
+    const nurse = buildVisitingNurseReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01' },
+      visitRecord: { visited_at: '2026-06-11T15:30:00.000Z' },
+      structuredSoap: baseSoap,
+      prescriptionLines,
+      residualMedications,
+      pharmacistName: '鈴木 薬剤師',
+    });
+
+    const facility = buildFacilityReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01' },
+      visitRecord: { visited_at: '2026-06-11T15:30:00.000Z' },
+      structuredSoap: baseSoap,
+      prescriptionLines,
+      residualMedications,
+      pharmacistName: '鈴木 薬剤師',
+    });
+
+    for (const report of [physician, careManager, nurse, facility]) {
+      expect(report.report_date).toBe('2026-06-12');
+      expect(report.visit_date).toBe('2026-06-12');
     }
   });
 

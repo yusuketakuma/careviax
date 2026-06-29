@@ -271,6 +271,46 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     );
   });
 
+  it('stores partner visit claim support dates as Japan business date sentinels', async () => {
+    partnerVisitRecordFindFirstMock.mockResolvedValueOnce({
+      id: 'partner_visit_record_1',
+      status: 'submitted',
+      visit_request_id: 'visit_request_1',
+      share_case_id: 'share_case_1',
+      owner_partner_pharmacy_id: 'partner_pharmacy_1',
+      visit_at: new Date('2026-06-19T15:30:00.000Z'),
+      revision_no: 1,
+      share_case: { status: 'active' },
+      owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
+      visit_request: {
+        status: 'submitted',
+        accepted_by: 'partner_user_1',
+        partnership_id: 'partnership_1',
+        partnership: {
+          status: 'active',
+          partner_pharmacy: { status: 'active' },
+          base_site: { id: 'site_1', name: '基幹薬局' },
+        },
+      },
+    });
+
+    const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
+
+    expect(response.status).toBe(200);
+    expect(claimCooperationNoteUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          visit_date: new Date('2026-06-20T00:00:00.000Z'),
+          claim_note_text: '協力薬局:協力薬局 / 訪問日:2026-06-20 / 処方箋受付薬局:基幹薬局',
+        }),
+        update: expect.objectContaining({
+          visit_date: new Date('2026-06-20T00:00:00.000Z'),
+          claim_note_text: '協力薬局:協力薬局 / 訪問日:2026-06-20 / 処方箋受付薬局:基幹薬局',
+        }),
+      }),
+    );
+  });
+
   it('returns a submitted record without putting raw return reason in audit', async () => {
     partnerVisitRecordFindUniqueOrThrowMock.mockResolvedValue({
       id: 'partner_visit_record_1',

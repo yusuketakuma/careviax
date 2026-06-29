@@ -237,6 +237,36 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
     expect(auditText).not.toContain('A薬');
   });
 
+  it('stores partner visit report DateTime instants as Japan business date keys across runtime timezones', async () => {
+    const sourceUpdatedAt = new Date('2026-06-11T15:45:00.000Z');
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z'));
+    partnerVisitRecordFindFirstMock.mockResolvedValueOnce(
+      confirmedPartnerVisitRecord({
+        visit_at: new Date('2026-06-11T15:30:00.000Z'),
+        updated_at: sourceUpdatedAt,
+      }),
+    );
+
+    await createPartnerVisitPhysicianReportDraft(tx(), ctx, {
+      partnerVisitRecordId: 'partner_visit_record_1',
+    });
+
+    expect(careReportCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            report_date: '2026-06-12',
+            visit_date: '2026-06-12',
+            source_provenance: expect.objectContaining({
+              generated_at: '2026-06-11T15:30:00.000Z',
+              partner_visit_record_updated_at: sourceUpdatedAt.toISOString(),
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
   it('returns an existing physician report draft idempotently without source or audit side effects', async () => {
     careReportFindFirstMock.mockResolvedValue(reportRow({ id: 'report_existing' }));
 

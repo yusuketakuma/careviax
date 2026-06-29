@@ -19,6 +19,7 @@ import { buildAssessmentText, buildPlanText, joinLabels } from '@/lib/utils/soap
 import { summarizeHomeVisit2026Evidence } from '@/lib/visits/home-visit-2026-evidence';
 import type { VisitWorkflowConferenceContext } from '@/lib/visits/visit-workflow-projection';
 import { buildExternalConferenceReportLines } from '@/lib/conferences/conference-report-disclosure';
+import { japanDateKey } from '@/lib/utils/date-boundary';
 
 // ─── 共通ヘルパー ──────────────────────────────────────────────────────────────
 
@@ -30,10 +31,7 @@ function formatDate(date: Date | string): string {
   if (Number.isNaN(d.getTime())) {
     return '';
   }
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return japanDateKey(d);
 }
 
 function buildLabValuesText(

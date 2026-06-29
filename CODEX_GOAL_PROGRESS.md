@@ -51,7 +51,38 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - codex returned `CHANGES_REQUESTED` for mutable `Error.name`; fixed by using `safeErrorName(cause)` and extending the regression test. The focused route test, scoped ESLint, scoped diff check, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed after the fix.
   - Claude approved after independent focused validation. codex was sent the fix update and no further blocker was received before commit preparation.
 - Remaining:
-  - Commit is pending for this slice; codex-owned report-date WIP remains unstaged.
+  - Committed as `bf58d3e6 Log handoff extraction failures safely`; no remaining work for this slice.
+
+### Report Date Japan Civil-Day Rendering - 2026-06-30 03:58 JST
+
+- Scope:
+  - Continued the Japan-only timezone hardening after care-report filter/workspace date boundaries.
+  - Focused on generated professional report display dates, partner-visit report draft content dates, and partner-visit claim-support date sentinels.
+  - Preserved instant provenance fields (`source_provenance.generated_at`, `partner_visit_record_updated_at`) as ISO instants for freshness/audit comparison.
+- Fixed:
+  - Report template `report_date` and `visit_date` rendering now formats `Date` / ISO DateTime values with Japan civil-day semantics while preserving date-only string inputs.
+  - Partner visit report draft content dates now use Japan civil-day keys instead of UTC date keys.
+  - Partner visit claim-support `visit_date` sentinels and claim note text now derive from the Japan business date for visit instants.
+  - Tests cover a `2026-06-11T15:30:00.000Z` instant, which is `2026-06-12` in Japan, under multiple runtime timezones.
+- Safety:
+  - Reduces clinical/reporting integrity risk where UTC or non-JST runtimes could show the previous calendar day in pharmacist/physician/care-manager/nurse/facility report dates or claim-support notes.
+  - Does not change auth, RLS, response permissions, schema, live DB data, external sending, push/deploy behavior, or secret handling.
+- Validation:
+  - `TZ=UTC pnpm exec vitest run src/server/services/report-templates.test.ts src/server/services/partner-visit-report-drafts.test.ts 'src/app/api/partner-visit-records/[id]/review/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `15` tests.
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/server/services/report-templates.test.ts src/server/services/partner-visit-report-drafts.test.ts 'src/app/api/partner-visit-records/[id]/review/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `15` tests.
+  - `TZ=America/Los_Angeles pnpm exec vitest run src/server/services/report-templates.test.ts src/server/services/partner-visit-report-drafts.test.ts 'src/app/api/partner-visit-records/[id]/review/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `15` tests.
+  - Scoped ESLint on the six touched files: passed.
+  - Scoped `git diff --check` on the six touched files: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm date-slices:check`: passed.
+- Review/coordination:
+  - codex2's visit-record logging review interrupt was handled first. The mutable `Error.name` blocker was fixed by codex2 and approved after focused validation, then committed as `bf58d3e6`.
+  - Claude's self-correction note on the same reviewer miss was ACKed through agmsg.
+- Remaining:
+  - Commit only the six report-date code/test files plus ledgers and send agmsg FYI.
 
 ### Care-Report Japan Date Boundaries - 2026-06-30 03:40 JST
 

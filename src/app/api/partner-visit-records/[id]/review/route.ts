@@ -8,7 +8,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { buildPartnerVisitRecordHref } from '@/lib/pharmacy-cooperation/navigation';
-import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { japanDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import {
   resolvePartnerVisitRecordTransition,
@@ -95,7 +95,7 @@ function toSafePartnerVisitRecord<T extends object>(row: T) {
 }
 
 function visitDateOnly(value: Date) {
-  return utcDateFromLocalKey(formatUtcDateKey(value));
+  return utcDateFromLocalKey(japanDateKey(value));
 }
 
 export const POST = withAuthContext<{ id: string }>(
