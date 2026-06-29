@@ -9,6 +9,7 @@ const {
   withOrgContextMock,
   careReportFindFirstMock,
   visitRecordFindFirstMock,
+  partnerVisitRecordFindFirstMock,
   visitScheduleFindFirstMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
@@ -26,6 +27,7 @@ const {
   withOrgContextMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
+  partnerVisitRecordFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
@@ -62,6 +64,9 @@ const {
       findFirst: vi.fn(),
       findMany: vi.fn(),
     },
+    partnerVisitRecord: {
+      findFirst: vi.fn(),
+    },
     medicationCycle: {
       findFirst: vi.fn(),
       updateMany: vi.fn(),
@@ -93,6 +98,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitRecord: {
       findFirst: visitRecordFindFirstMock,
+    },
+    partnerVisitRecord: {
+      findFirst: partnerVisitRecordFindFirstMock,
     },
     visitSchedule: {
       findFirst: visitScheduleFindFirstMock,
@@ -231,6 +239,12 @@ describe('/api/care-reports/[id]/send POST', () => {
         },
       },
     });
+    partnerVisitRecordFindFirstMock.mockResolvedValue({
+      revision_no: 1,
+      updated_at: new Date('2026-06-18T03:10:00.000Z'),
+      status: 'confirmed',
+      confirmed_at: new Date('2026-06-18T03:00:00.000Z'),
+    });
     visitScheduleFindFirstMock.mockResolvedValue({ id: 'schedule_1' });
     careCaseFindFirstMock.mockResolvedValue({
       primary_pharmacist_id: 'user_1',
@@ -308,6 +322,12 @@ describe('/api/care-reports/[id]/send POST', () => {
     txMock.conferenceNote.findFirst.mockResolvedValue(null);
     txMock.visitRecord.findFirst.mockResolvedValue(null);
     txMock.visitRecord.findMany.mockResolvedValue([]);
+    txMock.partnerVisitRecord.findFirst.mockResolvedValue({
+      revision_no: 1,
+      updated_at: new Date('2026-06-18T03:10:00.000Z'),
+      status: 'confirmed',
+      confirmed_at: new Date('2026-06-18T03:00:00.000Z'),
+    });
     txMock.careReport.findMany.mockResolvedValue([]);
     txMock.medicationCycle.findFirst.mockResolvedValue(null);
     txMock.medicationCycle.updateMany.mockResolvedValue({ count: 0 });
@@ -464,6 +484,505 @@ describe('/api/care-reports/[id]/send POST', () => {
     });
     expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirmed partner-visit reports when the source partner visit record changed after draft generation', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_revision_no: 1,
+          partner_visit_record_updated_at: '2026-06-18T03:10:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+    partnerVisitRecordFindFirstMock.mockResolvedValue({
+      revision_no: 2,
+      updated_at: new Date('2026-06-18T04:00:00.000Z'),
+      status: 'confirmed',
+      confirmed_at: new Date('2026-06-18T03:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '協力訪問記録が更新されています。報告書を再生成してから送付してください',
+      details: {
+        reason: 'source_partner_visit_record_stale',
+        partner_visit_record_id: 'partner_visit_record_1',
+        current_partner_visit_record_revision_no: 2,
+        current_partner_visit_record_updated_at: '2026-06-18T04:00:00.000Z',
+        current_partner_visit_record_status: 'confirmed',
+      },
+    });
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirmed partner-visit reports that are missing partner source provenance', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        reason: 'missing_partner_source_provenance',
+        partner_visit_record_id: 'partner_visit_record_1',
+      },
+    });
+    expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects partner-visit reports with revision-only provenance because partner revisions are not monotonic', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_revision_no: 1,
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        reason: 'missing_partner_source_provenance',
+        partner_visit_record_id: 'partner_visit_record_1',
+      },
+    });
+    expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects partner-visit reports when the source partner visit record is no longer confirmed', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_revision_no: 1,
+          partner_visit_record_updated_at: '2026-06-18T03:10:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+    partnerVisitRecordFindFirstMock.mockResolvedValue({
+      revision_no: 1,
+      updated_at: new Date('2026-06-18T03:10:00.000Z'),
+      status: 'returned',
+      confirmed_at: null,
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        reason: 'source_partner_visit_record_not_confirmed',
+        partner_visit_record_id: 'partner_visit_record_1',
+        current_partner_visit_record_status: 'returned',
+      },
+    });
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('rechecks partner visit source inside the delivery transaction before delivery side effects', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_revision_no: 1,
+          partner_visit_record_updated_at: '2026-06-18T03:10:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+    partnerVisitRecordFindFirstMock.mockResolvedValue({
+      revision_no: 1,
+      updated_at: new Date('2026-06-18T03:10:00.000Z'),
+      status: 'confirmed',
+      confirmed_at: new Date('2026-06-18T03:00:00.000Z'),
+    });
+    txMock.partnerVisitRecord.findFirst.mockResolvedValueOnce({
+      revision_no: 1,
+      updated_at: new Date('2026-06-18T03:10:00.000Z'),
+      status: 'returned',
+      confirmed_at: null,
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        reason: 'source_partner_visit_record_not_confirmed',
+        partner_visit_record_id: 'partner_visit_record_1',
+        current_partner_visit_record_status: 'returned',
+      },
+    });
+    expect(txMock.deliveryRecord.findFirst).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('rechecks partner visit source before marking record-only deliveries as sent', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_revision_no: 1,
+          partner_visit_record_updated_at: '2026-06-18T03:10:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+    txMock.partnerVisitRecord.findFirst
+      .mockResolvedValueOnce({
+        revision_no: 1,
+        updated_at: new Date('2026-06-18T03:10:00.000Z'),
+        status: 'confirmed',
+        confirmed_at: new Date('2026-06-18T03:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        revision_no: 1,
+        updated_at: new Date('2026-06-18T03:10:00.000Z'),
+        status: 'returned',
+        confirmed_at: null,
+      });
+    const deliveryBlockTransactionIndexes: number[] = [];
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => {
+      const transactionIndex = withOrgContextMock.mock.calls.length;
+      const updateManyCallsBefore = txMock.deliveryRecord.updateMany.mock.calls.length;
+      try {
+        return await callback(txMock);
+      } finally {
+        if (txMock.deliveryRecord.updateMany.mock.calls.length > updateManyCallsBefore) {
+          deliveryBlockTransactionIndexes.push(transactionIndex);
+        }
+      }
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(txMock.deliveryRecord.create).toHaveBeenCalled();
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery_1',
+        org_id: 'org_1',
+        status: 'draft',
+      },
+      data: {
+        status: 'failed',
+        failure_reason: 'source_partner_visit_record_not_confirmed',
+      },
+    });
+    expect(txMock.deliveryRecord.update).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(deliveryBlockTransactionIndexes).toEqual([3]);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(txMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'care_report_delivery_blocked_by_stale_partner_visit_record',
+          changes: expect.objectContaining({
+            delivery_record_id: 'delivery_1',
+            channel: 'fax',
+            failure_reason: 'source_partner_visit_record_not_confirmed',
+          }),
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        reason: 'source_partner_visit_record_not_confirmed',
+        partner_visit_record_id: 'partner_visit_record_1',
+      },
+    });
+  });
+
+  it('marks email delivery drafts failed when partner visit source becomes stale before external send', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_revision_no: 1,
+          partner_visit_record_updated_at: '2026-06-18T03:10:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+    partnerVisitRecordFindFirstMock
+      .mockResolvedValueOnce({
+        revision_no: 1,
+        updated_at: new Date('2026-06-18T03:10:00.000Z'),
+        status: 'confirmed',
+        confirmed_at: new Date('2026-06-18T03:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        revision_no: 1,
+        updated_at: new Date('2026-06-18T03:10:00.000Z'),
+        status: 'returned',
+        confirmed_at: null,
+      });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(txMock.deliveryRecord.create).toHaveBeenCalled();
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery_1',
+        org_id: 'org_1',
+        status: 'draft',
+      },
+      data: {
+        status: 'failed',
+        failure_reason: 'source_partner_visit_record_not_confirmed',
+      },
+    });
+    expect(txMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'care_report_delivery_blocked_by_stale_partner_visit_record',
+          changes: expect.objectContaining({
+            delivery_record_id: 'delivery_1',
+            channel: 'email',
+            failure_reason: 'source_partner_visit_record_not_confirmed',
+          }),
+        }),
+      }),
+    );
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        reason: 'source_partner_visit_record_not_confirmed',
+        partner_visit_record_id: 'partner_visit_record_1',
+      },
+    });
+  });
+
+  it('sends a partner-visit report when source provenance matches the current confirmed source', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      partner_visit_record_id: 'partner_visit_record_1',
+      content: {
+        source_provenance: {
+          source: 'partner_visit_record',
+          partner_visit_record_id: 'partner_visit_record_1',
+          partner_visit_record_revision_no: 1,
+          partner_visit_record_updated_at: '2026-06-18T03:10:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(partnerVisitRecordFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'partner_visit_record_1', org_id: 'org_1' },
+      select: {
+        revision_no: true,
+        updated_at: true,
+        status: true,
+        confirmed_at: true,
+      },
+    });
+    expect(txMock.partnerVisitRecord.findFirst).toHaveBeenCalledWith({
+      where: { id: 'partner_visit_record_1', org_id: 'org_1' },
+      select: {
+        revision_no: true,
+        updated_at: true,
+        status: true,
+        confirmed_at: true,
+      },
+    });
+    expect(txMock.deliveryRecord.create).toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        report: { id: 'report_1', status: 'sent' },
+        deliveries: [{ delivery_record_id: 'delivery_1', status: 'sent' }],
+      },
+    });
   });
 
   it('returns 400 when email channel is used with a non-email contact', async () => {

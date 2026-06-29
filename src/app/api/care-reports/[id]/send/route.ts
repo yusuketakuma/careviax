@@ -381,6 +381,58 @@ function readReportSourceRevision(content: Prisma.JsonValue) {
   };
 }
 
+function readPartnerVisitReportSourceRevision(
+  content: Prisma.JsonValue,
+  partnerVisitRecordId: string,
+) {
+  const sourceProvenance = readJsonObject(
+    readJsonObject(content).source_provenance as Prisma.JsonValue,
+  );
+  const sourcePartnerVisitRecordId = sourceProvenance.partner_visit_record_id;
+  const partnerVisitRecordRevisionNo = sourceProvenance.partner_visit_record_revision_no;
+  const partnerVisitRecordUpdatedAt = sourceProvenance.partner_visit_record_updated_at;
+  return {
+    partnerVisitRecordId:
+      typeof sourcePartnerVisitRecordId === 'string' && sourcePartnerVisitRecordId.trim().length > 0
+        ? sourcePartnerVisitRecordId
+        : null,
+    partnerVisitRecordRevisionNo:
+      typeof partnerVisitRecordRevisionNo === 'number' &&
+      Number.isInteger(partnerVisitRecordRevisionNo)
+        ? partnerVisitRecordRevisionNo
+        : null,
+    partnerVisitRecordUpdatedAt:
+      typeof partnerVisitRecordUpdatedAt === 'string' &&
+      partnerVisitRecordUpdatedAt.trim().length > 0
+        ? partnerVisitRecordUpdatedAt
+        : null,
+    matchesReportSource:
+      typeof sourcePartnerVisitRecordId === 'string' &&
+      sourcePartnerVisitRecordId === partnerVisitRecordId,
+  };
+}
+
+type PartnerVisitRecordFreshnessDb = {
+  partnerVisitRecord: {
+    findFirst: (
+      args: Parameters<typeof prisma.partnerVisitRecord.findFirst>[0],
+    ) => ReturnType<typeof prisma.partnerVisitRecord.findFirst>;
+  };
+};
+
+type PartnerVisitRecordFreshnessFailure = {
+  ok: false;
+  reason:
+    | 'missing_partner_source_provenance'
+    | 'source_partner_visit_record_mismatch'
+    | 'source_partner_visit_record_missing'
+    | 'source_partner_visit_record_not_confirmed'
+    | 'source_partner_visit_record_stale';
+  currentRevisionNo: number | null;
+  currentUpdatedAt: string | null;
+  currentStatus: string | null;
+};
+
 async function validateReportVisitRecordFreshness(args: {
   orgId: string;
   visitRecordId: string | null;
@@ -423,6 +475,105 @@ async function validateReportVisitRecordFreshness(args: {
     reason: 'source_visit_record_stale' as const,
     currentVersion: currentVisitRecord.version,
     currentUpdatedAt: currentVisitRecord.updated_at.toISOString(),
+  };
+}
+
+async function validateReportPartnerVisitRecordFreshness(args: {
+  orgId: string;
+  partnerVisitRecordId: string | null;
+  content: Prisma.JsonValue;
+  db?: PartnerVisitRecordFreshnessDb;
+}): Promise<{ ok: true } | PartnerVisitRecordFreshnessFailure> {
+  if (!args.partnerVisitRecordId) return { ok: true as const };
+  const sourceRevision = readPartnerVisitReportSourceRevision(
+    args.content,
+    args.partnerVisitRecordId,
+  );
+  if (!sourceRevision.partnerVisitRecordId || !sourceRevision.partnerVisitRecordUpdatedAt) {
+    return {
+      ok: false as const,
+      reason: 'missing_partner_source_provenance' as const,
+      currentRevisionNo: null,
+      currentUpdatedAt: null,
+      currentStatus: null,
+    };
+  }
+  if (!sourceRevision.matchesReportSource) {
+    return {
+      ok: false as const,
+      reason: 'source_partner_visit_record_mismatch' as const,
+      currentRevisionNo: null,
+      currentUpdatedAt: null,
+      currentStatus: null,
+    };
+  }
+
+  const db = args.db ?? prisma;
+  const currentPartnerVisitRecord = await db.partnerVisitRecord.findFirst({
+    where: { id: args.partnerVisitRecordId, org_id: args.orgId },
+    select: {
+      revision_no: true,
+      updated_at: true,
+      status: true,
+      confirmed_at: true,
+    },
+  });
+  if (!currentPartnerVisitRecord) {
+    return {
+      ok: false as const,
+      reason: 'source_partner_visit_record_missing' as const,
+      currentRevisionNo: null,
+      currentUpdatedAt: null,
+      currentStatus: null,
+    };
+  }
+
+  if (currentPartnerVisitRecord.status !== 'confirmed' || !currentPartnerVisitRecord.confirmed_at) {
+    return {
+      ok: false as const,
+      reason: 'source_partner_visit_record_not_confirmed' as const,
+      currentRevisionNo: currentPartnerVisitRecord.revision_no,
+      currentUpdatedAt: currentPartnerVisitRecord.updated_at.toISOString(),
+      currentStatus: currentPartnerVisitRecord.status,
+    };
+  }
+
+  const revisionMatches =
+    sourceRevision.partnerVisitRecordRevisionNo == null ||
+    currentPartnerVisitRecord.revision_no === sourceRevision.partnerVisitRecordRevisionNo;
+  const updatedAtMatches =
+    currentPartnerVisitRecord.updated_at.toISOString() ===
+    sourceRevision.partnerVisitRecordUpdatedAt;
+  if (revisionMatches && updatedAtMatches) return { ok: true as const };
+
+  return {
+    ok: false as const,
+    reason: 'source_partner_visit_record_stale' as const,
+    currentRevisionNo: currentPartnerVisitRecord.revision_no,
+    currentUpdatedAt: currentPartnerVisitRecord.updated_at.toISOString(),
+    currentStatus: currentPartnerVisitRecord.status,
+  };
+}
+
+class PartnerVisitRecordFreshnessConflict extends Error {
+  constructor(
+    readonly partnerVisitRecordId: string | null,
+    readonly freshness: PartnerVisitRecordFreshnessFailure,
+  ) {
+    super('協力訪問記録が更新されています。報告書を再生成してから送付してください');
+  }
+}
+
+function buildPartnerVisitRecordFreshnessConflictDetails(args: {
+  partnerVisitRecordId: string | null;
+  freshness: PartnerVisitRecordFreshnessFailure;
+}) {
+  return {
+    reason: args.freshness.reason,
+    partner_visit_record_id: args.partnerVisitRecordId,
+    current_partner_visit_record_revision_no: args.freshness.currentRevisionNo,
+    current_partner_visit_record_updated_at: args.freshness.currentUpdatedAt,
+    current_partner_visit_record_status: args.freshness.currentStatus,
   };
 }
 
@@ -557,6 +708,7 @@ type ReportRecord = {
   case_id: string | null;
   status: string;
   visit_record_id: string | null;
+  partner_visit_record_id: string | null;
   content: Prisma.JsonValue;
   report_type: string;
   pdf_url: string | null;
@@ -569,6 +721,10 @@ type DeliveryOutcome = {
   failureReason: string | null;
   reusedExistingDelivery?: boolean;
 };
+
+function isEmailDeliveryChannel(channel: SendRecipient['channel']) {
+  return channel === 'email' || channel === 'ses';
+}
 
 function buildDeliveryResponseItem(outcome: DeliveryOutcome) {
   return {
@@ -896,6 +1052,56 @@ async function completeCareReportSendIdempotency(args: {
   }
 }
 
+async function markDeliveryBlockedByPartnerVisitSource(
+  tx: Prisma.TransactionClient,
+  ctx: AuthContext,
+  args: {
+    reportId: string;
+    report: ReportRecord;
+    recipient: SendRecipient;
+    deliveryRecordId: string;
+    freshness: PartnerVisitRecordFreshnessFailure;
+  },
+) {
+  await tx.deliveryRecord.updateMany({
+    where: {
+      id: args.deliveryRecordId,
+      org_id: ctx.orgId,
+      status: 'draft',
+    },
+    data: {
+      status: 'failed',
+      failure_reason: args.freshness.reason,
+    },
+  });
+
+  await createAuditLogEntry(tx, ctx, {
+    action: 'care_report_delivery_blocked_by_stale_partner_visit_record',
+    targetType: 'care_report',
+    targetId: args.reportId,
+    changes: {
+      delivery_record_id: args.deliveryRecordId,
+      report_type: args.report.report_type,
+      channel: args.recipient.channel,
+      failure_reason: args.freshness.reason,
+      source_scope: {
+        has_case: Boolean(args.report.case_id),
+        has_visit_record: Boolean(args.report.visit_record_id),
+        has_partner_visit_record: Boolean(args.report.partner_visit_record_id),
+      },
+    },
+  });
+}
+
+async function persistDeliveryBlockedByPartnerVisitSource(
+  ctx: AuthContext,
+  args: Parameters<typeof markDeliveryBlockedByPartnerVisitSource>[2],
+) {
+  await withOrgContext(ctx.orgId, (tx) => markDeliveryBlockedByPartnerVisitSource(tx, ctx, args), {
+    requestContext: ctx,
+  });
+}
+
 /**
  * 1 件の送付先について、送達レコード作成・監査ログ・(必要なら)メール送信・
  * 状態更新・連携イベント・連絡先プロファイル学習までを実行する。
@@ -919,6 +1125,19 @@ async function processRecipient(args: {
   const attemptedDeliveryRecord = await withOrgContext(
     ctx.orgId,
     async (tx) => {
+      const sourceFreshness = await validateReportPartnerVisitRecordFreshness({
+        orgId: ctx.orgId,
+        partnerVisitRecordId: report.partner_visit_record_id,
+        content: report.content,
+        db: tx,
+      });
+      if (!sourceFreshness.ok) {
+        throw new PartnerVisitRecordFreshnessConflict(
+          report.partner_visit_record_id,
+          sourceFreshness,
+        );
+      }
+
       const existingDeliveryRecord = await tx.deliveryRecord.findFirst({
         where: {
           org_id: ctx.orgId,
@@ -1058,7 +1277,26 @@ async function processRecipient(args: {
     };
   }
 
-  if (recipient.channel === 'email' || recipient.channel === 'ses') {
+  if (isEmailDeliveryChannel(recipient.channel)) {
+    const sourceFreshness = await validateReportPartnerVisitRecordFreshness({
+      orgId: ctx.orgId,
+      partnerVisitRecordId: report.partner_visit_record_id,
+      content: report.content,
+    });
+    if (!sourceFreshness.ok) {
+      await persistDeliveryBlockedByPartnerVisitSource(ctx, {
+        reportId,
+        report,
+        recipient,
+        deliveryRecordId: attemptedDeliveryRecord.id,
+        freshness: sourceFreshness,
+      });
+      throw new PartnerVisitRecordFreshnessConflict(
+        report.partner_visit_record_id,
+        sourceFreshness,
+      );
+    }
+
     try {
       await sendCareReportEmail({
         to: recipient.recipient_contact,
@@ -1123,10 +1361,22 @@ async function processRecipient(args: {
     }
   }
 
-  await withOrgContext(
+  const finalSourceFreshness = await withOrgContext(
     ctx.orgId,
     async (tx) => {
       const primaryEventType = toPrimaryCommunicationEventType(report.report_type);
+
+      if (!isEmailDeliveryChannel(recipient.channel)) {
+        const sourceFreshness = await validateReportPartnerVisitRecordFreshness({
+          orgId: ctx.orgId,
+          partnerVisitRecordId: report.partner_visit_record_id,
+          content: report.content,
+          db: tx,
+        });
+        if (!sourceFreshness.ok) {
+          return sourceFreshness;
+        }
+      }
 
       await tx.deliveryRecord.update({
         where: { id: attemptedDeliveryRecord.id },
@@ -1165,9 +1415,25 @@ async function processRecipient(args: {
         occurredAt: new Date(),
         markSuccess: true,
       });
+
+      return null;
     },
     { requestContext: ctx },
   );
+
+  if (finalSourceFreshness) {
+    await persistDeliveryBlockedByPartnerVisitSource(ctx, {
+      reportId,
+      report,
+      recipient,
+      deliveryRecordId: attemptedDeliveryRecord.id,
+      freshness: finalSourceFreshness,
+    });
+    throw new PartnerVisitRecordFreshnessConflict(
+      report.partner_visit_record_id,
+      finalSourceFreshness,
+    );
+  }
 
   return { recipient, deliveryRecordId: attemptedDeliveryRecord.id, failureReason: null };
 }
@@ -1373,6 +1639,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       case_id: true,
       status: true,
       visit_record_id: true,
+      partner_visit_record_id: true,
       content: true,
       report_type: true,
       pdf_url: true,
@@ -1442,6 +1709,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       visit_record_id: existing.visit_record_id,
       current_visit_record_version: freshness.currentVersion,
       current_visit_record_updated_at: freshness.currentUpdatedAt,
+    });
+  }
+  const partnerFreshness = await validateReportPartnerVisitRecordFreshness({
+    orgId: ctx.orgId,
+    partnerVisitRecordId: existing.partner_visit_record_id,
+    content: existing.content,
+  });
+  if (!partnerFreshness.ok) {
+    return conflict('協力訪問記録が更新されています。報告書を再生成してから送付してください', {
+      ...buildPartnerVisitRecordFreshnessConflictDetails({
+        partnerVisitRecordId: existing.partner_visit_record_id,
+        freshness: partnerFreshness,
+      }),
     });
   }
 
@@ -1519,6 +1799,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             ),
             channel: recipient.channel,
           },
+        };
+        const replayBody = minimizeResponseBodyForIdempotencyReplay(responseBody);
+        await completeCareReportSendIdempotency({
+          ctx,
+          claim: idempotencyClaim,
+          reportId: id,
+          responseStatus: 409,
+          responseBody: replayBody,
+        });
+        return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody, 409);
+      }
+      if (cause instanceof PartnerVisitRecordFreshnessConflict) {
+        const responseBody = {
+          code: 'WORKFLOW_CONFLICT',
+          message: cause.message,
+          details: buildPartnerVisitRecordFreshnessConflictDetails({
+            partnerVisitRecordId: cause.partnerVisitRecordId,
+            freshness: cause.freshness,
+          }),
         };
         const replayBody = minimizeResponseBodyForIdempotencyReplay(responseBody);
         await completeCareReportSendIdempotency({

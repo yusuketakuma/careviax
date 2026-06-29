@@ -19515,3 +19515,36 @@ Next loop:
 - Remaining:
   - Commit only the four owned code/test files plus ledgers.
   - Note: unrelated `docs/ui-ux-design-guidelines.md` and `src/app/api/pharmacy-drug-stocks/usage-mismatch/*` were committed separately by codex as `b8a430e5`.
+
+### Partner Visit Report Send Freshness Slice — 2026-06-30 02:36 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration scope in `/api/care-reports/[id]/send`.
+  - Focused on reports generated from confirmed partner visit records, without changing the existing direct visit-record freshness guard, recipient validation contract, idempotency response shape, or external email implementation.
+- Fixed:
+  - Partner-visit-sourced reports now require `source_provenance.partner_visit_record_id` and `partner_visit_record_updated_at`, and reject missing provenance, source ID mismatch, missing source rows, non-confirmed sources, and stale source revisions/timestamps before send processing.
+  - The send path rechecks source freshness inside the delivery creation transaction before delivery/audit side effects.
+  - Email/Ses channels recheck again immediately before the external send; if stale, the draft delivery is marked `failed` and a PHI-minimized blocked audit is written before returning 409.
+  - Non-email channels recheck immediately before marking the delivery `sent`; stale results are returned from that transaction without writes, then a separate transaction marks the draft delivery `failed` and writes the blocked audit so cleanup is not rolled back by the 409 conflict.
+  - Revision-only partner provenance fails closed because partner visit record `revision_no` is not a monotonic freshness source.
+- Safety:
+  - New blocked audit payloads include delivery ID, report type, channel, failure reason, and source-scope booleans only. They do not include patient names, recipient names, contact values, addresses, or report content.
+  - No migration, live DB operation, external send, or destructive operation was run.
+  - Residual non-blocking risk: there is still a very small TOCTOU window after the last source read because the source row is not locked across external I/O. Fully eliminating that would require source-update locking/state-transition coordination outside this slice.
+- Review:
+  - `code_mapper` identified partner-visit report draft send freshness as the highest-value P0 for the current visit/report/interprofessional scope.
+  - `privacy_compliance_reviewer` approved the first version and noted only non-blocking minimization/idempotency replay observations.
+  - `medical_safety_reviewer` found blockers around revision-only provenance, transaction-race rechecks, email pre-send stale cleanup, and non-email rollback-safe cleanup. All were fixed; final review returned `APPROVED`.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/care-reports/[id]/send/route.ts' 'src/app/api/care-reports/[id]/send/route.test.ts'`: passed.
+  - `pnpm exec vitest run src/server/services/partner-visit-report-drafts.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `56` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/care-reports/[id]/send/route.ts' 'src/app/api/care-reports/[id]/send/route.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/api/care-reports/[id]/send/route.ts' 'src/app/api/care-reports/[id]/send/route.test.ts'`: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm typecheck`: passed after codex completed the unrelated prescription-history/drug-master narrowing fix-forward.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Remaining:
+  - Preserve codex-owned prescription-history/drug-master dirty paths and do not stage them.
+  - Wait briefly for codex review result if it arrives, then commit only care-report send route/test plus ledgers.
