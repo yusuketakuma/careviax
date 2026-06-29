@@ -137,4 +137,23 @@ describe('DrugSuggest', () => {
       `${listboxes[0].id}-option-drug_1`,
     );
   });
+
+  it('surfaces a retryable error instead of a silent empty list when the search fails', async () => {
+    vi.useFakeTimers();
+    const refetch = vi.fn();
+    useQueryMock.mockReturnValue({ data: undefined, isError: true, refetch });
+
+    render(<DrugSuggestHarness />);
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: 'アム' } });
+
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+    });
+
+    // 取得失敗が「候補なし(空 listbox)」に化けず、再試行導線つきで明示される。
+    expect(screen.getByText(/候補を取得できませんでした/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalled();
+  });
 });

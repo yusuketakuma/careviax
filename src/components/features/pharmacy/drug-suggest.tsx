@@ -59,7 +59,7 @@ export function DrugSuggest({
   const resolvedInputId = inputId ?? `drug-suggest-${generatedId}`;
   const listboxId = `${resolvedInputId}-listbox`;
 
-  const { data } = useQuery({
+  const { data, isError, refetch } = useQuery({
     queryKey: ['drug-suggest', orgId, debouncedQuery],
     queryFn: async () => {
       return fetchDrugMasterSuggestions({ query: debouncedQuery, orgId });
@@ -69,6 +69,8 @@ export function DrugSuggest({
   });
 
   const suggestions = useMemo(() => data ?? [], [data]);
+  const showSuggestError =
+    open && isError && debouncedQuery.length >= 2 && suggestions.length === 0;
   const activeOptionId =
     open && focusedIdx >= 0 && suggestions[focusedIdx]
       ? `${listboxId}-option-${suggestions[focusedIdx].id}`
@@ -154,6 +156,27 @@ export function DrugSuggest({
         aria-label={ariaLabel ?? placeholder}
         aria-describedby={ariaDescribedBy}
       />
+
+      {showSuggestError && (
+        // 取得失敗を「候補なし」に潰さない。typeahead の空 listbox と取得エラーを区別し再試行導線を出す。
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute left-0 top-full z-50 mt-1 w-full rounded-md border bg-popover px-3 py-2 text-sm shadow-lg"
+        >
+          <p className="text-state-confirm">
+            候補を取得できませんでした。「該当なし」ではなく取得エラーです。
+          </p>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => void refetch()}
+            className="mt-1 text-xs font-medium text-primary underline-offset-2 hover:underline"
+          >
+            再読み込み
+          </button>
+        </div>
+      )}
 
       {open && suggestions.length > 0 && (
         <ul
