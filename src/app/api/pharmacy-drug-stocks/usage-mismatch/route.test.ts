@@ -149,8 +149,30 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
         stocked_count: 2,
         frequent_unstocked_count: 1,
         unused_stocked_count: 1,
+        possibly_used_stocked_count: 0,
         displayed_frequent_unstocked_count: 1,
         displayed_unused_stocked_count: 1,
+        displayed_possibly_used_stocked_count: 0,
+      },
+      list_counts: {
+        frequent_unstocked: expect.objectContaining({
+          total_count: 1,
+          visible_count: 1,
+          hidden_count: 0,
+          truncated: false,
+        }),
+        unused_stocked: expect.objectContaining({
+          total_count: 1,
+          visible_count: 1,
+          hidden_count: 0,
+          truncated: false,
+        }),
+        unmatched_prescribed: expect.objectContaining({
+          total_count: 0,
+          visible_count: 0,
+          hidden_count: 0,
+          truncated: false,
+        }),
       },
       frequent_unstocked: [
         {
@@ -514,7 +536,7 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
     );
   });
 
-  it('resolves overlapping code families with YJ then receipt before HOT regardless of database order', async () => {
+  it('keeps ambiguous receipt and HOT overlaps unresolved while preserving YJ priority', async () => {
     prismaMock.qrScanDraft.findMany.mockResolvedValue([
       {
         id: 'draft_overlapping_codes',
@@ -527,7 +549,23 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
         },
       },
     ]);
-    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([]);
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        id: 'stock_ambiguous_candidate',
+        drug_master_id: 'drug_receipt_for_receipt_code',
+        reorder_point: 5,
+        updated_at: new Date('2026-05-21T00:00:00.000Z'),
+        drug_master: {
+          id: 'drug_receipt_for_receipt_code',
+          yj_code: '000000000004',
+          drug_name: 'レセ電優先薬',
+          generic_name: null,
+          drug_price: 50,
+          unit: '錠',
+          is_generic: false,
+        },
+      },
+    ]);
     prismaMock.drugMaster.findMany.mockResolvedValue([
       {
         id: 'drug_hot_first',
@@ -598,20 +636,284 @@ describe('/api/pharmacy-drug-stocks/usage-mismatch', () => {
     const body = await response.json();
     expect(body).toMatchObject({
       totals: {
-        matched_drug_count: 2,
-        unmatched_drug_count: 0,
+        matched_drug_count: 1,
+        unmatched_drug_count: 1,
         frequent_unstocked_count: 2,
+        unused_stocked_count: 0,
+        possibly_used_stocked_count: 1,
       },
       frequent_unstocked: expect.arrayContaining([
         expect.objectContaining({
           drug_code: '123456789012',
           matched_drug: expect.objectContaining({ id: 'drug_yj_last' }),
+          resolution_status: 'resolved',
+          source_code_system: 'yj',
         }),
         expect.objectContaining({
           drug_code: '987654321',
-          matched_drug: expect.objectContaining({ id: 'drug_receipt_for_receipt_code' }),
+          matched_drug: null,
+          mismatch_kind: 'resolver_review_required',
+          resolution_status: 'ambiguous_code',
+          source_code_system: null,
+          candidate_code_systems: ['receipt', 'hot'],
+          candidate_count: 2,
         }),
       ]),
+      unmatched_prescribed: [
+        expect.objectContaining({
+          drug_code: '987654321',
+          mismatch_kind: 'resolver_review_required',
+          resolution_status: 'ambiguous_code',
+          source_code_system: null,
+          candidate_code_systems: ['receipt', 'hot'],
+          candidate_count: 2,
+        }),
+      ],
+      unused_stocked: [],
+      possibly_used_stocked: [
+        expect.objectContaining({
+          id: 'stock_ambiguous_candidate',
+          drug_master_id: 'drug_receipt_for_receipt_code',
+          usage_status: 'unknown_due_to_ambiguous_code',
+        }),
+      ],
+    });
+  });
+
+  it('reports stable code-system metadata for cross-family ambiguous matches regardless of master order', async () => {
+    const hotCandidate = {
+      id: 'drug_hot_candidate',
+      yj_code: '000000000003',
+      receipt_code: null,
+      hot_code: '987654321',
+      drug_name: 'HOT9桁一致薬',
+      generic_name: null,
+      drug_price: 40,
+      unit: '錠',
+      is_generic: false,
+    };
+    const receiptCandidate = {
+      id: 'drug_receipt_candidate',
+      yj_code: '000000000004',
+      receipt_code: '987654321',
+      hot_code: null,
+      drug_name: 'レセ電一致薬',
+      generic_name: null,
+      drug_price: 50,
+      unit: '錠',
+      is_generic: false,
+    };
+
+    const readAmbiguousRow = async (
+      masters: Array<typeof hotCandidate | typeof receiptCandidate>,
+    ) => {
+      prismaMock.qrScanDraft.findMany.mockResolvedValue([
+        {
+          id: 'draft_cross_family',
+          created_at: new Date('2026-05-26T00:00:00.000Z'),
+          parsed_data: {
+            medications: [{ drugCode: '987654321', drugName: '曖昧コード薬' }],
+          },
+        },
+      ]);
+      prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([]);
+      prismaMock.drugMaster.findMany.mockResolvedValue(masters);
+
+      const response = await GET(
+        createRequest(
+          'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1&frequent_threshold=1',
+        ),
+        { params: Promise.resolve({}) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      return body.frequent_unstocked.find(
+        (row: { drug_code: string | null }) => row.drug_code === '987654321',
+      );
+    };
+
+    await expect(readAmbiguousRow([hotCandidate, receiptCandidate])).resolves.toMatchObject({
+      resolution_status: 'ambiguous_code',
+      source_code_system: null,
+      candidate_code_systems: ['receipt', 'hot'],
+      candidate_count: 2,
+    });
+    await expect(readAmbiguousRow([receiptCandidate, hotCandidate])).resolves.toMatchObject({
+      resolution_status: 'ambiguous_code',
+      source_code_system: null,
+      candidate_code_systems: ['receipt', 'hot'],
+      candidate_count: 2,
+    });
+  });
+
+  it('keeps duplicate receipt-code matches unresolved and excludes stocked candidates from cleanup', async () => {
+    prismaMock.qrScanDraft.findMany.mockResolvedValue([
+      {
+        id: 'draft_duplicate_receipt',
+        created_at: new Date('2026-05-26T00:00:00.000Z'),
+        parsed_data: {
+          medications: [{ drugCode: 'RC_DUP', drugName: '曖昧レセ電薬' }],
+        },
+      },
+    ]);
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        id: 'stock_receipt_candidate',
+        drug_master_id: 'drug_receipt_a',
+        reorder_point: 3,
+        updated_at: new Date('2026-05-22T00:00:00.000Z'),
+        drug_master: {
+          id: 'drug_receipt_a',
+          yj_code: '111111111111',
+          drug_name: '曖昧候補A',
+          generic_name: null,
+          drug_price: 10,
+          unit: '錠',
+          is_generic: false,
+        },
+      },
+    ]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_receipt_a',
+        yj_code: '111111111111',
+        receipt_code: 'RC_DUP',
+        hot_code: null,
+        drug_name: '曖昧候補A',
+        generic_name: null,
+        drug_price: 10,
+        unit: '錠',
+        is_generic: false,
+      },
+      {
+        id: 'drug_receipt_b',
+        yj_code: '222222222222',
+        receipt_code: 'RC_DUP',
+        hot_code: null,
+        drug_name: '曖昧候補B',
+        generic_name: null,
+        drug_price: 20,
+        unit: '錠',
+        is_generic: false,
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1&frequent_threshold=1',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      totals: {
+        matched_drug_count: 0,
+        unmatched_drug_count: 1,
+        frequent_unstocked_count: 1,
+        unused_stocked_count: 0,
+        possibly_used_stocked_count: 1,
+      },
+      frequent_unstocked: [
+        expect.objectContaining({
+          drug_code: 'RC_DUP',
+          drug_name: '曖昧レセ電薬',
+          matched_drug: null,
+          mismatch_kind: 'resolver_review_required',
+          resolution_status: 'ambiguous_code',
+          source_code_system: null,
+          candidate_code_systems: ['receipt'],
+          candidate_count: 2,
+        }),
+      ],
+      unmatched_prescribed: [
+        expect.objectContaining({
+          drug_code: 'RC_DUP',
+          drug_name: '曖昧レセ電薬',
+          mismatch_kind: 'resolver_review_required',
+          resolution_status: 'ambiguous_code',
+          source_code_system: null,
+          candidate_code_systems: ['receipt'],
+          candidate_count: 2,
+        }),
+      ],
+      unused_stocked: [],
+      possibly_used_stocked: [
+        expect.objectContaining({
+          id: 'stock_receipt_candidate',
+          drug_master_id: 'drug_receipt_a',
+          usage_status: 'unknown_due_to_ambiguous_code',
+        }),
+      ],
+    });
+  });
+
+  it('returns list count metadata for sliced unmatched prescribed rows', async () => {
+    prismaMock.qrScanDraft.findMany.mockResolvedValue([
+      {
+        id: 'draft_unmatched_newer',
+        created_at: new Date('2026-05-27T00:00:00.000Z'),
+        parsed_data: {
+          medications: [{ drugCode: 'NO_MATCH_2', drugName: '未照合薬2' }],
+        },
+      },
+      {
+        id: 'draft_unmatched_older',
+        created_at: new Date('2026-05-26T00:00:00.000Z'),
+        parsed_data: {
+          medications: [{ drugCode: 'NO_MATCH_1', drugName: '未照合薬1' }],
+        },
+      },
+    ]);
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([]);
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/usage-mismatch?site_id=site_1&frequent_threshold=1&limit=1',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      totals: {
+        unmatched_drug_count: 2,
+        frequent_unstocked_count: 2,
+      },
+      list_counts: {
+        frequent_unstocked: expect.objectContaining({
+          total_count: 2,
+          visible_count: 1,
+          hidden_count: 1,
+          truncated: true,
+          count_basis: 'unique_prescribed_drug_code_or_name',
+        }),
+        unmatched_prescribed: expect.objectContaining({
+          total_count: 2,
+          visible_count: 1,
+          hidden_count: 1,
+          truncated: true,
+          count_basis: 'unique_prescribed_drug_code_or_name',
+        }),
+        unused_stocked: expect.objectContaining({
+          total_count: 0,
+          visible_count: 0,
+          hidden_count: 0,
+          truncated: false,
+        }),
+      },
+      unmatched_prescribed: [
+        expect.objectContaining({
+          drug_code: 'NO_MATCH_2',
+          resolution_status: 'code_not_found',
+          mismatch_kind: 'unresolved_prescription',
+        }),
+      ],
     });
   });
 
