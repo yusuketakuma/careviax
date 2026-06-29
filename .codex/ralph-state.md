@@ -30,8 +30,8 @@ Backup directory:
 - performance issues found: no new dependency, eager query, polling, DB call, external request, or unbounded rendering loop was added. The patch only reuses the existing React Query state and explicit `refetch()` action.
 - validation commands: `pnpm exec prettier --write 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`; `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/page.test.tsx' --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`; `pnpm exec prettier --check 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx' && git diff --check -- 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
 - validation results: Prettier passed. The first focused test run exposed a test query issue for direct-send manual fields; the test was corrected to assert placeholders and the final focused Vitest passed `1` file / `29` tests after also fixing codex's nonblocking empty-`ul` review note. Scoped ESLint passed. Scoped Prettier check plus focused `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed after unrelated peer/codex WIP was cleaned up.
-- remaining work: Claude and codex both approved the patch; stage only explicit codex2-owned files and progress ledgers for a coherent commit, then send agmsg FYI with the commit hash.
-- next action: commit the reviewed report-share suggestion failure slice while preserving unrelated codex API/date-boundary/admin/dispensing WIP.
+- remaining work: committed as `fdff2d39 Surface report share suggestion load failures`; no remaining work for this slice beyond agmsg FYI notification.
+- next action: send agmsg FYI with the commit hash, then continue preserving unrelated codex API/date-boundary/admin/dispensing WIP.
 
 ### 20260630-0307 JST
 
