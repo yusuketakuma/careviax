@@ -7,10 +7,12 @@ export type VisitBriefChangeType =
   | 'removed'
   | 'dose_changed'
   | 'frequency_changed'
+  | 'days_changed'
   | 'unchanged';
 
 export type VisitBriefMedicationChange = {
   drug_name: string;
+  drug_code: string | null;
   change_type: VisitBriefChangeType;
   previous: string | null;
   current: string;

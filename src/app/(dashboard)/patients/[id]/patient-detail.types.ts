@@ -194,8 +194,9 @@ export type PatientOverview = {
 
 /** p0_08 カード詳細ワークスペース: 進行中サイクルの工程集約 */
 export type PatientWorkspaceMedicationChange = {
-  change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed';
+  change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | 'days_changed';
   drug_name: string;
+  drug_code: string | null;
   frequency: string | null;
   days: number | null;
 };

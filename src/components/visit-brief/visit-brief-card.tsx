@@ -20,6 +20,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import type {
   VisitBrief,
+  VisitBriefMedicationChange,
   VisitBriefPatientChangeType,
   VisitBriefSeverity,
 } from '@/types/visit-brief';
@@ -74,6 +75,7 @@ export function VisitBriefCard({
     rule?: 'helpful' | 'needs_review';
   }>({});
   const medicationChanges = brief.medication_changes.slice(0, compact ? 3 : 5);
+  const duplicateMedicationChangeNames = findDuplicateMedicationChangeNames(medicationChanges);
   const patientChanges = brief.patient_changes.slice(0, compact ? 3 : 6);
   const dispensingItems = brief.dispensing_items.slice(0, compact ? 3 : 5);
   const deliveryItems = brief.delivery_status.slice(0, compact ? 3 : 4);
@@ -307,12 +309,19 @@ export function VisitBriefCard({
               <p className="text-xs text-muted-foreground">直近の処方変更はありません。</p>
             ) : (
               <ul className="space-y-2">
-                {medicationChanges.map((item) => (
+                {medicationChanges.map((item, index) => (
                   <li
-                    key={`${item.drug_name}:${item.change_type}`}
+                    key={`${item.drug_code ?? 'unresolved'}:${item.drug_name}:${item.change_type}:${index}`}
                     className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
                   >
-                    <p className="font-medium text-foreground">{item.drug_name}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-foreground">{item.drug_name}</p>
+                      {item.drug_code && duplicateMedicationChangeNames.has(item.drug_name) ? (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          {item.drug_code}
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {item.previous ? `${item.previous} → ` : ''}
                       {item.current}
@@ -504,6 +513,18 @@ export function VisitBriefCard({
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+function findDuplicateMedicationChangeNames(items: VisitBriefMedicationChange[]) {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    counts.set(item.drug_name, (counts.get(item.drug_name) ?? 0) + 1);
+  }
+  return new Set(
+    Array.from(counts.entries())
+      .filter(([, count]) => count > 1)
+      .map(([drugName]) => drugName),
   );
 }
 

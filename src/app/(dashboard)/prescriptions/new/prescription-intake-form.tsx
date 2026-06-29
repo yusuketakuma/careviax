@@ -62,6 +62,7 @@ import {
   type JahisSupplementalRecordDbView,
   type JahisSupplementalRecordView,
 } from '@/lib/pharmacy/jahis-supplemental-records-view';
+import { medicationIdentityKey } from '@/lib/prescription/medication-diff';
 
 const PRESCRIPTION_TYPEAHEAD_DEBOUNCE_MS = 250;
 
@@ -1021,7 +1022,7 @@ export function PrescriptionIntakeForm() {
     days?: number | null;
   }) {
     return [
-      line.drug_code?.trim() || line.drug_name.trim(),
+      medicationIdentityKey(line),
       line.dose?.trim() ?? '',
       line.frequency?.trim() ?? '',
       line.days ?? '',
@@ -1398,7 +1399,7 @@ export function PrescriptionIntakeForm() {
     const previousByKey = new Map<string, PreviousPrescriptionLine>();
 
     for (const line of latestPreviousIntake.lines) {
-      const key = line.drug_code?.trim() || line.drug_name.trim();
+      const key = medicationIdentityKey(line);
       previousByKey.set(key, line);
     }
 
@@ -1411,7 +1412,7 @@ export function PrescriptionIntakeForm() {
     const seenKeys = new Set<string>();
 
     for (const line of currentFilledLines) {
-      const key = line.drug_code?.trim() || line.drug_name.trim();
+      const key = medicationIdentityKey(line);
       if (!key) continue;
 
       const previous = previousByKey.get(key);
@@ -1450,11 +1451,11 @@ export function PrescriptionIntakeForm() {
     }
 
     const removed = latestPreviousIntake.lines.filter((line) => {
-      const key = line.drug_code?.trim() || line.drug_name.trim();
+      const key = medicationIdentityKey(line);
       return key
         ? !seenKeys.has(key) &&
             !currentFilledLines.some((current) => {
-              const currentKey = current.drug_code?.trim() || current.drug_name.trim();
+              const currentKey = medicationIdentityKey(current);
               return currentKey === key;
             })
         : false;

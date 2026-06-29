@@ -127,6 +127,43 @@ describe('VisitBriefCard', () => {
     expect(screen.getByText('要介護2 → 要介護4')).toBeTruthy();
   });
 
+  it('shows drug codes for same-name medication changes so distinct drugs stay identifiable', () => {
+    const queryClient = new QueryClient();
+    const brief: VisitBrief = {
+      ...buildBrief(),
+      medication_changes: [
+        {
+          drug_name: '同名薬',
+          drug_code: 'YJ_A',
+          change_type: 'dose_changed',
+          previous: '1錠 / 朝食後',
+          current: '2錠 / 朝食後',
+          prescribed_date: '2026-04-08T00:00:00.000Z',
+          prescriber_name: '医師A',
+        },
+        {
+          drug_name: '同名薬',
+          drug_code: 'YJ_B',
+          change_type: 'frequency_changed',
+          previous: '1錠 / 夕食後',
+          current: '1錠 / 眠前',
+          prescribed_date: '2026-04-08T00:00:00.000Z',
+          prescriber_name: '医師A',
+        },
+      ],
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={brief} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getAllByText('同名薬')).toHaveLength(2);
+    expect(screen.getByText('YJ_A')).toBeTruthy();
+    expect(screen.getByText('YJ_B')).toBeTruthy();
+  });
+
   it('renders a removed change without a trailing arrow', () => {
     const queryClient = new QueryClient();
     const brief: VisitBrief = {
