@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0711 JST
+
+- current task: close the visit-record attachment validation raw-echo follow-up by replacing client-facing attachment validation failure messages with a fixed safe message.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, `src/app/api/visit-records/[id]/route.ts`, `src/app/api/visit-records/[id]/route.test.ts`, `src/server/services/file-storage.ts`, `src/app/api/patients/[id]/mcs-sync/route.ts`, `src/app/api/visit-preparations/[scheduleId]/route.ts`, `src/app/api/care-reports/generate-from-visit/route.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/api/visit-records/[id]/route.ts`, `src/app/api/visit-records/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved Claude-owned document-delivery-rule-manager WIP.
+- bugs found: `attachment_validation` failures returned `cause.message` to clients. Controlled attachment ownership/status errors were fixed strings, but storage/metadata lookup or future thrown errors could include raw patient names, storage keys, file names, or infrastructure details and still be echoed as 400 validation responses.
+- security risks found: reduced PHI/storage-key/raw-error disclosure risk in visit-record attachment PATCH validation responses by returning the fixed `添付ファイル情報が不正です` message for all attachment validation failures. Auth, permission checks, visit-record ownership, attachment lookup semantics, update side effects, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only replaces a client-facing error string and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/visit-records/[id]/route.ts' 'src/app/api/visit-records/[id]/route.test.ts'`; `pnpm exec vitest run 'src/app/api/visit-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two visit-record detail files; scoped `git diff --check` on the two visit-record detail files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused visit-record detail Vitest passed `1` file / `26` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. `PATCH_REVIEW_REQUEST` and a follow-up nudge were sent to Claude and codex with validation evidence; no blocker arrived before commit preparation.
+- remaining work: explicit-path stage only this attachment-validation slice plus the ledger hunks, commit, send agmsg FYI, then continue with remaining visit/report/interprofessional API candidates or incoming review interrupts.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0704 JST
 
 - current task: harden `PATCH /api/visit-records/[id]` and the visit-record detail GET catch boundary so visit-time record updates consistently use sensitive no-store envelopes and sanitized unexpected-error responses.

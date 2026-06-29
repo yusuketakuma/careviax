@@ -23,6 +23,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Visit Record Attachment Validation Raw-Echo Hardening - 2026-06-30 07:11 JST
+
+- Scope:
+  - Closed the visit-record attachment validation follow-up raised during the PATCH no-store/sanitized-envelope review.
+  - Focused only on `PATCH /api/visit-records/[id]` attachment validation responses.
+  - Preserved Claude-owned document-delivery-rule-manager WIP.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `attachment_validation` now returns the fixed client-facing message `添付ファイル情報が不正です` instead of `cause.message`.
+  - Existing wrong-visit attachment rejection remains a 400 validation response with sensitive no-store headers.
+  - Added a regression where `getStoredFileRecord` throws raw patient/storage-key text and the PATCH response does not echo the raw error, patient name, or storage filename.
+- Safety:
+  - Reduces PHI/storage-key/raw-error disclosure risk in visit-record attachment validation responses.
+  - Preserves auth/permission behavior, visit-record ownership, attachment lookup and ownership validation, update side effects, and existing 400 status semantics for invalid attachments.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only replaces a client-facing error string and adds focused tests.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/visit-records/[id]/route.ts' 'src/app/api/visit-records/[id]/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/visit-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `26` tests.
+  - Scoped ESLint on the two visit-record detail files: passed.
+  - Scoped `git diff --check` on the two visit-record detail files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` and a follow-up nudge were sent to Claude and codex with scope and validation evidence.
+  - No blocker arrived before commit preparation.
+- Remaining:
+  - Stage only explicit codex2-owned visit-record files plus the attachment-validation ledger hunks, commit, and send agmsg FYI.
+  - Continue remaining visit/report/interprofessional API candidates or incoming review interrupts.
+
 ### Visit Record PATCH No-Store / Sanitized Envelope - 2026-06-30 07:04 JST
 
 - Scope:

@@ -74,6 +74,8 @@ function parseStoredVisitRecordAttachments(value: unknown): VisitRecordAttachmen
   });
 }
 
+const VISIT_RECORD_ATTACHMENT_VALIDATION_MESSAGE = '添付ファイル情報が不正です';
+
 async function resolveVisitRecordAttachments(
   orgId: string,
   recordId: string,
@@ -378,10 +380,10 @@ async function authenticatedPATCH(
       if (attachments) {
         try {
           normalizedAttachments = await resolveVisitRecordAttachments(ctx.orgId, id, attachments);
-        } catch (cause) {
+        } catch {
           return {
             error: 'attachment_validation' as const,
-            message: cause instanceof Error ? cause.message : '添付ファイル情報が不正です',
+            message: VISIT_RECORD_ATTACHMENT_VALIDATION_MESSAGE,
           };
         }
       }

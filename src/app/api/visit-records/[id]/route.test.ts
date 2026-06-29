@@ -1200,10 +1200,37 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
-      message: '添付ファイルの訪問記録IDが一致しません',
+      message: '添付ファイル情報が不正です',
     });
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not echo raw attachment lookup failures to PATCH validation responses', async () => {
+    const rawError = '患者A storage-key visit-photos/org_1/visit_1/raw-secret.png lookup failed';
+    getStoredFileRecordMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        attachments: [{ file_id: '11111111-1111-4111-8111-111111111111' }],
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('VALIDATION_ERROR');
+    expect(body).toContain('添付ファイル情報が不正です');
+    expect(body).not.toContain(rawError);
+    expect(body).not.toContain('患者A');
+    expect(body).not.toContain('raw-secret.png');
     expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 });
