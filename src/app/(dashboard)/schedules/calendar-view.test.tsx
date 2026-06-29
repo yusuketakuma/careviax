@@ -33,6 +33,7 @@ describe('CalendarView false-empty', () => {
     realtimeQueryMock.mockReset();
     refetchMock.mockReset();
     orgIdMock.mockReturnValue('org_1');
+    vi.unstubAllGlobals();
   });
 
   it('renders a retryable ErrorState — not an empty calendar — when the schedule fetch fails', () => {
@@ -114,5 +115,41 @@ describe('CalendarView false-empty', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
     expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns when the billing preview fetch fails so cadence warnings are not silently dropped', async () => {
+    // 主スケジュールは成功・非空(プレビュー要求が立つ)。算定プレビュー(別 query)だけ失敗させ、
+    // 請求サイクル警告の根拠欠落を黙らず明示することを確認する。
+    realtimeQueryMock.mockReturnValue({
+      data: [
+        {
+          id: 'sch_1',
+          scheduled_date: '2026-06-15',
+          schedule_status: 'planned',
+          visit_type: 'home',
+          pharmacist_id: 'ph_1',
+          case_id: 'case_1',
+          cycle_id: null,
+          case_: { patient: { id: 'p1', name: '患者 太郎' } },
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      refetch: refetchMock,
+      connected: true,
+    });
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('billing-preview-batch')) {
+        return Promise.resolve({ ok: false, status: 500, json: async () => ({}) } as Response);
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ data: {} }) } as Response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderCalendar();
+
+    expect(await screen.findByText('算定プレビューを読み込めませんでした')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalled();
   });
 });

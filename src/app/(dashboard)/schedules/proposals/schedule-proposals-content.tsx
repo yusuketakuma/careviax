@@ -850,7 +850,11 @@ export function ScheduleProposalsContent({
       })),
     [visibleProposals],
   );
-  const { data: proposalPreviewMap } = useQuery({
+  const {
+    data: proposalPreviewMap,
+    isError: isProposalPreviewError,
+    refetch: refetchProposalPreview,
+  } = useQuery({
     queryKey: ['schedule-proposals-dashboard-billing-preview', orgId, proposalPreviewRequests],
     queryFn: async () => {
       const response = await fetch('/api/visit-schedule-proposals/billing-preview-batch', {
@@ -2067,6 +2071,20 @@ export function ScheduleProposalsContent({
                     ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
               })}
             />
+          ) : null}
+
+          {isProposalPreviewError ? (
+            // 算定プレビュー取得失敗を黙ると、各候補の請求サイクル警告(proposalWarningMessages)が
+            // 「警告なし」と誤読される false-negative。候補一覧の上で明示する。
+            <div className="mb-3">
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="算定プレビューを読み込めませんでした"
+                description="各候補の請求サイクル警告や算定情報が一部欠落している可能性があります。再読み込みしてください。"
+                action={{ label: '再読み込み', onClick: () => void refetchProposalPreview() }}
+              />
+            </div>
           ) : null}
 
           {proposalsQuery.isLoading ? (

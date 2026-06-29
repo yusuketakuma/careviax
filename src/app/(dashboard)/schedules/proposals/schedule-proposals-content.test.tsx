@@ -439,6 +439,24 @@ describe('ScheduleProposalsContent', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  it('warns when the billing preview fetch fails so cadence warnings are not silently dropped', () => {
+    // 主候補一覧は成功(default)。算定プレビュー query だけ失敗させ、各候補の請求サイクル警告
+    // (proposalWarningMessages)の根拠欠落を黙らず明示することを確認する。
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard-billing-preview') {
+        return { data: undefined, isLoading: false, isError: true, refetch };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<ScheduleProposalsContent initialDateFrom="2026-04-09" />);
+
+    expect(screen.getByText('算定プレビューを読み込めませんでした')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
   it('labels proposal card actions with date, time, pharmacist, and vehicle context', () => {
     mockDashboardProposals([
       buildProposal({

@@ -221,7 +221,11 @@ export function CalendarView() {
       })),
     [schedules],
   );
-  const { data: schedulePreviewMap } = useQuery({
+  const {
+    data: schedulePreviewMap,
+    isError: isSchedulePreviewError,
+    refetch: refetchSchedulePreview,
+  } = useQuery({
     queryKey: ['calendar-billing-preview-map', orgId, schedulePreviewRequests],
     queryFn: async () => {
       if (schedulePreviewRequests.length === 0) return new Map();
@@ -303,6 +307,20 @@ export function CalendarView() {
           </button>
         </div>
       </div>
+
+      {isSchedulePreviewError ? (
+        // 算定プレビューの取得失敗を空表示に潰さない。失敗を黙ると請求サイクル警告
+        // (hasCadenceWarning) や次回算定日マーカーが「警告なし」と誤読される false-negative。
+        <div className="mb-3">
+          <ErrorState
+            variant="server"
+            size="inline"
+            title="算定プレビューを読み込めませんでした"
+            description="請求サイクルの警告や次回算定日の表示が一部欠落している可能性があります。再読み込みしてください。"
+            action={{ label: '再読み込み', onClick: () => void refetchSchedulePreview() }}
+          />
+        </div>
+      ) : null}
 
       {/* Calendar grid */}
       <div className="rounded-lg border overflow-hidden">
