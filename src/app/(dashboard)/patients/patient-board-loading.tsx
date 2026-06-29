@@ -1,4 +1,4 @@
-import { Skeleton, SkeletonRows } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/loading';
 
 export function PatientBoardLoadingShell() {
   return (
@@ -21,15 +21,12 @@ export function PatientBoardLoadingShell() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <Skeleton key={index} className="h-44 w-full rounded-lg" />
-          ))}
-        </div>
-        <div className="space-y-4">
-          <SkeletonRows rows={3} cols={1} status={false} />
-        </div>
+      {/* 実レイアウトはカードグリッドが単一カラム全幅(右レールは Sheet ドロワーで開く)。
+          skeleton も同形にしてロード完了時のレイアウトシフトを防ぐ。 */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <Skeleton key={index} className="h-44 w-full rounded-lg" />
+        ))}
       </div>
 
       <span className="sr-only">

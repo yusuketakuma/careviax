@@ -462,6 +462,48 @@ describe('PatientsBoard', () => {
     expect(screen.getByRole('link', { name: '田中 一郎 監査へ' })).toBeTruthy();
   });
 
+  it('keeps stale cards with a refetch-failure warning instead of blanking on a background refetch error', () => {
+    // react-query v5: 背景 refetch 失敗は status='error'(isError=true)になりつつ前回 data を保持する。
+    useRealtimeQueryMock.mockReturnValue({
+      data: buildFixture(),
+      isLoading: false,
+      isFetching: false,
+      isError: true,
+      isRefetchError: true,
+      error: new Error('refetch failed'),
+      dataUpdatedAt: new Date(2026, 5, 12, 9, 30).getTime(),
+      refetch: refetchMock,
+    });
+
+    render(<PatientsBoard />);
+
+    // 背景 refetch 失敗でも前回取得のカードは消さない(全 ErrorState に置換しない)。
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
+    expect(screen.queryByText('患者一覧を表示できません')).toBeNull();
+    // stale 警告を出し、鮮度ラベルは描画時刻でなく取得時刻(09:30)を表示する。
+    expect(screen.getByText('最新化に失敗・前回取得時点を表示中')).toBeTruthy();
+    expect(screen.getByText(/6\/12\(金\) 09:30 — カードの色＝いま必要な対応/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalled();
+  });
+
+  it('shows a full error state only when the initial load fails with no cached data', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isFetching: false,
+      isError: true,
+      isLoadingError: true,
+      error: new Error('load failed'),
+      refetch: refetchMock,
+    });
+
+    render(<PatientsBoard />);
+
+    expect(screen.getByText('患者一覧を表示できません')).toBeTruthy();
+    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
+  });
+
   it('announces empty filtered results without exposing hidden search-only address data', () => {
     render(<PatientsBoard />);
 

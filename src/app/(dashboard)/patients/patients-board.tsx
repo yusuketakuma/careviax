@@ -49,8 +49,9 @@ import { PatientBoardLoadingShell } from './patient-board-loading';
 
 /**
  * new_02_patient_list の患者カード一覧(docs/design-gap-analysis-new.md)。
- * ヘッダー(担当トグル)→ フィルタチップ行 → 患者カードグリッド(4列)+右レール
- * (次にやること / 止まっている理由 / 根拠・記録)の 2 カラム構成。
+ * ヘッダー(担当トグル)→ フィルタチップ行 → 患者カードグリッド(単一カラム全幅, sm:2 / xl:3 / 2xl:4 列)。
+ * 「次にやること / 止まっている理由 / 根拠・記録」は inline 右レールではなく WorkspaceActionRail の
+ * Sheet ドロワー(右スライド)で開く。ローディング skeleton も同じ単一カラム全幅に合わせる。
  * カードの色 = いま必要な対応(左ライン/バッジ)。危険タグは隠さない。
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
  */
@@ -599,7 +600,14 @@ export function PatientsBoard() {
   const data = boardQuery.data ?? null;
   const isRefreshing = Boolean(boardQuery.isFetching && !boardQuery.isLoading);
   const isSearchSettling = searchQuery !== deferredSearchQuery;
-  const dateLabel = `${format(now, 'M/d(EEE) HH:mm', { locale: ja })} — カードの色＝いま必要な対応`;
+  // 鮮度ラベルは「描画時刻(now)」ではなく実データ取得時刻(dataUpdatedAt)を表示する。
+  // now は本日訪問フィルタ(todayKey)用にそのまま壁時計を使う。
+  const freshnessTime = boardQuery.dataUpdatedAt ? new Date(boardQuery.dataUpdatedAt) : now;
+  // react-query v5 はキャッシュ済み data がある状態で背景 refetch が失敗すると
+  // status='error'(isError=true)になりつつ前回 data を保持する(QueryObserverRefetchErrorResult)。
+  // この場合カードを全 ErrorState に置換して閲覧中データを消すのではなく、stale 表示+更新失敗の警告に倒す。
+  const isStaleAfterRefetchError = Boolean(boardQuery.isRefetchError && data);
+  const dateLabel = `${format(freshnessTime, 'M/d(EEE) HH:mm', { locale: ja })} — カードの色＝いま必要な対応`;
 
   const todayKey = format(now, 'yyyy-MM-dd');
   const visibleCards = useMemo(() => {
@@ -735,7 +743,25 @@ export function PatientsBoard() {
             <p className="text-sm text-muted-foreground" suppressHydrationWarning>
               {dateLabel}
             </p>
-            {isRefreshing ? (
+            {isStaleAfterRefetchError ? (
+              <span
+                className="inline-flex items-center gap-2 rounded-full border border-state-confirm/40 bg-state-confirm/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-state-confirm"
+                role="status"
+                aria-live="polite"
+              >
+                最新化に失敗・前回取得時点を表示中
+                <button
+                  type="button"
+                  onClick={() => void boardQuery.refetch()}
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'min-h-[44px] sm:min-h-9',
+                  )}
+                >
+                  再試行
+                </button>
+              </span>
+            ) : isRefreshing ? (
               <span
                 className="inline-flex items-center rounded-full border border-tag-info/30 bg-tag-info/10 px-2 py-0.5 text-xs font-medium text-tag-info"
                 role="status"
@@ -838,7 +864,9 @@ export function PatientsBoard() {
       <div>
         {isBootstrappingOrg || boardQuery.isLoading ? (
           <PatientBoardLoadingShell />
-        ) : boardQuery.isError || !data ? (
+        ) : !data ? (
+          // 初回ロード失敗(キャッシュ data なし)のみ全 ErrorState。背景 refetch 失敗で
+          // data が残っている場合はカードを消さず、上部の stale 警告(isStaleAfterRefetchError)で示す。
           <div className="rounded-lg border border-border/70 bg-card p-4">
             <ErrorState
               variant="server"
