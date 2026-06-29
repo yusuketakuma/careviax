@@ -23,6 +23,33 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### AI Fallback Reason Sanitization - 2026-06-30 04:02 JST
+
+- Scope:
+  - Continued codex2's visit-time / interprofessional collaboration objective on visit brief AI summaries and patient MCS AI summaries.
+  - Preserved codex's completed report-date display slice and did not touch report template / partner-visit report-date files.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Thrown upstream/runtime AI errors no longer copy `error.message` into visit-brief or patient-MCS `fallback_reason`.
+  - Fallback warning telemetry now uses structured `logger.warn` safe-context events: `visit_brief_ai_fallback` and `patient_mcs_ai_fallback`.
+  - Thrown-error fallback reasons now use fixed `unknown_error`; known controlled fallback reasons such as `upstream_error`, `invalid_response`, and `empty_response` remain.
+- Safety:
+  - Reduces PHI/secret leakage risk because visit brief fallback metadata is persisted into audit logs and returned through visit-preparation/visit-brief API surfaces, and patient MCS summaries are interprofessional collaboration output.
+  - Regression tests cover hostile `Error.message` and mutable `Error.name` values containing patient/secret text and assert neither the returned summary nor warning logs contain them.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-brief-ai.test.ts src/server/services/patient-mcs-ai.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `23` tests.
+  - `pnpm exec eslint --max-warnings=0 src/server/services/visit-brief-ai.ts src/server/services/visit-brief-ai.test.ts src/server/services/patient-mcs-ai.ts src/server/services/patient-mcs-ai.test.ts`: passed after changing unused `catch (error)` to bare `catch`.
+  - `git diff --check -- src/server/services/visit-brief-ai.ts src/server/services/visit-brief-ai.test.ts src/server/services/patient-mcs-ai.ts src/server/services/patient-mcs-ai.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm exec prettier --check src/server/services/visit-brief-ai.ts src/server/services/visit-brief-ai.test.ts src/server/services/patient-mcs-ai.ts src/server/services/patient-mcs-ai.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+  - `git diff --check -- src/server/services/visit-brief-ai.ts src/server/services/visit-brief-ai.test.ts src/server/services/patient-mcs-ai.ts src/server/services/patient-mcs-ai.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+- Remaining:
+  - codex and Claude approved after independent validation and adversarial raw `.message` / mutable `.name` review.
+  - Commit is pending for this slice.
+
 ### Visit-Record Handoff Extraction Logging - 2026-06-30 03:46 JST
 
 - Scope:

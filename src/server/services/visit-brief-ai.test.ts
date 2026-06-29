@@ -252,6 +252,33 @@ describe('visit-brief-ai', () => {
     });
   });
 
+  it('does not expose raw fetch exception text in fallback reason or logs', async () => {
+    process.env.VISIT_BRIEF_AI_PROVIDER = 'openai';
+    process.env.VISIT_BRIEF_AI_API_KEY = 'test-key';
+    const rawError = new Error('patient=田中太郎 SOAP=服薬状況 token=secret');
+    rawError.name = 'Patient Tanaka token=secret';
+    global.fetch = vi.fn().mockRejectedValue(rawError);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await generateVisitBriefAiSummary(input);
+
+    expect(result).toMatchObject({
+      provider: 'rule',
+      requested_provider: 'openai',
+      is_fallback: true,
+      fallback_reason: 'unknown_error',
+    });
+    expect(JSON.stringify(result)).not.toContain('田中太郎');
+    expect(JSON.stringify(result)).not.toContain('Patient Tanaka');
+    expect(JSON.stringify(result)).not.toContain('token=secret');
+    const serializedLogs = JSON.stringify(consoleErrorSpy.mock.calls);
+    expect(serializedLogs).toContain('visit_brief_ai_fallback');
+    expect(serializedLogs).toContain('unknown_error');
+    expect(serializedLogs).not.toContain('田中太郎');
+    expect(serializedLogs).not.toContain('Patient Tanaka');
+    expect(serializedLogs).not.toContain('token=secret');
+  });
+
   it('extracts handoff items only from object-shaped structured SOAP fields', async () => {
     const result = await extractHandoffFromSoap({
       patientName: '患者A',

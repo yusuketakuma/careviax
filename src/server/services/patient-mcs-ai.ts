@@ -1,6 +1,7 @@
 import { readJsonResponseBody } from '@/lib/api/response-body';
 import { parseJsonObjectOrNull, readJsonObject } from '@/lib/db/json';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { logger } from '@/lib/utils/logger';
 import { createFetchTimeout } from './fetch-timeout';
 
 export type PatientMcsSummaryMessage = {
@@ -51,6 +52,21 @@ const MUST_CHECK_PATTERN =
   /(発熱|疼痛|痛み|血圧|脈拍|浮腫|転倒|食欲|睡眠|便秘|下痢|むくみ|服薬|眠気|SpO2|酸素|咳|痰|不穏|脱水|感染)/i;
 const DEFAULT_ALLOWED_AI_HOSTS = new Set(['api.openai.com']);
 const DEFAULT_PATIENT_MCS_AI_TIMEOUT_MS = 4000;
+
+function warnPatientMcsAiFallback(args: {
+  provider: string;
+  reason: string;
+  startedAt: number;
+  status?: number;
+}) {
+  logger.warn({
+    event: 'patient_mcs_ai_fallback',
+    externalProvider: args.provider,
+    code: args.reason,
+    status: args.status,
+    durationMs: Date.now() - args.startedAt,
+  });
+}
 
 function toStringArray(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) return [];
@@ -341,12 +357,11 @@ export async function generatePatientMcsAiSummary(
     }
 
     if (!response.ok) {
-      console.warn('[patient-mcs-ai] fallback', {
+      warnPatientMcsAiFallback({
         provider,
-        model,
         reason: 'upstream_error',
         status: response.status,
-        duration_ms: Date.now() - startedAt,
+        startedAt,
       });
       return {
         ...fallback,
@@ -360,11 +375,10 @@ export async function generatePatientMcsAiSummary(
 
     const raw = readOpenAiMessageContent(await readJsonResponseBody(response));
     if (raw === null) {
-      console.warn('[patient-mcs-ai] fallback', {
+      warnPatientMcsAiFallback({
         provider,
-        model,
         reason: 'invalid_response',
-        duration_ms: Date.now() - startedAt,
+        startedAt,
       });
       return {
         ...fallback,
@@ -377,11 +391,10 @@ export async function generatePatientMcsAiSummary(
     }
 
     if (!raw) {
-      console.warn('[patient-mcs-ai] fallback', {
+      warnPatientMcsAiFallback({
         provider,
-        model,
         reason: 'empty_response',
-        duration_ms: Date.now() - startedAt,
+        startedAt,
       });
       return {
         ...fallback,
@@ -395,11 +408,10 @@ export async function generatePatientMcsAiSummary(
 
     const parsed = parseOpenAiSummaryPayload(raw);
     if (!parsed) {
-      console.warn('[patient-mcs-ai] fallback', {
+      warnPatientMcsAiFallback({
         provider,
-        model,
         reason: 'invalid_response',
-        duration_ms: Date.now() - startedAt,
+        startedAt,
       });
       return {
         ...fallback,
@@ -438,19 +450,18 @@ export async function generatePatientMcsAiSummary(
       generated_at: new Date().toISOString(),
       duration_ms: Date.now() - startedAt,
     };
-  } catch (error) {
-    console.warn('[patient-mcs-ai] fallback', {
+  } catch {
+    warnPatientMcsAiFallback({
       provider,
-      model,
-      reason: error instanceof Error ? error.message : 'unknown_error',
-      duration_ms: Date.now() - startedAt,
+      reason: 'unknown_error',
+      startedAt,
     });
     return {
       ...fallback,
       generation_id: generationId,
       requested_provider: provider,
       model,
-      fallback_reason: error instanceof Error ? error.message : 'unknown_error',
+      fallback_reason: 'unknown_error',
       duration_ms: Date.now() - startedAt,
     };
   }

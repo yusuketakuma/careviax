@@ -2,6 +2,7 @@ import type { VisitBriefAiSummary } from '@/types/visit-brief';
 import { readJsonResponseBody } from '@/lib/api/response-body';
 import { parseJsonObjectOrNull, readJsonObject } from '@/lib/db/json';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
+import { logger } from '@/lib/utils/logger';
 import { createFetchTimeout } from './fetch-timeout';
 
 type VisitBriefAiInput = {
@@ -24,6 +25,21 @@ type OpenAiSummaryPayload = {
 };
 
 const DEFAULT_VISIT_BRIEF_AI_TIMEOUT_MS = 3500;
+
+function warnVisitBriefAiFallback(args: {
+  provider: string;
+  reason: string;
+  startedAt: number;
+  status?: number;
+}) {
+  logger.warn({
+    event: 'visit_brief_ai_fallback',
+    externalProvider: args.provider,
+    code: args.reason,
+    status: args.status,
+    durationMs: Date.now() - args.startedAt,
+  });
+}
 
 function toStringArray(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) return [];
@@ -153,23 +169,21 @@ export async function generateVisitBriefAiSummary(
     }
 
     if (!response.ok) {
-      console.warn('[visit-brief-ai] fallback', {
+      warnVisitBriefAiFallback({
         provider,
-        model,
         reason: 'upstream_error',
         status: response.status,
-        duration_ms: Date.now() - startedAt,
+        startedAt,
       });
       return buildFallbackSummary(input);
     }
 
     const raw = readOpenAiMessageContent(await readJsonResponseBody(response));
     if (raw === null) {
-      console.warn('[visit-brief-ai] fallback', {
+      warnVisitBriefAiFallback({
         provider,
-        model,
         reason: 'invalid_response',
-        duration_ms: Date.now() - startedAt,
+        startedAt,
       });
       return {
         ...buildFallbackSummary(input),
@@ -182,22 +196,20 @@ export async function generateVisitBriefAiSummary(
     }
 
     if (!raw) {
-      console.warn('[visit-brief-ai] fallback', {
+      warnVisitBriefAiFallback({
         provider,
-        model,
         reason: 'empty_response',
-        duration_ms: Date.now() - startedAt,
+        startedAt,
       });
       return buildFallbackSummary(input);
     }
 
     const parsed = parseOpenAiSummaryPayload(raw);
     if (!parsed) {
-      console.warn('[visit-brief-ai] fallback', {
+      warnVisitBriefAiFallback({
         provider,
-        model,
         reason: 'invalid_response',
-        duration_ms: Date.now() - startedAt,
+        startedAt,
       });
       return {
         ...buildFallbackSummary(input),
@@ -235,19 +247,18 @@ export async function generateVisitBriefAiSummary(
       recent_failure_count_24h: 0,
       recent_failure_rate_24h: null,
     };
-  } catch (error) {
-    console.warn('[visit-brief-ai] fallback', {
+  } catch {
+    warnVisitBriefAiFallback({
       provider,
-      model,
-      reason: error instanceof Error ? error.message : 'unknown_error',
-      duration_ms: Date.now() - startedAt,
+      reason: 'unknown_error',
+      startedAt,
     });
     const fallback = buildFallbackSummary(input);
     return {
       ...fallback,
       generation_id: generationId,
       requested_provider: provider,
-      fallback_reason: error instanceof Error ? error.message : 'unknown_error',
+      fallback_reason: 'unknown_error',
     };
   }
 }

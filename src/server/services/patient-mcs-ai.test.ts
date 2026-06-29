@@ -320,6 +320,46 @@ describe('patient-mcs-ai', () => {
     expect(summary.duration_ms).not.toBeNull();
   });
 
+  it('does not expose raw fetch exception text in fallback reason or logs', async () => {
+    process.env.PATIENT_MCS_AI_API_KEY = 'test-key';
+    process.env.PATIENT_MCS_AI_PROVIDER = 'openai';
+    process.env.PATIENT_MCS_AI_ALLOW_EXTERNAL = 'true';
+    process.env.PATIENT_MCS_AI_MODEL = 'gpt-5-mini';
+    const rawError = new Error('patient=青葉花子 MCS=食欲低下 token=secret');
+    rawError.name = 'Patient Aoba token=secret';
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(rawError));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const summary = await generatePatientMcsAiSummary({
+      patientName: '青葉 花子',
+      projectTitle: '青葉 花子：年長者の里',
+      messages: [
+        {
+          sourceMessageId: 'message_1',
+          authorName: '篠原 陽子',
+          authorRole: '看護師',
+          authorOrganization: '訪問看護',
+          postedAt: new Date('2026-04-02T08:00:00.000Z'),
+          postedAtLabel: '4/2 17:00',
+          body: '食欲低下が続いています。',
+        },
+      ],
+    });
+
+    expect(summary.provider).toBe('rule');
+    expect(summary.model).toBe('gpt-5-mini');
+    expect(summary.fallback_reason).toBe('unknown_error');
+    expect(JSON.stringify(summary)).not.toContain('青葉花子');
+    expect(JSON.stringify(summary)).not.toContain('Patient Aoba');
+    expect(JSON.stringify(summary)).not.toContain('token=secret');
+    const serializedLogs = JSON.stringify(consoleErrorSpy.mock.calls);
+    expect(serializedLogs).toContain('patient_mcs_ai_fallback');
+    expect(serializedLogs).toContain('unknown_error');
+    expect(serializedLogs).not.toContain('青葉花子');
+    expect(serializedLogs).not.toContain('Patient Aoba');
+    expect(serializedLogs).not.toContain('token=secret');
+  });
+
   it('falls back when the AI response content is not a JSON object', async () => {
     process.env.PATIENT_MCS_AI_API_KEY = 'test-key';
     process.env.PATIENT_MCS_AI_PROVIDER = 'openai';
