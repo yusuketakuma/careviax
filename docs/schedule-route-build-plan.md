@@ -20,15 +20,12 @@ Refactor (not rewrite) the careviax visit-scheduling/route subsystem so it (a) s
 - NO SCHEMA CHANGE: VisitScheduleOverrideStatus already contains 'cancelled' (visit.prisma:70) — emergency-2/5 reuse it. NO SCHEMA CHANGE: VisitRecord.next_visit_suggestion_date and split_next_dispense_date already persisted — meddate-4/G5 only consume them. NO SCHEMA CHANGE: all VisitRouteWaypoint/VisitRoutePlan/VisitRouteStopSummary enrichments (timeWindow, serviceMinutes/dwell, distanceSource, window-feasibility) are TypeScript types in src/types/visit-route.ts only. NO SCHEMA CHANGE: audit logging uses the existing AuditLog table.
 
 ## 未決事項 (要判断)
+_注: 週境界 / override 再申請 / suggestion-vs-runout precedence / 未ジオコーディング方針 の4件は「確定した判断」(#1-#4) で決定済みのため未決から除外した。_
 - TZ contract: do we set process.env.TZ=UTC in Amplify AND add a runtime guard (belt-and-braces), or rely solely on the UTC-safe builders from P0? Recommend both; confirm Amplify env is settable without a security hard-stop.
-- Official week boundary: confirm 診療報酬 week is Sunday–Saturday so buildWeekKey/validator switch to weekStartsOn:0 — does any existing UI or test assert Monday-start weeks (caps-4 changes shared bucketing)?
-- Override re-reschedule: partial-unique DB migration (preserves cancelled-override history, needs approval) vs reuse/upsert the single override row (no migration, loses history). Which do we ship?
 - Pending-proposal cap counting (caps-5): should VisitScheduleProposal rows count toward caps, and how do we avoid double-counting a proposal that is already linked to a created VisitSchedule (reschedule_source_schedule_id)? Need the exact dedupe rule.
 - Priority bands (F-C/F-D): making emergency a HARD band that always precedes normal changes existing route ordering and will break tests that assume the soft seconds-bonus (routePriorityBonusSeconds). Confirm the hard-band semantics and budget for test updates.
 - Dwell/serviceMinutes source (F-B/P6): is per-visit service time a fixed constant (no schema change) or should it be configurable per case/visit-type (would add a field → schema change)? Default constant assumed.
-- next_visit_suggestion_date vs medication-runout precedence (meddate-4): when both exist, does the clinician suggestion override, or do we take MIN(suggestion, runout)? Affects monitoring-only visits.
 - max_travel_minutes semantics (constraints-5/dataquality-3): confirm the field is genuinely minutes (not km) so the fix converts fallback km→minutes via localSpeedKph rather than reinterpreting the cap.
-- Ungeocoded-patient policy: should the planner/engine fail-closed (reject) on missing geocode, or place with an explicit warning? dataquality-1/2/3 and constraints-5 all hinge on this single policy choice.
 - Route-compare unify (G7): is it acceptable for these scenarios to make live routing calls (latency/cost on Google/OSRM) on screen load, or should they run against a cached/precomputed plan?
 
 ## フェーズ
@@ -40,8 +37,9 @@ _Make every @db.Date/@db.Time construction in the scheduling subsystem TZ-safe s
 - **[BE|moderate]** (datetime-3) Centralize time-window round-trip through one read/write pair
     - FIX: Audit all writers/readers of time_window_start/end and visit window @db.Time; make card-workspace.tsx:407's 'UTC parts 由来' contract enforced by construction (single helper from item above), not by process TZ. Add a unit test asserting round-trip stability under TZ=Asia/Tokyo and TZ=UTC.
 
-### P1 — Medication-driven deadline & cycle selection correctness (planner core)
+### P1 — Medication-driven deadline & cycle selection correctness (planner core) — ✅ DONE (8da7ea52, Codex; helper + planner + daily demand + tests/ledgers, reviewed & approved)
 _Stop the planner from rejecting all valid shifts for short/overdue prescriptions and from deriving the deadline from the wrong drug/cycle/date. Pure correctness; no schema change._
+_進捗注記: 確定判断 #1 (MIN deadline / PRN除外 / 二重-1撤去) を含め本 phase は landing 済。datetime-1・meddate-1・meddate-4/G5 は `src/server/services/visit-medication-deadline.ts` + planner 統合で実装済。meddate-3 (overdue ASAP) / meddate-5 (cycle status gating) の planner 内実装状況は実コードで要確認。_
 - **[BE|major]** (datetime-1) Remove the double -1 on visitDeadlineDate (inclusive end_date already = start+days-1)
     - FIX: At visit-schedule-planner.ts:839-841 the deadline is addDays(medicationEndDate,-1) but end_date is already the INCLUSIVE last med day (use-workbench-write-handlers.ts:286 setUTCDate(+days-1); prescription-period-review.shared.ts:88 addDays(start,days-1)). Drop the extra -1 so visitDeadlineDate = medicationEndDate (the last covered day) — a days=1 refill then accepts a same-day visit instead of returning zero candidates. Mirror the same fix at the second deadline site (1064-1072).
 - **[BE|major]** (meddate-1) Deadline must bind to EARLIEST-exhausting continuing med, not Math.max
@@ -91,7 +89,7 @@ _Eliminate the HARD-vs-silently-SOFT asymmetry so proposals respect pharmacy hou
 - **[BE|major]** (constraints-4) Fail-closed on disjoint preference/acceptance windows
     - FIX: intersectWindows (253-272) returns null on from>=to, and findAvailableSlot then falls back to the ENTIRE shift window (419-426, 760-777). Distinguish 'no windows supplied' (open) from 'windows conflict' (null→reject with a diagnostic), so contradictory patient-preferred vs facility-acceptance windows produce no slot + reason, not an unconstrained placement.
 - **[BE|major]** (constraints-5,dataquality-3) Fix unit mismatch: convert fallback km→minutes before comparing to max_travel_minutes
-    - FIX: getFallbackTravelCost (297-311) returns haversine KM (or 0/1/10 address score) but the cap check at 1204-1216 compares travelScore directly to max_travel_minutes as MINUTES; with OSRM absent by default every score is km. Convert km→minutes via localSpeedKph-equivalent (the engine already has localSpeedKph) in the fallback path, and make ungeocoded patients fail-closed/penalized rather than passing via addressFallbackScore<=10. Share one travel-cost unit contract with the engine (see P6 shared scoreInsertion).
+    - FIX: getFallbackTravelCost (297-311) returns haversine KM (or 0/1/10 address score) but the cap check at 1204-1216 compares travelScore directly to max_travel_minutes as MINUTES; with OSRM absent by default every score is km. Convert km→minutes via localSpeedKph-equivalent (the engine already has localSpeedKph) in the fallback path, and PENALIZE ungeocoded patients with an explicit warning (per 確定判断 #4 = 警告付き暫定配置, NOT fail-closed) rather than silently passing via addressFallbackScore<=10. (Obviously-invalid coords — 0/0, out-of-range, lat/lng swap — are rejected by app-layer zod per dataquality-2; missing coords are warned-and-placed, never rejected.) Share one travel-cost unit contract with the engine (see P6 shared scoreInsertion).
 - **[BE|moderate]** (dataquality-2) Validate Residence lat/lng range/swap at the write boundary
     - FIX: visit-constraints.ts:61-62 uses z.number().optional() with no bounds. Add .min(-90).max(90) for lat, .min(-180).max(180) for lng, reject 0/0 placeholder and obvious lat==lng swaps, so finite-but-wrong coords (Gulf-of-Guinea / NaN haversine) can't be treated as authoritative downstream. App-layer zod preferred over a DB CHECK (see schema-changes/open-questions).
 - **[BE|minor]** (G6) Use visit_specialties in candidate matching
