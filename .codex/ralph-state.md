@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0704 JST
+
+- current task: harden `PATCH /api/visit-records/[id]` and the visit-record detail GET catch boundary so visit-time record updates consistently use sensitive no-store envelopes and sanitized unexpected-error responses.
+- files inspected: agmsg inbox/history/send for `phos/codex2`, `git status --short --untracked-files=all`, local Next.js route-handler and `unstable_rethrow` docs read earlier this turn, `src/app/api/visit-records/[id]/route.ts`, `src/app/api/visit-records/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file. Preserved Claude-owned document-delivery-rule-manager WIP and codex visit-schedule work already committed as `62159206`.
+- files changed: `src/app/api/visit-records/[id]/route.ts`, `src/app/api/visit-records/[id]/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: visit-record detail PATCH returned success, validation, conflict, not-found, forbidden, and auth-rejection responses without the route's sensitive no-store envelope. Unexpected PATCH plumbing failures could also fall through to framework 500 behavior instead of a fixed no-store `INTERNAL_ERROR` envelope. The existing GET catch used a bare catch and could swallow Next control-flow exceptions.
+- security risks found: reduced PHI/raw-error disclosure and caching risk for visit-record update responses covering SOAP/readiness/attachment mutation flows, optimistic-lock conflicts, authorization failures, and unexpected failures containing patient names, phone numbers, or raw exception text. Auth, permission checks, visit-record ownership, case assignment, optimistic locks, attachment validation semantics, derived-data side effects, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added. The patch only wraps existing route responses, rethrows framework control-flow exceptions, and adds focused assertions.
+- validation commands: `pnpm exec prettier --write 'src/app/api/visit-records/[id]/route.ts' 'src/app/api/visit-records/[id]/route.test.ts'`; `pnpm exec vitest run 'src/app/api/visit-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the two visit-record detail files; scoped `git diff --check` on the two visit-record detail files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused visit-record detail Vitest passed `1` file / `25` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after verifying wrapper coverage, `unstable_rethrow` placement, raw patient/phone non-leakage, no-store coverage, and workflow non-regression. Claude also noted a non-blocking follow-up to inspect whether attachment validation error messages are guaranteed sanitized before client echo.
+- remaining work: explicit-path stage only this visit-record PATCH slice plus the visit-record ledger hunks, commit, send agmsg FYI, then inspect the attachment-validation raw-echo follow-up as a separate slice if still actionable.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0654 JST
 
 - current task: harden report-related PDF routes so tracing reports, management plans, conference notes, and billing documents use typed not-found boundaries and sensitive no-store envelopes where missing.

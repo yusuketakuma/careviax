@@ -515,6 +515,7 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(getStoredFileRecordMock).toHaveBeenCalled();
     expect(visitRecordUpdateManyMock).toHaveBeenCalled();
   });
@@ -547,6 +548,7 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(visitRecordUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'visit_1', org_id: 'org_1', version: 1 },
@@ -606,6 +608,7 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
@@ -625,8 +628,56 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
     expect(patientLabObservationDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('adds no-store headers to PATCH auth rejection responses', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(JSON.stringify({ code: 'AUTH_FORBIDDEN' }), { status: 403 }),
+    });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        soap_subjective: '認証エラー時は保存しない',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when PATCH fails unexpectedly', async () => {
+    const rawError = '患者A 03-1111-2222 raw visit record patch failure';
+    withOrgContextMock.mockRejectedValueOnce(new Error(rawError));
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        soap_subjective: '予期しない失敗',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('INTERNAL_ERROR');
+    expect(body).not.toContain(rawError);
+    expect(body).not.toContain('患者A');
+    expect(body).not.toContain('03-1111-2222');
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects stale previous-visit reuse metadata before patching structured soap', async () => {

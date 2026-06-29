@@ -23,6 +23,40 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Visit Record PATCH No-Store / Sanitized Envelope - 2026-06-30 07:04 JST
+
+- Scope:
+  - Continued codex2's visit-time workflow objective on `PATCH /api/visit-records/[id]`.
+  - Focused on sensitive no-store coverage and sanitized unexpected-error envelopes for visit-record detail update responses; also fixed the GET catch boundary to rethrow Next control-flow exceptions before returning the established internal-error envelope.
+  - Preserved Claude-owned document-delivery-rule-manager WIP and codex visit-schedule work already committed as `62159206`.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - PATCH now delegates to `authenticatedPATCH`, and the exported handler wraps all returned PATCH responses with `withSensitiveNoStore`.
+  - Unexpected PATCH failures now use the established `unstable_rethrow` + fixed no-store `internalError()` pattern.
+  - The visit-record detail GET catch now calls `unstable_rethrow(err)` before the fixed internal-error fallback.
+- Safety:
+  - Reduces PHI/raw-error disclosure and caching risk for visit-record updates, validation errors, optimistic-lock conflicts, auth/permission failures, and unexpected failures containing patient names, phone numbers, or raw exception text.
+  - Preserves auth/permission behavior, visit-record ownership, case assignment, optimistic locks, attachment validation semantics, derived-data side effects, and existing response status/body shapes for handled domain paths.
+- Performance:
+  - No DB query, dependency, external request, retry loop, synchronous blocking, or unbounded work was added.
+  - The patch only wraps existing route responses, rethrows framework control-flow errors, and adds focused tests.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/visit-records/[id]/route.ts' 'src/app/api/visit-records/[id]/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/visit-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `25` tests.
+  - Scoped ESLint on the two visit-record detail files: passed.
+  - Scoped `git diff --check` on the two visit-record detail files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - `PATCH_REVIEW_REQUEST` was sent to Claude and codex with scope and validation evidence.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after verifying all PATCH paths are no-store wrapped, unexpected failures sanitize raw patient/phone text, the GET catch rethrows control-flow exceptions, and focused validation passed.
+  - Claude noted a non-blocking follow-up to inspect whether attachment validation error messages are guaranteed sanitized before client echo.
+- Remaining:
+  - Stage only explicit codex2-owned visit-record files plus the visit-record ledger hunks, commit, and send agmsg FYI.
+  - Inspect the attachment-validation raw-echo follow-up as a separate slice if still actionable.
+
 ### Report PDF Boundary Hardening - 2026-06-30 06:54 JST
 
 - Scope:

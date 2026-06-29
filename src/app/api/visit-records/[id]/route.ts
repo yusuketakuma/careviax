@@ -1,3 +1,4 @@
+import { unstable_rethrow } from 'next/navigation';
 import { NextRequest } from 'next/server';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { Prisma } from '@prisma/client';
@@ -208,12 +209,16 @@ async function authenticatedGET(req: NextRequest, { params }: { params: Promise<
 export async function GET(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
   try {
     return withSensitiveNoStore(await authenticatedGET(req, routeContext));
-  } catch {
+  } catch (err) {
+    unstable_rethrow(err);
     return withSensitiveNoStore(internalError());
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function authenticatedPATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
     message: '訪問記録の更新権限がありません',
@@ -459,4 +464,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   return success(updated);
+}
+
+export async function PATCH(req: NextRequest, routeContext: { params: Promise<{ id: string }> }) {
+  try {
+    return withSensitiveNoStore(await authenticatedPATCH(req, routeContext));
+  } catch (err) {
+    unstable_rethrow(err);
+    return withSensitiveNoStore(internalError());
+  }
 }
