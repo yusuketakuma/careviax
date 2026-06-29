@@ -23,6 +23,39 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Project-Local Subagent Role Expansion - 2026-06-30 08:46 JST
+
+- Scope:
+  - Extended CareViaX project-local Codex subagent persona coverage after the first persona hardening commit.
+  - Focused on AGENTS.md-recommended role names so planning, DB/API/data-integrity, UI/a11y/flow, verification, security/threat, and healthcare compliance work can be delegated directly with PH-OS-specific instructions.
+  - Handled codex2's `visit-routes/reorder` review interrupt first, approved commit `a5aaf5b7`, and preserved codex2-owned `src/app/api/partner-visit-records/route.ts` / `route.test.ts` WIP.
+  - No application source behavior, database schema, live DB data, external sends, push/deploy, secrets, or production operations were changed.
+- Added:
+  - `.codex/config.toml` registrations and standalone agent TOMLs for `code_mapper`, `implementation_planner`, `spec_guardian`, `architect`, `maintainer`, `verifier`, `db_steward`, `api_contract_reviewer`, `data_integrity_auditor`, `concurrency_reviewer`, `migration_planner`, `healthcare_compliance_reviewer`, `frontend_reviewer`, `ui_flow_tester`, `accessibility_ux_reviewer`, `security_critic`, `threat_modeler`, `observability_engineer`, and `test_architect`.
+  - Read-only roles default to `sandbox_mode = "read-only"` and explicitly forbid editing, staging, committing, DB mutation, external sends, and PHI persistence.
+  - Implementation/verification/UI-flow roles include explicit ownership, validation, no destructive DB, no external-send, and no production-operation boundaries.
+  - DB/API/data-integrity/concurrency/migration roles now explicitly cover RLS/requestContext, no-store/sanitized envelopes, idempotency/OCC, row locks, migration approval gates, DrugMaster/code identity, patient/case/schedule/billing/inventory/audit invariants, and SELECT-only review defaults.
+  - UI/a11y/flow roles now explicitly require `docs/ui-ux-design-guidelines.md`, truthful loading/error/empty states, keyboard/focus/ARIA checks, screenshot/browser evidence, text fit, and medical workflow context visibility.
+- Safety:
+  - Reduces process risk that high-risk review lanes collapse into generic review and miss medical/pharmacy-specific failures.
+  - Strengthens coverage for patient identity ambiguity, medication code/name drift, PHI/PII leakage, audit minimization, retention/consent/access-review assumptions, threat boundaries, migration/backfill hazards, concurrency races, UI false-empty states, and inadequate validation proof.
+- Performance:
+  - No runtime app performance behavior changed.
+  - The change only affects Codex subagent selection and prompts for future review/implementation work.
+- Validation:
+  - `node /Users/yusuke/.codex/skills/.system/openai-docs/scripts/fetch-codex-manual.mjs`: passed; local Codex manual was current.
+  - Codex manual evidence confirmed project-scoped `.codex/agents/` custom agents, required `name` / `description` / `developer_instructions`, optional model/reasoning/sandbox fields, and `[agents]` concurrency settings.
+  - `codex --version`: `codex-cli 0.142.3`.
+  - `python3`/`tomllib` consistency check over `.codex/config.toml` and configured `.codex/agents/*.toml`: passed with `agent_entries=27`, `errors=[]`.
+  - `git diff --check -- .codex/config.toml .codex/agents`: passed.
+  - `codex --profile fast debug prompt-input > /tmp/careviax-codex-prompt-input-agents.json`: passed.
+- Review:
+  - `code_mapper` subagent confirmed the missing-role gap for planning/spec, DB/API/data-integrity, UI/a11y/flow, verifier, and threat-model roles.
+  - `docs_researcher` subagent confirmed the Codex custom-agent schema and identified that `.codex/config.toml` references must have matching `config_file` TOMLs; the new files resolve that missing-file risk.
+- Remaining:
+  - Stage only `.codex/config.toml`, `.codex/agents/*.toml`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`; do not stage codex2's `partner-visit-records` WIP.
+  - Commit this coherent configuration slice and send agmsg FYI.
+
 ### Visit Routes Reorder PATCH No-Store / Sanitized Envelope - 2026-06-30 08:42 JST
 
 - Scope:

@@ -16,15 +16,70 @@ max_threads = 32
 max_depth = 2
 job_max_runtime_seconds = 7200
 
+[agents.code_mapper]
+description = "Read-only PH-OS/CareViaX code mapper for fast impact-radius, ownership, route/service/test, and data-flow mapping before implementation."
+config_file = "agents/code_mapper.toml"
+nickname_candidates = ["Mapper", "Locator", "Surface"]
+
 [agents.explorer-deep]
 description = "Read-only PH-OS/CareViaX mapper for architecture, dependencies, data flow, impact radius, hidden coupling, and medical/privacy risk surfaces."
 config_file = "agents/explorer-deep.toml"
 nickname_candidates = ["Mapper", "Cartographer", "Tracer"]
 
+[agents.implementation_planner]
+description = "Read-only PH-OS/CareViaX implementation planner for scoped phases, file touch-lists, risk controls, validation plans, and rollback strategy."
+config_file = "agents/implementation_planner.toml"
+nickname_candidates = ["Planner", "Sequencer", "Runbook"]
+
+[agents.spec_guardian]
+description = "Read-only PH-OS/CareViaX spec guardian for PLANS.md, AGENTS.md, PH-OS acceptance criteria, and implementation/spec drift."
+config_file = "agents/spec_guardian.toml"
+nickname_candidates = ["Spec", "Guardian", "Acceptance"]
+
+[agents.architect]
+description = "Read-only PH-OS/CareViaX architect for module boundaries, dependency direction, abstractions, data ownership, and long-term maintainability."
+config_file = "agents/architect.toml"
+nickname_candidates = ["Architect", "Boundary", "Systems"]
+
+[agents.maintainer]
+description = "Implementation agent for scoped PH-OS/CareViaX fixes; only edits explicitly delegated paths and proves changes with focused validation."
+config_file = "agents/maintainer.toml"
+nickname_candidates = ["Maintainer", "Patch", "Builder"]
+
 [agents.worker-fixer]
 description = "Implementation agent for scoped PH-OS/CareViaX fixes after investigation, preserving shared-worktree ownership and proving changes with validation."
 config_file = "agents/worker-fixer.toml"
 nickname_candidates = ["Maintainer", "Patch", "Builder"]
+
+[agents.verifier]
+description = "PH-OS/CareViaX verifier for objective evidence: tests, typecheck, lint, build, browser checks, gate serialization, and validation summaries."
+config_file = "agents/verifier.toml"
+nickname_candidates = ["Verifier", "Evidence", "Gate"]
+
+[agents.db_steward]
+description = "Read-only PH-OS/CareViaX DB steward for schema, constraints, RLS/requestContext, migrations, query shape, transactions, and SELECT-only data checks."
+config_file = "agents/db_steward.toml"
+nickname_candidates = ["DB Steward", "Constraint", "Ledger"]
+
+[agents.api_contract_reviewer]
+description = "Read-only PH-OS/CareViaX API contract reviewer for request/response shape, status codes, no-store envelopes, idempotency, and compatibility."
+config_file = "agents/api_contract_reviewer.toml"
+nickname_candidates = ["Contract", "Envelope", "Compatibility"]
+
+[agents.data_integrity_auditor]
+description = "Read-only PH-OS/CareViaX data integrity auditor for cross-UI/API/DB invariants, duplicate records, reconciliation, and audit consistency."
+config_file = "agents/data_integrity_auditor.toml"
+nickname_candidates = ["Integrity", "Invariant", "Reconcile"]
+
+[agents.concurrency_reviewer]
+description = "Read-only PH-OS/CareViaX concurrency reviewer for races, idempotency, locks, optimistic concurrency, retries, and double-submit behavior."
+config_file = "agents/concurrency_reviewer.toml"
+nickname_candidates = ["Concurrency", "Lock", "Retry"]
+
+[agents.migration_planner]
+description = "Read-only PH-OS/CareViaX migration planner for expand/contract rollout, backfills, locks, data-quality checks, rollback, and approval gates."
+config_file = "agents/migration_planner.toml"
+nickname_candidates = ["Migration", "Backfill", "Rollout"]
 
 [agents.medical_safety_reviewer]
 description = "Read-only PH-OS/CareViaX medical safety reviewer for patient identity, medication codes, prescriptions, allergies, dosage, inventory consistency, scheduling, and auditability."
@@ -36,10 +91,45 @@ description = "Read-only PH-OS/CareViaX privacy reviewer for PHI/PII minimizatio
 config_file = "agents/privacy_compliance_reviewer.toml"
 nickname_candidates = ["Privacy", "Masker", "Steward"]
 
+[agents.healthcare_compliance_reviewer]
+description = "Read-only PH-OS/CareViaX healthcare compliance reviewer for auditability, retention, consent, access review, operational procedures, and Japan healthcare assumptions."
+config_file = "agents/healthcare_compliance_reviewer.toml"
+nickname_candidates = ["Compliance", "Audit", "Retention"]
+
+[agents.frontend_reviewer]
+description = "Read-only PH-OS/CareViaX frontend reviewer for state, routing, forms, loading/error/empty states, medical UX, and UI regression risk."
+config_file = "agents/frontend_reviewer.toml"
+nickname_candidates = ["Frontend", "State", "UI Review"]
+
+[agents.ui_flow_tester]
+description = "PH-OS/CareViaX UI flow tester for browser/screenshot/console/network evidence, responsive flows, and workflow fail-closed verification."
+config_file = "agents/ui_flow_tester.toml"
+nickname_candidates = ["Flow", "Browser", "Path"]
+
+[agents.accessibility_ux_reviewer]
+description = "Read-only PH-OS/CareViaX accessibility and UX reviewer for keyboard flow, ARIA, focus, error affordances, touch targets, and unsafe user journeys."
+config_file = "agents/accessibility_ux_reviewer.toml"
+nickname_candidates = ["A11y", "UX", "Focus"]
+
 [agents.security-auditor]
 description = "Read-only PH-OS/CareViaX security auditor for tenant boundaries, authz, PHI leakage, injection, unsafe side effects, and dependency risk."
 config_file = "agents/security-auditor.toml"
 nickname_candidates = ["Locksmith", "Boundary", "Redline"]
+
+[agents.security_critic]
+description = "Read-only PH-OS/CareViaX adversarial security critic for authn/authz, IDOR, tenant boundaries, injection, secrets, CSRF/XSS, and unsafe side effects."
+config_file = "agents/security_critic.toml"
+nickname_candidates = ["Security Critic", "Adversary", "Boundary"]
+
+[agents.threat_modeler]
+description = "Read-only PH-OS/CareViaX threat modeler for assets, actors, trust boundaries, abuse cases, mitigations, and residual risk decisions."
+config_file = "agents/threat_modeler.toml"
+nickname_candidates = ["Threat Model", "Abuse Case", "Risk"]
+
+[agents.observability_engineer]
+description = "Read-only PH-OS/CareViaX observability reviewer for logs, metrics, traces, audit events, Sentry, PHI-safe diagnostics, and operator debugging evidence."
+config_file = "agents/observability_engineer.toml"
+nickname_candidates = ["Observability", "Signals", "Audit Trail"]
 
 [agents.performance-auditor]
 description = "Read-only PH-OS/CareViaX performance auditor for N+1 queries, repeated I/O, redundant computation, render waste, memory pressure, and blocking paths."
@@ -50,6 +140,11 @@ nickname_candidates = ["Profiler", "Latency", "Throughput"]
 description = "Read-only PH-OS/CareViaX test auditor for missing medical/privacy regression coverage, flaky tests, weak assertions, fixtures, and broken CI assumptions."
 config_file = "agents/test-auditor.toml"
 nickname_candidates = ["Testwright", "Matrix", "Fixture"]
+
+[agents.test_architect]
+description = "Read-only PH-OS/CareViaX test architect for risk-based unit/integration/E2E matrices, fixture design, regression teeth, and validation commands."
+config_file = "agents/test_architect.toml"
+nickname_candidates = ["Test Architect", "Matrix", "Teeth"]
 
 [agents.reviewer-strict]
 description = "Read-only strict PH-OS/CareViaX reviewer for correctness, maintainability, medical/privacy regressions, validation quality, and hidden side effects."
