@@ -23,6 +23,67 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Prescription History Drug-Master-ID Slice - 2026-06-30 03:07 JST
+
+- Scope:
+  - Moved prescription-history drug-master enrichment toward canonical `drug_master_id` while keeping the existing top-level YJ map response for compatibility.
+  - Surfaced unresolved/review-required medication source fields from the patient prescription history API into the UI.
+- Fixed:
+  - `/api/drug-masters/batch` now accepts `drug_master_ids` as well as `yj_codes`, deduplicates both, enforces a combined unique 200-key business cap, and returns `by_drug_master_id` alongside the legacy top-level YJ map.
+  - Prescription history sends both canonical master IDs and legacy YJ codes to the batch endpoint.
+  - UI enrichment now prefers trimmed `drug_master_id`; when a canonical ID is present but by-id lookup misses, it does not fall back to stale YJ enrichment.
+  - Medication lines with non-`resolved` resolution status, by-id lookup misses after master lookup completion, or no canonical/code identity are shown as `薬剤未解決` with the source code where available.
+  - `route: other` prescription lines are rendered and filterable instead of being grouped but hidden.
+- Safety:
+  - Prevents stale YJ code from driving wrong Tall Man/LASA/high-risk badges when canonical identity exists but lookup fails.
+  - Keeps drug-master IDs behind existing auth/no-store route protections and does not add patient PHI to drug-master batch responses.
+- Review:
+  - Medical safety reviewer initially blocked stale YJ fallback on by-id miss; fixed and re-approved.
+  - Strict reviewer initially blocked hidden `route: other` unresolved lines; fixed and re-approved.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` for `d58c6007`, with only non-blocking notes on the backward-compatible mixed response shape and intentional pre/post-dedupe limits.
+- Validation:
+  - Focused Vitest: passed, `4` files / `76` tests.
+  - Related prescription/dispensing/CDS/API Vitest set: passed, `8` files / `142` tests.
+  - Scoped ESLint, Prettier check, and `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Commit:
+  - `d58c6007 Enrich prescription history by drug master id`.
+- Remaining:
+  - None for this slice.
+
+### Care Report Direct Send Boundary - 2026-06-30 03:03 JST
+
+- Scope:
+  - Continued the codex2 visit-time / reports / interprofessional sharing work from commit `1a2775d2`.
+  - Fixed the late peer-review blocker in partner-visit freshness cleanup and hardened direct care-report send so PH-OS sharing cannot bypass the dedicated external-access workflow.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Direct care-report send validation now uses external direct-send channels only: `email`, `fax`, `phone`, `in_person`, `postal`, and `ses`.
+  - Single and bulk direct-send payloads with `ph_os_share` now fail validation before report lookup, delivery-record creation, audit logging, or email sending.
+  - The report detail direct-send channel selector no longer lists PH-OS share.
+  - Professional suggestions and delivery-rule hints filter `ph_os_share` out of direct-send resolution and fall back to a supported direct-send channel such as email when contact data exists.
+  - Stale partner-visit cleanup writes `care_report_delivery_blocked_by_stale_partner_visit_record` audit only when `deliveryRecord.updateMany()` actually transitions the draft row (`count === 1`).
+  - If the cleanup loses the draft race (`count === 0`), the send path now returns the existing send-in-progress conflict instead of falsely reporting a stable stale-partner blocked result.
+- Validation:
+  - `pnpm exec vitest run src/server/services/partner-visit-report-drafts.test.ts src/lib/reports/care-report-send-validation.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' 'src/app/(dashboard)/reports/[id]/page.test.tsx' --reporter=dot --testTimeout=30000`: passed, `4` files / `99` tests.
+  - `pnpm exec eslint --max-warnings=0 ...six care-report send files...`: passed.
+  - `git diff --check -- ...six care-report send files...`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - Privacy reviewer approved the PH-OS direct-send exclusion with no blocker.
+  - API contract reviewer approved after the delivery-rule hint was changed to display only resolved direct-send fallback channels.
+  - Codex peer review approved the combined `ph_os_share` hardening and `updateMany.count` audit-race fix; codex independently reran the same focused `4` file / `99` test gate plus scoped static checks.
+- Commit:
+  - `c063efe3 Harden care report direct send channels`.
+- Remaining:
+  - None for this slice.
+
 ### Visit Handoff Trust Boundary - 2026-06-30 01:01 JST
 
 - Scope:
