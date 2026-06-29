@@ -196,4 +196,67 @@ describe('ExternalViewerContent', () => {
 
     expect(firstPanel).toBe(panelGrid?.firstElementChild);
   });
+
+  it('shows a retryable error state instead of a false empty when the share query fails', () => {
+    const grantsRefetch = vi.fn();
+    useQueryMock
+      .mockReturnValueOnce({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        refetch: grantsRefetch,
+      })
+      .mockReturnValueOnce({
+        data: { data: [] },
+        isLoading: false,
+        isError: false,
+      })
+      .mockReturnValueOnce({
+        data: { data: [] },
+        isLoading: false,
+        isError: false,
+      });
+
+    render(<ExternalViewerContent />);
+
+    // 取得失敗を「有効な共有リンクはありません」という false empty に潰さない。
+    expect(screen.queryByText('有効な共有リンクはありません')).toBeNull();
+    expect(screen.getByText('外部共有を表示できません')).toBeTruthy();
+
+    // 再試行ボタンは refetch を呼ぶ。
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(grantsRefetch).toHaveBeenCalledTimes(1);
+
+    // サマリーは誤った 0 ではなく「—」と取得失敗の注記を出す。
+    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.getByText('取得に失敗しました')).toBeTruthy();
+  });
+
+  it('keeps independent panels working when only one query fails', () => {
+    useQueryMock
+      .mockReturnValueOnce({
+        data: { data: [] },
+        isLoading: false,
+        isError: false,
+      })
+      .mockReturnValueOnce({
+        data: { data: [] },
+        isLoading: false,
+        isError: false,
+      })
+      .mockReturnValueOnce({
+        data: undefined,
+        isLoading: false,
+        isError: true,
+        refetch: vi.fn(),
+      });
+
+    render(<ExternalViewerContent />);
+
+    // 失敗した地域活動パネルだけがエラー表示。共有・自己申告は通常の空表示を維持。
+    expect(screen.getByText('地域活動を表示できません')).toBeTruthy();
+    expect(screen.getByText('有効な共有リンクはありません')).toBeTruthy();
+    expect(screen.getByText('自己申告はありません')).toBeTruthy();
+    expect(screen.queryByText('要フォロー活動はありません')).toBeNull();
+  });
 });

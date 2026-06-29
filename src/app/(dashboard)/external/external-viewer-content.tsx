@@ -11,6 +11,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorState } from '@/components/ui/error-state';
+import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { SELF_REPORT_STATUS_LABELS } from '@/lib/constants/status-labels';
 import { PageSection } from '@/components/layout/page-section';
@@ -202,13 +204,16 @@ export function ExternalViewerContent({
       title="外部共有管理"
       description="患者ごとの共有 grant と閲覧状況を管理します"
     >
-      {grantsQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">共有情報を読み込んでいます...</p>
-      ) : grants.length === 0 ? (
-        <p className="text-sm text-muted-foreground">有効な共有リンクはありません</p>
-      ) : (
-        grants.map((grant) => (
-          <div key={grant.id} className="rounded-xl border border-border/70 px-4 py-3">
+      <PanelBody
+        isLoading={grantsQuery.isLoading}
+        isError={grantsQuery.isError}
+        isEmpty={grants.length === 0}
+        emptyText="有効な共有リンクはありません"
+        errorTitle="外部共有を表示できません"
+        onRetry={() => void grantsQuery.refetch()}
+      >
+        {grants.map((grant) => (
+          <div key={grant.id} className="rounded-lg border border-border/70 px-4 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-medium text-foreground">{grant.patient.name}</p>
@@ -253,8 +258,8 @@ export function ExternalViewerContent({
               </Link>
             </div>
           </div>
-        ))
-      )}
+        ))}
+      </PanelBody>
     </ExternalPanelCard>
   );
   const selfReportCard = (
@@ -265,13 +270,16 @@ export function ExternalViewerContent({
       description="折返しや triage が必要な申告を確認します"
       testId="external-self-report-queue"
     >
-      {selfReportsQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">自己申告を読み込んでいます...</p>
-      ) : activeSelfReports.length === 0 ? (
-        <p className="text-sm text-muted-foreground">自己申告はありません</p>
-      ) : (
-        activeSelfReports.slice(0, 6).map((report) => (
-          <div key={report.id} className="rounded-xl border border-border/70 px-4 py-3">
+      <PanelBody
+        isLoading={selfReportsQuery.isLoading}
+        isError={selfReportsQuery.isError}
+        isEmpty={activeSelfReports.length === 0}
+        emptyText="自己申告はありません"
+        errorTitle="自己申告を表示できません"
+        onRetry={() => void selfReportsQuery.refetch()}
+      >
+        {activeSelfReports.slice(0, 6).map((report) => (
+          <div key={report.id} className="rounded-lg border border-border/70 px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-medium text-foreground">{report.subject}</p>
@@ -328,8 +336,8 @@ export function ExternalViewerContent({
               </Button>
             </ActionRail>
           </div>
-        ))
-      )}
+        ))}
+      </PanelBody>
     </ExternalPanelCard>
   );
   const activityCard = (
@@ -339,13 +347,16 @@ export function ExternalViewerContent({
       title="地域活動フォロー"
       description="紹介導線と地域活動の後続対応です"
     >
-      {activitiesQuery.isLoading ? (
-        <p className="text-sm text-muted-foreground">地域活動を読み込んでいます...</p>
-      ) : followUps.length === 0 ? (
-        <p className="text-sm text-muted-foreground">要フォロー活動はありません</p>
-      ) : (
-        followUps.map((activity) => (
-          <div key={activity.id} className="rounded-xl border border-border/70 px-4 py-3">
+      <PanelBody
+        isLoading={activitiesQuery.isLoading}
+        isError={activitiesQuery.isError}
+        isEmpty={followUps.length === 0}
+        emptyText="要フォロー活動はありません"
+        errorTitle="地域活動を表示できません"
+        onRetry={() => void activitiesQuery.refetch()}
+      >
+        {followUps.map((activity) => (
+          <div key={activity.id} className="rounded-lg border border-border/70 px-4 py-3">
             <p className="font-medium text-foreground">{activity.title}</p>
             <p className="text-sm text-muted-foreground">
               {activity.activity_type}
@@ -356,8 +367,8 @@ export function ExternalViewerContent({
               {format(new Date(activity.activity_date), 'yyyy年M月d日', { locale: ja })}
             </p>
           </div>
-        ))
-      )}
+        ))}
+      </PanelBody>
     </ExternalPanelCard>
   );
   const panelOrder: Record<NonNullable<ExternalFocus>, ReactNode[]> = {
@@ -388,18 +399,21 @@ export function ExternalViewerContent({
           value={grants.length}
           description="OTP共有と外部連携導線"
           icon={HeartHandshake}
+          isError={grantsQuery.isError}
         />
         <SummaryCard
           title="自己申告"
           value={activeSelfReports.length}
           description="未解消の患者・家族申告"
           icon={MessageSquareWarning}
+          isError={selfReportsQuery.isError}
         />
         <SummaryCard
           title="地域フォロー"
           value={followUps.length}
           description="紹介元・地域活動の要対応"
           icon={Users}
+          isError={activitiesQuery.isError}
         />
       </PageSection>
 
@@ -413,6 +427,49 @@ export function ExternalViewerContent({
       </PageSection>
     </div>
   );
+}
+
+function PanelBody({
+  isLoading,
+  isError,
+  isEmpty,
+  emptyText,
+  errorTitle,
+  onRetry,
+  children,
+}: {
+  isLoading: boolean;
+  isError: boolean;
+  isEmpty: boolean;
+  emptyText: string;
+  errorTitle: string;
+  onRetry: () => void;
+  children: ReactNode;
+}) {
+  if (isLoading) {
+    return (
+      <div className="space-y-2" role="status" aria-label="読み込み中">
+        <Skeleton className="h-20 w-full rounded-lg" />
+        <Skeleton className="h-20 w-full rounded-lg" />
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <ErrorState
+        variant="server"
+        size="inline"
+        title={errorTitle}
+        description="データの取得に失敗しました。再試行してください。"
+        action={{ label: '再試行', onClick: onRetry }}
+        live="polite"
+      />
+    );
+  }
+  if (isEmpty) {
+    return <p className="text-sm text-muted-foreground">{emptyText}</p>;
+  }
+  return <>{children}</>;
 }
 
 function ExternalPanelCard({
@@ -444,21 +501,30 @@ function SummaryCard({
   value,
   description,
   icon: Icon,
+  isError = false,
 }: {
   title: string;
   value: number;
   description: string;
   icon: ElementType;
+  isError?: boolean;
 }) {
   return (
     <Card size="sm" className="min-w-0">
       <CardContent className="flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-xs font-medium leading-5 text-muted-foreground sm:text-sm">{title}</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-foreground sm:text-3xl">
-            {value}
+          <p
+            className={cn(
+              'mt-1 text-2xl font-bold tabular-nums sm:text-3xl',
+              isError ? 'text-muted-foreground' : 'text-foreground',
+            )}
+          >
+            {isError ? '—' : value}
           </p>
-          <p className="mt-1 hidden text-xs text-muted-foreground sm:block">{description}</p>
+          <p className="mt-1 hidden text-xs text-muted-foreground sm:block">
+            {isError ? '取得に失敗しました' : description}
+          </p>
         </div>
         <div className="hidden rounded-full border border-border bg-background p-2 sm:block">
           <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
