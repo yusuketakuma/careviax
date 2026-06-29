@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withAuthContextMock, withOrgContextMock, queueOverdueReportResponseRemindersMock } =
-  vi.hoisted(() => ({
-    withAuthContextMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-    queueOverdueReportResponseRemindersMock: vi.fn(),
-  }));
+const {
+  authFailureResponseMock,
+  withAuthContextMock,
+  withOrgContextMock,
+  queueOverdueReportResponseRemindersMock,
+} = vi.hoisted(() => ({
+  authFailureResponseMock: vi.fn(),
+  withAuthContextMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  queueOverdueReportResponseRemindersMock: vi.fn(),
+}));
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 
@@ -20,8 +25,11 @@ vi.mock('@/lib/auth/context', () => ({
     options: { permission: string; message: string },
   ) => {
     withAuthContextMock.mockImplementation(() => options);
-    return (req: NextRequest, routeContext = emptyRouteContext) =>
-      handler(
+    return (req: NextRequest, routeContext = emptyRouteContext) => {
+      const authFailureResponse = authFailureResponseMock();
+      if (authFailureResponse instanceof Response) return authFailureResponse;
+
+      return handler(
         req,
         {
           orgId: 'org_1',
@@ -30,6 +38,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -67,6 +76,7 @@ function expectSensitiveNoStore(response: Response) {
 describe('/api/care-reports/reminders POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authFailureResponseMock.mockReturnValue(undefined);
     queueOverdueReportResponseRemindersMock.mockResolvedValue({
       queued_count: 2,
       delivery_ids: ['delivery_1', 'delivery_2'],
@@ -95,6 +105,24 @@ describe('/api/care-reports/reminders POST', () => {
     });
   });
 
+  it('adds no-store headers to auth rejection responses', async () => {
+    authFailureResponseMock.mockReturnValueOnce(
+      new Response(
+        JSON.stringify({ code: 'FORBIDDEN', message: '報告書リマインドの作成権限がありません' }),
+        { status: 403 },
+      ),
+    );
+
+    const response = await POST(createRequest({ overdue_days: 5 }), emptyRouteContext);
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(403);
+    expectSensitiveNoStore(ensuredResponse);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(queueOverdueReportResponseRemindersMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object JSON payloads before reminder queueing', async () => {
     const response = await POST(createRequest([]), emptyRouteContext);
 
@@ -105,6 +133,24 @@ describe('/api/care-reports/reminders POST', () => {
     await expect(ensuredResponse.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(queueOverdueReportResponseRemindersMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects schema-invalid object payloads before reminder queueing', async () => {
+    const response = await POST(createRequest({ overdue_days: 91 }), emptyRouteContext);
+
+    const ensuredResponse = response;
+    if (!ensuredResponse) throw new Error('response is required');
+    expect(ensuredResponse.status).toBe(400);
+    expectSensitiveNoStore(ensuredResponse);
+    await expect(ensuredResponse.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        overdue_days: expect.any(Array),
+      },
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(queueOverdueReportResponseRemindersMock).not.toHaveBeenCalled();

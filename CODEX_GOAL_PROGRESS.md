@@ -89,9 +89,21 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `PATCH_REVIEW_REQUEST` sent to Claude and codex with scope and validation.
   - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation, typecheck, scoped lint/prettier checks, and review of no-store coverage, raw-error non-leakage, and queueing semantics non-regression.
   - codex returned `APPROVED_WITH_LOW_FOLLOWUPS` after the commit, with non-blocking test hardening suggestions for auth-failure and schema-invalid object no-store assertions.
+- Test-hardening follow-up - 2026-06-30 05:49 JST:
+  - Added route-local no-store assertions for auth rejection and schema-invalid object payload responses.
+  - Production route code was unchanged.
+  - `pnpm exec prettier --write src/app/api/care-reports/reminders/route.test.ts`: passed.
+  - `pnpm exec vitest run src/app/api/care-reports/reminders/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - Scoped ESLint and scoped `git diff --check` on reminders route/test: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - codex returned `PATCH_REVIEW_RESULT: APPROVED` after focused Vitest, scoped ESLint, scoped diff-check, and review of auth rejection / schema-invalid no-store coverage.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation and review of production non-change, auth-failure coverage, schema-invalid coverage, and mock default behavior.
 - Remaining:
   - Committed by codex2 as `a66d7c76 No-store care report reminders`; no blocking remaining work for this slice.
-  - Non-blocking follow-up: add route-local no-store assertions for auth failure and schema-invalid object body in a separate test-hardening slice.
+  - Stage only explicit reminders test plus ledgers and commit the follow-up while preserving codex visit-schedule WIP.
 
 ### Partner Visit Submit/Review No-Store Envelope - 2026-06-30 05:23 JST
 
