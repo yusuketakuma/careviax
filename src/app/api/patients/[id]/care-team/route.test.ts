@@ -7,6 +7,7 @@ const {
   careCaseFindManyMock,
   careCaseFindFirstMock,
   withOrgContextMock,
+  createAuditLogEntryMock,
   deleteManyMock,
   createManyMock,
   findManyMock,
@@ -18,6 +19,7 @@ const {
   careCaseFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
   deleteManyMock: vi.fn(),
   createManyMock: vi.fn(),
   findManyMock: vi.fn(),
@@ -46,6 +48,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 import { GET, PUT } from './route';
@@ -121,6 +127,7 @@ describe('/api/patients/[id]/care-team', () => {
       },
     ]);
     externalProfessionalFindManyMock.mockResolvedValue([{ id: 'external_1' }]);
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         externalProfessional: {
@@ -130,6 +137,9 @@ describe('/api/patients/[id]/care-team', () => {
           deleteMany: deleteManyMock,
           createMany: createManyMock,
           findMany: findManyMock,
+        },
+        auditLog: {
+          create: vi.fn(),
         },
       }),
     );
@@ -332,6 +342,17 @@ describe('/api/patients/[id]/care-team', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(withOrgContextMock).toHaveBeenCalledWith(
+      'corg1234567890123456789012',
+      expect.any(Function),
+      {
+        requestContext: expect.objectContaining({
+          orgId: 'corg1234567890123456789012',
+          userId: 'user_1',
+          role: 'pharmacist',
+        }),
+      },
+    );
     expect(deleteManyMock).toHaveBeenCalledWith({
       where: { org_id: 'corg1234567890123456789012', case_id: 'case_active' },
     });
@@ -361,6 +382,19 @@ describe('/api/patients/[id]/care-team', () => {
       },
       select: { id: true },
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_1',
+      }),
+      expect.objectContaining({
+        action: 'patient_care_team_replaced',
+        targetType: 'CareCase',
+        targetId: 'case_active',
+        patientId: 'patient_1',
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       case_id: 'case_active',
       data: [
@@ -377,6 +411,131 @@ describe('/api/patients/[id]/care-team', () => {
         },
       },
     });
+  });
+
+  it('records a redacted care-team replacement audit log', async () => {
+    findManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'old_physician_link',
+          external_professional_id: 'external_old',
+          role: 'physician',
+          name: '旧主治医',
+          organization_name: '旧クリニック',
+          department: null,
+          phone: '03-1111-1111',
+          email: 'old-doctor@example.com',
+          fax: null,
+          address: '東京都旧住所',
+          notes: '旧メモ',
+          is_primary: true,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'new_nurse_link',
+          external_professional_id: 'external_1',
+          role: 'nurse',
+          name: '山田看護師',
+          organization_name: '訪問看護ステーションA',
+          department: '在宅部',
+          phone: '03-2222-3333',
+          email: 'nurse@example.com',
+          fax: '03-3333-4444',
+          address: '東京都千代田区7-8-9',
+          notes: '月水金に訪問',
+          is_primary: true,
+        },
+      ]);
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [
+            {
+              external_professional_id: 'external_1',
+              role: 'nurse',
+              name: '山田看護師',
+              organization_name: '訪問看護ステーションA',
+              department: '在宅部',
+              phone: '03-2222-3333',
+              email: 'nurse@example.com',
+              fax: '03-3333-4444',
+              address: '東京都千代田区7-8-9',
+              is_primary: true,
+              notes: '月水金に訪問',
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_1',
+      }),
+      {
+        action: 'patient_care_team_replaced',
+        targetType: 'CareCase',
+        targetId: 'case_active',
+        patientId: 'patient_1',
+        changes: {
+          case_id: 'case_active',
+          before_count: 1,
+          after_count: 1,
+          role_counts_before: { physician: 1 },
+          role_counts_after: { nurse: 1 },
+          external_professional_ids_before: ['external_old'],
+          external_professional_ids_after: ['external_1'],
+          before: [
+            {
+              id: 'old_physician_link',
+              external_professional_id: 'external_old',
+              role: 'physician',
+              is_primary: true,
+              has_organization: true,
+              has_department: false,
+              has_phone: true,
+              has_email: true,
+              has_fax: false,
+              has_address: true,
+              has_notes: true,
+            },
+          ],
+          after: [
+            {
+              id: 'new_nurse_link',
+              external_professional_id: 'external_1',
+              role: 'nurse',
+              is_primary: true,
+              has_organization: true,
+              has_department: true,
+              has_phone: true,
+              has_email: true,
+              has_fax: true,
+              has_address: true,
+              has_notes: true,
+            },
+          ],
+        },
+      },
+    );
+
+    const auditPayload = JSON.stringify(createAuditLogEntryMock.mock.calls);
+    expect(auditPayload).not.toContain('03-1111-1111');
+    expect(auditPayload).not.toContain('old-doctor@example.com');
+    expect(auditPayload).not.toContain('旧主治医');
+    expect(auditPayload).not.toContain('03-2222-3333');
+    expect(auditPayload).not.toContain('nurse@example.com');
+    expect(auditPayload).not.toContain('山田看護師');
   });
 
   it('returns care-team reliability warnings without raw recipient values when required channels are missing', async () => {

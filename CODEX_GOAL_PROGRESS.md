@@ -19385,3 +19385,30 @@ Next loop:
   - `git diff --check`: passed.
 - Remaining:
   - Commit this validated G2 slice, notify Claude, confirm the tree is clean, then continue discrete verified backend fixes. Hold the larger unified route-engine refactor until Claude's consolidated plan lands.
+
+### Care-Team Replacement Audit Slice — 2026-06-30 01:13 JST
+
+- Scope:
+  - Continued codex2's visit/report/interprofessional collaboration objective with a backend-only hardening of `/api/patients/[id]/care-team` PUT.
+  - Kept the existing replacement semantics, primary-role normalization, external-professional org scoping, response shape, and reliability warning contract unchanged.
+- Fixed:
+  - Care-team replacement now captures the selected case's link set before delete/create and writes `patient_care_team_replaced` to `AuditLog` inside the same `withOrgContext` transaction.
+  - The audit target is the `CareCase`, includes `patient_id`, and records before/after counts, role counts, external professional IDs, and contact-channel presence.
+  - Audit changes deliberately redact raw names, phone numbers, emails, fax numbers, addresses, and notes while still preserving enough structure to investigate who changed the interprofessional linkage.
+  - PUT now passes `{ requestContext: ctx }` to `withOrgContext` so RLS/session audit context receives the actor metadata used by newer write routes.
+- Review:
+  - codex ACKed the request and delegated review to Claude to avoid duplicate review while preserving path ownership.
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` with no blockers after independently checking atomic before/after capture, clear-all auditing, PHI-minimized audit payload, and request-context propagation.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/patients/[id]/care-team/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `16` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/api/patients/[id]/care-team/route.ts' 'src/app/api/patients/[id]/care-team/route.test.ts'`: passed.
+  - Scoped `git diff --check`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm typecheck`: failed in unrelated concurrent scheduling/billing WIP (`billing-requirement-validator.ts`, untracked `visit-schedule-billing-guard.ts`).
+  - `pnpm typecheck:no-unused`: failed on the same unrelated scheduling/billing WIP.
+  - `pnpm format:check`: failed in unrelated concurrent scheduling/billing WIP (`visit-schedules/generate/route.ts`, `billing-requirement-validator.ts`, `visit-schedule-billing-guard.ts`).
+- Remaining:
+  - Commit only `src/app/api/patients/[id]/care-team/route.ts`, `src/app/api/patients/[id]/care-team/route.test.ts`, `.codex/ralph-state.md`, and `CODEX_GOAL_PROGRESS.md`.
+  - Do not stage unrelated dirty scheduling/billing paths.
