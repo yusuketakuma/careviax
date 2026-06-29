@@ -34,13 +34,16 @@ import {
   buildDrugIdentityResolutionByCode,
   normalizeMedicationCode,
   resolveMedicationCode,
+  type PrescriptionDrugCodeSystem,
 } from '@/lib/pharmacy/drug-identity-resolution';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 export interface CreateIntakeLineInput {
   line_number: number;
   drug_name: string;
-  drug_code?: string;
+  drug_code?: string | null;
+  source_drug_code?: string | null;
+  source_drug_code_type?: string | null;
   dosage_form?: string;
   dose: string;
   frequency: string;
@@ -102,8 +105,14 @@ export interface CreateIntakeOptions {
 type CreatedIntakeLine = {
   drug_name: string;
   drug_code?: string | null;
+  drug_master_id?: string | null;
+  source_drug_code?: string | null;
+  source_drug_code_type?: string | null;
+  drug_resolution_status?: string | null;
   dose: string;
   frequency: string;
+  days?: number | null;
+  start_date?: string | Date | null;
 };
 
 type CreatedIntake = {
@@ -118,6 +127,20 @@ type MedicationProfileSyncLine = {
   dose: string;
   frequency: string;
   start_date?: Date | string | null;
+};
+
+type PrescriptionLineDrugResolutionStatus =
+  | 'resolved'
+  | 'missing_code'
+  | 'code_not_found'
+  | 'ambiguous_code';
+
+type ResolvedCreateIntakeLineInput = Omit<CreateIntakeLineInput, 'drug_code'> & {
+  drug_code?: string | null;
+  drug_master_id?: string | null;
+  source_drug_code?: string | null;
+  source_drug_code_type?: string | null;
+  drug_resolution_status: PrescriptionLineDrugResolutionStatus;
 };
 
 type UpdatedCycle = {
@@ -558,6 +581,102 @@ async function collectOutpatientInjectionBlockedLines(tx: Tx, lines: CreateIntak
     );
 }
 
+function normalizePrescriptionLineSourceDrugCodeType(
+  value: string | null | undefined,
+): Exclude<PrescriptionDrugCodeSystem, 'jan'> | null {
+  const normalized = value?.trim();
+  return normalized === 'yj' || normalized === 'receipt' || normalized === 'hot'
+    ? normalized
+    : null;
+}
+
+function readPrescriptionLineSourceDrugCode(line: CreateIntakeLineInput) {
+  return normalizePrescriptionDrugCode(line.source_drug_code ?? line.drug_code);
+}
+
+async function resolveCreateIntakeLineDrugIdentities(
+  tx: Tx,
+  lines: CreateIntakeLineInput[],
+): Promise<ResolvedCreateIntakeLineInput[]> {
+  const sourceCodes = Array.from(
+    new Set(
+      lines
+        .map((line) => readPrescriptionLineSourceDrugCode(line))
+        .filter((code): code is string => Boolean(code)),
+    ),
+  );
+
+  const masters =
+    sourceCodes.length > 0
+      ? await tx.drugMaster.findMany({
+          where: {
+            OR: [
+              { yj_code: { in: sourceCodes } },
+              { receipt_code: { in: sourceCodes } },
+              { hot_code: { in: sourceCodes } },
+            ],
+          },
+          select: {
+            id: true,
+            yj_code: true,
+            receipt_code: true,
+            hot_code: true,
+          },
+        })
+      : [];
+  const resolutions = buildDrugIdentityResolutionByCode(masters);
+
+  return lines.map((line) => {
+    const sourceCode = readPrescriptionLineSourceDrugCode(line);
+    const resolution = resolveMedicationCode(sourceCode, resolutions);
+    const explicitSourceCodeType = normalizePrescriptionLineSourceDrugCodeType(
+      line.source_drug_code_type,
+    );
+
+    if (resolution.status === 'resolved') {
+      return {
+        ...line,
+        drug_code: resolution.canonicalDrugCode,
+        drug_master_id: resolution.drug.id,
+        source_drug_code: resolution.sourceCode,
+        source_drug_code_type: resolution.sourceCodeSystem,
+        drug_resolution_status: 'resolved',
+      };
+    }
+
+    if (resolution.status === 'ambiguous_code') {
+      return {
+        ...line,
+        drug_code: null,
+        drug_master_id: null,
+        source_drug_code: resolution.sourceCode,
+        source_drug_code_type: resolution.sourceCodeSystem,
+        drug_resolution_status: 'ambiguous_code',
+      };
+    }
+
+    if (resolution.status === 'code_not_found') {
+      return {
+        ...line,
+        drug_code: null,
+        drug_master_id: null,
+        source_drug_code: resolution.sourceCode,
+        source_drug_code_type: explicitSourceCodeType,
+        drug_resolution_status: 'code_not_found',
+      };
+    }
+
+    return {
+      ...line,
+      drug_code: null,
+      drug_master_id: null,
+      source_drug_code: null,
+      source_drug_code_type: null,
+      drug_resolution_status: 'missing_code',
+    };
+  });
+}
+
 async function createStructuringBlockExceptionIfNeeded(
   tx: Tx,
   args: {
@@ -802,6 +921,7 @@ export async function createPrescriptionIntakeInTx(
   if (!sourceValidation.ok) {
     return { kind: 'error', error: sourceValidation.error };
   }
+  const resolvedLines = await resolveCreateIntakeLineDrugIdentities(tx, lines);
 
   if (source_type === 'refill') {
     if (refill_remaining_count == null || refill_remaining_count <= 0) {
@@ -838,7 +958,7 @@ export async function createPrescriptionIntakeInTx(
     }
   }
 
-  const duplicateCandidates = collectDuplicatePrescriptionLines(lines);
+  const duplicateCandidates = collectDuplicatePrescriptionLines(resolvedLines);
   if (duplicateCandidates.length > 0) {
     return {
       kind: 'error',
@@ -848,7 +968,7 @@ export async function createPrescriptionIntakeInTx(
   }
 
   if (!options.skipStructuringCheck) {
-    const structuringBlockedLines = collectStructuringBlockedLines(lines);
+    const structuringBlockedLines = collectStructuringBlockedLines(resolvedLines);
     if (structuringBlockedLines.length > 0) {
       if (existingCycle) {
         await createStructuringBlockExceptionIfNeeded(tx, {
@@ -869,7 +989,10 @@ export async function createPrescriptionIntakeInTx(
     }
   }
 
-  const outpatientInjectionBlockedLines = await collectOutpatientInjectionBlockedLines(tx, lines);
+  const outpatientInjectionBlockedLines = await collectOutpatientInjectionBlockedLines(
+    tx,
+    resolvedLines,
+  );
   if (outpatientInjectionBlockedLines.length > 0) {
     if (existingCycle) {
       await createOutpatientInjectionBlockExceptionIfNeeded(tx, {
@@ -920,7 +1043,7 @@ export async function createPrescriptionIntakeInTx(
       prescriber_institution_id: resolvedInstitution.prescriber_institution_id,
       prescriber_institution: resolvedInstitution.prescriber_institution,
       lines: {
-        create: lines.map((line) => {
+        create: resolvedLines.map((line) => {
           const parsedPackaging = parsePackagingMethod(line.packaging_instructions);
           const packagingMethod =
             line.packaging_method ??
@@ -1023,11 +1146,17 @@ export async function createPrescriptionIntakeInTx(
     intake: {
       id: intake.id,
       rx_number: rxNumber,
-      lines: lines.map((line) => ({
+      lines: resolvedLines.map((line) => ({
         drug_name: line.drug_name,
         drug_code: line.drug_code ?? null,
+        drug_master_id: line.drug_master_id ?? null,
+        source_drug_code: line.source_drug_code ?? null,
+        source_drug_code_type: line.source_drug_code_type ?? null,
+        drug_resolution_status: line.drug_resolution_status ?? null,
         dose: line.dose,
         frequency: line.frequency,
+        days: line.days,
+        start_date: line.start_date ?? null,
       })),
     },
     cycle: updatedCycle,
@@ -1126,7 +1255,7 @@ export async function createPrescriptionIntake(
     intakeId: intake.id,
     patientId: cycle.patient_id,
     orgId,
-    lines,
+    lines: intake.lines,
     prescriberName: input.prescriber_name ?? null,
     sourceType: input.source_type,
   });

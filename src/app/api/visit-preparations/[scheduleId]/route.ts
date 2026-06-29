@@ -51,6 +51,11 @@ import {
   type VisitRouteTravelMode,
 } from '@/server/services/visit-route-engine';
 import { matchMedicationDiffLines } from '@/lib/prescription/medication-diff';
+import {
+  deriveOutsideMedEvidenceKind,
+  OUTSIDE_MED_EVIDENCE_KIND_LABELS,
+} from '@/lib/dispensing/outside-med-classification';
+import { type OutsideMedEvidenceKind } from '@/lib/dispensing/set-audit-constants';
 
 type IntakeLineSummary = {
   drug_name: string;
@@ -965,6 +970,7 @@ async function authenticatedGET(
         lines: {
           orderBy: { line_number: 'asc' },
           select: {
+            id: true,
             drug_name: true,
             drug_code: true,
             dose: true,
@@ -972,6 +978,13 @@ async function authenticatedGET(
             days: true,
             start_date: true,
             end_date: true,
+            // 外薬分類(§11-7)の導出に必要なフィールドを追加 select する。
+            route: true,
+            dosage_form: true,
+            unit: true,
+            packaging_instructions: true,
+            packaging_instruction_tags: true,
+            notes: true,
           },
         },
       },
@@ -1218,6 +1231,32 @@ async function authenticatedGET(
   });
   const latestIntake = recentPrescriptionIntakes[0] ?? null;
   const previousIntake = recentPrescriptionIntakes[1] ?? null;
+
+  // 外薬(セット外で持ち出す薬: 外用/頓服/注射/液剤/冷所)の分類を最新処方明細から導出し、
+  // 訪問準備 UI が同一語彙で表示できるよう server projection する(§11-7)。
+  // FE 側で部分フィールドから再導出させない(outside_med_kind/label を消費)。
+  const outsideMeds = (latestIntake?.lines ?? [])
+    .map((line) => {
+      const kind = deriveOutsideMedEvidenceKind(line);
+      return kind
+        ? {
+            line_id: line.id,
+            drug_name: line.drug_name,
+            outside_med_kind: kind,
+            outside_med_label: OUTSIDE_MED_EVIDENCE_KIND_LABELS[kind],
+          }
+        : null;
+    })
+    .filter(
+      (
+        item,
+      ): item is {
+        line_id: string;
+        drug_name: string;
+        outside_med_kind: OutsideMedEvidenceKind;
+        outside_med_label: string;
+      } => item !== null,
+    );
   const prescriptionChanges =
     latestIntake && previousIntake
       ? {
@@ -1548,6 +1587,7 @@ async function authenticatedGET(
         ),
         billing_collection_context: billingCollectionContext,
         prescription_changes: prescriptionChanges,
+        outside_meds: outsideMeds,
         medication_period: medicationPeriod,
         home_care_feature_highlights:
           selectScheduleHomeCareFeatureHighlights(homeCareFeatureSummary),

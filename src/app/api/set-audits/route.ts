@@ -32,7 +32,7 @@ import {
 } from '@/lib/dispensing/set-audit-constants';
 import { RejectCode, SetAuditCellState, type ScheduleStatus } from '@prisma/client';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
-import { parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
+import { deriveOutsideMedEvidenceKind } from '@/lib/dispensing/outside-med-classification';
 import { logger } from '@/lib/utils/logger';
 import { withRoutePerformance } from '@/lib/utils/performance';
 import { z } from 'zod';
@@ -230,37 +230,6 @@ function textSetEquals(left: readonly string[], right: readonly string[]) {
   if (left.length !== right.length) return false;
   const rightSet = new Set(right);
   return left.every((value) => rightSet.has(value));
-}
-
-function isInternalRoute(route: string | null | undefined) {
-  return !route || route === 'internal' || route === 'oral' || route === '内服';
-}
-
-function deriveOutsideMedEvidenceKind(
-  line: SetAuditEvidenceBatch['line'],
-): OutsideMedEvidenceKind | null {
-  const tags = line.packaging_instruction_tags ?? [];
-  const detail = [
-    line.drug_name,
-    line.dosage_form ?? '',
-    line.frequency,
-    line.packaging_instructions ?? '',
-    line.notes ?? '',
-    line.unit ?? '',
-    tags.join(' '),
-  ].join(' ');
-
-  if (!isInternalRoute(line.route)) {
-    if (line.route === 'injection') return 'injection';
-    if (/液|内用液|懸濁|mL|ml/.test(detail)) return 'liquid';
-    return 'topical';
-  }
-  if (tags.includes('cold_storage') || /冷所|坐/.test(detail)) return 'cold';
-  if (/注射|インスリン/.test(detail)) return 'injection';
-  if (/外用|テープ|軟膏|点眼|点鼻/.test(detail)) return 'topical';
-  if (/別容器|内用液|懸濁|液|mL|ml/.test(detail)) return 'liquid';
-  if (parseFrequencyToSlots(line.frequency).includes('prn')) return 'prn';
-  return null;
 }
 
 function deriveExpectedOutsideMeds(batches: SetAuditEvidenceBatch[]) {

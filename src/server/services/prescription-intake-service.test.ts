@@ -24,7 +24,7 @@ const {
       updateMany: vi.fn(),
     },
     drugMaster: {
-      findMany: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
     },
   },
 }));
@@ -184,6 +184,7 @@ describe('createPrescriptionIntake', () => {
     });
     tx.drugMaster.findMany.mockResolvedValue([
       {
+        id: 'drug_master_inj_blocked_case',
         yj_code: 'INJ001',
         receipt_code: null,
         hot_code: null,
@@ -335,6 +336,151 @@ describe('createPrescriptionIntake', () => {
         cycleId: 'cycle_new',
       }),
     );
+  });
+
+  it('dual-writes resolved receipt codes as canonical PrescriptionLine YJ identity', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_master_amlodipine',
+        yj_code: 'YJ_AMLO',
+        receipt_code: 'RC_AMLO',
+        hot_code: null,
+      },
+    ]);
+    tx.prescriptionIntake.create.mockResolvedValue({
+      id: 'intake_1',
+    });
+    tx.inquiryRecord.count.mockResolvedValue(0);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_code: 'RC_AMLO',
+            source_drug_code: 'RC_AMLO',
+            source_drug_code_type: 'receipt',
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipExpiryCheck: true },
+    );
+
+    expect(result.kind).toBe('intake');
+    if (result.kind !== 'intake') throw new Error('expected intake result');
+    expect(tx.prescriptionIntake.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        lines: {
+          create: [
+            expect.objectContaining({
+              drug_code: 'YJ_AMLO',
+              drug_master_id: 'drug_master_amlodipine',
+              source_drug_code: 'RC_AMLO',
+              source_drug_code_type: 'receipt',
+              drug_resolution_status: 'resolved',
+            }),
+          ],
+        },
+      }),
+    });
+    expect(result.intake.lines[0]).toMatchObject({
+      drug_code: 'YJ_AMLO',
+      drug_master_id: 'drug_master_amlodipine',
+      source_drug_code: 'RC_AMLO',
+      source_drug_code_type: 'receipt',
+      drug_resolution_status: 'resolved',
+    });
+  });
+
+  it('keeps ambiguous receipt codes out of PrescriptionLine master identity', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.drugMaster.findMany.mockResolvedValue([
+      {
+        id: 'drug_master_receipt_a',
+        yj_code: 'YJ_A',
+        receipt_code: 'RC_DUP',
+        hot_code: null,
+      },
+      {
+        id: 'drug_master_receipt_b',
+        yj_code: 'YJ_B',
+        receipt_code: 'RC_DUP',
+        hot_code: null,
+      },
+    ]);
+    tx.prescriptionIntake.create.mockResolvedValue({
+      id: 'intake_1',
+    });
+    tx.inquiryRecord.count.mockResolvedValue(0);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: '曖昧コード薬',
+            drug_code: 'RC_DUP',
+            source_drug_code: 'RC_DUP',
+            source_drug_code_type: 'receipt',
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result.kind).toBe('intake');
+    expect(tx.prescriptionIntake.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        lines: {
+          create: [
+            expect.objectContaining({
+              drug_code: null,
+              drug_master_id: null,
+              source_drug_code: 'RC_DUP',
+              source_drug_code_type: 'receipt',
+              drug_resolution_status: 'ambiguous_code',
+            }),
+          ],
+        },
+      }),
+    });
   });
 
   it('maps a missing prescriber institution to a validation result before intake side effects', async () => {
@@ -660,6 +806,7 @@ describe('createPrescriptionIntake', () => {
     tx.workflowException.findFirst.mockResolvedValue(null);
     tx.drugMaster.findMany.mockResolvedValue([
       {
+        id: 'drug_master_inj_blocked',
         yj_code: 'INJ001',
         receipt_code: null,
         hot_code: null,
@@ -800,6 +947,7 @@ describe('createPrescriptionIntake', () => {
     tx.workflowException.findFirst.mockResolvedValue({ id: 'exception_existing' });
     tx.drugMaster.findMany.mockResolvedValue([
       {
+        id: 'drug_master_inj_existing_exception',
         yj_code: 'INJ001',
         receipt_code: null,
         hot_code: null,
@@ -870,6 +1018,7 @@ describe('createPrescriptionIntake', () => {
     });
     tx.drugMaster.findMany.mockResolvedValue([
       {
+        id: 'drug_master_inj_allowed',
         yj_code: 'INJ001',
         receipt_code: null,
         hot_code: null,
@@ -1048,6 +1197,7 @@ describe('createPrescriptionIntake', () => {
     });
     tx.drugMaster.findMany.mockResolvedValue([
       {
+        id: 'drug_master_inj_receipt',
         yj_code: 'YJ999',
         receipt_code: 'RC001',
         hot_code: null,

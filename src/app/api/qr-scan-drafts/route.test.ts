@@ -328,6 +328,8 @@ describe('/api/qr-scan-drafts POST', () => {
           line_number: 1,
           drug_name: 'アムロジピン錠5mg',
           drug_code: null,
+          source_drug_code: 'RC_AMLO',
+          source_drug_code_type: 'receipt',
           drug_code_resolution_status: 'review_required',
           drug_code_resolution_source: 'drug_master_name_fallback',
           candidate_drug_master_id: 'drug_1',
@@ -498,6 +500,8 @@ describe('/api/qr-scan-drafts POST', () => {
               expect.objectContaining({
                 drugName: 'アムロジピン錠5mg',
                 drugCode: null,
+                sourceDrugCode: 'RC_AMLO',
+                sourceDrugCodeType: 'receipt',
                 drugCodeResolutionStatus: 'review_required',
                 drugCodeResolutionSource: 'drug_master_name_fallback',
                 candidateDrugMasterId: 'drug_1',

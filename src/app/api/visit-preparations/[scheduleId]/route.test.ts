@@ -974,6 +974,116 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
     );
   });
 
+  it('projects outside-med classification from the latest prescription lines (§11-7)', async () => {
+    const startDate = new Date('2026-03-27T00:00:00Z');
+    const endDate = new Date('2026-04-09T00:00:00Z');
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_current',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-26T00:00:00Z'),
+        lines: [
+          {
+            id: 'line_topical',
+            drug_name: 'モーラステープ',
+            drug_code: 'T1',
+            dose: '1日1枚',
+            frequency: '1日1回',
+            days: 14,
+            start_date: startDate,
+            end_date: endDate,
+            route: 'external',
+            dosage_form: '貼付剤',
+            unit: '枚',
+            packaging_instructions: null,
+            packaging_instruction_tags: [],
+            notes: null,
+          },
+          {
+            id: 'line_cold',
+            drug_name: 'ナウゼリン坐剤',
+            drug_code: 'C1',
+            dose: '1回1個',
+            frequency: '発熱時',
+            days: 5,
+            start_date: startDate,
+            end_date: endDate,
+            route: 'internal',
+            dosage_form: '坐剤',
+            unit: '個',
+            packaging_instructions: null,
+            packaging_instruction_tags: ['cold_storage'],
+            notes: null,
+          },
+          {
+            id: 'line_prn',
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: 'P1',
+            dose: '1回1錠',
+            frequency: '疼痛時',
+            days: 7,
+            start_date: startDate,
+            end_date: endDate,
+            route: 'internal',
+            dosage_form: '錠',
+            unit: '錠',
+            packaging_instructions: null,
+            packaging_instruction_tags: [],
+            notes: null,
+          },
+          {
+            id: 'line_plain',
+            drug_name: 'アムロジピンOD錠5mg',
+            drug_code: 'A1',
+            dose: '1回1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            start_date: startDate,
+            end_date: endDate,
+            route: 'internal',
+            dosage_form: '錠',
+            unit: '錠',
+            packaging_instructions: null,
+            packaging_instruction_tags: [],
+            notes: null,
+          },
+        ],
+      },
+    ]);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+    if (!response) throw new Error('response is required');
+    const body = await response.json();
+
+    // 外用/冷所/頓服が同一語彙で projection され、通常内服(line_plain)は外薬でないため除外される。
+    // 冷所は頓服シグナル(発熱時)より優先される。
+    expect(body.data.pack.outside_meds).toEqual([
+      {
+        line_id: 'line_topical',
+        drug_name: 'モーラステープ',
+        outside_med_kind: 'topical',
+        outside_med_label: '外用',
+      },
+      {
+        line_id: 'line_cold',
+        drug_name: 'ナウゼリン坐剤',
+        outside_med_kind: 'cold',
+        outside_med_label: '冷所',
+      },
+      {
+        line_id: 'line_prn',
+        drug_name: 'ロキソプロフェン錠60mg',
+        outside_med_kind: 'prn',
+        outside_med_label: '頓服',
+      },
+    ]);
+    expect(
+      body.data.pack.outside_meds.map((item: { line_id: string }) => item.line_id),
+    ).not.toContain('line_plain');
+  });
+
   it('masks billing payer and receipt details for visit users without billing permission', async () => {
     membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist_trainee' });
 

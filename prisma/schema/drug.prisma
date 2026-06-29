@@ -83,6 +83,7 @@ model DrugMaster {
   interactions_as_b DrugInteraction[]   @relation("DrugB")
   drug_stocks       PharmacyDrugStock[]
   preferred_stocks  PharmacyDrugStock[] @relation("PreferredGeneric")
+  prescription_lines PrescriptionLine[]  @relation("PrescriptionLineDrugMaster")
 
   @@index([yj_code])
   @@index([receipt_code])

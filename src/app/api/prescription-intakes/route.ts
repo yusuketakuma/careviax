@@ -545,6 +545,11 @@ function enrichQrIntakeInputFromDraft(
       return {
         ...line,
         drug_code: line.drug_code ?? readString(draftLine?.drugCode),
+        source_drug_code:
+          readString(draftLine?.sourceDrugCode) ??
+          line.drug_code ??
+          readString(draftLine?.drugCode),
+        source_drug_code_type: readString(draftLine?.sourceDrugCodeType),
         dosage_form: line.dosage_form ?? readString(draftLine?.dosageForm),
         quantity: line.quantity ?? readPositiveNumber(draftLine?.quantity),
         unit: line.unit ?? readString(draftLine?.unit),
@@ -1023,7 +1028,7 @@ export const POST = withAuthContext(
             kind: 'created' as const,
             intake: intakeResult.intake,
             cycle: intakeResult.cycle,
-            hookLines: intakeInput.lines,
+            hookLines: intakeResult.intake.lines,
           };
         });
       } catch (error) {

@@ -173,6 +173,8 @@ function buildDraftParsedData(args: {
       mapResult?.lines.map((line) => ({
         drugName: line.drug_name,
         drugCode: line.drug_code,
+        sourceDrugCode: line.source_drug_code ?? null,
+        sourceDrugCodeType: line.source_drug_code_type ?? null,
         drugCodeResolutionStatus: line.drug_code_resolution_status ?? null,
         drugCodeResolutionSource: line.drug_code_resolution_source ?? null,
         candidateDrugMasterId: line.candidate_drug_master_id ?? null,

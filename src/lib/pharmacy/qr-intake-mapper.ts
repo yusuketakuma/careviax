@@ -26,6 +26,8 @@ export interface QrIntakeLineInput {
   line_number: number;
   drug_name: string;
   drug_code: string | null;
+  source_drug_code?: string | null;
+  source_drug_code_type?: string | null;
   drug_code_resolution_status?: 'resolved' | 'review_required' | 'unresolved';
   drug_code_resolution_source?: 'drug_master_code' | 'drug_master_name_fallback' | 'none';
   candidate_drug_master_id?: string | null;
@@ -117,6 +119,8 @@ interface DrugLookupContext {
 type DrugMasterLookupResult =
   | { drugMaster: DrugMaster; matchSource: 'code' | 'name' }
   | { drugMaster: null; matchSource: null };
+
+type PrescriptionLineSourceDrugCodeType = 'yj' | 'receipt' | 'hot' | 'unknown';
 
 // ── Main Function ──
 
@@ -600,6 +604,30 @@ function findDrugNameFallbackCandidate(candidates: DrugMaster[], drugName: strin
   );
 }
 
+function inferPrescriptionLineSourceDrugCodeType(
+  drugCode: string | null,
+  drugCodeType: number | undefined,
+): PrescriptionLineSourceDrugCodeType | null {
+  if (!drugCode || drugCodeType === 1) return null;
+  switch (drugCodeType) {
+    case 2:
+      return 'receipt';
+    case 4:
+      return 'yj';
+    case 6:
+      return 'hot';
+    case 3:
+      if (drugCode.length === 12) return 'yj';
+      if (drugCode.length === 9) return 'receipt';
+      return 'unknown';
+    default:
+      if (drugCode.length === 12) return 'yj';
+      if (drugCode.length === 9) return 'receipt';
+      if (drugCode.length === 13) return 'hot';
+      return 'unknown';
+  }
+}
+
 function mapMedicationLine(
   med: JahisMedication,
   index: number,
@@ -634,7 +662,11 @@ function mapMedicationLine(
   const suggestedDrugMaster = drugLookup.matchSource === 'name' ? drugLookup.drugMaster : null;
   const drugMaster = drugLookup.matchSource === 'code' ? drugLookup.drugMaster : null;
   const hasUsableDrugCode = Boolean(med.drugCode && med.drugCodeType !== 1);
-  const sourceDrugCode = hasUsableDrugCode ? (med.drugCode ?? null) : null;
+  const sourceDrugCode = hasUsableDrugCode ? (med.drugCode?.replace(/\s/g, '') ?? null) : null;
+  const sourceDrugCodeType = inferPrescriptionLineSourceDrugCodeType(
+    sourceDrugCode,
+    med.drugCodeType,
+  );
 
   let dosageForm: string | null = null;
   let isGeneric = false;
@@ -766,6 +798,8 @@ function mapMedicationLine(
   const line: Omit<QrIntakeLineInput, 'line_number'> = {
     drug_name: med.drugName,
     drug_code: drugMaster?.yj_code ?? sourceDrugCode,
+    source_drug_code: sourceDrugCode,
+    source_drug_code_type: sourceDrugCodeType,
     drug_code_resolution_status: drugMaster
       ? 'resolved'
       : suggestedDrugMaster

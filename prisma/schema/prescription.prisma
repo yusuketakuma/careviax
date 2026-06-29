@@ -200,6 +200,11 @@ model PrescriptionLine {
   line_number                       Int
   drug_name                         String
   drug_code                         String? // YJコード
+  drug_master_id                    String?
+  drug_master                       DrugMaster?               @relation("PrescriptionLineDrugMaster", fields: [drug_master_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  source_drug_code                  String?
+  source_drug_code_type             String?
+  drug_resolution_status            String?
   dosage_form                       String? // 錠剤/散剤/液剤/軟膏/貼付剤/坐剤/注射剤/吸入剤/点眼剤/点鼻剤 等
   dose                              String
   frequency                         String // 用法
@@ -232,6 +237,9 @@ model PrescriptionLine {
 
   @@index([org_id])
   @@index([intake_id])
+  @@index([drug_master_id])
+  @@index([org_id, drug_master_id])
+  @@index([org_id, drug_resolution_status])
   @@index([source_intake_id])
   @@index([source_line_id])
 }

@@ -527,6 +527,11 @@ export const POST = withAuthContext(
                 line_number: index + 1,
                 drug_name: line.drug_name,
                 drug_code: line.drug_code ?? readString(draftLine?.drugCode),
+                source_drug_code:
+                  readString(draftLine?.sourceDrugCode) ??
+                  line.drug_code ??
+                  readString(draftLine?.drugCode),
+                source_drug_code_type: readString(draftLine?.sourceDrugCodeType),
                 dosage_form: line.dosage_form ?? readString(draftLine?.dosageForm),
                 dose: line.dose,
                 frequency: line.frequency,
@@ -653,7 +658,7 @@ export const POST = withAuthContext(
           draft,
           intake: intakeResult.intake,
           cycle: intakeResult.cycle,
-          hookLines: intakeInput.lines,
+          hookLines: intakeResult.intake.lines,
         };
       });
     } catch (error) {

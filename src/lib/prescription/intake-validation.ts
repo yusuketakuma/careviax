@@ -3,7 +3,7 @@ import { medicationIdentityKey } from '@/lib/prescription/medication-diff';
 export type IntakeValidationLine = {
   line_number: number;
   drug_name: string;
-  drug_code?: string;
+  drug_code?: string | null;
 };
 
 export function collectDuplicatePrescriptionLines(lines: IntakeValidationLine[]) {
