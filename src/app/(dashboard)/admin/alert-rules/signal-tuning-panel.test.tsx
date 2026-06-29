@@ -13,8 +13,9 @@ import type { SignalTuningRule } from './signal-tuning.shared';
 
 setupDomTestEnv();
 
+const orgIdMock = vi.hoisted(() => ({ value: 'org_1' }));
 vi.mock('@/lib/hooks/use-org-id', () => ({
-  useOrgId: () => 'org_1',
+  useOrgId: () => orgIdMock.value,
 }));
 
 vi.mock('sonner', () => ({
@@ -101,6 +102,7 @@ afterEach(() => {
 
 describe('SignalTuningPanel', () => {
   beforeEach(() => {
+    orgIdMock.value = 'org_1';
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.success).mockClear();
   });
@@ -120,6 +122,8 @@ describe('SignalTuningPanel', () => {
     renderPanel();
 
     await waitFor(() => expect(buildOrgHeadersMock).toHaveBeenCalledWith('org_1'));
+    // wait for the panel to render after the query settles (isPending false) before toggling
+    await screen.findByText('腎機能に注意');
     fireEvent.click(toggleButton('腎機能に注意'));
     await waitFor(() => expect(saveButton().disabled).toBe(false));
     fireEvent.click(saveButton());
@@ -232,5 +236,18 @@ describe('SignalTuningPanel', () => {
       );
       expect(getCalls.length).toBeGreaterThanOrEqual(2);
     });
+  });
+
+  it('shows loading (not the all-standard panel) while orgId is unresolved and the query is disabled', () => {
+    // useOrgId returns '' until the auth store resolves, so enabled: !!orgId keeps the query
+    // pending-but-not-fetching (isPending true, isLoading false). The misleading all-標準
+    // panel must not render, and no fetch should fire.
+    orgIdMock.value = '';
+    const fetchMock = stubFetch([]);
+    renderPanel();
+
+    expect(screen.getByTestId('signal-tuning-loading')).toBeTruthy();
+    expect(screen.queryByTestId('signal-tuning-panel')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

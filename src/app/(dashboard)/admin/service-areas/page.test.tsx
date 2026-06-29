@@ -12,8 +12,9 @@ import ServiceAreasPage from './page';
 
 setupDomTestEnv();
 
+const orgIdMock = vi.hoisted(() => ({ value: 'org_1' }));
 vi.mock('@/lib/hooks/use-org-id', () => ({
-  useOrgId: () => 'org_1',
+  useOrgId: () => orgIdMock.value,
 }));
 
 // org-header builders are mocked with SENTINEL returns ('x-test-helper') so the tests
@@ -145,6 +146,7 @@ function renderPage() {
 
 describe('ServiceAreasPage', () => {
   beforeEach(() => {
+    orgIdMock.value = 'org_1';
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -474,5 +476,21 @@ describe('ServiceAreasPage', () => {
         );
       expect(areaCalls.length).toBeGreaterThanOrEqual(2);
     });
+  });
+
+  it('shows loading (not the empty-state) while orgId is unresolved and the areas query is disabled', () => {
+    // useOrgId returns '' until the auth store resolves, so enabled: !!orgId keeps the areas
+    // query pending-but-not-fetching (isPending true, isLoading false). The area-list
+    // empty-state must not show, and no fetch should fire.
+    orgIdMock.value = '';
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ data: [] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderPage();
+
+    expect(screen.getByText('訪問エリアを読み込み中...')).toBeTruthy();
+    expect(screen.queryByText('まだ訪問エリアはありません。')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

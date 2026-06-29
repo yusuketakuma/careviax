@@ -344,6 +344,13 @@ export default function ServiceAreasPage() {
                 action={{ label: '再試行', onClick: () => void areasQuery.refetch() }}
                 live="polite"
               />
+            ) : areasQuery.isPending ? (
+              // isPending (not isLoading) so an unresolved orgId — which disables the query
+              // (enabled: !!orgId) and leaves it pending-but-not-fetching — also shows loading
+              // rather than the empty-state.
+              <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+                訪問エリアを読み込み中...
+              </p>
             ) : serviceAreas.length === 0 ? (
               <p className="text-sm text-muted-foreground">まだ訪問エリアはありません。</p>
             ) : (

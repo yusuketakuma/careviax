@@ -189,6 +189,13 @@ export function PackagingMethodsContent() {
               action={{ label: '再試行', onClick: () => void methodsQuery.refetch() }}
               live="polite"
             />
+          ) : methodsQuery.isPending ? (
+            // isPending (not isLoading) so an unresolved orgId — which disables the query
+            // (enabled: !!orgId) and leaves it pending-but-not-fetching — also shows loading
+            // rather than the "未登録" empty-state.
+            <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+              配薬方法を読み込み中...
+            </p>
           ) : methods.length === 0 ? (
             <p className="rounded-xl border-l-4 border-border/70 border-l-state-confirm bg-card px-3 py-2 text-sm text-state-confirm">
               配薬方法が未登録です。セット作成前に最低1件登録してください。

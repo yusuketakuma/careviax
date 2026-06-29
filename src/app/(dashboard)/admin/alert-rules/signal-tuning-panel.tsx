@@ -141,6 +141,22 @@ export function SignalTuningPanel() {
     );
   }
 
+  if (rulesQuery.isPending) {
+    // isPending (not isLoading) so an unresolved orgId — which disables the query
+    // (enabled: !!orgId) and leaves it pending-but-not-fetching in React Query v5 — shows
+    // loading rather than buildSignalTuningState([]) defaulting every signal to 標準.
+    return (
+      <p
+        role="status"
+        aria-live="polite"
+        className="text-sm text-muted-foreground"
+        data-testid="signal-tuning-loading"
+      >
+        表示設定を読み込み中...
+      </p>
+    );
+  }
+
   return (
     <section
       data-testid="signal-tuning-panel"
