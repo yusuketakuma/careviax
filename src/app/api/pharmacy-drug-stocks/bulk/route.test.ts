@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, prismaMock } = vi.hoisted(() => ({
+const { authMock, prismaMock, withOrgContextMock, loggerErrorMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
   prismaMock: {
     membership: { findFirst: vi.fn() },
     pharmacySite: { findFirst: vi.fn() },
@@ -19,6 +21,14 @@ vi.mock('@/lib/auth/config', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: prismaMock,
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { error: loggerErrorMock },
 }));
 
 import { POST } from './route';
@@ -69,12 +79,25 @@ async function readBulkPayload(response: Response): Promise<BulkPayload> {
   return payload as BulkPayload;
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/pharmacy-drug-stocks/bulk', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
+    withOrgContextMock.mockImplementation((_orgId, callback) =>
+      callback({
+        pharmacySite: prismaMock.pharmacySite,
+        drugMaster: prismaMock.drugMaster,
+        pharmacyDrugStock: prismaMock.pharmacyDrugStock,
+        auditLog: prismaMock.auditLog,
+      }),
+    );
     prismaMock.$transaction.mockImplementation((callback) =>
       callback({
         pharmacyDrugStock: prismaMock.pharmacyDrugStock,
@@ -109,9 +132,19 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       importedCount: 1,
       unmatchedRows: [{ rowNumber: 3, yj_code: '999999999999' }],
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'admin',
+      }),
+      maxWaitMs: 10_000,
+      timeoutMs: 30_000,
     });
     expect(prismaMock.pharmacyDrugStock.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -161,6 +194,8 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
@@ -176,16 +211,49 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('returns no-store auth failure before parsing body or starting RLS work', async () => {
+    authMock.mockResolvedValueOnce(null);
+
+    const response = await POST(createMalformedJsonRequest(), {
+      params: Promise.resolve({}),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(401);
+    expectNoStore(response);
+    expect(prismaMock.membership.findFirst).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'security:auth_failure',
+        }),
+      }),
+    );
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: expect.stringContaining('pharmacy_drug_stock_bulk_import'),
+        }),
+      }),
+    );
   });
 
   it('rejects CSV input over 1000 rows instead of silently truncating it', async () => {
@@ -207,6 +275,7 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '一度に登録できる採用薬データは1000行までです',
@@ -214,10 +283,60 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
         rows: ['1000行以内に分割して登録してください'],
       },
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(prismaMock.drugMaster.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('returns a sanitized no-store 500 when bulk import apply fails unexpectedly', async () => {
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'drug_unsafe',
+          yj_code: '123456789012',
+          drug_name: '監査対象薬',
+          generic_name: '成分A',
+        },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const unsafeError = new Error('raw bulk import adoption note secret');
+    unsafeError.name = 'PharmacyDrugStockBulkSecretError';
+    prismaMock.pharmacyDrugStock.upsert.mockRejectedValueOnce(unsafeError);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        csv: 'YJコード,医薬品名,採用,発注点,メモ\n123456789012,監査対象薬,採用,10,患者宅メモ',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({ code: 'INTERNAL_ERROR' });
+    expect(JSON.stringify(body)).not.toContain('adoption note secret');
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      'pharmacy_drug_stocks_bulk_post_unhandled_error',
+      undefined,
+      {
+        event: 'pharmacy_drug_stocks_bulk_post_unhandled_error',
+        route: '/api/pharmacy-drug-stocks/bulk',
+        method: 'POST',
+        status: 500,
+        error_name: 'Error',
+      },
+    );
+    expect(loggerErrorMock.mock.calls[0]?.[1]).toBeUndefined();
+    expect(loggerErrorMock.mock.calls[0]).not.toContain(unsafeError);
+    const logged = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(logged).not.toContain('adoption note secret');
+    expect(logged).not.toContain('PharmacyDrugStockBulkSecretError');
+    expect(logged).not.toContain('患者宅メモ');
   });
 
   it('numbers CSV rows after JSON rows when both inputs are provided', async () => {
@@ -570,6 +689,213 @@ describe('/api/pharmacy-drug-stocks/bulk', () => {
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
     expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('marks name-only exact matches invalid in dry-run instead of auto-resolving the master', async () => {
+    prismaMock.drugMaster.findMany.mockResolvedValueOnce([
+      {
+        id: 'drug_exact',
+        yj_code: '111111111111',
+        drug_name: '単一一致薬',
+        generic_name: '成分A',
+      },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        dry_run: true,
+        csv: '医薬品名,採用,発注点\n単一一致薬,採用,10',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
+      importedCount: 0,
+      invalidRows: [
+        {
+          rowNumber: 2,
+          reason: '医薬品名だけでは採用薬を確定できません。YJコードを指定してください',
+          candidates: [
+            {
+              id: 'drug_exact',
+              yj_code: '111111111111',
+              drug_name: '単一一致薬',
+              generic_name: '成分A',
+            },
+          ],
+        },
+      ],
+      preview: {
+        summary: {
+          totalRows: 1,
+          processableRows: 0,
+          invalidCount: 1,
+        },
+        rows: [
+          {
+            rowNumber: 2,
+            status: 'invalid',
+            candidates: [
+              {
+                id: 'drug_exact',
+                yj_code: '111111111111',
+                drug_name: '単一一致薬',
+                generic_name: '成分A',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('does not upsert name-only exact matches during apply and records them in the summary audit', async () => {
+    prismaMock.drugMaster.findMany.mockResolvedValueOnce([
+      {
+        id: 'drug_exact',
+        yj_code: '111111111111',
+        drug_name: '単一一致薬',
+        generic_name: '成分A',
+      },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        csv: '医薬品名,採用,発注点\n単一一致薬,採用,10',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
+      importedCount: 0,
+      invalidRows: [
+        {
+          rowNumber: 2,
+          reason: '医薬品名だけでは採用薬を確定できません。YJコードを指定してください',
+        },
+      ],
+      preview: {
+        summary: {
+          processableRows: 0,
+          invalidCount: 1,
+        },
+      },
+    });
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledOnce();
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'pharmacy_drug_stock_bulk_import_summary',
+          changes: expect.objectContaining({
+            imported_count: 0,
+            invalid_rows: [
+              {
+                rowNumber: 2,
+                reason: '医薬品名だけでは採用薬を確定できません。YJコードを指定してください',
+                candidates: [
+                  {
+                    id: 'drug_exact',
+                    yj_code: '111111111111',
+                    drug_name: '単一一致薬',
+                    generic_name: '成分A',
+                  },
+                ],
+              },
+            ],
+            rows: [
+              expect.objectContaining({
+                row_number: 2,
+                status: 'invalid',
+                drug_master_id: null,
+                candidates: [
+                  {
+                    id: 'drug_exact',
+                    yj_code: '111111111111',
+                    drug_name: '単一一致薬',
+                    generic_name: '成分A',
+                  },
+                ],
+              }),
+            ],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('applies valid YJ-coded rows while keeping name-only exact matches invalid', async () => {
+    prismaMock.drugMaster.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'drug_yj',
+          yj_code: '222222222222',
+          drug_name: 'YJ指定薬',
+          generic_name: '成分B',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'drug_exact',
+          yj_code: '111111111111',
+          drug_name: '単一一致薬',
+          generic_name: '成分A',
+        },
+      ]);
+
+    const response = await POST(
+      createRequest({
+        site_id: 'site_1',
+        csv: 'YJコード,医薬品名,採用,発注点\n222222222222,YJ指定薬,採用,5\n,単一一致薬,採用,10',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const json = await readBulkPayload(response);
+    expect(json).toMatchObject({
+      importedCount: 1,
+      invalidRows: [
+        {
+          rowNumber: 3,
+          reason: '医薬品名だけでは採用薬を確定できません。YJコードを指定してください',
+        },
+      ],
+      preview: {
+        summary: {
+          processableRows: 1,
+          createCount: 1,
+          invalidCount: 1,
+        },
+        rows: [
+          { rowNumber: 2, status: 'create', yj_code: '222222222222' },
+          { rowNumber: 3, status: 'invalid' },
+        ],
+      },
+    });
+    expect(prismaMock.pharmacyDrugStock.upsert).toHaveBeenCalledOnce();
+    expect(prismaMock.pharmacyDrugStock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          drug_master_id: 'drug_yj',
+          reorder_point: 5,
+        }),
+      }),
+    );
+    expect(prismaMock.auditLog.create).toHaveBeenCalledTimes(2);
   });
 
   it('rejects name-only rows when the drug name matches multiple masters', async () => {

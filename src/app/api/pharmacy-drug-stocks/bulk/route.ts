@@ -1,12 +1,32 @@
 import { NextRequest } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
-import { withAuthContext } from '@/lib/auth/context';
+import { requireAuthContext } from '@/lib/auth/context';
+import { runWithRequestAuthContext } from '@/lib/auth/request-context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
-import { notFound, success, validationError } from '@/lib/api/response';
-import { prisma } from '@/lib/db/client';
+import { internalError, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
+import { withRoutePerformance } from '@/lib/utils/performance';
 
 const MAX_REORDER_POINT = 2_147_483_647;
+const ROUTE = '/api/pharmacy-drug-stocks/bulk';
+const SAFE_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+]);
+
+function safeErrorName(err: unknown): string {
+  if (!(err instanceof Error)) return 'Error';
+  return SAFE_ERROR_NAMES.has(err.name) ? err.name : 'Error';
+}
 
 const reorderPointIntegerSchema = z
   .union([
@@ -291,21 +311,21 @@ function buildPreviewRows({
   return { summary, rows };
 }
 
-export const POST = withAuthContext(
-  async (req: NextRequest, authCtx) => {
+async function authenticatedPOST(req: NextRequest) {
+  const authResult = await requireAuthContext(req, {
+    permission: 'canAdmin',
+    message: '採用薬の一括登録権限がありません',
+  });
+  if ('response' in authResult) return authResult.response;
+  const { ctx: authCtx } = authResult;
+
+  return runWithRequestAuthContext(authCtx, async () => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
-
     const parsed = bulkImportSchema.safeParse(payload);
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
-
-    const site = await prisma.pharmacySite.findFirst({
-      where: { id: parsed.data.site_id, org_id: authCtx.orgId },
-      select: { id: true, name: true },
-    });
-    if (!site) return notFound('対象の薬局拠点が見つかりません');
 
     const requestRows: BulkRowInput[] = (parsed.data.rows ?? []).map((row, index) => ({
       ...row,
@@ -332,280 +352,333 @@ export const POST = withAuthContext(
       return validationError('登録する採用薬データがありません');
     }
 
-    const safeRows: BulkRow[] = [];
-    const invalidRows: InvalidRow[] = [];
-    for (const row of rows) {
-      const rowParsed = bulkRowSchema.safeParse(row);
-      if (!rowParsed.success) {
-        invalidRows.push({
-          rowNumber: row.rowNumber,
-          reason: readBulkRowValidationReason(rowParsed.error),
+    return withOrgContext(
+      authCtx.orgId,
+      async (tx) => {
+        const site = await tx.pharmacySite.findFirst({
+          where: { id: parsed.data.site_id, org_id: authCtx.orgId },
+          select: { id: true, name: true },
         });
-        continue;
-      }
-      if (!row.yj_code && !row.drug_name) {
-        invalidRows.push({ rowNumber: row.rowNumber, reason: 'YJコードまたは医薬品名が必要です' });
-        continue;
-      }
-      safeRows.push({ ...rowParsed.data, rowNumber: row.rowNumber });
-    }
+        if (!site) return notFound('対象の薬局拠点が見つかりません');
 
-    const yjCodes = [...new Set(safeRows.map((row) => row.yj_code).filter(Boolean))] as string[];
-    const preferredYjCodes = [
-      ...new Set(safeRows.map((row) => row.preferred_generic_yj_code).filter(Boolean)),
-    ] as string[];
-    const drugNames = [
-      ...new Set(
-        safeRows
-          .filter((row) => !row.yj_code && row.drug_name)
-          .map((row) => row.drug_name as string),
-      ),
-    ];
+        const safeRows: BulkRow[] = [];
+        const invalidRows: InvalidRow[] = [];
+        for (const row of rows) {
+          const rowParsed = bulkRowSchema.safeParse(row);
+          if (!rowParsed.success) {
+            invalidRows.push({
+              rowNumber: row.rowNumber,
+              reason: readBulkRowValidationReason(rowParsed.error),
+            });
+            continue;
+          }
+          if (!row.yj_code && !row.drug_name) {
+            invalidRows.push({
+              rowNumber: row.rowNumber,
+              reason: 'YJコードまたは医薬品名が必要です',
+            });
+            continue;
+          }
+          safeRows.push({ ...rowParsed.data, rowNumber: row.rowNumber });
+        }
 
-    const [matchedByYj, matchedByName, preferredGenerics] = await Promise.all([
-      yjCodes.length
-        ? prisma.drugMaster.findMany({
-            where: { yj_code: { in: yjCodes } },
-            select: { id: true, yj_code: true, drug_name: true, generic_name: true },
-          })
-        : Promise.resolve([]),
-      drugNames.length
-        ? prisma.drugMaster.findMany({
-            where: { drug_name: { in: drugNames } },
-            select: { id: true, yj_code: true, drug_name: true, generic_name: true },
-          })
-        : Promise.resolve([]),
-      preferredYjCodes.length
-        ? prisma.drugMaster.findMany({
-            where: { yj_code: { in: preferredYjCodes }, is_generic: true },
-            select: { id: true, yj_code: true, drug_name: true, generic_name: true },
-          })
-        : Promise.resolve([]),
-    ]);
+        const yjCodes = [
+          ...new Set(safeRows.map((row) => row.yj_code).filter(Boolean)),
+        ] as string[];
+        const preferredYjCodes = [
+          ...new Set(safeRows.map((row) => row.preferred_generic_yj_code).filter(Boolean)),
+        ] as string[];
+        const drugNames = [
+          ...new Set(
+            safeRows
+              .filter((row) => !row.yj_code && row.drug_name)
+              .map((row) => row.drug_name as string),
+          ),
+        ];
 
-    const drugByYj = new Map(matchedByYj.map((drug) => [drug.yj_code, drug]));
-    const drugsByName = new Map<string, typeof matchedByName>();
-    for (const drug of matchedByName) {
-      const drugs = drugsByName.get(drug.drug_name) ?? [];
-      drugs.push(drug);
-      drugsByName.set(drug.drug_name, drugs);
-    }
-    const genericByYj = new Map(preferredGenerics.map((drug) => [drug.yj_code, drug]));
-    const unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }> = [];
-    const resolvedOperations: BulkOperation[] = safeRows.flatMap((row) => {
-      const nameMatches = row.yj_code ? [] : (drugsByName.get(row.drug_name ?? '') ?? []);
-      if (!row.yj_code && nameMatches.length > 1) {
-        invalidRows.push({
-          rowNumber: row.rowNumber,
-          reason: '医薬品名に複数候補があります。YJコードを指定してください',
-          candidates: nameMatches.slice(0, 5).map((drug) => ({
-            id: drug.id,
-            yj_code: drug.yj_code,
-            drug_name: drug.drug_name,
-            generic_name: drug.generic_name,
-          })),
-        });
-        return [];
-      }
+        const [matchedByYj, matchedByName, preferredGenerics] = await Promise.all([
+          yjCodes.length
+            ? tx.drugMaster.findMany({
+                where: { yj_code: { in: yjCodes } },
+                select: { id: true, yj_code: true, drug_name: true, generic_name: true },
+              })
+            : Promise.resolve([]),
+          drugNames.length
+            ? tx.drugMaster.findMany({
+                where: { drug_name: { in: drugNames } },
+                select: { id: true, yj_code: true, drug_name: true, generic_name: true },
+              })
+            : Promise.resolve([]),
+          preferredYjCodes.length
+            ? tx.drugMaster.findMany({
+                where: { yj_code: { in: preferredYjCodes }, is_generic: true },
+                select: { id: true, yj_code: true, drug_name: true, generic_name: true },
+              })
+            : Promise.resolve([]),
+        ]);
 
-      const drug = row.yj_code ? drugByYj.get(row.yj_code) : nameMatches[0];
-      if (!drug) {
-        unmatchedRows.push({
-          rowNumber: row.rowNumber,
-          yj_code: row.yj_code,
-          drug_name: row.drug_name,
-        });
-        return [];
-      }
-      if (row.preferred_generic_yj_code && !genericByYj.has(row.preferred_generic_yj_code)) {
-        invalidRows.push({
-          rowNumber: row.rowNumber,
-          reason: '優先後発品YJコードが見つからないか、後発品ではありません',
-        });
-        return [];
-      }
-      const preferredGeneric = row.preferred_generic_yj_code
-        ? (genericByYj.get(row.preferred_generic_yj_code) ?? null)
-        : null;
-      if (preferredGeneric?.id === drug.id) {
-        invalidRows.push({
-          rowNumber: row.rowNumber,
-          reason: '優先後発品に対象薬自身は指定できません',
-        });
-        return [];
-      }
-      if (
-        preferredGeneric &&
-        drug.generic_name &&
-        preferredGeneric.generic_name &&
-        drug.generic_name !== preferredGeneric.generic_name
-      ) {
-        invalidRows.push({
-          rowNumber: row.rowNumber,
-          reason: '優先後発品は同一一般名から選択してください',
-        });
-        return [];
-      }
-      return [
-        {
-          row,
-          drug,
-          preferredGeneric,
-        },
-      ];
-    });
-    const operationCountsByDrugId = new Map<string, number>();
-    for (const operation of resolvedOperations) {
-      operationCountsByDrugId.set(
-        operation.drug.id,
-        (operationCountsByDrugId.get(operation.drug.id) ?? 0) + 1,
-      );
-    }
-    const duplicatedDrugIds = new Set(
-      [...operationCountsByDrugId.entries()]
-        .filter(([, count]) => count > 1)
-        .map(([drugId]) => drugId),
-    );
-    for (const operation of resolvedOperations) {
-      if (!duplicatedDrugIds.has(operation.drug.id)) continue;
-      invalidRows.push({
-        rowNumber: operation.row.rowNumber,
-        reason: '同一医薬品がCSV内で重複しています。1行にまとめてください',
-      });
-    }
-    const operations = resolvedOperations.filter(
-      (operation) => !duplicatedDrugIds.has(operation.drug.id),
-    );
+        const drugByYj = new Map(matchedByYj.map((drug) => [drug.yj_code, drug]));
+        const drugsByName = new Map<string, typeof matchedByName>();
+        for (const drug of matchedByName) {
+          const drugs = drugsByName.get(drug.drug_name) ?? [];
+          drugs.push(drug);
+          drugsByName.set(drug.drug_name, drugs);
+        }
+        const genericByYj = new Map(preferredGenerics.map((drug) => [drug.yj_code, drug]));
+        const unmatchedRows: Array<{ rowNumber: number; yj_code?: string; drug_name?: string }> =
+          [];
+        const resolvedOperations: BulkOperation[] = safeRows.flatMap((row) => {
+          const nameMatches = row.yj_code ? [] : (drugsByName.get(row.drug_name ?? '') ?? []);
+          if (!row.yj_code && nameMatches.length > 1) {
+            invalidRows.push({
+              rowNumber: row.rowNumber,
+              reason: '医薬品名に複数候補があります。YJコードを指定してください',
+              candidates: nameMatches.slice(0, 5).map((drug) => ({
+                id: drug.id,
+                yj_code: drug.yj_code,
+                drug_name: drug.drug_name,
+                generic_name: drug.generic_name,
+              })),
+            });
+            return [];
+          }
+          if (!row.yj_code && nameMatches.length === 1) {
+            invalidRows.push({
+              rowNumber: row.rowNumber,
+              reason: '医薬品名だけでは採用薬を確定できません。YJコードを指定してください',
+              candidates: nameMatches.map((drug) => ({
+                id: drug.id,
+                yj_code: drug.yj_code,
+                drug_name: drug.drug_name,
+                generic_name: drug.generic_name,
+              })),
+            });
+            return [];
+          }
 
-    const currentStocks =
-      operations.length > 0
-        ? await prisma.pharmacyDrugStock.findMany({
+          const drug = row.yj_code ? drugByYj.get(row.yj_code) : undefined;
+          if (!drug) {
+            unmatchedRows.push({
+              rowNumber: row.rowNumber,
+              yj_code: row.yj_code,
+              drug_name: row.drug_name,
+            });
+            return [];
+          }
+          if (row.preferred_generic_yj_code && !genericByYj.has(row.preferred_generic_yj_code)) {
+            invalidRows.push({
+              rowNumber: row.rowNumber,
+              reason: '優先後発品YJコードが見つからないか、後発品ではありません',
+            });
+            return [];
+          }
+          const preferredGeneric = row.preferred_generic_yj_code
+            ? (genericByYj.get(row.preferred_generic_yj_code) ?? null)
+            : null;
+          if (preferredGeneric?.id === drug.id) {
+            invalidRows.push({
+              rowNumber: row.rowNumber,
+              reason: '優先後発品に対象薬自身は指定できません',
+            });
+            return [];
+          }
+          if (
+            preferredGeneric &&
+            drug.generic_name &&
+            preferredGeneric.generic_name &&
+            drug.generic_name !== preferredGeneric.generic_name
+          ) {
+            invalidRows.push({
+              rowNumber: row.rowNumber,
+              reason: '優先後発品は同一一般名から選択してください',
+            });
+            return [];
+          }
+          return [
+            {
+              row,
+              drug,
+              preferredGeneric,
+            },
+          ];
+        });
+        const operationCountsByDrugId = new Map<string, number>();
+        for (const operation of resolvedOperations) {
+          operationCountsByDrugId.set(
+            operation.drug.id,
+            (operationCountsByDrugId.get(operation.drug.id) ?? 0) + 1,
+          );
+        }
+        const duplicatedDrugIds = new Set(
+          [...operationCountsByDrugId.entries()]
+            .filter(([, count]) => count > 1)
+            .map(([drugId]) => drugId),
+        );
+        for (const operation of resolvedOperations) {
+          if (!duplicatedDrugIds.has(operation.drug.id)) continue;
+          invalidRows.push({
+            rowNumber: operation.row.rowNumber,
+            reason: '同一医薬品がCSV内で重複しています。1行にまとめてください',
+          });
+        }
+        const operations = resolvedOperations.filter(
+          (operation) => !duplicatedDrugIds.has(operation.drug.id),
+        );
+
+        const currentStocks =
+          operations.length > 0
+            ? await tx.pharmacyDrugStock.findMany({
+                where: {
+                  org_id: authCtx.orgId,
+                  site_id: site.id,
+                  drug_master_id: {
+                    in: [...new Set(operations.map((operation) => operation.drug.id))],
+                  },
+                },
+                select: {
+                  drug_master_id: true,
+                  is_stocked: true,
+                  reorder_point: true,
+                  preferred_generic_id: true,
+                  adoption_note: true,
+                },
+              })
+            : [];
+        const preview = buildPreviewRows({
+          operations,
+          currentStockByDrugId: new Map(
+            currentStocks.map((stock) => [stock.drug_master_id, stock]),
+          ),
+          unmatchedRows,
+          invalidRows,
+        });
+        const previewRowByDrugId = new Map(
+          preview.rows
+            .filter(
+              (row) => row.status !== 'unmatched' && row.status !== 'invalid' && row.drug_name,
+            )
+            .map((row) => {
+              const operation = operations.find((item) => item.row.rowNumber === row.rowNumber);
+              return operation ? [operation.drug.id, row] : null;
+            })
+            .filter((entry): entry is [string, (typeof preview.rows)[number]] => entry != null),
+        );
+
+        if (parsed.data.dry_run) {
+          return success({
+            site,
+            importedCount: 0,
+            unmatchedRows,
+            invalidRows,
+            preview,
+          });
+        }
+
+        let imported = 0;
+        for (const operation of operations) {
+          const previewRow = previewRowByDrugId.get(operation.drug.id);
+          const stock = await tx.pharmacyDrugStock.upsert({
             where: {
-              org_id: authCtx.orgId,
-              site_id: site.id,
-              drug_master_id: {
-                in: [...new Set(operations.map((operation) => operation.drug.id))],
+              site_id_drug_master_id: {
+                site_id: site.id,
+                drug_master_id: operation.drug.id,
               },
             },
-            select: {
-              drug_master_id: true,
-              is_stocked: true,
-              reorder_point: true,
-              preferred_generic_id: true,
-              adoption_note: true,
-            },
-          })
-        : [];
-    const preview = buildPreviewRows({
-      operations,
-      currentStockByDrugId: new Map(currentStocks.map((stock) => [stock.drug_master_id, stock])),
-      unmatchedRows,
-      invalidRows,
-    });
-    const previewRowByDrugId = new Map(
-      preview.rows
-        .filter((row) => row.status !== 'unmatched' && row.status !== 'invalid' && row.drug_name)
-        .map((row) => {
-          const operation = operations.find((item) => item.row.rowNumber === row.rowNumber);
-          return operation ? [operation.drug.id, row] : null;
-        })
-        .filter((entry): entry is [string, (typeof preview.rows)[number]] => entry != null),
-    );
-
-    if (parsed.data.dry_run) {
-      return success({
-        site,
-        importedCount: 0,
-        unmatchedRows,
-        invalidRows,
-        preview,
-      });
-    }
-
-    const imported = await prisma.$transaction(async (tx) => {
-      let count = 0;
-      for (const operation of operations) {
-        const previewRow = previewRowByDrugId.get(operation.drug.id);
-        const stock = await tx.pharmacyDrugStock.upsert({
-          where: {
-            site_id_drug_master_id: {
+            create: {
+              org_id: authCtx.orgId,
               site_id: site.id,
               drug_master_id: operation.drug.id,
+              is_stocked: operation.row.is_stocked,
+              reorder_point: operation.row.reorder_point ?? null,
+              preferred_generic_id: operation.preferredGeneric?.id ?? null,
+              adoption_source: 'csv',
+              adoption_note: operation.row.adoption_note ?? null,
             },
-          },
-          create: {
-            org_id: authCtx.orgId,
-            site_id: site.id,
-            drug_master_id: operation.drug.id,
-            is_stocked: operation.row.is_stocked,
-            reorder_point: operation.row.reorder_point ?? null,
-            preferred_generic_id: operation.preferredGeneric?.id ?? null,
-            adoption_source: 'csv',
-            adoption_note: operation.row.adoption_note ?? null,
-          },
-          update: {
-            is_stocked: operation.row.is_stocked,
-            reorder_point: operation.row.reorder_point ?? null,
-            preferred_generic_id: operation.preferredGeneric?.id ?? null,
-            adoption_source: 'csv',
-            adoption_note: operation.row.adoption_note ?? null,
-          },
-          select: { id: true },
-        });
-        count += 1;
+            update: {
+              is_stocked: operation.row.is_stocked,
+              reorder_point: operation.row.reorder_point ?? null,
+              preferred_generic_id: operation.preferredGeneric?.id ?? null,
+              adoption_source: 'csv',
+              adoption_note: operation.row.adoption_note ?? null,
+            },
+            select: { id: true },
+          });
+          imported += 1;
 
+          await createAuditLogEntry(tx, authCtx, {
+            action: 'pharmacy_drug_stock_bulk_imported',
+            targetType: 'PharmacyDrugStock',
+            targetId: stock.id,
+            changes: {
+              row_number: operation.row.rowNumber,
+              status: previewRow?.status ?? null,
+              site_id: site.id,
+              drug_master_id: operation.drug.id,
+              yj_code: operation.drug.yj_code,
+              drug_name: operation.drug.drug_name,
+              is_stocked: operation.row.is_stocked,
+              reorder_point: operation.row.reorder_point ?? null,
+              preferred_generic_yj_code: operation.row.preferred_generic_yj_code ?? null,
+              before: previewRow?.before ?? null,
+              after: previewRow?.after ?? null,
+            },
+          });
+        }
         await createAuditLogEntry(tx, authCtx, {
-          action: 'pharmacy_drug_stock_bulk_imported',
-          targetType: 'PharmacyDrugStock',
-          targetId: stock.id,
+          action: 'pharmacy_drug_stock_bulk_import_summary',
+          targetType: 'PharmacySite',
+          targetId: site.id,
           changes: {
-            row_number: operation.row.rowNumber,
-            status: previewRow?.status ?? null,
             site_id: site.id,
-            drug_master_id: operation.drug.id,
-            yj_code: operation.drug.yj_code,
-            drug_name: operation.drug.drug_name,
-            is_stocked: operation.row.is_stocked,
-            reorder_point: operation.row.reorder_point ?? null,
-            preferred_generic_yj_code: operation.row.preferred_generic_yj_code ?? null,
-            before: previewRow?.before ?? null,
-            after: previewRow?.after ?? null,
+            imported_count: imported,
+            summary: preview.summary,
+            unmatched_rows: unmatchedRows,
+            invalid_rows: invalidRows,
+            rows: preview.rows.map((row) => ({
+              row_number: row.rowNumber,
+              status: row.status,
+              yj_code: row.yj_code ?? null,
+              drug_name: row.drug_name ?? null,
+              reason: row.reason ?? null,
+              candidates: row.candidates ?? null,
+              drug_master_id:
+                operations.find((operation) => operation.row.rowNumber === row.rowNumber)?.drug
+                  .id ?? null,
+            })),
           },
         });
-      }
-      await createAuditLogEntry(tx, authCtx, {
-        action: 'pharmacy_drug_stock_bulk_import_summary',
-        targetType: 'PharmacySite',
-        targetId: site.id,
-        changes: {
-          site_id: site.id,
-          imported_count: count,
-          summary: preview.summary,
-          unmatched_rows: unmatchedRows,
-          invalid_rows: invalidRows,
-          rows: preview.rows.map((row) => ({
-            row_number: row.rowNumber,
-            status: row.status,
-            yj_code: row.yj_code ?? null,
-            drug_name: row.drug_name ?? null,
-            reason: row.reason ?? null,
-            candidates: row.candidates ?? null,
-            drug_master_id:
-              operations.find((operation) => operation.row.rowNumber === row.rowNumber)?.drug.id ??
-              null,
-          })),
-        },
-      });
-      return count;
-    });
 
-    return success({
-      site,
-      importedCount: imported,
-      unmatchedRows,
-      invalidRows,
-      preview,
-    });
-  },
-  { permission: 'canAdmin' },
-);
+        return success({
+          site,
+          importedCount: imported,
+          unmatchedRows,
+          invalidRows,
+          preview,
+        });
+      },
+      { requestContext: authCtx, maxWaitMs: 10_000, timeoutMs: 30_000 },
+    );
+  });
+}
+
+export async function POST(
+  req: NextRequest,
+  _routeContext: { params: Promise<Record<string, string>> },
+) {
+  void _routeContext;
+  return withRoutePerformance(req, async () => {
+    try {
+      return withSensitiveNoStore(await authenticatedPOST(req));
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.error('pharmacy_drug_stocks_bulk_post_unhandled_error', undefined, {
+        event: 'pharmacy_drug_stocks_bulk_post_unhandled_error',
+        route: ROUTE,
+        method: req.method,
+        status: 500,
+        error_name: safeErrorName(err),
+      });
+      return withSensitiveNoStore(internalError());
+    }
+  });
+}
