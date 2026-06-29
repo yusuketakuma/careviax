@@ -392,33 +392,54 @@ export function SettingsContent() {
           </CardTitle>
           <CardDescription>DB・バックアップ系の健全性を 60 秒ごとに確認します</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <HealthCard
-            title="全体ステータス"
-            value={healthQuery.data?.status ?? 'loading'}
-            description={
-              healthQuery.data?.timestamp
-                ? `更新: ${new Date(healthQuery.data.timestamp).toLocaleString('ja-JP')}`
-                : '監視情報を取得しています'
-            }
-            icon={Activity}
-          />
-          <HealthCard
-            title="Database"
-            value={healthChecks.database?.status ?? 'unknown'}
-            description={
-              healthChecks.database?.latencyMs != null
-                ? `${healthChecks.database.latencyMs}ms`
-                : (healthChecks.database?.message ?? '未取得')
-            }
-            icon={Database}
-          />
-          <HealthCard
-            title="Backups"
-            value={healthChecks.backups?.status ?? 'unknown'}
-            description={healthChecks.backups?.message ?? 'バックアップ監視'}
-            icon={HardDriveDownload}
-          />
+        <CardContent className={healthQuery.isError ? '' : 'grid gap-4 md:grid-cols-3'}>
+          {healthQuery.isError ? (
+            // 取得失敗を永続「確認中」に畳まず、エラーと再試行を明示する(false-empty 封止)
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+              <span>
+                {healthQuery.error instanceof Error
+                  ? healthQuery.error.message
+                  : '外部連携監視の取得に失敗しました'}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => healthQuery.refetch()}
+              >
+                再試行
+              </Button>
+            </div>
+          ) : (
+            <>
+              <HealthCard
+                title="全体ステータス"
+                value={healthQuery.data?.status ?? 'loading'}
+                description={
+                  healthQuery.data?.timestamp
+                    ? `更新: ${new Date(healthQuery.data.timestamp).toLocaleString('ja-JP')}`
+                    : '監視情報を取得しています'
+                }
+                icon={Activity}
+              />
+              <HealthCard
+                title="Database"
+                value={healthChecks.database?.status ?? 'unknown'}
+                description={
+                  healthChecks.database?.latencyMs != null
+                    ? `${healthChecks.database.latencyMs}ms`
+                    : (healthChecks.database?.message ?? '未取得')
+                }
+                icon={Database}
+              />
+              <HealthCard
+                title="Backups"
+                value={healthChecks.backups?.status ?? 'unknown'}
+                description={healthChecks.backups?.message ?? 'バックアップ監視'}
+                icon={HardDriveDownload}
+              />
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -457,6 +478,25 @@ export function SettingsContent() {
                 ))}
               </SelectContent>
             </Select>
+            {sitesQuery.isError ? (
+              // 取得失敗を空の店舗セレクタに畳まず、エラーと再試行を明示する(false-empty 封止)
+              <p className="flex flex-wrap items-center gap-x-2 text-sm text-destructive">
+                <span>
+                  {sitesQuery.error instanceof Error
+                    ? sitesQuery.error.message
+                    : '店舗一覧の取得に失敗しました'}
+                </span>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-sm"
+                  onClick={() => sitesQuery.refetch()}
+                >
+                  再試行
+                </Button>
+              </p>
+            ) : null}
           </div>
           <ScopePanel
             orgId={orgId}
