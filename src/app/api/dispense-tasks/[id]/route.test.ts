@@ -253,6 +253,8 @@ describe('/api/dispense-tasks/[id]', () => {
       stock_guidance: [
         expect.objectContaining({
           line_id: 'line_1',
+          prescribed_drug_name: 'アムロジピンベシル酸塩錠',
+          prescribed_drug_code: null,
           stock_status: 'preferred_generic',
           recommended_drug_name: 'アムロジピンOD錠5mg',
           recommended_drug_code: '222',
@@ -266,6 +268,21 @@ describe('/api/dispense-tasks/[id]', () => {
           id: 'task_1',
           org_id: 'org_1',
         },
+        include: expect.objectContaining({
+          cycle: expect.objectContaining({
+            select: expect.objectContaining({
+              inquiries: expect.objectContaining({
+                select: expect.objectContaining({
+                  line: expect.objectContaining({
+                    select: expect.objectContaining({
+                      drug_code: true,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
       }),
     );
   });

@@ -98,14 +98,24 @@ function toMonthDayLabel(value: Date): string {
   return `${value.getMonth() + 1}/${value.getDate()}`;
 }
 
-/** 発行日 + Rp 構成(薬剤名/用量/日数/数量)の一致シグネチャ。 */
+/** 発行日 + Rp 構成(医薬品コード優先 / 用量 / 日数 / 数量)の一致シグネチャ。 */
 function buildDuplicateSignature(args: {
   patientId: string;
   prescribedDate: Date;
-  lines: Array<{ drug_name: string; dose: string; days: number; quantity: number | null }>;
+  lines: Array<{
+    drug_name: string;
+    drug_code: string | null;
+    dose: string;
+    days: number;
+    quantity: number | null;
+  }>;
 }): string {
   const lineKey = args.lines
-    .map((line) => `${line.drug_name}|${line.dose}|${line.days}|${line.quantity ?? ''}`)
+    .map((line) => {
+      const code = line.drug_code?.trim();
+      const identity = code ? `code:${code}` : `name:${line.drug_name.trim()}`;
+      return `${identity}|${line.dose}|${line.days}|${line.quantity ?? ''}`;
+    })
     .sort()
     .join('||');
   return `${args.patientId}#${toDateKey(args.prescribedDate)}#${lineKey}`;
@@ -173,7 +183,7 @@ const authenticatedGET = withAuthContext(
               },
             },
             lines: {
-              select: { drug_name: true, dose: true, days: true, quantity: true },
+              select: { drug_name: true, drug_code: true, dose: true, days: true, quantity: true },
             },
           },
         });

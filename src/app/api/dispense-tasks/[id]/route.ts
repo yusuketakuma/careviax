@@ -240,6 +240,8 @@ async function buildLineStockGuidance(input: {
 
     return {
       line_id: line.id,
+      prescribed_drug_name: line.drug_name,
+      prescribed_drug_code: line.drug_code,
       stock_status: stockStatus,
       message,
       recommended_drug_name: recommendedCandidate?.drug_name ?? null,
@@ -353,6 +355,7 @@ const authenticatedGET = withAuthContext(async (_req, ctx, { params }) => {
                   id: true,
                   line_number: true,
                   drug_name: true,
+                  drug_code: true,
                 },
               },
             },
