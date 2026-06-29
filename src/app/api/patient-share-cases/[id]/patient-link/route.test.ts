@@ -8,6 +8,7 @@ const {
   patientLinkFindUniqueOrThrowMock,
   patientShareCaseUpdateMock,
   createAuditLogEntryMock,
+  authContextFailureMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
@@ -15,12 +16,16 @@ const {
   patientLinkFindUniqueOrThrowMock: vi.fn(),
   patientShareCaseUpdateMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
+  authContextFailureMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
-    return (req: NextRequest, routeContext?: unknown) =>
-      handler(
+    return (req: NextRequest, routeContext?: unknown) => {
+      const failure = authContextFailureMock();
+      if (failure) return Promise.reject(failure);
+
+      return handler(
         req,
         {
           orgId: 'org_1',
@@ -29,6 +34,7 @@ vi.mock('@/lib/auth/context', () => ({
         },
         routeContext,
       );
+    };
   },
 }));
 
@@ -57,11 +63,17 @@ function createRequest(body: unknown) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
     vi.clearAllMocks();
+    authContextFailureMock.mockReset();
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
       status: 'partner_confirmation_pending',
@@ -109,6 +121,7 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     const response = await rawPATCH(createRequest({ decision: 'base_approve' }), routeContext);
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientLinkUpdateManyMock).toHaveBeenCalledWith({
       where: {
         share_case_id: 'share_case_1',
@@ -146,6 +159,7 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     );
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: { blocker: 'base_approval_missing' },
     });
@@ -192,6 +206,7 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientLinkUpdateManyMock).toHaveBeenCalledWith({
       where: {
         share_case_id: 'share_case_1',
@@ -249,6 +264,7 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(patientLinkUpdateManyMock).toHaveBeenCalledWith({
       where: {
         share_case_id: 'share_case_1',
@@ -314,6 +330,7 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(patientLinkUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
@@ -352,6 +369,7 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     );
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       details: { blocker: 'identity_mismatch', mismatch_fields: ['name', 'name_kana'] },
     });
@@ -380,7 +398,51 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     );
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     expect(patientLinkUpdateManyMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes unexpected patient-link failures and keeps sensitive responses no-store', async () => {
+    withOrgContextMock.mockRejectedValueOnce(
+      new Error('raw patient_link_1 partner_patient_1 山田 花子 failure'),
+    );
+
+    const response = await rawPATCH(createRequest({ decision: 'base_approve' }), routeContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('patient_link_1');
+    expect(serialized).not.toContain('partner_patient_1');
+    expect(serialized).not.toContain('山田 花子');
+    expect(patientLinkUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes auth plumbing failures before loading the share case', async () => {
+    authContextFailureMock.mockReturnValueOnce(
+      new Error('raw auth share_case_1 partner_patient_1 patient-link failure'),
+    );
+
+    const response = await rawPATCH(createRequest({ decision: 'base_approve' }), routeContext);
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('share_case_1');
+    expect(serialized).not.toContain('partner_patient_1');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareCaseFindFirstMock).not.toHaveBeenCalled();
   });
 });
