@@ -29,7 +29,11 @@ import {
   redactProposalContactLogs,
   redactProposalPatientFields,
 } from '@/lib/visit-schedule-proposals/response';
-import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
+import {
+  OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES,
+  allocateProposalRouteOrders,
+  buildProposalRouteCellKey,
+} from '@/lib/visit-schedule-proposals/route-order';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { resolveBillingRulesForDate } from '@/server/services/billing-rules';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
@@ -43,8 +47,11 @@ import {
   type VisitWorkflowGateIssue,
 } from '@/server/services/management-plans';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { loadVisitScheduleBillingGuardRows } from '@/server/services/visit-schedule-billing-guard';
 import {
   validateBillingRequirements,
+  type BillingCadenceProposalRow,
+  type BillingCadenceScheduleRow,
   type BillingRequirementAlert,
 } from '@/server/services/billing-requirement-validator';
 import type { ProposalCandidateDiagnostic } from '@/server/services/visit-schedule-planner';
@@ -351,6 +358,7 @@ function parseProposalListQuery(searchParams: URLSearchParams): ProposalListQuer
  * - alerts: BillingRequirementAlert[] — 全アラート（UI表示用）
  */
 async function validateProposalBillingExclusions(args: {
+  db?: Prisma.TransactionClient;
   orgId: string;
   caseId: string;
   visitType: string;
@@ -358,8 +366,15 @@ async function validateProposalBillingExclusions(args: {
   pharmacistId?: string;
   prescriptionCategory?: 'regular' | 'emergency';
   specialCapEligible?: boolean;
+  excludeSupersededProposalScope?: {
+    caseId: string;
+    rescheduleSourceScheduleId?: string | null;
+  };
+  cadenceScheduleRows?: BillingCadenceScheduleRow[];
+  cadenceProposalRows?: BillingCadenceProposalRow[];
 }): Promise<{ blockingMessages: string[]; alerts: BillingRequirementAlert[] }> {
-  const careCase = await prisma.careCase.findFirst({
+  const db = args.db ?? prisma;
+  const careCase = await db.careCase.findFirst({
     where: {
       id: args.caseId,
       org_id: args.orgId,
@@ -380,13 +395,13 @@ async function validateProposalBillingExclusions(args: {
   }
 
   const [medicalInsurance, careInsurance] = await Promise.all([
-    resolvePatientInsurance(prisma, {
+    resolvePatientInsurance(db, {
       orgId: args.orgId,
       patientId: careCase.patient_id,
       type: 'medical',
       asOf: args.targetDate,
     }),
-    resolvePatientInsurance(prisma, {
+    resolvePatientInsurance(db, {
       orgId: args.orgId,
       patientId: careCase.patient_id,
       type: 'care',
@@ -413,7 +428,7 @@ async function validateProposalBillingExclusions(args: {
     );
     const targetMonth = startOfMonth(args.targetDate);
 
-    const existingCandidates = await prisma.billingCandidate.findMany({
+    const existingCandidates = await db.billingCandidate.findMany({
       where: {
         org_id: args.orgId,
         patient_id: careCase.patient_id,
@@ -439,6 +454,7 @@ async function validateProposalBillingExclusions(args: {
   let alerts: BillingRequirementAlert[] = [];
   if (payerBasis !== 'self_pay' && args.pharmacistId) {
     alerts = await validateBillingRequirements({
+      db,
       orgId: args.orgId,
       caseId: args.caseId,
       patientId: careCase.patient_id,
@@ -448,6 +464,11 @@ async function validateProposalBillingExclusions(args: {
       prescriptionCategory: args.prescriptionCategory,
       payerBasis,
       specialCapEligible: args.specialCapEligible,
+      ...(args.excludeSupersededProposalScope
+        ? { excludeSupersededProposalScope: args.excludeSupersededProposalScope }
+        : {}),
+      ...(args.cadenceScheduleRows ? { cadenceScheduleRows: args.cadenceScheduleRows } : {}),
+      ...(args.cadenceProposalRows ? { cadenceProposalRows: args.cadenceProposalRows } : {}),
     });
 
     // severity: 'error' のアラートをブロッキングメッセージに変換
@@ -459,6 +480,42 @@ async function validateProposalBillingExclusions(args: {
   }
 
   return { blockingMessages, alerts };
+}
+
+function dedupeBillingScheduleRows(rows: BillingCadenceScheduleRow[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key =
+      row.id ??
+      `${row.patient_id}:${row.pharmacist_id ?? ''}:${row.visit_type ?? ''}:${formatUtcDateKey(row.scheduled_date)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function dedupeBillingProposalRows(rows: BillingCadenceProposalRow[]) {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const key =
+      row.id ??
+      `${row.patient_id}:${row.case_id ?? ''}:${row.proposed_pharmacist_id ?? ''}:${row.visit_type ?? ''}:${formatUtcDateKey(row.proposed_date)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function isProposalInSupersededScope(
+  row: Pick<BillingCadenceProposalRow, 'case_id' | 'reschedule_source_schedule_id'>,
+  scope: { caseId: string; rescheduleSourceScheduleId?: string | null },
+) {
+  return (
+    row.case_id === scope.caseId &&
+    (scope.rescheduleSourceScheduleId
+      ? row.reschedule_source_schedule_id === scope.rescheduleSourceScheduleId
+      : row.reschedule_source_schedule_id == null)
+  );
 }
 
 function dedupeBillingAlerts(alerts: BillingRequirementAlert[]) {
@@ -723,7 +780,7 @@ export const POST = withAuthContext(
         org_id: ctx.orgId,
         ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
       },
-      select: { id: true },
+      select: { id: true, patient_id: true },
     });
     if (!accessibleCase) return notFound('ケースが見つかりません');
 
@@ -767,6 +824,10 @@ export const POST = withAuthContext(
       parsed.data.reschedule_source_schedule_id ??
       reproposalSourceProposal?.reschedule_source_schedule_id ??
       undefined;
+    const excludeSupersededProposalScope = {
+      caseId: parsed.data.case_id,
+      rescheduleSourceScheduleId: resolvedRescheduleSourceScheduleId ?? null,
+    };
 
     const refResult = await validateOrgReferences(ctx.orgId, {
       case_id: parsed.data.case_id,
@@ -973,6 +1034,8 @@ export const POST = withAuthContext(
           targetDate: draft.proposed_date,
           pharmacistId: draft.proposed_pharmacist_id,
           prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
+          specialCapEligible: parsed.data.special_cap_eligible,
+          excludeSupersededProposalScope,
         });
 
         return { draft, validation };
@@ -1051,9 +1114,9 @@ export const POST = withAuthContext(
       ) ?? [];
     const requestFingerprint = requestFingerprints?.current ?? null;
 
-    const proposalResult = await withSerializableProposalCreateTransaction(
-      ctx.orgId,
-      async (tx) => {
+    let proposalResult;
+    try {
+      proposalResult = await withSerializableProposalCreateTransaction(ctx.orgId, async (tx) => {
         let proposalBatchId: string | null = null;
         const idempotencyFingerprints = requestFingerprints;
         if (parsed.data.idempotency_key && requestFingerprint && idempotencyFingerprints) {
@@ -1081,44 +1144,138 @@ export const POST = withAuthContext(
             }
             return { proposals: existingBatch.proposals, replayed: true };
           }
+        }
 
-          try {
-            const batch = await tx.visitScheduleProposalBatch.create({
-              data: {
-                org_id: ctx.orgId,
-                case_id: parsed.data.case_id,
-                idempotency_key: parsed.data.idempotency_key,
-                request_fingerprint: requestFingerprint,
-                created_by: ctx.userId,
-              },
-            });
-            proposalBatchId = batch.id;
-          } catch (cause) {
-            if (!isProposalBatchIdempotencyRace(cause)) throw cause;
-            const racedBatch = await tx.visitScheduleProposalBatch.findUnique({
-              where: {
-                org_id_idempotency_key: {
-                  org_id: ctx.orgId,
-                  idempotency_key: parsed.data.idempotency_key,
-                },
-              },
-              include: {
-                proposals: {
-                  orderBy: { created_at: 'asc' },
-                },
-              },
-            });
-            if (!racedBatch) throw cause;
-            if (
-              !matchesProposalRequestFingerprint(
-                racedBatch.request_fingerprint,
-                idempotencyFingerprints,
-              )
-            ) {
-              return { error: 'idempotency_conflict' as const };
-            }
-            return { proposals: racedBatch.proposals, replayed: true };
+        const activeScheduleConflict = await tx.visitSchedule.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            case_id: parsed.data.case_id,
+            visit_type: resolvedVisitType,
+            scheduled_date: {
+              in: Array.from(
+                new Map(
+                  validDrafts.map((draft) => [
+                    formatUtcDateKey(draft.proposed_date),
+                    draft.proposed_date,
+                  ]),
+                ).values(),
+              ),
+            },
+            schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+          },
+          select: { id: true },
+        });
+        if (activeScheduleConflict) {
+          return { error: 'duplicate_active_schedule' as const };
+        }
+
+        const routeCells = new Map<string, { pharmacistId: string; date: Date }>();
+        for (const draft of validDrafts) {
+          const key = buildProposalRouteCellKey({
+            pharmacistId: draft.proposed_pharmacist_id,
+            date: draft.proposed_date,
+          });
+          if (routeCells.has(key)) {
+            return { error: 'duplicate_open_proposal' as const };
           }
+          routeCells.set(key, {
+            pharmacistId: draft.proposed_pharmacist_id,
+            date: draft.proposed_date,
+          });
+        }
+        const collidingOpenProposals = await tx.visitScheduleProposal.findMany({
+          where: {
+            org_id: ctx.orgId,
+            case_id: parsed.data.case_id,
+            finalized_schedule_id: null,
+            proposal_status: { in: OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES },
+            OR: Array.from(routeCells.values()).map((cell) => ({
+              proposed_pharmacist_id: cell.pharmacistId,
+              proposed_date: cell.date,
+            })),
+          },
+          select: {
+            id: true,
+            case_id: true,
+            proposed_date: true,
+            proposed_pharmacist_id: true,
+            reschedule_source_schedule_id: true,
+          },
+        });
+        const duplicateOpenProposal = collidingOpenProposals.find(
+          (proposal) => !isProposalInSupersededScope(proposal, excludeSupersededProposalScope),
+        );
+        if (duplicateOpenProposal) {
+          return { error: 'duplicate_open_proposal' as const };
+        }
+
+        const billingGuardRowsByPharmacist = await Promise.all(
+          Array.from(new Set(validDrafts.map((draft) => draft.proposed_pharmacist_id))).map(
+            (pharmacistId) =>
+              loadVisitScheduleBillingGuardRows({
+                db: tx,
+                orgId: ctx.orgId,
+                patientId: accessibleCase.patient_id,
+                pharmacistId,
+                dates: validDrafts.map((draft) => draft.proposed_date),
+              }),
+          ),
+        );
+        const cadenceScheduleRows = dedupeBillingScheduleRows(
+          billingGuardRowsByPharmacist.flatMap((rows) => rows.cadenceScheduleRows),
+        );
+        const baseCadenceProposalRows = dedupeBillingProposalRows(
+          billingGuardRowsByPharmacist.flatMap((rows) => rows.cadenceProposalRows),
+        ).filter((row) => !isProposalInSupersededScope(row, excludeSupersededProposalScope));
+        const provisionalProposalRows: BillingCadenceProposalRow[] = [];
+        const transactionBlockingMessages = new Set<string>();
+        for (const [index, draft] of validDrafts.entries()) {
+          const validation = await validateProposalBillingExclusions({
+            db: tx,
+            orgId: ctx.orgId,
+            caseId: parsed.data.case_id,
+            visitType: resolvedVisitType,
+            targetDate: draft.proposed_date,
+            pharmacistId: draft.proposed_pharmacist_id,
+            prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
+            specialCapEligible: parsed.data.special_cap_eligible,
+            cadenceScheduleRows,
+            cadenceProposalRows: [...baseCadenceProposalRows, ...provisionalProposalRows],
+          });
+          for (const message of validation.blockingMessages) {
+            transactionBlockingMessages.add(message);
+          }
+          if (transactionBlockingMessages.size > 0) {
+            return {
+              error: 'billing_cap_exceeded' as const,
+              message: Array.from(transactionBlockingMessages).join(' / '),
+            };
+          }
+          provisionalProposalRows.push({
+            id: `pending:${index}:${draft.proposed_pharmacist_id}:${formatUtcDateKey(draft.proposed_date)}`,
+            case_id: parsed.data.case_id,
+            patient_id: accessibleCase.patient_id,
+            proposed_date: draft.proposed_date,
+            proposed_pharmacist_id: draft.proposed_pharmacist_id,
+            visit_type: resolvedVisitType,
+            proposal_batch_id: null,
+            finalized_schedule_id: null,
+            reschedule_source_schedule_id:
+              resolvedRescheduleSourceScheduleId ?? draft.reschedule_source_schedule_id ?? null,
+          });
+        }
+
+        if (parsed.data.idempotency_key && requestFingerprint && idempotencyFingerprints) {
+          const batch = await tx.visitScheduleProposalBatch.create({
+            data: {
+              org_id: ctx.orgId,
+              case_id: parsed.data.case_id,
+              idempotency_key: parsed.data.idempotency_key,
+              request_fingerprint: requestFingerprint,
+              created_by: ctx.userId,
+            },
+          });
+          proposalBatchId = batch.id;
         }
 
         await tx.visitScheduleProposal.updateMany({
@@ -1194,18 +1351,59 @@ export const POST = withAuthContext(
         }
 
         return { proposals: created, replayed: false };
-      },
-    ).catch((cause: unknown) => {
+      });
+    } catch (cause: unknown) {
       if (cause instanceof VisitProposalCreateRetryLimitError) {
-        return null;
+        proposalResult = null;
+      } else if (
+        isProposalBatchIdempotencyRace(cause) &&
+        parsed.data.idempotency_key &&
+        requestFingerprints
+      ) {
+        const racedBatch = await prisma.visitScheduleProposalBatch.findUnique({
+          where: {
+            org_id_idempotency_key: {
+              org_id: ctx.orgId,
+              idempotency_key: parsed.data.idempotency_key,
+            },
+          },
+          include: {
+            proposals: {
+              orderBy: { created_at: 'asc' },
+            },
+          },
+        });
+        if (!racedBatch) {
+          proposalResult = null;
+        } else if (
+          !matchesProposalRequestFingerprint(racedBatch.request_fingerprint, requestFingerprints)
+        ) {
+          proposalResult = { error: 'idempotency_conflict' as const };
+        } else {
+          proposalResult = { proposals: racedBatch.proposals, replayed: true };
+        }
+      } else {
+        throw cause;
       }
-      throw cause;
-    });
+    }
 
     if (!proposalResult) {
       return conflict('訪問候補の生成が同時に更新されました。再読み込みしてください');
     }
     if ('error' in proposalResult) {
+      if (proposalResult.error === 'billing_cap_exceeded') {
+        return validationError(proposalResult.message);
+      }
+      if (proposalResult.error === 'duplicate_active_schedule') {
+        return conflict(
+          '同一ケース・同一日付の訪問予定が既に存在します。既存予定を確認してください',
+        );
+      }
+      if (proposalResult.error === 'duplicate_open_proposal') {
+        return conflict(
+          '同一ケース・同一日付・同一担当薬剤師の未確定候補が既に存在します。既存候補を編集してください',
+        );
+      }
       return conflict('idempotency_key が別の訪問候補生成リクエストで使用されています');
     }
 
@@ -1463,6 +1661,7 @@ export const PUT = withAuthContext(
 
     const targetStatus = input.submit_for_contact ? 'patient_contact_pending' : 'proposed';
     const resolvedSiteId = vehicleResource?.site_id ?? pharmacistMembership?.site_id ?? null;
+    const proposedDate = new Date(input.proposed_date);
 
     const existing = input.id
       ? await prisma.visitScheduleProposal.findFirst({
@@ -1499,7 +1698,38 @@ export const PUT = withAuthContext(
       );
     }
 
-    const proposal = await withOrgContext(ctx.orgId, async (tx) => {
+    const proposal = await withSerializableProposalCreateTransaction(ctx.orgId, async (tx) => {
+      const [duplicateOpenProposal] = await tx.visitScheduleProposal.findMany({
+        where: {
+          org_id: ctx.orgId,
+          ...(existing ? { id: { not: existing.id } } : {}),
+          case_id: input.case_id,
+          proposed_date: proposedDate,
+          proposed_pharmacist_id: input.proposed_pharmacist_id,
+          finalized_schedule_id: null,
+          proposal_status: { in: OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES },
+        },
+        select: { id: true },
+        take: 1,
+      });
+      if (duplicateOpenProposal) {
+        return { error: 'duplicate_open_proposal' as const };
+      }
+
+      const duplicateActiveSchedule = await tx.visitSchedule.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          case_id: input.case_id,
+          visit_type: input.visit_type,
+          scheduled_date: proposedDate,
+          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        },
+        select: { id: true },
+      });
+      if (duplicateActiveSchedule) {
+        return { error: 'duplicate_active_schedule' as const };
+      }
+
       if (existing) {
         const claim = await tx.visitScheduleProposal.updateMany({
           where: {
@@ -1515,7 +1745,7 @@ export const PUT = withAuthContext(
             visit_type: input.visit_type,
             priority: input.priority,
             proposal_status: targetStatus,
-            proposed_date: new Date(input.proposed_date),
+            proposed_date: proposedDate,
             time_window_start: toProposalTimeDate(input.time_window_start),
             time_window_end: toProposalTimeDate(input.time_window_end),
             proposed_pharmacist_id: input.proposed_pharmacist_id,
@@ -1561,7 +1791,7 @@ export const PUT = withAuthContext(
           priority: input.priority,
           proposal_status: targetStatus,
           patient_contact_status: 'pending',
-          proposed_date: new Date(input.proposed_date),
+          proposed_date: proposedDate,
           time_window_start: toProposalTimeDate(input.time_window_start),
           time_window_end: toProposalTimeDate(input.time_window_end),
           proposed_pharmacist_id: input.proposed_pharmacist_id,
@@ -1583,9 +1813,27 @@ export const PUT = withAuthContext(
       });
 
       return created;
+    }).catch((cause: unknown) => {
+      if (cause instanceof VisitProposalCreateRetryLimitError) {
+        return null;
+      }
+      throw cause;
     });
 
+    if (!proposal) {
+      return conflict('訪問候補の保存が同時に更新されました。再読み込みしてください');
+    }
     if ('error' in proposal) {
+      if (proposal.error === 'duplicate_open_proposal') {
+        return conflict(
+          '同一ケース・同一日付・同一担当薬剤師の未確定候補が既に存在します。既存候補を編集してください',
+        );
+      }
+      if (proposal.error === 'duplicate_active_schedule') {
+        return conflict(
+          '同一ケース・同一日付の訪問予定が既に存在します。既存予定を確認してください',
+        );
+      }
       return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
     }
 

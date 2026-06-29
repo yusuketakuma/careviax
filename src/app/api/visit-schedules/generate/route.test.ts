@@ -490,7 +490,7 @@ describe('/api/visit-schedules/generate POST', () => {
         route_order: 2,
       },
     ]);
-    visitScheduleProposalFindManyMock.mockResolvedValue([
+    visitScheduleProposalFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
       {
         proposed_date: new Date('2026-04-07T00:00:00.000Z'),
         route_order: 4,
@@ -536,7 +536,7 @@ describe('/api/visit-schedules/generate POST', () => {
     );
   });
 
-  it('returns conflict instead of creating duplicate schedules for the same case, cycle, type, and date', async () => {
+  it('returns conflict instead of creating duplicate schedules for the same case, type, and date across cycles', async () => {
     visitScheduleCountMock.mockResolvedValueOnce(1);
 
     const response = await POST(
@@ -560,13 +560,54 @@ describe('/api/visit-schedules/generate POST', () => {
       where: {
         org_id: 'org_1',
         case_id: 'case_1',
-        cycle_id: 'cycle_1',
         visit_type: 'regular',
         scheduled_date: { in: [new Date('2026-04-07T00:00:00.000Z')] },
         schedule_status: { notIn: ['cancelled', 'rescheduled'] },
       },
     });
+    expect(visitScheduleCountMock.mock.calls[0]?.[0].where).not.toHaveProperty('cycle_id');
+    expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict instead of creating schedules over an open proposal for the same case, type, and date', async () => {
+    visitScheduleProposalFindManyMock.mockResolvedValueOnce([{ id: 'proposal_existing' }]);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一ケース・同一日付の未確定候補が既に存在します。既存候補を確認してください',
+    });
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        proposed_date: { in: [new Date('2026-04-07T00:00:00.000Z')] },
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+      },
+      select: { id: true },
+      take: 1,
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -672,12 +713,12 @@ describe('/api/visit-schedules/generate POST', () => {
       where: {
         org_id: 'org_1',
         case_id: 'case_1',
-        cycle_id: 'cycle_1',
         visit_type: 'regular',
         scheduled_date: { in: [new Date('2026-04-07T00:00:00.000Z')] },
         schedule_status: { notIn: ['cancelled', 'rescheduled'] },
       },
     });
+    expect(visitScheduleCountMock.mock.calls[0]?.[0].where).not.toHaveProperty('cycle_id');
     expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -932,6 +973,140 @@ describe('/api/visit-schedules/generate POST', () => {
         recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
         start_date: '2026-04-07',
         end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('月上限4回を超過します'),
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects direct generation when open proposals plus active schedules fill the monthly billing cap', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        patient: {
+          scheduling_preference: {
+            preferred_weekdays: [2],
+            preferred_time_from: null,
+            preferred_time_to: null,
+            facility_time_from: null,
+            facility_time_to: null,
+          },
+        },
+      }),
+    );
+    mockPatientInsuranceTypes(['medical']);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'existing_1',
+        scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+        pharmacist_id: 'pharmacist_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      },
+      {
+        id: 'existing_2',
+        scheduled_date: new Date('2026-04-08T00:00:00.000Z'),
+        pharmacist_id: 'pharmacist_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      },
+      {
+        id: 'existing_3',
+        scheduled_date: new Date('2026-04-15T00:00:00.000Z'),
+        pharmacist_id: 'pharmacist_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      },
+    ]);
+    visitScheduleProposalFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: 'proposal_same_month',
+        case_id: 'case_1',
+        proposal_batch_id: null,
+        proposed_date: new Date('2026-04-22T00:00:00.000Z'),
+        proposed_pharmacist_id: 'pharmacist_2',
+        visit_type: 'regular',
+        finalized_schedule_id: null,
+        reschedule_source_schedule_id: null,
+        case_: { patient_id: 'patient_1' },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-28',
+        end_date: '2026-04-28',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('月上限4回を超過します'),
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects direct generation when generated rows cumulatively exceed the monthly billing cap', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        patient: {
+          scheduling_preference: {
+            preferred_weekdays: [2],
+            preferred_time_from: null,
+            preferred_time_to: null,
+            facility_time_from: null,
+            facility_time_to: null,
+          },
+        },
+      }),
+    );
+    mockPatientInsuranceTypes(['medical']);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'existing_1',
+        scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+        pharmacist_id: 'pharmacist_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      },
+      {
+        id: 'existing_2',
+        scheduled_date: new Date('2026-04-08T00:00:00.000Z'),
+        pharmacist_id: 'pharmacist_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      },
+      {
+        id: 'existing_3',
+        scheduled_date: new Date('2026-04-15T00:00:00.000Z'),
+        pharmacist_id: 'pharmacist_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-14',
       }),
     );
 

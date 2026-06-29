@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   authMock,
@@ -7,6 +8,7 @@ const {
   pharmacistShiftFindFirstMock,
   visitScheduleFindManyMock,
   visitScheduleFindFirstMock,
+  visitScheduleProposalFindFirstMock,
   visitScheduleRouteFindManyMock,
   visitScheduleProposalRouteFindManyMock,
   visitScheduleCountMock,
@@ -27,6 +29,7 @@ const {
   pharmacistShiftFindFirstMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
+  visitScheduleProposalFindFirstMock: vi.fn(),
   visitScheduleRouteFindManyMock: vi.fn(),
   visitScheduleProposalRouteFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
@@ -134,6 +137,13 @@ function createMalformedJsonPostRequest() {
   });
 }
 
+function buildSerializableConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
+    code: 'P2034',
+    clientVersion: 'test',
+  });
+}
+
 describe('/api/visit-schedules', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -184,6 +194,7 @@ describe('/api/visit-schedules', () => {
       available_to: new Date('1970-01-01T17:30:00.000Z'),
     });
     visitScheduleFindFirstMock.mockResolvedValue(null);
+    visitScheduleProposalFindFirstMock.mockResolvedValue(null);
     visitScheduleRouteFindManyMock.mockResolvedValue([]);
     visitScheduleProposalRouteFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
@@ -226,6 +237,7 @@ describe('/api/visit-schedules', () => {
           create: visitScheduleCreateMock,
         },
         visitScheduleProposal: {
+          findFirst: visitScheduleProposalFindFirstMock,
           findMany: visitScheduleProposalRouteFindManyMock,
         },
         patientInsurance: {
@@ -437,6 +449,225 @@ describe('/api/visit-schedules', () => {
       code: 'VALIDATION_ERROR',
       message: expect.stringContaining('月上限4回を超過します'),
     });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual schedule creation when open proposals plus active schedules fill the monthly billing cap', async () => {
+    patientInsuranceFindFirstMock.mockImplementation(async ({ where }) =>
+      where.insurance_type === 'medical' ? { number: 'medical_1' } : null,
+    );
+    visitScheduleCountMock.mockResolvedValueOnce(3).mockResolvedValue(0);
+    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'proposal_same_month',
+        case_id: 'case_1',
+        proposal_batch_id: null,
+        proposed_date: new Date('2026-03-24T00:00:00.000Z'),
+        proposed_pharmacist_id: 'user_3',
+        visit_type: 'regular',
+        finalized_schedule_id: null,
+        reschedule_source_schedule_id: null,
+        case_: { patient_id: 'patient_1' },
+      },
+    ]);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('月上限4回を超過します'),
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate manual schedule creation for the same active case date and visit type', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_existing' });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一ケース・同一日付の訪問予定が既に存在します。再読み込みしてください',
+    });
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      case_id: 'case_1',
+      cycle_id: 'cycle_1',
+      pharmacist_id: 'user_2',
+      site_id: 'site_1',
+    });
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: new Date('2026-03-31T00:00:00.000Z'),
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+      select: { id: true },
+    });
+    expect(visitScheduleProposalFindFirstMock).not.toHaveBeenCalled();
+    expect(visitScheduleRouteFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalRouteFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual schedule creation when an open proposal already occupies the same case date and type', async () => {
+    visitScheduleProposalFindFirstMock.mockResolvedValueOnce({ id: 'proposal_existing' });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一ケース・同一日付の未確定候補が既に存在します。既存候補を確認してください',
+    });
+    expect(visitScheduleProposalFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        proposed_date: new Date('2026-03-31T00:00:00.000Z'),
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+      },
+      select: { id: true },
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate manual schedule creation even when the request has a different cycle', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_existing' });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        cycle_id: 'cycle_2',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一ケース・同一日付の訪問予定が既に存在します。再読み込みしてください',
+    });
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      case_id: 'case_1',
+      cycle_id: 'cycle_2',
+      pharmacist_id: 'user_2',
+      site_id: 'site_1',
+    });
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: new Date('2026-03-31T00:00:00.000Z'),
+        schedule_status: {
+          notIn: ['cancelled', 'rescheduled'],
+        },
+      },
+      select: { id: true },
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('retries manual schedule creation conflicts and rejects a retry-time duplicate schedule', async () => {
+    withOrgContextMock
+      .mockRejectedValueOnce(buildSerializableConflictError())
+      .mockImplementationOnce(async (_orgId, callback) =>
+        callback({
+          visitSchedule: {
+            findFirst: visitScheduleFindFirstMock,
+            findMany: visitScheduleRouteFindManyMock,
+            count: visitScheduleCountMock,
+            create: visitScheduleCreateMock,
+          },
+          visitScheduleProposal: {
+            findFirst: visitScheduleProposalFindFirstMock,
+            findMany: visitScheduleProposalRouteFindManyMock,
+          },
+          patientInsurance: {
+            findFirst: patientInsuranceFindFirstMock,
+          },
+          user: {
+            findFirst: userFindFirstMock,
+          },
+          consentRecord: {
+            findFirst: consentRecordFindFirstMock,
+          },
+          managementPlan: {
+            findFirst: managementPlanFindFirstMock,
+          },
+        }),
+      );
+    visitScheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_after_retry' });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedules', {
+        case_id: 'case_1',
+        site_id: 'site_1',
+        visit_type: 'regular',
+        scheduled_date: '2026-03-31',
+        pharmacist_id: 'user_2',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一ケース・同一日付の訪問予定が既に存在します。再読み込みしてください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });

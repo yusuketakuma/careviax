@@ -18,6 +18,7 @@ const {
   patientInsuranceFindFirstMock,
   billingCandidateFindManyMock,
   visitScheduleFindManyMock,
+  visitScheduleFindFirstMock,
   visitScheduleCountMock,
   prescriptionIntakeFindFirstMock,
   visitVehicleResourceFindFirstMock,
@@ -46,6 +47,7 @@ const {
   patientInsuranceFindFirstMock: vi.fn(),
   billingCandidateFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
+  visitScheduleFindFirstMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
@@ -92,6 +94,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
+      findFirst: visitScheduleFindFirstMock,
       count: visitScheduleCountMock,
     },
     prescriptionIntake: {
@@ -172,6 +175,14 @@ function buildSerializableConflictError() {
   return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
     code: 'P2034',
     clientVersion: 'test',
+  });
+}
+
+function buildProposalBatchIdempotencyRaceError() {
+  return new Prisma.PrismaClientKnownRequestError('Unique idempotency key race', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: { target: ['org_id', 'idempotency_key'] },
   });
 }
 
@@ -314,6 +325,7 @@ describe('/api/visit-schedule-proposals', () => {
     patientInsuranceFindFirstMock.mockResolvedValue(null);
     billingCandidateFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
+    visitScheduleFindFirstMock.mockResolvedValue(null);
     visitScheduleProposalRouteFindManyMock.mockResolvedValue([]);
     visitScheduleCountMock.mockResolvedValue(0);
     prescriptionIntakeFindFirstMock.mockResolvedValue(null);
@@ -372,7 +384,27 @@ describe('/api/visit-schedule-proposals', () => {
           create: visitScheduleProposalBatchCreateMock,
         },
         visitSchedule: {
+          findFirst: visitScheduleFindFirstMock,
           findMany: visitScheduleFindManyMock,
+          count: visitScheduleCountMock,
+        },
+        careCase: {
+          findFirst: careCaseFindFirstMock,
+        },
+        patientInsurance: {
+          findFirst: patientInsuranceFindFirstMock,
+        },
+        billingCandidate: {
+          findMany: billingCandidateFindManyMock,
+        },
+        user: {
+          findFirst: userFindFirstMock,
+        },
+        consentRecord: {
+          findFirst: findActiveVisitConsentMock,
+        },
+        managementPlan: {
+          findFirst: findCurrentManagementPlanMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -767,7 +799,7 @@ describe('/api/visit-schedule-proposals', () => {
           id: 'case_1',
           org_id: 'org_1',
         }),
-        select: { id: true },
+        select: { id: true, patient_id: true },
       }),
     );
     // 組織横断アクセスロール(pharmacist)はケースアクセススコープが撤廃され、
@@ -1083,21 +1115,102 @@ describe('/api/visit-schedule-proposals', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects an idempotency key reused between default and special-cap proposal requests', async () => {
+    visitScheduleProposalBatchFindUniqueMock.mockResolvedValueOnce({
+      id: 'proposal_batch_1',
+      org_id: 'org_1',
+      case_id: 'case_1',
+      idempotency_key: 'proposal-special-key-1',
+      request_fingerprint: buildExpectedProposalRequestFingerprint(),
+      proposals: [],
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        special_cap_eligible: true,
+        idempotency_key: 'proposal-special-key-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'idempotency_key が別の訪問候補生成リクエストで使用されています',
+    });
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalBatchCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('replays a raced idempotency batch after the create transaction aborts on P2002', async () => {
+    visitScheduleProposalBatchFindUniqueMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'proposal_batch_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        idempotency_key: 'proposal-key-1',
+        request_fingerprint: buildExpectedProposalRequestFingerprint(),
+        proposals: [
+          {
+            id: 'proposal_existing_after_race',
+            org_id: 'org_1',
+            case_id: 'case_1',
+            created_at: new Date('2026-04-01T00:00:00.000Z'),
+          },
+        ],
+      });
+    visitScheduleProposalBatchCreateMock.mockRejectedValueOnce(
+      buildProposalBatchIdempotencyRaceError(),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        idempotency_key: 'proposal-key-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      replayed: true,
+      data: [expect.objectContaining({ id: 'proposal_existing_after_race' })],
+    });
+    expect(visitScheduleProposalBatchFindUniqueMock).toHaveBeenCalledTimes(3);
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('reallocates created proposal route orders after active schedules and remaining open proposals', async () => {
-    visitScheduleFindManyMock.mockResolvedValueOnce([
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
       {
         scheduled_date: new Date('2026-04-03T00:00:00.000Z'),
         pharmacist_id: 'user_2',
         route_order: 2,
       },
     ]);
-    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([
-      {
-        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
-        proposed_pharmacist_id: 'user_2',
-        route_order: 4,
-      },
-    ]);
+    visitScheduleProposalRouteFindManyMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          proposed_pharmacist_id: 'user_2',
+          route_order: 4,
+        },
+      ]);
     visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
       Promise.resolve({ id: 'proposal_2', ...data }),
     );
@@ -1236,21 +1349,44 @@ describe('/api/visit-schedule-proposals', () => {
             create: visitScheduleProposalBatchCreateMock,
           },
           visitSchedule: {
+            findFirst: visitScheduleFindFirstMock,
             findMany: visitScheduleFindManyMock,
+            count: visitScheduleCountMock,
+          },
+          careCase: {
+            findFirst: careCaseFindFirstMock,
+          },
+          patientInsurance: {
+            findFirst: patientInsuranceFindFirstMock,
+          },
+          billingCandidate: {
+            findMany: billingCandidateFindManyMock,
+          },
+          user: {
+            findFirst: userFindFirstMock,
+          },
+          consentRecord: {
+            findFirst: findActiveVisitConsentMock,
+          },
+          managementPlan: {
+            findFirst: findCurrentManagementPlanMock,
           },
           auditLog: {
             create: auditLogCreateMock,
           },
         }),
       );
-    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([
-      {
-        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
-        proposed_pharmacist_id: 'user_2',
-        route_order: 7,
-        reschedule_source_schedule_id: null,
-      },
-    ]);
+    visitScheduleProposalRouteFindManyMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          proposed_pharmacist_id: 'user_2',
+          route_order: 7,
+          reschedule_source_schedule_id: null,
+        },
+      ]);
     visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
       Promise.resolve({ id: 'proposal_retry', ...data }),
     );
@@ -1314,6 +1450,226 @@ describe('/api/visit-schedule-proposals', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects generated proposals that collide with an active schedule before batch or supersede side effects', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_existing' });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一ケース・同一日付の訪問予定が既に存在します。既存予定を確認してください',
+    });
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: {
+          in: [new Date('2026-04-03T00:00:00.000Z')],
+        },
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+      },
+      select: { id: true },
+    });
+    expect(visitScheduleProposalBatchCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects generated proposals that collide with an open proposal outside the supersede scope before write side effects', async () => {
+    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'proposal_other_scope',
+        case_id: 'case_1',
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        proposed_pharmacist_id: 'user_2',
+        reschedule_source_schedule_id: 'schedule_other',
+      },
+    ]);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message:
+        '同一ケース・同一日付・同一担当薬剤師の未確定候補が既に存在します。既存候補を編集してください',
+    });
+    expect(visitScheduleProposalRouteFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        finalized_schedule_id: null,
+        proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+        OR: [
+          {
+            proposed_pharmacist_id: 'user_2',
+            proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          },
+        ],
+      },
+      select: {
+        id: true,
+        case_id: true,
+        proposed_date: true,
+        proposed_pharmacist_id: true,
+        reschedule_source_schedule_id: true,
+      },
+    });
+    expect(visitScheduleProposalBatchCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate generated proposal route cells before write side effects', async () => {
+    generateVisitScheduleProposalDraftsMock.mockResolvedValueOnce({
+      drafts: [
+        {
+          org_id: 'org_1',
+          case_id: 'case_1',
+          proposed_pharmacist_id: 'user_2',
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          site_id: 'site_1',
+          route_order: 1,
+        },
+        {
+          org_id: 'org_1',
+          case_id: 'case_1',
+          proposed_pharmacist_id: 'user_2',
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          site_id: 'site_1',
+          route_order: 2,
+        },
+      ],
+      diagnostics: {
+        accepted: [],
+        rejected: [],
+      },
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 2,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message:
+        '同一ケース・同一日付・同一担当薬剤師の未確定候補が既に存在します。既存候補を編集してください',
+    });
+    expect(visitScheduleProposalBatchCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('retries draft drawer proposal conflicts and rejects a retry-time duplicate open proposal', async () => {
+    withOrgContextMock
+      .mockRejectedValueOnce(buildSerializableConflictError())
+      .mockImplementationOnce(async (_orgId, callback) =>
+        callback({
+          visitScheduleProposal: {
+            findFirst: visitScheduleProposalTxFindFirstMock,
+            findMany: visitScheduleProposalRouteFindManyMock,
+            updateMany: visitScheduleProposalUpdateManyMock,
+            create: visitScheduleProposalCreateMock,
+          },
+          visitSchedule: {
+            findFirst: visitScheduleFindFirstMock,
+            findMany: visitScheduleFindManyMock,
+            count: visitScheduleCountMock,
+          },
+        }),
+      );
+    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([{ id: 'proposal_after_retry' }]);
+
+    const response = (await PUT(
+      createPutRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: false,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message:
+        '同一ケース・同一日付・同一担当薬剤師の未確定候補が既に存在します。既存候補を編集してください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects draft drawer proposals that collide with an active schedule for the same case date and type', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce({ id: 'schedule_existing' });
+
+    const response = (await PUT(
+      createPutRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一ケース・同一日付の訪問予定が既に存在します。既存予定を確認してください',
+    });
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        scheduled_date: new Date('2026-04-03T00:00:00.000Z'),
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+      },
+      select: { id: true },
+    });
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects proposal generation when the selected vehicle belongs to another draft site', async () => {
     visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
       id: 'vehicle_2',
@@ -1335,6 +1691,7 @@ describe('/api/visit-schedule-proposals', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '選択した車両リソースは訪問候補の拠点では利用できません',
     });
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
@@ -1691,6 +2048,51 @@ describe('/api/visit-schedule-proposals', () => {
     );
   });
 
+  it('rejects creating a duplicate open draft drawer proposal for the same case date and pharmacist', async () => {
+    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([{ id: 'proposal_existing' }]);
+
+    const response = (await PUT(
+      createPutRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        time_window_start: '09:00',
+        time_window_end: '10:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: false,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message:
+        '同一ケース・同一日付・同一担当薬剤師の未確定候補が既に存在します。既存候補を編集してください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(visitScheduleProposalRouteFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        proposed_pharmacist_id: 'user_2',
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+      },
+      select: { id: true },
+      take: 1,
+    });
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('records only changed fields when updating a draft drawer proposal', async () => {
     visitScheduleProposalFindFirstMock.mockResolvedValueOnce({
       id: 'proposal_1',
@@ -1767,6 +2169,66 @@ describe('/api/visit-schedule-proposals', () => {
     expect(auditChanges).not.toHaveProperty('caseIdTo');
     expect(auditChanges).not.toHaveProperty('pharmacistIdFrom');
     expect(auditChanges).not.toHaveProperty('pharmacistIdTo');
+  });
+
+  it('rejects moving an editable draft drawer proposal onto another open proposal cell', async () => {
+    visitScheduleProposalFindFirstMock.mockResolvedValueOnce({
+      id: 'proposal_1',
+      proposal_status: 'proposed',
+      patient_contact_status: 'pending',
+      finalized_schedule_id: null,
+      case_id: 'case_1',
+      site_id: null,
+      visit_type: 'regular',
+      priority: 'normal',
+      proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+      time_window_start: new Date(Date.UTC(1970, 0, 1, 9, 0)),
+      time_window_end: new Date(Date.UTC(1970, 0, 1, 10, 0)),
+      proposed_pharmacist_id: 'user_2',
+      vehicle_resource_id: null,
+    });
+    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([{ id: 'proposal_other' }]);
+
+    const response = (await PUT(
+      createPutRequest({
+        id: 'proposal_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-04',
+        time_window_start: '10:00',
+        time_window_end: '11:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message:
+        '同一ケース・同一日付・同一担当薬剤師の未確定候補が既に存在します。既存候補を編集してください',
+    });
+    expect(visitScheduleProposalRouteFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { not: 'proposal_1' },
+        case_id: 'case_1',
+        proposed_date: new Date('2026-04-04T00:00:00.000Z'),
+        proposed_pharmacist_id: 'user_2',
+        finalized_schedule_id: null,
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+      },
+      select: { id: true },
+      take: 1,
+    });
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects editing a proposal that has already been confirmed by patient contact', async () => {
@@ -2169,5 +2631,446 @@ describe('/api/visit-schedule-proposals', () => {
         }),
       ]),
     });
+  });
+
+  it('rejects proposal generation when transaction-time billing caps are exceeded before creating drafts', async () => {
+    patientInsuranceFindFirstMock.mockImplementation(async (args: unknown) => {
+      const type = (args as { where?: { insurance_type?: string } }).where?.insurance_type;
+      if (type !== 'medical') return null;
+      return {
+        id: 'insurance_1',
+        number: '12345678',
+        insurance_type: 'medical',
+        application_status: 'confirmed',
+        public_program_code: null,
+        previous_care_level: null,
+        provisional_care_level: null,
+        confirmed_care_level: null,
+        is_active: true,
+      };
+    });
+    visitScheduleCountMock
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(4)
+      .mockResolvedValue(0);
+    visitScheduleFindManyMock.mockResolvedValue(
+      ['2026-04-01', '2026-04-08', '2026-04-15', '2026-04-22'].map((date, index) => ({
+        id: `schedule_${index}`,
+        scheduled_date: new Date(`${date}T00:00:00.000Z`),
+        pharmacist_id: 'user_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      })),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        start_date: '2026-04-01',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('月上限4回を超過します'),
+    });
+    expect(visitScheduleProposalBatchCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects proposal generation when accepted drafts cumulatively exceed monthly billing caps', async () => {
+    generateVisitScheduleProposalDraftsMock.mockReset();
+    visitScheduleCountMock.mockReset();
+    visitScheduleFindManyMock.mockReset();
+    visitScheduleProposalFindManyMock.mockReset();
+    visitScheduleProposalRouteFindManyMock.mockReset();
+    patientInsuranceFindFirstMock.mockImplementation(async (args: unknown) => {
+      const type = (args as { where?: { insurance_type?: string } }).where?.insurance_type;
+      if (type !== 'medical') return null;
+      return {
+        id: 'insurance_1',
+        number: '12345678',
+        insurance_type: 'medical',
+        application_status: 'confirmed',
+        public_program_code: null,
+        previous_care_level: null,
+        provisional_care_level: null,
+        confirmed_care_level: null,
+        is_active: true,
+      };
+    });
+    generateVisitScheduleProposalDraftsMock.mockResolvedValueOnce({
+      drafts: [
+        {
+          org_id: 'org_1',
+          case_id: 'case_1',
+          proposed_pharmacist_id: 'user_2',
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          site_id: 'site_1',
+          route_order: 1,
+        },
+        {
+          org_id: 'org_1',
+          case_id: 'case_1',
+          proposed_pharmacist_id: 'user_2',
+          proposed_date: new Date('2026-04-10T00:00:00.000Z'),
+          site_id: 'site_1',
+          route_order: 2,
+        },
+      ],
+      diagnostics: {
+        accepted: [],
+        rejected: [],
+      },
+    });
+    visitScheduleCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: Record<string, unknown> }).where;
+      return where && 'case_' in where ? 3 : 0;
+    });
+    visitScheduleFindManyMock.mockResolvedValue(
+      ['2026-04-01', '2026-04-08', '2026-04-15'].map((date, index) => ({
+        id: `schedule_${index}`,
+        scheduled_date: new Date(`${date}T00:00:00.000Z`),
+        pharmacist_id: 'user_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      })),
+    );
+    visitScheduleProposalFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalRouteFindManyMock.mockResolvedValue([]);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 2,
+        start_date: '2026-04-01',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('月上限4回を超過します'),
+    });
+    expect(visitScheduleProposalBatchCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('allows special-cap proposal generation at the default monthly cap boundary', async () => {
+    generateVisitScheduleProposalDraftsMock.mockReset();
+    visitScheduleCountMock.mockReset();
+    visitScheduleFindManyMock.mockReset();
+    visitScheduleProposalFindManyMock.mockReset();
+    visitScheduleProposalRouteFindManyMock.mockReset();
+    generateVisitScheduleProposalDraftsMock.mockResolvedValueOnce({
+      drafts: [
+        {
+          org_id: 'org_1',
+          case_id: 'case_1',
+          proposed_pharmacist_id: 'user_2',
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          site_id: 'site_1',
+          route_order: 1,
+        },
+      ],
+      diagnostics: {
+        accepted: [],
+        rejected: [],
+      },
+    });
+    patientInsuranceFindFirstMock.mockImplementation(async (args: unknown) => {
+      const type = (args as { where?: { insurance_type?: string } }).where?.insurance_type;
+      if (type !== 'medical') return null;
+      return {
+        id: 'insurance_1',
+        number: '12345678',
+        insurance_type: 'medical',
+        application_status: 'confirmed',
+        public_program_code: null,
+        previous_care_level: null,
+        provisional_care_level: null,
+        confirmed_care_level: null,
+        is_active: true,
+      };
+    });
+    visitScheduleCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: Record<string, unknown> }).where;
+      return where && 'case_' in where ? 4 : 0;
+    });
+    visitScheduleFindManyMock
+      .mockResolvedValueOnce(
+        ['2026-04-01', '2026-04-08', '2026-04-15', '2026-04-22'].map((date, index) => ({
+          id: `schedule_${index}`,
+          scheduled_date: new Date(`${date}T00:00:00.000Z`),
+          pharmacist_id: 'user_2',
+          visit_type: 'regular',
+          case_: { patient_id: 'patient_1' },
+        })),
+      )
+      .mockResolvedValueOnce([]);
+    visitScheduleProposalFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalRouteFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
+      Promise.resolve({ id: 'proposal_special_cap', ...data }),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        special_cap_eligible: true,
+        start_date: '2026-04-01',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(visitScheduleProposalBatchCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotency_key: 'proposal-test-key',
+        request_fingerprint: buildExpectedProposalRequestFingerprint({
+          start_date: '2026-04-01',
+          special_cap_eligible: true,
+        }),
+      }),
+    });
+    expect(visitScheduleProposalBatchCreateMock).toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).toHaveBeenCalled();
+  });
+
+  it('rejects special-cap proposal generation at the special monthly cap before write side effects', async () => {
+    generateVisitScheduleProposalDraftsMock.mockReset();
+    visitScheduleCountMock.mockReset();
+    visitScheduleFindManyMock.mockReset();
+    visitScheduleProposalFindManyMock.mockReset();
+    visitScheduleProposalRouteFindManyMock.mockReset();
+    generateVisitScheduleProposalDraftsMock.mockResolvedValueOnce({
+      drafts: [
+        {
+          org_id: 'org_1',
+          case_id: 'case_1',
+          proposed_pharmacist_id: 'user_2',
+          proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+          site_id: 'site_1',
+          route_order: 1,
+        },
+      ],
+      diagnostics: {
+        accepted: [],
+        rejected: [],
+      },
+    });
+    patientInsuranceFindFirstMock.mockImplementation(async (args: unknown) => {
+      const type = (args as { where?: { insurance_type?: string } }).where?.insurance_type;
+      if (type !== 'medical') return null;
+      return {
+        id: 'insurance_1',
+        number: '12345678',
+        insurance_type: 'medical',
+        application_status: 'confirmed',
+        public_program_code: null,
+        previous_care_level: null,
+        provisional_care_level: null,
+        confirmed_care_level: null,
+        is_active: true,
+      };
+    });
+    visitScheduleCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: Record<string, unknown> }).where;
+      return where && 'case_' in where ? 8 : 0;
+    });
+    visitScheduleFindManyMock.mockResolvedValue(
+      Array.from({ length: 8 }, (_, index) => ({
+        id: `schedule_${index}`,
+        scheduled_date: new Date(`2026-04-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`),
+        pharmacist_id: 'user_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      })),
+    );
+    visitScheduleProposalFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalRouteFindManyMock.mockResolvedValue([]);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        special_cap_eligible: true,
+        start_date: '2026-04-01',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('月上限8回を超過します'),
+    });
+    expect(visitScheduleProposalBatchCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects special-cap proposal generation when transaction-time cadence rows exceed the special monthly cap', async () => {
+    generateVisitScheduleProposalDraftsMock.mockReset();
+    visitScheduleCountMock.mockReset();
+    visitScheduleFindManyMock.mockReset();
+    visitScheduleProposalFindManyMock.mockReset();
+    visitScheduleProposalRouteFindManyMock.mockReset();
+    generateVisitScheduleProposalDraftsMock.mockResolvedValueOnce({
+      drafts: [
+        {
+          org_id: 'org_1',
+          case_id: 'case_1',
+          proposed_pharmacist_id: 'user_2',
+          proposed_date: new Date('2026-04-10T00:00:00.000Z'),
+          site_id: 'site_1',
+          route_order: 1,
+        },
+      ],
+      diagnostics: {
+        accepted: [],
+        rejected: [],
+      },
+    });
+    patientInsuranceFindFirstMock.mockImplementation(async (args: unknown) => {
+      const type = (args as { where?: { insurance_type?: string } }).where?.insurance_type;
+      if (type !== 'medical') return null;
+      return {
+        id: 'insurance_1',
+        number: '12345678',
+        insurance_type: 'medical',
+        application_status: 'confirmed',
+        public_program_code: null,
+        previous_care_level: null,
+        provisional_care_level: null,
+        confirmed_care_level: null,
+        is_active: true,
+      };
+    });
+    visitScheduleCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: Record<string, unknown> }).where;
+      return where && 'case_' in where ? 7 : 0;
+    });
+    visitScheduleFindManyMock.mockResolvedValue(
+      Array.from({ length: 8 }, (_, index) => ({
+        id: `schedule_${index}`,
+        scheduled_date: new Date(`2026-04-${String(index + 1).padStart(2, '0')}T00:00:00.000Z`),
+        pharmacist_id: 'user_2',
+        visit_type: 'regular',
+        case_: { patient_id: 'patient_1' },
+      })),
+    );
+    visitScheduleProposalFindManyMock.mockResolvedValue([]);
+    visitScheduleProposalRouteFindManyMock.mockResolvedValue([]);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        special_cap_eligible: true,
+        start_date: '2026-04-01',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: expect.stringContaining('月上限8回を超過します'),
+    });
+    expect(withOrgContextMock).toHaveBeenCalled();
+    expect(visitScheduleProposalBatchCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('does not count open proposals that the same generation transaction will supersede', async () => {
+    patientInsuranceFindFirstMock.mockImplementation(async (args: unknown) => {
+      const type = (args as { where?: { insurance_type?: string } }).where?.insurance_type;
+      if (type !== 'medical') return null;
+      return {
+        id: 'insurance_1',
+        number: '12345678',
+        insurance_type: 'medical',
+        application_status: 'confirmed',
+        public_program_code: null,
+        previous_care_level: null,
+        provisional_care_level: null,
+        confirmed_care_level: null,
+        is_active: true,
+      };
+    });
+    const supersededProposalRow = {
+      id: 'proposal_superseded',
+      case_id: 'case_1',
+      proposal_batch_id: null,
+      proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+      proposed_pharmacist_id: 'user_2',
+      visit_type: 'regular',
+      finalized_schedule_id: null,
+      reschedule_source_schedule_id: null,
+      case_: { patient_id: 'patient_1' },
+    };
+    visitScheduleCountMock.mockImplementation(async (args: unknown) => {
+      const where = (args as { where?: Record<string, unknown> }).where;
+      return where && 'case_' in where ? 3 : 0;
+    });
+    visitScheduleFindManyMock
+      .mockResolvedValueOnce(
+        ['2026-04-01', '2026-04-08', '2026-04-15'].map((date, index) => ({
+          id: `schedule_${index}`,
+          scheduled_date: new Date(`${date}T00:00:00.000Z`),
+          pharmacist_id: 'user_2',
+          visit_type: 'regular',
+          case_: { patient_id: 'patient_1' },
+        })),
+      )
+      .mockResolvedValueOnce([]);
+    visitScheduleProposalFindManyMock.mockResolvedValue([supersededProposalRow]);
+    visitScheduleProposalRouteFindManyMock
+      .mockResolvedValueOnce([supersededProposalRow])
+      .mockResolvedValueOnce([supersededProposalRow])
+      .mockResolvedValueOnce([]);
+    visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
+      Promise.resolve({ id: 'proposal_replacement', ...data }),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        start_date: '2026-04-01',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        case_id: 'case_1',
+        proposal_status: { in: ['proposed', 'patient_contact_pending', 'reschedule_pending'] },
+        reschedule_source_schedule_id: null,
+      }),
+      data: { proposal_status: 'superseded' },
+    });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).toHaveBeenCalled();
   });
 });

@@ -96,7 +96,11 @@ const createVisitScheduleBaseSchema = z.object({
   notes: z.string().optional(),
 });
 
-export const createVisitScheduleSchema = createVisitScheduleBaseSchema.superRefine(
+const createVisitScheduleInputSchema = createVisitScheduleBaseSchema.extend({
+  cycle_id: z.string().min(1, 'サイクルIDは必須です').optional(),
+});
+
+export const createVisitScheduleSchema = createVisitScheduleInputSchema.superRefine(
   validateCompleteTimeWindow,
 );
 

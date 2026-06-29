@@ -12,7 +12,10 @@ import { validateOrgReferences } from '@/lib/api/org-reference';
 import { conflict, forbiddenResponse, validationError } from '@/lib/api/response';
 import { hhmmToTimeDate } from '@/lib/datetime/time-of-day';
 import { timeDateToString } from '@/lib/visits/time-of-day';
-import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
+import {
+  OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES,
+  allocateProposalRouteOrders,
+} from '@/lib/visit-schedule-proposals/route-order';
 import { enrichSchedulesWithHints } from '@/server/services/schedule-enrichment';
 import {
   evaluateVisitWorkflowGate,
@@ -253,6 +256,7 @@ export async function createSchedule(
 
   const refResult = await validateOrgReferences(orgId, {
     case_id: rest.case_id,
+    ...(rest.cycle_id ? { cycle_id: rest.cycle_id } : {}),
     pharmacist_id: rest.pharmacist_id,
     ...(effectiveSiteId ? { site_id: effectiveSiteId } : {}),
   });
@@ -332,6 +336,39 @@ export async function createSchedule(
   const facilityUnitId = careCase.patient?.residences[0]?.facility_unit_id ?? null;
 
   const result = await withSerializableScheduleCreateTransaction(orgId, async (tx) => {
+    const duplicateSchedule = await tx.visitSchedule.findFirst({
+      where: {
+        org_id: orgId,
+        case_id: rest.case_id,
+        visit_type: rest.visit_type,
+        scheduled_date: scheduledDate,
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+      },
+      select: { id: true },
+    });
+    if (duplicateSchedule) {
+      return {
+        error: 'duplicate_schedule' as const,
+      };
+    }
+
+    const duplicateOpenProposal = await tx.visitScheduleProposal.findFirst({
+      where: {
+        org_id: orgId,
+        case_id: rest.case_id,
+        visit_type: rest.visit_type,
+        proposed_date: scheduledDate,
+        finalized_schedule_id: null,
+        proposal_status: { in: OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES },
+      },
+      select: { id: true },
+    });
+    if (duplicateOpenProposal) {
+      return {
+        error: 'duplicate_open_proposal' as const,
+      };
+    }
+
     const billingValidation = await validateVisitScheduleBlockingBillingRequirements({
       db: tx,
       orgId,
@@ -389,6 +426,14 @@ export async function createSchedule(
   });
 
   if ('error' in result) {
+    if (result.error === 'duplicate_schedule') {
+      return conflict('同一ケース・同一日付の訪問予定が既に存在します。再読み込みしてください');
+    }
+    if (result.error === 'duplicate_open_proposal') {
+      return conflict(
+        '同一ケース・同一日付の未確定候補が既に存在します。既存候補を確認してください',
+      );
+    }
     if (result.error === 'billing_cap_exceeded') return validationError(result.message);
     return conflict('訪問予定の作成が同時に更新されました。再読み込みしてください');
   }

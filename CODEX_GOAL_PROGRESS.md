@@ -57,7 +57,6 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Stage only explicit codex2-owned report PDF files plus the report PDF ledger hunks, commit, and send agmsg FYI.
   - Continue with incoming review interrupts or remaining visit/report/interprofessional candidates.
 
-
 ### Patient PDF Typed Not-Found Hardening - 2026-06-30 06:49 JST
 
 - Scope:
@@ -91,7 +90,6 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Stage only explicit codex2-owned patient PDF files plus the patient PDF ledger hunks, commit, and send agmsg FYI.
   - Continue the separate report PDF boundary hardening WIP after this slice lands.
 
-
 ### Care Reports Generate From Visit Sanitized Envelope - 2026-06-30 06:37 JST
 
 - Scope:
@@ -124,7 +122,6 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Remaining:
   - Stage only explicit codex2-owned generate files plus the generate ledger hunks, commit, and send agmsg FYI.
   - Continue the separate patient PDF typed-not-found hardening WIP after this slice lands.
-
 
 ### Partner Visit Submit/Review Sanitized Envelope - 2026-06-30 06:23 JST
 
@@ -189,6 +186,50 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Claude returned `PATCH_REVIEW_RESULT: APPROVED` for the revised patch after reviewing the outer catch gap, `unstable_rethrow` control-flow behavior, no-store coverage, raw name/phone non-leakage tests, and focused validation.
 - Remaining:
   - Stage only explicit codex2-owned files plus the admin ledger hunks and commit while preserving codex visit-schedule WIP.
+
+### Visit Schedule Concurrency / Duplicate Guard Hardening - 2026-06-30 06:01 JST
+
+- Scope:
+  - Focused on prescription-registration-downstream schedule management write paths: generated proposal creation, drawer proposal save, manual visit schedule creation, and schedule-time regression coverage.
+  - Applied medical-safety, concurrency, and data-integrity reviewer findings around transaction ordering, duplicate case/date/type conflicts, retry-time conflicts, and billing-validation side effects.
+  - No schema migration, live DB mutation outside unit mocks, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - Generated proposal creation now checks active schedule collisions and transaction-time billing caps inside the serializable transaction before idempotency batch creation, superseding open proposals, audit logs, or proposal inserts.
+  - Generated proposal creation now also rejects existing open proposals outside the same supersede scope and rejects duplicate generated route cells for the same case/date/pharmacist before writes.
+  - Drawer proposal save now runs in the serializable proposal transaction, retries P2034 conflicts, and rejects duplicate open proposal or active schedule collisions before create/update side effects.
+  - Manual and generated schedule creation now reject duplicate active schedules by case/date/type regardless of `cycle_id`, and reject existing open proposals for the same case/date/type before creating confirmed schedules.
+  - Proposal generation now counts accepted drafts cumulatively during transaction-time billing validation and replays idempotency-key P2002 races only after the aborted transaction has unwound.
+  - Special-cap proposal generation now includes stale transaction-time cap checks and an idempotency fingerprint guard so default-cap and special-cap requests cannot replay each other.
+  - `createVisitScheduleSchema` now accepts `cycle_id` only on create, preserving update schema behavior.
+  - Schedule-time regression coverage now includes duplicate, active-schedule, open-proposal, retry-time, generated/manual monthly-cap, special-cap stale-read, and idempotency-fingerprint cases.
+- Safety:
+  - Reduces patient-safety and billing-integrity risk from duplicate same-day visits, proposal/schedule divergence, and partial side effects when transaction-time billing validation rejects a draft batch.
+  - Keeps Japan-only scheduling behavior covered under JST, UTC, and negative-offset runtime timezones while preserving UTC midnight sentinels for `@db.Date` comparisons.
+  - Preserves existing auth/RLS/permission boundaries, response envelopes, route-order semantics, and non-destructive validation behavior.
+- Performance:
+  - No new unbounded loops, dependencies, external calls, or synchronous blocking were added.
+  - New checks are scoped to single scheduling write transactions and use existing indexed scheduling dimensions where the current code already filters by org/case/date/status.
+- Validation:
+  - `pnpm exec prettier --write src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/generate/route.ts src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-schedules/route.test.ts src/lib/validations/visit-schedule.ts src/server/services/visit-schedule-service.ts`: passed.
+  - `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/route.test.ts src/app/api/visit-schedules/generate/route.test.ts 'src/app/api/visit-schedules/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `4` files / `217` tests.
+  - Scoped ESLint on the seven schedule files: passed.
+  - Scoped `git diff --check` on the seven schedule files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm date-slices:check`: passed.
+  - `TZ=Asia/Tokyo pnpm test:schedule-time:tz`: passed, `30` files / `481` tests.
+  - `TZ=UTC pnpm test:schedule-time:tz`: passed, `30` files / `481` tests.
+  - `TZ=America/Los_Angeles pnpm test:schedule-time:tz`: passed, `30` files / `481` tests.
+- Review:
+  - Medical safety reviewer identified side-effect-before-billing rejection, `cycle_id` duplicate-key leakage, generated route invariant drift, active-schedule/open-proposal collision gaps, and superseded proposal false-positive cap blocking. Implemented the actionable blockers in this slice.
+  - Concurrency reviewer requested P2034 retry-time duplicate coverage, cumulative accepted-draft billing validation, and idempotency P2002 recovery outside the aborted transaction. Added these route-level protections and regression tests.
+  - Data integrity reviewer requested idempotency batch no-side-effect coverage, generated active-schedule/open-proposal collision checks, and manual open-proposal collision checks. Added all requested blockers.
+  - Final medical safety, data integrity, and test architecture subagent re-reviews approved the added open-proposal collision guards, duplicate route-cell guard, special-cap stale-read coverage, and idempotency-fingerprint coverage.
+  - Claude and codex2 were sent the final validation evidence; prior blocker feedback was addressed and no remaining blocker is known for this schedule slice.
+- Remaining:
+  - Stage only explicit schedule files plus schedule ledger hunks, commit, and send agmsg FYI while preserving Claude-owned document-delivery WIP.
 
 ### Care-Team PUT No-Store / Sanitized Envelope - 2026-06-30 05:56 JST
 

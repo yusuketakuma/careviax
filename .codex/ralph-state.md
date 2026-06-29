@@ -33,8 +33,6 @@ Backup directory:
 - remaining work: explicit-path stage only this report PDF slice plus the report PDF ledger hunks, commit, send agmsg FYI, then continue with any incoming review interrupts or remaining visit/report/interprofessional candidates.
 - next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
 
-
-
 ### 20260630-0649 JST
 
 - current task: harden patient-scoped PDF exports so medication, medication-calendar, and patient visit-record list routes only map typed PDF not-found errors to 404 and never echo hostile raw not-found-like messages.
@@ -48,8 +46,6 @@ Backup directory:
 - remaining work: explicit-path stage only this patient PDF slice plus the patient PDF ledger hunks, commit, send agmsg FYI, then continue the separate report PDF boundary hardening WIP.
 - next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
 
-
-
 ### 20260630-0637 JST
 
 - current task: harden `POST /api/care-reports/generate-from-visit` unexpected failures so visit-derived report generation uses the repository's no-store sanitized envelope.
@@ -62,8 +58,6 @@ Backup directory:
 - validation results: Prettier passed. Focused generate-from-visit Vitest passed `1` file / `17` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Claude and codex both returned `PATCH_REVIEW_RESULT: APPROVED` after reviewing `unstable_rethrow` placement, no-store `INTERNAL_ERROR`, raw patient/phone non-leakage, and existing domain-error mapping preservation.
 - remaining work: explicit-path stage only this generate-from-visit slice plus the generate ledger hunks, commit, send agmsg FYI, then continue the separate patient PDF typed-not-found hardening WIP.
 - next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
-
-
 
 ### 20260630-0623 JST
 
@@ -89,6 +83,19 @@ Backup directory:
 - validation commands: `pnpm exec prettier --write src/app/api/admin/external-professionals/route.ts src/app/api/admin/external-professionals/route.test.ts 'src/app/api/admin/external-professionals/[id]/route.ts' 'src/app/api/admin/external-professionals/[id]/route.test.ts'`; `pnpm exec vitest run src/app/api/admin/external-professionals/route.test.ts 'src/app/api/admin/external-professionals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the four admin external-professionals files; scoped `git diff --check` on the four admin external-professionals files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
 - validation results: Prettier passed. Focused admin external-professionals Vitest passed `2` files / `27` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, and `pnpm format:check` passed. `pnpm lint` exited `0`; warnings were limited to codex-owned visit-schedule WIP (`src/app/api/visit-schedule-proposals/route.ts`) and codex was notified. Claude returned `PATCH_REVIEW_RESULT: APPROVED` for the revised sanitized-catch patch after reviewing `unstable_rethrow`, no-store coverage, raw name/phone non-leakage, and focused validation.
 - remaining work: explicit-path stage only this admin external-professionals slice plus the admin ledger hunks, commit, and send agmsg FYI.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
+### 20260630-0601 JST
+
+- current task: complete visit schedule management hardening around proposal/save concurrency, duplicate prevention, transaction-time billing validation, and Japan-time schedule regression coverage.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, running process checks for heavy gates, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `src/app/api/visit-schedule-proposals/route.ts`, `src/app/api/visit-schedule-proposals/route.test.ts`, `src/app/api/visit-schedules/generate/route.ts`, `src/app/api/visit-schedules/generate/route.test.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/lib/validations/visit-schedule.ts`, `src/server/services/visit-schedule-service.ts`, `src/lib/visit-schedule-proposals/route-order.ts`, `src/server/services/visit-schedule-billing-guard.ts`, `src/server/services/billing-requirement-validator.ts`, and subagent review findings from medical safety, concurrency, data integrity, and API contract reviewers.
+- files changed: `src/app/api/visit-schedule-proposals/route.ts`, `src/app/api/visit-schedule-proposals/route.test.ts`, `src/app/api/visit-schedules/generate/route.ts`, `src/app/api/visit-schedules/generate/route.test.ts`, `src/app/api/visit-schedules/route.test.ts`, `src/lib/validations/visit-schedule.ts`, `src/server/services/visit-schedule-service.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: generated proposal creation could supersede open proposals or create idempotency batches before transaction-time billing rejection; generated/drawer proposals did not reject active schedule collisions; generated proposals did not reject same case/date/pharmacist open-proposal collisions outside the supersede scope or duplicate generated route cells; manual and generated schedule creation only guarded duplicate schedules by case/date/type plus `cycle_id`, allowing a second active visit on the same case/date/type with a different cycle; manual/generated schedule creation did not reject open proposal collisions for the same case/date/type; proposal batch billing validation did not count accepted drafts cumulatively; proposal idempotency P2002 recovery attempted to read inside the aborted transaction; special-cap proposal generation needed stale transaction-time cap and fingerprint coverage; serializable retry paths lacked coverage for retry-time duplicate conflicts.
+- security risks found: reduced patient-safety and billing-integrity risk by moving proposal billing validation and active schedule checks inside the serializable transaction before side effects, rejecting duplicate open/active schedule conflicts, and keeping `@db.Date` schedule tests green across JST/UTC/negative-offset runtimes. Auth/RLS, permission checks, schema, live DB data, external send, push, deploy, secret handling, and destructive DB operations were not changed.
+- performance issues found: no new unbounded loops, external calls, dependencies, or synchronous blocking were added. Additional duplicate and billing checks are scoped to single case/date/pharmacist scheduling writes and run inside existing transactional write paths.
+- validation commands: `pnpm exec prettier --write src/app/api/visit-schedule-proposals/route.ts src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/generate/route.ts src/app/api/visit-schedules/generate/route.test.ts src/app/api/visit-schedules/route.test.ts src/lib/validations/visit-schedule.ts src/server/services/visit-schedule-service.ts`; `pnpm exec vitest run src/app/api/visit-schedule-proposals/route.test.ts src/app/api/visit-schedules/route.test.ts src/app/api/visit-schedules/generate/route.test.ts 'src/app/api/visit-schedules/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; scoped ESLint on the seven schedule files; scoped `git diff --check` on the seven schedule files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; `pnpm date-slices:check`; `TZ=Asia/Tokyo pnpm test:schedule-time:tz`; `TZ=UTC pnpm test:schedule-time:tz`; `TZ=America/Los_Angeles pnpm test:schedule-time:tz`.
+- validation results: Prettier passed after final test updates. Focused schedule/proposal Vitest passed `4` files / `217` tests. Scoped ESLint and scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, and `pnpm date-slices:check` passed. `pnpm test:schedule-time:tz` passed `30` files / `481` tests under `TZ=Asia/Tokyo`, `TZ=UTC`, and `TZ=America/Los_Angeles`; stderr was limited to existing expected sanitized 500 route tests in handoff-board and visit-schedules route coverage. Claude and codex2 reviewed the schedule blockers earlier in the slice; final medical safety, data integrity, and test architecture subagent re-reviews approved the added open-proposal collision guards, duplicate route-cell guard, special-cap stale-read coverage, and idempotency-fingerprint coverage.
+- remaining work: explicit-path stage only this schedule slice plus the schedule ledger hunks and commit while preserving Claude-owned document-delivery WIP.
 - next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
 
 ### 20260630-0556 JST

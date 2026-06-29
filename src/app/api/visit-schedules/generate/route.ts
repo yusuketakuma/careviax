@@ -633,7 +633,6 @@ export const POST = withAuthContext(
         where: {
           org_id: ctx.orgId,
           case_id,
-          cycle_id: medicationCycle.id,
           visit_type,
           scheduled_date: { in: candidateDates },
           schedule_status: { notIn: ['cancelled', 'rescheduled'] },
@@ -642,6 +641,24 @@ export const POST = withAuthContext(
       if (duplicateScheduleCount > 0) {
         return {
           error: 'duplicate_schedule' as const,
+        };
+      }
+
+      const duplicateOpenProposals = await tx.visitScheduleProposal.findMany({
+        where: {
+          org_id: ctx.orgId,
+          case_id,
+          visit_type,
+          proposed_date: { in: candidateDates },
+          finalized_schedule_id: null,
+          proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+        },
+        select: { id: true },
+        take: 1,
+      });
+      if (duplicateOpenProposals.length > 0) {
+        return {
+          error: 'duplicate_open_proposal' as const,
         };
       }
 
@@ -816,6 +833,11 @@ export const POST = withAuthContext(
     if ('error' in result) {
       if (result.error === 'duplicate_schedule') {
         return conflict('同一ケース・同一日付の訪問予定が既に存在します。再読み込みしてください');
+      }
+      if (result.error === 'duplicate_open_proposal') {
+        return conflict(
+          '同一ケース・同一日付の未確定候補が既に存在します。既存候補を確認してください',
+        );
       }
       if (result.error === 'billing_cap_exceeded') {
         return validationError(result.message);
