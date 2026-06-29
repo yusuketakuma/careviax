@@ -30,6 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -348,6 +349,28 @@ function buildMixedRouteItems(args: {
       routeOrder: proposal.route_order,
     })),
   ].sort(compareMixedRouteItems);
+}
+
+async function requestVisitScheduleProposal(
+  orgId: string,
+  payload: ProposalPayload,
+): Promise<{ data: Proposal[]; diagnostics?: ProposalGenerationDiagnostics }> {
+  const response = await fetch('/api/visit-schedule-proposals', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message ?? '候補生成に失敗しました');
+  }
+  return response.json() as Promise<{
+    data: Proposal[];
+    diagnostics?: ProposalGenerationDiagnostics;
+  }>;
 }
 
 export function ScheduleWeeklyOptimizer({
@@ -746,24 +769,7 @@ export function ScheduleWeeklyOptimizer({
   const proposalGenerationCaseErrorId = 'weekly-proposal-case-required-error';
 
   const createProposalMutation = useMutation({
-    mutationFn: async (payload: ProposalPayload) => {
-      const response = await fetch('/api/visit-schedule-proposals', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.message ?? '候補生成に失敗しました');
-      }
-      return response.json() as Promise<{
-        data: Proposal[];
-        diagnostics?: ProposalGenerationDiagnostics;
-      }>;
-    },
+    mutationFn: async (payload: ProposalPayload) => requestVisitScheduleProposal(orgId, payload),
     onSuccess: async (payload) => {
       setLastPlannerDiagnostics(payload.diagnostics ?? null);
       toast.success(`${payload.data.length}件の候補を生成しました`);
@@ -803,6 +809,73 @@ export function ScheduleWeeklyOptimizer({
     },
   });
 
+  const aggregateProposalsMutation = useMutation({
+    mutationFn: async (suggestion: FacilitySuggestion) => {
+      const results = await Promise.allSettled(
+        suggestion.outliers.map((proposal) =>
+          requestVisitScheduleProposal(orgId, {
+            case_id: proposal.case_id,
+            visit_type: proposal.visit_type,
+            priority: proposal.priority,
+            travel_mode: plannerSettings.travel_mode,
+            start_date: suggestion.targetDate,
+            locked_date: suggestion.targetDate,
+            preferred_time_from:
+              formatNullableTimeOfDay(proposal.time_window_start) ??
+              plannerSettings.preferred_time_from,
+            preferred_time_to:
+              formatNullableTimeOfDay(proposal.time_window_end) ??
+              plannerSettings.preferred_time_to,
+            preferred_pharmacist_id: suggestion.targetPharmacistId,
+            vehicle_resource_id:
+              plannerSettings.vehicle_resource_id || proposal.vehicle_resource?.id || undefined,
+            candidate_count: 1,
+          }),
+        ),
+      );
+      const moved: string[] = [];
+      const failed: Array<{ name: string; reason: string }> = [];
+      suggestion.outliers.forEach((proposal, index) => {
+        const result = results[index];
+        const name = proposal.case_.patient.name;
+        if (result.status === 'fulfilled') {
+          moved.push(name);
+        } else {
+          failed.push({
+            name,
+            reason: result.reason instanceof Error ? result.reason.message : '不明なエラー',
+          });
+        }
+      });
+      return { moved, failed };
+    },
+    onSuccess: async ({ moved, failed }) => {
+      // partial-batch failure を黙らない: 成功/失敗を1サマリで提示し、未処理患者名を明示する。
+      if (failed.length === 0) {
+        toast.success(`${moved.length}件を同日へ集約提案しました`);
+      } else if (moved.length === 0) {
+        toast.error(
+          `集約提案に失敗しました（${failed.length}件）: ${failed.map((item) => item.name).join('、')}`,
+        );
+      } else {
+        toast.warning(
+          `${moved.length}件を集約、${failed.length}件は失敗しました。未処理: ${failed
+            .map((item) => item.name)
+            .join('、')}`,
+        );
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
+        queryClient.invalidateQueries({
+          queryKey: ['visit-schedule-proposals', 'weekly-optimizer', orgId],
+        }),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '集約提案に失敗しました');
+    },
+  });
+
   const facilitySuggestions = useMemo(() => computeFacilitySuggestions(proposals), [proposals]);
 
   const isLoading =
@@ -810,6 +883,15 @@ export function ScheduleWeeklyOptimizer({
     schedulesQuery.isLoading ||
     proposalsQuery.isLoading ||
     shiftsQuery.isLoading;
+  // 取得失敗を空ボード(false-empty)へ潰さない: schedules/proposals/shifts のいずれかが
+  // 失敗すると週が「予定ゼロ=フリー」に化けて overbook を誘発するため、再読み込み導線つきの
+  // ErrorState を出し、空き判定・cadence ロジックを silently-empty なデータで走らせない。
+  const boardError = schedulesQuery.isError || proposalsQuery.isError || shiftsQuery.isError;
+  const refetchBoard = () => {
+    void schedulesQuery.refetch();
+    void proposalsQuery.refetch();
+    void shiftsQuery.refetch();
+  };
 
   const selectedCellRoutePoints = useMemo(() => {
     const plan = routePreviewQuery.data;
@@ -1324,6 +1406,16 @@ export function ScheduleWeeklyOptimizer({
 
           {isLoading ? (
             <p className="py-8 text-sm text-muted-foreground">週間最適化ビューを読み込み中...</p>
+          ) : boardError ? (
+            <div className="py-8">
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="週間ボードを取得できませんでした"
+                description="訪問予定・候補・シフトのいずれかの取得に失敗しました。空き枠は実際の状態と異なる可能性があるため、再読み込みしてから操作してください。"
+                action={{ label: '再読み込み', onClick: refetchBoard }}
+              />
+            </div>
           ) : pharmacists.length === 0 ? (
             <p className="py-8 text-sm text-muted-foreground">
               対象週に勤務シフトがある薬剤師がいません。
@@ -1545,31 +1637,8 @@ export function ScheduleWeeklyOptimizer({
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={async () => {
-                      for (const proposal of suggestion.outliers) {
-                        await createProposalMutation.mutateAsync({
-                          case_id: proposal.case_id,
-                          visit_type: proposal.visit_type,
-                          priority: proposal.priority,
-                          travel_mode: plannerSettings.travel_mode,
-                          start_date: suggestion.targetDate,
-                          locked_date: suggestion.targetDate,
-                          preferred_time_from:
-                            formatNullableTimeOfDay(proposal.time_window_start) ??
-                            plannerSettings.preferred_time_from,
-                          preferred_time_to:
-                            formatNullableTimeOfDay(proposal.time_window_end) ??
-                            plannerSettings.preferred_time_to,
-                          preferred_pharmacist_id: suggestion.targetPharmacistId,
-                          vehicle_resource_id:
-                            plannerSettings.vehicle_resource_id ||
-                            proposal.vehicle_resource?.id ||
-                            undefined,
-                          candidate_count: 1,
-                        });
-                      }
-                    }}
-                    disabled={createProposalMutation.isPending}
+                    onClick={() => aggregateProposalsMutation.mutate(suggestion)}
+                    disabled={aggregateProposalsMutation.isPending}
                   >
                     同日に集約提案
                   </Button>

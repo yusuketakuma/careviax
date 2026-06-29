@@ -33,6 +33,15 @@ vi.mock('next/navigation', () => ({
   useSearchParams: useSearchParamsMock,
 }));
 
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
 vi.mock('./weekly-cell-inspector', () => ({
   WeeklyCellInspector: (props: {
     onApplyRoute: () => void;
@@ -64,6 +73,7 @@ vi.mock('./weekly-cell-inspector', () => ({
 setupDomTestEnv();
 
 import { ScheduleWeeklyOptimizer } from './schedule-weekly-optimizer';
+import { toast } from 'sonner';
 
 function buildWeeklySchedule(overrides?: Record<string, unknown>) {
   return {
@@ -387,6 +397,159 @@ describe('ScheduleWeeklyOptimizer', () => {
         target_count: 2,
         route_order_diff_count: 2,
       },
+    });
+  });
+
+  it('renders a retryable ErrorState — not a false-empty board — when a board query fails', () => {
+    const refetchMock = vi.fn();
+    // pharmacist-shifts は成功(薬剤師が存在しボードを描画しようとする状況)、
+    // visit-schedules の取得だけ失敗させ、空き枠が「予定ゼロ=フリー」に化けないことを検証する。
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'cases') return { data: { data: [] }, isLoading: false };
+      if (queryKey[0] === 'pharmacist-shifts') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'shift_1',
+                user_id: 'pharmacist_1',
+                site_id: 'site_1',
+                date: '2026-04-09',
+                available: true,
+                available_from: '2026-04-09T09:00:00.000Z',
+                available_to: '2026-04-09T18:00:00.000Z',
+                user: { id: 'pharmacist_1', name: '薬剤師A', name_kana: null },
+                site: { id: 'site_1', name: '本店' },
+              },
+            ],
+          },
+          isLoading: false,
+          isError: false,
+          refetch: refetchMock,
+        };
+      }
+      if (queryKey[0] === 'visit-vehicle-resources') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedules') {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          refetch: refetchMock,
+          connected: true,
+        };
+      }
+      return {
+        data: { data: [] },
+        isLoading: false,
+        isError: false,
+        refetch: refetchMock,
+        connected: true,
+      };
+    });
+
+    render(
+      <ScheduleWeeklyOptimizer
+        initialDate="2026-04-09"
+        initialRoutePharmacistId="pharmacist_1"
+        initialRouteDate="2026-04-09"
+      />,
+    );
+
+    expect(screen.getByText('週間ボードを取得できませんでした')).toBeTruthy();
+    const retryButton = screen.getByRole('button', { name: '再読み込み' });
+    fireEvent.click(retryButton);
+    expect(refetchMock).toHaveBeenCalled();
+    // teeth: 取得失敗が「この枠に提案」可能な空きセルボードに化けない。
+    expect(screen.queryAllByRole('button', { name: 'この枠に提案' })).toHaveLength(0);
+  });
+
+  it('attempts every facility-aggregation proposal and reports a partial-failure summary', async () => {
+    useMutationMock.mockImplementation(
+      (options: {
+        mutationFn?: (variables?: unknown) => unknown;
+        onSuccess?: (data: unknown, variables?: unknown) => unknown;
+      }) => ({
+        mutate: vi.fn((variables?: unknown) => {
+          void Promise.resolve(options.mutationFn?.(variables)).then((data) =>
+            options.onSuccess?.(data, variables),
+          );
+        }),
+        mutateAsync: vi.fn(),
+        isPending: false,
+      }),
+    );
+    // 同一施設(同住所)で 2026-04-09 に 2件(=集約先), 別日に 2件(=outliers)。
+    const sharedResidence = [{ address: '東京都渋谷区9-9-9', lat: 35.3, lng: 139.3 }];
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'visit-schedule-proposals') {
+        return {
+          data: {
+            data: [
+              buildWeeklyProposal({
+                id: 'p_target_1',
+                case_id: 'case_t1',
+                proposed_date: '2026-04-09',
+                case_: { patient: { id: 'pt1', name: '集約先A', residences: sharedResidence } },
+              }),
+              buildWeeklyProposal({
+                id: 'p_target_2',
+                case_id: 'case_t2',
+                proposed_date: '2026-04-09',
+                case_: { patient: { id: 'pt2', name: '集約先B', residences: sharedResidence } },
+              }),
+              buildWeeklyProposal({
+                id: 'p_out_1',
+                case_id: 'case_o1',
+                proposed_date: '2026-04-10',
+                case_: { patient: { id: 'po1', name: '外れ患者1', residences: sharedResidence } },
+              }),
+              buildWeeklyProposal({
+                id: 'p_out_2',
+                case_id: 'case_o2',
+                proposed_date: '2026-04-11',
+                case_: { patient: { id: 'po2', name: '外れ患者2', residences: sharedResidence } },
+              }),
+            ],
+          },
+          isLoading: false,
+          isError: false,
+          connected: true,
+        };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, connected: true };
+    });
+    // 1件目成功 / 2件目失敗 — Promise.allSettled で両方試行されることを検証。
+    let postCount = 0;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        postCount += 1;
+        if (postCount === 2) {
+          return new Response(JSON.stringify({ message: '枠が埋まっています' }), { status: 409 });
+        }
+        return Response.json({ data: [{ id: 'created' }] });
+      }
+      return Response.json({ data: {} });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<ScheduleWeeklyOptimizer initialDate="2026-04-09" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '同日に集約提案' }));
+
+    await waitFor(() => {
+      const postCalls = fetchMock.mock.calls.filter(
+        (call) => (call[1] as RequestInit | undefined)?.method === 'POST',
+      );
+      // teeth: 最初の失敗で中断せず 2件とも試行する。
+      expect(postCalls).toHaveLength(2);
+    });
+    await waitFor(() => {
+      expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(expect.stringContaining('失敗'));
     });
   });
 });
