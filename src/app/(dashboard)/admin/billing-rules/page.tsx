@@ -411,7 +411,7 @@ export default function BillingRulesPage() {
   const [editTarget, setEditTarget] = useState<BillingRule | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BillingRule | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['billing-rules'],
     queryFn: fetchBillingRules as () => Promise<BillingRulesResponse>,
     staleTime: 30_000,
@@ -551,8 +551,12 @@ export default function BillingRulesPage() {
             className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
           >
             <span className="font-medium text-foreground">公式SSOTと任意ルールを照合</span>
-            <Badge variant="secondary">公式 {data?.summary.ssot_rule_count ?? 0}</Badge>
-            <Badge variant="outline">任意 {data?.summary.custom_rule_count ?? 0}</Badge>
+            <Badge variant="secondary">
+              公式 {isError ? '—' : (data?.summary.ssot_rule_count ?? 0)}
+            </Badge>
+            <Badge variant="outline">
+              任意 {isError ? '—' : (data?.summary.custom_rule_count ?? 0)}
+            </Badge>
             {data?.source ? (
               <span>
                 {data.source.source_of_truth} / {data.source.sync_direction ?? 'push'}
@@ -581,6 +585,10 @@ export default function BillingRulesPage() {
         columns={columns}
         data={data?.data ?? []}
         isLoading={isLoading}
+        errorMessage={
+          isError ? '算定ルールの取得に失敗しました。時間をおいて再試行してください。' : undefined
+        }
+        onRetry={isError ? () => void refetch() : undefined}
         caption="算定ルール一覧"
       />
 

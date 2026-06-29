@@ -10,25 +10,34 @@ import BillingRulesPage from './page';
 
 setupDomTestEnv();
 
-const { mutationMutateMock, mutationOptionsMock, queryOptionsMock, ruleStateMock } = vi.hoisted(
-  () => ({
-    mutationMutateMock: vi.fn(),
-    mutationOptionsMock: [] as Array<{
-      mutationFn?: (variables?: unknown) => Promise<unknown>;
-      onError?: (error: Error) => void;
-      onSuccess?: (data: unknown) => void | Promise<void>;
-    }>,
-    queryOptionsMock: [] as Array<{
-      queryKey?: readonly unknown[];
-      queryFn?: () => Promise<unknown>;
-    }>,
-    ruleStateMock: {
-      id: 'rule_1',
-      conditions: {} as Record<string, unknown>,
-      evidenceRequirements: {} as Record<string, unknown>,
-    },
-  }),
-);
+const {
+  mutationMutateMock,
+  mutationOptionsMock,
+  queryOptionsMock,
+  ruleStateMock,
+  queryStateMock,
+  refetchMock,
+} = vi.hoisted(() => ({
+  mutationMutateMock: vi.fn(),
+  mutationOptionsMock: [] as Array<{
+    mutationFn?: (variables?: unknown) => Promise<unknown>;
+    onError?: (error: Error) => void;
+    onSuccess?: (data: unknown) => void | Promise<void>;
+  }>,
+  queryOptionsMock: [] as Array<{
+    queryKey?: readonly unknown[];
+    queryFn?: () => Promise<unknown>;
+  }>,
+  ruleStateMock: {
+    id: 'rule_1',
+    conditions: {} as Record<string, unknown>,
+    evidenceRequirements: {} as Record<string, unknown>,
+  },
+  // Toggles the list query into a fetch-failure state so tests can prove the page
+  // fails closed (retryable error) instead of rendering an empty 0-count master.
+  queryStateMock: { isError: false },
+  refetchMock: vi.fn(),
+}));
 
 vi.mock('@tanstack/react-query', () => ({
   useMutation: (options: (typeof mutationOptionsMock)[number]) => {
@@ -48,7 +57,12 @@ vi.mock('@tanstack/react-query', () => ({
   },
   useQuery: (options: (typeof queryOptionsMock)[number]) => {
     queryOptionsMock.push(options);
+    if (queryStateMock.isError) {
+      return { data: undefined, isLoading: false, isError: true, refetch: refetchMock };
+    }
     return {
+      refetch: refetchMock,
+      isError: false,
       data: {
         data: [
           {
@@ -123,11 +137,25 @@ vi.mock('@/components/ui/data-table', () => ({
   DataTable: ({
     columns,
     data,
+    errorMessage,
+    onRetry,
   }: {
     columns: Array<{ id?: string; cell?: (args: { row: { original: unknown } }) => ReactNode }>;
     data: unknown[];
+    errorMessage?: string;
+    onRetry?: () => void;
   }) => (
     <div>
+      {errorMessage ? (
+        <div>
+          <p>{errorMessage}</p>
+          {onRetry ? (
+            <button type="button" onClick={onRetry}>
+              再試行
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {data.map((row, rowIndex) => (
         <div key={rowIndex}>
           {columns.map((column, columnIndex) =>
@@ -190,6 +218,7 @@ describe('BillingRulesPage', () => {
     ruleStateMock.id = 'rule_1';
     ruleStateMock.conditions = {};
     ruleStateMock.evidenceRequirements = {};
+    queryStateMock.isError = false;
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({ data: [], message: 'ok' }), { status: 200 })),
@@ -198,6 +227,26 @@ describe('BillingRulesPage', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('fails closed with a retryable error instead of an empty 0-count master when the fetch fails', () => {
+    // A failed list fetch must not render the SSOT counts as a real "公式 0 / 任意 0"
+    // (a false-empty that reads as "no billing rules") nor a silently empty table.
+    queryStateMock.isError = true;
+    render(<BillingRulesPage />);
+
+    expect(
+      screen.getByText('算定ルールの取得に失敗しました。時間をおいて再試行してください。'),
+    ).toBeTruthy();
+
+    const ssotStatus = screen.getByLabelText('請求ルールSSOT状態');
+    expect(ssotStatus.textContent).toContain('公式 —');
+    expect(ssotStatus.textContent).toContain('任意 —');
+    expect(ssotStatus.textContent).not.toContain('公式 0');
+    expect(ssotStatus.textContent).not.toContain('任意 0');
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('prioritizes the billing rules workbench over the generic admin intro', () => {
