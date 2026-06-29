@@ -23,6 +23,28 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Inventory Forecast Unstocked Resolved Demand Commit - 2026-06-29 14:52 JST
+
+- Scope:
+  - Completed the `inventory-forecast-resolved-but-unstocked-demand-surface` follow-up from `.agent-loop/FEATURE_QUEUE.md`.
+  - Committed only `src/lib/analytics/inventory-forecast.ts`, `src/lib/analytics/inventory-forecast.test.ts`, `src/app/api/admin/inventory-forecast/route.test.ts`, `src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx`, and `src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx` as `2503917a` (`Surface unstocked resolved inventory demand`).
+  - Preserved Claude-owned `admin/drug-masters/drug-master-content.tsx` WIP and unrelated dirty files.
+- Fixed:
+  - Resolved prescription demand is no longer dropped when the adopted stock row is absent.
+  - Forecast rows and patient shortage details now carry `stockRegistered` and `stockEvidence` so missing adopted stock records are explicit.
+  - Summary counts separate `stockRegistrationReviewCount` from registered-stock `orderRequiredCount` / `orderCandidateCount`.
+  - The UI renders missing adopted stock rows as `未登録` / `未確認` / `登録確認` and separates patient-card `在庫登録未確認` from confirmed `不足薬`.
+- Validation:
+  - `pnpm exec vitest run src/lib/analytics/inventory-forecast.test.ts src/app/api/admin/inventory-forecast/route.test.ts 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `41` tests.
+  - Scoped ESLint, scoped Prettier check, focused `git diff --check`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+- Review:
+  - `medical_safety_reviewer` approved after wording cleanup.
+  - Claude approved the slice after independent focused tests and full typecheck on the shared dirty tree.
+- Remaining:
+  - No open blocker for this inventory follow-up. Claude drug-master false-empty rev2 remains pending after Codex returned `CHANGES_REQUESTED` for an import-log false-zero summary.
+
 ### Claude Prescription Intake False-Empty Review - 2026-06-29 14:22 JST
 
 - Scope:
