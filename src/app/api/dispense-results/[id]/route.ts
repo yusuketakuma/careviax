@@ -59,6 +59,11 @@ function resolveCarryItemsStatus(lines: Array<{ carry_type: string | null | unde
   return 'blocked' as const;
 }
 
+function normalizeOptionalText(value: string | null | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
 function touchesDispenseResultSafetyFields(data: z.infer<typeof updateDispenseResultSchema>) {
   return (
     data.actual_drug_name !== undefined ||
@@ -324,13 +329,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           actual_unit: true,
           carry_type: true,
           special_notes: true,
+          line: {
+            select: {
+              drug_name: true,
+              drug_code: true,
+            },
+          },
         },
       });
       const carryItemsStatus = resolveCarryItemsStatus(persistedResults);
       const carryItems = persistedResults.map((line) => ({
         line_id: line.line_id,
-        drug_name: line.actual_drug_name,
-        drug_code: line.actual_drug_code,
+        drug_name: line.actual_drug_name || line.line?.drug_name || '',
+        drug_code: normalizeOptionalText(line.actual_drug_code) ?? line.line?.drug_code ?? null,
         quantity: line.actual_quantity,
         unit: line.actual_unit,
         carry_type: line.carry_type,

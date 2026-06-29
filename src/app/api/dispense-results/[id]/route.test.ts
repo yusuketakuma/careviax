@@ -137,6 +137,10 @@ describe('/api/dispense-results/[id]', () => {
         actual_unit: '錠',
         carry_type: 'carry',
         special_notes: '再調剤',
+        line: {
+          drug_name: 'Drug B',
+          drug_code: 'drug-b',
+        },
       },
     ]);
     dispenseAuditFindFirstMock.mockResolvedValue({ id: 'audit_1', result: 'rejected' });
@@ -358,6 +362,12 @@ describe('/api/dispense-results/[id]', () => {
         actual_unit: true,
         carry_type: true,
         special_notes: true,
+        line: {
+          select: {
+            drug_name: true,
+            drug_code: true,
+          },
+        },
       },
     });
     expect(visitPreparationUpdateManyMock).toHaveBeenCalledWith({
@@ -411,6 +421,57 @@ describe('/api/dispense-results/[id]', () => {
       orgId: 'org_1',
       eventType: 'cycle_transition',
       payload: { source: 'dispense_results_rework', result_id: 'result_1' },
+    });
+  });
+
+  it('preserves prescribed drug code in visit carry items when reworked actual drug code is blank', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([
+      { id: 'visit_planned', schedule_status: 'planned' },
+    ]);
+    dispenseResultFindManyMock.mockResolvedValueOnce([
+      {
+        line_id: 'line_1',
+        actual_drug_name: 'Drug B',
+        actual_drug_code: '',
+        actual_quantity: 14,
+        actual_unit: '錠',
+        carry_type: 'carry',
+        special_notes: '再調剤',
+        line: {
+          drug_name: 'Drug B',
+          drug_code: 'drug-b',
+        },
+      },
+    ]);
+
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_1', {
+        actual_drug_name: 'Drug B',
+        actual_quantity_confirmed: true,
+        actual_quantity_source: 'existing_result',
+      }),
+      {
+        params: Promise.resolve({ id: 'result_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'visit_planned' },
+      data: {
+        carry_items: [
+          {
+            line_id: 'line_1',
+            drug_name: 'Drug B',
+            drug_code: 'drug-b',
+            quantity: 14,
+            unit: '錠',
+            carry_type: 'carry',
+            special_notes: '再調剤',
+          },
+        ],
+        carry_items_status: 'ready',
+      },
     });
   });
 
