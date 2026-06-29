@@ -15,7 +15,6 @@ export function getPatientCareQueryKeys(args: PatientQueryArgs): QueryKey[] {
   return [
     ['patient', args.patientId, args.orgId],
     ['patient-overview', args.patientId, args.orgId],
-    ['patient-visits-panel', args.patientId, args.orgId],
     ['patient-communications', args.patientId, args.orgId],
     ['patient-documents', args.patientId, args.orgId],
     ['patient-timeline', args.patientId, args.orgId],
@@ -49,7 +48,7 @@ export async function invalidateQueryKeys(queryClient: QueryClient, keys: QueryK
     keys.map((queryKey) =>
       queryClient.invalidateQueries({
         queryKey,
-      })
-    )
+      }),
+    ),
   );
 }
