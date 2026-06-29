@@ -86,6 +86,7 @@ import {
   type VisitConferenceContext,
   type VisitMedicationPeriod,
   type VisitPrescriptionChanges,
+  type VisitOutsideMed,
   type VisitPreviousStructuredReuse,
 } from '@/components/features/visits/visit-medication-management-section';
 import {
@@ -248,6 +249,7 @@ type VisitPreparationSnapshot = {
       conference_context: VisitConferenceContext[];
       medication_period?: VisitMedicationPeriod | null;
       prescription_changes?: VisitPrescriptionChanges | null;
+      outside_meds?: VisitOutsideMed[] | null;
       previous_visit?: {
         summary?: string | null;
         structured_reuse?: VisitPreviousStructuredReuse | null;
@@ -935,6 +937,7 @@ export function VisitRecordForm({
   const conferenceContext = visitPreparationPack?.conference_context ?? [];
   const medicationPeriod = visitPreparationPack?.medication_period ?? null;
   const prescriptionChanges = visitPreparationPack?.prescription_changes ?? null;
+  const outsideMeds: VisitOutsideMed[] = visitPreparationPack?.outside_meds ?? [];
   const previousVisitSummary = visitPreparationPack?.previous_visit?.summary ?? null;
   const previousVisitStructuredReuse =
     visitPreparationPack?.previous_visit?.structured_reuse ?? null;
@@ -1483,6 +1486,7 @@ export function VisitRecordForm({
       conferenceContext={conferenceContext}
       medicationPeriod={medicationPeriod}
       prescriptionChanges={prescriptionChanges}
+      outsideMeds={outsideMeds}
       previousVisitSummary={previousVisitSummary}
       previousVisitStructuredReuse={previousVisitStructuredReuse}
       onChange={handleStructuredSoapChange}

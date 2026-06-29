@@ -44,6 +44,7 @@ type VisitMedicationManagementSectionProps = {
   conferenceContext?: VisitConferenceContext[];
   medicationPeriod?: VisitMedicationPeriod | null;
   prescriptionChanges?: VisitPrescriptionChanges | null;
+  outsideMeds?: VisitOutsideMed[] | null;
   previousVisitSummary?: string | null;
   previousVisitStructuredReuse?: VisitPreviousStructuredReuse | null;
   onChange: (next: StructuredSoap) => void;
@@ -94,6 +95,14 @@ export type VisitPrescriptionChanges = {
     reasons: string[];
   }>;
   removed: string[];
+};
+
+/** 外薬(セット外で持参する薬)分類の表示用 projection(§11-7)。サーバで導出済みの label を表示する。 */
+export type VisitOutsideMed = {
+  line_id: string;
+  drug_name: string;
+  outside_med_kind: string;
+  outside_med_label: string;
 };
 
 export type VisitPreviousStructuredReuse = {
@@ -805,11 +814,13 @@ export function VisitMedicationManagementSection({
   conferenceContext = [],
   medicationPeriod,
   prescriptionChanges,
+  outsideMeds,
   previousVisitSummary,
   previousVisitStructuredReuse,
   onChange,
 }: VisitMedicationManagementSectionProps) {
   const evidence = readHomeVisit2026Evidence(structuredSoap);
+  const outsideMedItems = outsideMeds ?? [];
   const readinessItems = buildHomeVisit2026ReadinessItems({
     structuredSoap,
     visitType,
@@ -994,6 +1005,28 @@ export function VisitMedicationManagementSection({
           conferenceContext={conferenceContext}
           onQuickCapture={handleQuickCapture}
         />
+        {outsideMedItems.length > 0 ? (
+          <div className="mt-4 rounded-lg border border-border/70 bg-background p-3">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Pill className="size-3.5" aria-hidden="true" />
+              外薬（セット外で持参）
+            </div>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {outsideMedItems.map((med) => (
+                <li
+                  key={med.line_id}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs"
+                >
+                  {/* 分類はラベル(テキスト)で示し色のみに依存しない(WCAG AA)。 */}
+                  <span className="rounded bg-tag-info/10 px-1.5 py-0.5 font-medium text-tag-info">
+                    {med.outside_med_label}
+                  </span>
+                  <span className="text-foreground">{med.drug_name}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-5 rounded-xl border border-border/70 bg-card p-4">

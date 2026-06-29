@@ -118,4 +118,45 @@ describe('VisitMedicationManagementSection', () => {
     fireEvent.click(screen.getByRole('tab', { name: /申し送り/ }));
     expect(screen.getByText(/眠気と便秘を本人に確認/)).toBeTruthy();
   });
+
+  it('lists outside-med classification labels with drug names (§11-7)', () => {
+    render(
+      <VisitMedicationManagementSection
+        structuredSoap={buildSoap()}
+        outsideMeds={[
+          {
+            line_id: 'line_topical',
+            drug_name: 'モーラステープ',
+            outside_med_kind: 'topical',
+            outside_med_label: '外用',
+          },
+          {
+            line_id: 'line_prn',
+            drug_name: 'ロキソプロフェン錠60mg',
+            outside_med_kind: 'prn',
+            outside_med_label: '頓服',
+          },
+        ]}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('外薬（セット外で持参）')).toBeTruthy();
+    expect(screen.getByText('外用')).toBeTruthy();
+    expect(screen.getByText('モーラステープ')).toBeTruthy();
+    expect(screen.getByText('頓服')).toBeTruthy();
+    expect(screen.getByText('ロキソプロフェン錠60mg')).toBeTruthy();
+  });
+
+  it('omits the outside-med block when there are no outside meds', () => {
+    render(
+      <VisitMedicationManagementSection
+        structuredSoap={buildSoap()}
+        outsideMeds={[]}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('外薬（セット外で持参）')).toBeNull();
+  });
 });
