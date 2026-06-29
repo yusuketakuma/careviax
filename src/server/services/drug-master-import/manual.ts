@@ -108,8 +108,9 @@ const renalAdjustmentEntrySchema = z
     dosage_adjustment_renal: z.array(renalAdjustmentSchema).min(1),
     precautions_elderly: packageInsertTextSectionSchema.optional(),
   })
-  .refine((value) => Boolean(value.yj_code || value.drug_name), {
-    message: 'yj_code または drug_name のいずれかが必要です',
+  .refine((value) => Boolean(value.yj_code), {
+    path: ['yj_code'],
+    message: '手動臨床ルールの腎機能調整は yj_code が必要です',
   });
 
 const drugSafetyOverrideSchema = z
@@ -123,8 +124,9 @@ const drugSafetyOverrideSchema = z
     outpatient_injection_eligible: z.boolean().optional(),
     outpatient_injection_note: z.string().trim().min(1).nullable().optional(),
   })
-  .refine((value) => Boolean(value.yj_code || value.drug_name), {
-    message: 'yj_code または drug_name のいずれかが必要です',
+  .refine((value) => Boolean(value.yj_code), {
+    path: ['yj_code'],
+    message: '手動臨床ルールの安全性 override は yj_code が必要です',
   });
 
 export const manualClinicalRuleBundleSchema = z.object({
@@ -142,9 +144,7 @@ async function upsertRenalAdjustment(
   entry: ParsedManualClinicalRuleBundle['renal_adjustments'][number],
 ) {
   const drug = await db.drugMaster.findFirst({
-    where: entry.yj_code
-      ? { yj_code: entry.yj_code }
-      : { drug_name: { contains: entry.drug_name! } },
+    where: { yj_code: entry.yj_code! },
     select: { id: true },
   });
 
@@ -203,7 +203,7 @@ async function replaceAlertRules(
     | ParsedManualClinicalRuleBundle['high_risk_rules'],
 ) {
   await db.drugAlertRule.deleteMany({
-    where: { alert_type: alertType },
+    where: { alert_type: alertType, org_id: null },
   });
 
   if (rules.length === 0) {
@@ -217,6 +217,7 @@ async function replaceAlertRules(
       severity: rule.severity,
       message: rule.message,
       is_active: rule.is_active,
+      org_id: null,
     })),
   });
 
@@ -228,9 +229,7 @@ async function applyDrugSafetyOverride(
   override: ParsedManualClinicalRuleBundle['drug_safety_overrides'][number],
 ) {
   const drug = await db.drugMaster.findFirst({
-    where: override.yj_code
-      ? { yj_code: override.yj_code }
-      : { drug_name: { contains: override.drug_name! } },
+    where: { yj_code: override.yj_code! },
     select: { id: true },
   });
 

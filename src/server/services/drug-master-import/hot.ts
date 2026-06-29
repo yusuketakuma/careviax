@@ -36,7 +36,7 @@ type ImportHotMasterOptions = {
   zipLimits?: Partial<ZipExpansionLimits>;
 };
 type HotMasterImportDbClient = DrugMasterImportLogDbClient & {
-  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'findFirst' | 'update' | 'upsert'>;
+  drugMaster: Pick<Prisma.TransactionClient['drugMaster'], 'upsert'>;
 };
 
 function resolveConfiguredHotUrl(fileUrl?: string) {
@@ -197,29 +197,7 @@ export async function importHotMaster(
         continue;
       }
 
-      if (!record.drug_name) {
-        continue;
-      }
-
-      const existing = await db.drugMaster.findFirst({
-        where: {
-          drug_name: record.drug_name,
-          ...(record.manufacturer ? { manufacturer: record.manufacturer } : {}),
-        },
-        select: { id: true },
-      });
-
-      if (!existing) {
-        continue;
-      }
-
-      await db.drugMaster.update({
-        where: { id: existing.id },
-        data: {
-          hot_code: record.hot_code,
-        },
-      });
-      updatedCount += 1;
+      continue;
     }
 
     return {

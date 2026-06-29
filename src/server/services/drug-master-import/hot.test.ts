@@ -172,4 +172,24 @@ describe('importHotMaster', () => {
       }),
     );
   });
+
+  it('skips HOT records without YJ code instead of linking by drug name', async () => {
+    const csv = ['HOTコード,YJコード,販売名,メーカー名', '1234567890123,,同名薬,Ｔ’ｓ製薬'].join(
+      '\n',
+    );
+
+    const result = await importHotMaster(db, {
+      fileUrl: 'https://www.medis.or.jp/hot.csv',
+      fetchImpl: async () =>
+        new Response(new Blob([Buffer.from(csv, 'utf8')]), {
+          status: 200,
+          headers: { 'content-type': 'text/csv' },
+        }),
+    });
+
+    expect(result.importedCount).toBe(0);
+    expect(db.drugMaster.upsert).not.toHaveBeenCalled();
+    expect(db.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(db.drugMaster.update).not.toHaveBeenCalled();
+  });
 });

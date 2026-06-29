@@ -80,7 +80,29 @@ describe('importManualClinicalRules', () => {
 
     expect(result.importedCount).toBe(4);
     expect(db.drugAlertRule.deleteMany).toHaveBeenCalledTimes(2);
+    expect(db.drugAlertRule.deleteMany).toHaveBeenCalledWith({
+      where: { alert_type: 'pim_elderly', org_id: null },
+    });
+    expect(db.drugAlertRule.deleteMany).toHaveBeenCalledWith({
+      where: { alert_type: 'high_risk', org_id: null },
+    });
     expect(db.drugAlertRule.createMany).toHaveBeenCalledTimes(2);
+    expect(db.drugAlertRule.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          alert_type: 'pim_elderly',
+          org_id: null,
+        }),
+      ],
+    });
+    expect(db.drugAlertRule.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          alert_type: 'high_risk',
+          org_id: null,
+        }),
+      ],
+    });
     expect(db.drugMaster.update).toHaveBeenCalledWith({
       where: { id: 'drug_1' },
       data: {
@@ -177,6 +199,51 @@ describe('importManualClinicalRules', () => {
     expect(db.drugMaster.findFirst).not.toHaveBeenCalled();
     expect(db.drugPackageInsert.create).not.toHaveBeenCalled();
     expect(db.drugPackageInsert.update).not.toHaveBeenCalled();
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: expect.objectContaining({
+        status: 'failed',
+      }),
+    });
+  });
+
+  it('rejects drug-name-only renal adjustments before DrugMaster lookup', async () => {
+    await expect(
+      importManualClinicalRules(db, {
+        renal_adjustments: [
+          {
+            drug_name: '同名リスク薬',
+            dosage_adjustment_renal: [{ recommendation: '腎機能を確認して調整' }],
+          },
+        ],
+      }),
+    ).rejects.toThrow('手動臨床ルールの腎機能調整は yj_code が必要です');
+
+    expect(db.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(db.drugPackageInsert.create).not.toHaveBeenCalled();
+    expect(db.drugPackageInsert.update).not.toHaveBeenCalled();
+    expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
+      where: { id: 'log_1' },
+      data: expect.objectContaining({
+        status: 'failed',
+      }),
+    });
+  });
+
+  it('rejects drug-name-only safety overrides before DrugMaster updates', async () => {
+    await expect(
+      importManualClinicalRules(db, {
+        drug_safety_overrides: [
+          {
+            drug_name: '同名リスク薬',
+            is_high_risk: true,
+          },
+        ],
+      }),
+    ).rejects.toThrow('手動臨床ルールの安全性 override は yj_code が必要です');
+
+    expect(db.drugMaster.findFirst).not.toHaveBeenCalled();
+    expect(db.drugMaster.update).not.toHaveBeenCalled();
     expect(db.drugMasterImportLog.update).toHaveBeenCalledWith({
       where: { id: 'log_1' },
       data: expect.objectContaining({
