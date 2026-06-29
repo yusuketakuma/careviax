@@ -358,6 +358,24 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   ))}
                 </SelectContent>
               </Select>
+              {facilitiesQuery.isError ? (
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm text-destructive">
+                  <span>
+                    {facilitiesQuery.error instanceof Error
+                      ? facilitiesQuery.error.message
+                      : '施設マスターの取得に失敗しました'}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-sm"
+                    onClick={() => facilitiesQuery.refetch()}
+                  >
+                    再試行
+                  </Button>
+                </p>
+              ) : null}
             </Field>
             <Field label="ユニット">
               <Select
@@ -390,6 +408,24 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   ))}
                 </SelectContent>
               </Select>
+              {facilityUnitsQuery.isError ? (
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm text-destructive">
+                  <span>
+                    {facilityUnitsQuery.error instanceof Error
+                      ? facilityUnitsQuery.error.message
+                      : 'ユニット一覧の取得に失敗しました'}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-sm"
+                    onClick={() => facilityUnitsQuery.refetch()}
+                  >
+                    再試行
+                  </Button>
+                </p>
+              ) : null}
             </Field>
             <Field label="同時訪問グループID">
               <Input

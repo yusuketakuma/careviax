@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { buildOrgHeaders, buildOrgJsonHeaders } from '@/lib/api/org-headers';
@@ -328,6 +328,52 @@ describe('PatientMasterCard', () => {
       }
     },
   );
+
+  function mockQueryErrorFor(errorKey: string, refetch: () => void) {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useQueryMock.mockImplementation((config: CapturedConfig) => {
+      if (config.queryKey?.[0] === errorKey) {
+        return {
+          data: undefined,
+          isLoading: false,
+          isError: true,
+          error: new Error(
+            errorKey === 'patient-master-facilities'
+              ? '施設マスターの取得に失敗しました'
+              : 'ユニット一覧の取得に失敗しました',
+          ),
+          refetch,
+        };
+      }
+      return { data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() };
+    });
+  }
+
+  it('surfaces a retryable error instead of an empty facility dropdown when the facilities fetch fails', () => {
+    // false-empty 封止: 取得失敗を空オプションに畳まず、エラー文言 + 再試行(refetch) を出す。
+    const refetch = vi.fn();
+    mockQueryErrorFor('patient-master-facilities', refetch);
+
+    render(<PatientMasterCard orgId="org_1" patient={buildPatientWith({})} />);
+
+    expect(screen.getByText('施設マスターの取得に失敗しました')).toBeTruthy();
+    const retry = screen.getAllByRole('button', { name: '再試行' })[0];
+    fireEvent.click(retry);
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces a retryable error instead of an empty unit dropdown when the units fetch fails', () => {
+    const refetch = vi.fn();
+    mockQueryErrorFor('patient-master-facility-units', refetch);
+
+    render(<PatientMasterCard orgId="org_1" patient={buildPatientWith({ facilityId: 'fac_1' })} />);
+
+    expect(screen.getByText('ユニット一覧の取得に失敗しました')).toBeTruthy();
+    const retry = screen.getAllByRole('button', { name: '再試行' })[0];
+    fireEvent.click(retry);
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
 
   it('routes patient API mutations through the shared patient API path helper return values', async () => {
     const patientId = 'patient_1';
