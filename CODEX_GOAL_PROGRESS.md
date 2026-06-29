@@ -23,6 +23,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Schedule Day-board Pending Proposal Counts - 2026-06-30 00:05 JST
+
+- Scope:
+  - Implemented Claude-prioritized day-board pending-proposal undercounting fix after read-only subagent mapping/review.
+  - Kept Japan domestic business dates as `Asia/Tokyo` domain dates. UTC remains only the Prisma `Date` sentinel convention for `@db.Date` / `@db.Time` and a runtime-TZ regression gate, not the UI or business-day basis.
+  - No schema migration, live DB mutation, push, deploy, auth/RLS policy change, external send, or destructive operation was performed.
+- Fixed:
+  - Added `pending_proposal_counts` to `GET /api/visit-schedules/day-board` with `total_count`, `visible_count`, `hidden_count`, `limit`, and count-only hidden operational task metadata.
+  - Kept visible proposal rows capped while computing the total from the same org/date/open-status predicate, avoiding false “1件 only” summaries when additional pending proposals are hidden.
+  - Avoided returning hidden proposal patient names, free text, task titles, task descriptions, or hidden task details; hidden tasks are counted only when hidden proposals exist.
+  - Applied personal dashboard assignment scope to hidden task counts for pharmacist/assistant-like views.
+  - Updated the schedule team board to display total pending counts, `+他N件`, and a hidden-task count note while preserving a legacy fallback for stale/mocked responses.
+  - Added `japanDateKey()` and switched the day-board default `date` to Japan business date calculation, so date-omitted requests still resolve to Japan's current day even if the runtime/test process is UTC.
+  - Updated the PH-OS UI/UX SSOT so truncated work queues must expose total/visible/hidden counts and so Japan-only business dates remain `Asia/Tokyo`.
+  - Ignored `.codex/screenshots/` so screenshot QA evidence can remain local without dirtying commits.
+- Validation:
+  - `pnpm exec prettier --write docs/ui-ux-design-guidelines.md src/types/schedule-day-board.ts src/lib/utils/date-boundary.ts src/lib/utils/date-boundary.test.ts src/app/api/visit-schedules/day-board/route.ts src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx'`: passed.
+  - `TZ=Asia/Tokyo pnpm exec vitest run src/lib/utils/date-boundary.test.ts src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `54` tests.
+  - `TZ=UTC pnpm exec vitest run src/lib/utils/date-boundary.test.ts src/app/api/visit-schedules/day-board/route.test.ts 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `54` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `369` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+  - Playwright screenshot smoke: `http://127.0.0.1:3012/schedules?view=list` loaded as `訪問スケジュール — PH-OS`, console errors `[]`, screenshot saved locally at `.codex/screenshots/schedules-day-board-1440.png`.
+- Review:
+  - `code_mapper`, `api_contract_reviewer`, `medical_safety_reviewer`, `test_architect`, `verifier`, and `reviewer-strict` findings were addressed. Remaining type/fallback split is deliberate: API contract is required, UI keeps a fallback only for stale runtime/mocks.
+- Remaining:
+  - Product/UI polish can still tune the exact “未確定 N件 +他N件” wording if Claude's frontend review wants a different display, but the false-empty/undercounting safety issue is fixed.
+
 ### Scheduling P0 Datetime Foundation Completion - 2026-06-29 23:15 JST
 
 - Scope:

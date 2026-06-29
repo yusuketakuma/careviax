@@ -73,6 +73,7 @@ tmp/
 .codex/tmux-e2e-local.log
 .codex/dev-e2e-local.*
 .codex/start-e2e-local.*
+.codex/screenshots/
 
 # Rotated ralph-state archives (local only; keep repo + gbrain sync lean)
 .codex/archive/

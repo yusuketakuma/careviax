@@ -141,6 +141,26 @@ function familyName(name: string): string {
   return familyNameOf(name) || name;
 }
 
+function pendingProposalCounts(board: ScheduleDayBoardResponse) {
+  const visibleCount = board.pending_proposals.length;
+  const counts = (board as Partial<ScheduleDayBoardResponse>).pending_proposal_counts;
+  if (!counts) {
+    return {
+      totalCount: visibleCount,
+      visibleCount,
+      hiddenCount: 0,
+      hiddenOperationalTaskCount: 0,
+    };
+  }
+
+  return {
+    totalCount: Math.max(0, counts.total_count),
+    visibleCount: Math.max(0, counts.visible_count),
+    hiddenCount: Math.max(0, counts.hidden_count),
+    hiddenOperationalTaskCount: Math.max(0, counts.hidden_operational_task_count),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // 日/週トグル(日=当日ガント / 週=カレンダー)
 // ---------------------------------------------------------------------------
@@ -537,6 +557,7 @@ function ScheduleDaySummaryStrip({
   const visits = board.staff.flatMap((member) => member.visits);
   const preparationAttentionCount = visits.filter(visitNeedsPreparationAttention).length;
   const recommendedVehicleTargets = unassignedTimedVisitsForRecommendedVehicle(board).length;
+  const proposalCounts = pendingProposalCounts(board);
   const summaryItems = [
     {
       label: '訪問枠',
@@ -561,9 +582,14 @@ function ScheduleDaySummaryStrip({
     },
     {
       label: '未確定',
-      value: `${board.pending_proposals.length}件`,
-      detail: board.pending_proposals.length > 0 ? '受入/仮枠' : '未確定なし',
-      tone: board.pending_proposals.length > 0 ? ('confirm' as const) : ('done' as const),
+      value: `${proposalCounts.totalCount}件`,
+      detail:
+        proposalCounts.hiddenCount > 0
+          ? `先頭${proposalCounts.visibleCount}件 +他${proposalCounts.hiddenCount}件`
+          : proposalCounts.totalCount > 0
+            ? '受入/仮枠'
+            : '未確定なし',
+      tone: proposalCounts.totalCount > 0 ? ('confirm' as const) : ('done' as const),
     },
     {
       label: '車両反映',
@@ -1084,9 +1110,11 @@ function PendingProposalRow({
 function PendingProposalsCard({
   proposals,
   todayKey,
+  counts,
 }: {
   proposals: DayBoardPendingProposal[];
   todayKey: string;
+  counts: ReturnType<typeof pendingProposalCounts>;
 }) {
   return (
     <section
@@ -1098,7 +1126,12 @@ function PendingProposalsCard({
         <h3 id="pending-proposals-heading" className="text-base font-bold text-foreground">
           未確定
         </h3>
-        <span className="text-xs text-muted-foreground">{proposals.length}件</span>
+        <span className="text-xs text-muted-foreground">{counts.totalCount}件</span>
+        {counts.hiddenCount > 0 ? (
+          <span className="rounded-full bg-state-confirm/10 px-2 py-0.5 text-xs font-bold text-state-confirm">
+            +{counts.hiddenCount}件
+          </span>
+        ) : null}
       </div>
       {proposals.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">
@@ -1111,6 +1144,15 @@ function PendingProposalsCard({
           ))}
         </ul>
       )}
+      {counts.hiddenCount > 0 ? (
+        <div className="mt-3 rounded-md border border-state-confirm/25 bg-state-confirm/5 px-3 py-2 text-sm text-state-confirm">
+          先頭{counts.visibleCount}件を表示中。他{counts.hiddenCount}
+          件は候補一覧で確認してください。
+          {counts.hiddenOperationalTaskCount > 0
+            ? ` 未表示候補に運用タスク${counts.hiddenOperationalTaskCount}件があります。`
+            : ''}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1440,6 +1482,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
   const board = boardQuery.data ?? null;
   const cockpit = cockpitQuery.data ?? null;
   const operationalTasks = board?.operational_tasks ?? [];
+  const proposalCounts = board ? pendingProposalCounts(board) : null;
 
   const blockedReasons: BlockedReason[] = (cockpit?.blocked_reasons ?? []).map((reason) => ({
     id: reason.id,
@@ -1529,7 +1572,11 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
                   }
                   onUpdateTaskStatus={(payload) => taskStatusMutation.mutate(payload)}
                 />
-                <PendingProposalsCard proposals={board.pending_proposals} todayKey={todayKey} />
+                <PendingProposalsCard
+                  proposals={board.pending_proposals}
+                  todayKey={todayKey}
+                  counts={proposalCounts ?? pendingProposalCounts(board)}
+                />
               </div>
               <WorkspaceActionRail
                 nextAction={buildNextAction(cockpit, board)}

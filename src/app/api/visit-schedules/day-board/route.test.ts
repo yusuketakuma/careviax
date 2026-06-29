@@ -8,12 +8,15 @@ const {
   dispenseTaskGroupByMock,
   taskGroupByMock,
   taskFindManyMock,
+  taskCountMock,
   medicationCycleCountMock,
   proposalFindManyMock,
+  proposalCountMock,
   facilityFindManyMock,
   contactLogFindManyMock,
   pharmacistShiftFindManyMock,
   visitVehicleResourceFindManyMock,
+  careCaseFindManyMock,
   consentRecordFindManyMock,
   firstVisitDocumentFindManyMock,
   managementPlanFindManyMock,
@@ -25,12 +28,15 @@ const {
   dispenseTaskGroupByMock: vi.fn(),
   taskGroupByMock: vi.fn(),
   taskFindManyMock: vi.fn(),
+  taskCountMock: vi.fn(),
   medicationCycleCountMock: vi.fn(),
   proposalFindManyMock: vi.fn(),
+  proposalCountMock: vi.fn(),
   facilityFindManyMock: vi.fn(),
   contactLogFindManyMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
   visitVehicleResourceFindManyMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   consentRecordFindManyMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
   managementPlanFindManyMock: vi.fn(),
@@ -49,13 +55,14 @@ vi.mock('@/lib/db/client', () => ({
     membership: { findMany: membershipFindManyMock },
     visitSchedule: { findMany: visitScheduleFindManyMock },
     dispenseTask: { groupBy: dispenseTaskGroupByMock },
-    task: { groupBy: taskGroupByMock, findMany: taskFindManyMock },
+    task: { groupBy: taskGroupByMock, findMany: taskFindManyMock, count: taskCountMock },
     medicationCycle: { count: medicationCycleCountMock },
-    visitScheduleProposal: { findMany: proposalFindManyMock },
+    visitScheduleProposal: { findMany: proposalFindManyMock, count: proposalCountMock },
     facility: { findMany: facilityFindManyMock },
     visitScheduleContactLog: { findMany: contactLogFindManyMock },
     pharmacistShift: { findMany: pharmacistShiftFindManyMock },
     visitVehicleResource: { findMany: visitVehicleResourceFindManyMock },
+    careCase: { findMany: careCaseFindManyMock },
     consentRecord: { findMany: consentRecordFindManyMock },
     firstVisitDocument: { findMany: firstVisitDocumentFindManyMock },
     managementPlan: { findMany: managementPlanFindManyMock },
@@ -88,6 +95,8 @@ describe('/api/visit-schedules/day-board', () => {
     // ローカル(JST 想定)の朝。@db.Date 境界バグはこの時間帯で前日落ちしていた
     vi.setSystemTime(new Date(2026, 5, 12, 9, 0));
     vi.clearAllMocks();
+    authContextMock.role = 'admin';
+    authContextMock.userId = 'user_1';
     membershipFindManyMock.mockResolvedValue([
       { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },
     ]);
@@ -95,12 +104,15 @@ describe('/api/visit-schedules/day-board', () => {
     dispenseTaskGroupByMock.mockResolvedValue([]);
     taskGroupByMock.mockResolvedValue([]);
     taskFindManyMock.mockResolvedValue([]);
+    taskCountMock.mockResolvedValue(0);
     medicationCycleCountMock.mockResolvedValue(0);
     proposalFindManyMock.mockResolvedValue([]);
+    proposalCountMock.mockResolvedValue(0);
     facilityFindManyMock.mockResolvedValue([]);
     contactLogFindManyMock.mockResolvedValue([]);
     pharmacistShiftFindManyMock.mockResolvedValue([]);
     visitVehicleResourceFindManyMock.mockResolvedValue([]);
+    careCaseFindManyMock.mockResolvedValue([]);
     consentRecordFindManyMock.mockResolvedValue([]);
     firstVisitDocumentFindManyMock.mockResolvedValue([]);
     managementPlanFindManyMock.mockResolvedValue([]);
@@ -118,6 +130,7 @@ describe('/api/visit-schedules/day-board', () => {
 
     const where = visitScheduleFindManyMock.mock.calls.at(0)?.[0]?.where;
     const proposalWhere = proposalFindManyMock.mock.calls.at(0)?.[0]?.where;
+    const proposalCountWhere = proposalCountMock.mock.calls.at(0)?.[0]?.where;
     const select = visitScheduleFindManyMock.mock.calls.at(0)?.[0]?.select;
     // ローカル 2026-06-12 → UTC midnight 範囲。ローカル深夜(6/11T15:00Z)を渡すと
     // Prisma の @db.Date 切り捨てで前日扱いになり、当日訪問が全件こぼれる(回帰防止)
@@ -129,6 +142,7 @@ describe('/api/visit-schedules/day-board', () => {
       gte: new Date('2026-06-12T00:00:00.000Z'),
       lt: new Date('2026-06-13T00:00:00.000Z'),
     });
+    expect(proposalCountWhere).toEqual(proposalWhere);
     expect(select).toMatchObject({
       cycle: { select: { overall_status: true } },
       carry_items_status: true,
@@ -143,6 +157,38 @@ describe('/api/visit-schedules/day-board', () => {
         },
       },
     });
+    const json = await response.json();
+    expect(json.data.pending_proposals).toEqual([]);
+    expect(json.data.pending_proposal_counts).toEqual({
+      total_count: 0,
+      visible_count: 0,
+      hidden_count: 0,
+      limit: 3,
+      hidden_operational_task_count: 0,
+    });
+    expect(proposalFindManyMock).toHaveBeenCalledTimes(1);
+    expect(proposalCountMock).toHaveBeenCalledTimes(1);
+    expect(contactLogFindManyMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskCountMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the Japan business date when date is omitted even if the instant is still the previous UTC day', async () => {
+    vi.setSystemTime(new Date('2026-06-11T15:30:00.000Z')); // 2026-06-12 00:30 JST
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+
+    const where = visitScheduleFindManyMock.mock.calls.at(0)?.[0]?.where;
+    const proposalWhere = proposalFindManyMock.mock.calls.at(0)?.[0]?.where;
+    expect(where?.scheduled_date).toEqual({
+      gte: new Date('2026-06-12T00:00:00.000Z'),
+      lt: new Date('2026-06-13T00:00:00.000Z'),
+    });
+    expect(proposalWhere?.proposed_date).toEqual({
+      gte: new Date('2026-06-12T00:00:00.000Z'),
+      lt: new Date('2026-06-13T00:00:00.000Z'),
+    });
   });
 
   it('uses the explicit date query parameter as the local date key', async () => {
@@ -155,6 +201,229 @@ describe('/api/visit-schedules/day-board', () => {
     expect(where?.scheduled_date).toEqual({
       gte: new Date('2026-06-20T00:00:00.000Z'),
       lt: new Date('2026-06-21T00:00:00.000Z'),
+    });
+  });
+
+  it('returns pending proposal counts separately from the capped visible proposal rows', async () => {
+    const visibleProposals = [
+      {
+        id: 'proposal_visible_1',
+        visit_type: 'initial',
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+        proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        case_: { patient: { name: '佐藤 花子' } },
+      },
+      {
+        id: 'proposal_visible_2',
+        visit_type: 'regular',
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'attempted',
+        proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        case_: { patient: { name: '鈴木 修' } },
+      },
+      {
+        id: 'proposal_visible_3',
+        visit_type: 'regular',
+        proposal_status: 'reschedule_pending',
+        patient_contact_status: 'change_requested',
+        proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        case_: { patient: { name: '田中 改' } },
+      },
+    ];
+    proposalFindManyMock
+      .mockResolvedValueOnce(visibleProposals)
+      .mockResolvedValueOnce([{ id: 'proposal_hidden_4' }, { id: 'proposal_hidden_5' }]);
+    proposalCountMock.mockResolvedValue(5);
+    taskCountMock.mockResolvedValue(2);
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    const response = (await GET(createRequest('2026-06-12'), {
+      params: Promise.resolve({}),
+    }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    const visibleQuery = proposalFindManyMock.mock.calls.at(0)?.[0];
+    const idQuery = proposalFindManyMock.mock.calls.at(1)?.[0];
+    const countQuery = proposalCountMock.mock.calls.at(0)?.[0];
+    expect(visibleQuery).toMatchObject({
+      take: 3,
+      where: {
+        org_id: 'org_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        proposed_date: {
+          gte: new Date('2026-06-12T00:00:00.000Z'),
+          lt: new Date('2026-06-13T00:00:00.000Z'),
+        },
+      },
+    });
+    expect(idQuery).toMatchObject({
+      where: visibleQuery.where,
+      skip: 3,
+      select: { id: true },
+    });
+    expect(countQuery).toEqual({ where: visibleQuery.where });
+    expect(visibleQuery.where.proposal_status.in).not.toContain('confirmed');
+    expect(visibleQuery.where.proposal_status.in).not.toContain('rejected');
+    expect(visibleQuery.where.proposal_status.in).not.toContain('superseded');
+    expect(visibleQuery.where.proposal_status.in).not.toContain('expired');
+    expect(taskCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        task_type: {
+          in: [
+            'visit_preparation',
+            'visit_contact_followup',
+            'visit_schedule_reproposal_needed',
+            'visit_schedule_override_approval',
+            'visit_carry_item_review',
+            'facility_batch_tracker',
+            'mobile_visit_mode',
+          ],
+        },
+        status: { in: ['pending', 'in_progress'] },
+        AND: [
+          {},
+          {
+            related_entity_type: 'visit_schedule_proposal',
+            related_entity_id: { in: ['proposal_hidden_4', 'proposal_hidden_5'] },
+          },
+        ],
+      },
+    });
+    expect(json.data.pending_proposals).toHaveLength(3);
+    expect(json.data.pending_proposal_counts).toEqual({
+      total_count: 5,
+      visible_count: 3,
+      hidden_count: 2,
+      limit: 3,
+      hidden_operational_task_count: 2,
+    });
+    expect(JSON.stringify(json.data)).not.toContain('proposal_hidden_4');
+    expect(JSON.stringify(json.data)).not.toContain('proposal_hidden_5');
+    expect(JSON.stringify(json.data)).not.toContain('非表示患者');
+  });
+
+  it('applies personal dashboard assignment scope to hidden proposal task counts', async () => {
+    authContextMock.role = 'pharmacist';
+    authContextMock.userId = 'pharmacist_1';
+    membershipFindManyMock.mockResolvedValue([
+      { role: 'pharmacist', user: { id: 'pharmacist_1', name: '佐藤 真' } },
+    ]);
+    proposalFindManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'proposal_visible_1',
+          visit_type: 'initial',
+          proposal_status: 'proposed',
+          patient_contact_status: 'pending',
+          proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+          time_window_start: null,
+          time_window_end: null,
+          proposed_pharmacist_id: 'pharmacist_1',
+          case_: { patient: { name: '佐藤 花子' } },
+        },
+        {
+          id: 'proposal_visible_2',
+          visit_type: 'regular',
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'attempted',
+          proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+          time_window_start: null,
+          time_window_end: null,
+          proposed_pharmacist_id: 'pharmacist_1',
+          case_: { patient: { name: '鈴木 修' } },
+        },
+        {
+          id: 'proposal_visible_3',
+          visit_type: 'regular',
+          proposal_status: 'reschedule_pending',
+          patient_contact_status: 'change_requested',
+          proposed_date: new Date('2026-06-12T00:00:00.000Z'),
+          time_window_start: null,
+          time_window_end: null,
+          proposed_pharmacist_id: 'pharmacist_1',
+          case_: { patient: { name: '田中 改' } },
+        },
+      ])
+      .mockResolvedValueOnce([{ id: 'proposal_hidden_4' }]);
+    proposalCountMock.mockResolvedValue(4);
+    careCaseFindManyMock.mockResolvedValue([
+      { id: 'case_1', patient_id: 'patient_1' },
+      { id: 'case_2', patient_id: 'patient_1' },
+    ]);
+    taskCountMock.mockResolvedValue(1);
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    const response = (await GET(createRequest('2026-06-12'), {
+      params: Promise.resolve({}),
+    }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        AND: [
+          {
+            OR: [
+              { primary_pharmacist_id: 'pharmacist_1' },
+              { backup_pharmacist_id: 'pharmacist_1' },
+              { visit_schedules: { some: { pharmacist_id: 'pharmacist_1' } } },
+            ],
+          },
+        ],
+      },
+      select: { id: true, patient_id: true },
+    });
+    expect(taskCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        task_type: {
+          in: [
+            'visit_preparation',
+            'visit_contact_followup',
+            'visit_schedule_reproposal_needed',
+            'visit_schedule_override_approval',
+            'visit_carry_item_review',
+            'facility_batch_tracker',
+            'mobile_visit_mode',
+          ],
+        },
+        status: { in: ['pending', 'in_progress'] },
+        AND: [
+          {
+            OR: [
+              { assigned_to: 'pharmacist_1' },
+              { related_entity_type: 'patient', related_entity_id: { in: ['patient_1'] } },
+              { related_entity_type: 'case', related_entity_id: { in: ['case_1', 'case_2'] } },
+            ],
+          },
+          {
+            related_entity_type: 'visit_schedule_proposal',
+            related_entity_id: { in: ['proposal_hidden_4'] },
+          },
+        ],
+      },
+    });
+    expect(json.data.pending_proposal_counts).toEqual({
+      total_count: 4,
+      visible_count: 3,
+      hidden_count: 1,
+      limit: 3,
+      hidden_operational_task_count: 1,
     });
   });
 

@@ -17,10 +17,29 @@ import { formatDateKey } from '@/lib/date-key';
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const JAPAN_TIME_ZONE = 'Asia/Tokyo';
+const JAPAN_DATE_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: JAPAN_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 
 /** ローカル(サーバー TZ)の日付キー 'YYYY-MM-DD' を返す。 */
 export function localDateKey(date: Date = new Date()): string {
   return formatDateKey(date);
+}
+
+/** 日本国内運用の業務日キー 'YYYY-MM-DD' を返す。サーバー TZ には依存しない。 */
+export function japanDateKey(date: Date = new Date()): string {
+  const parts = JAPAN_DATE_FORMAT.formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  if (!year || !month || !day) {
+    throw new RangeError('Invalid Japan date key');
+  }
+  return `${year}-${month}-${day}`;
 }
 
 /** 日付キー 'YYYY-MM-DD' を @db.Date 比較用の UTC 深夜 Date にする。 */

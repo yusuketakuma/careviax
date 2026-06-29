@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   addUtcDays,
+  japanDateKey,
   localDateKey,
   optionalUtcDateFromLocalKey,
   todayUtcRange,
@@ -41,6 +42,13 @@ describe('date-boundary (JST 前提)', () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
       expect(localDateKey()).toBe('2026-06-12');
+    });
+  });
+
+  describe('japanDateKey', () => {
+    it('サーバーTZに依存せず JST 深夜直後の日本日付キーを返す', () => {
+      // UTC では 2026-06-11 15:30 だが、日本国内業務日では 2026-06-12。
+      expect(japanDateKey(new Date('2026-06-11T15:30:00.000Z'))).toBe('2026-06-12');
     });
   });
 

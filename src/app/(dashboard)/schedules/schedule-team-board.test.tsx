@@ -76,6 +76,14 @@ function localIso(hours: number, minutes = 0) {
   return date.toISOString();
 }
 
+function clockIso(hours: number, minutes = 0) {
+  const today = new Date();
+  // @db.Time values are encoded as UTC clock sentinels; business days still use JST/local keys.
+  return new Date(
+    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), hours, minutes, 0, 0),
+  ).toISOString();
+}
+
 function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff {
   return {
     id: 'user_yamada',
@@ -91,8 +99,8 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         priority: 'normal',
         site_id: 'site_1',
         route_order: 1,
-        time_start: localIso(10, 30),
-        time_end: localIso(11, 15),
+        time_start: clockIso(10, 30),
+        time_end: clockIso(11, 15),
         vehicle_resource_id: 'vehicle_1',
         vehicle_label: '軽バン1号',
         vehicle_travel_mode: 'DRIVE',
@@ -115,8 +123,8 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         priority: 'normal',
         site_id: 'site_1',
         route_order: 2,
-        time_start: localIso(14, 0),
-        time_end: localIso(14, 45),
+        time_start: clockIso(14, 0),
+        time_end: clockIso(14, 45),
         vehicle_resource_id: 'vehicle_1',
         vehicle_label: '軽バン1号',
         vehicle_travel_mode: 'DRIVE',
@@ -144,8 +152,8 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         priority: 'normal',
         site_id: 'site_1',
         route_order: 3,
-        time_start: localIso(15, 30),
-        time_end: localIso(17, 0),
+        time_start: clockIso(15, 30),
+        time_end: clockIso(17, 0),
         vehicle_resource_id: null,
         vehicle_label: null,
         vehicle_travel_mode: null,
@@ -163,8 +171,8 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         priority: 'normal',
         site_id: 'site_1',
         route_order: 4,
-        time_start: localIso(16, 0),
-        time_end: localIso(16, 30),
+        time_start: clockIso(16, 0),
+        time_end: clockIso(16, 30),
         vehicle_resource_id: 'vehicle_1',
         vehicle_label: '軽バン1号',
         vehicle_travel_mode: 'DRIVE',
@@ -216,8 +224,8 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
             priority: 'normal',
             site_id: 'site_1',
             route_order: null,
-            time_start: localIso(17, 15),
-            time_end: localIso(17, 45),
+            time_start: clockIso(17, 15),
+            time_end: clockIso(17, 45),
             vehicle_resource_id: null,
             vehicle_label: null,
             vehicle_travel_mode: null,
@@ -273,13 +281,20 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
         pharmacist_name: '佐藤 真',
         patient_contact_status: 'pending',
         proposed_date: TOMORROW_KEY,
-        time_start: localIso(10, 0),
+        time_start: clockIso(10, 0),
         badge_label: '受入判断',
         response_due_at: localIso(17, 0),
         idle_before_minutes: 70,
         idle_after_minutes: 25,
       },
     ],
+    pending_proposal_counts: {
+      total_count: 1,
+      visible_count: 1,
+      hidden_count: 0,
+      limit: 3,
+      hidden_operational_task_count: 0,
+    },
     operational_tasks: [
       buildScheduleTask(),
       buildScheduleTask({
@@ -884,6 +899,53 @@ describe('ScheduleTeamBoard', () => {
 
     // 主操作(青)が 1 つだけ: 次にやることのリンク以外の主ボタンは存在しない
     expect(screen.getByRole('link', { name: '予定を作る' })).toBeTruthy();
+  });
+
+  it('renders total pending proposal count while keeping only visible proposal rows', () => {
+    mockQueries({
+      board: {
+        ...buildBoardFixture(),
+        pending_proposal_counts: {
+          total_count: 5,
+          visible_count: 1,
+          hidden_count: 4,
+          limit: 3,
+          hidden_operational_task_count: 2,
+        },
+      },
+    });
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const summary = screen.getByTestId('schedule-day-summary');
+    expect(within(summary).getByText('先頭1件 +他4件')).toBeTruthy();
+
+    const pending = screen.getByTestId('schedule-pending-proposals');
+    expect(within(pending).getByText('5件')).toBeTruthy();
+    expect(within(pending).getByText('+4件')).toBeTruthy();
+    expect(within(pending).getAllByTestId('pending-proposal-row')).toHaveLength(1);
+    expect(
+      within(pending).getByText(
+        '先頭1件を表示中。他4件は候補一覧で確認してください。 未表示候補に運用タスク2件があります。',
+      ),
+    ).toBeTruthy();
+    expect(within(pending).getByRole('link', { name: '→ 確定フローへ' }).getAttribute('href')).toBe(
+      '/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=proposal_1',
+    );
+  });
+
+  it('falls back to visible pending proposal length when count summary is absent', () => {
+    const legacyBoard = {
+      ...buildBoardFixture(),
+      pending_proposal_counts: undefined,
+    } as unknown as ScheduleDayBoardResponse;
+
+    mockQueries({ board: legacyBoard });
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const pending = screen.getByTestId('schedule-pending-proposals');
+    expect(within(pending).getByText('1件')).toBeTruthy();
+    expect(within(pending).queryByText(/\+\d+件/)).toBeNull();
+    expect(within(pending).getAllByTestId('pending-proposal-row')).toHaveLength(1);
   });
 
   it('routes change-requested pending proposals to reproposal from the day board', () => {

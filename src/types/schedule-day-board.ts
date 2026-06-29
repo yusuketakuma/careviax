@@ -108,6 +108,19 @@ export type DayBoardPendingProposal = {
   idle_after_minutes: number | null;
 };
 
+export type DayBoardPendingProposalCounts = {
+  /** All open proposals for the board date before visible-row capping. */
+  total_count: number;
+  /** Rows included in `pending_proposals`. */
+  visible_count: number;
+  /** Open proposals intentionally not expanded on this board. */
+  hidden_count: number;
+  /** Server-side visible row cap. */
+  limit: number;
+  /** Open operational tasks attached to hidden proposals; task details remain off-board. */
+  hidden_operational_task_count: number;
+};
+
 export type ScheduleDayBoardResponse = {
   /** サーバー集計時刻(ISO)。「ルート計算 HH:MM」表示に使用 */
   generated_at: string;
@@ -120,6 +133,7 @@ export type ScheduleDayBoardResponse = {
   report_pending_count: number;
   vehicle_resources: DayBoardVehicleResource[];
   pending_proposals: DayBoardPendingProposal[];
+  pending_proposal_counts: DayBoardPendingProposalCounts;
   /** Current-board visit/proposal operational tasks; replaces the page's org-wide task scan. */
   operational_tasks: ScheduleDayBoardOperationalTask[];
 };
