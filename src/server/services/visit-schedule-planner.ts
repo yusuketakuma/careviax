@@ -1,6 +1,7 @@
 import { addDays, differenceInCalendarDays, format, getDay, startOfWeek } from 'date-fns';
 import type { VisitPriority, VisitType, VisitAssignmentMode } from '@prisma/client';
-import { buildOperatingCalendarLegacy, isOperatingDay } from '@/lib/calendar/operating-day';
+import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
+import { resolveOperatingState } from '@/lib/calendar/operating-day';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
@@ -29,6 +30,7 @@ type GenerateProposalParams = {
   preferredPharmacistId?: string;
   vehicleResourceId?: string;
   rescheduleSourceScheduleId?: string;
+  operatingDayOverrideReason?: string;
 };
 
 type SchedulePoint = {
@@ -171,6 +173,10 @@ const REJECTION_REASON_LABELS: Record<ProposalCandidateRejectionCode, string> = 
   not_selected: '候補上限外',
   evaluation_error: '評価エラー',
 };
+
+function operatingDayRejectionDetail(reason: 'holiday' | 'regular_closed') {
+  return reason === 'regular_closed' ? '拠点定休日のため候補外です' : '拠点休業日のため候補外です';
+}
 
 function toDateKey(value: Date) {
   return format(value, 'yyyy-MM-dd');
@@ -877,16 +883,46 @@ export async function generateVisitScheduleProposalDrafts(
     orderBy: [{ date: 'asc' }, { available_from: 'asc' }],
   });
 
-  const holidays = await prisma.businessHoliday.findMany({
-    where: {
-      org_id: params.orgId,
-      is_closed: true,
-      date: {
-        gte: planningStart,
-        lte: planningEnd,
+  const siteIds = Array.from(
+    new Set(shifts.map((shift) => shift.site_id).filter((siteId): siteId is string => !!siteId)),
+  );
+  const [operatingWeeklyRows, holidays] = await Promise.all([
+    prisma.pharmacyOperatingHours.findMany({
+      where: {
+        org_id: params.orgId,
+        site_id: { in: siteIds },
       },
-    },
-  });
+      select: {
+        id: true,
+        site_id: true,
+        weekday: true,
+        is_open: true,
+        open_time: true,
+        close_time: true,
+        note: true,
+      },
+    }),
+    prisma.businessHoliday.findMany({
+      where: {
+        org_id: params.orgId,
+        date: {
+          gte: planningStart,
+          lte: planningEnd,
+        },
+        OR: [{ site_id: { in: siteIds } }, { site_id: null }],
+      },
+      select: {
+        id: true,
+        site_id: true,
+        date: true,
+        name: true,
+        holiday_type: true,
+        is_closed: true,
+        open_time: true,
+        close_time: true,
+      },
+    }),
+  ]);
 
   const vehicleResources = await prisma.visitVehicleResource.findMany({
     where: {
@@ -904,13 +940,17 @@ export async function generateVisitScheduleProposalDrafts(
   });
   const operatingCalendarBySite = new Map<
     string,
-    ReturnType<typeof buildOperatingCalendarLegacy>
+    ReturnType<typeof buildOperatingCalendarFromDbRows>
   >();
   function operatingCalendarForSite(siteId: string | null) {
     const key = siteId ?? '';
     const existing = operatingCalendarBySite.get(key);
     if (existing) return existing;
-    const calendar = buildOperatingCalendarLegacy(key, holidays);
+    const calendar = buildOperatingCalendarFromDbRows(
+      key,
+      operatingWeeklyRows.filter((row) => row.site_id === key),
+      holidays.filter((row) => row.site_id === null || row.site_id === key),
+    );
     operatingCalendarBySite.set(key, calendar);
     return calendar;
   }
@@ -1051,13 +1091,17 @@ export async function generateVisitScheduleProposalDrafts(
           }),
         };
       }
-      if (!isOperatingDay(operatingCalendarForSite(shift.site_id), formatUtcDateKey(shift.date))) {
+      const operatingState = resolveOperatingState(
+        operatingCalendarForSite(shift.site_id),
+        formatUtcDateKey(shift.date),
+      );
+      if (!operatingState.open && !params.operatingDayOverrideReason) {
         return {
           kind: 'rejected' as const,
           diagnostic: buildRejectedDiagnostic({
             shift,
             reasonCode: 'business_holiday',
-            detail: '拠点休業日のため候補外です',
+            detail: operatingDayRejectionDetail(operatingState.reason),
           }),
         };
       }

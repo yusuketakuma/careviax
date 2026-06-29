@@ -46,6 +46,12 @@ export const generateVisitScheduleProposalSchema = z
     preferred_time_to: proposalTimeSchema.optional(),
     preferred_pharmacist_id: z.string().optional(),
     vehicle_resource_id: z.string().trim().min(1).optional(),
+    operating_day_override_reason: z
+      .string()
+      .trim()
+      .min(1, '休業日上書き理由は必須です')
+      .max(500, '休業日上書き理由は500文字以内で入力してください')
+      .optional(),
     reschedule_source_schedule_id: z.string().optional(),
     reproposal_source_proposal_id: z
       .string()

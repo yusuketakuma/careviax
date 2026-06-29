@@ -15,6 +15,8 @@ const {
   scheduleUpdateManyMock,
   scheduleCreateMock,
   pharmacistShiftFindFirstMock,
+  pharmacyOperatingHoursFindManyMock,
+  businessHolidayFindManyMock,
   vehicleResourceFindFirstMock,
   contactLogCreateMock,
   contactLogFindFirstMock,
@@ -41,6 +43,8 @@ const {
   scheduleUpdateManyMock: vi.fn(),
   scheduleCreateMock: vi.fn(),
   pharmacistShiftFindFirstMock: vi.fn(),
+  pharmacyOperatingHoursFindManyMock: vi.fn(),
+  businessHolidayFindManyMock: vi.fn(),
   vehicleResourceFindFirstMock: vi.fn(),
   contactLogCreateMock: vi.fn(),
   contactLogFindFirstMock: vi.fn(),
@@ -197,6 +201,12 @@ function buildTxMock() {
     pharmacistShift: {
       findFirst: pharmacistShiftFindFirstMock,
     },
+    pharmacyOperatingHours: {
+      findMany: pharmacyOperatingHoursFindManyMock,
+    },
+    businessHoliday: {
+      findMany: businessHolidayFindManyMock,
+    },
     visitVehicleResource: {
       findFirst: vehicleResourceFindFirstMock,
     },
@@ -215,6 +225,7 @@ function buildTxMock() {
       update: overrideUpdateMock,
     },
     auditLog: {
+      findFirst: auditLogFindFirstMock,
       create: auditLogCreateMock,
     },
   };
@@ -276,6 +287,8 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       available_from: new Date('1970-01-01T08:30:00.000Z'),
       available_to: new Date('1970-01-01T17:30:00.000Z'),
     });
+    pharmacyOperatingHoursFindManyMock.mockResolvedValue([]);
+    businessHolidayFindManyMock.mockResolvedValue([]);
     vehicleResourceFindFirstMock.mockResolvedValue({
       site_id: 'site_1',
       label: '社用車A',
@@ -1687,6 +1700,97 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     });
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
+
+  it('rejects confirmation on a closed operating day when the proposal has no override reason', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    pharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'hours_fri_closed',
+        site_id: 'site_1',
+        weekday: 5,
+        is_open: false,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+    ]);
+    auditLogFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message:
+        '2026-03-27: 訪問拠点が定休日のため訪問候補を確定できません。休業日上書き理由を入力して候補を再生成してください',
+    });
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(scheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('carries operating-day override reasons into the finalized schedule audit trail', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    proposalUpdateMock.mockResolvedValueOnce(
+      buildProposal({
+        proposal_status: 'confirmed',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: 'schedule_1',
+      }),
+    );
+    pharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'hours_fri_closed',
+        site_id: 'site_1',
+        weekday: 5,
+        is_open: false,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+    ]);
+    auditLogFindFirstMock.mockResolvedValueOnce({
+      changes: {
+        operating_day_override_reason: '患者都合により定休日対応',
+      },
+    });
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_operating_day_override_applied',
+        target_type: 'VisitSchedule',
+        target_id: 'schedule_1',
+        patient_id: 'patient_1',
+        changes: expect.objectContaining({
+          case_id: 'case_1',
+          cycle_id: 'cycle_1',
+          proposal_id: 'proposal_1',
+          scheduled_date: '2026-03-27',
+          pharmacist_id: 'pharmacist_1',
+          site_id: 'site_1',
+          operating_day_reason: 'regular_closed',
+          override_reason: '患者都合により定休日対応',
+        }),
+      }),
     });
   });
 

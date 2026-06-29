@@ -5,6 +5,7 @@ const {
   careCaseFindFirstMock,
   medicationCycleFindFirstMock,
   pharmacistShiftFindManyMock,
+  pharmacyOperatingHoursFindManyMock,
   businessHolidayFindManyMock,
   visitScheduleFindManyMock,
   visitVehicleResourceFindManyMock,
@@ -13,6 +14,7 @@ const {
   careCaseFindFirstMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
+  pharmacyOperatingHoursFindManyMock: vi.fn(),
   businessHolidayFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitVehicleResourceFindManyMock: vi.fn(),
@@ -29,6 +31,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     pharmacistShift: {
       findMany: pharmacistShiftFindManyMock,
+    },
+    pharmacyOperatingHours: {
+      findMany: pharmacyOperatingHoursFindManyMock,
     },
     businessHoliday: {
       findMany: businessHolidayFindManyMock,
@@ -132,6 +137,7 @@ describe('generateVisitScheduleProposalDrafts', () => {
         },
       },
     ]);
+    pharmacyOperatingHoursFindManyMock.mockResolvedValue([]);
     businessHolidayFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitVehicleResourceFindManyMock.mockResolvedValue([
@@ -240,9 +246,95 @@ describe('generateVisitScheduleProposalDrafts', () => {
     expect(businessHolidayFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          is_closed: true,
+          OR: expect.arrayContaining([{ site_id: { in: ['site_1'] } }, { site_id: null }]),
         }),
       }),
+    );
+  });
+
+  it('rejects candidates on a weekly regular-closed operating day', async () => {
+    pharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'hours_sat_closed',
+        site_id: 'site_1',
+        weekday: 6,
+        is_open: false,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 2,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+    });
+
+    expect(result.drafts).toHaveLength(0);
+    expect(result.diagnostics.rejected).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pharmacist_id: 'pharmacist_primary',
+          site_id: 'site_1',
+          reason_code: 'business_holiday',
+          detail: '拠点定休日のため候補外です',
+        }),
+        expect.objectContaining({
+          pharmacist_id: 'pharmacist_backup',
+          site_id: 'site_1',
+          reason_code: 'business_holiday',
+          detail: '拠点定休日のため候補外です',
+        }),
+      ]),
+    );
+    expect(pharmacyOperatingHoursFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          site_id: { in: ['site_1'] },
+        },
+      }),
+    );
+  });
+
+  it('allows weekly regular-closed operating days when an override reason is supplied', async () => {
+    pharmacyOperatingHoursFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'hours_sat_closed',
+        site_id: 'site_1',
+        weekday: 6,
+        is_open: false,
+        open_time: null,
+        close_time: null,
+        note: null,
+      },
+    ]);
+
+    const result = await generateVisitScheduleProposalDrafts({
+      orgId: 'org_1',
+      caseId: 'case_1',
+      visitType: 'regular',
+      priority: 'normal',
+      candidateCount: 1,
+      startDate: new Date('2026-03-27T00:00:00.000Z'),
+      operatingDayOverrideReason: '患者都合により定休日対応',
+    });
+
+    expect(result.drafts).toHaveLength(1);
+    expect(result.drafts[0]).toMatchObject({
+      proposed_pharmacist_id: 'pharmacist_primary',
+      site_id: 'site_1',
+    });
+    expect(result.diagnostics.rejected).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason_code: 'business_holiday',
+        }),
+      ]),
     );
   });
 

@@ -74,6 +74,9 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: visitScheduleProposalFindFirstMock,
       findMany: visitScheduleProposalFindManyMock,
     },
+    visitScheduleProposalBatch: {
+      findUnique: visitScheduleProposalBatchFindUniqueMock,
+    },
     user: {
       findMany: userFindManyMock,
       findFirst: userFindFirstMock,
@@ -173,6 +176,28 @@ function buildSerializableConflictError() {
 }
 
 function buildExpectedProposalRequestFingerprint(overrides?: Record<string, unknown>) {
+  const material = JSON.stringify({
+    case_id: 'case_1',
+    visit_type: 'regular',
+    priority: 'normal',
+    start_date: null,
+    locked_date: null,
+    candidate_count: 1,
+    travel_mode: 'DRIVE',
+    preferred_time_from: null,
+    preferred_time_to: null,
+    preferred_pharmacist_id: null,
+    vehicle_resource_id: null,
+    reschedule_source_schedule_id: null,
+    reproposal_source_proposal_id: null,
+    special_cap_eligible: null,
+    operating_day_override_reason: null,
+    ...overrides,
+  });
+  return `visit-proposal:v1:${createHash('sha256').update(material).digest('hex')}`;
+}
+
+function buildExpectedLegacyProposalRequestFingerprint(overrides?: Record<string, unknown>) {
   const material = JSON.stringify({
     case_id: 'case_1',
     visit_type: 'regular',
@@ -950,6 +975,70 @@ describe('/api/visit-schedule-proposals', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('replays legacy idempotent proposal batches when no operating-day override reason is supplied', async () => {
+    visitScheduleProposalBatchFindUniqueMock.mockResolvedValueOnce({
+      id: 'proposal_batch_legacy',
+      org_id: 'org_1',
+      case_id: 'case_1',
+      idempotency_key: 'proposal-legacy-key-1',
+      request_fingerprint: buildExpectedLegacyProposalRequestFingerprint(),
+      proposals: [
+        {
+          id: 'proposal_existing_legacy',
+          org_id: 'org_1',
+          case_id: 'case_1',
+          created_at: new Date('2026-04-01T00:00:00.000Z'),
+        },
+      ],
+    });
+
+    const replay = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        idempotency_key: 'proposal-legacy-key-1',
+      }),
+    ))!;
+
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({
+      replayed: true,
+      data: [expect.objectContaining({ id: 'proposal_existing_legacy' })],
+    });
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects legacy idempotency fingerprints when a new operating-day override reason is supplied', async () => {
+    visitScheduleProposalBatchFindUniqueMock.mockResolvedValueOnce({
+      id: 'proposal_batch_legacy',
+      org_id: 'org_1',
+      case_id: 'case_1',
+      idempotency_key: 'proposal-legacy-key-1',
+      request_fingerprint: buildExpectedLegacyProposalRequestFingerprint(),
+      proposals: [],
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        operating_day_override_reason: '患者都合により定休日対応',
+        idempotency_key: 'proposal-legacy-key-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'idempotency_key が別の訪問候補生成リクエストで使用されています',
+    });
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('rejects an idempotency key reused with a different proposal request', async () => {
     visitScheduleProposalBatchFindUniqueMock.mockResolvedValueOnce({
       id: 'proposal_batch_1',
@@ -1087,6 +1176,33 @@ describe('/api/visit-schedule-proposals', () => {
       data: expect.objectContaining({
         site_id: 'site_1',
         vehicle_resource_id: 'vehicle_1',
+      }),
+    });
+  });
+
+  it('passes operating day override reasons to the planner and idempotency fingerprint', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        operating_day_override_reason: '患者都合により定休日対応',
+        idempotency_key: 'proposal-operating-override-key',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operatingDayOverrideReason: '患者都合により定休日対応',
+      }),
+    );
+    expect(visitScheduleProposalBatchCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        idempotency_key: 'proposal-operating-override-key',
+        request_fingerprint: buildExpectedProposalRequestFingerprint({
+          operating_day_override_reason: '患者都合により定休日対応',
+        }),
       }),
     });
   });

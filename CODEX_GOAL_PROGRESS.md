@@ -19105,3 +19105,26 @@ Next loop:
   - Final full `pnpm format:check` was blocked by concurrent FE WIP in `src/app/(dashboard)/schedules/route-compare/route-compare-content.tsx`; that file was not staged for this backend slice.
 - Remaining:
   - Commit this validated slice and continue backend drug-code cleanup from a clean tree.
+
+### Visit Proposal Planner Weekly Regular-Closed G2 Slice — 2026-06-29 20:15 JST
+
+- Scope:
+  - Fixed the scheduling proposal planner G2 correctness bug where proposal generation used `buildOperatingCalendarLegacy` and ignored weekly `PharmacyOperatingHours.is_open=false` regular-closed days while direct schedule generation rejected those same dates.
+  - Kept database schema unchanged and used the existing operating-day adapter/contract shared with direct schedule generation.
+- Fixed:
+  - `generateVisitScheduleProposalDrafts` now fetches per-site weekly operating hours plus relevant site/org-wide `BusinessHoliday` rows, builds calendars with `buildOperatingCalendarFromDbRows`, and rejects both holiday and weekly regular-closed candidates through `resolveOperatingState`.
+  - Proposal creation now accepts `operating_day_override_reason`, passes it to the planner, includes it in the current idempotency fingerprint, accepts legacy no-override fingerprints for replay, and early-replays existing idempotency batches before billing/planner side effects.
+  - Proposal confirmation re-evaluates the finalized proposal date/site inside the transaction; closed dates fail closed unless the creation audit recorded an override reason, and successful overrides create `visit_schedule_operating_day_override_applied` audit logs on the finalized `VisitSchedule`.
+- Review:
+  - `api_contract_reviewer` found idempotency replay/backward-compatibility risks; fixed with early replay and legacy fingerprint matching plus route tests.
+  - `medical_safety_reviewer` found a high audit-continuity blocker; fixed by confirm-time fail-closed recheck and `VisitSchedule` override audit logging.
+  - Claude approved the patch after independent review and re-running the planner/proposal tests. Non-blocking observations: override reason is currently window-wide, and confirm intentionally fails closed if the creation audit row is missing.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-schedule-planner.test.ts src/app/api/visit-schedule-proposals/route.test.ts 'src/app/api/visit-schedule-proposals/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `3` files / `130` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Commit this validated G2 slice, notify Claude, confirm the tree is clean, then continue discrete verified backend fixes. Hold the larger unified route-engine refactor until Claude's consolidated plan lands.

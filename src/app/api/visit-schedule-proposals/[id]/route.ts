@@ -10,6 +10,9 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, conflict, internalError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
+import { formatUtcDateKey } from '@/lib/date-key';
+import { buildOperatingCalendarFromDbRows } from '@/lib/calendar/operating-day-adapter';
+import { resolveOperatingState } from '@/lib/calendar/operating-day';
 import { logger } from '@/lib/utils/logger';
 import { updateVisitScheduleProposalSchema } from '@/lib/validations/visit-schedule-proposal';
 import {
@@ -129,6 +132,18 @@ type CreationDiagnostics = {
 
 const ROUTE_ORDER_LOCKED_STATUSES = ['ready', 'departed', 'in_progress', 'completed'] as const;
 const CONFIRM_SERIALIZABLE_RETRY_LIMIT = 3;
+
+function readOperatingDayOverrideReason(changes: unknown): string | null {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return null;
+  if (!('operating_day_override_reason' in changes)) return null;
+  const value = changes.operating_day_override_reason;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function operatingDayConfirmBlockedMessage(dateKey: string, reason: 'holiday' | 'regular_closed') {
+  const label = reason === 'regular_closed' ? '定休日' : '休業日';
+  return `${dateKey}: 訪問拠点が${label}のため訪問候補を確定できません。休業日上書き理由を入力して候補を再生成してください`;
+}
 
 class VisitProposalConfirmRetryLimitError extends Error {
   constructor() {
@@ -1395,6 +1410,84 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
+    const operatingSiteId = currentProposal.site_id ?? shift.site_id;
+    const scheduledDateKey = formatUtcDateKey(currentProposal.proposed_date);
+    let operatingDayOverrideAudit: {
+      siteId: string;
+      reason: 'holiday' | 'regular_closed';
+      overrideReason: string;
+    } | null = null;
+    if (operatingSiteId) {
+      const [operatingWeeklyRows, operatingHolidayRows, creationAuditLog] = await Promise.all([
+        tx.pharmacyOperatingHours.findMany({
+          where: {
+            org_id: ctx.orgId,
+            site_id: operatingSiteId,
+          },
+          select: {
+            id: true,
+            site_id: true,
+            weekday: true,
+            is_open: true,
+            open_time: true,
+            close_time: true,
+            note: true,
+          },
+        }),
+        tx.businessHoliday.findMany({
+          where: {
+            org_id: ctx.orgId,
+            date: currentProposal.proposed_date,
+            OR: [{ site_id: operatingSiteId }, { site_id: null }],
+          },
+          select: {
+            id: true,
+            site_id: true,
+            date: true,
+            name: true,
+            holiday_type: true,
+            is_closed: true,
+            open_time: true,
+            close_time: true,
+          },
+        }),
+        tx.auditLog.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            target_type: 'VisitScheduleProposal',
+            target_id: id,
+            action: 'visit_schedule_proposals_created',
+          },
+          orderBy: { created_at: 'desc' },
+          select: {
+            changes: true,
+          },
+        }),
+      ]);
+      const operatingState = resolveOperatingState(
+        buildOperatingCalendarFromDbRows(
+          operatingSiteId,
+          operatingWeeklyRows,
+          operatingHolidayRows,
+        ),
+        scheduledDateKey,
+      );
+      if (!operatingState.open) {
+        const overrideReason = readOperatingDayOverrideReason(creationAuditLog?.changes);
+        if (!overrideReason) {
+          return {
+            error: 'operating_day_closed' as const,
+            message: operatingDayConfirmBlockedMessage(scheduledDateKey, operatingState.reason),
+          };
+        }
+        operatingDayOverrideAudit = {
+          siteId: operatingSiteId,
+          reason: operatingState.reason,
+          overrideReason,
+        };
+      }
+    }
+
     const claim = await tx.visitScheduleProposal.updateMany({
       where: {
         id,
@@ -1648,6 +1741,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
+    if (operatingDayOverrideAudit) {
+      await createAuditLogEntry(tx, ctx, {
+        action: 'visit_schedule_operating_day_override_applied',
+        targetType: 'VisitSchedule',
+        targetId: schedule.id,
+        patientId: confirmedProposal.case_.patient_id,
+        changes: {
+          case_id: confirmedProposal.case_id,
+          cycle_id: confirmedProposal.cycle_id ?? null,
+          proposal_id: id,
+          scheduled_date: scheduledDateKey,
+          pharmacist_id: confirmedProposal.proposed_pharmacist_id,
+          site_id: operatingDayOverrideAudit.siteId,
+          operating_day_reason: operatingDayOverrideAudit.reason,
+          override_reason: operatingDayOverrideAudit.overrideReason,
+          recurrence_rule: confirmedProposal.suggested_recurrence_rule ?? null,
+        },
+      });
+    }
+
     await resolveOperationalTasks(tx, {
       orgId: ctx.orgId,
       dedupeKey: buildVisitScheduleContactTaskKey(id),
@@ -1684,6 +1797,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return validationError(result.message);
     }
     if (result.error === 'vehicle_resource_unavailable') {
+      return validationError(result.message);
+    }
+    if (result.error === 'operating_day_closed') {
       return validationError(result.message);
     }
   }

@@ -97,8 +97,11 @@ function startOfMonth(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
 }
 
-function buildProposalRequestFingerprint(input: GenerateProposalFingerprintInput) {
-  const material = JSON.stringify({
+function buildProposalRequestFingerprint(
+  input: GenerateProposalFingerprintInput,
+  options?: { includeOperatingDayOverrideReason?: boolean },
+) {
+  const materialObject = {
     case_id: input.caseId,
     visit_type: input.visitType,
     priority: input.priority,
@@ -113,8 +116,43 @@ function buildProposalRequestFingerprint(input: GenerateProposalFingerprintInput
     reschedule_source_schedule_id: input.rescheduleSourceScheduleId ?? null,
     reproposal_source_proposal_id: input.reproposalSourceProposalId ?? null,
     special_cap_eligible: input.specialCapEligible ?? null,
-  });
+  };
+  const material = JSON.stringify(
+    options?.includeOperatingDayOverrideReason === false
+      ? materialObject
+      : {
+          ...materialObject,
+          operating_day_override_reason: input.operatingDayOverrideReason ?? null,
+        },
+  );
   return `visit-proposal:v1:${createHash('sha256').update(material).digest('hex')}`;
+}
+
+type ProposalRequestFingerprints = {
+  current: string;
+  legacyWithoutOperatingDayOverride: string | null;
+};
+
+function buildProposalRequestFingerprints(
+  input: GenerateProposalFingerprintInput,
+): ProposalRequestFingerprints {
+  return {
+    current: buildProposalRequestFingerprint(input),
+    legacyWithoutOperatingDayOverride: input.operatingDayOverrideReason
+      ? null
+      : buildProposalRequestFingerprint(input, {
+          includeOperatingDayOverrideReason: false,
+        }),
+  };
+}
+
+function matchesProposalRequestFingerprint(
+  stored: string,
+  fingerprints: ProposalRequestFingerprints,
+) {
+  return (
+    stored === fingerprints.current || stored === fingerprints.legacyWithoutOperatingDayOverride
+  );
 }
 
 type GenerateProposalFingerprintInput = {
@@ -129,6 +167,7 @@ type GenerateProposalFingerprintInput = {
   preferredTimeTo?: string;
   preferredPharmacistId?: string;
   vehicleResourceId?: string;
+  operatingDayOverrideReason?: string;
   rescheduleSourceScheduleId?: string;
   reproposalSourceProposalId?: string;
   specialCapEligible?: boolean;
@@ -757,18 +796,6 @@ export const POST = withAuthContext(
         ? 'emergency'
         : parsed.data.priority;
 
-    const { blockingMessages, alerts: billingAlerts } = await validateProposalBillingExclusions({
-      orgId: ctx.orgId,
-      caseId: parsed.data.case_id,
-      visitType: resolvedVisitType,
-      targetDate: parsed.data.start_date ? new Date(parsed.data.start_date) : new Date(),
-      prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
-      specialCapEligible: parsed.data.special_cap_eligible,
-    });
-    if (blockingMessages.length > 0) {
-      return validationError(blockingMessages.join(' / '));
-    }
-
     const vehicleResource = parsed.data.vehicle_resource_id
       ? await prisma.visitVehicleResource.findFirst({
           where: {
@@ -788,6 +815,72 @@ export const POST = withAuthContext(
       return validationError('選択した車両リソースが見つからないか利用できません');
     }
     const effectiveTravelMode = vehicleResource?.travel_mode ?? parsed.data.travel_mode;
+    const requestFingerprintInput: GenerateProposalFingerprintInput = {
+      caseId: parsed.data.case_id,
+      visitType: resolvedVisitType,
+      priority: resolvedPriority,
+      startDate: parsed.data.start_date,
+      lockedDate: parsed.data.locked_date,
+      candidateCount: parsed.data.candidate_count,
+      travelMode: effectiveTravelMode,
+      preferredTimeFrom: parsed.data.preferred_time_from,
+      preferredTimeTo: parsed.data.preferred_time_to,
+      preferredPharmacistId: parsed.data.preferred_pharmacist_id,
+      vehicleResourceId: parsed.data.vehicle_resource_id,
+      operatingDayOverrideReason: parsed.data.operating_day_override_reason,
+      rescheduleSourceScheduleId: resolvedRescheduleSourceScheduleId,
+      reproposalSourceProposalId: parsed.data.reproposal_source_proposal_id,
+      specialCapEligible: parsed.data.special_cap_eligible,
+    };
+    const requestFingerprints = parsed.data.idempotency_key
+      ? buildProposalRequestFingerprints(requestFingerprintInput)
+      : null;
+    if (parsed.data.idempotency_key && requestFingerprints) {
+      const existingBatch = await prisma.visitScheduleProposalBatch.findUnique({
+        where: {
+          org_id_idempotency_key: {
+            org_id: ctx.orgId,
+            idempotency_key: parsed.data.idempotency_key,
+          },
+        },
+        include: {
+          proposals: {
+            orderBy: { created_at: 'asc' },
+          },
+        },
+      });
+      if (existingBatch) {
+        if (
+          !matchesProposalRequestFingerprint(existingBatch.request_fingerprint, requestFingerprints)
+        ) {
+          return conflict('idempotency_key が別の訪問候補生成リクエストで使用されています');
+        }
+        return success(
+          {
+            data: omitProposalRejectReasons(existingBatch.proposals),
+            alerts: [],
+            diagnostics: {
+              accepted: [],
+              rejected: [],
+            },
+            replayed: true,
+          },
+          200,
+        );
+      }
+    }
+
+    const { blockingMessages, alerts: billingAlerts } = await validateProposalBillingExclusions({
+      orgId: ctx.orgId,
+      caseId: parsed.data.case_id,
+      visitType: resolvedVisitType,
+      targetDate: parsed.data.start_date ? new Date(parsed.data.start_date) : new Date(),
+      prescriptionCategory: resolvedVisitType === 'emergency' ? 'emergency' : 'regular',
+      specialCapEligible: parsed.data.special_cap_eligible,
+    });
+    if (blockingMessages.length > 0) {
+      return validationError(blockingMessages.join(' / '));
+    }
 
     let drafts;
     let plannerDiagnostics:
@@ -829,6 +922,7 @@ export const POST = withAuthContext(
         preferredTimeTo: parsed.data.preferred_time_to,
         preferredPharmacistId: parsed.data.preferred_pharmacist_id,
         vehicleResourceId: parsed.data.vehicle_resource_id,
+        operatingDayOverrideReason: parsed.data.operating_day_override_reason,
         rescheduleSourceScheduleId: resolvedRescheduleSourceScheduleId,
       });
       drafts = plannerResult.drafts;
@@ -953,30 +1047,14 @@ export const POST = withAuthContext(
             formatDateKey(draft.proposed_date) === item.proposed_date,
         ),
       ) ?? [];
-    const requestFingerprint = parsed.data.idempotency_key
-      ? buildProposalRequestFingerprint({
-          caseId: parsed.data.case_id,
-          visitType: resolvedVisitType,
-          priority: resolvedPriority,
-          startDate: parsed.data.start_date,
-          lockedDate: parsed.data.locked_date,
-          candidateCount: parsed.data.candidate_count,
-          travelMode: effectiveTravelMode,
-          preferredTimeFrom: parsed.data.preferred_time_from,
-          preferredTimeTo: parsed.data.preferred_time_to,
-          preferredPharmacistId: parsed.data.preferred_pharmacist_id,
-          vehicleResourceId: parsed.data.vehicle_resource_id,
-          rescheduleSourceScheduleId: resolvedRescheduleSourceScheduleId,
-          reproposalSourceProposalId: parsed.data.reproposal_source_proposal_id,
-          specialCapEligible: parsed.data.special_cap_eligible,
-        })
-      : null;
+    const requestFingerprint = requestFingerprints?.current ?? null;
 
     const proposalResult = await withSerializableProposalCreateTransaction(
       ctx.orgId,
       async (tx) => {
         let proposalBatchId: string | null = null;
-        if (parsed.data.idempotency_key && requestFingerprint) {
+        const idempotencyFingerprints = requestFingerprints;
+        if (parsed.data.idempotency_key && requestFingerprint && idempotencyFingerprints) {
           const existingBatch = await tx.visitScheduleProposalBatch.findUnique({
             where: {
               org_id_idempotency_key: {
@@ -991,7 +1069,12 @@ export const POST = withAuthContext(
             },
           });
           if (existingBatch) {
-            if (existingBatch.request_fingerprint !== requestFingerprint) {
+            if (
+              !matchesProposalRequestFingerprint(
+                existingBatch.request_fingerprint,
+                idempotencyFingerprints,
+              )
+            ) {
               return { error: 'idempotency_conflict' as const };
             }
             return { proposals: existingBatch.proposals, replayed: true };
@@ -1024,7 +1107,12 @@ export const POST = withAuthContext(
               },
             });
             if (!racedBatch) throw cause;
-            if (racedBatch.request_fingerprint !== requestFingerprint) {
+            if (
+              !matchesProposalRequestFingerprint(
+                racedBatch.request_fingerprint,
+                idempotencyFingerprints,
+              )
+            ) {
               return { error: 'idempotency_conflict' as const };
             }
             return { proposals: racedBatch.proposals, replayed: true };
@@ -1087,6 +1175,7 @@ export const POST = withAuthContext(
                   accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
                   rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
                 },
+                operating_day_override_reason: parsed.data.operating_day_override_reason ?? null,
               },
             });
           }),
