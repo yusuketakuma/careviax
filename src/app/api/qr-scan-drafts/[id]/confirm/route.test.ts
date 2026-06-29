@@ -112,6 +112,33 @@ function createMalformedJsonRequest() {
   });
 }
 
+function createQrDraftTransaction(parsedData: unknown) {
+  return {
+    qrScanDraft: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'draft_1',
+        status: 'pending',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        scanned_by: 'user_scan',
+        qr_payload_hash: 'hash_1',
+        parsed_data: parsedData,
+      }),
+      updateMany: qrScanDraftClaimMock,
+      update: qrScanDraftUpdateMock,
+    },
+    jahisSupplementalRecord: {
+      updateMany: jahisSupplementalRecordUpdateManyMock,
+      deleteMany: jahisSupplementalRecordDeleteManyMock,
+      createMany: jahisSupplementalRecordCreateManyMock,
+    },
+    medicationIssue: {
+      findMany: medicationIssueFindManyMock,
+      createMany: medicationIssueCreateManyMock,
+    },
+  };
+}
+
 describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -438,6 +465,66 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['missing status and missing code', { drugCode: null }],
+    [
+      'invalid status and missing code',
+      { drugCode: null, drugCodeResolutionStatus: 'name_fallback' },
+    ],
+    ['explicit unresolved status', { drugCode: null, drugCodeResolutionStatus: 'unresolved' }],
+  ])('rejects %s before QR intake creation', async (_label, lineOverrides) => {
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback(
+        createQrDraftTransaction({
+          patientName: '山田 太郎',
+          patientNameKana: 'ヤマダ タロウ',
+          patientBirthdate: '1950-03-15',
+          patientGender: 'male',
+          prescriptionExpirationDate: '2026-06-12',
+          lines: [
+            {
+              drugName: 'アムロジピン錠5mg',
+              dose: '1錠',
+              frequency: '1日1回朝食後',
+              days: 14,
+              ...lineOverrides,
+            },
+          ],
+        }),
+      ),
+    );
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        line_1_drug_code: ['薬剤コードを医薬品マスターコードで確認してください'],
+      },
+    });
+    expect(qrScanDraftClaimMock).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
+    expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('creates an intake using patient_id and case_id without pre-resolving an existing cycle', async () => {
     const response = await POST(
       createRequest({
@@ -670,6 +757,81 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
     expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects QR confirmations that override parsed medication safety fields', async () => {
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback(
+        createQrDraftTransaction({
+          patientName: '山田 太郎',
+          patientNameKana: 'ヤマダ タロウ',
+          patientBirthdate: '1950-03-15',
+          patientGender: 'male',
+          prescriptionExpirationDate: '2026-06-12',
+          lines: [
+            {
+              drugName: 'アムロジピン錠5mg',
+              drugCode: '2149001',
+              drugCodeResolutionStatus: 'resolved',
+              dosageForm: '錠剤',
+              dose: '1錠',
+              frequency: '1日1回朝食後',
+              days: 14,
+              quantity: 14,
+              unit: '錠',
+              isGeneric: true,
+              startDate: '2026-06-01',
+              endDate: '2026-06-14',
+            },
+          ],
+        }),
+      ),
+    );
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        prescriber_name: '鈴木医師',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dosage_form: 'OD錠',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            quantity: 28,
+            unit: '包',
+            is_generic: false,
+            start_date: '2026-06-02',
+            end_date: '2026-06-15',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'QR下書きの処方明細と送信された処方明細が一致しません',
+      details: {
+        mismatches: expect.arrayContaining([
+          'line_1_dosage_form',
+          'line_1_quantity',
+          'line_1_unit',
+          'line_1_is_generic',
+          'line_1_start_date',
+          'line_1_end_date',
+        ]),
+      },
+    });
+    expect(qrScanDraftClaimMock).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeInTxMock).not.toHaveBeenCalled();
+    expect(qrScanDraftUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('falls back to expanded packaging tags from QR parsed_data', async () => {
     const response = await POST(
       createRequest({
@@ -713,6 +875,86 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
       'org_1',
       'user_1',
       expect.any(Object),
+    );
+  });
+
+  it('uses canonical QR fallback line metadata for intake creation and post-create hooks', async () => {
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback(
+        createQrDraftTransaction({
+          patientName: '山田 太郎',
+          patientNameKana: 'ヤマダ タロウ',
+          patientBirthdate: '1950-03-15',
+          patientGender: 'male',
+          prescriptionExpirationDate: '2026-06-12',
+          lines: [
+            {
+              drugName: 'アムロジピン錠5mg',
+              drugCode: '2149001',
+              drugCodeResolutionStatus: 'resolved',
+              dosageForm: '錠剤',
+              dose: '1錠',
+              frequency: '1日1回朝食後',
+              days: 14,
+              quantity: 14,
+              unit: '錠',
+              isGeneric: true,
+              startDate: '2026-06-01',
+              endDate: '2026-06-14',
+            },
+          ],
+        }),
+      ),
+    );
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        prescribed_date: VALID_PRESCRIBED_DATE,
+        prescriber_name: '鈴木医師',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ id: 'draft_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    const canonicalLine = expect.objectContaining({
+      drug_name: 'アムロジピン錠5mg',
+      drug_code: '2149001',
+      dosage_form: '錠剤',
+      dose: '1錠',
+      frequency: '1日1回朝食後',
+      days: 14,
+      quantity: 14,
+      unit: '錠',
+      is_generic: true,
+      start_date: '2026-06-01',
+      end_date: '2026-06-14',
+    });
+    expect(createPrescriptionIntakeInTxMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        lines: [canonicalLine],
+      }),
+      'org_1',
+      'user_1',
+      expect.any(Object),
+    );
+    expect(runPostCreateHooksMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intakeId: 'intake_1',
+        sourceType: 'qr_scan',
+        lines: [canonicalLine],
+      }),
     );
   });
 
@@ -812,6 +1054,7 @@ describe('/api/qr-scan-drafts/[id]/confirm POST', () => {
                 {
                   drugName: '注射薬A',
                   drugCode: 'INJ001',
+                  drugCodeResolutionStatus: 'resolved',
                   dosageForm: '注射液',
                   dose: '1本',
                   frequency: '1日1回',

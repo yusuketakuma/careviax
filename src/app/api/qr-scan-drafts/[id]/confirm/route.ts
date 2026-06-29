@@ -132,6 +132,9 @@ const confirmQrDraftSchema = z.object({
 type IntakeInTxResult = Awaited<ReturnType<typeof createPrescriptionIntakeInTx>>;
 type IntakeInTxSuccessResult = Extract<IntakeInTxResult, { kind: 'intake' }>;
 type IntakeInTxErrorResult = Extract<IntakeInTxResult, { kind: 'error' }>;
+type PostCreateHookLine = Parameters<
+  typeof runPrescriptionIntakePostCreateHooks
+>[0]['lines'][number];
 type QrDraftConfirmResult =
   | { kind: 'not_found' }
   | { kind: 'already_processed' }
@@ -146,6 +149,7 @@ type QrDraftConfirmResult =
       draft: { scanned_by: string | null };
       intake: IntakeInTxSuccessResult['intake'];
       cycle: IntakeInTxSuccessResult['cycle'];
+      hookLines: PostCreateHookLine[];
     };
 
 class QrDraftConfirmRollback extends Error {
@@ -208,6 +212,14 @@ function readDraftLineAt(parsedData: Record<string, unknown> | null, index: numb
 
 function readString(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function readBoolean(value: unknown) {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function readPositiveNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function readStringArray(value: unknown) {
@@ -283,6 +295,11 @@ function findQrDraftLineMismatches(
         requestValue: line.drug_name,
         draftValue: readString(draftLine.drugName),
       },
+      {
+        key: 'dosage_form',
+        requestValue: line.dosage_form,
+        draftValue: readString(draftLine.dosageForm),
+      },
       { key: 'dose', requestValue: line.dose, draftValue: readString(draftLine.dose) },
       {
         key: 'frequency',
@@ -290,6 +307,13 @@ function findQrDraftLineMismatches(
         draftValue: readString(draftLine.frequency),
       },
       { key: 'days', requestValue: line.days, draftValue: draftLine.days },
+      { key: 'quantity', requestValue: line.quantity, draftValue: draftLine.quantity },
+      { key: 'unit', requestValue: line.unit, draftValue: readString(draftLine.unit) },
+      {
+        key: 'is_generic',
+        requestValue: line.is_generic,
+        draftValue: readBoolean(draftLine.isGeneric),
+      },
       {
         key: 'packaging_method',
         requestValue: line.packaging_method,
@@ -315,6 +339,12 @@ function findQrDraftLineMismatches(
         requestValue: line.dispensing_method,
         draftValue: readEnumValue(draftLine.dispensingMethod, DISPENSING_METHOD_VALUES),
       },
+      {
+        key: 'start_date',
+        requestValue: line.start_date,
+        draftValue: readString(draftLine.startDate),
+      },
+      { key: 'end_date', requestValue: line.end_date, draftValue: readString(draftLine.endDate) },
       { key: 'notes', requestValue: line.notes, draftValue: readString(draftLine.notes) },
     ];
 
@@ -342,7 +372,8 @@ function collectDrugCodeResolutionReviewDetails(
       draftLine.drugCodeResolutionStatus,
       DRUG_CODE_RESOLUTION_STATUS_VALUES,
     );
-    if (status !== 'review_required' && status !== 'unresolved') return;
+    const drugCode = readString(draftLine.drugCode);
+    if (status === 'resolved' && drugCode) return;
 
     details[`line_${index + 1}_drug_code`] = ['薬剤コードを医薬品マスターコードで確認してください'];
   });
@@ -493,7 +524,7 @@ export const POST = withAuthContext(
                 dose: line.dose,
                 frequency: line.frequency,
                 days: line.days,
-                quantity: line.quantity,
+                quantity: line.quantity ?? readPositiveNumber(draftLine?.quantity),
                 unit: line.unit ?? readString(draftLine?.unit),
                 is_generic:
                   line.is_generic ??
@@ -615,6 +646,7 @@ export const POST = withAuthContext(
           draft,
           intake: intakeResult.intake,
           cycle: intakeResult.cycle,
+          hookLines: intakeInput.lines,
         };
       });
     } catch (error) {
@@ -678,7 +710,7 @@ export const POST = withAuthContext(
       intakeId: result.intake.id,
       patientId: result.cycle.patient_id,
       orgId: ctx.orgId,
-      lines,
+      lines: result.hookLines,
       prescriberName: prescriber_name ?? null,
       sourceType: 'qr_scan',
     });
