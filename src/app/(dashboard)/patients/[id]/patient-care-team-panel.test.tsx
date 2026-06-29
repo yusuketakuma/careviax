@@ -332,4 +332,23 @@ describe('PatientCareTeamPanel', () => {
       }
     },
   );
+
+  it('surfaces a retryable error instead of silently empty professional options when the master fetch fails', () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    const refetch = vi.fn();
+    useQueryMock.mockReturnValue({ data: undefined, isError: true, refetch });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    render(
+      <PatientCareTeamPanel
+        patientId="patient_1"
+        orgId="org_1"
+        cases={[{ id: 'case_active_123456', status: 'active', care_team_links: [] }]}
+      />,
+    );
+
+    expect(screen.getByText('他職種マスターを読み込めませんでした')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalled();
+  });
 });

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { ErrorState } from '@/components/ui/error-state';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -159,7 +160,11 @@ export function PatientCareTeamPanel({
   );
 
   const rows = drafts[selectedCaseId] ?? [];
-  const { data: professionalOptionsResponse } = useQuery({
+  const {
+    data: professionalOptionsResponse,
+    isError: isProfessionalOptionsError,
+    refetch: refetchProfessionalOptions,
+  } = useQuery({
     queryKey: ['external-professional-options', orgId],
     queryFn: async () => {
       const response = await fetch('/api/admin/external-professionals', {
@@ -329,6 +334,17 @@ export function PatientCareTeamPanel({
         <h2 className="font-heading text-base leading-snug font-medium">多職種連携先</h2>
       </CardHeader>
       <CardContent className="space-y-4">
+        {isProfessionalOptionsError ? (
+          // 取得失敗を「登録済み他職種なし」に化けさせない。手入力は可能だが、登録済みマスターの
+          // 見落とし(重複登録)を避けるため取得失敗を明示し再試行導線を出す。
+          <ErrorState
+            variant="server"
+            size="inline"
+            title="他職種マスターを読み込めませんでした"
+            description="「登録済みなし」ではなく取得エラーです。手入力は可能ですが、重複登録を避けるため再読み込みしてください。"
+            action={{ label: '再読み込み', onClick: () => void refetchProfessionalOptions() }}
+          />
+        ) : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-muted-foreground">
             {selectedCase
