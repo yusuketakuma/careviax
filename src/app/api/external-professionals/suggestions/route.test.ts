@@ -62,6 +62,11 @@ function createRequest(search = '') {
   return new NextRequest(`http://localhost/api/external-professionals/suggestions${search}`);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/external-professionals/suggestions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -100,6 +105,7 @@ describe('/api/external-professionals/suggestions', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(careCaseFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'case_1',
@@ -136,6 +142,7 @@ describe('/api/external-professionals/suggestions', () => {
     const response = (await GET(createRequest(), emptyRouteContext))!;
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
   });
 
   it('returns empty suggestions when the requested case is outside assignment scope', async () => {
@@ -147,6 +154,7 @@ describe('/api/external-professionals/suggestions', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(findExternalProfessionalSuggestionsMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({ data: [] });
   });
@@ -160,10 +168,31 @@ describe('/api/external-professionals/suggestions', () => {
     ))!;
 
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(findExternalProfessionalSuggestionsMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       error: '他職種候補の閲覧権限がありません',
     });
+  });
+
+  it('returns a sanitized no-store 500 when suggestion loading fails', async () => {
+    findExternalProfessionalSuggestionsMock.mockRejectedValue(
+      new Error('raw professional phone 03-1111-2222 leaked failure'),
+    );
+
+    const response = (await GET(
+      createRequest('?patient_id=patient_1&case_id=case_1'),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'サーバー内部でエラーが発生しました',
+    });
+    expect(JSON.stringify(body)).not.toContain('03-1111-2222');
   });
 });

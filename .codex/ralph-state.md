@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0334 JST
+
+- current task: harden the interprofessional external-professional suggestions API response boundary for care-report delivery support.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `.agent-loop/FEATURE_QUEUE.md`, `Plans.md`, local Next.js route-handler docs, `src/lib/auth/context.ts`, `src/lib/api/response.ts`, `src/lib/api/sensitive-response.ts`, `src/app/api/external-professionals/suggestions/route.ts`, `src/app/api/external-professionals/suggestions/route.test.ts`, `src/app/api/patients/[id]/care-team/route.ts`, `src/app/api/care-reports/[id]/route.ts`, and current patient care-team / residual chart false-empty implementations.
+- files changed: `src/app/api/external-professionals/suggestions/route.ts`, `src/app/api/external-professionals/suggestions/route.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `GET /api/external-professionals/suggestions` returns care-report delivery candidate contact data but did not consistently attach the repository's sensitive `private, no-store` headers to success, validation, assignment-denied empty, permission-denied, or internal-error responses.
+- security risks found: reduced interprofessional contact/PHI-adjacent caching and error-leakage risk by wrapping the route with `withSensitiveNoStore` and adding a sanitized fixed `INTERNAL_ERROR` fallback. The existing `canSendCareReport` permission, patient/case assignment checks, and hidden-scope `data: []` behavior are preserved.
+- performance issues found: no new DB query, external request, dependency, retry loop, or data expansion was added. The wrapper only mutates response headers and catches unexpected errors.
+- validation commands: `pnpm exec prettier --write src/app/api/external-professionals/suggestions/route.ts src/app/api/external-professionals/suggestions/route.test.ts`; `pnpm exec vitest run src/app/api/external-professionals/suggestions/route.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 src/app/api/external-professionals/suggestions/route.ts src/app/api/external-professionals/suggestions/route.test.ts`; `git diff --check -- src/app/api/external-professionals/suggestions/route.ts src/app/api/external-professionals/suggestions/route.test.ts`; `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`.
+- validation results: Prettier passed. Focused suggestions route Vitest passed `1` file / `5` tests. Scoped ESLint and focused `git diff --check` passed. Protected GET matrix passed `1` file / `369` tests. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed.
+- remaining work: Claude approved the security/API patch; codex acknowledged the lock and no blocker was returned before commit. Stage only explicit codex2-owned files and progress ledgers for a coherent commit.
+- next action: commit the reviewed suggestions API no-store/sanitized-error patch while preserving unrelated care-reports/date-boundary WIP.
+
 ### 20260630-0323 JST
 
 - current task: harden report-detail interprofessional sharing when external professional suggestion loading fails.

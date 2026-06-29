@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### External Professional Suggestions No-Store - 2026-06-30 03:34 JST
+
+- Scope:
+  - Continued codex2's report / interprofessional sharing objective on `/api/external-professionals/suggestions`.
+  - Hardened the API backing care-report delivery candidate loading without changing the response shape, permission, assignment scope, or suggestion lookup logic.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - The suggestions route now wraps all returned responses with `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
+  - Success, validation, hidden-scope empty, permission-denied, and unexpected-error responses are covered.
+  - Unexpected errors now return the fixed `INTERNAL_ERROR` envelope rather than leaking raw exception text from the contact suggestion path.
+- Safety:
+  - Reduces PHI-adjacent contact caching risk for care-report delivery candidates.
+  - Preserves `canSendCareReport`, patient/case assignment checks, and the existing hidden-scope `data: []` behavior.
+- Validation:
+  - `pnpm exec vitest run src/app/api/external-professionals/suggestions/route.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `pnpm exec vitest run src/app/api/__tests__/protected-get-routes.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `369` tests.
+  - `pnpm exec eslint --max-warnings=0 src/app/api/external-professionals/suggestions/route.ts src/app/api/external-professionals/suggestions/route.test.ts`: passed.
+  - `git diff --check -- src/app/api/external-professionals/suggestions/route.ts src/app/api/external-professionals/suggestions/route.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+- Review:
+  - Claude approved the security/API contract patch after independent focused validation.
+  - codex acknowledged the lock and did not return a blocker before commit.
+- Remaining:
+  - Commit only the explicit codex2-owned files and ledgers, preserving unrelated care-reports/date-boundary WIP.
+
 ### Report Share Suggestion Failure State - 2026-06-30 03:23 JST
 
 - Scope:
