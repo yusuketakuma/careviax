@@ -23,6 +23,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Project-Local Subagent Persona Hardening - 2026-06-30 07:55 JST
+
+- Scope:
+  - Strengthened CareViaX project-local Codex subagent personas under `.codex/agents` and `.codex/config.toml`.
+  - Used the official Codex manual from the local OpenAI docs cache for current custom-agent schema and subagent behavior.
+  - Preserved application source, database schema, production data, external sends, push/deploy, and unrelated work.
+- Fixed:
+  - Added official required `name` and `description` fields to all existing project-local standalone custom agent TOMLs.
+  - Added project-local `medical_safety_reviewer` and `privacy_compliance_reviewer` agents aligned with AGENTS.md's medical/pharmacy/patient/prescription/drug/inventory/audit-log routing.
+  - Expanded `explorer-deep`, `security-auditor`, `reviewer-strict`, `test-auditor`, `performance-auditor`, and `worker-fixer` prompts with PH-OS/CareViaX-specific patient safety, PHI/PII, medication-code identity, RLS/requestContext, no-store, audit, export, JST/date, and shared-worktree boundaries.
+  - Strengthened `worker-fixer` stop conditions for DB writes, migrations, destructive operations, bulk updates, inventory corrections, prescription finalization/cancellation, external sends, email sends, production batch jobs, and production data changes without explicit current-task approval.
+  - Raised project-local `agents.max_threads` from `10` to `32` so CareViaX does not lower the user's global maximum fan-out setting; kept `max_depth = 2` to avoid uncontrolled recursive delegation.
+- Safety:
+  - Reduces review-process risk that patient identity ambiguity, name-only medication matching, PHI leakage, audit minimization gaps, unsafe exports, and unsafe medical side effects are missed by generic prompts.
+  - No app runtime authorization, data model, route behavior, DB state, secrets, or external integrations were changed.
+- Performance:
+  - No application runtime performance path was changed.
+  - The performance persona now explicitly rejects speedups that broaden PHI payloads or weaken auth/RLS/no-store/patient-scope guarantees.
+- Validation:
+  - `git diff --check -- .codex/config.toml .codex/agents`: passed.
+  - `codex --profile fast debug prompt-input > /tmp/careviax-codex-prompt-input.json`: passed.
+  - `python3`/`tomllib` parse check for `.codex/config.toml` and every `.codex/agents/*.toml` required `name`, `description`, and `developer_instructions`: passed.
+  - `codex --strict-config doctor --all`: passed with `18 ok`, `3 notes`, `0 warn`, `0 fail`; notes were Codex `0.142.4` availability, rollout disk usage, and unrestricted sandbox/network state.
+  - Initial unsupported flag combinations were recorded and replaced with valid commands: `codex --strict-config --profile fast debug prompt-input` and `codex --strict-config --profile fast doctor --all` both failed due CLI flag support, not config parsing.
+- Review:
+  - Docs researcher subagent confirmed repo-local `.codex/config.toml` plus `.codex/agents/*.toml` are the right CareViaX-scoped edit surfaces and identified missing required custom-agent fields.
+  - Medical-safety reviewer subagent identified the missing project-local medical/privacy specialist agents and weak PHI/patient-safety prompt coverage; the implemented prompts cover those findings.
+- Remaining:
+  - Stage and commit only the `.codex` agent/config files plus this ledger and `.codex/ralph-state.md`.
+  - Resume backend hardening queue after this configuration slice.
+
 ### Visit Routes Outer Plumbing Regression - 2026-06-30 07:53 JST
 
 - Scope:

@@ -12,39 +12,49 @@ project_doc_fallback_filenames = [
   "CONTRIBUTING.md"
 ]
 [agents]
-max_threads = 10
+max_threads = 32
 max_depth = 2
 job_max_runtime_seconds = 7200
 
 [agents.explorer-deep]
-description = "Read-only deep codebase explorer for architecture, dependency, impact-radius, and hidden-coupling analysis."
+description = "Read-only PH-OS/CareViaX mapper for architecture, dependencies, data flow, impact radius, hidden coupling, and medical/privacy risk surfaces."
 config_file = "agents/explorer-deep.toml"
-nickname_candidates = ["explorer-deep"]
+nickname_candidates = ["Mapper", "Cartographer", "Tracer"]
 
 [agents.worker-fixer]
-description = "Implementation agent for fixing bugs, validation failures, integration issues, and repository-wide defects."
+description = "Implementation agent for scoped PH-OS/CareViaX fixes after investigation, preserving shared-worktree ownership and proving changes with validation."
 config_file = "agents/worker-fixer.toml"
-nickname_candidates = ["worker-fixer"]
+nickname_candidates = ["Maintainer", "Patch", "Builder"]
+
+[agents.medical_safety_reviewer]
+description = "Read-only PH-OS/CareViaX medical safety reviewer for patient identity, medication codes, prescriptions, allergies, dosage, inventory consistency, scheduling, and auditability."
+config_file = "agents/medical_safety_reviewer.toml"
+nickname_candidates = ["Clinical Safety", "Medication Safety", "Patient Safety"]
+
+[agents.privacy_compliance_reviewer]
+description = "Read-only PH-OS/CareViaX privacy reviewer for PHI/PII minimization, no-store responses, logs, exports, print/PDF/CSV leakage, audit minimization, and memory/agmsg redaction."
+config_file = "agents/privacy_compliance_reviewer.toml"
+nickname_candidates = ["Privacy", "Masker", "Steward"]
 
 [agents.security-auditor]
-description = "Read-only security reviewer for auth, authorization, injection, secrets, input validation, and dependency risk."
+description = "Read-only PH-OS/CareViaX security auditor for tenant boundaries, authz, PHI leakage, injection, unsafe side effects, and dependency risk."
 config_file = "agents/security-auditor.toml"
-nickname_candidates = ["security-auditor"]
+nickname_candidates = ["Locksmith", "Boundary", "Redline"]
 
 [agents.performance-auditor]
-description = "Read-only performance reviewer for N+1, repeated I/O, redundant computation, rendering waste, memory pressure, and blocking paths."
+description = "Read-only PH-OS/CareViaX performance auditor for N+1 queries, repeated I/O, redundant computation, render waste, memory pressure, and blocking paths."
 config_file = "agents/performance-auditor.toml"
-nickname_candidates = ["performance-auditor"]
+nickname_candidates = ["Profiler", "Latency", "Throughput"]
 
 [agents.test-auditor]
-description = "Read-only test and validation reviewer for missing coverage, flaky tests, weak assertions, and broken CI assumptions."
+description = "Read-only PH-OS/CareViaX test auditor for missing medical/privacy regression coverage, flaky tests, weak assertions, fixtures, and broken CI assumptions."
 config_file = "agents/test-auditor.toml"
-nickname_candidates = ["test-auditor"]
+nickname_candidates = ["Testwright", "Matrix", "Fixture"]
 
 [agents.reviewer-strict]
-description = "Read-only strict reviewer for correctness, maintainability, regression risk, validation quality, and hidden side effects."
+description = "Read-only strict PH-OS/CareViaX reviewer for correctness, maintainability, medical/privacy regressions, validation quality, and hidden side effects."
 config_file = "agents/reviewer-strict.toml"
-nickname_candidates = ["reviewer-strict"]
+nickname_candidates = ["Strict", "Sentinel", "Checker"]
 [features]
 fast_mode = true
 goals = true
