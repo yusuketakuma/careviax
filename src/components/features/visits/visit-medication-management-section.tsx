@@ -97,7 +97,7 @@ export type VisitPrescriptionChanges = {
   removed: string[];
 };
 
-/** 外薬(セット外で持参する薬)分類の表示用 projection(§11-7)。サーバで導出済みの label を表示する。 */
+/** その他薬(セット外で持参する薬)分類の表示用 projection(§11-7)。サーバで導出済みの label を表示する。 */
 export type VisitOutsideMed = {
   line_id: string;
   drug_name: string;
@@ -1009,7 +1009,7 @@ export function VisitMedicationManagementSection({
           <div className="mt-4 rounded-lg border border-border/70 bg-background p-3">
             <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Pill className="size-3.5" aria-hidden="true" />
-              外薬（セット外で持参）
+              その他薬（セット外で持参）
             </div>
             <ul className="mt-2 flex flex-wrap gap-2">
               {outsideMedItems.map((med) => (

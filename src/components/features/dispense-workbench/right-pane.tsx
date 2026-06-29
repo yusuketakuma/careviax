@@ -5,7 +5,7 @@
  *
  * 3 バリアント:
  *  - isGrid（調剤 / 調剤監査）: 患者情報（アバター / infoItems / chips / 備考・申し送り）
- *  - isSet（セット）: 次にセットする薬剤 / セット方法 / 4 ステップ / カレンダー外薬同梱 /
+ *  - isSet（セット）: 次にセットする薬剤 / セット方法 / 4 ステップ / カレンダーその他薬同梱 /
  *    訪問持出パケット完成判定
  *  - isSeta（セット監査）: 期待値 / 確認 6 項目 / 監査OK・NG・保留 / NG 分類 select /
  *    差戻し / リスク確認順
@@ -505,7 +505,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
         </div>
       </div>
 
-      {/* カレンダー外薬（同梱確認）*/}
+      {/* カレンダーその他薬（同梱確認）*/}
       <div
         style={{
           flex: 1,
@@ -515,7 +515,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
           margin: '0 9px 9px 9px',
         }}
       >
-        <SectionHeading color="var(--wb-tag-gaiyo)" label="カレンダー外薬（同梱確認）" />
+        <SectionHeading color="var(--wb-tag-gaiyo)" label="カレンダーその他薬（同梱確認）" />
         <div
           style={{
             flex: 1,
@@ -580,7 +580,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
                 padding: '14px 0',
               }}
             >
-              カレンダー外薬なし
+              カレンダーその他薬なし
             </div>
           )}
         </div>

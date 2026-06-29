@@ -162,7 +162,7 @@ export const NG_LABEL_TO_CODE: Record<string, RejectCode> = {
   中止薬混入: 'discontinued_mixed',
   休薬反映漏れ: 'washout_missed',
   変更前薬剤混入: 'previous_drug_mixed',
-  カレンダー外薬未同梱: 'outside_med_missing',
+  カレンダーその他薬未同梱: 'outside_med_missing',
   残薬指示反映漏れ: 'residual_instruction_missed',
   写真不鮮明: 'photo_unclear',
   判断不能: 'undeterminable',

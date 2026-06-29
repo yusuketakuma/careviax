@@ -1398,7 +1398,7 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     });
 
     expect(toastErrorMock).toHaveBeenCalledWith(
-      '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
+      'その他薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
     );
     expect(setAudit.mutate).not.toHaveBeenCalled();
     expect(useWorkbenchStore.getState().auditCells[key]).toBe('ok');
@@ -3280,7 +3280,7 @@ const UNCONFIRMED_DISPENSE_QUANTITY_MESSAGE =
 const INVALID_AUDIT_DOUBLE_COUNT_MESSAGE =
   '麻薬ダブルカウントが未完了です。1回目・2回目を実数量と一致する値で入力してください。';
 const INCOMPLETE_CARRY_PACKET_MESSAGE =
-  '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。';
+  'その他薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。';
 const CONFIRM_TARGET_DRIFT_MESSAGE = '確認中に対象が変わりました。操作をやり直してください。';
 
 function plainDrug(overrides: Partial<Drug> & Pick<Drug, 'did' | 'name'>): Drug {
@@ -3921,7 +3921,7 @@ describe('useWorkbenchWriteHandlers confirm gating (S0 request/commit split)', (
     const onRequestConfirm = vi.fn();
 
     act(() => {
-      // setaReadyState はカレンダーを充填済み（setCells=set / packet 完備 / 外薬なし）で setp ゲートも通る。
+      // setaReadyState はカレンダーを充填済み（setCells=set / packet 完備 / その他薬なし）で setp ゲートも通る。
       useWorkbenchStore.setState(setaReadyState());
     });
 

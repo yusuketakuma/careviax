@@ -358,7 +358,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
   });
 
   it('surfaces a retryable warning instead of silently dropping the visit-preparation pack on fetch failure', async () => {
-    // 準備パック取得失敗を「処方変更/外薬/前回記録なし」に潰さず、再読込導線つきで明示する。
+    // 準備パック取得失敗を「処方変更/その他薬/前回記録なし」に潰さず、再読込導線つきで明示する。
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {

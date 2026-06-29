@@ -69,7 +69,7 @@ export interface WorkbenchState {
   setCells: Record<string, string>;
   /** セット監査セル状態（'{id}:{di}:{tk}' → ''/'ok'/'ng'/'hold'）*/
   auditCells: Record<string, string>;
-  /** カレンダー外薬 同梱チェック（'{id}:{name}' → bool）*/
+  /** カレンダーその他薬 同梱チェック（'{id}:{name}' → bool）*/
   outChk: Record<string, boolean>;
   /** セット監査 確認項目チェック（'{id}:{di}:{tk}:{i}' → bool）*/
   checks: Record<string, boolean>;

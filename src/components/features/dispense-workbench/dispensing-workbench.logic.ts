@@ -307,10 +307,10 @@ export function totals(drugs: Drug[]): {
 }
 
 // ============================================================================
-// calc — カレンダー導出（packets / PTP 分類 / カレンダー外薬）
+// calc — カレンダー導出（packets / PTP 分類 / カレンダーその他薬）
 // ============================================================================
 
-/** 指定患者のカレンダー構造（時点別包数 / PTP / 別包 / カレンダー外薬）を導出 */
+/** 指定患者のカレンダー構造（時点別包数 / PTP / 別包 / カレンダーその他薬）を導出 */
 export function calc(model: WorkbenchModel, id: string): CalcResult {
   const drugs = drugsOf(model, id);
   const isOut = (r: Drug) =>
@@ -407,7 +407,7 @@ export function cellKey(id: string, di: number, tk: string): string {
 /**
  * 完了ゲート判定。
  * - グリッド工程（dispense/audit）: 全対象行チェック済みで ok
- * - setp: 未セット・外薬未確認・持出未完が全て0で ok
+ * - setp: 未セット・その他薬未確認・持出未完が全て0で ok
  * - seta: 未監査0・NG0・セット監査チェック6項目完了で ok
  */
 export function calcGate(args: {
@@ -477,7 +477,7 @@ export function calcGate(args: {
       ok,
       text: ok
         ? '✓ 持出パケット完成（セット完了可）'
-        : '未セット ' + setRemain + '・外薬 ' + outRemain + '・持出 ' + pkRemain,
+        : '未セット ' + setRemain + '・その他薬 ' + outRemain + '・持出 ' + pkRemain,
     };
   }
   const remain = total - dnC;

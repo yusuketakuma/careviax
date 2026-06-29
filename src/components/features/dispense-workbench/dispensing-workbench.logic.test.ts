@@ -159,14 +159,14 @@ describe('buildModel', () => {
   });
 });
 
-describe('calc（packets / PTP分類 / カレンダー外薬）', () => {
+describe('calc（packets / PTP分類 / カレンダーその他薬）', () => {
   it('0003 朝食後は包数 > 0（定時薬が一包化）', () => {
     const c = calc(MODEL, '0003');
     expect(c.active).toContain('朝');
     expect(c.content['朝'].packets).toBeGreaterThan(0);
     expect(c.content['朝'].packetText).toMatch(/包$/);
   });
-  it('0003 の頓用（センノシド）はカレンダー外薬に分類', () => {
+  it('0003 の頓用（センノシド）はカレンダーその他薬に分類', () => {
     const c = calc(MODEL, '0003');
     expect(c.outside.some((o) => /センノシド/.test(o.name) && o.kind === '頓服')).toBe(true);
   });
@@ -175,11 +175,11 @@ describe('calc（packets / PTP分類 / カレンダー外薬）', () => {
     const hasPtp = Object.values(c.content).some((v) => /追加PTP/.test(v.ptpText));
     expect(hasPtp).toBe(true);
   });
-  it('0006 の懸濁内用液はカレンダー外薬（液剤）', () => {
+  it('0006 の懸濁内用液はカレンダーその他薬（液剤）', () => {
     const c = calc(MODEL, '0006');
     expect(c.outside.some((o) => /ラジカット/.test(o.name) && o.kind === '液剤')).toBe(true);
   });
-  it('tag=外用の薬剤名に外用語がなくてもカレンダー外薬（外用）に分類', () => {
+  it('tag=外用の薬剤名に外用語がなくてもカレンダーその他薬（外用）に分類', () => {
     const c = calc(
       {
         pat_1: [
@@ -374,7 +374,7 @@ describe('calcGate（4区分ゲート）', () => {
     expect(g.text).toMatch(/未セット/);
   });
 
-  it('setp は全セル set + 外薬確認 + 持出完了で ok', () => {
+  it('setp は全セル set + その他薬確認 + 持出完了で ok', () => {
     const id = '0003';
     const cal = calc(MODEL, id);
     const setCells: Record<string, string> = {};

@@ -91,7 +91,7 @@ const NG_OPTIONS: NgCode[] = [
   '中止薬混入',
   '休薬反映漏れ',
   '変更前薬剤混入',
-  'カレンダー外薬未同梱',
+  'カレンダーその他薬未同梱',
   '残薬指示反映漏れ',
   '写真不鮮明',
   '判断不能',
@@ -852,7 +852,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     },
   ];
 
-  // ---- カレンダー外薬 ----
+  // ---- カレンダーその他薬 ----
   const outsideMeds = cal.outside.map((o) => {
     const k = id + ':' + o.name;
     const on = !!outChk[k];
@@ -959,8 +959,8 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     RK('曜日・隔日指定', 'var(--wb-state-blocked)');
   if (dr.some((r) => r.funsai)) RK('粉砕・賦形', 'var(--wb-state-confirm)');
   if (dr.some((r) => /PTP/.test(r.note))) RK('追加PTP混在', 'var(--wb-tag-ptp)');
-  // カレンダー外薬は外用/冷所/注射/液剤も含む総称のため頓服色(tonyo)へ畳まず専用 token。
-  if (cal.outside.length) RK('カレンダー外薬', 'var(--wb-outside-med)');
+  // カレンダーその他薬は外用/冷所/注射/液剤も含む総称のため頓服色(tonyo)へ畳まず専用 token。
+  if (cal.outside.length) RK('カレンダーその他薬', 'var(--wb-outside-med)');
   if (/残薬/.test(sjoin)) RK('残薬調整', 'var(--wb-tag-gaiyo)');
   if (!riskList.length) RK('通常の定時薬', 'var(--wb-state-done)');
 

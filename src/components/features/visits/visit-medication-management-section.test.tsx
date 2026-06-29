@@ -141,7 +141,7 @@ describe('VisitMedicationManagementSection', () => {
       />,
     );
 
-    expect(screen.getByText('外薬（セット外で持参）')).toBeTruthy();
+    expect(screen.getByText('その他薬（セット外で持参）')).toBeTruthy();
     expect(screen.getByText('外用')).toBeTruthy();
     expect(screen.getByText('モーラステープ')).toBeTruthy();
     expect(screen.getByText('頓服')).toBeTruthy();
@@ -157,6 +157,6 @@ describe('VisitMedicationManagementSection', () => {
       />,
     );
 
-    expect(screen.queryByText('外薬（セット外で持参）')).toBeNull();
+    expect(screen.queryByText('その他薬（セット外で持参）')).toBeNull();
   });
 });

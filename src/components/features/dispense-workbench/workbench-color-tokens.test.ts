@@ -144,10 +144,10 @@ describe('workbench color-token contract (F-011 Stage1b)', () => {
     expect(packetSection, 'visit-carry-packet section must not reuse tonyo tokens').not.toMatch(
       /--wb-tag-tonyo/,
     );
-    // カレンダー外薬リスクは外用/冷所/注射/液剤も含む総称のため頓服(tonyo)へ畳まない（専用 token）。
-    expect(viewSrc).toContain("RK('カレンダー外薬', 'var(--wb-outside-med)')");
-    expect(viewSrc, 'カレンダー外薬 must not reuse tonyo').not.toContain(
-      "RK('カレンダー外薬', 'var(--wb-tag-tonyo)')",
+    // カレンダーその他薬リスクは外用/冷所/注射/液剤も含む総称のため頓服(tonyo)へ畳まない（専用 token）。
+    expect(viewSrc).toContain("RK('カレンダーその他薬', 'var(--wb-outside-med)')");
+    expect(viewSrc, 'カレンダーその他薬 must not reuse tonyo').not.toContain(
+      "RK('カレンダーその他薬', 'var(--wb-tag-tonyo)')",
     );
   });
 
@@ -262,7 +262,7 @@ describe('workbench color-token AA contrast (A-prime, theme-stable)', () => {
     expect(muted, `--wb-ink-muted on --wb-surface = ${muted.toFixed(2)}:1`).toBeGreaterThanOrEqual(
       4.5,
     );
-    // カレンダー外薬リスクの専用 token もリスト面（白 surface）上のテキストとして AA。
+    // カレンダーその他薬リスクの専用 token もリスト面（白 surface）上のテキストとして AA。
     const outside = contrast(tokenValue('--wb-outside-med'), tokenValue('--wb-surface'));
     expect(
       outside,

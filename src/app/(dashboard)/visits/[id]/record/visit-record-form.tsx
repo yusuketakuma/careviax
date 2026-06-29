@@ -1578,7 +1578,7 @@ export function VisitRecordForm({
               ) : null}
 
               {visitPreparationError && (
-                // 取得失敗を「準備情報なし(=処方変更/外薬/前回記録なし)」に潰さない。
+                // 取得失敗を「準備情報なし(=処方変更/その他薬/前回記録なし)」に潰さない。
                 // 記録入力自体は準備パックを必須としないため notification-only(再読込導線つき)。
                 <Card
                   className="border-l-4 border-border/70 border-l-state-confirm bg-card"
@@ -1592,7 +1592,7 @@ export function VisitRecordForm({
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm text-state-confirm">
                     <p>
-                      処方変更・外薬・前回記録・他職種連携などの準備コンテキストが表示されていない可能性があります。「該当なし」ではなく取得エラーです。
+                      処方変更・その他薬・前回記録・他職種連携などの準備コンテキストが表示されていない可能性があります。「該当なし」ではなく取得エラーです。
                     </p>
                     <Button
                       type="button"

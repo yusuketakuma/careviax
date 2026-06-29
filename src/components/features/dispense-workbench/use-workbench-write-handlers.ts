@@ -153,7 +153,7 @@ export interface WorkbenchWriteHandlers {
   onSelectCell: (di: number, tk: string) => void;
   /** 選択セルへ「セット済」。 */
   onSetCell: () => void;
-  /** カレンダー外薬 同梱トグル。 */
+  /** カレンダーその他薬 同梱トグル。 */
   onToggleOut: (name: string) => void;
   /** 訪問持出パケット トグル。 */
   onTogglePacket: (item: string) => void;
@@ -792,7 +792,7 @@ export function useWorkbenchWriteHandlers(args: {
       const carryPacketEvidence = collectCarryPacketEvidence(s);
       if (!carryPacketEvidence) {
         toast.error(
-          '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
+          'その他薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
         );
         return;
       }
@@ -1334,7 +1334,7 @@ export function useWorkbenchWriteHandlers(args: {
             const carryPacketEvidence = collectCarryPacketEvidence(s);
             if (!carryPacketEvidence) {
               toast.error(
-                '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
+                'その他薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
               );
               return null;
             }

@@ -194,10 +194,10 @@ export type WorkbenchModel = Record<string, Group[]>;
 /** 用法時点キー */
 export type TimingKey = '朝' | '昼' | '夕' | '眠前';
 
-/** カレンダー外薬の種別 */
+/** カレンダーその他薬の種別 */
 export type OutsideKind = '頓服' | '外用' | '冷所' | '注射' | '液剤';
 
-/** カレンダー外薬（同梱確認の対象）*/
+/** カレンダーその他薬（同梱確認の対象）*/
 export interface OutsideMed {
   /** PrescriptionLine.id when available. Used to distinguish same-name outside medicines. */
   line_id?: string;
@@ -296,7 +296,7 @@ export type NgCode =
   | '中止薬混入'
   | '休薬反映漏れ'
   | '変更前薬剤混入'
-  | 'カレンダー外薬未同梱'
+  | 'カレンダーその他薬未同梱'
   | '残薬指示反映漏れ'
   | '写真不鮮明'
   | '判断不能';
@@ -589,7 +589,7 @@ export interface SetStep {
   sub: string;
 }
 
-/** カレンダー外薬 同梱チェック項目 */
+/** カレンダーその他薬 同梱チェック項目 */
 export interface OutsideMedItem {
   name: string;
   kind: string;
