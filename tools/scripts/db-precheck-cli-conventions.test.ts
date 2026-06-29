@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const dbGatedScripts = [
+  'backfill-prescription-line-drug-master-ids.ts',
   'backfill-webhook-registration-secrets.ts',
   'check-care-report-duplicates.ts',
   'check-visit-route-order-conflicts.ts',
@@ -17,6 +18,8 @@ const dbGatedPackageScripts = {
   'db:external-access-case-boundary-audit': 'tools/scripts/external-access-case-boundary-audit.ts',
   'db:verify-migration-preconditions': 'tools/scripts/verify-migration-preconditions.ts',
   'db:verify-ph-os-audit-migration': 'tools/scripts/verify-ph-os-audit-migration.ts',
+  'db:prescription-line-drug-master:backfill':
+    'tools/scripts/backfill-prescription-line-drug-master-ids.ts',
   'db:webhook-secrets:backfill': 'tools/scripts/backfill-webhook-registration-secrets.ts',
 } as const;
 

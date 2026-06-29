@@ -23,6 +23,32 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### PrescriptionLine DrugMaster Backfill Dry-Run - 2026-06-29 18:25 JST
+
+- Scope:
+  - Continued the backend medication-code migration after confirming agmsg had no Claude request and the worktree was clean.
+  - Added a dry-run-only operational analyzer for existing `PrescriptionLine.drug_master_id` backfill planning.
+  - No DB mutation, apply mode, migration, backfill execution, push, deploy, auth/RLS, or destructive operation was performed.
+- Fixed:
+  - Added `tools/scripts/backfill-prescription-line-drug-master-ids.ts`, registered as `pnpm db:prescription-line-drug-master:backfill`.
+  - The analyzer defaults to bounded dry-run, rejects `--apply`, reads existing prescription lines, resolves `source_drug_code ?? drug_code` through the shared `drug-identity-resolution` resolver, and reports machine-readable classification counts/samples.
+  - Safe candidates are only `backfillable` when the resolver returns a unique `resolved` DrugMaster and no existing master/code conflict is present.
+  - `ambiguous_code`, `code_not_found`, `missing_code`, existing master mismatch, source/code mismatch, and JAN-only matches are reported but never marked updateable.
+  - Added CLI convention coverage and script README entry.
+  - Updated `docs/drug-code-master-architecture.md` to record that the dry-run analyzer exists and that apply mode remains a separately approved future phase.
+- Validation:
+  - `pnpm exec vitest run tools/scripts/backfill-prescription-line-drug-master-ids.test.ts tools/scripts/db-precheck-cli-conventions.test.ts src/lib/pharmacy/drug-identity-resolution.test.ts --reporter=dot --testTimeout=30000`: passed, `3` files / `17` tests.
+  - `pnpm typecheck`: passed after adding the script/test.
+  - `pnpm typecheck:no-unused`: passed after adding the script/test.
+  - `pnpm lint`: passed after adding the script/test.
+  - `pnpm format:check`: passed after doc update.
+  - `git diff --check`: passed after doc update.
+- Review:
+  - `medical_safety_reviewer`, `migration_planner`, and `test_architect` all completed read-only review. Their blockers were addressed by keeping the helper dry-run-only, using the shared resolver, rejecting apply mode, ignoring JAN/GTIN/name matching, and adding conflict-first tests.
+- Remaining:
+  - Run the analyzer against an approved environment only when credentials/DB target are explicitly selected.
+  - Future apply mode requires separate approval, `--max-rows`, small batches, `FOR UPDATE SKIP LOCKED`, OCC conditions, and an operator runbook.
+
 ### Outside-Med Phase 2 Backend Contract - 2026-06-29 18:05 JST
 
 - Scope:

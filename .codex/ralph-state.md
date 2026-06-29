@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260629-1825 JST
+
+- current task: continue backend medication-code migration work by adding a safe dry-run analyzer for existing `PrescriptionLine.drug_master_id` backfill planning.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex`, `git log --oneline -8`, `prisma/schema/prescription.prisma`, `prisma/schema/drug.prisma`, `docs/drug-code-master-architecture.md`, `tools/scripts/backfill-webhook-registration-secrets.ts`, `tools/scripts/backfill-webhook-registration-secrets.test.ts`, `tools/scripts/db-precheck-cli-conventions.test.ts`, `tools/scripts/README.md`, `package.json`, `src/lib/pharmacy/drug-identity-resolution.ts`, and read-only findings from migration planner, medical-safety reviewer, and test architect subagents.
+- files changed: `tools/scripts/backfill-prescription-line-drug-master-ids.ts`, `tools/scripts/backfill-prescription-line-drug-master-ids.test.ts`, `tools/scripts/db-precheck-cli-conventions.test.ts`, `tools/scripts/README.md`, `package.json`, `docs/drug-code-master-architecture.md`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: existing `PrescriptionLine` rows can now be analyzed before any `drug_master_id` backfill so ambiguous receipt/HOT codes, missing codes, code-not-found rows, existing master/code conflicts, source/code conflicts, and JAN-only/name-only cases are not silently upgraded into stronger downstream medication identity.
+- security risks found: reduced medication data-integrity and patient-safety risk by adding a dry-run-only, resolver-backed, conflict-first analyzer. It rejects `--apply`, performs no DB mutation, does not use JAN/GTIN/name matching, and reports only bounded line/tenant/cycle/intake IDs plus medication-code evidence. No auth, RLS, PHI logging/export surface, migration apply, backfill execution, deploy, or permission surface was changed.
+- performance issues found: dry-run uses two bounded SELECTs: a limited `PrescriptionLine` scan and one `DrugMaster` lookup over distinct existing master IDs and code values. No new dependency, external request, unbounded loop, write lock, or N+1 path was added.
+- validation commands: `pnpm exec prettier --write docs/drug-code-master-architecture.md tools/scripts/backfill-prescription-line-drug-master-ids.ts tools/scripts/backfill-prescription-line-drug-master-ids.test.ts tools/scripts/db-precheck-cli-conventions.test.ts tools/scripts/README.md package.json`; `pnpm exec vitest run tools/scripts/backfill-prescription-line-drug-master-ids.test.ts tools/scripts/db-precheck-cli-conventions.test.ts src/lib/pharmacy/drug-identity-resolution.test.ts --reporter=dot --testTimeout=30000`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; `git diff --check`.
+- validation results: focused Vitest passed `3` files / `17` tests; `pnpm typecheck` passed after adding the script/test; `pnpm typecheck:no-unused` passed after adding the script/test; `pnpm lint` passed after adding the script/test; `pnpm format:check` passed after the doc update; `git diff --check` passed after the doc update.
+- remaining work: stage only explicit owned script/doc/ledger files and commit. Do not run the analyzer against a live DB until a target environment is explicitly selected. Future apply mode remains out-of-scope and requires separate approval plus bounded write/runbook safeguards.
+- next action: final status/diff review, commit this dry-run helper slice, notify Claude with commit hash and validation summary, then drain agmsg again.
+
 ### 20260629-1805 JST
 
 - current task: process Claude's §11-7 Phase 2 plan review request, take the backend contract, validate, and commit.
