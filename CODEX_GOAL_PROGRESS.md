@@ -23,6 +23,37 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### PrescriptionLine Pharmacist DrugMaster Confirmation API - 2026-06-29 18:46 JST
+
+- Scope:
+  - Continued the medication-code migration from a clean worktree after draining agmsg and receiving Claude ACKs for the previous rename/backfill slices.
+  - Extended the existing `PATCH /api/prescription-lines/[id]` route instead of adding a duplicate endpoint, preserving the current `canDispense`, org/assignment scope, optimistic locking, and audit pattern.
+  - No DB migration, backfill apply, live DB operation, push, deploy, permission change, or destructive operation was performed.
+- Fixed:
+  - Pharmacists can now send `drug_master_id` with `expected_updated_at` to resolve an unresolved `PrescriptionLine` to a `DrugMaster`.
+  - The server verifies the selected DrugMaster exists, derives canonical `drug_code` from `DrugMaster.yj_code`, sets `drug_resolution_status: resolved`, and preserves `source_drug_code` / `source_drug_code_type` as source evidence.
+  - Client-supplied `drug_code`, `source_drug_code`, `source_drug_code_type`, and `drug_resolution_status` are rejected before DB side effects.
+  - `drug_master_id` confirmation cannot be mixed with prescription content edits such as days, dose, quantity, or date changes.
+  - Existing lines linked to a different DrugMaster and lines whose stored source/canonical codes deterministically resolve to a different DrugMaster now return `409` without writing or auditing.
+  - Ambiguous or unknown source code can still be manually confirmed when no stored canonical code conflicts.
+  - AuditLog entries now include `patient_id` while keeping changes limited to structured date/dose/quantity and drug identity ids/codes/status fields.
+  - `docs/drug-code-master-architecture.md` records the pharmacist confirmation API contract and marks the remaining follow-up as UI connection work.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/prescription-lines/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `23` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/prescription-lines/[id]/route.ts' 'src/app/api/prescription-lines/[id]/route.test.ts'`: passed.
+  - `pnpm exec prettier --check 'src/app/api/prescription-lines/[id]/route.ts' 'src/app/api/prescription-lines/[id]/route.test.ts'`: passed.
+  - `git diff --check -- 'src/app/api/prescription-lines/[id]/route.ts' 'src/app/api/prescription-lines/[id]/route.test.ts'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - `api_contract_reviewer` required explicit 400 rejection for client-supplied derived identity fields and clear 400/409 boundaries; implemented.
+  - `medical_safety_reviewer` required per-field `source_drug_code` and `drug_code` conflict checks, no mixed identity/content update, patient-linked audit, and route tests for the identity branch; implemented.
+- Remaining:
+  - UI still needs to connect the QR/JAHIS `review_required` review affordance to this backend contract.
+
 ### その他薬 Rename Backend Completion - 2026-06-29 18:32 JST
 
 - Scope:

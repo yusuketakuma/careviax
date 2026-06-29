@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260629-1846 JST
+
+- current task: add a safe backend contract for pharmacist confirmation of unresolved `PrescriptionLine` drug master identity.
+- files inspected: `git status --short --untracked-files=all`, agmsg inbox for `phos/codex`, `git log --oneline -8`, `.codex/ralph-state.md`, `CODEX_GOAL_PROGRESS.md`, `docs/drug-code-master-architecture.md`, local Next.js route handler and `unstable_rethrow` docs under `node_modules/next/dist/docs/`, `prisma/schema/prescription.prisma`, `prisma/schema/drug.prisma`, `src/app/api/prescription-lines/[id]/route.ts`, `src/app/api/prescription-lines/[id]/route.test.ts`, `src/app/api/dispense-tasks/[id]/lines/route.ts`, `src/lib/pharmacy/drug-identity-resolution.ts`, `src/lib/auth/context.ts`, `src/lib/api/response.ts`, and read-only findings from `medical_safety_reviewer` and `api_contract_reviewer`.
+- files changed: `src/app/api/prescription-lines/[id]/route.ts`, `src/app/api/prescription-lines/[id]/route.test.ts`, `docs/drug-code-master-architecture.md`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: there was no backend path for a pharmacist to convert an unresolved `PrescriptionLine` drug identity into a durable `drug_master_id` without falling back to name-based downstream behavior. The initial patch also needed safety fixes before landing: client-supplied derived code fields had to be explicitly rejected, `source_drug_code` and `drug_code` had to be conflict-checked independently, and drug identity confirmation had to be separated from dose/date/quantity edits.
+- security risks found: reduced medication data-integrity and patient-safety risk by making manual DrugMaster confirmation server-derived and fail-closed. The route now rejects client-supplied `drug_code` / source/status identity fields, rejects mixed content edits, preserves source-code evidence, rejects deterministic conflicts, keeps org/assignment scope and OCC, and writes structured patient-linked audit entries without expanding PHI. No auth permission, RLS policy, schema, migration, live DB, deploy, push, or destructive operation was changed.
+- performance issues found: no new dependency, external request, unbounded loop, or broad scan was added. The identity branch adds at most one DrugMaster lookup by selected id and one bounded resolver lookup over the existing line's `source_drug_code` and `drug_code`; normal non-identity line edits keep their existing query shape except for additive selected identity fields.
+- validation commands: `pnpm exec vitest run 'src/app/api/prescription-lines/[id]/route.test.ts' --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 'src/app/api/prescription-lines/[id]/route.ts' 'src/app/api/prescription-lines/[id]/route.test.ts'`; `pnpm exec prettier --check 'src/app/api/prescription-lines/[id]/route.ts' 'src/app/api/prescription-lines/[id]/route.test.ts'`; `git diff --check -- 'src/app/api/prescription-lines/[id]/route.ts' 'src/app/api/prescription-lines/[id]/route.test.ts'`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; `git diff --check`.
+- validation results: focused prescription-line route Vitest passed `1` file / `23` tests; scoped ESLint passed; scoped Prettier check passed; scoped diff-check passed; `pnpm typecheck` passed; `pnpm typecheck:no-unused` passed; `pnpm lint` passed; `pnpm format:check` passed; final `git diff --check` passed.
+- remaining work: UI still needs to connect the QR/JAHIS `review_required` review affordance to this backend contract. Stage explicit owned files, commit, notify Claude with review/validation summary, and verify clean worktree.
+- next action: commit the pharmacist DrugMaster confirmation API slice and drain agmsg.
+
 ### 20260629-1832 JST
 
 - current task: process Claude's urgent user-directive rename request, review Claude's FE commits, and complete backend/server/doc/test `外薬` to `その他薬` cleanup.
