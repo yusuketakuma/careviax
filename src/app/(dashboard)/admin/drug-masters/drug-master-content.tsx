@@ -31,6 +31,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ActionRail } from '@/components/ui/action-rail';
+import { ErrorState } from '@/components/ui/error-state';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { LoadingButton } from '@/components/ui/loading-button';
@@ -895,7 +896,11 @@ function DrugMasterOperationalContent({
     DRUG_MASTER_SEARCH_DEBOUNCE_MS,
   );
 
-  const { data: sitesData } = useQuery({
+  const {
+    data: sitesData,
+    isError: isSitesError,
+    refetch: refetchSites,
+  } = useQuery({
     queryKey: ['pharmacy-sites', orgId, 'stock-setup'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacy-sites', {
@@ -988,7 +993,11 @@ function DrugMasterOperationalContent({
     staleTime: 300_000,
   });
 
-  const { data: masterStatusData } = useQuery({
+  const {
+    data: masterStatusData,
+    isError: isMasterStatusError,
+    refetch: refetchMasterStatus,
+  } = useQuery({
     queryKey: ['drug-master-status'],
     queryFn: async () => {
       const res = await fetch('/api/drug-master-imports/status', {
@@ -1001,7 +1010,12 @@ function DrugMasterOperationalContent({
     staleTime: 60_000,
   });
 
-  const { data: importLogsData, isLoading: isLoadingLogs } = useQuery({
+  const {
+    data: importLogsData,
+    isLoading: isLoadingLogs,
+    isError: isImportLogsError,
+    refetch: refetchImportLogs,
+  } = useQuery({
     queryKey: ['drug-master-import-logs', importLogSourceFilter, importLogStatusFilter],
     queryFn: async () => {
       const logParams = new URLSearchParams({ limit: '10' });
@@ -3430,6 +3444,17 @@ function DrugMasterOperationalContent({
                 ))}
               </SelectContent>
             </Select>
+            {isSitesError ? (
+              <div className="mt-2">
+                <ErrorState
+                  variant="server"
+                  size="inline"
+                  title="拠点一覧を読み込めませんでした"
+                  description="「拠点が未登録」ではなく取得エラーです。対象拠点を選べないため、再読み込みしてください。"
+                  action={{ label: '再読み込み', onClick: () => void refetchSites() }}
+                />
+              </div>
+            ) : null}
             <label className="relative mt-2 flex min-h-[44px] items-center gap-1.5 rounded-md px-1 text-xs text-muted-foreground focus-within:ring-2 focus-within:ring-ring sm:min-h-[44px]">
               <input
                 type="checkbox"
@@ -3449,6 +3474,21 @@ function DrugMasterOperationalContent({
         </div>
       </PageSection>
 
+      {isMasterStatusError ? (
+        // 取得失敗時に section ごと消すと「ステータス未取得」と「データなし」が区別できない。
+        <PageSection
+          title="マスター更新ステータス"
+          description="医薬品マスター、添付文書、相互作用、アラートルールの鮮度を確認します。"
+        >
+          <ErrorState
+            variant="server"
+            size="inline"
+            title="マスター更新ステータスを読み込めませんでした"
+            description="鮮度や取込件数を表示できていません。時間をおいて再読み込みしてください。"
+            action={{ label: '再読み込み', onClick: () => void refetchMasterStatus() }}
+          />
+        </PageSection>
+      ) : null}
       {masterStatusData && (
         <PageSection
           title="マスター更新ステータス"
@@ -3584,7 +3624,11 @@ function DrugMasterOperationalContent({
         >
           <FilterSummaryBar
             items={[
-              { label: '表示:', value: `${importLogs.length.toLocaleString()}件` },
+              {
+                label: '表示:',
+                // 取得失敗時は importLogs=[] による false-zero(0件)を出さず「取得失敗」と明示する。
+                value: isImportLogsError ? '取得失敗' : `${importLogs.length.toLocaleString()}件`,
+              },
               { label: 'ソース:', value: selectedImportLogSourceLabel },
               { label: '状態:', value: selectedImportLogStatusLabel },
             ]}
@@ -3643,6 +3687,15 @@ function DrugMasterOperationalContent({
           </div>
           {isLoadingLogs ? (
             <p className="text-sm text-muted-foreground">履歴を読み込み中です…</p>
+          ) : isImportLogsError ? (
+            // 監査文脈: 取得失敗を「履歴なし」に潰すと取込が無かったと誤読される。
+            <ErrorState
+              variant="server"
+              size="inline"
+              title="取込履歴を読み込めませんでした"
+              description="「取込履歴なし」ではなく取得エラーです。監査確認のため再読み込みしてください。"
+              action={{ label: '再読み込み', onClick: () => void refetchImportLogs() }}
+            />
           ) : importLogs.length === 0 ? (
             <p className="text-sm text-muted-foreground">まだ取込履歴はありません。</p>
           ) : (

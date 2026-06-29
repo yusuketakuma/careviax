@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { MasterEditorView } from '../master-editor-view';
 import { DrugMasterContent, parseReorderPointInput } from './drug-master-content';
@@ -25,6 +25,8 @@ const {
   detailDataMock,
   stockConfigDataMock,
   candidatesDataMock,
+  queryErrorKeys,
+  refetchSpies,
 } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
   pendingRequestsMock: vi.fn(),
@@ -42,6 +44,10 @@ const {
   detailDataMock: { current: null as unknown },
   stockConfigDataMock: { current: null as unknown },
   candidatesDataMock: { current: [] as unknown[] },
+  // Tests can mark query keys as failed to exercise the fetch-error affordances
+  // (import logs / master status / site picker) without affecting success-path tests.
+  queryErrorKeys: new Set<string>(),
+  refetchSpies: new Map<string, ReturnType<typeof vi.fn>>(),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -60,6 +66,14 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
     capturedQueryKeys.push(queryKey as ReadonlyArray<unknown>);
     const key = queryKey[0];
+    if (queryErrorKeys.has(String(key))) {
+      let refetch = refetchSpies.get(String(key));
+      if (!refetch) {
+        refetch = vi.fn();
+        refetchSpies.set(String(key), refetch);
+      }
+      return { data: undefined, isLoading: false, isError: true, refetch };
+    }
     if (key === 'drug-masters') {
       return { data: { data: [], totalCount: 0, hasMore: false }, isLoading: false };
     }
@@ -1995,4 +2009,58 @@ describe('parseReorderPointInput', () => {
       expect(parseReorderPointInput(input)).toEqual({ ok: false });
     },
   );
+});
+
+describe('DrugMasterContent supporting-query fetch-error handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useOrgIdMock.mockReturnValue('org_1');
+    pendingRequestsMock.mockReturnValue([]);
+    detailDataMock.current = null;
+    stockConfigDataMock.current = null;
+    candidatesDataMock.current = [];
+    queryErrorKeys.clear();
+    refetchSpies.clear();
+  });
+
+  afterEach(() => {
+    queryErrorKeys.clear();
+    refetchSpies.clear();
+  });
+
+  it('shows a retryable error instead of an empty import history when the audit log fetch fails', () => {
+    queryErrorKeys.add('drug-master-import-logs');
+    render(<DrugMasterContent />);
+
+    expect(screen.getByText('取込履歴を読み込めませんでした')).toBeTruthy();
+    expect(screen.queryByText('まだ取込履歴はありません。')).toBeNull();
+    // The summary count must not show a false "表示: 0件" next to the fetch error.
+    expect(screen.getByText('表示: 取得失敗')).toBeTruthy();
+    expect(screen.queryByText('表示: 0件')).toBeNull();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
+    expect(refetchSpies.get('drug-master-import-logs')).toHaveBeenCalled();
+  });
+
+  it('keeps the master-status section visible with an error instead of hiding it on fetch failure', () => {
+    queryErrorKeys.add('drug-master-status');
+    render(<DrugMasterContent />);
+
+    expect(screen.getByText('マスター更新ステータスを読み込めませんでした')).toBeTruthy();
+    // The success summary sources must not appear when the status fetch failed.
+    expect(screen.queryByText('SSK基本マスター')).toBeNull();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
+    expect(refetchSpies.get('drug-master-status')).toHaveBeenCalled();
+  });
+
+  it('warns that the site picker is unavailable rather than empty when the site lookup fails', () => {
+    queryErrorKeys.add('pharmacy-sites');
+    render(<DrugMasterContent />);
+
+    expect(screen.getByText('拠点一覧を読み込めませんでした')).toBeTruthy();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '再読み込み' })[0]);
+    expect(refetchSpies.get('pharmacy-sites')).toHaveBeenCalled();
+  });
 });
