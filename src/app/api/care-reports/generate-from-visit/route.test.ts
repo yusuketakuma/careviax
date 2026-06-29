@@ -87,6 +87,8 @@ describe('/api/care-reports/generate-from-visit', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       data: [
         {
@@ -155,6 +157,8 @@ describe('/api/care-reports/generate-from-visit', () => {
     ))!;
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -197,6 +201,8 @@ describe('/api/care-reports/generate-from-visit', () => {
     ))!;
 
     expect(response.status).toBe(409);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '訪問記録が同時に更新されました。再読み込みしてください',

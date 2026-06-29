@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Care Report Generate-From-Visit No-Store - 2026-06-30 04:39 JST
+
+- Scope:
+  - Continued codex2's visit-time / report generation objective on `POST /api/care-reports/generate-from-visit`.
+  - Focused only on sensitive response cache headers; report generation semantics and response body shape were preserved.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - The visit-derived report generation route now wraps authenticated responses with `withSensitiveNoStore`.
+  - Success, validation error, and workflow-conflict paths now include `Cache-Control: private, no-store, max-age=0` and `Pragma: no-cache`.
+- Safety:
+  - Reduces PHI-adjacent caching risk for report identifiers, report types, statuses, and version timestamps returned immediately after generating professional report drafts from a visit record.
+  - Preserves existing authorization, known error mapping, optimistic concurrency behavior, and generator contract.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/api/care-reports/generate-from-visit/route.ts' 'src/app/api/care-reports/generate-from-visit/route.test.ts'`: passed.
+  - `pnpm exec vitest run 'src/app/api/care-reports/generate-from-visit/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `1` file / `16` tests.
+  - `pnpm exec vitest run 'src/app/api/care-reports/generate-from-visit/route.test.ts' src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `36` tests.
+  - `pnpm exec eslint --max-warnings=0 'src/app/api/care-reports/generate-from-visit/route.ts' 'src/app/api/care-reports/generate-from-visit/route.test.ts'`: passed.
+  - `git diff --check -- 'src/app/api/care-reports/generate-from-visit/route.ts' 'src/app/api/care-reports/generate-from-visit/route.test.ts'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm exec prettier --check 'src/app/api/care-reports/generate-from-visit/route.ts' 'src/app/api/care-reports/generate-from-visit/route.test.ts' CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+  - `git diff --check -- 'src/app/api/care-reports/generate-from-visit/route.ts' 'src/app/api/care-reports/generate-from-visit/route.test.ts' CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+- Review:
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation and adversarial review of success/error/unknown-throw response coverage.
+  - codex returned `PATCH_REVIEW_RESULT: APPROVED` after related Vitest, scoped ESLint, scoped diff-check, and API/privacy review.
+- Remaining:
+  - Explicit-path commit and FYI notification are pending for this slice.
+
 ### Japan Business-Day API Defaults - 2026-06-30 04:24 JST
 
 - Scope:
@@ -53,7 +83,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - `pnpm format:check`: passed.
   - `pnpm date-slices:check`: passed.
 - Remaining:
-  - Explicit-path commit and agmsg FYI notification are pending for this slice.
+  - Committed as `80235fbe Use Japan business day for operational API defaults`; no remaining work for this slice.
 
 ### Partner Visit Physician Report Draft Error Boundary - 2026-06-30 04:23 JST
 
@@ -84,7 +114,7 @@ Objective: preserve existing external behavior while maximizing maintainability,
   - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation and adversarial review of fixed message mapping plus details allowlist/value-pattern filtering.
   - codex also returned `PATCH_REVIEW_RESULT: APPROVED` after related Vitest, scoped ESLint, scoped diff-check, and privacy/API-contract review.
 - Remaining:
-  - Explicit-path commit and FYI notification are pending for this slice.
+  - Committed as `e2a1f339 Sanitize partner report draft errors`; no remaining work for this slice.
 
 ### MCS Summary Safe Fallback Logging - 2026-06-30 04:13 JST
 

@@ -7,6 +7,7 @@ import {
   notFound,
 } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import type { GeneratedCareReportFromVisitResponse } from '@/lib/reports/generate-from-visit-contract';
 import { generateReportsFromVisit } from '@/server/services/report-generator';
 import { z } from 'zod';
@@ -32,7 +33,7 @@ const generateFromVisitSchema = z
     }
   });
 
-export const POST = withAuthContext(
+const authenticatedPOST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
@@ -119,3 +120,7 @@ export const POST = withAuthContext(
     message: '報告書生成の権限がありません',
   },
 );
+
+export const POST: typeof authenticatedPOST = async (req, routeContext) => {
+  return withSensitiveNoStore(await authenticatedPOST(req, routeContext));
+};
