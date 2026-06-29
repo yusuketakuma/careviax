@@ -1,3 +1,5 @@
+import type { OutsideMedEvidenceKind } from '@/lib/dispensing/set-audit-constants';
+
 export type VisitBriefContext = 'patient' | 'schedule';
 
 export type VisitBriefSeverity = 'urgent' | 'high' | 'normal' | 'low';
@@ -75,6 +77,8 @@ export type VisitBriefDispensingItem = {
   set_method: string | null;
   set_period_label: string | null;
   audit_status: string | null;
+  outside_med_kind: OutsideMedEvidenceKind | null;
+  outside_med_label: string | null;
   note: string;
 };
 

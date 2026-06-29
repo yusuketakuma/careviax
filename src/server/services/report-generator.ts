@@ -279,10 +279,14 @@ export async function generateReportsFromVisit(
       dose: true,
       frequency: true,
       days: true,
+      dosage_form: true,
       quantity: true,
       unit: true,
       route: true,
       dispensing_method: true,
+      packaging_instructions: true,
+      packaging_instruction_tags: true,
+      notes: true,
       intake: {
         select: {
           prescribed_date: true,
@@ -297,8 +301,13 @@ export async function generateReportsFromVisit(
     dose: l.dose,
     frequency: l.frequency,
     days_supply: l.days,
+    dosage_form: l.dosage_form,
     route: l.route,
     dispensing_method: l.dispensing_method,
+    packaging_instructions: l.packaging_instructions,
+    packaging_instruction_tags: l.packaging_instruction_tags,
+    notes: l.notes,
+    unit: l.unit,
   }));
 
   const residualMedicationsNormalized = residualMedications.map((r) => ({

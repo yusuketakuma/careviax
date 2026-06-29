@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260629-1805 JST
+
+- current task: process Claude's §11-7 Phase 2 plan review request, take the backend contract, validate, and commit.
+- files inspected: agmsg inbox/send for `phos/codex`, `git status --short --untracked-files=all`, `src/lib/dispensing/outside-med-classification.ts`, `src/lib/dispensing/set-audit-constants.ts`, `src/types/visit-brief.ts`, `src/types/care-report-content.ts`, `src/server/services/visit-brief.ts`, `src/server/services/report-templates.ts`, `src/server/services/report-generator.ts`, `src/server/services/visit-brief.test.ts`, `src/server/services/report-templates.test.ts`, and `src/server/services/report-generator.test.ts`.
+- files changed: `src/types/visit-brief.ts`, `src/types/care-report-content.ts`, `src/server/services/visit-brief.ts`, `src/server/services/visit-brief.test.ts`, `src/server/services/report-templates.ts`, `src/server/services/report-templates.test.ts`, `src/server/services/report-generator.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the proposed visit-brief contract needed backend filtering support because `dispensing_items` previously excluded lines without dispensing or packaging instructions. The physician report contract also needed `report-generator.ts` select/normalize support, otherwise the template would not receive the fields required by the outside-med SSOT classifier.
+- security risks found: reduced medication communication risk by deriving outside-med classification server-side from structured prescription fields and the existing SSOT labels rather than asking FE/report views to reclassify or infer from display text. No PHI surface, logging, auth, RLS, DB schema, migration apply, destructive DB operation, deploy, or permission surface was changed.
+- performance issues found: no new query count, dependency, external request, unbounded loop, or N+1 path was added. `report-generator` expands the existing prescription-line select only; `visit-brief` computes labels in-memory over already-loaded lines.
+- validation commands: `pnpm exec prettier --write src/types/visit-brief.ts src/types/care-report-content.ts src/server/services/visit-brief.ts src/server/services/visit-brief.test.ts src/server/services/report-templates.ts src/server/services/report-templates.test.ts src/server/services/report-generator.ts`; `pnpm exec vitest run src/server/services/visit-brief.test.ts src/server/services/report-templates.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec vitest run src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm format:check`; `pnpm lint`; `git diff --check`.
+- validation results: focused visit-brief/report-template tests passed `2` files / `10` tests; report-generator tests passed `1` file / `19` tests; `pnpm typecheck` passed; `pnpm typecheck:no-unused` passed; `pnpm format:check` passed; `pnpm lint` passed; `git diff --check` passed.
+- remaining work: Claude owns the FE rendering files for §11-7 Phase 2 and should send a review request or commit notice. Codex should verify clean worktree after the backend contract commit, then continue prioritizing Claude requests before the next medication-code task.
+- next action: stage only the explicit backend/type/test/ledger files, commit the slice, send agmsg FYI to Claude with the commit hash and validation summary, then verify clean worktree.
+
 ### 20260629-1756 JST
 
 - current task: commit all current dirty work and return the worktree to a clean state before resuming.

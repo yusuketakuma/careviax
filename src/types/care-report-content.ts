@@ -3,6 +3,7 @@
 // 厚労省「在宅患者訪問薬剤管理指導ガイド」準拠
 
 import type { VitalSigns } from './structured-soap';
+import type { OutsideMedEvidenceKind } from '@/lib/dispensing/set-audit-constants';
 
 export type { VitalSigns };
 
@@ -35,6 +36,8 @@ export type PhysicianReportContent = {
     days: number;
     route?: string;
     dispensing_method?: string;
+    outside_med_kind?: OutsideMedEvidenceKind | null;
+    outside_med_label?: string | null;
   }>;
   medication_management: {
     compliance_summary: string;

@@ -10,6 +10,10 @@ import type {
   AudienceReportContent,
 } from '@/types/care-report-content';
 import type { HomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import {
+  deriveOutsideMedEvidenceKind,
+  OUTSIDE_MED_EVIDENCE_KIND_LABELS,
+} from '@/lib/dispensing/outside-med-classification';
 import { getSoapLabel, ADHERENCE_LABELS } from '@/lib/constants/soap-options';
 import { buildAssessmentText, buildPlanText, joinLabels } from '@/lib/utils/soap-text-builder';
 import { summarizeHomeVisit2026Evidence } from '@/lib/visits/home-visit-2026-evidence';
@@ -179,8 +183,13 @@ export type PhysicianReportContext = {
     dose: string;
     frequency: string;
     days_supply: number;
+    dosage_form?: string | null;
     route?: string | null;
     dispensing_method?: string | null;
+    packaging_instructions?: string | null;
+    packaging_instruction_tags?: string[] | null;
+    notes?: string | null;
+    unit?: string | null;
   }>;
   residualMedications: Array<{
     drug_name: string;
@@ -352,14 +361,20 @@ export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianRepo
       name: prescriber.name,
       institution: prescriber.organization_name ?? '',
     },
-    prescriptions: prescriptionLines.map((line) => ({
-      drug_name: line.drug_name,
-      dose: line.dose,
-      frequency: line.frequency,
-      days: line.days_supply,
-      route: line.route ?? undefined,
-      dispensing_method: line.dispensing_method ?? undefined,
-    })),
+    prescriptions: prescriptionLines.map((line) => {
+      const outsideMedKind = deriveOutsideMedEvidenceKind(line);
+
+      return {
+        drug_name: line.drug_name,
+        dose: line.dose,
+        frequency: line.frequency,
+        days: line.days_supply,
+        route: line.route ?? undefined,
+        dispensing_method: line.dispensing_method ?? undefined,
+        outside_med_kind: outsideMedKind,
+        outside_med_label: outsideMedKind ? OUTSIDE_MED_EVIDENCE_KIND_LABELS[outsideMedKind] : null,
+      };
+    }),
     medication_management: {
       compliance_summary: complianceSummary,
       adherence_score: objective.adherence_score,

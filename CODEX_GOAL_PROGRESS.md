@@ -23,6 +23,29 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Outside-Med Phase 2 Backend Contract - 2026-06-29 18:05 JST
+
+- Scope:
+  - Prioritized Claude's §11-7 Phase 2 `PLAN_REVIEW_REQUEST` after the cleanup commit.
+  - Approved the additive type contract with notes and took the backend half while Claude holds the FE files.
+  - No DB migration, backfill, push, deploy, auth/RLS, permission, or destructive operation was performed.
+- Fixed:
+  - `VisitBriefDispensingItem` now carries `outside_med_kind` and `outside_med_label`.
+  - `PhysicianReportContent.prescriptions[]` now accepts the same outside-med vocabulary.
+  - `visit-brief` derives outside-med kind/label server-side from the shared `deriveOutsideMedEvidenceKind()` SSOT and includes classified outside-med lines even without dispensing instructions.
+  - `report-generator` now selects and normalizes the prescription-line fields needed for classification.
+  - `report-templates` adds outside-med kind/label to physician report prescription rows using `OUTSIDE_MED_EVIDENCE_KIND_LABELS`.
+- Validation:
+  - `pnpm exec vitest run src/server/services/visit-brief.test.ts src/server/services/report-templates.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `10` tests.
+  - `pnpm exec vitest run src/server/services/report-generator.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `19` tests.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm lint`: passed.
+  - `git diff --check`: passed.
+- Remaining:
+  - Claude owns FE rendering for `visit-brief-card.tsx` and `physician-report-view.tsx`; wait for review request or commit notice.
+
 ### PrescriptionLine Master-First Identity Cleanup - 2026-06-29 17:56 JST
 
 - Scope:

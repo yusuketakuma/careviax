@@ -139,4 +139,38 @@ describe('report template builders', () => {
     });
     expect(careManager.residual_status.reduction_proposals).toEqual(['酸化マグネシウム錠330mg']);
   });
+
+  it('adds outside-med vocabulary to physician report prescriptions', () => {
+    const physician = buildPhysicianReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01', gender: 'male' },
+      visitRecord: { visited_at: '2026-06-14' },
+      structuredSoap: baseSoap,
+      prescriptionLines: [
+        {
+          drug_name: 'ロキソニンテープ',
+          dose: '1枚',
+          frequency: '1日1回',
+          days_supply: 14,
+          dosage_form: '貼付剤',
+          route: 'external',
+          dispensing_method: null,
+          packaging_instructions: null,
+          packaging_instruction_tags: [],
+          notes: null,
+          unit: '枚',
+        },
+      ],
+      residualMedications,
+      prescriber: { name: '佐藤 医師', organization_name: '在宅クリニック' },
+      pharmacistName: '鈴木 薬剤師',
+    });
+
+    expect(physician.prescriptions).toEqual([
+      expect.objectContaining({
+        drug_name: 'ロキソニンテープ',
+        outside_med_kind: 'topical',
+        outside_med_label: '外用',
+      }),
+    ]);
+  });
 });

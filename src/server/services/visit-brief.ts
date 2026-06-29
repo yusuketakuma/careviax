@@ -17,6 +17,10 @@ import { buildPatientStateSnapshot } from '@/server/services/patient-state-snaps
 import { diffPatientStateSnapshots } from '@/server/services/visit-brief-patient-diff';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { SET_METHOD_LABELS } from '@/lib/dispensing/set-methods';
+import {
+  deriveOutsideMedEvidenceKind,
+  OUTSIDE_MED_EVIDENCE_KIND_LABELS,
+} from '@/lib/dispensing/outside-med-classification';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { readJahisSupplementalDetails } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import type {
@@ -224,6 +228,9 @@ type PrescriptionLineLike = {
   route: string | null;
   dispensing_method: string | null;
   packaging_instructions: string | null;
+  packaging_instruction_tags?: string[] | null;
+  notes?: string | null;
+  unit?: string | null;
   start_date: Date | null;
   end_date: Date | null;
 };
@@ -549,30 +556,37 @@ function buildDispensingItems(args: {
       ? `${formatDateKey(args.latestSetPlan.target_period_start)} - ${formatDateKey(args.latestSetPlan.target_period_end)}`
       : null;
 
-  const items = args.currentLines
-    .filter((line) => line.dispensing_method || line.packaging_instructions || setMethod)
-    .map((line) => {
-      const methodLabel = line.dispensing_method
-        ? (DISPENSING_METHOD_LABELS[line.dispensing_method] ?? line.dispensing_method)
-        : null;
-      const noteParts = [
-        methodLabel ? `方法: ${methodLabel}` : null,
-        line.packaging_instructions ? `包装: ${line.packaging_instructions}` : null,
-        setMethod ? `セット: ${setMethod}` : null,
-        auditStatus ? `鑑査: ${auditStatus}` : null,
-        args.latestSetPlan?.notes ? `備考: ${args.latestSetPlan.notes}` : null,
-      ].filter((value): value is string => Boolean(value));
+  const items = args.currentLines.flatMap((line) => {
+    const outsideMedKind = deriveOutsideMedEvidenceKind(line);
+    if (!line.dispensing_method && !line.packaging_instructions && !setMethod && !outsideMedKind) {
+      return [];
+    }
 
-      return {
+    const methodLabel = line.dispensing_method
+      ? (DISPENSING_METHOD_LABELS[line.dispensing_method] ?? line.dispensing_method)
+      : null;
+    const noteParts = [
+      methodLabel ? `方法: ${methodLabel}` : null,
+      line.packaging_instructions ? `包装: ${line.packaging_instructions}` : null,
+      setMethod ? `セット: ${setMethod}` : null,
+      auditStatus ? `鑑査: ${auditStatus}` : null,
+      args.latestSetPlan?.notes ? `備考: ${args.latestSetPlan.notes}` : null,
+    ].filter((value): value is string => Boolean(value));
+
+    return [
+      {
         drug_name: line.drug_name,
         dispensing_method: methodLabel,
         packaging_instructions: line.packaging_instructions,
         set_method: setMethod,
         set_period_label: setPeriodLabel,
         audit_status: auditStatus,
+        outside_med_kind: outsideMedKind,
+        outside_med_label: outsideMedKind ? OUTSIDE_MED_EVIDENCE_KIND_LABELS[outsideMedKind] : null,
         note: noteParts.join(' / '),
-      };
-    });
+      },
+    ];
+  });
 
   return items.slice(0, 8);
 }
@@ -1177,6 +1191,9 @@ export async function getPatientVisitBrief(
             route: true,
             dispensing_method: true,
             packaging_instructions: true,
+            packaging_instruction_tags: true,
+            notes: true,
+            unit: true,
             start_date: true,
             end_date: true,
           },

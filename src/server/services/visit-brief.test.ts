@@ -223,6 +223,21 @@ describe('getPatientVisitBrief', () => {
                 start_date: new Date('2026-03-26T00:00:00Z'),
                 end_date: new Date('2026-04-24T00:00:00Z'),
               },
+              {
+                drug_name: 'ロキソニンテープ',
+                drug_code: '999',
+                dosage_form: '貼付剤',
+                dose: '1枚',
+                frequency: '1日1回',
+                route: 'external',
+                dispensing_method: null,
+                packaging_instructions: null,
+                packaging_instruction_tags: [],
+                notes: null,
+                unit: '枚',
+                start_date: new Date('2026-03-26T00:00:00Z'),
+                end_date: new Date('2026-04-24T00:00:00Z'),
+              },
             ],
           },
           {
@@ -527,6 +542,11 @@ describe('getPatientVisitBrief', () => {
           drug_name: 'アムロジピン錠',
           dispensing_method: '一包化',
           set_period_label: '2026-03-27 - 2026-04-02',
+        }),
+        expect.objectContaining({
+          drug_name: 'ロキソニンテープ',
+          outside_med_kind: 'topical',
+          outside_med_label: '外用',
         }),
       ]),
     );
