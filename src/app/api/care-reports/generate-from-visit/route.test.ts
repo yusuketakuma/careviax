@@ -319,6 +319,26 @@ describe('/api/care-reports/generate-from-visit', () => {
     });
   });
 
+  it('returns a validation error when structured SOAP is incomplete for external reports', async () => {
+    generateReportsFromVisitMock.mockRejectedValue(
+      new Error('REPORTABLE_STRUCTURED_SOAP_REQUIRED_FOR_REPORT'),
+    );
+
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message:
+        '報告書を生成するには服薬状況・副作用確認・薬学的評価・計画を含む構造化SOAP記録が必要です',
+    });
+  });
+
   it('returns a validation error when the linked medication cycle is missing', async () => {
     generateReportsFromVisitMock.mockRejectedValue(
       new Error('MEDICATION_CYCLE_NOT_FOUND_FOR_REPORT'),

@@ -3,12 +3,14 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  canAccessVisitScheduleAssignmentMock,
   visitRecordFindFirstMock,
   patientFindFirstMock,
   processHandoffExtractionMock,
   VisitHandoffStaleRecordErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  canAccessVisitScheduleAssignmentMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   processHandoffExtractionMock: vi.fn(),
@@ -17,6 +19,10 @@ const {
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
+}));
+
+vi.mock('@/lib/auth/visit-schedule-access', () => ({
+  canAccessVisitScheduleAssignment: canAccessVisitScheduleAssignmentMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -49,10 +55,24 @@ const authCtx = {
   },
 };
 
+const accessibleSchedule = {
+  pharmacist_id: 'user_1',
+  case_: {
+    primary_pharmacist_id: 'user_1',
+    backup_pharmacist_id: null,
+  },
+};
+
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/visit-records/[id]/handoff/extract', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue(authCtx);
+    canAccessVisitScheduleAssignmentMock.mockReturnValue(true);
   });
 
   it('returns 201 on successful extraction', async () => {
@@ -63,6 +83,7 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
       soap_plan: 'plan',
       structured_soap: { subjective: {}, objective: {} },
       version: 2,
+      schedule: accessibleSchedule,
     });
     patientFindFirstMock.mockResolvedValue({ name: 'Taro' });
     const handoff = { next_check_items: ['check1'] };
@@ -71,6 +92,11 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
     const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
     expect(res!.status).toBe(201);
+    expectSensitiveNoStore(res!);
+    expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
+      authCtx.ctx,
+      accessibleSchedule,
+    );
     expect(processHandoffExtractionMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -85,11 +111,13 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     const res = await POST(req, { params: Promise.resolve({ id: '   ' }) });
 
     expect(res!.status).toBe(400);
+    expectSensitiveNoStore(res!);
     await expect(res!.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '訪問記録IDが不正です',
     });
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(processHandoffExtractionMock).not.toHaveBeenCalled();
   });
@@ -100,6 +128,38 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     const req = createRequest('http://localhost/api/visit-records/missing/handoff/extract');
     const res = await POST(req, { params: Promise.resolve({ id: 'missing' }) });
     expect(res!.status).toBe(404);
+    expectSensitiveNoStore(res!);
+    expect(canAccessVisitScheduleAssignmentMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 before loading patient data or extracting when assignment access is denied', async () => {
+    canAccessVisitScheduleAssignmentMock.mockReturnValue(false);
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr_1',
+      patient_id: 'patient_1',
+      soap_assessment: 'assessment',
+      soap_plan: 'plan',
+      structured_soap: {
+        subjective: { free_text: '患者秘匿情報' },
+        objective: { medication_status: 'full_compliance' },
+      },
+      version: 2,
+      schedule: accessibleSchedule,
+    });
+
+    const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
+    const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+    expect(res!.status).toBe(403);
+    expectSensitiveNoStore(res!);
+    expect(canAccessVisitScheduleAssignmentMock).toHaveBeenCalledWith(
+      authCtx.ctx,
+      accessibleSchedule,
+    );
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(processHandoffExtractionMock).not.toHaveBeenCalled();
+    const payload = await res!.json();
+    expect(JSON.stringify(payload)).not.toContain('患者秘匿情報');
   });
 
   it('returns 422 when no structured SOAP data', async () => {
@@ -109,11 +169,14 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
       soap_assessment: null,
       soap_plan: null,
       structured_soap: null,
+      schedule: accessibleSchedule,
     });
 
     const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
     const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
     expect(res!.status).toBe(422);
+    expectSensitiveNoStore(res!);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
   });
 
   it('returns conflict when the visit record changes before extraction is persisted', async () => {
@@ -124,6 +187,7 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
       soap_plan: 'plan',
       structured_soap: { subjective: {}, objective: {} },
       version: 2,
+      schedule: accessibleSchedule,
     });
     patientFindFirstMock.mockResolvedValue({ name: 'Taro' });
     processHandoffExtractionMock.mockRejectedValue(new VisitHandoffStaleRecordErrorMock('stale'));
@@ -132,6 +196,7 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
 
     expect(res!.status).toBe(409);
+    expectSensitiveNoStore(res!);
     await expect(res!.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '訪問記録が更新されています。再読み込みしてから申し送り抽出をやり直してください',
@@ -146,6 +211,7 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
       soap_plan: 'plan',
       structured_soap: { subjective: {}, objective: {} },
       version: 2,
+      schedule: accessibleSchedule,
     });
     patientFindFirstMock.mockResolvedValue({ name: 'Taro' });
     processHandoffExtractionMock.mockRejectedValue(
@@ -156,6 +222,7 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
 
     expect(res!.status).toBe(500);
+    expectSensitiveNoStore(res!);
     const payload = await res!.json();
     expect(payload).toMatchObject({
       code: 'extraction_failed',

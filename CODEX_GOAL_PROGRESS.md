@@ -23,6 +23,34 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### Visit Handoff / Reports / Interprofessional Sharing - 2026-06-30 00:47 JST
+
+- Scope:
+  - Implemented the codex2-owned visit-time handoff and report-generation slice while preserving unrelated peer/codex billing and workbench dirty files.
+  - Used code mapper, medical safety, and privacy compliance review context before widening the patch beyond report templates.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, or destructive operation was performed.
+- Fixed:
+  - Confirmed visit handoff lines now flow into physician, care manager, visiting nurse, and facility report content.
+  - Only handoff data with both `confirmed_at` and `confirmed_by` is externally projected; unconfirmed AI extraction content and AI metadata stay out of generated reports.
+  - Physician reports may include the confirmed decision rationale; care manager, nurse, and facility outputs receive only follow-up/monitoring lines.
+  - `POST /api/visit-records/[id]/handoff/extract` now uses the same visit schedule assignment guard as handoff GET/PUT, returning `403` before patient lookup or extraction processing when unauthorized.
+  - Handoff extraction responses now use sensitive no-store headers.
+  - Report generation now fails closed when `structured_soap` is missing reportable medication status, adherence score, side-effect confirmation, adverse-event confirmation, assessment, or plan structures instead of casting arbitrary JSON into report templates.
+  - The generate-from-visit API maps incomplete reportable SOAP to a sanitized validation error.
+- Validation:
+  - `pnpm exec vitest run 'src/app/api/visit-records/[id]/handoff/extract/route.test.ts' 'src/app/api/visit-records/[id]/handoff/route.test.ts' src/server/services/report-generator.test.ts src/server/services/report-templates.test.ts 'src/app/api/care-reports/generate-from-visit/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `5` files / `62` tests.
+  - `pnpm exec eslint --max-warnings=0 ...touched route/service/template files...`: passed.
+  - `git diff --check -- ...touched route/service/template files...`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm exec prettier --check ...touched route/service/template files...`: passed.
+  - `pnpm format:check`: failed only on unrelated peer/codex WIP `src/server/services/billing-requirement-validator.ts`.
+- Review:
+  - Privacy reviewer approved the initial confirmed-handoff template projection with no blockers and noted residual future hardening around server-owned confirmation fields.
+  - Medical safety review blockers for extraction authorization and structured SOAP fail-closed behavior are addressed in this slice.
+- Remaining:
+  - Send agmsg `PATCH_REVIEW_REQUEST` to Claude/codex, address any review blockers, then stage only explicit codex2-owned files for commit if coordination remains clear.
+
 ### Schedule Day-board Pending Proposal Counts - 2026-06-30 00:05 JST
 
 - Scope:

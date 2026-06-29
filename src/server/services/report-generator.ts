@@ -83,6 +83,44 @@ function readGeneratedReportContent(value: unknown): Record<string, unknown> {
   return readJsonObject(value) ?? {};
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isReportableAdherenceScore(
+  value: unknown,
+): value is StructuredSoap['objective']['adherence_score'] {
+  return Number.isInteger(value) && [1, 2, 3, 4, 5].includes(value as number);
+}
+
+function readReportableStructuredSoap(value: unknown): StructuredSoap | null {
+  if (!isRecord(value)) return null;
+
+  const subjective = value.subjective;
+  const objective = value.objective;
+  const assessment = value.assessment;
+  const plan = value.plan;
+  if (!isRecord(subjective) || !isRecord(objective) || !isRecord(assessment) || !isRecord(plan)) {
+    return null;
+  }
+
+  const adverseEvents = objective.adverse_events;
+  const hasReportableMedicationAssessment =
+    typeof objective.medication_status === 'string' &&
+    objective.medication_status.trim().length > 0 &&
+    isReportableAdherenceScore(objective.adherence_score) &&
+    isStringArray(objective.side_effect_checks) &&
+    isRecord(adverseEvents) &&
+    typeof adverseEvents.has_events === 'boolean' &&
+    isStringArray(adverseEvents.events);
+  if (!hasReportableMedicationAssessment) return null;
+
+  if (!isStringArray(assessment.problem_checks)) return null;
+  if (!isStringArray(plan.intervention_checks)) return null;
+
+  return value as StructuredSoap;
+}
+
 function toIsoStringOrNull(value: unknown): string | null {
   return value instanceof Date ? value.toISOString() : null;
 }
@@ -147,6 +185,10 @@ export async function generateReportsFromVisit(
   }
   if (!visitRecord.structured_soap) {
     throw new Error('STRUCTURED_SOAP_REQUIRED_FOR_REPORT');
+  }
+  const structuredSoap = readReportableStructuredSoap(visitRecord.structured_soap);
+  if (!structuredSoap) {
+    throw new Error('REPORTABLE_STRUCTURED_SOAP_REQUIRED_FOR_REPORT');
   }
   if (
     accessContext &&
@@ -381,10 +423,6 @@ export async function generateReportsFromVisit(
     });
   }
   const missingTypes = typesToGenerate.filter((type) => !existingByType.has(type));
-
-  // ─── 9. structured_soap を型アサート ──────────────────────────────────────
-  // 提出用報告書は、訪問時に薬剤師が確認した構造化SOAPを根拠にする。
-  const structuredSoap = visitRecord.structured_soap as StructuredSoap;
 
   const billingContext = billingEvidence
     ? {

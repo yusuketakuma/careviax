@@ -83,6 +83,11 @@ export const POST = withAuthContext(
       if (message === 'STRUCTURED_SOAP_REQUIRED_FOR_REPORT') {
         return validationError('報告書を生成するには訪問時の構造化SOAP記録が必要です');
       }
+      if (message === 'REPORTABLE_STRUCTURED_SOAP_REQUIRED_FOR_REPORT') {
+        return validationError(
+          '報告書を生成するには服薬状況・副作用確認・薬学的評価・計画を含む構造化SOAP記録が必要です',
+        );
+      }
       if (message === 'MEDICATION_CYCLE_NOT_FOUND_FOR_REPORT') {
         return validationError('報告書を生成する処方サイクルが見つかりません');
       }

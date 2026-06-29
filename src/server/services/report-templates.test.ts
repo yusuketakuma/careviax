@@ -173,4 +173,92 @@ describe('report template builders', () => {
       }),
     ]);
   });
+
+  it('threads confirmed visit handoff into professional reports without exposing unconfirmed AI extraction', () => {
+    const confirmedSoap: StructuredSoap = {
+      ...baseSoap,
+      handoff: {
+        next_check_items: ['眠気とふらつき', '昼分の飲み忘れ'],
+        ongoing_monitoring: ['血圧変動'],
+        decision_rationale: '降圧薬変更後で転倒リスクがあるため',
+        ai_extracted: true,
+        ai_confidence: 0.82,
+        confirmed_by: 'pharmacist-1',
+        confirmed_at: '2026-06-14T10:15:00.000Z',
+        extracted_at: '2026-06-14T10:00:00.000Z',
+      },
+    };
+    const unconfirmedSoap: StructuredSoap = {
+      ...baseSoap,
+      handoff: {
+        next_check_items: ['未確認のAI抽出項目'],
+        ongoing_monitoring: ['未確認の継続観察'],
+        decision_rationale: '未確認の判断根拠',
+        ai_extracted: true,
+        ai_confidence: 0.65,
+        confirmed_by: null,
+        confirmed_at: null,
+        extracted_at: '2026-06-14T10:00:00.000Z',
+      },
+    };
+
+    const physician = buildPhysicianReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01', gender: 'male' },
+      visitRecord: { visited_at: '2026-06-14' },
+      structuredSoap: confirmedSoap,
+      prescriptionLines,
+      residualMedications,
+      prescriber: { name: '佐藤 医師', organization_name: '在宅クリニック' },
+      pharmacistName: '鈴木 薬剤師',
+    });
+    const careManager = buildCareManagerReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01' },
+      visitRecord: { visited_at: '2026-06-14' },
+      structuredSoap: confirmedSoap,
+      prescriptionLines,
+      residualMedications,
+      careManager: { name: '高橋 ケアマネ', organization_name: '居宅介護支援事業所' },
+      pharmacistName: '鈴木 薬剤師',
+    });
+    const nurse = buildVisitingNurseReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01' },
+      visitRecord: { visited_at: '2026-06-14' },
+      structuredSoap: confirmedSoap,
+      prescriptionLines,
+      residualMedications,
+      pharmacistName: '鈴木 薬剤師',
+    });
+    const facility = buildFacilityReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01' },
+      visitRecord: { visited_at: '2026-06-14' },
+      structuredSoap: confirmedSoap,
+      prescriptionLines,
+      residualMedications,
+      pharmacistName: '鈴木 薬剤師',
+    });
+
+    expect(physician.physician_communication).toContain('次回確認: 眠気とふらつき');
+    expect(physician.physician_communication).toContain('継続観察: 血圧変動');
+    expect(physician.physician_communication).toContain('判断根拠: 降圧薬変更後');
+    expect(careManager.next_visit_plan.followup_items).toEqual(
+      expect.arrayContaining(['次回確認: 昼分の飲み忘れ', '継続観察: 血圧変動']),
+    );
+    expect(careManager.next_visit_plan.followup_items.join('\n')).not.toContain('判断根拠');
+    expect(nurse.requests).toContain('次回確認: 眠気とふらつき');
+    expect(facility.requests).toContain('継続観察: 血圧変動');
+    expect(nurse.requests).not.toContain('判断根拠');
+    expect(facility.requests).not.toContain('判断根拠');
+
+    const unconfirmed = buildCareManagerReport({
+      patient: { name: '田中 一郎', birth_date: '1940-01-01' },
+      visitRecord: { visited_at: '2026-06-14' },
+      structuredSoap: unconfirmedSoap,
+      prescriptionLines,
+      residualMedications,
+      careManager: { name: '高橋 ケアマネ', organization_name: '居宅介護支援事業所' },
+      pharmacistName: '鈴木 薬剤師',
+    });
+
+    expect(unconfirmed.next_visit_plan.followup_items.join('\n')).not.toContain('未確認');
+  });
 });

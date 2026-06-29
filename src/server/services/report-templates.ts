@@ -59,6 +59,27 @@ function buildFunctionalAreaText(values: string[]): string {
   return joinLabels(values.filter((v) => v !== 'no_issues'));
 }
 
+const MAX_CONFIRMED_HANDOFF_REPORT_ITEMS = 6;
+
+function readConfirmedHandoffReportLines(
+  handoff: StructuredSoap['handoff'] | undefined,
+  options: { includeDecisionRationale?: boolean } = {},
+): string[] {
+  if (!handoff?.confirmed_at || !handoff.confirmed_by) return [];
+
+  const lines = [
+    ...(handoff.next_check_items ?? []).map((item) => `次回確認: ${item}`),
+    ...(handoff.ongoing_monitoring ?? []).map((item) => `継続観察: ${item}`),
+    ...(options.includeDecisionRationale && handoff.decision_rationale
+      ? [`判断根拠: ${handoff.decision_rationale}`]
+      : []),
+  ]
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+
+  return lines.slice(0, MAX_CONFIRMED_HANDOFF_REPORT_ITEMS);
+}
+
 // ─── 機能評価 → ケアマネ向け生活機能影響テキスト ─────────────────────────────
 
 function buildSleepImpactText(values: string[]): string {
@@ -307,6 +328,9 @@ export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianRepo
   const prescriber = ctx.prescriber;
   const homeVisit2026Summary = summarizeHomeVisit2026Evidence(structuredSoap);
   const conferenceLines = buildExternalConferenceReportLines(conferenceContext, 'physician_report');
+  const handoffLines = readConfirmedHandoffReportLines(structuredSoap.handoff, {
+    includeDecisionRationale: true,
+  });
 
   const warnings: string[] = [];
 
@@ -402,6 +426,7 @@ export function buildPhysicianReport(ctx: PhysicianReportContext): PhysicianRepo
       plan.physician_report_items,
       ...homeVisit2026Summary,
       ...conferenceLines,
+      ...handoffLines,
     ]
       .filter((value): value is string => Boolean(value))
       .join('\n'),
@@ -430,6 +455,7 @@ export function buildCareManagerReport(ctx: CareManagerReportContext): CareManag
     conferenceContext,
     'care_manager_report',
   );
+  const handoffLines = readConfirmedHandoffReportLines(structuredSoap.handoff);
 
   const warnings: string[] = [];
 
@@ -484,6 +510,7 @@ export function buildCareManagerReport(ctx: CareManagerReportContext): CareManag
   }
   followupItems.push(...homeVisit2026Summary);
   followupItems.push(...conferenceLines);
+  followupItems.push(...handoffLines);
 
   return {
     patient: {
@@ -588,6 +615,7 @@ export function buildVisitingNurseReport(ctx: AudienceReportContext): AudienceRe
   const { summary, medication, residual, reductionTargets, objective, plan } =
     buildAudienceBase(ctx);
   const homeVisit2026Summary = summarizeHomeVisit2026Evidence(structuredSoap);
+  const handoffLines = readConfirmedHandoffReportLines(structuredSoap.handoff);
 
   const warnings: string[] = [];
   if (ctx.prescriptionLines.length === 0) {
@@ -635,6 +663,7 @@ export function buildVisitingNurseReport(ctx: AudienceReportContext): AudienceRe
   }
   requestItems.push(...homeVisit2026Summary);
   requestItems.push(...buildExternalConferenceReportLines(conferenceContext, 'nurse_share'));
+  requestItems.push(...handoffLines);
   const requests =
     requestItems.length > 0
       ? requestItems.join('\n')
@@ -665,6 +694,7 @@ export function buildFacilityReport(ctx: AudienceReportContext): AudienceReportC
   const { summary, medication, residual, reductionTargets, objective, plan } =
     buildAudienceBase(ctx);
   const homeVisit2026Summary = summarizeHomeVisit2026Evidence(structuredSoap);
+  const handoffLines = readConfirmedHandoffReportLines(structuredSoap.handoff);
 
   const warnings: string[] = [];
   if (ctx.prescriptionLines.length === 0) {
@@ -724,6 +754,7 @@ export function buildFacilityReport(ctx: AudienceReportContext): AudienceReportC
   }
   requestItems.push(...homeVisit2026Summary);
   requestItems.push(...buildExternalConferenceReportLines(conferenceContext, 'facility_handoff'));
+  requestItems.push(...handoffLines);
   const requests =
     requestItems.length > 0 ? requestItems.join('\n') : '服薬で気になる点があればご連絡ください。';
 

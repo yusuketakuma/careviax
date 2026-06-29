@@ -209,6 +209,38 @@ describe('generateReportsFromVisit', () => {
     expect(buildPhysicianReportMock).not.toHaveBeenCalled();
   });
 
+  it('blocks report generation when structured SOAP is incomplete for external reports', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date(),
+      structured_soap: {
+        subjective: { symptom_checks: [] },
+        objective: {
+          medication_status: 'full_compliance',
+          adherence_score: 5,
+        },
+        assessment: { problem_checks: ['no_issues'] },
+        plan: { intervention_checks: [] },
+      },
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: 'cycle-1',
+      org_id: 'org-1',
+    });
+
+    await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
+      'REPORTABLE_STRUCTURED_SOAP_REQUIRED_FOR_REPORT',
+    );
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(buildPhysicianReportMock).not.toHaveBeenCalled();
+  });
+
   it('blocks report generation when the linked medication cycle cannot be resolved', async () => {
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'vr-1',
