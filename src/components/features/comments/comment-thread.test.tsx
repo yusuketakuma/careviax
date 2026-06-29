@@ -8,6 +8,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeQueryMock = vi.hoisted(() => vi.fn());
 const fetchMock = vi.hoisted(() => vi.fn());
+const refetchMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -92,6 +93,43 @@ describe('CommentThread', () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0][0])).not.toContain('%25');
+  });
+
+  it('fails closed with a retryable error instead of a false-empty "no comments" on fetch failure', () => {
+    // A failed realtime query must not render the empty-state copy — that misreads a fetch
+    // failure as "this entity has no comments". Surface an announced error + retry instead.
+    useRealtimeQueryMock.mockReturnValue({
+      data: undefined,
+      isError: true,
+      isPending: false,
+      refetch: refetchMock,
+    });
+
+    renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
+
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('コメントを取得できませんでした');
+    // the misleading empty-state copy must be gone
+    expect(screen.queryByText('コメントはまだありません。')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows loading (not the empty-state) while the disabled/pending query has not resolved', () => {
+    // useRealtimeQuery gates on enabled: !!orgId && !!entityId, so an unresolved org leaves the
+    // query pending-but-not-fetching (isPending true). The empty-state must not show yet.
+    useRealtimeQueryMock.mockReturnValue({
+      data: undefined,
+      isError: false,
+      isPending: true,
+      refetch: refetchMock,
+    });
+
+    renderWithQueryClient(<CommentThread entityType="patient" entityId="patient_1" />);
+
+    expect(screen.getByText('読み込み中...')).toBeTruthy();
+    expect(screen.queryByText('コメントはまだありません。')).toBeNull();
   });
 
   it.each(['.', '..'])(

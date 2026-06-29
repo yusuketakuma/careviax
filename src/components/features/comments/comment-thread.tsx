@@ -39,7 +39,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
 
   const queryKey = ['comments', orgId, entityType, entityId];
 
-  const { data, isLoading } = useRealtimeQuery<{ data: Comment[] }>({
+  const { data, isError, isPending, refetch } = useRealtimeQuery<{ data: Comment[] }>({
     queryKey,
     queryFn: async () => {
       const params = new URLSearchParams({ entity_type: entityType, entity_id: entityId });
@@ -116,10 +116,26 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
   const body = (
     <div className="space-y-4">
       <div className="max-h-80 space-y-3 overflow-y-auto">
-        {isLoading && <p className="text-sm text-muted-foreground">読み込み中...</p>}
-        {!isLoading && comments.length === 0 && (
+        {isError ? (
+          <div role="alert" className="space-y-1.5 text-sm text-destructive">
+            <p>コメントを取得できませんでした。</p>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-sm"
+              onClick={() => void refetch()}
+            >
+              再試行
+            </Button>
+          </div>
+        ) : isPending ? (
+          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
+            読み込み中...
+          </p>
+        ) : comments.length === 0 ? (
           <p className="text-sm text-muted-foreground">コメントはまだありません。</p>
-        )}
+        ) : null}
         {comments.map((comment) => (
           <div key={comment.id} className="flex gap-3">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
