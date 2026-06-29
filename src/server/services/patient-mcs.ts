@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { prisma } from '@/lib/db/client';
 import { parseJsonObjectOrNull, parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { logger } from '@/lib/utils/logger';
 import {
   buildMcsTimelinePayload,
   inferMcsProjectIdFromDocument,
@@ -870,9 +871,11 @@ export async function generatePatientMcsSummarySafely(args: {
 }) {
   try {
     return await generatePatientMcsAiSummary(args);
-  } catch (error) {
-    console.warn('[patient-mcs-summary] fallback-to-null', {
-      reason: error instanceof Error ? error.message : 'unknown_error',
+  } catch {
+    logger.warn({
+      event: 'patient_mcs_summary_fallback',
+      externalProvider: 'patient_mcs_ai',
+      code: 'unknown_error',
     });
     return null;
   }

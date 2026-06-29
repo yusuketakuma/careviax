@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260630-0413 JST
+
+- current task: harden Medical Care Station summary fallback logging so AI summary exceptions cannot leak raw patient/MCS message text into logs while MCS timeline sync continues.
+- files inspected: agmsg inbox/send for `phos/codex2`, `git status --short --untracked-files=all`, `git log --oneline -8`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `gbrain search "report navigation helper reports print share buildReportHref visit multi professional"`, `src/lib/reports/navigation.ts`, `src/lib/reports/navigation.test.ts`, report/visit false-empty candidates, `src/app/(dashboard)/visits/[id]/visit-reflected-fields-card.tsx`, `src/app/(dashboard)/visits/[id]/visit-reflected-fields-card.test.tsx`, `src/server/services/patient-mcs.ts`, `src/server/services/patient-mcs.test.ts`, `src/server/services/patient-mcs-ai.ts`, `src/server/services/visit-brief-ai.ts`, and `src/lib/utils/logger.ts`.
+- files changed: `src/server/services/patient-mcs.ts`, `src/server/services/patient-mcs.test.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- bugs found: `generatePatientMcsSummarySafely()` correctly kept MCS timeline sync nonblocking when AI summary generation failed, but logged the raw exception through `console.warn` with `reason: error.message`. A thrown upstream/runtime error could include patient names, MCS message body text, SOAP snippets, tokens, or a mutable hostile `Error.name`.
+- security risks found: reduced PHI/secret leakage risk in interprofessional MCS collaboration fallback telemetry by replacing raw `console.warn` with safe-context `logger.warn({ event: "patient_mcs_summary_fallback", externalProvider: "patient_mcs_ai", code: "unknown_error" })`. The regression mutates both `Error.message` and `Error.name` with patient/secret text and asserts the emitted warning line excludes them. No auth/RLS policy, schema, live DB mutation, external send, deploy, push, secret handling, or destructive operation changed.
+- performance issues found: no DB query, external request, dependency, retry loop, synchronous blocking, or unbounded work was added. The patch only changes constant-time telemetry emitted on an existing fallback path.
+- validation commands: `pnpm exec prettier --write src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`; `pnpm exec vitest run src/server/services/patient-mcs.test.ts --reporter=dot --testTimeout=30000`; `pnpm exec eslint --max-warnings=0 src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`; `git diff --check -- src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm lint`; `pnpm format:check`; `pnpm exec prettier --check src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`; `git diff --check -- src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`.
+- validation results: Prettier passed. Focused MCS service Vitest passed `1` file / `19` tests. Scoped ESLint passed. Scoped `git diff --check` passed. `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, and `pnpm format:check` passed. Ledger-inclusive Prettier and diff checks passed. Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation and adversarial raw `.message` / mutable `.name` review; codex ACKed the lock and reported no blocker before commit preparation.
+- remaining work: stage only explicit codex2-owned files and commit this slice.
+- next action: final status/diff review, explicit-path stage, commit, and agmsg FYI.
+
 ### 20260630-0411 JST
 
 - current task: keep visit-schedule billing preview and save guard on UTC `@db.Date` sentinels across runtime timezones.

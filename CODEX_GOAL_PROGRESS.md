@@ -23,6 +23,36 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - 2026-06-26 JST current user-goal override: the active objective now explicitly requires repo-wide UI/UX refinement, internet research on medical system UI best practices, SSOT update before implementation, screenshot-driven iteration, no DB mutation, and grouped commits. This current user goal supersedes the earlier temporary UI-defer note for this loop.
 - Latest committed backend/API baseline: `GET /api/tracing-reports` landed as `43ce59df`, with sensitive no-store responses, duplicate `patient_id/status` rejection, fixed no-store `INTERNAL_ERROR` fallback, and RLS request-context propagation. Continue backend/API hardening under the latest user-directed Claude/Codex maker-checker coordination override above.
 
+### MCS Summary Safe Fallback Logging - 2026-06-30 04:13 JST
+
+- Scope:
+  - Continued codex2's visit-time / report / interprofessional collaboration objective on Medical Care Station timeline summaries.
+  - Preserved codex's completed billing date-sentinel slice and did not touch billing/package files.
+  - No schema migration, live DB mutation, RLS policy change, external send, push, deploy, secret handling, or destructive operation was performed.
+- Fixed:
+  - `generatePatientMcsSummarySafely()` no longer logs raw AI summary exceptions with `console.warn`.
+  - MCS timeline sync still continues and returns `null` summary when summary generation fails.
+  - Fallback telemetry now uses safe structured logging: `event=patient_mcs_summary_fallback`, `externalProvider=patient_mcs_ai`, and fixed `code=unknown_error`.
+- Safety:
+  - Reduces PHI/secret leakage risk from patient names, MCS message body text, SOAP snippets, tokens, and mutable hostile error names on the nonblocking summary fallback path.
+  - Regression coverage mutates both `Error.message` and `Error.name` with patient/secret text and asserts the warning line excludes them.
+- Validation:
+  - `pnpm exec prettier --write src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`: passed.
+  - `pnpm exec vitest run src/server/services/patient-mcs.test.ts --reporter=dot --testTimeout=30000`: passed, `1` file / `19` tests.
+  - `pnpm exec eslint --max-warnings=0 src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`: passed.
+  - `git diff --check -- src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `pnpm format:check`: passed.
+  - `pnpm exec prettier --check src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+  - `git diff --check -- src/server/services/patient-mcs.ts src/server/services/patient-mcs.test.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: passed.
+- Review:
+  - Claude returned `PATCH_REVIEW_RESULT: APPROVED` after independent focused validation and adversarial raw `.message` / mutable `.name` review.
+  - codex ACKed the lock and reported no blocker before commit preparation.
+- Remaining:
+  - Explicit-path commit and FYI notification are pending for this slice.
+
 ### AI Fallback Reason Sanitization - 2026-06-30 04:02 JST
 
 - Scope:

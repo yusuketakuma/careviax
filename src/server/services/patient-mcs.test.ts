@@ -181,6 +181,32 @@ describe('patient-mcs service helpers', () => {
     });
   });
 
+  it('logs summary fallback without raw exception text', async () => {
+    const rawError = new Error('patient 山田太郎 MCS body token=secret');
+    rawError.name = 'Patient山田SecretError';
+    generatePatientMcsAiSummaryMock.mockRejectedValueOnce(rawError);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(
+      generatePatientMcsSummarySafely({
+        patientName: '板屋 美恵子',
+        projectTitle: '板屋 美恵子：年長者の里',
+        messages: [],
+      }),
+    ).resolves.toBeNull();
+
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    const logged = String(consoleErrorSpy.mock.calls[0]?.[0] ?? '');
+    expect(logged).toContain('patient_mcs_summary_fallback');
+    expect(logged).toContain('"code":"unknown_error"');
+    expect(logged).toContain('"externalProvider":"patient_mcs_ai"');
+    expect(logged).not.toContain('山田太郎');
+    expect(logged).not.toContain('Patient山田SecretError');
+    expect(logged).not.toContain('token=secret');
+
+    consoleErrorSpy.mockRestore();
+  });
+
   it('enables browser sync only with an explicit local opt-in', () => {
     delete process.env.VERCEL;
     delete process.env.AWS_EXECUTION_ENV;
