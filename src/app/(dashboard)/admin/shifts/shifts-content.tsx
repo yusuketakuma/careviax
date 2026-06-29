@@ -150,7 +150,11 @@ export function ShiftsContent() {
   const monthEnd = endOfMonth(currentMonth);
   const monthLabel = format(currentMonth, 'yyyy年M月', { locale: ja });
 
-  const { data: sitesData } = useQuery({
+  const {
+    data: sitesData,
+    isError: sitesError,
+    refetch: refetchSites,
+  } = useQuery({
     queryKey: ['pharmacy-sites', orgId],
     queryFn: async () => {
       const res = await fetch('/api/pharmacy-sites', {
@@ -197,7 +201,11 @@ export function ShiftsContent() {
     enabled: !!orgId,
   });
 
-  const { data: holidaysData } = useQuery({
+  const {
+    data: holidaysData,
+    isError: holidaysError,
+    refetch: refetchHolidays,
+  } = useQuery({
     queryKey: [
       'business-holidays',
       orgId,
@@ -218,7 +226,11 @@ export function ShiftsContent() {
     enabled: !!orgId,
   });
 
-  const { data: templatesData } = useQuery({
+  const {
+    data: templatesData,
+    isError: templatesError,
+    refetch: refetchTemplates,
+  } = useQuery({
     queryKey: ['pharmacist-shift-templates', orgId],
     queryFn: async () => {
       const res = await fetch('/api/pharmacist-shift-templates', {
@@ -844,6 +856,42 @@ export function ShiftsContent() {
 
   return (
     <div className="space-y-6 [&_[data-slot=select-trigger]]:sm:h-11 [&_[data-slot=select-trigger]]:sm:min-h-[44px] [&_button]:sm:h-11 [&_button]:sm:min-h-[44px] [&_input]:sm:h-11 [&_input]:sm:min-h-[44px]">
+      {sitesError || holidaysError || templatesError ? (
+        // 補助マスター(店舗/休日/定型シフト)の取得失敗を空表示に潰さない。空の dropdown や
+        // 休日マーカー欠落を「未登録」と取り違えると、誤った店舗・休日前提でシフトを組む恐れがある。
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm"
+        >
+          <p className="min-w-0 flex-1 leading-6">
+            {[
+              sitesError ? '店舗情報' : null,
+              holidaysError ? '休日設定' : null,
+              templatesError ? '定型シフト' : null,
+            ]
+              .filter(Boolean)
+              .join('・')}
+            を取得できませんでした。
+            {sitesError
+              ? '店舗の選択肢が表示できていません。「店舗が未登録」ではなく取得エラーです。店舗を誤って未設定のままにしないよう、登録前に再読み込みしてください。'
+              : '表示中の内容が実際の登録状況と一致していない可能性があります。再読み込みしてください。'}
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="border-state-confirm/40 bg-card text-state-confirm hover:bg-state-confirm/15"
+            onClick={() => {
+              if (sitesError) void refetchSites();
+              if (holidaysError) void refetchHolidays();
+              if (templatesError) void refetchTemplates();
+            }}
+          >
+            再読み込み
+          </Button>
+        </div>
+      ) : null}
       <Card>
         <CardHeader className="flex flex-col gap-4 border-b lg:flex-row lg:items-end lg:justify-between">
           <div>

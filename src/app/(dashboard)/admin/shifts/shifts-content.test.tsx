@@ -8,6 +8,10 @@ import { ShiftsContent } from './shifts-content';
 setupDomTestEnv();
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+// Tests can mark specific query keys as failed (isError) to exercise the
+// supporting-master fetch-error banner without touching the success-path tests.
+const queryErrorKeys = vi.hoisted(() => new Set<string>());
+const refetchSpies = vi.hoisted(() => new Map<string, ReturnType<typeof vi.fn>>());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
@@ -19,96 +23,94 @@ vi.mock('@tanstack/react-query', () => ({
     isPending: false,
   }),
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
-    const key = queryKey[0];
+    const key = String(queryKey[0]);
+
+    let refetch = refetchSpies.get(key);
+    if (!refetch) {
+      refetch = vi.fn();
+      refetchSpies.set(key, refetch);
+    }
+
+    if (queryErrorKeys.has(key)) {
+      return { data: undefined, isLoading: false, isError: true, refetch };
+    }
+
+    const success = (data: unknown) => ({ data, isLoading: false, isError: false, refetch });
 
     if (key === 'pharmacy-sites') {
-      return {
-        data: {
-          data: [{ id: 'site_1', name: '本店', address: '東京都' }],
-        },
-        isLoading: false,
-      };
+      return success({ data: [{ id: 'site_1', name: '本店', address: '東京都' }] });
     }
 
     if (key === 'pharmacists') {
-      return {
-        data: {
-          data: [
-            {
-              id: 'user_1',
-              name: '山田 太郎',
-              name_kana: 'ヤマダ タロウ',
-              email: 'taro@example.test',
-              phone: null,
-              role: 'pharmacist',
-              site_id: 'site_1',
-              site_name: '本店',
-              is_active: true,
-              account_status: 'active',
-              invited_at: null,
-              last_invited_at: null,
-              activated_at: '2026-06-01T00:00:00.000Z',
-              deactivated_at: null,
-              deactivation_reason: null,
-              max_daily_visits: 6,
-              max_weekly_visits: 25,
-              max_travel_minutes: 90,
-              can_accept_emergency: true,
-              visit_specialties: null,
-              coverage_area: null,
-            },
-          ],
-        },
-        isLoading: false,
-      };
+      return success({
+        data: [
+          {
+            id: 'user_1',
+            name: '山田 太郎',
+            name_kana: 'ヤマダ タロウ',
+            email: 'taro@example.test',
+            phone: null,
+            role: 'pharmacist',
+            site_id: 'site_1',
+            site_name: '本店',
+            is_active: true,
+            account_status: 'active',
+            invited_at: null,
+            last_invited_at: null,
+            activated_at: '2026-06-01T00:00:00.000Z',
+            deactivated_at: null,
+            deactivation_reason: null,
+            max_daily_visits: 6,
+            max_weekly_visits: 25,
+            max_travel_minutes: 90,
+            can_accept_emergency: true,
+            visit_specialties: null,
+            coverage_area: null,
+          },
+        ],
+      });
     }
 
     if (key === 'pharmacist-shifts') {
-      return { data: { data: [] }, isLoading: false };
+      return success({ data: [] });
     }
 
     if (key === 'business-holidays') {
-      return {
-        data: {
-          data: [
-            {
-              id: 'holiday_1',
-              site_id: 'site_1',
-              date: '2026-06-20',
-              name: '棚卸休業',
-              holiday_type: 'site_closure',
-              is_closed: true,
-              site: { id: 'site_1', name: '本店' },
-            },
-          ],
-        },
-        isLoading: false,
-      };
+      return success({
+        data: [
+          {
+            id: 'holiday_1',
+            site_id: 'site_1',
+            date: '2026-06-20',
+            name: '棚卸休業',
+            holiday_type: 'site_closure',
+            is_closed: true,
+            site: { id: 'site_1', name: '本店' },
+          },
+        ],
+      });
     }
 
     if (key === 'pharmacist-shift-templates') {
-      return {
-        data: {
-          data: [
-            {
-              id: 'template_1',
-              user_id: 'user_1',
-              site_id: 'site_1',
-              weekday: 1,
-              available: false,
-              available_from: null,
-              available_to: null,
-              note: null,
-              user: { id: 'user_1', name: '山田 太郎' },
-              site: { id: 'site_1', name: '本店' },
-            },
-          ],
-        },
-        isLoading: false,
-      };
+      return success({
+        data: [
+          {
+            id: 'template_1',
+            user_id: 'user_1',
+            site_id: 'site_1',
+            weekday: 1,
+            available: false,
+            available_from: null,
+            available_to: null,
+            note: null,
+            user: { id: 'user_1', name: '山田 太郎' },
+            site: { id: 'site_1', name: '本店' },
+          },
+        ],
+      });
     }
 
-    return { data: { data: [] }, isLoading: false };
+    return success({ data: [] });
   },
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
@@ -125,6 +127,8 @@ vi.mock('sonner', () => ({
 describe('ShiftsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    queryErrorKeys.clear();
+    refetchSpies.clear();
   });
 
   it('prioritizes the monthly calendar before secondary summaries and uses full-size primary controls', () => {
@@ -254,5 +258,35 @@ describe('ShiftsContent', () => {
     fireEvent.click(editableCells[0]);
 
     expect(await screen.findByText(/山田 太郎 \/ \d{4}年\d+月\d+日\(.+\)/)).toBeTruthy();
+  });
+
+  it('does not surface the supporting-master warning when sites, holidays, and templates all load', () => {
+    render(<ShiftsContent />);
+    expect(screen.queryByText(/を取得できませんでした/)).toBeNull();
+  });
+
+  it('surfaces a retryable warning instead of empty pickers when supporting masters fail to load', () => {
+    queryErrorKeys.add('pharmacy-sites');
+    queryErrorKeys.add('business-holidays');
+    queryErrorKeys.add('pharmacist-shift-templates');
+    render(<ShiftsContent />);
+
+    expect(screen.getByText(/店舗情報・休日設定・定型シフトを取得できませんでした/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchSpies.get('pharmacy-sites')).toHaveBeenCalled();
+    expect(refetchSpies.get('business-holidays')).toHaveBeenCalled();
+    expect(refetchSpies.get('pharmacist-shift-templates')).toHaveBeenCalled();
+  });
+
+  it('warns that the site picker is unavailable rather than empty when only the site lookup fails', () => {
+    queryErrorKeys.add('pharmacy-sites');
+    render(<ShiftsContent />);
+
+    expect(screen.getByText(/店舗情報を取得できませんでした/)).toBeTruthy();
+    expect(screen.getByText(/「店舗が未登録」ではなく取得エラーです/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetchSpies.get('pharmacy-sites')).toHaveBeenCalled();
   });
 });
