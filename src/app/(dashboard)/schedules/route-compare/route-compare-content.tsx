@@ -515,6 +515,10 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
                 ? ` 採用時は未割当の訪問に ${recommendedVehicle.label} を同時に反映します。`
                 : ''}
             </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              移動時間は地図 API
+              を使わない固定値の概算です。実際の所要時間は道路状況により異なります。
+            </p>
           </div>
           <RecommendedRouteDetail
             detail={routeDetail}
@@ -533,6 +537,10 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
           <h2 className="text-base font-bold text-foreground">ルート案を比べる</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             並べ替え方針の異なる 3 案を比較して採用します。
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            移動時間は地図 API を使わない概算（薬局⇔訪問先 16 分・訪問先間 20 分・同一建物 5
+            分の固定値）です。実際の所要時間ではなく、案ごとの方針差（詰めて回る／希望時間優先／緊急余力を残す）の比較にお使いください。
           </p>
         </div>
         <div className="grid gap-4 lg:grid-cols-3 xl:gap-5" data-testid="route-scenario-compare">
