@@ -161,11 +161,13 @@ export function buildPostVisitWorkflowActions(args: {
   billingBlockers?: VisitWorkflowBillingBlockerSummary[];
   billingCandidateCount?: number;
   billingCandidatesLoading?: boolean;
+  billingCandidatesError?: boolean;
   billingMonth?: string | null;
   careTeamContactCount: number;
   hasNextVisitSuggestion: boolean;
   nextVisitSuggestionDate?: string | null;
   reports?: VisitWorkflowReportSummary[];
+  reportsError?: boolean;
   conferenceContext?: VisitWorkflowConferenceContext[];
 }): VisitWorkflowAction[] {
   const conferenceNotes = args.conferenceContext ?? [];
@@ -176,6 +178,10 @@ export function buildPostVisitWorkflowActions(args: {
   const firstBillingBlocker = billingBlockers[0];
   const billingCandidatesLoading = args.billingCandidatesLoading === true;
   const billingCandidateCount = args.billingCandidateCount ?? 0;
+  // 取得失敗時は件数(0)・下書き有無が不正確になりうるため、generate 系の破壊的アクション
+  // (報告書/請求候補の新規生成)を露出しない。安全な確認導線へ切り替え、上部の再読み込みに誘導する。
+  const reportsError = args.reportsError === true;
+  const billingError = args.billingCandidatesError === true;
   const conferenceActionCount = conferenceNotes.reduce(
     (count, note) => count + (note.action_items?.length ?? 0),
     0,
@@ -198,41 +204,60 @@ export function buildPostVisitWorkflowActions(args: {
     {
       key: 'report',
       title: '報告書作成',
-      description:
-        reports.length > 0
+      description: reportsError
+        ? '報告書の取得に失敗しました。上部の「再読み込み」で再取得してから作成を判断してください（未取得のまま新規作成すると重複のおそれ）。'
+        : reports.length > 0
           ? '訪問記録から作成済みの報告書を確認し、送付は報告書画面で判断します。'
           : args.soapComplete
             ? 'SOAP と訪問薬剤管理の要点から医師・ケアマネ向け文書を作れます。'
             : 'SOAP の不足を閉じると報告書の自動生成精度が上がります。',
       priority: args.soapComplete ? 'normal' : 'high',
-      status: reports.length > 0 || args.soapComplete ? 'ready' : 'needs_review',
+      status: reportsError
+        ? 'needs_review'
+        : reports.length > 0 || args.soapComplete
+          ? 'ready'
+          : 'needs_review',
       placement: 'primary',
-      primary_action: preferredReport
+      // 取得失敗時は generate_report / open_report(下書き有無が不確定)を出さず、記録確認の安全導線のみ。
+      primary_action: reportsError
         ? {
-            operation: 'open_report',
-            label: '報告書を確認',
-            href: preferredReportHref,
+            operation: 'edit_visit_record',
+            label: '記録を確認',
+            href: visitRecordHref,
           }
-        : args.soapComplete
-          ? { operation: 'generate_report', label: '報告書を作成' }
-          : {
-              operation: 'edit_visit_record',
-              label: '記録を追記',
-              href: visitRecordHref,
-            },
+        : preferredReport
+          ? {
+              operation: 'open_report',
+              label: '報告書を確認',
+              href: preferredReportHref,
+            }
+          : args.soapComplete
+            ? { operation: 'generate_report', label: '報告書を作成' }
+            : {
+                operation: 'edit_visit_record',
+                label: '記録を追記',
+                href: visitRecordHref,
+              },
       secondary_action:
-        preferredReport && args.soapComplete
+        !reportsError && preferredReport && args.soapComplete
           ? { operation: 'generate_report', label: '別文書を作成', variant: 'outline' }
           : undefined,
       details: compactVisitWorkflowActionDetails([
-        reports.length > 0
+        reportsError
+          ? {
+              label: '報告書',
+              value: '取得失敗',
+              tone: 'warning',
+            }
+          : null,
+        !reportsError && reports.length > 0
           ? {
               label: '作成済み',
               value: `${reports.length}件`,
               tone: 'success',
             }
           : null,
-        preferredReport?.latest_delivery_status
+        !reportsError && preferredReport?.latest_delivery_status
           ? {
               label: '送付状態',
               value: preferredReport.latest_delivery_recipient_name
@@ -242,14 +267,17 @@ export function buildPostVisitWorkflowActions(args: {
             }
           : null,
       ]),
-      href: preferredReportHref,
-      action_label: preferredReport
-        ? '報告書を確認'
-        : args.soapComplete
-          ? '報告書を作成'
-          : '記録を追記',
+      href: reportsError ? visitRecordHref : preferredReportHref,
+      action_label: reportsError
+        ? '記録を確認'
+        : preferredReport
+          ? '報告書を確認'
+          : args.soapComplete
+            ? '報告書を作成'
+            : '記録を追記',
       evidence: [
-        reports.length > 0 ? `作成済み報告書 ${reports.length}件` : null,
+        reportsError ? '報告書の取得に失敗（件数・下書きは不確定）' : null,
+        !reportsError && reports.length > 0 ? `作成済み報告書 ${reports.length}件` : null,
         args.soapComplete ? 'SOAP本文あり' : 'SOAP本文に不足あり',
         args.medicationManagementComplete
           ? '訪問薬剤管理の確認済み'
@@ -285,15 +313,24 @@ export function buildPostVisitWorkflowActions(args: {
       description:
         args.billingBlockerCount > 0
           ? '算定を止めている理由を先に閉じると候補レビューの差戻しを減らせます。'
-          : billingCandidatesLoading
-            ? 'この患者の請求候補を確認しています。読み込み完了後に月次レビューへ進めます。'
-            : billingCandidateCount > 0
-              ? 'この患者の請求候補を月次レビュー画面で確認します。確定・除外は月次画面で行います。'
-              : '算定を止めている理由は目立っていません。候補生成後に月次締めへ進めます。',
+          : billingError
+            ? '請求候補の取得に失敗しました。候補件数が不確定のため、生成はせず月次レビュー画面で実際の候補を確認してください。'
+            : billingCandidatesLoading
+              ? 'この患者の請求候補を確認しています。読み込み完了後に月次レビューへ進めます。'
+              : billingCandidateCount > 0
+                ? 'この患者の請求候補を月次レビュー画面で確認します。確定・除外は月次画面で行います。'
+                : '算定を止めている理由は目立っていません。候補生成後に月次締めへ進めます。',
       priority: args.billingBlockerCount > 0 ? 'high' : 'normal',
       status:
-        args.billingBlockerCount > 0 ? 'blocked' : billingCandidatesLoading ? 'waiting' : 'ready',
+        args.billingBlockerCount > 0
+          ? 'blocked'
+          : billingError
+            ? 'needs_review'
+            : billingCandidatesLoading
+              ? 'waiting'
+              : 'ready',
       placement: 'primary',
+      // 取得失敗時は generate_billing_candidates(候補0前提の生成)を出さず、確認画面への非破壊導線のみ。
       primary_action:
         args.billingBlockerCount > 0
           ? {
@@ -301,32 +338,46 @@ export function buildPostVisitWorkflowActions(args: {
               label: firstBillingBlocker?.action_label ?? '止まっている理由を確認',
               href: firstBillingBlocker?.action_href ?? visitRecordHref,
             }
-          : billingCandidatesLoading
+          : billingError
             ? {
                 operation: 'open_billing_candidates',
-                label: '請求候補を確認中',
+                label: '請求候補を確認',
                 href: visitBillingCandidatesHref,
                 variant: 'outline',
               }
-            : billingCandidateCount > 0
+            : billingCandidatesLoading
               ? {
                   operation: 'open_billing_candidates',
-                  label: '請求候補を確認',
+                  label: '請求候補を確認中',
                   href: visitBillingCandidatesHref,
+                  variant: 'outline',
                 }
-              : { operation: 'generate_billing_candidates', label: '請求候補を生成' },
+              : billingCandidateCount > 0
+                ? {
+                    operation: 'open_billing_candidates',
+                    label: '請求候補を確認',
+                    href: visitBillingCandidatesHref,
+                  }
+                : { operation: 'generate_billing_candidates', label: '請求候補を生成' },
       details: compactVisitWorkflowActionDetails([
         args.billingMonth
           ? { label: '対象月', value: args.billingMonth.slice(0, 7), tone: 'neutral' }
           : null,
-        billingCandidatesLoading
+        billingError
+          ? {
+              label: '候補',
+              value: '取得失敗',
+              tone: 'warning',
+            }
+          : null,
+        !billingError && billingCandidatesLoading
           ? {
               label: '候補',
               value: '確認中',
               tone: 'info',
             }
           : null,
-        billingCandidateCount > 0
+        !billingError && billingCandidateCount > 0
           ? {
               label: '候補',
               value: `${billingCandidateCount}件`,
@@ -341,17 +392,21 @@ export function buildPostVisitWorkflowActions(args: {
       action_label:
         args.billingBlockerCount > 0
           ? (firstBillingBlocker?.action_label ?? '止まっている理由を確認')
-          : billingCandidatesLoading
-            ? '請求候補を確認中'
-            : billingCandidateCount > 0
-              ? '請求候補を確認'
-              : '請求候補を生成',
+          : billingError
+            ? '請求候補を確認'
+            : billingCandidatesLoading
+              ? '請求候補を確認中'
+              : billingCandidateCount > 0
+                ? '請求候補を確認'
+                : '請求候補を生成',
       evidence:
         args.billingBlockerCount > 0
           ? [`止まっている理由 ${args.billingBlockerCount}件`]
-          : billingCandidatesLoading
-            ? ['請求候補を読み込み中']
-            : ['2026要件を候補生成へ連携'],
+          : billingError
+            ? ['請求候補の取得に失敗（件数は不確定）']
+            : billingCandidatesLoading
+              ? ['請求候補を読み込み中']
+              : ['2026要件を候補生成へ連携'],
     },
     {
       key: 'next_visit',

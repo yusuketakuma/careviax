@@ -412,6 +412,13 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   });
 
   function handleGenerateReport(visitRecordUpdatedAt: string, reportType?: string) {
+    // 報告書一覧の取得に失敗している間は下書きの有無が不確定なため、生成を実行しない
+    // (重複/不正生成の防止)。メニューが開いたまま error に転じても発火させない。
+    if (careReportsError) {
+      setShowReportMenu(false);
+      toast.error('報告書の取得に失敗しています。再読み込みしてから作成してください。');
+      return;
+    }
     const existingDraft = reportType ? findDraftReportForType(careReports, reportType) : null;
     generateReportMutation.mutate({
       reportType,
@@ -474,7 +481,11 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   });
   const billingMonth = formatBillingMonth(record?.visit_date);
 
-  const { data: careReportsResponse } = useQuery<CareReportsResponse>({
+  const {
+    data: careReportsResponse,
+    isError: careReportsError,
+    refetch: refetchCareReports,
+  } = useQuery<CareReportsResponse>({
     queryKey: ['care-reports-by-visit', recordId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/care-reports?visit_record_id=${recordId}&limit=10`, {
@@ -486,7 +497,11 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     enabled: !!orgId && !!recordId,
   });
 
-  const { data: billingCandidatesResponse } = useQuery<BillingCandidatesResponse>({
+  const {
+    data: billingCandidatesResponse,
+    isError: billingCandidatesError,
+    refetch: refetchBillingCandidates,
+  } = useQuery<BillingCandidatesResponse>({
     queryKey: ['billing-candidates-by-visit', orgId, record?.patient_id, billingMonth],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -529,13 +544,19 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   });
 
   // Residual medications query
-  const { data: residuals } = useQuery<ResidualMedication[]>({
+  const {
+    data: residuals,
+    isError: residualsError,
+    refetch: refetchResiduals,
+  } = useQuery<ResidualMedication[]>({
     queryKey: ['residual-medications', recordId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/residual-medications?visit_record_id=${recordId}`, {
         headers: { 'x-org-id': orgId },
       });
-      if (!res.ok) return [];
+      // 取得失敗を空配列に潰すと残薬ゼロ(=訪問準備の根拠なし)と区別できないため、
+      // throw して isError を立て、利用側で「取得失敗」を明示する。
+      if (!res.ok) throw new Error('残薬データの取得に失敗しました');
       const json = await res.json();
       return json.data ?? [];
     },
@@ -604,6 +625,9 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   const billingCandidatesLoading = Boolean(
     orgId && record?.patient_id && billingMonth && !billingCandidatesResponse,
   );
+  // 報告書/請求候補/残薬のいずれかが取得失敗の場合、それらから導出する件数・下書き有無・
+  // 残薬準備状況は不正確になりうる。ワークフロー欄で「取得失敗」を明示し再読み込みを促す。
+  const workflowDataError = careReportsError || billingCandidatesError || residualsError;
   const soapComplete = Boolean(
     record.soap_subjective?.trim() &&
     record.soap_objective?.trim() &&
@@ -671,11 +695,13 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     billingBlockers: visitPreparationPack?.billing_blockers ?? [],
     billingCandidateCount: billingCandidates.length,
     billingCandidatesLoading,
+    billingCandidatesError,
     billingMonth,
     careTeamContactCount: patientCareTeamContacts.length,
     hasNextVisitSuggestion: Boolean(record.next_visit_suggestion_date),
     nextVisitSuggestionDate: record.next_visit_suggestion_date,
     reports: careReports,
+    reportsError: careReportsError,
     conferenceContext: visitPreparationPack?.conference_context,
   });
   // 報告書の宛先別下書きを明示生成する選択肢。バックエンド(generate-from-visit)が
@@ -686,7 +712,9 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     { type: 'nurse_share', label: '看護師向け共有メモを作成' },
     { type: 'facility_handoff', label: '施設向け引継書を作成' },
   ];
-  const showAutomaticReportGeneration = canUseAutomaticReportGeneration(careReports);
+  // 取得失敗時は careReports=[] が「下書きゼロ」と区別できず自動生成を誤提示するため出さない。
+  const showAutomaticReportGeneration =
+    !careReportsError && canUseAutomaticReportGeneration(careReports);
   const reportGenerationActions = (
     <div className="relative" ref={menuRef}>
       <Button
@@ -892,6 +920,31 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
       </Card>
 
       <VisitReportReadinessPanel mode="visit_detail" items={visitDetailReadinessItems} />
+
+      {workflowDataError ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm"
+        >
+          <p className="min-w-0 flex-1 leading-6">
+            報告書・請求候補・残薬データの一部を取得できませんでした。表示中の件数や下書きの有無、残薬の準備状況が不正確な可能性があります。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-[44px] border-state-confirm/40 bg-card text-state-confirm hover:bg-state-confirm/15 sm:min-h-9"
+            onClick={() => {
+              void refetchCareReports();
+              void refetchBillingCandidates();
+              void refetchResiduals();
+            }}
+          >
+            再読み込み
+          </Button>
+        </div>
+      ) : null}
 
       <PostVisitWorkflowPanel
         actions={postVisitWorkflowActions}

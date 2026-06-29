@@ -292,4 +292,60 @@ describe('visit-workflow-projection', () => {
       evidence: ['請求候補を読み込み中'],
     });
   });
+
+  it('does not expose report generation when the report list fetch failed', () => {
+    // soapComplete:true は通常 generate_report を提示するが、取得失敗(reportsError)時は
+    // 下書きの有無が不確定なため generate を出さず安全な記録確認導線へ倒す(重複生成防止)。
+    const actions = buildPostVisitWorkflowActions({
+      recordId: 'record_1',
+      scheduleId: 'schedule_1',
+      patientId: 'patient_1',
+      soapComplete: true,
+      collaborationMentioned: false,
+      medicationManagementComplete: true,
+      billingBlockerCount: 0,
+      careTeamContactCount: 0,
+      hasNextVisitSuggestion: false,
+      reports: [],
+      reportsError: true,
+    });
+
+    const report = actions.find((action) => action.key === 'report');
+    expect(report?.primary_action.operation).toBe('edit_visit_record');
+    expect(report?.primary_action.operation).not.toBe('generate_report');
+    expect(report?.secondary_action).toBeUndefined();
+    expect(report).toMatchObject({
+      status: 'needs_review',
+      details: expect.arrayContaining([{ label: '報告書', value: '取得失敗', tone: 'warning' }]),
+    });
+    expect(report?.evidence).toContain('報告書の取得に失敗（件数・下書きは不確定）');
+  });
+
+  it('does not prompt candidate generation when billing candidates fetch failed', () => {
+    // billingCandidateCount:0 は通常 generate_billing_candidates を提示するが、取得失敗時は
+    // 0 が「候補なし」確定でないため生成を出さず確認画面への非破壊導線へ倒す(false-zero 生成防止)。
+    const actions = buildPostVisitWorkflowActions({
+      recordId: 'record_1',
+      scheduleId: 'schedule_1',
+      patientId: 'patient_1',
+      soapComplete: true,
+      collaborationMentioned: false,
+      medicationManagementComplete: true,
+      billingBlockerCount: 0,
+      billingCandidateCount: 0,
+      billingCandidatesError: true,
+      billingMonth: '2026-04-01',
+      careTeamContactCount: 0,
+      hasNextVisitSuggestion: false,
+    });
+
+    const billing = actions.find((action) => action.key === 'billing_review');
+    expect(billing?.primary_action.operation).toBe('open_billing_candidates');
+    expect(billing?.primary_action.operation).not.toBe('generate_billing_candidates');
+    expect(billing).toMatchObject({
+      status: 'needs_review',
+      details: expect.arrayContaining([{ label: '候補', value: '取得失敗', tone: 'warning' }]),
+      evidence: ['請求候補の取得に失敗（件数は不確定）'],
+    });
+  });
 });
