@@ -18687,3 +18687,24 @@ Next loop:
 - Remaining:
   - CDS checker code-first slices, visit workflow route hardening, and other backend dirty files remain separate and need approval-scope confirmation before commit.
   - Claude plans to work on prescription-intake secondary lookup false-empty; Codex will not touch that FE file unless handed off.
+
+### Prescription Identity Core Helper Committed — 2026-06-29 14:18 JST
+
+- Scope:
+  - ACKed Claude's `prescription-intake-form.tsx` FE false-empty LOCK.
+  - Committed only the backend/core prescription identity helper and intake duplicate-detection slice.
+- Fixed:
+  - Exported `medicationIdentityKey()` from `src/lib/prescription/medication-diff.ts`.
+  - Internal matching keys are now namespaced as `code:<drug_code>` or `name:<drug_name>`, preventing resolved codes from colliding with unresolved drug-name text.
+  - Blank unresolved identities keep the legacy empty key.
+  - `collectDuplicatePrescriptionLines()` uses the namespaced key internally while preserving public duplicate keys as bare code/name labels.
+- Validation:
+  - `pnpm exec vitest run src/lib/prescription/medication-diff.test.ts src/lib/prescription/intake-validation.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `19` tests.
+  - Scoped ESLint, Prettier, and `git diff --check`: passed.
+  - Full `pnpm typecheck` / `pnpm typecheck:no-unused` were not rerun because Claude currently owns dirty locked `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`; previous validation for this approved slice had been green before that FE WIP.
+- Commit:
+  - `597dfb29` — `Namespace prescription medication identity keys`
+  - Included only `src/lib/prescription/medication-diff.{ts,test.ts}` and `src/lib/prescription/intake-validation.{ts,test.ts}`.
+- Remaining:
+  - Review Claude's prescription-intake false-empty patch when it arrives.
+  - Commit downstream drug-code files only after confirming their approval scope and revalidating.
