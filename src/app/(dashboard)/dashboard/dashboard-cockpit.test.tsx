@@ -469,4 +469,27 @@ describe('DashboardCockpit', () => {
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetchMock).toHaveBeenCalled();
   });
+
+  it('keeps stale cockpit data visible and shows a retry warning when a background refetch fails', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: buildFixture(),
+      isLoading: false,
+      isError: true,
+      isRefetchError: true,
+      error: new Error('background refresh failed'),
+      refetch: refetchMock,
+    });
+
+    render(<DashboardCockpit />);
+
+    expect(screen.getByRole('heading', { name: 'ダッシュボード' })).toBeTruthy();
+    expect(screen.getByText('田中 一郎 様')).toBeTruthy();
+    expect(
+      screen.getByText('最新化に失敗しました。表示中の情報は前回取得時点のものです。'),
+    ).toBeTruthy();
+    expect(screen.queryByText('ダッシュボードを表示できません')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
 });

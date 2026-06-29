@@ -637,6 +637,8 @@ export function DashboardCockpit() {
     return () => window.clearInterval(timer);
   }, []);
   const data = cockpitQuery.data ?? null;
+  const hasStaleRefetchError =
+    data != null && (cockpitQuery.isRefetchError || cockpitQuery.isError);
   const appliedScope = data?.scope?.applied ?? viewScope;
   const canViewTeam = data?.scope?.can_view_team ?? true;
   const scopeLabel =
@@ -720,7 +722,7 @@ export function DashboardCockpit() {
       <div className="mt-4">
         {isBootstrappingOrg || cockpitQuery.isLoading ? (
           <CockpitSkeleton />
-        ) : cockpitQuery.isError || !data ? (
+        ) : !data ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
             <ErrorState
               variant="server"
@@ -732,6 +734,27 @@ export function DashboardCockpit() {
           </div>
         ) : (
           <div className="space-y-4">
+            {hasStaleRefetchError ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex flex-wrap items-center gap-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm"
+              >
+                <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
+                <p className="min-w-0 flex-1 leading-6">
+                  最新化に失敗しました。表示中の情報は前回取得時点のものです。
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-[44px] border-state-confirm/40 bg-card text-state-confirm hover:bg-state-confirm/15 sm:min-h-9"
+                  onClick={() => void cockpitQuery.refetch()}
+                >
+                  再試行
+                </Button>
+              </div>
+            ) : null}
             <div className="min-w-0 space-y-4">
               <ConditionBanner data={data} />
               <UrgentNowSection
